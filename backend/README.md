@@ -227,8 +227,8 @@ test/                # e2e specs + support (harness, validation probe)
 - RBAC evaluation reads the assignment tables on every request (no permission
   cache — ADR-0016). Immediate revocation over one indexed join; caching is a
   documented revisit point with its invalidation contract.
-- User/RBAC endpoints exist and are guarded (`AuthGuard` + `AuthorizationGuard`
-  + `@RequirePermission`), but **no seeded users or roles** are created (OQ-14);
+- User/RBAC endpoints exist and are guarded (`AuthGuard`, `AuthorizationGuard`,
+  `@RequirePermission`), but **no seeded users or roles** are created (OQ-14);
   the first administrator must be created out-of-band by the operator
   (OQ-19 tracks the procedure). See `docs/security.md` §3.
 - Prisma CLI operations and the live-DB paths were not runnable in this

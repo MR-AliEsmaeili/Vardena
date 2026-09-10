@@ -1,6 +1,11 @@
 # Vardena — Module Catalog
 
-Status: Accepted (foundation) · Updated: 2026-09-10
+Status: Accepted (foundation) · Updated: 2026-09-11
+
+> **Domain foundation:** the domain model, configurability and workflow architecture
+> are specified in [`architecture/domain/`](./architecture/domain/README.md)
+> (blueprint + glossary + master-data/document/workflow/inventory/accounting docs).
+> Proposed ADRs 0017–0020 are pending acceptance; nothing there is implemented yet.
 
 This is the normative module catalog. Each entry defines: purpose, responsibilities
 (including what the module is **not** responsible for), owned data (schema),
@@ -13,6 +18,7 @@ published/consumed events, and extension points. Adding a module = new folder pe
 |---|---|---|---|
 | Identity | v1 core | Authentication: login, sessions, password handling | `identity` |
 | Users | v1 core | User records, profiles, enable/disable | `users` |
+| Organization | planned (ADR-0020, Proposed) | Organization structure, fiscal calendar, cross-module configuration, workflow definitions, party master | `organization` |
 | RBAC | v1 core | Roles, granular permissions, assignments | `rbac` |
 | Audit | v1 core | Append-only audit log of sensitive operations | `audit` |
 | Notifications | v1 core | In-app notifications driven by events | `notifications` |
@@ -90,6 +96,30 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 - **Not responsible for:** login/session mechanics (Identity), permissions (RBAC).
 - **Responses:** safe DTOs only (id, username, isActive, createdAt, updatedAt) —
   the password hash never leaves the module (AR-24).
+
+## Organization (planned — ADR-0020 Proposed)
+
+- **Status:** design only (no code, no tables). Requires ADR-0020 acceptance and the
+  gate in [`architecture/domain/domain-blueprint.md`](./architecture/domain/domain-blueprint.md) §21.
+- **Purpose:** own what is *organization-wide*: the organization structure (branches,
+  departments, employees as minimal reference data), the **fiscal calendar** (years and
+  periods), and **cross-module configuration** (numbering series, tax definitions,
+  effective-dated settings, workflow definitions/versions, custom-field definitions).
+  It also owns **party master data** (parties with customer/supplier capability flags,
+  contacts, addresses, bank accounts) so one counterparty is one record
+  (`architecture/domain/master-data-strategy.md` §5).
+- **Why a module (and not the kernel):** configuration is business data; `kernel/` must
+  stay technical (AR-06), and one owner gives consistent scoping, versioning and audit.
+- **API (sketch):** read structure/configuration for other modules (public services
+  only, AR-07); administer branches/departments/parties; manage numbering series, tax
+  definitions, workflow versions and custom-field definitions (permission-gated, AR-21);
+  publish workflow versions (draft → published, ADR-0018).
+- **Publishes (sketch):** `Organization.Updated`, `Branch.Created/Updated`,
+  `Party.Created/Updated/Archived`, `NumberingSeries.Changed`,
+  `WorkflowVersion.Published`, `TaxDefinition.Changed` — all consumed by Audit.
+- **Not responsible for:** user accounts/auth (Identity/Users), roles/permissions
+  (RBAC), commercial relationship data such as price lists and credit enforcement
+  (Sales/Purchasing), and any operational document or ledger.
 
 ## RBAC (v1 core)
 
@@ -181,7 +211,11 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 
 ## Sales (v1 core)
 
-- **Owns:** customers, quotes, sales orders, invoices, returns.
+- **Owns:** customers*, quotes, sales orders, invoices, returns.
+  \* Party (customer/supplier) *master data* moves to the **Organization** module
+  when [ADR-0020](./adr/0020-organizational-scope-and-master-data.md) is accepted; Sales then owns
+  the commercial relationship (price lists, credit policy, sales documents) referencing
+  `party_id`. See [`architecture/domain/master-data-strategy.md`](./architecture/domain/master-data-strategy.md) §5.
 - **API:** customer CRUD; document workflows (quote → order → invoice; returns),
   each document with its permission set (`Sales.Invoice.View|Create|Edit|…`).
 - **Publishes:** `SalesOrder.Created`, `SalesOrder.Confirmed`, `Invoice.Issued`,
@@ -197,8 +231,8 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 
 ## Purchasing (planned)
 
-- **Purpose (when scoped):** suppliers, purchase orders, supplier invoices;
-  purchase → inventory receipt flow.
+- **Purpose (when scoped):** suppliers (same party-master note as Sales — pending
+  ADR-0020), purchase orders, supplier invoices; purchase → inventory receipt flow.
 - **Design constraint:** must follow the same anatomy and event style; its
   receipt events are consumed by Inventory/Accounting exactly like inventory's
   own events. Scope decision: OQ-16.

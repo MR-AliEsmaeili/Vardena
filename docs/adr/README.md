@@ -76,3 +76,7 @@ Keep ADRs **short** (≤ ~60 lines). If it needs more, it belongs in `docs/`.
 | [0014](./0014-openapi-contract.md) | OpenAPI as the single API contract | Accepted |
 | [0015](./0015-backend-foundation-conventions.md) | Backend foundation conventions | Accepted |
 | [0016](./0016-rbac-enforcement-and-evaluation.md) | RBAC enforcement and evaluation (no permission cache in v1) | Accepted |
+| [0017](./0017-inventory-ledger-as-source-of-truth.md) | Inventory ledger as source of truth + materialized balances | Proposed |
+| [0018](./0018-bounded-versioned-workflow.md) | Bounded, versioned workflow configuration (no engine) | Proposed |
+| [0019](./0019-document-foundation-and-relations.md) | Document foundation: typed tables, shared mechanics, controlled relations | Proposed |
+| [0020](./0020-organizational-scope-and-master-data.md) | Organizational scope, the Organization module and master-data ownership | Proposed |
