@@ -37,18 +37,26 @@ startup by `src/kernel/config/app-config.ts`. Invalid config fails fast with a
 message naming every bad key. `.env` files are dev convenience only — real
 deployments inject real env (dotenv never overrides real env).
 
-| Key                    | Default               | Notes                                              |
-| ---------------------- | --------------------- | -------------------------------------------------- |
-| `NODE_ENV`             | `development`         | `development \| test \| production`                |
-| `PORT`                 | `3000`                | API listen port                                    |
-| `DATABASE_URL`         | _(required)_          | `postgresql://` connection string                  |
-| `APP_VERSION`          | `0.0.0-dev`           | release label in health + OpenAPI                  |
-| `LOG_LEVEL`            | `debug` (dev), `info` | `debug \| info \| warn \| error`                   |
-| `SWAGGER_ENABLED`      | `true` except prod    | Swagger UI at `/api/docs`                          |
-| `CORS_ORIGINS`         | _(empty)_             | comma-separated origins; empty = same-origin only  |
-| `TRUST_PROXY`          | `false`               | `true` behind a trusted reverse proxy (client IPs) |
-| `RATE_LIMIT_WINDOW_MS` | `60000`               | per-IP fixed window                                |
-| `RATE_LIMIT_MAX`       | `300`                 | requests per window per IP                         |
+| Key                                | Default               | Notes                                               |
+| ---------------------------------- | --------------------- | --------------------------------------------------- |
+| `NODE_ENV`                         | `development`         | `development \| test \| production`                 |
+| `PORT`                             | `3000`                | API listen port                                     |
+| `DATABASE_URL`                     | _(required)_          | `postgresql://` connection string                   |
+| `APP_VERSION`                      | `0.0.0-dev`           | release label in health + OpenAPI                   |
+| `LOG_LEVEL`                        | `debug` (dev), `info` | `debug \| info \| warn \| error`                    |
+| `SWAGGER_ENABLED`                  | `true` except prod    | Swagger UI at `/api/docs`                           |
+| `CORS_ORIGINS`                     | _(empty)_             | comma-separated origins; empty = same-origin only   |
+| `TRUST_PROXY`                      | `false`               | `true` behind a trusted reverse proxy (client IPs)  |
+| `RATE_LIMIT_WINDOW_MS`             | `60000`               | per-IP fixed window                                 |
+| `RATE_LIMIT_MAX`                   | `300`                 | requests per window per IP                          |
+| `AUTH_COOKIE_NAME`                 | `vardena_session`     | httpOnly session cookie name (ADR-0007)             |
+| `AUTH_COOKIE_PATH`                 | `/`                   | cookie path                                         |
+| `AUTH_COOKIE_SAME_SITE`            | `lax`                 | `lax \| strict \| none` (default: lax)              |
+| `AUTH_COOKIE_SECURE`               | `true` in prod        | `Secure` flag (auto in prod: true; dev/test: false) |
+| `AUTH_SESSION_IDLE_TIMEOUT_MS`     | `1800000` (30 min)    | Sliding idle session timeout                        |
+| `AUTH_SESSION_ABSOLUTE_TIMEOUT_MS` | `43200000` (12 h)     | Absolute session hard cap                           |
+| `AUTH_LOGIN_RATE_LIMIT_WINDOW_MS`  | `900000` (15 min)     | Login-only rate-limit window                        |
+| `AUTH_LOGIN_RATE_LIMIT_MAX`        | `10`                  | Login-only max attempts per window                  |
 
 Adding a key? Update `app-config.ts`, `.env.example`, and this table together.
 

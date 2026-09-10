@@ -4,8 +4,15 @@
 /build
 *.tsbuildinfo
 
-# Prisma generated client (regenerated via `npm run prisma:generate`)
-/src/generated
+# Prisma generated client (regenerated via `npm run prisma:generate`).
+# The real client is not committed; a tiny placeholder stub is kept in
+# `src/generated/prisma/client.ts` so tsc can resolve the specifier before
+# first `prisma:generate` — it is replaced by the real generated client
+# when `prisma generate` runs.
+/src/generated/*
+!/src/generated/prisma
+/src/generated/prisma/*
+!/src/generated/prisma/client.ts
 
 # Logs
 logs
