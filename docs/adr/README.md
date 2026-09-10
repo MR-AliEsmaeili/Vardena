@@ -74,3 +74,4 @@ Keep ADRs **short** (≤ ~60 lines). If it needs more, it belongs in `docs/`.
 | [0012](./0012-print-template-system.md) | Printing template system | Accepted |
 | [0013](./0013-user-preference-key-value.md) | User preferences as validated key-value | Accepted |
 | [0014](./0014-openapi-contract.md) | OpenAPI as the single API contract | Accepted |
+| [0015](./0015-backend-foundation-conventions.md) | Backend foundation conventions | Accepted |

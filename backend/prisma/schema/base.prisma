@@ -1,0 +1,22 @@
+// Vardena — Prisma schema root (ADR-0008, docs/database-strategy.md section 2).
+//
+// One .prisma file per module lives in this folder; every model carries
+// @@schema("<module>") so the file boundary mirrors the ownership boundary.
+// datasource + generator blocks exist exactly once, here.
+//
+// No business tables yet — tables arrive with their owning modules, each
+// change shipped with its own migration (AR-10).
+
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider             = "prisma-client"
+  output               = "../../src/generated/prisma"
+  engineType           = "client"
+  runtime              = "nodejs"
+  moduleFormat         = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension  = "js"
+}

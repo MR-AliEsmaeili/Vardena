@@ -121,7 +121,7 @@ endpoint, correlation id) via the Audit port for security review.
 - **Validation at the edge:** every request body/query validated by typed DTOs
   (class-validator); unknown fields rejected on strict endpoints (write paths
   default strict). Frontend mirrors with Zod.
-- **Error safety:** errors return `{ code, message, details? }` with stable
+- **Error safety:** errors return `{ code, message, details?, correlationId }` with stable
   machine codes; **no** stack traces, SQL, file paths, or internal ids beyond
   what the entity contract exposes.
 - **Rate limiting:** global per-IP throttle (NestJS throttler) with defaults
