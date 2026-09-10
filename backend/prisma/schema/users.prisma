@@ -1,0 +1,28 @@
+// Users module schema (docs/modules.md §Users).
+//
+// Owns: `users.users` — user authentication records + lifecycle fields.
+// Password hash lives here (Identity reads it via Users public service;
+// cross-module table access is forbidden by AR-07).
+//
+// Profile fields (display name, email, employee info) belong to later
+// sessions; this migration is intentionally minimal for authentication.
+
+model User {
+  id           String    @id
+  username     String    @db.VarChar(64)
+  passwordHash String    @map("password_hash")
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @timestamptz() @map("created_at")
+  updatedAt    DateTime  @timestamptz() @map("updated_at")
+  createdBy    String?   @map("created_by")
+  updatedBy    String?   @map("updated_by")
+  deletedAt    DateTime? @timestamptz() @map("deleted_at")
+  deletedBy    String?   @map("deleted_by")
+
+  sessions Session[]
+
+  @@unique([username], name: "uq_users_username")
+  @@index([deletedAt], name: "idx_users_deleted_at")
+  @@map("users")
+  @@schema("users")
+}

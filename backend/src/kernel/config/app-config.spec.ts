@@ -28,6 +28,15 @@ describe('loadAppConfig', () => {
       corsOrigins: ['https://erp.example.com', 'http://localhost:5173'],
       trustProxy: true,
       rateLimit: { windowMs: 1000, max: 10 },
+      auth: {
+        cookieName: 'vardena_session',
+        cookiePath: '/',
+        cookieSameSite: 'lax',
+        cookieSecure: true,
+        sessionIdleTimeoutMs: 30 * 60 * 1000,
+        sessionAbsoluteTimeoutMs: 12 * 60 * 60 * 1000,
+        loginRateLimit: { windowMs: 15 * 60 * 1000, max: 10 },
+      },
     });
   });
 
@@ -42,6 +51,16 @@ describe('loadAppConfig', () => {
     expect(config.corsOrigins).toEqual([]);
     expect(config.trustProxy).toBe(false);
     expect(config.rateLimit).toEqual({ windowMs: 60_000, max: 300 });
+    // In development, cookieSecure defaults to false to allow HTTP local dev.
+    expect(config.auth.cookieSecure).toBe(false);
+    expect(config.auth.cookieName).toBe('vardena_session');
+    expect(config.auth.cookieSameSite).toBe('lax');
+    expect(config.auth.sessionIdleTimeoutMs).toBe(30 * 60 * 1000);
+    expect(config.auth.sessionAbsoluteTimeoutMs).toBe(12 * 60 * 60 * 1000);
+    expect(config.auth.loginRateLimit).toEqual({
+      windowMs: 15 * 60 * 1000,
+      max: 10,
+    });
   });
 
   it('disables swagger and info-logging by default outside development', () => {

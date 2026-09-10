@@ -25,6 +25,39 @@ export interface RateLimitConfig {
   max: number;
 }
 
+/**
+ * Authentication + session configuration (docs/security.md §2, ADR-0007, OQ-06).
+ *
+ * Defaults match the architectural values documented in `docs/security.md`.
+ * All values are tunable per deployment via environment variables — they are
+ * NOT business rules and must never be hardcoded anywhere else.
+ */
+export interface AuthConfig {
+  /** Name of the httpOnly session cookie. */
+  cookieName: string;
+  /**
+   * Whether to set the `Secure` flag on the cookie.
+   * Default: true for production, false for development/test (so local HTTP works).
+   */
+  cookieSecure: boolean;
+  /** SameSite directive for the cookie (Lax per ADR-0007). */
+  cookieSameSite: 'lax' | 'strict' | 'none';
+  /** Path for the cookie (root per ADR-0007). */
+  cookiePath: string;
+  /**
+   * Sliding (idle) session expiry in milliseconds.
+   * Default 30 minutes (security.md §2).
+   */
+  sessionIdleTimeoutMs: number;
+  /**
+   * Absolute session expiry in milliseconds (hard cap).
+   * Default 12 hours (security.md §2).
+   */
+  sessionAbsoluteTimeoutMs: number;
+  /** Strict rate limit applied to the login endpoint. */
+  loginRateLimit: RateLimitConfig;
+}
+
 export interface AppConfig {
   nodeEnv: NodeEnv;
   port: number;
@@ -36,6 +69,7 @@ export interface AppConfig {
   corsOrigins: string[];
   trustProxy: boolean;
   rateLimit: RateLimitConfig;
+  auth: AuthConfig;
 }
 
 const NODE_ENVS: readonly NodeEnv[] = ['development', 'test', 'production'];
@@ -173,6 +207,49 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const max =
     parsePositiveInt(env['RATE_LIMIT_MAX'], 'RATE_LIMIT_MAX', errors) ?? 300;
 
+  // ----- Auth configuration (security.md §2, ADR-0007, OQ-06) -----
+  const cookieName = env['AUTH_COOKIE_NAME']?.trim() || 'vardena_session';
+  const cookiePath = env['AUTH_COOKIE_PATH']?.trim() || '/';
+  const cookieSameSiteRaw =
+    env['AUTH_COOKIE_SAME_SITE']?.trim().toLowerCase() || 'lax';
+  let cookieSameSite: 'lax' | 'strict' | 'none' = 'lax';
+  if (!['lax', 'strict', 'none'].includes(cookieSameSiteRaw)) {
+    errors.push(
+      `AUTH_COOKIE_SAME_SITE must be one of lax|strict|none (got ${JSON.stringify(env['AUTH_COOKIE_SAME_SITE'])}).`,
+    );
+  } else {
+    cookieSameSite = cookieSameSiteRaw as 'lax' | 'strict' | 'none';
+  }
+  const cookieSecure =
+    parseBoolean(env['AUTH_COOKIE_SECURE'], 'AUTH_COOKIE_SECURE', errors) ??
+    nodeEnv === 'production';
+
+  const idleTimeoutMs =
+    parsePositiveInt(
+      env['AUTH_SESSION_IDLE_TIMEOUT_MS'],
+      'AUTH_SESSION_IDLE_TIMEOUT_MS',
+      errors,
+    ) ?? 30 * 60 * 1000; // 30 minutes (security.md §2)
+  const absoluteTimeoutMs =
+    parsePositiveInt(
+      env['AUTH_SESSION_ABSOLUTE_TIMEOUT_MS'],
+      'AUTH_SESSION_ABSOLUTE_TIMEOUT_MS',
+      errors,
+    ) ?? 12 * 60 * 60 * 1000; // 12 hours (security.md §2)
+
+  const loginWindowMs =
+    parsePositiveInt(
+      env['AUTH_LOGIN_RATE_LIMIT_WINDOW_MS'],
+      'AUTH_LOGIN_RATE_LIMIT_WINDOW_MS',
+      errors,
+    ) ?? 15 * 60 * 1000; // 15 minutes
+  const loginMax =
+    parsePositiveInt(
+      env['AUTH_LOGIN_RATE_LIMIT_MAX'],
+      'AUTH_LOGIN_RATE_LIMIT_MAX',
+      errors,
+    ) ?? 10; // 10 attempts per window
+
   if (errors.length > 0) {
     throw new Error(
       `Invalid configuration:\n${errors.map((e) => `  - ${e}`).join('\n')}`,
@@ -190,5 +267,14 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     corsOrigins,
     trustProxy,
     rateLimit: { windowMs, max },
+    auth: {
+      cookieName,
+      cookieSecure,
+      cookieSameSite,
+      cookiePath,
+      sessionIdleTimeoutMs: idleTimeoutMs,
+      sessionAbsoluteTimeoutMs: absoluteTimeoutMs,
+      loginRateLimit: { windowMs: loginWindowMs, max: loginMax },
+    },
   };
 }

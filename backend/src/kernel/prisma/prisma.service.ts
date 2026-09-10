@@ -67,12 +67,18 @@ export class PrismaService implements OnModuleDestroy {
   /**
    * The shared client, loaded once. First call imports the `prisma generate`
    * output; throws an actionable error when codegen has not run yet.
+   *
+   * Type parameter TClient is the structural surface the caller needs —
+   * typically the full generated `PrismaClient` type. We deliberately do
+   * NOT constrain TClient to PrismaDatabaseClient because individual
+   * repositories only need a per-delegate type (e.g. `{ usersUser: ... }`),
+   * and forcing every call-site to include $queryRaw/$disconnect is
+   * unnecessarily strict. Casts inside repositories are therefore safe:
+   * the runtime object is always the full generated client.
    */
-  async getClient<
-    TClient extends PrismaDatabaseClient = PrismaDatabaseClient,
-  >(): Promise<TClient> {
+  async getClient<TClient = PrismaDatabaseClient>(): Promise<TClient> {
     this.clientPromise ??= this.loadClient();
-    return (await this.clientPromise) as TClient;
+    return (await this.clientPromise) as unknown as TClient;
   }
 
   /** Connectivity probe used by readiness checks and worker startup. */

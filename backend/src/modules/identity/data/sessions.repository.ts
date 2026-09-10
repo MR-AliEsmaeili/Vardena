@@ -1,0 +1,153 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import type { Session } from '../domain/session.js';
+
+/**
+ * Data access for `identity.sessions` (docs/database-strategy.md §10).
+ *
+ * - Prisma access lives here only (AR-03/07).
+ * - Returns domain `Session` objects; no Prisma model types escape.
+ */
+@Injectable()
+export class SessionsRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(input: {
+    id: string;
+    userId: string;
+    tokenHash: string;
+    userAgent: string | null;
+    ipAddress: string | null;
+    createdAt: Date;
+    lastSeenAt: Date;
+    expiresAt: Date;
+    absoluteExpiresAt: Date;
+  }): Promise<Session> {
+    const client = await this.prisma.getClient<{
+      identitySession: {
+        create: (args: { data: typeof input }) => Promise<PrismaSessionRecord>;
+      };
+    }>();
+    const row = await client.identitySession.create({ data: input });
+    return toDomain(row);
+  }
+
+  async findById(id: string): Promise<Session | null> {
+    const client = await this.prisma.getClient<{
+      identitySession: {
+        findUnique: (args: {
+          where: { id: string };
+        }) => Promise<PrismaSessionRecord | null>;
+      };
+    }>();
+    const row = await client.identitySession.findUnique({ where: { id } });
+    return row === null ? null : toDomain(row);
+  }
+
+  async findByTokenHash(tokenHash: string): Promise<Session | null> {
+    const client = await this.prisma.getClient<{
+      identitySession: {
+        findUnique: (args: {
+          where: { tokenHash: string };
+        }) => Promise<PrismaSessionRecord | null>;
+      };
+    }>();
+    const row = await client.identitySession.findUnique({
+      where: { tokenHash },
+    });
+    return row === null ? null : toDomain(row);
+  }
+
+  async touch(
+    id: string,
+    data: { lastSeenAt: Date; expiresAt: Date },
+  ): Promise<void> {
+    const client = await this.prisma.getClient<{
+      identitySession: {
+        update: (args: {
+          where: { id: string };
+          data: { lastSeenAt: Date; expiresAt: Date };
+        }) => Promise<unknown>;
+      };
+    }>();
+    await client.identitySession.update({ where: { id }, data });
+  }
+
+  async revoke(id: string, revokedAt: Date): Promise<void> {
+    const client = await this.prisma.getClient<{
+      identitySession: {
+        update: (args: {
+          where: { id: string };
+          data: { revokedAt: Date };
+        }) => Promise<unknown>;
+      };
+    }>();
+    await client.identitySession.update({
+      where: { id },
+      data: { revokedAt },
+    });
+  }
+
+  /** Revoke all sessions for a user except optionally one (current session). */
+  async revokeAllForUser(
+    userId: string,
+    exceptSessionId: string | null,
+    revokedAt: Date,
+  ): Promise<number> {
+    const client = await this.prisma.getClient<{
+      identitySession: {
+        updateMany: (args: {
+          where: {
+            userId: string;
+            revokedAt: null;
+            id?: { not: string } | undefined;
+          };
+          data: { revokedAt: Date };
+        }) => Promise<{ count: number }>;
+      };
+    }>();
+    const where: {
+      userId: string;
+      revokedAt: null;
+      id?: { not: string };
+    } = { userId, revokedAt: null };
+    if (exceptSessionId !== null) {
+      where.id = { not: exceptSessionId };
+    }
+    const result = await client.identitySession.updateMany({
+      where,
+      data: { revokedAt },
+    });
+    return result.count;
+  }
+}
+
+// ---- Internal helpers ----
+
+interface PrismaSessionRecord {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  userAgent: string | null;
+  ipAddress: string | null;
+  createdAt: Date;
+  lastSeenAt: Date;
+  expiresAt: Date;
+  absoluteExpiresAt: Date;
+  revokedAt: Date | null;
+}
+
+function toDomain(row: PrismaSessionRecord): Session {
+  return {
+    id: row.id,
+    userId: row.userId,
+    tokenHash: row.tokenHash,
+    userAgent: row.userAgent,
+    ipAddress: row.ipAddress,
+    createdAt: row.createdAt,
+    lastSeenAt: row.lastSeenAt,
+    expiresAt: row.expiresAt,
+    absoluteExpiresAt: row.absoluteExpiresAt,
+    revokedAt: row.revokedAt,
+  };
+}
