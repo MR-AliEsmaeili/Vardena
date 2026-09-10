@@ -1,8 +1,14 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import {
+  MiddlewareConsumer,
+  Module,
+  NestModule,
+  forwardRef,
+} from '@nestjs/common';
 import { UsersModule } from '../users/users.module.js';
 import { SessionsRepository } from './data/sessions.repository.js';
 import { SessionTokenService } from './domain/session-token.service.js';
 import { AuthenticationService } from './application/authentication.service.js';
+import { SessionRevocationConsumer } from './application/session-revocation.consumer.js';
 import { AuthController } from './api/auth.controller.js';
 import { AuthGuard } from './application/auth.guard.js';
 import { LoginRateLimitMiddleware } from './api/login-rate-limit.middleware.js';
@@ -13,9 +19,14 @@ import { LoginRateLimitMiddleware } from './api/login-rate-limit.middleware.js';
  * Owns: `identity.sessions` and the mechanics of session-based auth
  * (login, logout, session validation, cookie). Password hashing lives in
  * the Users module (which owns `users.users.password_hash`).
+ *
+ * The Users edge is `forwardRef` because user administration lives in
+ * UsersModule, which uses this module's `AuthGuard` together with RBAC's
+ * authorization guard — the two modules only share public providers, never
+ * data (AR-07).
  */
 @Module({
-  imports: [UsersModule],
+  imports: [forwardRef(() => UsersModule)],
   controllers: [AuthController],
   providers: [
     SessionsRepository,
@@ -23,6 +34,7 @@ import { LoginRateLimitMiddleware } from './api/login-rate-limit.middleware.js';
     AuthenticationService,
     AuthGuard,
     LoginRateLimitMiddleware,
+    SessionRevocationConsumer,
   ],
   exports: [AuthenticationService, AuthGuard],
 })

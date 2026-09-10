@@ -4,19 +4,22 @@
 // @@schema("<module>") so the file boundary mirrors the ownership boundary.
 // datasource + generator blocks exist exactly once, here.
 //
-// No business tables yet — tables arrive with their owning modules, each
-// change shipped with its own migration (AR-10).
+// `schemas` lists the database schemas that models may be placed in
+// (multi-schema: every model's @@schema must appear in this list).
+// Tables arrive with their owning modules, each change shipped with its own
+// migration (AR-10).
 
 datasource db {
   provider = "postgresql"
+  schemas  = ["identity", "users", "rbac"]
 }
 
 generator client {
-  provider             = "prisma-client"
-  output               = "../../src/generated/prisma"
-  engineType           = "client"
-  runtime              = "nodejs"
-  moduleFormat         = "esm"
+  provider               = "prisma-client"
+  output                 = "../../src/generated/prisma"
+  engineType             = "client"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
   generatedFileExtension = "ts"
-  importFileExtension  = "js"
+  importFileExtension    = "js"
 }

@@ -10,15 +10,28 @@ import {
   getCorrelationId,
   getPrincipal,
 } from '../../../kernel/correlation/request-context.js';
+import type { PaginatedResult } from '../../../kernel/pagination/paginated-result.js';
+import {
+  toOffset,
+  toPaginatedResult,
+} from '../../../kernel/pagination/paginated-result.js';
+import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { UsersRepository } from '../data/users.repository.js';
 import { PasswordService } from '../domain/password.service.js';
 import type { User, UserDto } from '../domain/user.js';
 import { toUserDto } from '../domain/user.js';
+import { USER_PERMISSIONS } from '../domain/user-permissions.js';
 import {
   USER_CREATED_EVENT,
   USER_DISABLED_EVENT,
+  USER_ENABLED_EVENT,
+  USER_PASSWORD_RESET_EVENT,
+  USER_UPDATED_EVENT,
   type UserCreatedEvent,
   type UserDisabledEvent,
+  type UserEnabledEvent,
+  type UserPasswordResetEvent,
+  type UserUpdatedEvent,
 } from '../domain/user.events.js';
 
 /**
@@ -33,26 +46,66 @@ export interface VerifyCredentialsResult {
   failureReason: CredentialFailureReason | null;
 }
 
+/** Sortable fields for the user list (anything else is rejected). */
+const SORTABLE_FIELDS: Record<string, string> = {
+  username: 'username',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+};
+
+export interface ListUsersQuery {
+  page: number;
+  pageSize: number;
+  isActive?: boolean | undefined;
+  sort?: string | undefined;
+}
+
+export interface CreateUserInput {
+  username: string;
+  password: string;
+  /** Not exposed by the API: creation always yields an active account. */
+  isActive?: boolean | undefined;
+}
+
+export interface UpdateUserInput {
+  username?: string | undefined;
+}
+
 /**
- * Users public application service.
+ * Users module application service (docs/modules.md §Users).
  *
- * Owns: creating users, enabling/disabling, changing passwords, finding
- * users for authentication. The Identity module consumes this to verify
- * credentials; other modules consume it to read user data.
+ * Two clearly separated groups of methods:
  *
- * NOT in scope for this session (per task brief):
- * - User CRUD endpoints (controller) — lands with the Users admin module.
- * - Roles / permissions (RBAC).
- * - Profiles / display names / email.
+ * - **Authentication/read helpers** (`verifyCredentials`, `findActiveById`,
+ *   `findById`, `findByUsername`): consumed by Identity *before* a principal
+ *   exists. They intentionally carry no permission check — login must work for
+ *   anonymous callers — and never return a password hash to a controller.
+ * - **Administration** (`listUsers`, `getUser`, `createUser`, `updateUser`,
+ *   `enableUser`, `disableUser`, `resetPassword`): every one of them requires
+ *   its `Users.User.*` permission. The check runs in this layer because that is
+ *   the only place a background/worker call can be told apart from an HTTP
+ *   request (`AuthorizationService` skips the check when there is no HTTP
+ *   request context, 401s an anonymous request, and 403s a principal without
+ *   the permission).
+ *
+ * Not in scope (no rule defined in the repository — do not invent):
+ * - user deletion (OQ-18 keeps deletion semantics open),
+ * - self-service password change (Identity's own-password flow),
+ * - profiles/display names/email (later Users sessions).
  */
 @Injectable()
 export class UsersService {
   constructor(
     private readonly repository: UsersRepository,
     private readonly passwordService: PasswordService,
+    private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
   ) {}
+
+  // -----------------------------------------------------------------------
+  // Authentication / read helpers (no permission check by design)
+  // -----------------------------------------------------------------------
 
   /**
    * Find a user by login identifier (username) and verify their password.
@@ -105,8 +158,8 @@ export class UsersService {
   }
 
   /**
-   * Find a user by id, regardless of active state (used by admin flows —
-   * not consumed by authentication).
+   * Find a user by id, regardless of active state. Used by admin/application
+   * flows (never by authentication responses).
    */
   async findById(id: string): Promise<User | null> {
     return this.repository.findById(id);
@@ -121,18 +174,49 @@ export class UsersService {
     return this.repository.findByUsername(username.trim());
   }
 
+  // -----------------------------------------------------------------------
+  // Administration (every method requires its Users.User.* permission)
+  // -----------------------------------------------------------------------
+
+  /** List users (paginated, soft-deleted rows are never returned). */
+  async listUsers(query: ListUsersQuery): Promise<PaginatedResult<UserDto>> {
+    await this.authorization.requireAllPermissions([USER_PERMISSIONS.VIEW]);
+    const { skip, take } = toOffset(query.page, query.pageSize);
+    const { items, total } = await this.repository.list({
+      where: { isActive: query.isActive },
+      orderBy: resolveOrderBy(query.sort),
+      skip,
+      take,
+    });
+    return toPaginatedResult(
+      items.map((user) => toUserDto(user)),
+      total,
+      query.page,
+      query.pageSize,
+    );
+  }
+
+  /** Read one user by id (404 when it does not exist or is soft-deleted). */
+  async getUser(id: string): Promise<UserDto> {
+    await this.authorization.requireAllPermissions([USER_PERMISSIONS.VIEW]);
+    const user = await this.repository.findById(id);
+    if (user === null || user.deletedAt !== null) {
+      throw AppException.notFound('User', id);
+    }
+    return toUserDto(user);
+  }
+
   /**
-   * Create a new user with an argon2id-hashed password. Used by seeding
-   * scripts/tests in this session; a proper admin UI arrives with the Users
-   * module.
+   * Create a new user with an argon2id-hashed password.
+   *
+   * Also used by tests and (isolated) development seeding, which run outside a
+   * request context: there they run in the documented *system context* where
+   * authorization is the caller's responsibility.
    *
    * @throws `Conflict` if the username is already taken.
    */
-  async createUser(params: {
-    username: string;
-    password: string;
-    isActive?: boolean | undefined;
-  }): Promise<UserDto> {
+  async createUser(params: CreateUserInput): Promise<UserDto> {
+    await this.authorization.requireAllPermissions([USER_PERMISSIONS.CREATE]);
     const username = params.username.trim();
     if (username.length === 0) {
       throw AppException.badRequest('Username is required.');
@@ -162,46 +246,234 @@ export class UsersService {
       createdBy: actorId,
     });
 
-    const event: UserCreatedEvent = {
+    await this.publish({
       type: USER_CREATED_EVENT,
-      aggregateType: 'User',
       aggregateId: user.id,
       payload: { userId: user.id, username: user.username },
-      correlationId: getCorrelationId(),
-      occurredAt: Date.now(),
-    };
-    await this.events.publish(event);
-
+    });
     this.logger.log(
       'User created',
       { userId: user.id, username: user.username },
       UsersService.name,
     );
-
     return toUserDto(user);
   }
 
-  /** Disable a user. Called from the Users admin flow; Identity reacts to it. */
-  async disableUser(userId: string): Promise<void> {
-    const now = new Date();
-    const actorId = getPrincipal()?.userId ?? null;
+  /** Edit the user's identity (username). Cannot change password here. */
+  async updateUser(id: string, input: UpdateUserInput): Promise<UserDto> {
+    await this.authorization.requireAllPermissions([USER_PERMISSIONS.EDIT]);
+    const user = await this.repository.findById(id);
+    if (user === null || user.deletedAt !== null) {
+      throw AppException.notFound('User', id);
+    }
+
+    const patch: {
+      username?: string;
+      updatedAt: Date;
+      updatedBy: string | null;
+    } = { updatedAt: new Date(), updatedBy: getPrincipal()?.userId ?? null };
+
+    if (input.username !== undefined) {
+      const username = input.username.trim();
+      if (username.length === 0) {
+        throw AppException.validation([
+          {
+            field: 'username',
+            message: 'Username is required.',
+            code: 'isNotEmpty',
+          },
+        ]);
+      }
+      if (username.length > 64) {
+        throw AppException.validation([
+          {
+            field: 'username',
+            message: 'Username must be at most 64 characters.',
+            code: 'maxLength',
+          },
+        ]);
+      }
+      if (username !== user.username) {
+        const clash = await this.repository.findByUsernameExcludingId(
+          username,
+          id,
+        );
+        if (clash !== null) {
+          throw AppException.conflict(
+            'A user with that username already exists.',
+          );
+        }
+        patch.username = username;
+      }
+    }
+
+    const updated = await this.repository.update(id, patch);
+    if (updated === null) {
+      throw AppException.notFound('User', id);
+    }
+
+    await this.publish({
+      type: USER_UPDATED_EVENT,
+      aggregateId: updated.id,
+      payload: { userId: updated.id, username: updated.username },
+    });
+    return toUserDto(updated);
+  }
+
+  /**
+   * Disable a user: the account can no longer authenticate and its existing
+   * sessions are revoked by Identity, which subscribes to `User.Disabled`.
+   *
+   * Note (OQ-19): whether an administrator may disable *themselves* and how
+   * the last remaining administrator account is protected are product
+   * decisions that are not defined in the repository. This method therefore
+   * applies no special case; the open question tracks the gap.
+   */
+  async disableUser(userId: string): Promise<UserDto> {
+    await this.authorization.requireAllPermissions([USER_PERMISSIONS.DISABLE]);
     const updated = await this.repository.update(userId, {
       isActive: false,
-      updatedAt: now,
-      updatedBy: actorId,
+      updatedAt: new Date(),
+      updatedBy: getPrincipal()?.userId ?? null,
+    });
+    if (updated === null || updated.deletedAt !== null) {
+      throw AppException.notFound('User', userId);
+    }
+    await this.publish({
+      type: USER_DISABLED_EVENT,
+      aggregateId: userId,
+      payload: { userId, username: updated.username },
+    });
+    this.logger.log(
+      'User disabled',
+      { userId, username: updated.username },
+      UsersService.name,
+    );
+    return toUserDto(updated);
+  }
+
+  /** Re-enable a previously disabled account. */
+  async enableUser(userId: string): Promise<UserDto> {
+    await this.authorization.requireAllPermissions([USER_PERMISSIONS.ENABLE]);
+    const updated = await this.repository.update(userId, {
+      isActive: true,
+      updatedAt: new Date(),
+      updatedBy: getPrincipal()?.userId ?? null,
+    });
+    if (updated === null || updated.deletedAt !== null) {
+      throw AppException.notFound('User', userId);
+    }
+    await this.publish({
+      type: USER_ENABLED_EVENT,
+      aggregateId: userId,
+      payload: { userId, username: updated.username },
+    });
+    this.logger.log(
+      'User enabled',
+      { userId, username: updated.username },
+      UsersService.name,
+    );
+    return toUserDto(updated);
+  }
+
+  /**
+   * Administrator-initiated password reset (OQ-06: admin resets are the only
+   * reset channel in v1; self-service reset is undecided).
+   *
+   * The new password is hashed and never logged or published. Identity revokes
+   * the user's sessions on `User.PasswordReset` so a stolen session cannot
+   * survive a credential change.
+   *
+   * No password *policy* is enforced beyond "non-empty": password rules are
+   * not defined in the repository (OQ-06) and inventing one here would be a
+   * business rule.
+   */
+  async resetPassword(userId: string, newPassword: string): Promise<void> {
+    await this.authorization.requireAllPermissions([
+      USER_PERMISSIONS.RESET_PASSWORD,
+    ]);
+    if (newPassword.length < 1) {
+      throw AppException.validation([
+        {
+          field: 'newPassword',
+          message: 'New password is required.',
+          code: 'isNotEmpty',
+        },
+      ]);
+    }
+    const user = await this.repository.findById(userId);
+    if (user === null || user.deletedAt !== null) {
+      throw AppException.notFound('User', userId);
+    }
+
+    const passwordHash = await this.passwordService.hash(newPassword);
+    const updated = await this.repository.update(userId, {
+      passwordHash,
+      updatedAt: new Date(),
+      updatedBy: getPrincipal()?.userId ?? null,
     });
     if (updated === null) {
       throw AppException.notFound('User', userId);
     }
-    const event: UserDisabledEvent = {
-      type: USER_DISABLED_EVENT,
-      aggregateType: 'User',
+
+    await this.publish({
+      type: USER_PASSWORD_RESET_EVENT,
       aggregateId: userId,
       payload: { userId, username: updated.username },
+    });
+    this.logger.log(
+      'User password reset by administrator',
+      { userId, username: updated.username },
+      UsersService.name,
+    );
+  }
+
+  // -----------------------------------------------------------------------
+  // Internal helpers
+  // -----------------------------------------------------------------------
+
+  /** Attach correlation id + timestamp so every consumer sees a full event. */
+  private async publish(
+    event:
+      | Omit<UserCreatedEvent, 'correlationId' | 'occurredAt' | 'aggregateType'>
+      | Omit<UserUpdatedEvent, 'correlationId' | 'occurredAt' | 'aggregateType'>
+      | Omit<
+          UserDisabledEvent,
+          'correlationId' | 'occurredAt' | 'aggregateType'
+        >
+      | Omit<UserEnabledEvent, 'correlationId' | 'occurredAt' | 'aggregateType'>
+      | Omit<
+          UserPasswordResetEvent,
+          'correlationId' | 'occurredAt' | 'aggregateType'
+        >,
+  ): Promise<void> {
+    await this.events.publish({
+      ...event,
+      aggregateType: 'User',
       correlationId: getCorrelationId(),
       occurredAt: Date.now(),
-    };
-    await this.events.publish(event);
-    this.logger.log('User disabled', { userId }, UsersService.name);
+    });
   }
+}
+
+// ---- Internal helpers ----
+
+function resolveOrderBy(
+  sort: string | undefined,
+): Array<Record<string, 'asc' | 'desc'>> {
+  if (sort === undefined || sort === '') return [{ username: 'asc' }];
+  return sort.split(',').map((entry) => {
+    const [field, direction] = entry.split(':');
+    const mapped = field === undefined ? undefined : SORTABLE_FIELDS[field];
+    if (mapped === undefined || (direction !== 'asc' && direction !== 'desc')) {
+      throw AppException.validation([
+        {
+          field: 'sort',
+          message: `Cannot sort users by "${field ?? ''}". Allowed: ${Object.keys(SORTABLE_FIELDS).join(', ')}.`,
+          code: 'isSortableField',
+        },
+      ]);
+    }
+    return { [mapped]: direction };
+  });
 }

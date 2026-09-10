@@ -1,0 +1,81 @@
+// RBAC module schema (docs/modules.md §RBAC, ADR-0006, AR-22).
+//
+// Owns: `rbac.permissions`, `rbac.roles`, `rbac.role_permissions`,
+// `rbac.user_roles` (docs/database-strategy.md §1).
+//
+// Model: users → roles → permissions, evaluated in the backend only.
+// The permission *registry* is code-defined (each module registers its
+// permission definitions); `rbac.permissions` is the DB mirror of that
+// registry so roles can be administered without free-text permission entry.
+//
+// No role inheritance and no permission inheritance: a user's effective
+// permissions are exactly the union of the permissions of the (flat) roles
+// assigned to them.
+
+model Permission {
+  id          String   @id
+  code        String   @db.VarChar(160)
+  description String   @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  rolePermissions RolePermission[]
+
+  @@unique([code], map: "uq_permissions_code")
+  @@map("permissions")
+  @@schema("rbac")
+}
+
+model Role {
+  id          String   @id
+  name        String   @db.VarChar(120)
+  description String?  @db.VarChar(500)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy   String?  @map("created_by")
+  updatedBy   String?  @map("updated_by")
+
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@unique([name], map: "uq_roles_name")
+  @@map("roles")
+  @@schema("rbac")
+}
+
+// Role ↔ permission assignment. Composite primary key: the database itself
+// makes a duplicate assignment impossible (AR-10, §26), so the application
+// never relies on a read-then-write check for uniqueness.
+model RolePermission {
+  roleId       String   @map("role_id")
+  permissionId String   @map("permission_id")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy    String?  @map("created_by")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId], map: "idx_role_permissions_permission_id")
+  @@map("role_permissions")
+  @@schema("rbac")
+}
+
+// User ↔ role assignment. Composite primary key for the same reason as
+// RolePermission. `onDelete: Cascade` on the user relation keeps the
+// relation table free of orphans if a user row is ever hard-deleted; users
+// are soft-deleted (AR-13), so this is a safety net, not the normal path.
+model UserRole {
+  userId    String   @map("user_id")
+  roleId    String   @map("role_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId], map: "idx_user_roles_role_id")
+  @@map("user_roles")
+  @@schema("rbac")
+}

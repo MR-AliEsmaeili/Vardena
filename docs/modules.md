@@ -71,14 +71,25 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 
 ## Users (v1 core)
 
-- **Owns:** `users.users` (profile, username (unique), email (optional, unique if
-  set), display name, active flag, password hash, MFA hooks (reserved)).
-- **API:** CRUD for user records, activate/deactivate, reset password (admin),
-  self profile read/update.
-- **Publishes:** `User.Created`, `User.Updated`, `User.Disabled`.
+- **Owns:** `users.users` (username (unique), password hash, active flag, audit
+  columns, `deleted_at` reserved for soft delete). Profile/email/display-name
+  fields are later Users sessions; MFA hooks are reserved (OQ-06).
+- **API (implemented):** `GET /users` (paginated, `isActive` filter), `GET
+  /users/{id}`, `POST /users`, `PATCH /users/{id}` (username), `POST
+  /users/{id}/enable|disable`, `POST /users/{id}/password-reset` (admin reset,
+  204). No delete endpoint (OQ-18) and no self-service profile in v1.
+- **Permissions (own registry, AR-22):** `Users.User.View|Create|Edit|Enable|
+  Disable|ResetPassword`. There is no delete permission because there is no
+  delete endpoint.
+- **Publishes:** `User.Created`, `User.Updated`, `User.Enabled`, `User.Disabled`,
+  `User.PasswordReset` (security-relevant lifecycle; the password itself is
+  never in the payload).
 - **Depends on:** RBAC (role assignments are managed by the RBAC module against
-  user ids), Identity (deactivated users' sessions are revoked via event).
+  user ids; administration endpoints require the permissions above), Identity
+  (deactivated users' sessions are revoked via event).
 - **Not responsible for:** login/session mechanics (Identity), permissions (RBAC).
+- **Responses:** safe DTOs only (id, username, isActive, createdAt, updatedAt) —
+  the password hash never leaves the module (AR-24).
 
 ## RBAC (v1 core)
 
@@ -89,14 +100,31 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   of truth**: each module registers its permissions in code; a sync step mirrors
   them into the DB for the admin UI. Roles are named sets of permissions; users
   hold roles.
-- **API:** list permissions; CRUD roles (code-managed roles protected); assign/
-  remove roles to/from users; effective-permissions query (for UI + debugging).
-- **Authorization service (public):** `hasPermission(userId, code)` and
-  `hasAnyPermission(userId, [codes])` — used by route guards and application
-  services. Permission evaluation is cached per session; role/permission changes
-  invalidate the cache.
-- **Publishes:** `Role.Updated`, `UserRole.Assigned`, `UserRole.Removed`.
-- **Seed roles are a business decision (OQ-14)** — do not invent them.
+- **API (implemented):** `GET /roles` (paginated), `GET /roles/{id}` (with its
+  permissions), `POST /roles` (optionally with an initial permission set, written
+  in one transaction), `PATCH /roles/{id}`; `POST /roles/{id}/permissions` +
+  `DELETE /roles/{id}/permissions/{code}`; `POST /roles/{id}/users` + `DELETE
+  /roles/{id}/users/{userId}`; `GET /permissions` (registry mirror);
+  `GET /permissions/effective` (the caller's own codes — authenticated, no code
+  declared, AR-21 exception). There is deliberately **no** permission
+  create/update endpoint: permissions come from code (ADR-0006).
+- **Permissions (own registry, AR-22):** `Rbac.Permission.View`, `Rbac.Role.View|
+  Create|Edit`, `Rbac.RolePermission.Assign|Remove`, `Rbac.UserRole.Assign|
+  Remove`. No `Rbac.Role.Delete` (OQ-20).
+- **Authorization service (public):** `hasAllPermissions(userId, codes)`,
+  `hasAnyPermission(userId, codes)`, `effectivePermissionCodes(userId)` and
+  `requireAllPermissions(codes)` for application services. Evaluation reads the
+  assignment tables on every request — **no cache in v1** (ADR-0016), so
+  revocation is immediate; caching is an explicit revisit point with its
+  invalidation contract.
+- **Enforcement:** `AuthorizationGuard` + `@RequirePermission(...)` on the route
+  (fail closed: an undeclared guarded route is a 500), re-checked in the
+  application service; multiple codes on one route mean ALL of them; 401 when
+  unauthenticated, 403 when authorized-but-not-permitted (ADR-0016).
+- **Publishes:** `Role.Created`, `Role.Updated`, `RolePermission.Assigned`,
+  `RolePermission.Removed`, `UserRole.Assigned`, `UserRole.Removed`.
+- **Seed roles are a business decision (OQ-14)** — do not invent them; the first
+  administrator's bootstrap procedure is OQ-19.
 - **Not responsible for:** deciding *where* checks happen (that's every module's
   application layer, AR-21) or audit of denials (Audit module).
 
@@ -299,8 +327,8 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 | Event | Publisher | Main consumers | Purpose |
 |---|---|---|---|
 | `UserSession.Created` / `UserSession.Revoked` / `Login.Failed` | Identity | Audit, (Notifications for lockout) | session lifecycle trail |
-| `User.Created` / `User.Updated` / `User.Disabled` | Users | Audit, Identity (revoke sessions), Notifications | user lifecycle |
-| `Role.Updated` / `UserRole.Assigned` / `UserRole.Removed` | RBAC | Audit, RBAC cache invalidation | permission changes |
+| `User.Created` / `User.Updated` / `User.Enabled` / `User.Disabled` / `User.PasswordReset` | Users | Audit, Identity (revoke sessions on disable/reset), Notifications | user lifecycle |
+| `Role.Created` / `Role.Updated` / `RolePermission.Assigned` / `RolePermission.Removed` / `UserRole.Assigned` / `UserRole.Removed` | RBAC | Audit, UI refetch of effective permissions | permission changes (no server-side cache to invalidate — ADR-0016) |
 | `InventoryReceipt.Created` | Inventory | **Accounting (journal)**, Audit, (Sync → outbox if configured) | stock in |
 | `InventoryIssue.Created` | Inventory | **Accounting**, Audit | stock out |
 | `StockTransfer.Created` / `StockAdjustment.Created` | Inventory | Accounting (adjustment), Audit | stock changes |

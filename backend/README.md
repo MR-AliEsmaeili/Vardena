@@ -6,8 +6,9 @@ and daily workflows; the architecture contract lives in `docs/` + `.vardena/`
 (start at `../.vardena/project-context.md`) and the foundation decisions in
 `../docs/adr/0015-backend-foundation-conventions.md`.
 
-> **Scope:** technical foundation only. No business modules exist yet (no auth,
-> users, RBAC, accounting, …). Do not invent them here — see `docs/modules.md`.
+> **Scope:** foundation + Identity (auth), Users and RBAC modules. Accounting,
+> Inventory, Sales, … do not exist yet — do not invent them here, see
+> `docs/modules.md`.
 
 ## Requirements
 
@@ -203,8 +204,13 @@ src/
                      # errors, http pipeline, ids, jobs registry, logging,
                      # pagination, Prisma, rate limiting, bootstrap guard
   modules/
-    health/          # liveness/readiness probes (NOT a business module) + the
-                     # reference example of module anatomy until real ones land
+    health/          # liveness/readiness probes (NOT a business module)
+    identity/        # authentication: login/logout/me, server-side sessions,
+                     # session-revocation consumer (subscribes to Users events)
+    users/           # user records + administration endpoints; owns the
+                     # Users.User.* permission codes
+    rbac/            # roles, permission registry (+ DB mirror), assignments,
+                     # AuthorizationService/AuthorizationGuard (ADR-0006/0016)
 prisma/
   schema/base.prisma # datasource + generator (per-module files added later)
   migrations/        # the ONLY schema-change mechanism (AR-10)
@@ -218,8 +224,13 @@ test/                # e2e specs + support (harness, validation probe)
   for how the code degrades (actionable error, no crash).
 - The `migrate` compose service assumes networked builds (same reason).
 - Rate limiting is per-replica in-memory (exact for the single on-prem API).
-- No auth/RBAC yet: all endpoints are anonymous until Identity/RBAC land;
-  the `Unauthorized`/`PermissionDenied` codes and guards arrive with them.
+- RBAC evaluation reads the assignment tables on every request (no permission
+  cache — ADR-0016). Immediate revocation over one indexed join; caching is a
+  documented revisit point with its invalidation contract.
+- User/RBAC endpoints exist and are guarded (`AuthGuard` + `AuthorizationGuard`
+  + `@RequirePermission`), but **no seeded users or roles** are created (OQ-14);
+  the first administrator must be created out-of-band by the operator
+  (OQ-19 tracks the procedure). See `docs/security.md` §3.
 - Prisma CLI operations and the live-DB paths were not runnable in this
   sandbox (no Postgres, no network to `binaries.prisma.sh`); CI must be the
   first to prove the `prisma/schema/` + `prisma/migrations/` sibling layout
