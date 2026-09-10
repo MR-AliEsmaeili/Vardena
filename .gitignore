@@ -1,0 +1,2 @@
+# Local compose environment (never commit real values; see .env.example).
+.env

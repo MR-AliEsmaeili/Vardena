@@ -5,9 +5,10 @@ backend, React + TypeScript (Vite, Tailwind, shadcn/ui) frontend. Extensible by
 design — new ERP modules are added without architectural change. On-premise
 today, cloud-ready.
 
-> **Status: architecture foundation (documentation only).** No application code
-> exists yet. The repository is the contract for all future implementation work
-> (human or AI).
+> **Status: architecture + backend foundation.** `backend/` holds the NestJS API +
+> worker foundation (config, validation, errors, logging, health, Prisma,
+> Docker). No business modules exist yet — the docs below remain the contract
+> for all future implementation work (human or AI).
 
 ## Start Here
 
@@ -30,3 +31,5 @@ today, cloud-ready.
 - [docs/open-questions.md](docs/open-questions.md) — registered open questions
 - [docs/adr/](docs/adr/) — architecture decision records
 - [.vardena/](.vardena/) — agent context, architecture rules, development rules
+- [backend/README.md](backend/README.md) — backend setup, workflows, conventions
+- [docker-compose.yml](docker-compose.yml) — local stack (PostgreSQL + API + worker)

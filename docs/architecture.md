@@ -227,7 +227,7 @@ Consistency rules:
 - List endpoints: `?page=1&pageSize=20&sort=field:dir&filter[field][op]=value`;
   response `{ items, total, page, pageSize }`. `pageSize` capped (default 100,
   hard max 500).
-- Errors: standard HTTP status + `{ code, message, details? }`; `code` is a stable
+- Errors: standard HTTP status + `{ code, message, details?, correlationId }`; `code` is a stable
   machine-readable code (e.g. `EntityNotFound`, `ValidationFailed`,
   `PermissionDenied`); no internal details in responses (AR-24).
 - Authentication: cookie session (ADR-0007); every endpoint declares a permission
