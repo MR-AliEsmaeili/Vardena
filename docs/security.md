@@ -73,28 +73,53 @@ sync mirrors the registry into `rbac.permissions` so the admin UI can manage
 roles without free-text permission entry. Consequence: a permission that no code
 checks cannot exist (prevents "DB-only permissions" that are never enforced).
 
-**Enforcement layers (all backend, AR-21):**
+**Enforcement layers (all backend, AR-21, ADR-0016):**
 
 1. **Route guard** — declarative: every controller method declares required
-   permission(s) (or an explicit anonymous marker). Guard 403s before any logic.
-2. **Application service check** — for non-CRUD semantics (e.g. `Post`,
-   `Approve`) and for compound operations, the application service re-checks the
-   specific permission(s). The service layer is the *authoritative* layer; the
-   guard is defense-in-depth and the fast path.
-3. **Data-level rules** — e.g. deactivated users cannot authenticate; soft-deleted
-   records invisible except to `*.View` holders with explicit "show deleted"
-   capability where documented. (Per-module, documented in module sections.)
+   permission(s) via `@RequirePermission(...)` and applies `AuthGuard` +
+   `AuthorizationGuard`. The guard answers *before* any controller logic. A
+   guarded route that declares nothing **fails closed** (500): it must never
+   become an open endpoint.
+2. **Application service check** — the application service re-checks the same
+   permission(s) through `AuthorizationService.requireAllPermissions`. The
+   service layer is the *authoritative* layer; the guard is defense-in-depth and
+   the fast path. Several permissions on one route mean **ALL of them** are
+   required — there are no permission expressions.
+3. **Data-level rules** — e.g. deactivated users cannot authenticate (and their
+   sessions are revoked on the `User.Disabled` event); soft-deleted records are
+   invisible to reads; permission evaluation always reads current assignments.
+
+**Failure semantics:** no session (or expired/revoked session) → **401
+`Unauthorized`**; valid session without the required permission → **403
+`PermissionDenied`** with a generic message (the client is never told which
+permission it lacks). Inside application services the same rule holds, with one
+documented exception: calls that run *outside* an HTTP request (bootstrap/seed,
+worker, tests) are **system context** where authorization is the caller's
+concern — HTTP requests always carry a context and can never use that path.
+
+**Evaluation and caching (ADR-0016):** permission checks read
+`rbac.user_roles → rbac.role_permissions → rbac.permissions` on every request.
+There is **no cache in v1** — immediate revocation is worth one indexed join, and
+a cache would need an explicit invalidation contract (on `Role.Updated`,
+`RolePermission.*`, `UserRole.*` and session disable/revoke); a shared cache is
+new infrastructure and needs an ADR.
 
 **Frontend:** permissions drive UI visibility (buttons, menus, routes). This is
 convenience only — **never** a security boundary. The frontend fetches effective
-permissions at login and on `Role.*` change events (refetch).
+permissions at login (`GET /api/v1/permissions/effective`, a documented AR-21
+exception: authenticated, no permission code, returns only the caller's own
+codes) and refetches on RBAC change events.
 
-**Role administration:** roles are CRUD-able; system roles (if any are seeded)
-are protected from deletion. Seed role set is a **business decision — OQ-14**;
-do not invent it.
+**Role administration:** roles are created, renamed and given/removed
+permissions and users through the RBAC endpoints; there is **no role deletion**
+and no `Rbac.Role.Delete` permission in v1 (OQ-20). System roles (if any are
+seeded) and the role set itself are a **business decision — OQ-14**; do not
+invent them. The first administrator's bootstrap procedure is OQ-19.
 
-**Denial logging:** authorization denials are recorded (actor, permission,
-endpoint, correlation id) via the Audit port for security review.
+**Denial logging:** authorization denials are logged with actor, required codes,
+route and correlation id (and are emitted as domain events where a module owns
+the action) for security review; the Audit module consumes them when it lands —
+this session does not create a parallel audit store.
 
 ## 4. Audit Logging (AR-23)
 

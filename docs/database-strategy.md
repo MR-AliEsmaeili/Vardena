@@ -1,6 +1,6 @@
 # Vardena — Database Strategy
 
-Status: Accepted (foundation) · Updated: 2026-09-10
+Status: Accepted (foundation) · Updated: 2026-09-11
 ADR-0008 (single DB, schemas per module) · ADR-0004 (outbox) · ADR-0005 (domain events)
 
 ## 1. Engine & Topology
@@ -14,6 +14,7 @@ ADR-0008 (single DB, schemas per module) · ADR-0004 (outbox) · ADR-0005 (domai
 | `identity` | Identity |
 | `users` | Users |
 | `rbac` | RBAC |
+| `organization` | Organization (planned — ADR-0020, Proposed) |
 | `audit` | Audit |
 | `notifications` | Notifications |
 | `accounting` | Accounting |

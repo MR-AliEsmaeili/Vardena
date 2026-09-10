@@ -5,24 +5,26 @@
 // cross-module table access is forbidden by AR-07).
 //
 // Profile fields (display name, email, employee info) belong to later
-// sessions; this migration is intentionally minimal for authentication.
+// sessions; this schema is intentionally minimal for authentication.
+// Role assignments live in `rbac.user_roles` (owned by the RBAC module).
 
 model User {
   id           String    @id
   username     String    @db.VarChar(64)
   passwordHash String    @map("password_hash")
   isActive     Boolean   @default(true) @map("is_active")
-  createdAt    DateTime  @timestamptz() @map("created_at")
-  updatedAt    DateTime  @timestamptz() @map("updated_at")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy    String?   @map("created_by")
   updatedBy    String?   @map("updated_by")
-  deletedAt    DateTime? @timestamptz() @map("deleted_at")
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
   deletedBy    String?   @map("deleted_by")
 
-  sessions Session[]
+  sessions  Session[]
+  userRoles UserRole[]
 
-  @@unique([username], name: "uq_users_username")
-  @@index([deletedAt], name: "idx_users_deleted_at")
+  @@unique([username], map: "uq_users_username")
+  @@index([deletedAt], map: "idx_users_deleted_at")
   @@map("users")
   @@schema("users")
 }

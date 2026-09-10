@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { IdentityModule } from './modules/identity/identity.module.js';
+import { RbacModule } from './modules/rbac/rbac.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { KernelModule } from './kernel/kernel.module.js';
 import { PrismaModule } from './kernel/prisma/prisma.module.js';
@@ -16,6 +17,7 @@ import { HealthModule } from './modules/health/health.module.js';
     HealthModule,
     UsersModule,
     IdentityModule,
+    RbacModule,
   ],
 })
 export class AppModule {}

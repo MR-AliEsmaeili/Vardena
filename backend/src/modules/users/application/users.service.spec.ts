@@ -1,158 +1,365 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { DomainEventBus } from '../../../kernel/events/domain-event-bus.js';
-import type { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
-import { UsersRepository } from '../data/users.repository.js';
+import { describe, expect, it } from 'vitest';
+import {
+  DomainEventBus,
+  type DomainEvent,
+} from '../../../kernel/events/domain-event-bus.js';
+import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
+import { runWithRequestContext } from '../../../kernel/correlation/request-context.js';
+import {
+  createInMemoryStores,
+  seedUser,
+} from '../../../../test/support/in-memory-repositories.js';
+import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { PasswordService } from '../domain/password.service.js';
-import type { User } from '../domain/user.js';
+import {
+  USER_CREATED_EVENT,
+  USER_DISABLED_EVENT,
+  USER_ENABLED_EVENT,
+  USER_PASSWORD_RESET_EVENT,
+  USER_UPDATED_EVENT,
+} from '../domain/user.events.js';
 import { UsersService } from './users.service.js';
 
-function makeUser(overrides: Partial<User> = {}): User {
-  const now = new Date('2026-01-01T00:00:00Z');
+const ACTOR = 'actor-1';
+
+function loggerStub(): JsonLogger {
   return {
-    id: '01ARZ3NDEKTSV4RRFFQ69G5FAV',
-    username: 'alice',
-    passwordHash: '$argon2id$v=19$m=19456,t=2,p=1$c2FsdA$hashhash',
-    isActive: true,
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-    ...overrides,
-  };
+    log: () => {},
+    warn: () => {},
+    error: () => {},
+  } as unknown as JsonLogger;
 }
 
-describe('UsersService', () => {
-  function build() {
-    const passwordService = new PasswordService();
-    const repository = {
-      findById: vi.fn(),
-      findByUsername: vi.fn(),
-      create: vi.fn(),
-      update: vi.fn(),
-    } as unknown as UsersRepository;
-    const logger = {
-      log: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-      debug: vi.fn(),
-    } as unknown as JsonLogger;
-    const events = {
-      on: vi.fn(),
-      publish: vi.fn().mockResolvedValue(undefined),
-    } as unknown as DomainEventBus;
-    const service = new UsersService(
-      repository,
-      passwordService,
-      logger,
-      events,
-    );
-    return { service, repository, passwordService, logger, events };
+async function buildFixture(): Promise<{
+  service: UsersService;
+  password: PasswordService;
+  events: DomainEvent[];
+  stores: ReturnType<typeof createInMemoryStores>;
+}> {
+  const stores = createInMemoryStores();
+  const bus = new DomainEventBus();
+  const events: DomainEvent[] = [];
+  for (const type of [
+    USER_CREATED_EVENT,
+    USER_UPDATED_EVENT,
+    USER_DISABLED_EVENT,
+    USER_ENABLED_EVENT,
+    USER_PASSWORD_RESET_EVENT,
+  ]) {
+    bus.on(type, (event) => {
+      events.push(event);
+    });
   }
 
-  describe('createUser', () => {
-    it('creates a user with an argon2id-hashed password (no plaintext stored)', async () => {
-      const { service, repository } = build();
-      vi.mocked(repository.findByUsername).mockResolvedValue(null);
-      vi.mocked(repository.create).mockImplementation(
-        async (input) =>
-          makeUser({
-            id: input.id,
-            username: input.username,
-            passwordHash: input.passwordHash,
-            createdAt: input.createdAt,
-            updatedAt: input.updatedAt,
-          }) as any,
-      );
+  const password = new PasswordService();
+  const authorization = new AuthorizationService(
+    stores.userRoles,
+    loggerStub(),
+  );
+  const service = new UsersService(
+    stores.users,
+    password,
+    authorization,
+    loggerStub(),
+    bus,
+  );
+  return { service, password, events, stores };
+}
 
-      const dto = await service.createUser({
-        username: 'bob',
-        password: 'hunter2',
-      });
+function asActor<R>(fn: () => Promise<R>): Promise<R> {
+  return runWithRequestContext(
+    {
+      correlationId: 'corr-1',
+      principal: { userId: ACTOR, sessionId: 'sess' },
+    },
+    fn,
+  );
+}
 
-      expect(dto.username).toBe('bob');
-      expect(dto).not.toHaveProperty('passwordHash');
-      expect(dto).not.toHaveProperty('password');
-      const createdArg = vi.mocked(repository.create).mock.calls[0]![0] as any;
-      expect(createdArg.passwordHash).not.toBe('hunter2');
-      expect(createdArg.passwordHash.startsWith('$argon2id$')).toBe(true);
+describe('UsersService (administration)', () => {
+  it('creates a user with an argon2id hash and never returns the hash', async () => {
+    const { service, password, events, stores } = await buildFixture();
+
+    const created = await service.createUser({
+      username: '  alice  ',
+      password: 'correct horse battery staple',
     });
 
-    it('rejects duplicate usernames with Conflict', async () => {
-      const { service, repository } = build();
-      vi.mocked(repository.findByUsername).mockResolvedValue(makeUser());
-      await expect(
-        service.createUser({ username: 'alice', password: 'pw' }),
-      ).rejects.toMatchObject({ code: 'Conflict' });
-      expect(repository.create).not.toHaveBeenCalled();
-    });
+    expect(created.username).toBe('alice');
+    expect(created.isActive).toBe(true);
+    // The safe DTO has no hash, and the hash is not the plaintext.
+    expect(created).not.toHaveProperty('passwordHash');
+    const stored = stores.raw.users.raw(created.id);
+    expect(stored?.passwordHash).not.toBe('correct horse battery staple');
+    expect(password.isArgon2idHash(stored?.passwordHash ?? '')).toBe(true);
 
-    it('rejects empty username/password', async () => {
-      const { service } = build();
-      await expect(
-        service.createUser({ username: '   ', password: 'pw' }),
-      ).rejects.toMatchObject({ code: 'BadRequest' });
-      await expect(
-        service.createUser({ username: 'u', password: '' }),
-      ).rejects.toMatchObject({ code: 'BadRequest' });
+    expect(events.map((event) => event.type)).toEqual([USER_CREATED_EVENT]);
+    expect(events[0]?.payload).toEqual({
+      userId: created.id,
+      username: 'alice',
     });
   });
 
-  describe('verifyCredentials', () => {
-    it('returns user on correct credentials', async () => {
-      const { service, repository, passwordService } = build();
-      const password = 'correct-horse';
-      const hash = await passwordService.hash(password);
-      vi.mocked(repository.findByUsername).mockResolvedValue(
-        makeUser({ passwordHash: hash }),
-      );
-      const result = await service.verifyCredentials('alice', password);
-      expect(result.user).not.toBeNull();
-      expect(result.failureReason).toBeNull();
+  it('rejects a duplicate username with a conflict', async () => {
+    const { service } = await buildFixture();
+    await service.createUser({ username: 'alice', password: 'pw' });
+
+    await expect(
+      service.createUser({ username: 'alice', password: 'pw' }),
+    ).rejects.toMatchObject({ code: 'Conflict' });
+  });
+
+  it('rejects an empty username or password', async () => {
+    const { service } = await buildFixture();
+    await expect(
+      service.createUser({ username: '   ', password: 'pw' }),
+    ).rejects.toMatchObject({ code: 'BadRequest' });
+    await expect(
+      service.createUser({ username: 'alice', password: '' }),
+    ).rejects.toMatchObject({ code: 'BadRequest' });
+  });
+
+  it('lists users with pagination and an active-state filter', async () => {
+    const { service } = await buildFixture();
+    const first = await service.createUser({
+      username: 'alice',
+      password: 'pw',
+    });
+    await service.createUser({ username: 'bob', password: 'pw' });
+    await service.disableUser(first.id);
+
+    const all = await service.listUsers({ page: 1, pageSize: 10 });
+    expect(all.total).toBe(2);
+    expect(all.items.map((user) => user.username)).toEqual(['alice', 'bob']);
+
+    const active = await service.listUsers({
+      page: 1,
+      pageSize: 10,
+      isActive: true,
+    });
+    expect(active.items.map((user) => user.username)).toEqual(['bob']);
+
+    const paged = await service.listUsers({ page: 2, pageSize: 1 });
+    expect(paged.items).toHaveLength(1);
+    expect(paged.total).toBe(2);
+    expect(paged.page).toBe(2);
+  });
+
+  it('rejects an unsupported sort field (no injection into the query)', async () => {
+    const { service } = await buildFixture();
+    await expect(
+      service.listUsers({ page: 1, pageSize: 10, sort: 'passwordHash:asc' }),
+    ).rejects.toMatchObject({ code: 'ValidationFailed' });
+  });
+
+  it('rejects an unsupported sort direction', async () => {
+    const { service } = await buildFixture();
+    await expect(
+      service.listUsers({ page: 1, pageSize: 10, sort: 'username:sideways' }),
+    ).rejects.toMatchObject({ code: 'ValidationFailed' });
+  });
+
+  it('hides soft-deleted users from reads', async () => {
+    const { service, stores } = await buildFixture();
+    const created = await service.createUser({
+      username: 'ghost',
+      password: 'pw',
+    });
+    await stores.raw.users.update(created.id, {
+      updatedAt: new Date(),
+      updatedBy: null,
+      deletedAt: new Date(),
     });
 
-    it('returns invalid_credentials for unknown user', async () => {
-      const { service, repository } = build();
-      vi.mocked(repository.findByUsername).mockResolvedValue(null);
-      const result = await service.verifyCredentials('nobody', 'pw');
-      expect(result.user).toBeNull();
-      expect(result.failureReason).toBe('invalid_credentials');
+    await expect(service.getUser(created.id)).rejects.toMatchObject({
+      code: 'EntityNotFound',
+    });
+    const page = await service.listUsers({ page: 1, pageSize: 10 });
+    expect(page.items).toEqual([]);
+  });
+
+  it('renames a user and publishes User.Updated', async () => {
+    const { service, events } = await buildFixture();
+    const created = await service.createUser({
+      username: 'alice',
+      password: 'pw',
     });
 
-    it('returns invalid_credentials for wrong password', async () => {
-      const { service, repository, passwordService } = build();
-      vi.mocked(repository.findByUsername).mockResolvedValue(
-        makeUser({ passwordHash: await passwordService.hash('right') }),
-      );
-      const result = await service.verifyCredentials('alice', 'wrong');
-      expect(result.user).toBeNull();
-      expect(result.failureReason).toBe('invalid_credentials');
+    const updated = await service.updateUser(created.id, {
+      username: ' alicia ',
     });
 
-    it('returns user_disabled for an inactive user (even with correct password)', async () => {
-      const { service, repository, passwordService } = build();
-      const password = 'pw';
-      vi.mocked(repository.findByUsername).mockResolvedValue(
-        makeUser({
-          isActive: false,
-          passwordHash: await passwordService.hash(password),
-        }),
-      );
-      const result = await service.verifyCredentials('alice', password);
-      expect(result.user).toBeNull();
-      expect(result.failureReason).toBe('user_disabled');
+    expect(updated.username).toBe('alicia');
+    expect(events.map((event) => event.type)).toContain(USER_UPDATED_EVENT);
+  });
+
+  it('rejects a rename onto another user (conflict) and an unknown id (404)', async () => {
+    const { service } = await buildFixture();
+    const alice = await service.createUser({
+      username: 'alice',
+      password: 'pw',
+    });
+    await service.createUser({ username: 'bob', password: 'pw' });
+
+    await expect(
+      service.updateUser(alice.id, { username: 'bob' }),
+    ).rejects.toMatchObject({ code: 'Conflict' });
+    await expect(
+      service.updateUser('missing', { username: 'someone' }),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+    // Renaming to the same name is a no-op, not a self-conflict.
+    await expect(
+      service.updateUser(alice.id, { username: 'alice' }),
+    ).resolves.toMatchObject({ id: alice.id, username: 'alice' });
+  });
+
+  it('disables and re-enables a user, publishing lifecycle events', async () => {
+    const { service, events } = await buildFixture();
+    const created = await service.createUser({
+      username: 'alice',
+      password: 'pw',
     });
 
-    it('returns user_disabled for a soft-deleted user', async () => {
-      const { service, repository, passwordService } = build();
-      const password = 'pw';
-      vi.mocked(repository.findByUsername).mockResolvedValue(
-        makeUser({
-          deletedAt: new Date(),
-          passwordHash: await passwordService.hash(password),
-        }),
-      );
-      const result = await service.verifyCredentials('alice', password);
-      expect(result.failureReason).toBe('user_disabled');
-      expect(result.user).toBeNull();
+    expect((await service.disableUser(created.id)).isActive).toBe(false);
+    expect((await service.enableUser(created.id)).isActive).toBe(true);
+
+    expect(events.map((event) => event.type)).toEqual([
+      USER_CREATED_EVENT,
+      USER_DISABLED_EVENT,
+      USER_ENABLED_EVENT,
+    ]);
+    await expect(service.disableUser('missing')).rejects.toMatchObject({
+      code: 'EntityNotFound',
     });
+  });
+
+  it('resetPassword replaces the hash (the old password no longer verifies)', async () => {
+    const { service, password, events, stores } = await buildFixture();
+    const created = await service.createUser({
+      username: 'alice',
+      password: 'old-password',
+    });
+    const before = stores.raw.users.raw(created.id)?.passwordHash ?? '';
+
+    await service.resetPassword(created.id, 'new-password');
+
+    const after = stores.raw.users.raw(created.id)?.passwordHash ?? '';
+    expect(after).not.toBe(before);
+    await expect(password.verify(after, 'new-password')).resolves.toBe(true);
+    await expect(password.verify(after, 'old-password')).resolves.toBe(false);
+    expect(events.map((event) => event.type)).toContain(
+      USER_PASSWORD_RESET_EVENT,
+    );
+  });
+
+  it('resetPassword rejects an empty password and an unknown user', async () => {
+    const { service } = await buildFixture();
+    const created = await service.createUser({
+      username: 'alice',
+      password: 'pw',
+    });
+
+    await expect(service.resetPassword(created.id, '')).rejects.toMatchObject({
+      code: 'ValidationFailed',
+    });
+    await expect(
+      service.resetPassword('missing', 'whatever'),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+  });
+
+  it('verifies credentials but never leaks the failure reason through the service result shape used by login', async () => {
+    const { service } = await buildFixture();
+    await service.createUser({ username: 'alice', password: 'correct' });
+
+    const ok = await service.verifyCredentials('alice', 'correct');
+    expect(ok.user?.username).toBe('alice');
+    expect(ok.failureReason).toBeNull();
+
+    const wrongPassword = await service.verifyCredentials('alice', 'wrong');
+    expect(wrongPassword.user).toBeNull();
+    expect(wrongPassword.failureReason).toBe('invalid_credentials');
+
+    const unknown = await service.verifyCredentials('nobody', 'whatever');
+    expect(unknown.failureReason).toBe('invalid_credentials');
+
+    const disabled = await service.createUser({
+      username: 'disabled',
+      password: 'correct',
+    });
+    await service.disableUser(disabled.id);
+    const disabledResult = await service.verifyCredentials(
+      'disabled',
+      'correct',
+    );
+    expect(disabledResult.user).toBeNull();
+    expect(disabledResult.failureReason).toBe('user_disabled');
+  });
+});
+
+describe('UsersService (authorization)', () => {
+  it('denies administration to an authenticated principal without the permission (403)', async () => {
+    const { service } = await buildFixture();
+    const created = await service.createUser({
+      username: 'alice',
+      password: 'pw',
+    });
+
+    await expect(
+      asActor(() => service.listUsers({ page: 1, pageSize: 10 })),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+    await expect(
+      asActor(() => service.getUser(created.id)),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+    await expect(
+      asActor(() => service.createUser({ username: 'bob', password: 'pw' })),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+    await expect(
+      asActor(() => service.disableUser(created.id)),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+  });
+
+  it('reports an anonymous request as 401 (not 403)', async () => {
+    const { service } = await buildFixture();
+    await expect(
+      runWithRequestContext({ correlationId: 'corr-1' }, () =>
+        service.listUsers({ page: 1, pageSize: 10 }),
+      ),
+    ).rejects.toMatchObject({ code: 'Unauthorized' });
+  });
+
+  it('allows administration when the principal holds the permission through a role', async () => {
+    const { service, stores } = await buildFixture();
+    await seedUser(stores, { id: ACTOR, username: 'admin' });
+    await stores.raw.permissions.syncDefinitions(
+      [
+        {
+          code: 'Users.User.View',
+          description: 'View users',
+        },
+      ],
+      new Date(),
+    );
+    const permission =
+      await stores.raw.permissions.findByCode('Users.User.View');
+    const role = await stores.raw.roles.createWithPermissions({
+      id: 'role-admin',
+      name: 'User Admin',
+      description: null,
+      permissionIds: permission === null ? [] : [permission.id],
+      now: new Date(),
+      createdBy: null,
+    });
+    await stores.raw.userRoles.assign({
+      userId: ACTOR,
+      roleId: role.id,
+      now: new Date(),
+      createdBy: null,
+    });
+
+    const page = await asActor(() =>
+      service.listUsers({ page: 1, pageSize: 10 }),
+    );
+    expect(page.total).toBe(1);
+    expect(page.items.map((user) => user.username)).toEqual(['admin']);
   });
 });

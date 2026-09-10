@@ -1,6 +1,6 @@
 # Vardena — System Architecture
 
-Status: Accepted (foundation) · Updated: 2026-09-10 · Companion docs:
+Status: Accepted (foundation) · Updated: 2026-09-11 · Companion docs:
 [modules](./modules.md) · [security](./security.md) · [integrations](./integrations.md) ·
 [database-strategy](./database-strategy.md) · [reporting-strategy](./reporting-strategy.md) ·
 [open questions](./open-questions.md)
@@ -11,6 +11,9 @@ Vardena is a modern **modular ERP** for organizations and businesses. Core
 requirements that shape this architecture:
 
 - **Extensible**: new ERP modules must be addable without architectural change.
+- **Configurable (controlled):** businesses differ in documents, approvals, numbering
+  and accounting practice; variation is configuration over a stable core — see
+  [`architecture/domain/`](./architecture/domain/README.md).
 - **Independent**: Vardena owns its database, business logic, authentication,
   authorization, and API. Legacy ERPs (FaraPayam-style) are *external systems*.
 - **Deployable on-premise today** (single machine / local network, Docker) and
@@ -263,6 +266,7 @@ Consistency rules:
 | External systems, adapters, outbox/sync design | `docs/integrations.md` |
 | Schemas, naming, migrations, raw-SQL policy, outbox DDL | `docs/database-strategy.md` |
 | Reporting engine, views, export, performance | `docs/reporting-strategy.md` |
+| Domain model, configurability, workflows, master data, inventory & accounting domain analysis | `docs/architecture/domain/` |
 | Ambiguous business/architectural decisions | `docs/open-questions.md` |
 | Decisions & their rationale | `docs/adr/` |
 

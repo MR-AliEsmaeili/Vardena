@@ -24,35 +24,35 @@ export class SessionsRepository {
     absoluteExpiresAt: Date;
   }): Promise<Session> {
     const client = await this.prisma.getClient<{
-      identitySession: {
+      session: {
         create: (args: { data: typeof input }) => Promise<PrismaSessionRecord>;
       };
     }>();
-    const row = await client.identitySession.create({ data: input });
+    const row = await client.session.create({ data: input });
     return toDomain(row);
   }
 
   async findById(id: string): Promise<Session | null> {
     const client = await this.prisma.getClient<{
-      identitySession: {
+      session: {
         findUnique: (args: {
           where: { id: string };
         }) => Promise<PrismaSessionRecord | null>;
       };
     }>();
-    const row = await client.identitySession.findUnique({ where: { id } });
+    const row = await client.session.findUnique({ where: { id } });
     return row === null ? null : toDomain(row);
   }
 
   async findByTokenHash(tokenHash: string): Promise<Session | null> {
     const client = await this.prisma.getClient<{
-      identitySession: {
+      session: {
         findUnique: (args: {
           where: { tokenHash: string };
         }) => Promise<PrismaSessionRecord | null>;
       };
     }>();
-    const row = await client.identitySession.findUnique({
+    const row = await client.session.findUnique({
       where: { tokenHash },
     });
     return row === null ? null : toDomain(row);
@@ -63,26 +63,26 @@ export class SessionsRepository {
     data: { lastSeenAt: Date; expiresAt: Date },
   ): Promise<void> {
     const client = await this.prisma.getClient<{
-      identitySession: {
+      session: {
         update: (args: {
           where: { id: string };
           data: { lastSeenAt: Date; expiresAt: Date };
         }) => Promise<unknown>;
       };
     }>();
-    await client.identitySession.update({ where: { id }, data });
+    await client.session.update({ where: { id }, data });
   }
 
   async revoke(id: string, revokedAt: Date): Promise<void> {
     const client = await this.prisma.getClient<{
-      identitySession: {
+      session: {
         update: (args: {
           where: { id: string };
           data: { revokedAt: Date };
         }) => Promise<unknown>;
       };
     }>();
-    await client.identitySession.update({
+    await client.session.update({
       where: { id },
       data: { revokedAt },
     });
@@ -95,7 +95,7 @@ export class SessionsRepository {
     revokedAt: Date,
   ): Promise<number> {
     const client = await this.prisma.getClient<{
-      identitySession: {
+      session: {
         updateMany: (args: {
           where: {
             userId: string;
@@ -114,7 +114,7 @@ export class SessionsRepository {
     if (exceptSessionId !== null) {
       where.id = { not: exceptSessionId };
     }
-    const result = await client.identitySession.updateMany({
+    const result = await client.session.updateMany({
       where,
       data: { revokedAt },
     });
