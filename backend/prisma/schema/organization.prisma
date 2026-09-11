@@ -41,6 +41,18 @@ model Organization {
   employees   Employee[]
   parties     Party[]
 
+  // Back-relations for the organization-scoped Inventory master data
+  // (prisma/schema/inventory.prisma). Prisma requires both sides of a
+  // relation to be declared even when only one side carries the foreign key;
+  // these arrays are the virtual (non-schema) side — the real FK columns stay
+  // `inventory.*.organization_id` in the inventory module.
+  units               Unit[]
+  unitConversions     UnitConversion[]
+  itemUnitConversions ItemUnitConversion[]
+  itemGroups          ItemGroup[]
+  items               Item[]
+  warehouses          Warehouse[]
+
   // The organization code is the tenant root's business key: unique
   // deployment-wide (there is no wider scope to be unique within).
   @@unique([code], map: "uq_organizations_code")
