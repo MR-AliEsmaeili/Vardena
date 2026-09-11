@@ -134,6 +134,12 @@ starts `api` and `worker`. The API is available at `http://localhost:3000`;
 `/api/v1/health/live` is the liveness probe and `/api/docs` is the local
 Swagger UI.
 
+Inside the images, installs run with npm 11 (`node:22-slim` bundles npm 10,
+whose resolver crashes on this dependency graph) plus generous fetch
+retries/timeouts, and npm tarball downloads are kept in a BuildKit cache mount.
+If an image build fails with npm's `Exit handler never called!`, just run the
+build again — completed downloads are reused.
+
 The default local database uses trust authentication only on the private
 Compose network, so no credential is committed or required for the quick
 start. For password authentication or other overrides, copy
