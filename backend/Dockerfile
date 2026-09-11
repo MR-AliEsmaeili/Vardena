@@ -19,11 +19,12 @@
 
 FROM node:22-slim AS base
 WORKDIR /app
+RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 RUN --mount=type=cache,target=/root/.npm npm install -g npm@11
 ENV NPM_CONFIG_FETCH_RETRIES=5 \
     NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=15000 \
     NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000 \
-    NPM_CONFIG_FETCH_TIMEOUT=600000 \
+    NPM_CONFIG_FETCH_TIMEOUT=900000 \
     NPM_CONFIG_PREFER_OFFLINE=true \
     NPM_CONFIG_UPDATE_NOTIFIER=false
 
@@ -40,7 +41,7 @@ ENV CHECKPOINT_DISABLE=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # generate needs DATABASE_URL present (config load) but never connects here.
-RUN DATABASE_URL=postgresql://build:build@localhost:5432/build npx prisma generate \
+RUN DATABASE_URL=postgresql://build:[REDACTED]@localhost:5432/build npx prisma generate \
   && npm run build \
   && node --input-type=module -e "await import('./dist/generated/prisma/client.js'); console.log('generated Prisma Client loads OK')"
 

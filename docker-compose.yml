@@ -35,6 +35,10 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://vardena@postgres:5432/vardena}
       CHECKPOINT_DISABLE: "1"
+      NPM_CONFIG_FETCH_RETRIES: "5"
+      NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "15000"
+      NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "120000"
+      NPM_CONFIG_FETCH_TIMEOUT: "900000"
     command: ["npx", "prisma", "migrate", "deploy"]
     depends_on:
       postgres:
