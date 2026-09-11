@@ -23,6 +23,7 @@ type WarehouseRow = {
   branchId: string;
   code: string;
   name: string;
+  allowNegativeStock: boolean;
   isActive: boolean;
 } & AuditColumns;
 
@@ -45,6 +46,7 @@ interface WarehouseCreate {
   branchId: string;
   code: string;
   name: string;
+  allowNegativeStock: boolean;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -55,6 +57,7 @@ interface WarehouseUpdate {
   branchId?: string | undefined;
   code?: string | undefined;
   name?: string | undefined;
+  allowNegativeStock?: boolean | undefined;
   isActive?: boolean | undefined;
   updatedAt: Date;
   updatedBy: string | null;
@@ -134,10 +137,7 @@ export class WarehousesRepository {
     return toDomain(await warehouse.create({ data: input }));
   }
 
-  async update(
-    id: string,
-    patch: WarehouseUpdate,
-  ): Promise<Warehouse | null> {
+  async update(id: string, patch: WarehouseUpdate): Promise<Warehouse | null> {
     const { warehouse } = await this.client();
     try {
       return toDomain(await warehouse.update({ where: { id }, data: patch }));
@@ -170,6 +170,7 @@ function toDomain(row: WarehouseRow): Warehouse {
     branchId: row.branchId,
     code: row.code,
     name: row.name,
+    allowNegativeStock: row.allowNegativeStock,
     isActive: row.isActive,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

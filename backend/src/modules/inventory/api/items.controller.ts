@@ -70,9 +70,7 @@ export class ItemsController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedItemDto) }] },
   })
-  async list(
-    @Query() query: ListItemsQueryDto,
-  ): Promise<{
+  async list(@Query() query: ListItemsQueryDto): Promise<{
     items: ItemResponseDto[];
     total: number;
     page: number;
@@ -124,6 +122,7 @@ export class ItemsController {
       requiresLot: body.requiresLot,
       requiresSerial: body.requiresSerial,
       requiresExpiry: body.requiresExpiry,
+      allowNegativeStock: body.allowNegativeStock,
     });
   }
 
@@ -161,6 +160,7 @@ export class ItemsController {
       requiresLot: body.requiresLot,
       requiresSerial: body.requiresSerial,
       requiresExpiry: body.requiresExpiry,
+      allowNegativeStock: body.allowNegativeStock,
     });
   }
 

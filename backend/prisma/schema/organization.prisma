@@ -53,6 +53,13 @@ model Organization {
   items               Item[]
   warehouses          Warehouse[]
 
+  // Back-relations for the inventory core (Task 7, ADR-0022). Virtual side
+  // only — same rule as above, no migration impact.
+  movements    InventoryMovement[]
+  balances     InventoryBalance[]
+  reservations InventoryReservation[]
+  operations   InventoryOperation[]
+
   // The organization code is the tenant root's business key: unique
   // deployment-wide (there is no wider scope to be unique within).
   @@unique([code], map: "uq_organizations_code")
@@ -75,6 +82,13 @@ model Branch {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   employees    Employee[]
   warehouses   Warehouse[]
+
+  // Back-relations for the inventory core (Task 7, ADR-0022): branch is a
+  // first-class scope column on movements, balances and reservations.
+  // Virtual side only — no migration impact.
+  movements    InventoryMovement[]
+  balances     InventoryBalance[]
+  reservations InventoryReservation[]
 
   // Uniqueness scope is the organization (master-data-strategy.md §7.1).
   @@unique([organizationId, code], map: "uq_branches_organization_id_code")

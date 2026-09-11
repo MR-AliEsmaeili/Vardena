@@ -79,7 +79,7 @@ export class CreateItemDto {
   @ApiProperty({
     format: 'ulid',
     description:
-      "Base unit: every quantity for this item is stored in it. Must belong to the same organization.",
+      'Base unit: every quantity for this item is stored in it. Must belong to the same organization.',
   })
   @IsUlid()
   baseUnitId!: string;
@@ -136,6 +136,14 @@ export class CreateItemDto {
   @IsOptional()
   @IsBoolean()
   requiresExpiry?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Item-level negative-stock override (ADR-0022). Omit to follow each warehouse policy; set explicitly to allow or forbid negative stock for this item everywhere.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  allowNegativeStock?: boolean;
 
   @ApiPropertyOptional({ maxLength: MAX_BARCODE_LENGTH })
   @IsOptional()
@@ -217,6 +225,15 @@ export class UpdateItemDto {
   @IsOptional()
   @IsBoolean()
   requiresExpiry?: boolean;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'Item-level negative-stock override (ADR-0022). `null` clears the override so each warehouse policy applies again.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  allowNegativeStock?: boolean | null;
 
   @ApiPropertyOptional({ maxLength: MAX_BARCODE_LENGTH })
   @IsOptional()
@@ -318,6 +335,13 @@ export class ItemResponseDto {
 
   @ApiProperty()
   requiresExpiry!: boolean;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Item-level negative-stock override; `null` means the item follows each warehouse policy (ADR-0022).',
+  })
+  allowNegativeStock!: boolean | null;
 
   @ApiProperty({ nullable: true })
   barcode!: string | null;

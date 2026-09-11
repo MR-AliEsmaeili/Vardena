@@ -47,6 +47,14 @@ model Unit {
   itemConvSources   ItemUnitConversion[] @relation("ItemConversionFromUnit")
   itemConvTargets   ItemUnitConversion[] @relation("ItemConversionToUnit")
 
+  // Back-relations for the inventory core (Task 7, ADR-0022). A movement and a
+  // reservation each reference TWO units — the entered unit and the base-unit
+  // snapshot — so both pairs need explicit relation names.
+  enteredMovements     InventoryMovement[]   @relation("MovementEnteredUnit")
+  baseMovements        InventoryMovement[]   @relation("MovementBaseUnit")
+  enteredReservations  InventoryReservation[] @relation("ReservationEnteredUnit")
+  baseReservations     InventoryReservation[] @relation("ReservationBaseUnit")
+
   @@unique([organizationId, code], map: "uq_units_organization_id_code")
   @@index([organizationId, isActive], map: "idx_units_organization_id_is_active")
   @@map("units")
@@ -162,6 +170,10 @@ model Item {
   requiresLot    Boolean  @default(false) @map("requires_lot")
   requiresSerial Boolean  @default(false) @map("requires_serial")
   requiresExpiry Boolean  @default(false) @map("requires_expiry")
+  /// Item-level override of the warehouse negative-stock policy (D-07,
+  /// ADR-0022). NULL (the default) means \"follow the warehouse\"; an explicit
+  /// true/false wins over the warehouse setting.
+  allowNegativeStock Boolean? @map("allow_negative_stock")
   barcode        String?  @db.VarChar(64)
   isActive       Boolean  @default(true) @map("is_active")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -173,6 +185,10 @@ model Item {
   itemGroup     ItemGroup?           @relation(fields: [itemGroupId], references: [id], onDelete: Restrict)
   baseUnit      Unit                 @relation(fields: [baseUnitId], references: [id], onDelete: Restrict)
   unitConversions ItemUnitConversion[]
+
+  movements    InventoryMovement[]
+  balances     InventoryBalance[]
+  reservations InventoryReservation[]
 
   @@unique([organizationId, code], map: "uq_items_organization_id_code")
   @@index([organizationId, isActive], map: "idx_items_organization_id_is_active")
@@ -189,12 +205,18 @@ model Item {
 /// branches (ADR-0020 §1, master-data-strategy.md §1/§4, blueprint §11).
 /// Multiple warehouses per organization/branch are the normal case; a
 /// warehouse is master data, never an enum.
+///
+/// `allowNegativeStock` is the warehouse half of the negative-stock policy
+/// (D-07, OQ-24, ADR-0022): when false (the default), an outbound posting that
+/// would drive on-hand stock below zero is rejected. An item may override it
+/// via `items.allow_negative_stock`; a NULL there means \"follow the warehouse\".
 model Warehouse {
   id             String   @id
   organizationId String   @map("organization_id")
   branchId       String   @map("branch_id")
   code           String   @db.VarChar(64)
   name           String   @db.VarChar(200)
+  allowNegativeStock Boolean @default(false) @map("allow_negative_stock")
   isActive       Boolean  @default(true) @map("is_active")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
@@ -204,9 +226,224 @@ model Warehouse {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
 
+  movements    InventoryMovement[]
+  balances     InventoryBalance[]
+  reservations InventoryReservation[]
+
   @@unique([organizationId, code], map: "uq_warehouses_organization_id_code")
   @@index([organizationId, isActive], map: "idx_warehouses_organization_id_is_active")
   @@index([branchId], map: "idx_warehouses_branch_id")
   @@map("warehouses")
+  @@schema("inventory")
+}
+
+// ---------------------------------------------------------------------------
+// Inventory core — the operational source of truth for quantities (Task 7,
+// ADR-0017, ADR-0022, D-04/D-05/D-07).
+//
+// `inventory_movements` is the immutable ledger: every row is a fact. The
+// balance table is a materialized projection of that ledger, maintained in
+// the SAME transaction as the movement and rebuildable from it at any time.
+// Reservations are claims on availability, never movements. The operations
+// table makes every posting idempotent.
+//
+// Deliberately NOT here (see ADR-0022): cost columns (no Task 7 flow knows a
+// cost, and precision is OQ-03-gated), lot/serial/expiry tracking (fail-closed
+// via the item capability flags), inventory documents, valuation state,
+// accounting postings.
+
+/// One immutable stock fact (D-05).
+///
+/// `quantity` is the ENTERED magnitude (always > 0) in `unit_id`;
+/// `base_quantity` is the SIGNED base-unit effect (+in, −out, never 0) in
+/// `base_unit_id`, computed as sign × quantity × conversion_factor with exact
+/// decimal arithmetic. Balances are `SUM(base_quantity)` by construction.
+///
+/// Corrections are counter-movements (`reversal_of_movement_id`), never
+/// updates: the application exposes no PATCH/DELETE for this table (AR-13).
+/// `movement_type` is a closed, code-defined list
+/// (`domain/movement-type.ts`), stored as text like `item_kind` so that
+/// extending it is an ordinary change instead of an `ALTER TYPE`.
+model InventoryMovement {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  /// Branch snapshot taken from the warehouse at posting time (ADR-0020: the
+  /// branch is a first-class scope column). The warehouse cannot move branches
+  /// once movements exist, so the snapshot never goes stale.
+  branchId       String   @map("branch_id")
+  warehouseId    String   @map("warehouse_id")
+  itemId         String   @map("item_id")
+  movementType   String   @map("movement_type") @db.VarChar(24)
+  /// Entered quantity, `numeric(18,4)` per docs/database-strategy.md §6.
+  quantity       Decimal  @db.Decimal(18, 4)
+  unitId         String   @map("unit_id")
+  /// Signed base-unit effect; the value balances aggregate.
+  baseQuantity   Decimal  @map("base_quantity") @db.Decimal(18, 4)
+  /// Snapshot of the item's base unit at posting time (D-21). The item's base
+  /// unit cannot change once movements exist, so history keeps its meaning.
+  baseUnitId     String   @map("base_unit_id")
+  /// Exact factor applied (`numeric(18,6)` like conversion versions); '1'
+  /// when the entered unit already is the base unit. Together with the entered
+  /// unit, the base unit and `movement_date` it reproduces the resolution, so
+  /// no separate version reference is stored.
+  conversionFactor Decimal @map("conversion_factor") @db.Decimal(18, 6)
+  /// Business date (drives period filters); distinct from `created_at`. Also
+  /// the as-of instant conversions are resolved at. No period validation
+  /// exists yet — the fiscal calendar is OQ-23.
+  movementDate   DateTime @map("movement_date") @db.Timestamptz(6)
+  /// Shared by the two legs of one transfer; null otherwise.
+  transferId     String?  @map("transfer_id")
+  /// Set when this movement reverses another one. Unique (NULLs do not clash
+  /// in PostgreSQL): each movement admits at most one full reversal, which —
+  /// together with the exact-mirror rule — makes over-reversal impossible.
+  reversalOfMovementId String? @map("reversal_of_movement_id")
+  /// Opaque logical reference (no FK — there is no universal document table).
+  /// Both-or-neither; validated in the application layer.
+  referenceType  String?  @map("reference_type") @db.VarChar(64)
+  referenceId    String?  @map("reference_id")
+  /// Required for adjustments, optional otherwise. Free text — no invented
+  /// reason-code vocabulary.
+  reason         String?  @db.VarChar(500)
+  /// Echo of the idempotency key (uniqueness is enforced by
+  /// `inventory_operations`; transfers share one key across two rows).
+  operationKey   String   @map("operation_key") @db.VarChar(128)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  unit         Unit         @relation("MovementEnteredUnit", fields: [unitId], references: [id], onDelete: Restrict)
+  baseUnit     Unit         @relation("MovementBaseUnit", fields: [baseUnitId], references: [id], onDelete: Restrict)
+  reversalOf   InventoryMovement?  @relation("MovementReversal", fields: [reversalOfMovementId], references: [id], onDelete: Restrict)
+  reversals    InventoryMovement[] @relation("MovementReversal")
+
+  @@unique([reversalOfMovementId], map: "uq_movements_reversal_of_movement_id")
+  @@index([organizationId, warehouseId, itemId, movementDate], map: "idx_movements_org_warehouse_item_date")
+  @@index([organizationId, itemId, movementDate], map: "idx_movements_org_item_date")
+  @@index([organizationId, branchId, movementDate], map: "idx_movements_org_branch_date")
+  @@index([transferId], map: "idx_movements_transfer_id")
+  @@index([organizationId, operationKey], map: "idx_movements_org_operation_key")
+  @@map("inventory_movements")
+  @@schema("inventory")
+}
+
+/// Materialized stock projection: one row per (organization, warehouse, item).
+///
+/// `on_hand` = SUM of base quantities; `reserved_quantity` = SUM of ACTIVE
+/// reservation base quantities. `available` is ALWAYS derived
+/// (on_hand − reserved) and never stored. Both columns are maintained in the
+/// same transaction as the movement/reservation write, under a row lock, and
+/// can be rebuilt from the ledger at any time (ADR-0017).
+model InventoryBalance {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  branchId       String   @map("branch_id")
+  warehouseId    String   @map("warehouse_id")
+  itemId         String   @map("item_id")
+  onHand         Decimal  @default(0) @map("on_hand") @db.Decimal(18, 4)
+  reservedQuantity Decimal @default(0) @map("reserved_quantity") @db.Decimal(18, 4)
+  /// Greatest `movement_date` posted to this key; maintained by postings and
+  /// by rebuilds. NULL only before the first movement.
+  lastMovementAt DateTime? @map("last_movement_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, warehouseId, itemId], map: "uq_balances_org_warehouse_item")
+  @@index([organizationId, warehouseId], map: "idx_balances_org_warehouse")
+  @@index([organizationId, itemId], map: "idx_balances_org_item")
+  @@index([organizationId, branchId], map: "idx_balances_org_branch")
+  @@map("inventory_balances")
+  @@schema("inventory")
+}
+
+/// A soft claim on availability (D-07): stock that is promised but has not
+/// moved. Reservations never touch on-hand stock and never enter valuation.
+///
+/// Lifecycle is ACTIVE → RELEASED only. A separate CANCELLED state (voiding a
+/// hold because the owning order died) needs the Sales module to give it
+/// meaning and is deferred (ADR-0022); both would decrement `reserved_quantity`
+/// identically. Terminal rows are kept for audit — never deleted.
+model InventoryReservation {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  branchId       String   @map("branch_id")
+  warehouseId    String   @map("warehouse_id")
+  itemId         String   @map("item_id")
+  /// Entered magnitude (always > 0) in `unit_id`.
+  quantity       Decimal  @db.Decimal(18, 4)
+  unitId         String   @map("unit_id")
+  /// Base-unit claim (always > 0 — reservations are unsigned).
+  baseQuantity   Decimal  @map("base_quantity") @db.Decimal(18, 4)
+  baseUnitId     String   @map("base_unit_id")
+  conversionFactor Decimal @map("conversion_factor") @db.Decimal(18, 6)
+  /// Closed, code-defined list (`domain/inventory-reservation.ts`): today
+  /// `active` and `released`.
+  status         String   @db.VarChar(16)
+  referenceType  String?  @map("reference_type") @db.VarChar(64)
+  referenceId    String?  @map("reference_id")
+  reason         String?  @db.VarChar(500)
+  operationKey   String   @map("operation_key") @db.VarChar(128)
+  releasedAt     DateTime? @map("released_at") @db.Timestamptz(6)
+  releasedBy     String?  @map("released_by")
+  releaseOperationKey String? @map("release_operation_key") @db.VarChar(128)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  unit         Unit         @relation("ReservationEnteredUnit", fields: [unitId], references: [id], onDelete: Restrict)
+  baseUnit     Unit         @relation("ReservationBaseUnit", fields: [baseUnitId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, warehouseId, itemId, status], map: "idx_reservations_org_warehouse_item_status")
+  @@index([organizationId, status], map: "idx_reservations_org_status")
+  @@map("inventory_reservations")
+  @@schema("inventory")
+}
+
+/// Idempotency ledger for inventory postings (ADR-0022).
+///
+/// Every mutating inventory-core operation carries a client-supplied
+/// `operation_key`, unique per organization. The row is written in the SAME
+/// transaction as the ledger effect, so a committed effect always has its key
+/// and a failed one never does. `request_hash` (sha256 over the canonical
+/// request) tells a legitimate retry (same bytes → replay the stored result)
+/// from a key reuse with different intent (→ 409, never applied).
+/// `result` stores the created row ids so a replay can re-read and return the
+/// current DTOs; rows are insert-only, never updated.
+model InventoryOperation {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  operationKey   String   @map("operation_key") @db.VarChar(128)
+  /// Closed, code-defined list (`domain/inventory-operation.ts`).
+  operation      String   @db.VarChar(32)
+  /// sha256 hex over the canonical request payload.
+  requestHash    String   @map("request_hash") @db.Char(64)
+  /// Created-row ids, e.g. `{ \"movementIds\": [...] }`. Opaque to the
+  /// database (no query pattern reads inside it).
+  result         Json     @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, operationKey], map: "uq_operations_org_operation_key")
+  @@map("inventory_operations")
   @@schema("inventory")
 }

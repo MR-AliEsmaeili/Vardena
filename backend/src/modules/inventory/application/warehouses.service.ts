@@ -17,6 +17,8 @@ import { AuthorizationService } from '../../rbac/application/authorization.servi
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { BranchesService } from '../../organization/application/branches.service.js';
 import { WarehousesRepository } from '../data/warehouses.repository.js';
+import { InventoryMovementsRepository } from '../data/inventory-movements.repository.js';
+import { InventoryBalancesRepository } from '../data/inventory-balances.repository.js';
 import type { Warehouse, WarehouseDto } from '../domain/warehouse.js';
 import { toWarehouseDto } from '../domain/warehouse.js';
 import { normalizeCode, normalizeName } from '../domain/master-data.js';
@@ -56,12 +58,15 @@ export interface CreateWarehouseInput {
   branchId: string;
   code: string;
   name: string;
+  /** Default negative-stock policy for this warehouse; default false. */
+  allowNegativeStock?: boolean | undefined;
 }
 
 export interface UpdateWarehouseInput {
   branchId?: string | undefined;
   code?: string | undefined;
   name?: string | undefined;
+  allowNegativeStock?: boolean | undefined;
 }
 
 /**
@@ -77,7 +82,10 @@ export interface UpdateWarehouseInput {
  * `organization.branches`.
  *
  * No stock balances, movements, locations or reservations are created here —
- * those are future Inventory work (ADR-0017, OQ-24).
+ * those are Inventory Core work (ADR-0022). Two freeze guards protect that
+ * core: the branch cannot change once movements exist (it is a reporting
+ * scope stamped on every movement), and the warehouse cannot be disabled
+ * while it still holds stock (disabling would trap those quantities).
  */
 @Injectable()
 export class WarehousesService {
@@ -88,6 +96,8 @@ export class WarehousesService {
     private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
+    private readonly movements: InventoryMovementsRepository,
+    private readonly balances: InventoryBalancesRepository,
   ) {}
 
   async listWarehouses(
@@ -157,6 +167,7 @@ export class WarehousesService {
         branchId: input.branchId,
         code,
         name,
+        allowNegativeStock: input.allowNegativeStock ?? false,
         isActive: true,
         createdAt: now,
         updatedAt: now,
@@ -224,15 +235,26 @@ export class WarehousesService {
       branchId?: string;
       code?: string;
       name?: string;
+      allowNegativeStock?: boolean;
       updatedAt: Date;
       updatedBy: string | null;
     } = { updatedAt: new Date(), updatedBy: getPrincipal()?.userId ?? null };
     if (code !== undefined) patch.code = code;
     if (name !== undefined) patch.name = name;
+    if (input.allowNegativeStock !== undefined) {
+      patch.allowNegativeStock = input.allowNegativeStock;
+    }
 
     // Only re-validate the branch when it changes: a warehouse whose branch was
     // disabled afterwards stays editable (master-data-strategy.md §7.4).
     if (input.branchId !== undefined && input.branchId !== current.branchId) {
+      // Freeze guard (ADR-0022): the branch is stamped on every movement as a
+      // reporting scope, so moving the warehouse would rewrite history.
+      if (await this.movements.existsForWarehouse(id)) {
+        throw AppException.businessRule(
+          'The branch cannot be changed once inventory movements exist for this warehouse.',
+        );
+      }
       patch.branchId = input.branchId;
       await this.branches.requireUsableBranchInOrganization(
         input.branchId,
@@ -293,6 +315,14 @@ export class WarehousesService {
     await this.authorization.requireAllPermissions([permission]);
     const current = await this.mustFind(id);
     if (current.isActive === isActive) return toWarehouseDto(current);
+
+    // Freeze guard (ADR-0022): disabling blocks new movements, so disabling a
+    // warehouse that still holds stock would trap those quantities forever.
+    if (!isActive && (await this.balances.hasBlockingBalanceForWarehouse(id))) {
+      throw AppException.businessRule(
+        'This warehouse cannot be disabled while it still holds stock. Move or adjust the remaining quantities first.',
+      );
+    }
 
     const updated = await this.repository.update(id, {
       isActive,

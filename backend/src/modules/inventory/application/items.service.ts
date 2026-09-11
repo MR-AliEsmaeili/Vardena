@@ -16,6 +16,8 @@ import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { ItemsRepository } from '../data/items.repository.js';
+import { InventoryMovementsRepository } from '../data/inventory-movements.repository.js';
+import { InventoryBalancesRepository } from '../data/inventory-balances.repository.js';
 import type { Item, ItemDto } from '../domain/item.js';
 import { toItemDto } from '../domain/item.js';
 import { ITEM_KINDS, isItemKind, type ItemKind } from '../domain/item-kind.js';
@@ -81,6 +83,8 @@ export interface CreateItemInput extends CapabilityOverrides {
   itemKind: string;
   itemGroupId?: string | null | undefined;
   baseUnitId: string;
+  /** Item-level negative-stock override; omit to follow the warehouse. */
+  allowNegativeStock?: boolean | undefined;
   barcode?: string | null | undefined;
 }
 
@@ -90,6 +94,8 @@ export interface UpdateItemInput extends CapabilityOverrides {
   description?: string | null | undefined;
   itemGroupId?: string | null | undefined;
   baseUnitId?: string | undefined;
+  /** Set `null` to clear the override and follow the warehouse again. */
+  allowNegativeStock?: boolean | null | undefined;
   barcode?: string | null | undefined;
 }
 
@@ -115,9 +121,13 @@ export interface UpdateItemInput extends CapabilityOverrides {
  * kind is disabled and replaced. Recorded in
  * docs/architecture/domain/organization-master-data.md.
  *
- * `baseUnitId` is editable in Task 6 because nothing references it yet; the
- * future Inventory module must forbid changing it once movements exist
- * (documents snapshot their unit — master-data-strategy.md §7.8).
+ * `baseUnitId` is frozen once movements exist (Task 6 left it editable because
+ * nothing referenced it yet; the freeze guards below close that gap):
+ * historical quantities are stored in the original base unit, so changing it
+ * would silently reinterpret history (D-21, ADR-0022). The same freeze
+ * applies to turning `isStockable` off with movements on record, and to
+ * disabling an item that still holds stock — all three would strand or
+ * orphan quantities the ledger already facts about.
  */
 @Injectable()
 export class ItemsService {
@@ -129,6 +139,8 @@ export class ItemsService {
     private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
+    private readonly movements: InventoryMovementsRepository,
+    private readonly balances: InventoryBalancesRepository,
   ) {}
 
   async listItems(query: ListItemsQuery): Promise<PaginatedResult<ItemDto>> {
@@ -218,6 +230,7 @@ export class ItemsService {
         itemGroupId,
         baseUnitId: input.baseUnitId,
         ...capabilities,
+        allowNegativeStock: input.allowNegativeStock ?? null,
         barcode,
         isActive: true,
         createdAt: now,
@@ -268,7 +281,9 @@ export class ItemsService {
         ? undefined
         : normalizeOptional(input.description);
     const barcode =
-      input.barcode === undefined ? undefined : normalizeOptional(input.barcode);
+      input.barcode === undefined
+        ? undefined
+        : normalizeOptional(input.barcode);
     assertCodeAndName(code ?? current.code, name ?? current.name);
     assertOptionalText(
       'Description',
@@ -308,6 +323,18 @@ export class ItemsService {
     };
     assertCapabilities(capabilities);
 
+    // Freeze guards (ADR-0022): with movements on record, the item's stock
+    // identity is facts the ledger owns — turning stockable off would orphan
+    // that history and trap any remaining quantities (new movements for a
+    // non-stockable item are rejected).
+    if (current.isStockable && !capabilities.isStockable) {
+      if (await this.movements.existsForItem(id)) {
+        throw AppException.businessRule(
+          'This item cannot be made non-stockable: inventory movements already exist for it.',
+        );
+      }
+    }
+
     // The capability flags are declared on the patch type rather than smuggled
     // in by the spread: TypeScript does not excess-property-check spreads, so
     // an undeclared field here would compile while the type claimed it was not
@@ -318,6 +345,7 @@ export class ItemsService {
       description?: string | null;
       itemGroupId?: string | null;
       baseUnitId?: string;
+      allowNegativeStock?: boolean | null;
       barcode?: string | null;
       updatedAt: Date;
       updatedBy: string | null;
@@ -330,6 +358,9 @@ export class ItemsService {
     if (name !== undefined) patch.name = name;
     if (description !== undefined) patch.description = description;
     if (barcode !== undefined) patch.barcode = barcode;
+    if (input.allowNegativeStock !== undefined) {
+      patch.allowNegativeStock = input.allowNegativeStock;
+    }
 
     // Organization consistency is re-checked only when the reference changes:
     // an item whose group or base unit was disabled afterwards stays editable.
@@ -346,7 +377,17 @@ export class ItemsService {
         );
       }
     }
-    if (input.baseUnitId !== undefined && input.baseUnitId !== current.baseUnitId) {
+    if (
+      input.baseUnitId !== undefined &&
+      input.baseUnitId !== current.baseUnitId
+    ) {
+      // Freeze guard (ADR-0022): every movement snapshots this unit, so a
+      // change would reinterpret recorded history (D-21).
+      if (await this.movements.existsForItem(id)) {
+        throw AppException.businessRule(
+          'The base unit cannot be changed once inventory movements exist for this item.',
+        );
+      }
       patch.baseUnitId = input.baseUnitId;
       await this.units.requireUsableUnitInOrganization(
         input.baseUnitId,
@@ -413,6 +454,14 @@ export class ItemsService {
     await this.authorization.requireAllPermissions([permission]);
     const current = await this.mustFind(id);
     if (current.isActive === isActive) return toItemDto(current);
+
+    // Freeze guard (ADR-0022): disabling blocks new movements, so disabling
+    // an item that still holds stock would trap those quantities forever.
+    if (!isActive && (await this.balances.hasBlockingBalanceForItem(id))) {
+      throw AppException.businessRule(
+        'This item cannot be disabled while it still holds stock. Move or adjust the remaining quantities first.',
+      );
+    }
 
     const updated = await this.repository.update(id, {
       isActive,

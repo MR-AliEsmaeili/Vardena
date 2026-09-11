@@ -10,7 +10,12 @@ import { OrganizationsService } from '../../organization/application/organizatio
 import { UnitsService } from './units.service.js';
 import { ItemGroupsService } from './item-groups.service.js';
 import { ItemsService } from './items.service.js';
-import { ITEM_CREATED_EVENT, ITEM_UPDATED_EVENT } from '../domain/inventory.events.js';
+import type { InventoryMovementsRepository } from '../data/inventory-movements.repository.js';
+import type { InventoryBalancesRepository } from '../data/inventory-balances.repository.js';
+import {
+  ITEM_CREATED_EVENT,
+  ITEM_UPDATED_EVENT,
+} from '../domain/inventory.events.js';
 
 /**
  * `ItemsService` — the densest rule set in Task 6 (D-25,
@@ -80,6 +85,14 @@ async function buildFixture(): Promise<Fixture> {
     loggerStub(),
     bus,
   );
+  // Freeze-guard seam (ADR-0022): no movements or balances on record, so the
+  // guards never fire here — they are covered by the core specs.
+  const noMovements = {
+    existsForItem: async () => false,
+  } as unknown as InventoryMovementsRepository;
+  const noBalances = {
+    hasBlockingBalanceForItem: async () => false,
+  } as unknown as InventoryBalancesRepository;
   const items = new ItemsService(
     stores.items,
     organizations,
@@ -88,6 +101,8 @@ async function buildFixture(): Promise<Fixture> {
     authorization,
     loggerStub(),
     bus,
+    noMovements,
+    noBalances,
   );
 
   const organizationId = (
@@ -102,7 +117,16 @@ async function buildFixture(): Promise<Fixture> {
     })
   ).id;
 
-  return { organizations, units, itemGroups, items, stores, events, organizationId, unitId };
+  return {
+    organizations,
+    units,
+    itemGroups,
+    items,
+    stores,
+    events,
+    organizationId,
+    unitId,
+  };
 }
 
 describe('ItemsService creation', () => {
@@ -408,7 +432,9 @@ describe('ItemsService update', () => {
     // edit (master-data-strategy.md §7.4): the item keeps its base unit even
     // after that unit is disabled.
     await fixture.units.disableUnit(fixture.unitId);
-    const renamed = await fixture.items.updateItem(itemId, { name: 'Still ok' });
+    const renamed = await fixture.items.updateItem(itemId, {
+      name: 'Still ok',
+    });
     expect(renamed.name).toBe('Still ok');
     expect(renamed.baseUnitId).toBe(fixture.unitId);
 
@@ -455,7 +481,10 @@ describe('ItemsService update', () => {
       fixture.items.requireUsableItemInOrganization(itemId, otherOrg),
     ).rejects.toMatchObject({ code: 'EntityNotFound' });
     await expect(
-      fixture.items.requireUsableItemInOrganization(itemId, fixture.organizationId),
+      fixture.items.requireUsableItemInOrganization(
+        itemId,
+        fixture.organizationId,
+      ),
     ).resolves.toMatchObject({ id: itemId });
   });
 });

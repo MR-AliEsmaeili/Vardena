@@ -27,7 +27,8 @@ export class CreateWarehouseDto {
 
   @ApiProperty({
     format: 'ulid',
-    description: 'Branch this warehouse belongs to. Must be in the same organization and enabled.',
+    description:
+      'Branch this warehouse belongs to. Must be in the same organization and enabled.',
   })
   @IsUlid()
   branchId!: string;
@@ -38,17 +39,30 @@ export class CreateWarehouseDto {
   @MaxLength(MAX_CODE_LENGTH)
   code!: string;
 
-  @ApiProperty({ example: 'Tehran central warehouse', maxLength: MAX_NAME_LENGTH })
+  @ApiProperty({
+    example: 'Tehran central warehouse',
+    maxLength: MAX_NAME_LENGTH,
+  })
   @IsString()
   @MinLength(1, { message: 'Name is required.' })
   @MaxLength(MAX_NAME_LENGTH)
   name!: string;
+
+  @ApiPropertyOptional({
+    default: false,
+    description:
+      'Default negative-stock policy for this warehouse (ADR-0022). An item-level override takes precedence.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  allowNegativeStock?: boolean;
 }
 
 export class UpdateWarehouseDto {
   @ApiPropertyOptional({
     format: 'ulid',
-    description: 'Move the warehouse to another branch of the same organization.',
+    description:
+      'Move the warehouse to another branch of the same organization.',
   })
   @IsOptional()
   @IsUlid()
@@ -67,6 +81,14 @@ export class UpdateWarehouseDto {
   @MinLength(1, { message: 'Name cannot be blank.' })
   @MaxLength(MAX_NAME_LENGTH)
   name?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Default negative-stock policy for this warehouse (ADR-0022). An item-level override takes precedence.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  allowNegativeStock?: boolean;
 }
 
 export class ListWarehousesQueryDto extends PageQueryDto {
@@ -109,6 +131,12 @@ export class WarehouseResponseDto {
 
   @ApiProperty({ example: 'Tehran central warehouse' })
   name!: string;
+
+  @ApiProperty({
+    description:
+      'Default negative-stock policy for this warehouse; an item-level override takes precedence (ADR-0022).',
+  })
+  allowNegativeStock!: boolean;
 
   @ApiProperty()
   isActive!: boolean;

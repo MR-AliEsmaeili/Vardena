@@ -50,15 +50,15 @@ import type { ItemGroupsRepository } from '../../src/modules/inventory/data/item
 import type { ItemsRepository } from '../../src/modules/inventory/data/items.repository.js';
 import type { UnitConversionsRepository } from '../../src/modules/inventory/data/unit-conversions.repository.js';
 import type { WarehousesRepository } from '../../src/modules/inventory/data/warehouses.repository.js';
-import {
-  recordNotFound,
-  uniqueViolation,
-} from './in-memory-repositories.js';
+import { recordNotFound, uniqueViolation } from './in-memory-repositories.js';
 
-type OrderBy = Array<Record<string, 'asc' | 'desc'>>;
+export type OrderBy = Array<Record<string, 'asc' | 'desc'>>;
 
-/** The columns every master-data row is keyed and lifecycle-managed by. */
-interface Row {
+/**
+ * The columns every in-memory row is keyed and lifecycle-managed by.
+ * Exported with the table: the inventory-core fakes reuse both.
+ */
+export interface Row {
   id: string;
 }
 
@@ -77,7 +77,7 @@ function clone<T>(row: T): T {
  * organization. A duplicate throws the same `P2002` the Prisma driver would, so
  * the services' unique-violation fallback is exercised for real.
  */
-class InMemoryTable<TRow extends Row> {
+export class InMemoryTable<TRow extends Row> {
   private readonly rows = new Map<string, TRow>();
 
   constructor(
@@ -86,6 +86,24 @@ class InMemoryTable<TRow extends Row> {
 
   get size(): number {
     return this.rows.size;
+  }
+
+  /** Remove a row; mirrors a `DELETE … WHERE id` (rebuild of phantom rows). */
+  delete(id: string): boolean {
+    return this.rows.delete(id);
+  }
+
+  /** Deep snapshot for transaction rollback in the core fakes. */
+  snapshot(): TRow[] {
+    return [...this.rows.values()].map(clone);
+  }
+
+  /** Restore a snapshot taken by `snapshot` (rollback only, not fixtures). */
+  restore(rows: readonly TRow[]): void {
+    this.rows.clear();
+    for (const row of rows) {
+      this.rows.set(row.id, clone(row));
+    }
   }
 
   findById(id: string): TRow | null {
@@ -180,15 +198,15 @@ function applyOrderBy<T extends object>(rows: T[], orderBy: OrderBy): T[] {
  * sort and page. `undefined` means "not filtered"; `null` means "is null", so
  * `parentId: null` correctly selects roots.
  */
-function listPage<TRow extends Row>(
+export function listPage<TRow extends Row, TWhere extends object>(
   table: InMemoryTable<TRow>,
   params: {
-    where: Record<string, unknown>;
+    where: TWhere;
     orderBy: OrderBy;
     skip: number;
     take: number;
   },
-  extra: (row: TRow, where: Record<string, unknown>) => boolean = () => true,
+  extra: (row: TRow, where: TWhere) => boolean = () => true,
 ): { items: TRow[]; total: number } {
   const filtered = table.findMany((row) => {
     const record = row as unknown as Record<string, unknown>;
@@ -336,7 +354,9 @@ export class InMemoryEmployeesRepository extends ScopedCodeTable<Employee> {
     return super.findByCode(organizationId, employeeCode);
   }
 
-  async list(params: ListParams): Promise<{ items: Employee[]; total: number }> {
+  async list(
+    params: ListParams,
+  ): Promise<{ items: Employee[]; total: number }> {
     // `employee_code` is the searchable business key for this entity.
     return listPage(this.table, params);
   }
