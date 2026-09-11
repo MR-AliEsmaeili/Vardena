@@ -21,6 +21,10 @@ import { ItemGroupsRepository } from '../src/modules/inventory/data/item-groups.
 import { ItemsRepository } from '../src/modules/inventory/data/items.repository.js';
 import { UnitConversionsRepository } from '../src/modules/inventory/data/unit-conversions.repository.js';
 import { WarehousesRepository } from '../src/modules/inventory/data/warehouses.repository.js';
+import { InventoryMovementsRepository } from '../src/modules/inventory/data/inventory-movements.repository.js';
+import { InventoryReservationsRepository } from '../src/modules/inventory/data/inventory-reservations.repository.js';
+import { InventoryBalancesRepository } from '../src/modules/inventory/data/inventory-balances.repository.js';
+import { InventoryOperationsRepository } from '../src/modules/inventory/data/inventory-operations.repository.js';
 import {
   createInMemoryStores,
   type InMemoryStores,
@@ -29,6 +33,10 @@ import {
   createMasterDataStores,
   type MasterDataStores,
 } from './support/master-data-repositories.js';
+import {
+  createInventoryCoreStores,
+  type InventoryCoreStores,
+} from './support/inventory-core-repositories.js';
 import { createTestApp } from './support/test-app.js';
 
 /**
@@ -56,6 +64,7 @@ describe('Organization + Inventory master data (e2e)', () => {
   let app: INestApplication;
   let stores: InMemoryStores;
   let master: MasterDataStores;
+  let core: InventoryCoreStores;
   let users: UsersService;
   let roles: RolesService;
   let userRoles: UserRolesService;
@@ -88,6 +97,9 @@ describe('Organization + Inventory master data (e2e)', () => {
   beforeAll(async () => {
     stores = createInMemoryStores();
     master = createMasterDataStores();
+    // Empty core tables: the freeze guards consult them on item/warehouse
+    // edits and disables, and must see "no movements, no stock" here.
+    core = createInventoryCoreStores();
     const rebuilt = await createTestApp({
       override: (builder) =>
         builder
@@ -122,7 +134,15 @@ describe('Organization + Inventory master data (e2e)', () => {
           .overrideProvider(UnitConversionsRepository)
           .useValue(master.unitConversions)
           .overrideProvider(WarehousesRepository)
-          .useValue(master.warehouses),
+          .useValue(master.warehouses)
+          .overrideProvider(InventoryMovementsRepository)
+          .useValue(core.movements)
+          .overrideProvider(InventoryReservationsRepository)
+          .useValue(core.reservations)
+          .overrideProvider(InventoryBalancesRepository)
+          .useValue(core.balances)
+          .overrideProvider(InventoryOperationsRepository)
+          .useValue(core.operations),
     });
     app = rebuilt.app;
     users = app.get(UsersService);
@@ -297,7 +317,9 @@ describe('Organization + Inventory master data (e2e)', () => {
   it('journey 1: reads the chain back and lists it with pagination', async () => {
     await root.get(`/api/v1/organizations/${state.orgId}`).expect(200);
     await root.get(`/api/v1/branches/${state.branchId}`).expect(200);
-    await root.get(`/api/v1/inventory/warehouses/${state.warehouseId}`).expect(200);
+    await root
+      .get(`/api/v1/inventory/warehouses/${state.warehouseId}`)
+      .expect(200);
 
     const list = await root
       .get('/api/v1/inventory/warehouses')
@@ -593,9 +615,9 @@ describe('Organization + Inventory master data (e2e)', () => {
       .get('/api/v1/inventory/items')
       .query({ organizationId: state.orgId, isStockable: true })
       .expect(200);
-    expect(stockable.body.items.map((item: { code: string }) => item.code)).toEqual([
-      'ITM-0001',
-    ]);
+    expect(
+      stockable.body.items.map((item: { code: string }) => item.code),
+    ).toEqual(['ITM-0001']);
   });
 
   it('journey 2: rejects an unknown sort field instead of querying with it', async () => {
@@ -665,9 +687,9 @@ describe('Organization + Inventory master data (e2e)', () => {
       .get('/api/v1/parties')
       .query({ organizationId: state.orgId, isCustomer: true })
       .expect(200);
-    expect(customers.body.items.map((party: { code: string }) => party.code)).toEqual([
-      'C-0001',
-    ]);
+    expect(
+      customers.body.items.map((party: { code: string }) => party.code),
+    ).toEqual(['C-0001']);
 
     const suppliers = await root
       .get('/api/v1/parties')
@@ -725,7 +747,7 @@ describe('Organization + Inventory master data (e2e)', () => {
     expect(res.body.code).toBe('BusinessRuleViolation');
   });
 
-  it('rejects an employee referencing another organization\'s department', async () => {
+  it("rejects an employee referencing another organization's department", async () => {
     const foreign = await root
       .post('/api/v1/departments')
       .send({
@@ -750,19 +772,17 @@ describe('Organization + Inventory master data (e2e)', () => {
 
   // ---- organization isolation over HTTP ------------------------------------
 
-  it('returns 404 when addressing another organization\'s record by id', async () => {
+  it("returns 404 when addressing another organization's record by id", async () => {
     // The ids exist, but every list requires an organizationId and the
     // cross-organization reference resolvers answer 404, so a tenant cannot
     // probe for the existence of another tenant's rows.
-    const foreignItem = await root
-      .post('/api/v1/inventory/items')
-      .send({
-        organizationId: state.otherOrgId,
-        code: 'ITM-9000',
-        name: 'Other org item',
-        itemKind: 'goods',
-        baseUnitId: state.unitPcsId,
-      });
+    const foreignItem = await root.post('/api/v1/inventory/items').send({
+      organizationId: state.otherOrgId,
+      code: 'ITM-9000',
+      name: 'Other org item',
+      itemKind: 'goods',
+      baseUnitId: state.unitPcsId,
+    });
     // The base unit belongs to the first organization, so this must fail.
     expect(foreignItem.status).toBe(404);
   });
@@ -772,9 +792,9 @@ describe('Organization + Inventory master data (e2e)', () => {
       .get('/api/v1/branches')
       .query({ organizationId: state.otherOrgId })
       .expect(200);
-    expect(branches.body.items.map((branch: { code: string }) => branch.code)).toEqual([
-      'MSH-01',
-    ]);
+    expect(
+      branches.body.items.map((branch: { code: string }) => branch.code),
+    ).toEqual(['MSH-01']);
 
     const items = await root
       .get('/api/v1/inventory/items')

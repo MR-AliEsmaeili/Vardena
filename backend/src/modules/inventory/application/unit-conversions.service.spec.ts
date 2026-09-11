@@ -11,6 +11,8 @@ import { UnitsService } from './units.service.js';
 import { ItemsService } from './items.service.js';
 import { ItemGroupsService } from './item-groups.service.js';
 import { UnitConversionsService } from './unit-conversions.service.js';
+import type { InventoryMovementsRepository } from '../data/inventory-movements.repository.js';
+import type { InventoryBalancesRepository } from '../data/inventory-balances.repository.js';
 import { UNIT_CONVERSION_CREATED_EVENT } from '../domain/inventory.events.js';
 
 /**
@@ -58,7 +60,10 @@ async function buildFixture(): Promise<Fixture> {
     events.push(event);
   });
 
-  const authorization = new AuthorizationService(undefined as never, loggerStub());
+  const authorization = new AuthorizationService(
+    undefined as never,
+    loggerStub(),
+  );
   const organizations = new OrganizationsService(
     stores.organizations,
     authorization,
@@ -79,6 +84,13 @@ async function buildFixture(): Promise<Fixture> {
     loggerStub(),
     bus,
   );
+  // Freeze-guard seam (ADR-0022): no movements or balances on record here.
+  const noMovements = {
+    existsForItem: async () => false,
+  } as unknown as InventoryMovementsRepository;
+  const noBalances = {
+    hasBlockingBalanceForItem: async () => false,
+  } as unknown as InventoryBalancesRepository;
   const items = new ItemsService(
     stores.items,
     organizations,
@@ -87,6 +99,8 @@ async function buildFixture(): Promise<Fixture> {
     authorization,
     loggerStub(),
     bus,
+    noMovements,
+    noBalances,
   );
   const conversions = new UnitConversionsService(
     stores.unitConversions,
@@ -497,7 +511,7 @@ describe('UnitConversionsService', () => {
     ).rejects.toMatchObject({ code: 'BadRequest' });
   });
 
-  it('never lists another organization\'s conversions', async () => {
+  it("never lists another organization's conversions", async () => {
     await fixture.conversions.createConversion({
       organizationId: fixture.organizationId,
       itemId: null,

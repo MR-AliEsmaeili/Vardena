@@ -34,6 +34,7 @@ type ItemRow = {
   requiresLot: boolean;
   requiresSerial: boolean;
   requiresExpiry: boolean;
+  allowNegativeStock: boolean | null;
   barcode: string | null;
   isActive: boolean;
 } & AuditColumns;
@@ -73,6 +74,7 @@ interface ItemCreate {
   requiresLot: boolean;
   requiresSerial: boolean;
   requiresExpiry: boolean;
+  allowNegativeStock: boolean | null;
   barcode: string | null;
   isActive: boolean;
   createdAt: Date;
@@ -94,6 +96,7 @@ interface ItemUpdate {
   requiresLot?: boolean | undefined;
   requiresSerial?: boolean | undefined;
   requiresExpiry?: boolean | undefined;
+  allowNegativeStock?: boolean | null | undefined;
   barcode?: string | null | undefined;
   isActive?: boolean | undefined;
   updatedAt: Date;
@@ -236,6 +239,7 @@ function toDomain(row: ItemRow): Item {
     requiresLot: row.requiresLot,
     requiresSerial: row.requiresSerial,
     requiresExpiry: row.requiresExpiry,
+    allowNegativeStock: row.allowNegativeStock,
     barcode: row.barcode,
     isActive: row.isActive,
     createdAt: row.createdAt,

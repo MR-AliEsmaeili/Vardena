@@ -7,41 +7,55 @@ import { ItemGroupsRepository } from './data/item-groups.repository.js';
 import { ItemsRepository } from './data/items.repository.js';
 import { UnitConversionsRepository } from './data/unit-conversions.repository.js';
 import { WarehousesRepository } from './data/warehouses.repository.js';
+import { InventoryMovementsRepository } from './data/inventory-movements.repository.js';
+import { InventoryReservationsRepository } from './data/inventory-reservations.repository.js';
+import { InventoryBalancesRepository } from './data/inventory-balances.repository.js';
+import { InventoryOperationsRepository } from './data/inventory-operations.repository.js';
 import { UnitsService } from './application/units.service.js';
 import { ItemGroupsService } from './application/item-groups.service.js';
 import { ItemsService } from './application/items.service.js';
 import { UnitConversionsService } from './application/unit-conversions.service.js';
 import { WarehousesService } from './application/warehouses.service.js';
+import { InventoryMovementsService } from './application/inventory-movements.service.js';
+import { InventoryTransfersService } from './application/inventory-transfers.service.js';
+import { InventoryReservationsService } from './application/inventory-reservations.service.js';
+import { InventoryBalancesService } from './application/inventory-balances.service.js';
 import { InventoryPermissionRegistration } from './application/inventory-permission-registration.js';
 import { UnitsController } from './api/units.controller.js';
 import { ItemGroupsController } from './api/item-groups.controller.js';
 import { ItemsController } from './api/items.controller.js';
 import { UnitConversionsController } from './api/unit-conversions.controller.js';
 import { WarehousesController } from './api/warehouses.controller.js';
+import { InventoryMovementsController } from './api/inventory-movements.controller.js';
+import { InventoryTransfersController } from './api/inventory-transfers.controller.js';
+import { InventoryReservationsController } from './api/inventory-reservations.controller.js';
+import { InventoryBalancesController } from './api/inventory-balances.controller.js';
 
 /**
- * Inventory module (docs/modules.md §Inventory, ADR-0017, ADR-0020, ADR-0021).
+ * Inventory module (docs/modules.md §Inventory, ADR-0017, ADR-0020, ADR-0021,
+ * ADR-0022).
  *
- * Owns schema `inventory`. Task 6 implements only the **master-data** half of
- * the module — units, unit conversions, item groups, items and warehouses
- * (master-data-strategy.md §3/§4, D-25/D-26). The transactional half (receipts,
- * issues, transfers, adjustments, stock balances, reservations, valuation) is
- * explicitly out of scope and arrives with later tasks; no ledger, movement or
- * balance table exists yet.
+ * Owns schema `inventory`. Task 6 implemented the **master-data** half —
+ * units, unit conversions, item groups, items and warehouses
+ * (master-data-strategy.md §3/§4, D-25/D-26). Task 7 adds the **core**
+ * transactional half: the immutable movement ledger, the materialized
+ * balance projection, reservations, atomic transfers, and ledger
+ * reconciliation (ADR-0022). Documents, valuation and lot/serial/expiry
+ * tracking stay out of scope (they arrive with later tasks).
  *
- * Public surface (AR-07) — the five application services are exported so future
- * document modules resolve items, units and warehouses through them and never
- * read `inventory.*` tables. Each exposes a `requireUsable*` method that
- * carries no permission of its own: the calling service has already performed
- * its own authorization check.
+ * Public surface (AR-07) — the application services are exported so future
+ * document modules resolve items, units, warehouses and balances through them
+ * and never read `inventory.*` tables. Each exposes `requireUsable*` / query
+ * methods that carry no permission of their own: the calling service has
+ * already performed its own authorization check.
  *
  * Dependencies:
  * - `RbacModule` — `AuthorizationService` and `PermissionRegistry` for the
  *   `Inventory.*` codes,
  * - `IdentityModule` — `AuthGuard`; `forwardRef` because the composition graph
  *   contains a cycle (`IdentityModule` → `UsersModule` → …), not a data cycle,
- * - `OrganizationModule` — the Inventory master data is organization-scoped and
- *   its branch references are resolved through `OrganizationsService` /
+ * - `OrganizationModule` — the Inventory data is organization-scoped and its
+ *   branch references are resolved through `OrganizationsService` /
  *   `BranchesService`. One direction only: Organization never imports
  *   Inventory, so there is no cycle here.
  */
@@ -53,6 +67,10 @@ import { WarehousesController } from './api/warehouses.controller.js';
     ItemsController,
     UnitConversionsController,
     WarehousesController,
+    InventoryMovementsController,
+    InventoryTransfersController,
+    InventoryReservationsController,
+    InventoryBalancesController,
   ],
   providers: [
     UnitsRepository,
@@ -60,11 +78,19 @@ import { WarehousesController } from './api/warehouses.controller.js';
     ItemsRepository,
     UnitConversionsRepository,
     WarehousesRepository,
+    InventoryMovementsRepository,
+    InventoryReservationsRepository,
+    InventoryBalancesRepository,
+    InventoryOperationsRepository,
     UnitsService,
     ItemGroupsService,
     ItemsService,
     UnitConversionsService,
     WarehousesService,
+    InventoryMovementsService,
+    InventoryTransfersService,
+    InventoryReservationsService,
+    InventoryBalancesService,
     InventoryPermissionRegistration,
   ],
   exports: [
@@ -73,6 +99,10 @@ import { WarehousesController } from './api/warehouses.controller.js';
     ItemsService,
     UnitConversionsService,
     WarehousesService,
+    InventoryMovementsService,
+    InventoryTransfersService,
+    InventoryReservationsService,
+    InventoryBalancesService,
   ],
 })
 export class InventoryModule {}

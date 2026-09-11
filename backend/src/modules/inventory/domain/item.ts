@@ -35,6 +35,12 @@ export interface Item extends ItemCapabilities {
   itemGroupId: string | null;
   /** The unit every quantity for this item is stored in (§3.4). */
   baseUnitId: string;
+  /**
+   * Item-level override of the warehouse negative-stock policy (D-07,
+   * ADR-0022). `null` (the default) means "follow the warehouse"; an explicit
+   * true/false wins.
+   */
+  allowNegativeStock: boolean | null;
   barcode: string | null;
   isActive: boolean;
   createdAt: Date;
@@ -50,6 +56,7 @@ export interface ItemDto extends ItemCapabilities {
   itemKind: ItemKind;
   itemGroupId: string | null;
   baseUnitId: string;
+  allowNegativeStock: boolean | null;
   barcode: string | null;
   isActive: boolean;
   createdAt: string;
@@ -66,6 +73,7 @@ export function toItemDto(item: Item): ItemDto {
     itemKind: item.itemKind,
     itemGroupId: item.itemGroupId,
     baseUnitId: item.baseUnitId,
+    allowNegativeStock: item.allowNegativeStock,
     isStockable: item.isStockable,
     isPurchasable: item.isPurchasable,
     isSellable: item.isSellable,

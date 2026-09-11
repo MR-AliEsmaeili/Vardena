@@ -12,6 +12,8 @@ import { seedUser } from '../../../../test/support/in-memory-repositories.js';
 import { OrganizationsService } from './organizations.service.js';
 import { BranchesService } from './branches.service.js';
 import { WarehousesService } from '../../inventory/application/warehouses.service.js';
+import type { InventoryMovementsRepository } from '../../inventory/data/inventory-movements.repository.js';
+import type { InventoryBalancesRepository } from '../../inventory/data/inventory-balances.repository.js';
 import { ORGANIZATION_PERMISSION_DEFINITIONS } from '../domain/organization-permissions.js';
 import { INVENTORY_PERMISSION_DEFINITIONS } from '../../inventory/domain/inventory-permissions.js';
 import {
@@ -86,7 +88,10 @@ async function buildFixture(): Promise<Fixture> {
   // can hold a code, and every authorization test below would pass for the
   // wrong reason.
   await rbacStores.raw.permissions.syncDefinitions(
-    [...ORGANIZATION_PERMISSION_DEFINITIONS, ...INVENTORY_PERMISSION_DEFINITIONS],
+    [
+      ...ORGANIZATION_PERMISSION_DEFINITIONS,
+      ...INVENTORY_PERMISSION_DEFINITIONS,
+    ],
     new Date(),
   );
 
@@ -108,6 +113,13 @@ async function buildFixture(): Promise<Fixture> {
     loggerStub(),
     bus,
   );
+  // Freeze-guard seam (ADR-0022): no movements or balances on record here.
+  const noMovements = {
+    existsForWarehouse: async () => false,
+  } as unknown as InventoryMovementsRepository;
+  const noBalances = {
+    hasBlockingBalanceForWarehouse: async () => false,
+  } as unknown as InventoryBalancesRepository;
   const warehouses = new WarehousesService(
     masterStores.warehouses,
     organizations,
@@ -115,6 +127,8 @@ async function buildFixture(): Promise<Fixture> {
     authorization,
     loggerStub(),
     bus,
+    noMovements,
+    noBalances,
   );
 
   /**
@@ -135,7 +149,9 @@ async function buildFixture(): Promise<Fixture> {
     ).map((permission) => permission.id);
     // A missing code must fail loudly rather than silently granting nothing.
     if (permissionIds.length !== new Set(codes).size) {
-      throw new Error(`Unknown permission code in grant(): ${codes.join(', ')}`);
+      throw new Error(
+        `Unknown permission code in grant(): ${codes.join(', ')}`,
+      );
     }
     roleSeq += 1;
     const roleId = `01ROLE${String(roleSeq).padStart(20, '0')}`;
@@ -155,7 +171,15 @@ async function buildFixture(): Promise<Fixture> {
     });
   }
 
-  return { organizations, branches, warehouses, rbacStores, masterStores, events, grant };
+  return {
+    organizations,
+    branches,
+    warehouses,
+    rbacStores,
+    masterStores,
+    events,
+    grant,
+  };
 }
 
 /** Services called outside any HTTP request run in system context (no check). */
@@ -163,10 +187,7 @@ function asSystem<R>(fn: () => Promise<R>): Promise<R> {
   return fn();
 }
 
-function asActor<R>(
-  userId: string,
-  fn: () => Promise<R>,
-): Promise<R> {
+function asActor<R>(userId: string, fn: () => Promise<R>): Promise<R> {
   return runWithRequestContext(
     { correlationId: 'corr-1', principal: { userId, sessionId: 'sess' } },
     fn,
@@ -209,7 +230,10 @@ describe('OrganizationsService', () => {
     );
     await expect(
       asSystem(() =>
-        fixture.organizations.createOrganization({ code: 'ACME', name: 'Other' }),
+        fixture.organizations.createOrganization({
+          code: 'ACME',
+          name: 'Other',
+        }),
       ),
     ).rejects.toMatchObject({ code: 'Conflict' });
   });
@@ -273,7 +297,10 @@ describe('OrganizationsService', () => {
     it('allows a principal holding the permission', async () => {
       await fixture.grant(ACTOR, ['Organization.Organization.Create']);
       const created = await asActor(ACTOR, () =>
-        fixture.organizations.createOrganization({ code: 'ACME', name: 'Acme' }),
+        fixture.organizations.createOrganization({
+          code: 'ACME',
+          name: 'Acme',
+        }),
       );
       expect(created.code).toBe('ACME');
     });
@@ -313,7 +340,10 @@ describe('OrganizationsService', () => {
         'Organization.Organization.View',
       ]);
       const created = await asActor(ACTOR, () =>
-        fixture.organizations.createOrganization({ code: 'ACME', name: 'Acme' }),
+        fixture.organizations.createOrganization({
+          code: 'ACME',
+          name: 'Acme',
+        }),
       );
 
       // Edit / Disable are separate codes and are NOT covered by Create+View.
@@ -341,7 +371,10 @@ describe('BranchesService organization isolation', () => {
     fixture = await buildFixture();
     orgA = (
       await asSystem(() =>
-        fixture.organizations.createOrganization({ code: 'ORG-A', name: 'Org A' }),
+        fixture.organizations.createOrganization({
+          code: 'ORG-A',
+          name: 'Org A',
+        }),
       )
     ).id;
   });
@@ -388,7 +421,10 @@ describe('BranchesService organization isolation', () => {
   it('scopes codes per organization, not deployment-wide', async () => {
     const orgB = (
       await asSystem(() =>
-        fixture.organizations.createOrganization({ code: 'ORG-B', name: 'Org B' }),
+        fixture.organizations.createOrganization({
+          code: 'ORG-B',
+          name: 'Org B',
+        }),
       )
     ).id;
     await asSystem(() =>
@@ -431,7 +467,10 @@ describe('BranchesService organization isolation', () => {
   it('reads a branch from another organization as not found', async () => {
     const orgB = (
       await asSystem(() =>
-        fixture.organizations.createOrganization({ code: 'ORG-B', name: 'Org B' }),
+        fixture.organizations.createOrganization({
+          code: 'ORG-B',
+          name: 'Org B',
+        }),
       )
     ).id;
     const branch = await asSystem(() =>
@@ -483,7 +522,10 @@ describe('BranchesService organization isolation', () => {
   it('lists only the branches of the organization asked for', async () => {
     const orgB = (
       await asSystem(() =>
-        fixture.organizations.createOrganization({ code: 'ORG-B', name: 'Org B' }),
+        fixture.organizations.createOrganization({
+          code: 'ORG-B',
+          name: 'Org B',
+        }),
       )
     ).id;
     await asSystem(() =>
@@ -518,7 +560,10 @@ describe('BranchesService organization isolation', () => {
   it('cannot move a branch into another organization: there is no such field', async () => {
     const orgB = (
       await asSystem(() =>
-        fixture.organizations.createOrganization({ code: 'ORG-B', name: 'Org B' }),
+        fixture.organizations.createOrganization({
+          code: 'ORG-B',
+          name: 'Org B',
+        }),
       )
     ).id;
     const branch = await asSystem(() =>
@@ -538,7 +583,10 @@ describe('BranchesService organization isolation', () => {
   it('keeps a warehouse of another organization unreadable', async () => {
     const orgB = (
       await asSystem(() =>
-        fixture.organizations.createOrganization({ code: 'ORG-B', name: 'Org B' }),
+        fixture.organizations.createOrganization({
+          code: 'ORG-B',
+          name: 'Org B',
+        }),
       )
     ).id;
     const branchB = await asSystem(() =>
@@ -570,7 +618,10 @@ describe('BranchesService organization isolation', () => {
   it('refuses a warehouse whose branch belongs to another organization', async () => {
     const orgB = (
       await asSystem(() =>
-        fixture.organizations.createOrganization({ code: 'ORG-B', name: 'Org B' }),
+        fixture.organizations.createOrganization({
+          code: 'ORG-B',
+          name: 'Org B',
+        }),
       )
     ).id;
     const branchB = await asSystem(() =>

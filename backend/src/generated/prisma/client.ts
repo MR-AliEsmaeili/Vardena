@@ -71,6 +71,14 @@ export interface PrismaClient {
   item: Delegate;
   /** `inventory.warehouses` — declared in prisma/schema/inventory.prisma. */
   warehouse: Delegate;
+  /** `inventory.inventory_movements` — declared in prisma/schema/inventory.prisma. */
+  inventoryMovement: Delegate;
+  /** `inventory.inventory_balances` — declared in prisma/schema/inventory.prisma. */
+  inventoryBalance: Delegate;
+  /** `inventory.inventory_reservations` — declared in prisma/schema/inventory.prisma. */
+  inventoryReservation: Delegate;
+  /** `inventory.inventory_operations` — declared in prisma/schema/inventory.prisma. */
+  inventoryOperation: Delegate;
 }
 
 const PrismaClientImpl = class {
@@ -136,6 +144,18 @@ const PrismaClientImpl = class {
     return this.delegate;
   }
   get warehouse(): Delegate {
+    return this.delegate;
+  }
+  get inventoryMovement(): Delegate {
+    return this.delegate;
+  }
+  get inventoryBalance(): Delegate {
+    return this.delegate;
+  }
+  get inventoryReservation(): Delegate {
+    return this.delegate;
+  }
+  get inventoryOperation(): Delegate {
     return this.delegate;
   }
 } as unknown as { new (options: { adapter: unknown }): PrismaClient };

@@ -63,9 +63,7 @@ export class WarehousesController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedWarehouseDto) }] },
   })
-  async list(
-    @Query() query: ListWarehousesQueryDto,
-  ): Promise<{
+  async list(@Query() query: ListWarehousesQueryDto): Promise<{
     items: WarehouseResponseDto[];
     total: number;
     page: number;
@@ -105,6 +103,7 @@ export class WarehousesController {
       branchId: body.branchId,
       code: body.code,
       name: body.name,
+      allowNegativeStock: body.allowNegativeStock,
     });
   }
 
@@ -127,6 +126,7 @@ export class WarehousesController {
       branchId: body.branchId,
       code: body.code,
       name: body.name,
+      allowNegativeStock: body.allowNegativeStock,
     });
   }
 

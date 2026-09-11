@@ -26,6 +26,13 @@ export interface Warehouse {
   branchId: string;
   code: string;
   name: string;
+  /**
+   * The warehouse half of the negative-stock policy (D-07, ADR-0022):
+   * whether postings may drive this warehouse's stock below zero. Default
+   * false (fail closed); an item may override it via
+   * `Item.allowNegativeStock`.
+   */
+  allowNegativeStock: boolean;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -37,6 +44,7 @@ export interface WarehouseDto {
   branchId: string;
   code: string;
   name: string;
+  allowNegativeStock: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -49,6 +57,7 @@ export function toWarehouseDto(warehouse: Warehouse): WarehouseDto {
     branchId: warehouse.branchId,
     code: warehouse.code,
     name: warehouse.name,
+    allowNegativeStock: warehouse.allowNegativeStock,
     isActive: warehouse.isActive,
     createdAt: warehouse.createdAt.toISOString(),
     updatedAt: warehouse.updatedAt.toISOString(),
