@@ -311,3 +311,35 @@ brief's 2-segment permission examples (`Organization.View`) would fail
 movements, balances, reservations, valuation, all documents, workflow/approval, tax,
 pricing, BOM, variants, lot/serial *implementation*, costing, integrations, frontend,
 custom fields, seed data.
+
+---
+
+## 8. Addendum — P1012 back-relation fix (2026-09-11)
+
+The schema in §1 was never run through the real Prisma validator in the Task 6
+sandbox, and it did not pass: `prisma generate`/`prisma validate` failed with
+`P1012 — Error validating field 'organization' in model 'Unit'|'UnitConversion'|
+'ItemUnitConversion'|'ItemGroup'|'Item'|'Warehouse': missing an opposite relation
+field on the model 'Organization'` (6 errors).
+
+Cause: the six inventory models declare the foreign-key side of their relation to
+`organization.organizations`, but Prisma requires **both** sides of a relation to be
+declared. `model Organization` in `prisma/schema/organization.prisma` only listed
+`branches`, `departments`, `employees` and `parties`.
+
+Fix: six back-relation arrays added to `model Organization` (`units`,
+`unitConversions`, `itemUnitConversions`, `itemGroups`, `items`, `warehouses`).
+They are the virtual side of the relation — the physical FK columns stay
+`inventory.*.organization_id` with `ON DELETE RESTRICT`, so **no migration is
+needed and no migration was edited** (AR-10).
+
+Re-verified with Prisma 7.10.0 on the merged schema (all six `.prisma` files):
+
+- `prisma validate` → `The schemas at prisma/schema are valid 🚀`
+- `prisma generate` → `✔ Generated Prisma Client (7.10.0)` (17 models), and
+  `tsc --noEmit` against the **real** generated client is clean.
+- `prisma format` produces cosmetic alignment only (no model/field change).
+
+Still open from §6.1: `prisma migrate diff --from-migrations … --to-schema-datamodel …`
+(the schema↔hand-written-DDL **drift** check) still needs a live PostgreSQL, which
+this sandbox does not have.
