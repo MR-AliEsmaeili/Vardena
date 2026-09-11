@@ -121,17 +121,27 @@ one migration creating the kernel-owned `core` schema. No tables yet.
 
 ## Docker
 
+From the repository root, a fresh clone can be started without creating an
+`.env` file:
+
 ```bash
-# from the repo root:
-cp .env.example .env   # fill in POSTGRES_PASSWORD + DATABASE_URL
-docker compose up --build
+docker-compose up
 ```
 
-Services: `postgres` (16, health-gated) → `migrate` (one-shot `migrate deploy`
-from the `build` stage) → `api` + `worker` (lean `production` stage, non-root).
-API: `http://localhost:3000` (override with `API_PORT`). The image build
-itself needs network to `binaries.prisma.sh` (`generate` downloads the
-Prisma engines) — air-gapped builds must pre-seed or vendor them.
+The newer `docker compose up` spelling is equivalent. Compose builds the
+backend images, waits for PostgreSQL, applies `prisma migrate deploy`, and then
+starts `api` and `worker`. The API is available at `http://localhost:3000`;
+`/api/v1/health/live` is the liveness probe and `/api/docs` is the local
+Swagger UI.
+
+The default local database uses trust authentication only on the private
+Compose network, so no credential is committed or required for the quick
+start. For password authentication or other overrides, copy
+`../.env.example` to `../.env`, set `POSTGRES_HOST_AUTH_METHOD`,
+`POSTGRES_PASSWORD`, and the matching `DATABASE_URL`, then run Compose again.
+Use password authentication for any shared or production deployment. The
+image build itself needs network access to `binaries.prisma.sh` (`generate`
+downloads the Prisma engines); air-gapped builds must pre-seed or vendor them.
 
 ## Swagger / OpenAPI
 

@@ -1,7 +1,9 @@
-# Vardena v1 stack: PostgreSQL + API + worker (docs/architecture.md section 10).
-# Secrets come from the environment (root .env, see .env.example) — never
-# committed (AG-12). Start with:  docker compose up --build
-name: vardena
+# Vardena local stack: PostgreSQL + API + worker.
+#
+# A root .env file is optional: a fresh clone can be started with
+# `docker-compose up` (or `docker compose up`) without any preparation.
+# Override the defaults through .env for a real deployment; never commit that
+# file because it may contain credentials.
 
 services:
   postgres:
@@ -10,23 +12,28 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-vardena}
       POSTGRES_USER: ${POSTGRES_USER:-vardena}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see .env.example).}
+      # The zero-configuration local stack uses trust authentication on the
+      # private Compose network, so no password needs to be committed. Set
+      # POSTGRES_HOST_AUTH_METHOD=scram-sha-256 and POSTGRES_PASSWORD in .env
+      # when password authentication is required.
+      POSTGRES_HOST_AUTH_METHOD: ${POSTGRES_HOST_AUTH_METHOD:-trust}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vardena} -d ${POSTGRES_DB:-vardena}"]
       interval: 5s
       timeout: 3s
       retries: 10
+      start_period: 5s
 
+  # Run database migrations once before either application process starts.
   migrate:
     build:
       context: ./backend
       target: build
     environment:
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env (see .env.example).}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://vardena@postgres:5432/vardena}
       CHECKPOINT_DISABLE: "1"
     command: ["npx", "prisma", "migrate", "deploy"]
     depends_on:
@@ -39,22 +46,21 @@ services:
       target: production
     restart: unless-stopped
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
+      NODE_ENV: ${NODE_ENV:-development}
       PORT: "3000"
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env (see .env.example).}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://vardena@postgres:5432/vardena}
       APP_VERSION: ${APP_VERSION:-0.0.0-dev}
       LOG_LEVEL: ${LOG_LEVEL:-info}
-      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       TRUST_PROXY: ${TRUST_PROXY:-false}
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-300}
-      # Auth / session configuration (docs/security.md §2, ADR-0007, OQ-06).
-      # Defaults match security.md: 30 min idle, 12 h absolute, 10/15 min login rate.
+      # Local HTTP is the default; use true when the API is served over HTTPS.
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-vardena_session}
       AUTH_COOKIE_PATH: ${AUTH_COOKIE_PATH:-/}
       AUTH_COOKIE_SAME_SITE: ${AUTH_COOKIE_SAME_SITE:-lax}
-      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-true}
+      AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       AUTH_SESSION_IDLE_TIMEOUT_MS: ${AUTH_SESSION_IDLE_TIMEOUT_MS:-1800000}
       AUTH_SESSION_ABSOLUTE_TIMEOUT_MS: ${AUTH_SESSION_ABSOLUTE_TIMEOUT_MS:-43200000}
       AUTH_LOGIN_RATE_LIMIT_WINDOW_MS: ${AUTH_LOGIN_RATE_LIMIT_WINDOW_MS:-900000}
@@ -74,8 +80,8 @@ services:
     restart: unless-stopped
     command: ["node", "--enable-source-maps", "dist/worker.js"]
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
-      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env (see .env.example).}
+      NODE_ENV: ${NODE_ENV:-development}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://vardena@postgres:5432/vardena}
       APP_VERSION: ${APP_VERSION:-0.0.0-dev}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
