@@ -10,6 +10,30 @@ today, cloud-ready.
 > Docker). No business modules exist yet — the docs below remain the contract
 > for all future implementation work (human or AI).
 
+## Run with Docker
+
+Docker Compose is the zero-configuration quick start. After cloning the
+repository, run:
+
+```bash
+docker-compose up
+```
+
+The command also works with the newer `docker compose` syntax. It builds the
+backend images, starts PostgreSQL, applies the Prisma migrations, and then
+starts the API and worker. No `.env` file is required for local use; the
+compose file supplies development defaults. The API is available at
+<http://localhost:3000>, the liveness probe is at
+<http://localhost:3000/api/v1/health/live>, and Swagger is enabled at
+<http://localhost:3000/api/docs>.
+
+To stop the stack, press `Ctrl+C`. To remove the containers and the local
+PostgreSQL volume as well, run `docker-compose down -v`. Copy `.env.example`
+to `.env` only when you need to override ports, credentials, or other
+configuration. The default local database is intentionally private to the
+Compose network; password authentication should be configured for a shared or
+production deployment.
+
 ## Start Here
 
 | If you are… | Read |
