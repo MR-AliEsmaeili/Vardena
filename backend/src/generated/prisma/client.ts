@@ -49,6 +49,28 @@ export interface PrismaClient {
   rolePermission: Delegate;
   /** `rbac.user_roles` — declared in prisma/schema/rbac.prisma. */
   userRole: Delegate;
+  /** `organization.organizations` — declared in prisma/schema/organization.prisma. */
+  organization: Delegate;
+  /** `organization.branches` — declared in prisma/schema/organization.prisma. */
+  branch: Delegate;
+  /** `organization.departments` — declared in prisma/schema/organization.prisma. */
+  department: Delegate;
+  /** `organization.employees` — declared in prisma/schema/organization.prisma. */
+  employee: Delegate;
+  /** `organization.parties` — declared in prisma/schema/organization.prisma. */
+  party: Delegate;
+  /** `inventory.units` — declared in prisma/schema/inventory.prisma. */
+  unit: Delegate;
+  /** `inventory.unit_conversions` — declared in prisma/schema/inventory.prisma. */
+  unitConversion: Delegate;
+  /** `inventory.item_unit_conversions` — declared in prisma/schema/inventory.prisma. */
+  itemUnitConversion: Delegate;
+  /** `inventory.item_groups` — declared in prisma/schema/inventory.prisma. */
+  itemGroup: Delegate;
+  /** `inventory.items` — declared in prisma/schema/inventory.prisma. */
+  item: Delegate;
+  /** `inventory.warehouses` — declared in prisma/schema/inventory.prisma. */
+  warehouse: Delegate;
 }
 
 const PrismaClientImpl = class {
@@ -81,6 +103,39 @@ const PrismaClientImpl = class {
     return this.delegate;
   }
   get userRole(): Delegate {
+    return this.delegate;
+  }
+  get organization(): Delegate {
+    return this.delegate;
+  }
+  get branch(): Delegate {
+    return this.delegate;
+  }
+  get department(): Delegate {
+    return this.delegate;
+  }
+  get employee(): Delegate {
+    return this.delegate;
+  }
+  get party(): Delegate {
+    return this.delegate;
+  }
+  get unit(): Delegate {
+    return this.delegate;
+  }
+  get unitConversion(): Delegate {
+    return this.delegate;
+  }
+  get itemUnitConversion(): Delegate {
+    return this.delegate;
+  }
+  get itemGroup(): Delegate {
+    return this.delegate;
+  }
+  get item(): Delegate {
+    return this.delegate;
+  }
+  get warehouse(): Delegate {
     return this.delegate;
   }
 } as unknown as { new (options: { adapter: unknown }): PrismaClient };

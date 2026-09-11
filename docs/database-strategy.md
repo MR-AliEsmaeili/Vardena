@@ -72,7 +72,9 @@ stay PascalCase while the database stays snake_case.
 
 ## 4. Primary Keys & Identity
 
-- **ULIDs** (`text(26)`) for all entity ids (decision, ADR-0008 consequences):
+- **ULIDs** for all entity ids (decision, ADR-0008 consequences). The column type is
+  plain `TEXT`, matching every applied migration — the 26-character length is enforced by
+  the generator (`kernel/ids`) and by API validation, not by a `varchar(26)` width:
   sortable by time, string-friendly in APIs/logs, no central generator, safe for
   sharding later. Generated in the kernel (`kernel/ids`), client-side in the
   application layer (never DB defaults — keeps generated ids consistent across

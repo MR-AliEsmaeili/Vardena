@@ -1,0 +1,161 @@
+// Organization module schema (docs/modules.md §Organization,
+// ADR-0020, docs/architecture/domain/master-data-strategy.md §1/§2/§5).
+//
+// Owns the organization structure and the party master:
+//   `organization.organizations` — the business/tenant root every
+//     organization-scoped record points at.
+//   `organization.branches`      — organizational scope dimension (NOT a
+//     legal entity, NOT a separate set of books — OQ-22).
+//   `organization.departments`   — organizational structure, hierarchical.
+//   `organization.employees`     — minimal business reference data only
+//     (HR/payroll is out of scope — OQ-32).
+//   `organization.parties`       — one counterparty record with explicit
+//     customer/supplier capabilities (no Customer/Supplier tables — D-02).
+//
+// Lifecycle (master-data-strategy.md §7): `is_active` is the single lifecycle
+// mechanism implemented in Task 6 — disable blocks *new* usage and keeps
+// history readable. No `deleted_at` columns exist yet because Task 6
+// implements no delete operation; adding a second, unused lifecycle mechanism
+// is what master-data-strategy §7 and the Task 6 brief both warn against.
+// Deletion semantics stay open (docs/open-questions.md OQ-36).
+//
+// Cross-schema foreign keys: `inventory.*` references `organization.*`
+// (organization_id, branch_id) with ON DELETE RESTRICT. The dependency is
+// strictly one-way (Inventory → Organization) and referential integrity on
+// the isolation boundary matters more than a schema-only boundary; this
+// follows the pattern the repository already uses for `identity.sessions`
+// and `rbac.user_roles` → `users.users` (docs/database-strategy.md §5).
+
+model Organization {
+  id        String   @id
+  code      String   @db.VarChar(64)
+  name      String   @db.VarChar(200)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  branches    Branch[]
+  departments Department[]
+  employees   Employee[]
+  parties     Party[]
+
+  // The organization code is the tenant root's business key: unique
+  // deployment-wide (there is no wider scope to be unique within).
+  @@unique([code], map: "uq_organizations_code")
+  @@index([isActive], map: "idx_organizations_is_active")
+  @@map("organizations")
+  @@schema("organization")
+}
+
+model Branch {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(64)
+  name           String   @db.VarChar(200)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employees    Employee[]
+  warehouses   Warehouse[]
+
+  // Uniqueness scope is the organization (master-data-strategy.md §7.1).
+  @@unique([organizationId, code], map: "uq_branches_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_branches_organization_id_is_active")
+  @@map("branches")
+  @@schema("organization")
+}
+
+model Department {
+  id                 String   @id
+  organizationId     String   @map("organization_id")
+  parentDepartmentId String?  @map("parent_department_id")
+  code               String   @db.VarChar(64)
+  name               String   @db.VarChar(200)
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy          String?  @map("created_by")
+  updatedBy          String?  @map("updated_by")
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parent        Department?   @relation("DepartmentHierarchy", fields: [parentDepartmentId], references: [id], onDelete: Restrict)
+  children      Department[]  @relation("DepartmentHierarchy")
+  employees     Employee[]
+
+  @@unique([organizationId, code], map: "uq_departments_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_departments_organization_id_is_active")
+  @@index([parentDepartmentId], map: "idx_departments_parent_department_id")
+  @@map("departments")
+  @@schema("organization")
+}
+
+/// Minimal employee reference data (OQ-32). Deliberately NOT linked to
+/// `users.users`: an Employee is a business record, a User is a login
+/// account, and a person may exist operationally without one. The linkage
+/// mechanism is unresolved — docs/open-questions.md OQ-37.
+model Employee {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  employeeCode   String   @map("employee_code") @db.VarChar(64)
+  firstName      String   @map("first_name") @db.VarChar(120)
+  lastName       String   @map("last_name") @db.VarChar(120)
+  departmentId   String?  @map("department_id")
+  branchId       String?  @map("branch_id")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  branch       Branch?       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, employeeCode], map: "uq_employees_organization_id_employee_code")
+  @@index([organizationId, isActive], map: "idx_employees_organization_id_is_active")
+  @@index([departmentId], map: "idx_employees_department_id")
+  @@index([branchId], map: "idx_employees_branch_id")
+  @@map("employees")
+  @@schema("organization")
+}
+
+/// One counterparty record with explicit capability flags (D-02,
+/// master-data-strategy.md §5). There is no Customer/Supplier table: a
+/// business partner that is both is ONE row with both flags set.
+///
+/// Iranian legal/tax identification (national id, economic code) is
+/// deliberately absent: its semantics and validation rules are unresolved
+/// and expert-gated (OQ-30, OQ-38). Structured addresses, contacts and bank
+/// accounts are children of a party in the target model (ADR-0020 §2) but are
+/// out of Task 6 scope — OQ-38.
+model Party {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(64)
+  displayName    String   @map("display_name") @db.VarChar(200)
+  legalName      String?  @map("legal_name") @db.VarChar(200)
+  partyType      String   @map("party_type") @db.VarChar(20)
+  isCustomer     Boolean  @default(false) @map("is_customer")
+  isSupplier     Boolean  @default(false) @map("is_supplier")
+  email          String?  @db.VarChar(320)
+  phone          String?  @db.VarChar(64)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, code], map: "uq_parties_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_parties_organization_id_is_active")
+  @@index([organizationId, partyType], map: "idx_parties_organization_id_party_type")
+  @@map("parties")
+  @@schema("organization")
+}

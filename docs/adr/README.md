@@ -80,3 +80,4 @@ Keep ADRs **short** (≤ ~60 lines). If it needs more, it belongs in `docs/`.
 | [0018](./0018-bounded-versioned-workflow.md) | Bounded, versioned workflow configuration (no engine) | Proposed |
 | [0019](./0019-document-foundation-and-relations.md) | Document foundation: typed tables, shared mechanics, controlled relations | Proposed |
 | [0020](./0020-organizational-scope-and-master-data.md) | Organizational scope, the Organization module and master-data ownership | Proposed |
+| [0021](./0021-organization-scoped-master-data.md) | Organization-scoped master data (every master-data row carries `organization_id`) | Proposed |
