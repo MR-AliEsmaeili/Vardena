@@ -5,6 +5,8 @@ import { UsersModule } from './modules/users/users.module.js';
 import { KernelModule } from './kernel/kernel.module.js';
 import { PrismaModule } from './kernel/prisma/prisma.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { OrganizationModule } from './modules/organization/organization.module.js';
+import { InventoryModule } from './modules/inventory/inventory.module.js';
 
 /**
  * API root module. Business modules register here (docs/architecture.md §6),
@@ -18,6 +20,8 @@ import { HealthModule } from './modules/health/health.module.js';
     UsersModule,
     IdentityModule,
     RbacModule,
+    OrganizationModule,
+    InventoryModule,
   ],
 })
 export class AppModule {}

@@ -1,0 +1,212 @@
+// Inventory module schema — MASTER DATA ONLY
+// (docs/modules.md §Inventory, master-data-strategy.md §1/§3/§4, D-25, D-26).
+//
+// Task 6 lands the master-data half of the Inventory module that
+// master-data-strategy.md §1 assigns to it:
+//   `inventory.units`                  — units of measure (organization scope)
+//   `inventory.unit_conversions`       — GLOBAL unit conversions
+//   `inventory.item_unit_conversions`  — ITEM-SPECIFIC unit conversions
+//   `inventory.item_groups`            — hierarchical classification
+//   `inventory.items`                  — one Item + closed kind + capabilities
+//   `inventory.warehouses`             — stock locations (branch scope)
+//
+// Explicitly NOT here (future Inventory work — ADR-0017, OQ-24):
+// stock movements, stock balances, locations/bins, lots, serial numbers,
+// reservations, valuation. Task 6 must not create them.
+//
+// Item model (D-25, OQ-33): ONE table. `item_kind` is a closed, code-defined
+// list (`domain/item-kind.ts` is the source of truth); the capability flags
+// are the stored truth the code branches on. Kind only supplies defaults,
+// resolved once at creation (master-data-strategy.md §7.2). There is no
+// Product/Service/StockItem table and no EAV/JSONB attribute table.
+//
+// Conversions (D-26, OQ-29): effective-dated rows (`valid_from`/`valid_to`).
+// A change creates a NEW version and closes the previous one — an existing
+// version is never reinterpreted, so quantities already recorded against it
+// keep their meaning. There is deliberately no rounding column: fractional
+// conversion rounding is expert-gated and unresolved (OQ-29).
+//
+// Lifecycle: `is_active` only, same rule as the organization module.
+
+model Unit {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(32)
+  name           String   @db.VarChar(120)
+  symbol         String?  @db.VarChar(16)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization      Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  items             Item[]
+  conversionSources UnitConversion[]     @relation("ConversionFromUnit")
+  conversionTargets UnitConversion[]     @relation("ConversionToUnit")
+  itemConvSources   ItemUnitConversion[] @relation("ItemConversionFromUnit")
+  itemConvTargets   ItemUnitConversion[] @relation("ItemConversionToUnit")
+
+  @@unique([organizationId, code], map: "uq_units_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_units_organization_id_is_active")
+  @@map("units")
+  @@schema("inventory")
+}
+
+/// Global conversion for a unit pair, valid for any item
+/// (master-data-strategy.md §3.4). Effective-dated (D-21/D-26).
+model UnitConversion {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  fromUnitId     String    @map("from_unit_id")
+  toUnitId       String    @map("to_unit_id")
+  /// Ratio, `numeric(18,6)` per docs/database-strategy.md §6 (rates/ratios).
+  factor         Decimal   @db.Decimal(18, 6)
+  validFrom      DateTime  @map("valid_from") @db.Timestamptz(6)
+  validTo        DateTime? @map("valid_to") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  fromUnit     Unit         @relation("ConversionFromUnit", fields: [fromUnitId], references: [id], onDelete: Restrict)
+  toUnit       Unit         @relation("ConversionToUnit", fields: [toUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, fromUnitId, toUnitId, validFrom], map: "uq_unit_conversions_pair_valid_from")
+  @@index([organizationId, fromUnitId, toUnitId], map: "idx_unit_conversions_pair")
+  @@index([toUnitId], map: "idx_unit_conversions_to_unit_id")
+  @@map("unit_conversions")
+  @@schema("inventory")
+}
+
+/// Item-specific conversion, e.g. `1 BOX of THIS item = 12 PCS`
+/// (master-data-strategy.md §3.4). This is the common case in practice:
+/// item A may be 1 BOX = 10 PCS while item B is 1 BOX = 24 PCS.
+model ItemUnitConversion {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  itemId         String    @map("item_id")
+  fromUnitId     String    @map("from_unit_id")
+  toUnitId       String    @map("to_unit_id")
+  factor         Decimal   @db.Decimal(18, 6)
+  validFrom      DateTime  @map("valid_from") @db.Timestamptz(6)
+  validTo        DateTime? @map("valid_to") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  fromUnit     Unit         @relation("ItemConversionFromUnit", fields: [fromUnitId], references: [id], onDelete: Restrict)
+  toUnit       Unit         @relation("ItemConversionToUnit", fields: [toUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([itemId, fromUnitId, toUnitId, validFrom], map: "uq_item_unit_conversions_pair_valid_from")
+  @@index([organizationId, itemId, fromUnitId, toUnitId], map: "idx_item_unit_conversions_item_pair")
+  @@index([toUnitId], map: "idx_item_unit_conversions_to_unit_id")
+  @@map("item_unit_conversions")
+  @@schema("inventory")
+}
+
+/// Hierarchical classification for reporting and creation-time defaults
+/// (master-data-strategy.md §3.2). Groups never override an existing item at
+/// runtime; defaults are copied onto the item when it is created (§7.2).
+model ItemGroup {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  parentId       String?  @map("parent_id")
+  code           String   @db.VarChar(64)
+  name           String   @db.VarChar(200)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parent       ItemGroup?   @relation("ItemGroupHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children     ItemGroup[]  @relation("ItemGroupHierarchy")
+  items        Item[]
+
+  @@unique([organizationId, code], map: "uq_item_groups_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_item_groups_organization_id_is_active")
+  @@index([parentId], map: "idx_item_groups_parent_id")
+  @@map("item_groups")
+  @@schema("inventory")
+}
+
+/// The single item master (D-25). Goods, services, consumables and assets are
+/// all Items; they differ by capability, never by table
+/// (master-data-strategy.md §3.3).
+///
+/// `item_kind` is stored as text, NOT a database enum: the list is closed and
+/// code-defined (`domain/item-kind.ts`), and keeping it as text means adding a
+/// kind is one code change plus one ordinary migration instead of an
+/// `ALTER TYPE`. The application layer rejects anything outside the closed
+/// list, so no arbitrary string can reach the column (AR-24).
+model Item {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  code           String   @db.VarChar(64)
+  name           String   @db.VarChar(200)
+  description    String?
+  itemKind       String   @map("item_kind") @db.VarChar(24)
+  itemGroupId    String?  @map("item_group_id")
+  baseUnitId     String   @map("base_unit_id")
+  /// Capability flags — the stored truth the code branches on (D-25).
+  isStockable    Boolean  @map("is_stockable")
+  isPurchasable  Boolean  @map("is_purchasable")
+  isSellable     Boolean  @map("is_sellable")
+  isValued       Boolean  @map("is_valued")
+  requiresLot    Boolean  @default(false) @map("requires_lot")
+  requiresSerial Boolean  @default(false) @map("requires_serial")
+  requiresExpiry Boolean  @default(false) @map("requires_expiry")
+  barcode        String?  @db.VarChar(64)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization  Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  itemGroup     ItemGroup?           @relation(fields: [itemGroupId], references: [id], onDelete: Restrict)
+  baseUnit      Unit                 @relation(fields: [baseUnitId], references: [id], onDelete: Restrict)
+  unitConversions ItemUnitConversion[]
+
+  @@unique([organizationId, code], map: "uq_items_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_items_organization_id_is_active")
+  @@index([organizationId, itemKind], map: "idx_items_organization_id_item_kind")
+  // master-data-strategy.md §8: stock reports filter on is_stockable.
+  @@index([organizationId, isStockable], map: "idx_items_organization_id_is_stockable")
+  @@index([itemGroupId], map: "idx_items_item_group_id")
+  @@index([baseUnitId], map: "idx_items_base_unit_id")
+  @@map("items")
+  @@schema("inventory")
+}
+
+/// Stock location. Belongs to exactly ONE branch — a warehouse never spans
+/// branches (ADR-0020 §1, master-data-strategy.md §1/§4, blueprint §11).
+/// Multiple warehouses per organization/branch are the normal case; a
+/// warehouse is master data, never an enum.
+model Warehouse {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  branchId       String   @map("branch_id")
+  code           String   @db.VarChar(64)
+  name           String   @db.VarChar(200)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, code], map: "uq_warehouses_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_warehouses_organization_id_is_active")
+  @@index([branchId], map: "idx_warehouses_branch_id")
+  @@map("warehouses")
+  @@schema("inventory")
+}

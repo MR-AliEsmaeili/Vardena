@@ -97,10 +97,23 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 - **Responses:** safe DTOs only (id, username, isActive, createdAt, updatedAt) —
   the password hash never leaves the module (AR-24).
 
-## Organization (planned — ADR-0020 Proposed)
+## Organization (implemented — structure & party master data)
 
-- **Status:** design only (no code, no tables). Requires ADR-0020 acceptance and the
-  gate in [`architecture/domain/domain-blueprint.md`](./architecture/domain/domain-blueprint.md) §21.
+- **Status:** implemented in Task 6 for the organizational-structure and party half
+  (ADR-0020, ADR-0021). The *configuration* half — fiscal calendar, numbering series,
+  tax definitions, workflow definitions and custom-field definitions — is **not**
+  implemented and still waits on ADR-0020 acceptance and the gate in
+  [`architecture/domain/domain-blueprint.md`](./architecture/domain/domain-blueprint.md) §21.
+- **Owns (Task 6):** schema `organization` — `organizations`, `branches`, `departments`,
+  `employees` (minimal reference data), `parties`. Every table carries `organization_id`
+  (ADR-0021); business keys are unique per organization; lifecycle is `is_active` only.
+- **API (implemented):** `/api/v1/{organizations,branches,departments,employees,parties}` —
+  list (explicit `organizationId`, pagination, filtering, sorting), get, create, patch,
+  `POST :id/enable`, `POST :id/disable`. **No DELETE**: master data is deactivated, not
+  deleted (OQ-36).
+- **Permissions:** `Organization.{Organization,Branch,Department,Employee,Party}` ×
+  `{View,Create,Edit,Enable,Disable}` (25 codes), enforced in the application services,
+  not only by the route guards.
 - **Purpose:** own what is *organization-wide*: the organization structure (branches,
   departments, employees as minimal reference data), the **fiscal calendar** (years and
   periods), and **cross-module configuration** (numbering series, tax definitions,
@@ -114,9 +127,19 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   only, AR-07); administer branches/departments/parties; manage numbering series, tax
   definitions, workflow versions and custom-field definitions (permission-gated, AR-21);
   publish workflow versions (draft → published, ADR-0018).
-- **Publishes (sketch):** `Organization.Updated`, `Branch.Created/Updated`,
-  `Party.Created/Updated/Archived`, `NumberingSeries.Changed`,
-  `WorkflowVersion.Published`, `TaxDefinition.Changed` — all consumed by Audit.
+- **Publishes (implemented in Task 6):** `{Organization,Branch,Department,Employee,Party}`
+  × `{Created,Updated,Enabled,Disabled}` — payload is `{id, organizationId, code}`
+  (`{id, code}` for the organization root), plus `correlationId`/`occurredAt`. There is
+  deliberately **no `*.Deleted`**: nothing is deleted.
+- **Still planned (not implemented):** `NumberingSeries.Changed`,
+  `WorkflowVersion.Published`, `TaxDefinition.Changed` — all with the configuration half.
+- **Party shape in Task 6:** `code`, `display_name`, `legal_name?`, `party_type`
+  (`person`|`organization`), `is_customer`, `is_supplier`, `email?`, `phone?`. At least one
+  capability is required (422 otherwise). Contacts, addresses and bank accounts are
+  **not** implemented — their shape and the Iranian legal identifiers are unresolved
+  (OQ-30, OQ-38).
+- **Employee shape in Task 6:** `employee_code`, `first_name`, `last_name`, optional
+  `department_id` / `branch_id`. No link to `users.users` (OQ-37).
 - **Not responsible for:** user accounts/auth (Identity/Users), roles/permissions
   (RBAC), commercial relationship data such as price lists and credit enforcement
   (Sales/Purchasing), and any operational document or ledger.
@@ -192,6 +215,17 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 
 ## Inventory (v1 core)
 
+- **Status:** the **master-data half is implemented** (Task 6): schema `inventory` —
+  `units`, `unit_conversions`, `item_unit_conversions`, `item_groups`, `items`,
+  `warehouses`. The transactional half below (movements, balances, reservations,
+  valuation) is **not implemented** and waits on ADR-0017.
+- **API (implemented):** `/api/v1/inventory/{items,item-groups,units,unit-conversions,warehouses}`.
+  Unit conversions are the exception: **no PATCH and no enable/disable**, because
+  effective-dated configuration is never edited in place — a change is a new version
+  (`GET .../unit-conversions/resolve` answers "which version applies at instant X").
+- **Permissions:** `Inventory.{Item,ItemGroup,Unit,Warehouse}` ×
+  `{View,Create,Edit,Enable,Disable}` (20) plus `Inventory.UnitConversion.{View,Create}`
+  (2) — 22 codes, enforced in the application services.
 - **Owns:** items (with units of measure), warehouses, locations, stock balances,
   stock movements (receipt, issue, transfer, adjustment) — movements are
   immutable; balances are derived/materialized from movements.
@@ -363,6 +397,10 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 | `UserSession.Created` / `UserSession.Revoked` / `Login.Failed` | Identity | Audit, (Notifications for lockout) | session lifecycle trail |
 | `User.Created` / `User.Updated` / `User.Enabled` / `User.Disabled` / `User.PasswordReset` | Users | Audit, Identity (revoke sessions on disable/reset), Notifications | user lifecycle |
 | `Role.Created` / `Role.Updated` / `RolePermission.Assigned` / `RolePermission.Removed` / `UserRole.Assigned` / `UserRole.Removed` | RBAC | Audit, UI refetch of effective permissions | permission changes (no server-side cache to invalidate — ADR-0016) |
+| `Organization.Created` / `Organization.Updated` / `Organization.Enabled` / `Organization.Disabled` | Organization | Audit | organization root lifecycle (implemented, Task 6) |
+| `Branch.*` / `Department.*` / `Employee.*` / `Party.*` (`Created` / `Updated` / `Enabled` / `Disabled`) | Organization | Audit | organization-structure and party master-data lifecycle (implemented, Task 6) |
+| `Item.*` / `ItemGroup.*` / `Unit.*` / `Warehouse.*` (`Created` / `Updated` / `Enabled` / `Disabled`) | Inventory | Audit | inventory master-data lifecycle (implemented, Task 6) |
+| `UnitConversion.Created` | Inventory | Audit | a new effective-dated conversion version (payload carries `supersededConversionId`); **no update/disable event exists** — versions are never edited in place |
 | `InventoryReceipt.Created` | Inventory | **Accounting (journal)**, Audit, (Sync → outbox if configured) | stock in |
 | `InventoryIssue.Created` | Inventory | **Accounting**, Audit | stock out |
 | `StockTransfer.Created` / `StockAdjustment.Created` | Inventory | Accounting (adjustment), Audit | stock changes |
@@ -373,6 +411,13 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 | `PrintJob.Completed` / `PrintJob.Failed` | Print | Notifications, Audit | print feedback |
 | `OutboxItem.DeadLettered` / `Integration.Failed` | Sync / Integration | Audit, Notifications (admins) | sync health |
 | `Job.Failed` | Jobs | Notifications (admins) | job health |
+
+> **Payload convention for the Task 6 master-data events:** `{id, organizationId,
+> code}` (the organization root uses `{id, code}`), plus `correlationId` and
+> `occurredAt`. `UnitConversion.Created` additionally carries `itemId`,
+> `fromUnitId`, `toUnitId`, `factor`, `validFrom` and `supersededConversionId`.
+> None of them is a `*.Deleted` event: master data is deactivated, never deleted
+> (OQ-36).
 
 **Outbox operations vs domain events:** an outbox *row* records an external
 delivery operation (e.g. destination `faraPayam`, operation
