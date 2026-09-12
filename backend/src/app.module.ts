@@ -7,6 +7,7 @@ import { PrismaModule } from './kernel/prisma/prisma.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { OrganizationModule } from './modules/organization/organization.module.js';
 import { InventoryModule } from './modules/inventory/inventory.module.js';
+import { DocumentsModule } from './modules/documents/documents.module.js';
 
 /**
  * API root module. Business modules register here (docs/architecture.md §6),
@@ -22,6 +23,7 @@ import { InventoryModule } from './modules/inventory/inventory.module.js';
     RbacModule,
     OrganizationModule,
     InventoryModule,
+    DocumentsModule,
   ],
 })
 export class AppModule {}

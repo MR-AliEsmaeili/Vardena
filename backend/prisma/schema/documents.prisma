@@ -1,0 +1,181 @@
+// Document Foundation module schema (Task 8, ADR-0023; implements ADR-0019).
+//
+// Owns: the SHARED DOCUMENT MECHANICS only — never a business document:
+//   `documents.document_type_configs` — per-organization configuration of a
+//     code-registered document type (today: `draft_required`).
+//   `documents.numbering_series`      — numbering configuration + the
+//     allocation counter (locked with SELECT … FOR UPDATE during allocation).
+//   `documents.numbering_allocations` — the numbering ledger: which logical
+//     document received which serial, keyed for idempotent retries.
+//   `documents.document_relations`    — typed, quantity-aware cross-module
+//     links (ADR-0019 §5): reference/derive/fulfill/settle/reverse/transfer_of.
+//
+// There is deliberately NO `documents` table and no `document_lines` table:
+// every business document is a real, typed table owned by its business module
+// (ADR-0019 §2, AR-07/08). This schema stores mechanics, not documents; the
+// business document id it references is always a LOGICAL reference
+// (module + type + id), never a cross-module foreign key.
+//
+// Closed, code-defined lists (document type codes, relation kinds, numbering
+// strategies, reuse policies) are stored as TEXT — the same decision Task 6/7
+// made for `items.item_kind` and `movement_type`: extending a list is an
+// ordinary change, never an `ALTER TYPE`, and the application layer rejects
+// anything outside the list (AR-24). No CHECK constraints anywhere, for the
+// same reason: every value rule lives in the framework-free domain layer and
+// is unit-tested.
+//
+// All foreign keys are ON DELETE RESTRICT ON UPDATE CASCADE: referenced
+// configuration and ledger facts can never be removed out from under history.
+
+/// Per-organization configuration of a code-registered document type.
+///
+/// The document type ITSELF is code (`domain/document-type.ts` + the
+/// application `DocumentTypeRegistry`), never a row: the registry is the
+/// single source of truth for what types exist, mirroring how `rbac.permissions`
+/// mirrors the permission registry. This table stores only the organization's
+/// *selection* over a registered type — today `draft_required` (Task 8 §8);
+/// the lifecycle/transition selection stays with the future Workflow
+/// Foundation (Task 9, ADR-0018).
+model DocumentTypeConfig {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  /// A code from the DocumentTypeRegistry (e.g. `inventory_receipt`).
+  documentType   String   @map("document_type") @db.VarChar(64)
+  /// Whether documents of this type enter the Draft phase before issuance
+  /// (Task 8 §8). FALSE means creation goes straight to the entry state.
+  draftRequired  Boolean  @default(false) @map("draft_required")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, documentType], map: "uq_document_type_configs_org_type")
+  @@index([organizationId], map: "idx_document_type_configs_org")
+  @@map("document_type_configs")
+  @@schema("documents")
+}
+
+/// Numbering configuration + the allocation counter for one
+/// (organization, document type, scope) slice.
+///
+/// `scope_key` is an opaque series token: the empty string is the type's
+/// DEFAULT series; a non-empty value (e.g. a branch or series code) splits the
+/// type's numbers into several independent runs. It is metadata about WHERE
+/// the number comes from — never part of the serial itself (Task 8 §11: the
+/// serial is numeric-only, no prefixes/suffixes).
+///
+/// `strategy`, `reuse_policy` are closed code-defined lists. `monotonic` is the
+/// only implemented strategy today (a locked counter, never reused); the
+/// strategy/reuse-policy columns are the documented seam for fiscal-year
+/// components, resets and recycling — all expert-gated (OQ-12) and NOT
+/// implemented here (Task 8 §11/§12). `last_value` is the allocated counter,
+/// locked with SELECT … FOR UPDATE by the data layer so concurrent allocations
+/// for one series serialize and never collide.
+model NumberingSeries {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  documentType   String   @map("document_type") @db.VarChar(64)
+  scopeKey       String   @default("") @map("scope_key") @db.VarChar(64)
+  name           String   @db.VarChar(200)
+  strategy       String   @default("monotonic") @db.VarChar(24)
+  /// Zero-padding width for the numeric serial (0 = no padding; never truncates).
+  width          Int      @default(0)
+  reusePolicy    String   @default("never") @map("reuse_policy") @db.VarChar(16)
+  /// Highest serial allocated from this series (the locked counter).
+  lastValue      BigInt   @default(0) @map("last_value")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  allocations   NumberingAllocation[]
+
+  @@unique([organizationId, documentType, scopeKey], map: "uq_numbering_series_org_type_scope")
+  @@index([organizationId, documentType], map: "idx_numbering_series_org_type")
+  @@map("numbering_series")
+  @@schema("documents")
+}
+
+/// The numbering ledger: one row per allocated serial (Task 8 §11).
+///
+/// Append-only. The `(series_id, number)` unique index is the hard guarantee
+/// that two concurrent allocations for one series never receive the same
+/// serial — the FOR UPDATE lock makes collisions impossible and the index
+/// makes a bug visible instead of silent. `(series_id, allocation_key)` makes
+/// allocation idempotent: retrying a command with the same key replays the
+/// same serial (Task 8 §17).
+///
+/// The receiving document is a LOGICAL reference (module + type + id), never a
+/// foreign key — there is no universal document table to reference, and
+/// cross-module FKs would couple schemas permanently (AR-07/08).
+model NumberingAllocation {
+  id                    String   @id
+  seriesId              String   @map("series_id")
+  organizationId        String   @map("organization_id")
+  documentType          String   @map("document_type") @db.VarChar(64)
+  /// Numeric-only serial, e.g. `00042`. Human-facing, never identity.
+  number                String   @db.VarChar(32)
+  /// Client-supplied idempotency key (opaque, at most 128 chars).
+  allocationKey         String   @map("allocation_key") @db.VarChar(128)
+  referenceModule       String?  @map("reference_module") @db.VarChar(64)
+  referenceDocumentType String?  @map("reference_document_type") @db.VarChar(64)
+  referenceDocumentId   String?  @map("reference_document_id")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy             String?  @map("created_by")
+  updatedBy             String?  @map("updated_by")
+
+  series       NumberingSeries @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([seriesId, number], map: "uq_numbering_allocations_series_number")
+  @@unique([seriesId, allocationKey], map: "uq_numbering_allocations_series_key")
+  @@index([organizationId, documentType, number], map: "idx_numbering_allocations_org_type_number")
+  @@index([referenceModule, referenceDocumentType, referenceDocumentId], map: "idx_numbering_allocations_reference")
+  @@map("numbering_allocations")
+  @@schema("documents")
+}
+
+/// Typed document links (ADR-0019 §5.2, Task 8 §13).
+///
+/// Source and target are LOGICAL references (module + type + id + optional
+/// line id) — deliberately not foreign keys. Cross-module integrity is
+/// application-enforced by the creating service inside its transaction
+/// (ADR-0019 consequence); an orphan link is possible only through a bug.
+/// Line-level rows make partial fulfilment computable in SQL.
+///
+/// `relation_kind` is the closed list from ADR-0019 §5.1. `quantity` (base
+/// unit) is meaningful only for the quantity-aware kind `fulfill`; the domain
+/// layer rejects it everywhere else. `created_by_process` records whether an
+/// automation or a user created the link.
+model DocumentRelation {
+  id                    String    @id
+  organizationId        String    @map("organization_id")
+  sourceModule          String    @map("source_module") @db.VarChar(64)
+  sourceDocumentType    String    @map("source_document_type") @db.VarChar(64)
+  sourceDocumentId      String    @map("source_document_id")
+  sourceLineId          String?   @map("source_line_id")
+  targetModule          String    @map("target_module") @db.VarChar(64)
+  targetDocumentType    String    @map("target_document_type") @db.VarChar(64)
+  targetDocumentId      String    @map("target_document_id")
+  targetLineId          String?   @map("target_line_id")
+  relationKind          String    @map("relation_kind") @db.VarChar(16)
+  quantity              Decimal?  @db.Decimal(18, 4)
+  createdByProcess      Boolean   @default(false) @map("created_by_process")
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy             String?   @map("created_by")
+  updatedBy             String?   @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, sourceModule, sourceDocumentType, sourceDocumentId], map: "idx_document_relations_source")
+  @@index([organizationId, targetModule, targetDocumentType, targetDocumentId], map: "idx_document_relations_target")
+  @@index([organizationId, relationKind], map: "idx_document_relations_org_kind")
+  @@map("document_relations")
+  @@schema("documents")
+}
