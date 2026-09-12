@@ -8,6 +8,7 @@ import { HealthModule } from './modules/health/health.module.js';
 import { OrganizationModule } from './modules/organization/organization.module.js';
 import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { DocumentsModule } from './modules/documents/documents.module.js';
+import { WorkflowModule } from './modules/workflow/workflow.module.js';
 
 /**
  * API root module. Business modules register here (docs/architecture.md §6),
@@ -24,6 +25,7 @@ import { DocumentsModule } from './modules/documents/documents.module.js';
     OrganizationModule,
     InventoryModule,
     DocumentsModule,
+    WorkflowModule,
   ],
 })
 export class AppModule {}
