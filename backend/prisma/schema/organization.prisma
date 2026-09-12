@@ -60,6 +60,13 @@ model Organization {
   reservations InventoryReservation[]
   operations   InventoryOperation[]
 
+  // Back-relations for the Document Foundation (Task 8, ADR-0023). Virtual
+  // side only — the real FK columns stay `documents.*.organization_id`.
+  documentTypeConfigs  DocumentTypeConfig[]
+  numberingSeries      NumberingSeries[]
+  numberingAllocations NumberingAllocation[]
+  documentRelations    DocumentRelation[]
+
   // The organization code is the tenant root's business key: unique
   // deployment-wide (there is no wider scope to be unique within).
   @@unique([code], map: "uq_organizations_code")

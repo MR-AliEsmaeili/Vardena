@@ -79,6 +79,14 @@ export interface PrismaClient {
   inventoryReservation: Delegate;
   /** `inventory.inventory_operations` — declared in prisma/schema/inventory.prisma. */
   inventoryOperation: Delegate;
+  /** `documents.document_type_configs` — declared in prisma/schema/documents.prisma. */
+  documentTypeConfig: Delegate;
+  /** `documents.numbering_series` — declared in prisma/schema/documents.prisma. */
+  numberingSeries: Delegate;
+  /** `documents.numbering_allocations` — declared in prisma/schema/documents.prisma. */
+  numberingAllocation: Delegate;
+  /** `documents.document_relations` — declared in prisma/schema/documents.prisma. */
+  documentRelation: Delegate;
 }
 
 const PrismaClientImpl = class {
@@ -156,6 +164,18 @@ const PrismaClientImpl = class {
     return this.delegate;
   }
   get inventoryOperation(): Delegate {
+    return this.delegate;
+  }
+  get documentTypeConfig(): Delegate {
+    return this.delegate;
+  }
+  get numberingSeries(): Delegate {
+    return this.delegate;
+  }
+  get numberingAllocation(): Delegate {
+    return this.delegate;
+  }
+  get documentRelation(): Delegate {
     return this.delegate;
   }
 } as unknown as { new (options: { adapter: unknown }): PrismaClient };
