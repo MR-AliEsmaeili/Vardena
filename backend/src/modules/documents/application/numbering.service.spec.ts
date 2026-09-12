@@ -161,7 +161,10 @@ describe('NumberingService allocation', () => {
       DOCUMENT_NUMBER_ALLOCATED_EVENT,
     ]);
     // The counter advanced, visible through the series.
-    const series = await fixture.series.getNumberingSeries(fixture.seriesId);
+    const series = await fixture.series.getNumberingSeries(
+      fixture.organizationId,
+      fixture.seriesId,
+    );
     expect(series.lastValue).toBe('1');
   });
 
@@ -202,7 +205,10 @@ describe('NumberingService allocation', () => {
     // One ledger row, one serial, one event.
     expect(fixture.stores.raw.numberingAllocations.stateSize()).toBe(1);
     expect(fixture.events).toHaveLength(1);
-    const series = await fixture.series.getNumberingSeries(fixture.seriesId);
+    const series = await fixture.series.getNumberingSeries(
+      fixture.organizationId,
+      fixture.seriesId,
+    );
     expect(series.lastValue).toBe('1');
   });
 
@@ -306,9 +312,13 @@ describe('NumberingService allocation', () => {
   });
 
   it('rejects an allocation on a disabled series (422)', async () => {
-    await fixture.series.updateNumberingSeries(fixture.seriesId, {
-      isActive: false,
-    });
+    await fixture.series.updateNumberingSeries(
+      fixture.organizationId,
+      fixture.seriesId,
+      {
+        isActive: false,
+      },
+    );
     await expect(
       fixture.numbering.allocateNumber({
         organizationId: fixture.organizationId,
@@ -328,5 +338,23 @@ describe('NumberingService allocation', () => {
         ...reference(generateId()),
       }),
     ).rejects.toMatchObject({ code: 'BadRequest' });
+  });
+
+  it('scopes by-id access to the owning organization (404 on another org)', async () => {
+    // Resolves within the owning organization…
+    await expect(
+      fixture.series.requireSeriesInOrganization(
+        fixture.organizationId,
+        fixture.seriesId,
+      ),
+    ).resolves.toMatchObject({ id: fixture.seriesId });
+
+    // …and answers 404 (never 403) for a foreign organization's id.
+    await expect(
+      fixture.series.requireSeriesInOrganization(
+        generateId(),
+        fixture.seriesId,
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
   });
 });

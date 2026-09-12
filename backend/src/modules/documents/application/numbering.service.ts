@@ -107,13 +107,14 @@ export class NumberingService {
     );
   }
 
-  async getAllocation(id: string) {
+  async getAllocation(organizationId: string, id: string) {
     await this.authorization.requireAllPermissions([
       NUMBERING_PERMISSIONS.VIEW,
     ]);
     const allocation = await this.allocations.findById(id);
-    if (allocation === null)
+    if (allocation === null || allocation.organizationId !== organizationId) {
       throw AppException.notFound('Numbering allocation', id);
+    }
     return toNumberingAllocationDto(allocation);
   }
 

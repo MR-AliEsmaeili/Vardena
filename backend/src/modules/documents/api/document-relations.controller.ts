@@ -33,6 +33,7 @@ import {
   DocumentRelationResponseDto,
   ListDocumentRelationsQueryDto,
 } from './dto/document-relation.dto.js';
+import { DocumentScopeQueryDto } from './dto/document-scope.dto.js';
 
 const PaginatedDocumentRelationDto = paginatedResponseOf(
   DocumentRelationResponseDto,
@@ -75,11 +76,17 @@ export class DocumentRelationsController {
   @Get(':id')
   @UseGuards(AuthGuard, AuthorizationGuard)
   @RequirePermission(RELATION_PERMISSIONS.VIEW)
-  @ApiOperation({ summary: 'Get one document relation.' })
+  @ApiOperation({ summary: 'Get one document relation of one organization.' })
   @ApiOkResponse({ type: DocumentRelationResponseDto })
-  @ApiNotFoundResponse({ description: 'Document relation does not exist.' })
-  async get(@Param('id') id: string): Promise<DocumentRelationResponseDto> {
-    return this.relations.getRelation(id);
+  @ApiNotFoundResponse({
+    description:
+      'Document relation does not exist or belongs to another organization.',
+  })
+  async get(
+    @Param('id') id: string,
+    @Query() query: DocumentScopeQueryDto,
+  ): Promise<DocumentRelationResponseDto> {
+    return this.relations.getRelation(query.organizationId, id);
   }
 
   @Post()
@@ -122,8 +129,14 @@ export class DocumentRelationsController {
       'Delete a document relation link. Relations are links, not business facts: removing a stale link does not touch the documents.',
   })
   @ApiOkResponse({ type: DocumentRelationResponseDto })
-  @ApiNotFoundResponse({ description: 'Document relation does not exist.' })
-  async delete(@Param('id') id: string): Promise<DocumentRelationResponseDto> {
-    return this.relations.deleteRelation(id);
+  @ApiNotFoundResponse({
+    description:
+      'Document relation does not exist or belongs to another organization.',
+  })
+  async delete(
+    @Param('id') id: string,
+    @Query() query: DocumentScopeQueryDto,
+  ): Promise<DocumentRelationResponseDto> {
+    return this.relations.deleteRelation(query.organizationId, id);
   }
 }

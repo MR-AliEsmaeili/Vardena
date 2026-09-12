@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
+import { generateId } from '../src/kernel/ids/ulid.js';
 import { UsersRepository } from '../src/modules/users/data/users.repository.js';
 import { UsersService } from '../src/modules/users/application/users.service.js';
 import { SessionsRepository } from '../src/modules/identity/data/sessions.repository.js';
@@ -394,6 +395,7 @@ describe('Document Foundation (e2e)', () => {
   it('never lets the counter be edited through configuration', async () => {
     const res = await root
       .patch(`/api/v1/documents/numbering-series/${state.seriesId}`)
+      .query({ organizationId: state.orgId })
       .send({ lastValue: '999999', name: 'Hacked counter' })
       .expect(400);
     expect(res.body.code).toBe('ValidationFailed');
@@ -402,12 +404,14 @@ describe('Document Foundation (e2e)', () => {
   it('edits series settings and disables the series', async () => {
     const updated = await root
       .patch(`/api/v1/documents/numbering-series/${state.seriesId}`)
+      .query({ organizationId: state.orgId })
       .send({ width: 0, name: 'Renamed receipts' })
       .expect(200);
     expect(updated.body).toMatchObject({ width: 0, name: 'Renamed receipts' });
 
     const disabled = await root
       .patch(`/api/v1/documents/numbering-series/${state.seriesId}`)
+      .query({ organizationId: state.orgId })
       .send({ isActive: false })
       .expect(200);
     expect(disabled.body.isActive).toBe(false);
@@ -421,6 +425,7 @@ describe('Document Foundation (e2e)', () => {
     // Re-enable for the allocation journey.
     await root
       .patch(`/api/v1/documents/numbering-series/${state.seriesId}`)
+      .query({ organizationId: state.orgId })
       .send({ isActive: true })
       .expect(200);
   });
@@ -639,15 +644,102 @@ describe('Document Foundation (e2e)', () => {
   it('deletes a relation link, and it is gone (404 afterwards)', async () => {
     const deleted = await root
       .delete(`/api/v1/documents/relations/${state.relationId}`)
+      .query({ organizationId: state.orgId })
       .expect(200);
     expect(deleted.body.id).toBe(state.relationId);
 
     await root
       .get(`/api/v1/documents/relations/${state.relationId}`)
+      .query({ organizationId: state.orgId })
       .expect(404);
     await root
       .delete(`/api/v1/documents/relations/${state.relationId}`)
+      .query({ organizationId: state.orgId })
       .expect(404);
+  });
+
+  // ---- organization isolation on by-id access (ADR-0016) -------------------
+
+  it("cannot read, edit, or delete another organization's records by direct id", async () => {
+    // Seed the OTHER organization with its own series, ledger and relation.
+    const otherSeries = await root
+      .post('/api/v1/documents/numbering-series')
+      .send({
+        organizationId: state.otherOrgId,
+        documentType: 'inventory_receipt',
+        name: 'Other org receipts',
+        width: 3,
+      })
+      .expect(201);
+    const foreignSeriesId = otherSeries.body.id as string;
+
+    const numbering = app.get(NumberingService);
+    await numbering.allocateNumber({
+      organizationId: state.otherOrgId,
+      documentType: 'inventory_receipt',
+      allocationKey: 'other-org-1',
+    });
+
+    const otherRelation = await root
+      .post('/api/v1/documents/relations')
+      .send({
+        organizationId: state.otherOrgId,
+        source: {
+          module: 'sales',
+          documentType: 'sales_invoice',
+          documentId: generateId(),
+        },
+        target: {
+          module: 'inventory',
+          documentType: 'inventory_receipt',
+          documentId: generateId(),
+        },
+        relationKind: 'reference',
+      })
+      .expect(201);
+    const foreignRelationId = otherRelation.body.id as string;
+
+    // A caller scoped to the FIRST organization must never see or touch the
+    // OTHER organization's records by id — every direct access answers 404
+    // (never 403), so the API does not confirm the foreign id even exists.
+    for (const res of [
+      await root
+        .get(`/api/v1/documents/numbering-series/${foreignSeriesId}`)
+        .query({ organizationId: state.orgId })
+        .expect(404),
+      await root
+        .patch(`/api/v1/documents/numbering-series/${foreignSeriesId}`)
+        .query({ organizationId: state.orgId })
+        .send({ name: 'Stolen' })
+        .expect(404),
+      await root
+        .get(
+          `/api/v1/documents/numbering-series/${foreignSeriesId}/allocations`,
+        )
+        .query({ organizationId: state.orgId })
+        .expect(404),
+      await root
+        .get(`/api/v1/documents/relations/${foreignRelationId}`)
+        .query({ organizationId: state.orgId })
+        .expect(404),
+      await root
+        .delete(`/api/v1/documents/relations/${foreignRelationId}`)
+        .query({ organizationId: state.orgId })
+        .expect(404),
+    ]) {
+      expect(res.body.code).toBe('EntityNotFound');
+    }
+
+    // The rows are untouched: the OTHER organization still reads its own data.
+    await root
+      .get(`/api/v1/documents/numbering-series/${foreignSeriesId}`)
+      .query({ organizationId: state.otherOrgId })
+      .expect(200);
+    const stillThere = await root
+      .get(`/api/v1/documents/relations/${foreignRelationId}`)
+      .query({ organizationId: state.otherOrgId })
+      .expect(200);
+    expect(stillThere.body.id).toBe(foreignRelationId);
   });
 });
 

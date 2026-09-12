@@ -107,11 +107,13 @@ export class NumberingSeriesService {
     );
   }
 
-  async getNumberingSeries(id: string) {
+  async getNumberingSeries(organizationId: string, id: string) {
     await this.authorization.requireAllPermissions([
       NUMBERING_SERIES_PERMISSIONS.VIEW,
     ]);
-    return toNumberingSeriesDto(await this.mustFind(id));
+    return toNumberingSeriesDto(
+      await this.requireSeriesInOrganization(organizationId, id),
+    );
   }
 
   async createNumberingSeries(input: CreateNumberingSeriesInput) {
@@ -176,11 +178,15 @@ export class NumberingSeriesService {
     return toNumberingSeriesDto(created);
   }
 
-  async updateNumberingSeries(id: string, input: UpdateNumberingSeriesInput) {
+  async updateNumberingSeries(
+    organizationId: string,
+    id: string,
+    input: UpdateNumberingSeriesInput,
+  ) {
     await this.authorization.requireAllPermissions([
       NUMBERING_SERIES_PERMISSIONS.EDIT,
     ]);
-    await this.mustFind(id);
+    await this.requireSeriesInOrganization(organizationId, id);
 
     const patch: {
       name?: string;
@@ -225,11 +231,21 @@ export class NumberingSeriesService {
     return this.repository.findByScope(organizationId, documentType, scopeKey);
   }
 
-  // ---- internals ----------------------------------------------------------
-
-  private async mustFind(id: string): Promise<NumberingSeries> {
+  /**
+   * Organization-scoped by-id resolution (AR-07, ADR-0016). A series that does
+   * not exist or belongs to another organization is reported as *not found*,
+   * so the API never confirms that an id from another tenant exists. No
+   * permission of its own — the calling service has already authorized its
+   * action.
+   */
+  async requireSeriesInOrganization(
+    organizationId: string,
+    id: string,
+  ): Promise<NumberingSeries> {
     const series = await this.repository.findById(id);
-    if (series === null) throw AppException.notFound('Numbering series', id);
+    if (series === null || series.organizationId !== organizationId) {
+      throw AppException.notFound('Numbering series', id);
+    }
     return series;
   }
 }

@@ -41,6 +41,7 @@ import {
   NumberingSeriesResponseDto,
   UpdateNumberingSeriesDto,
 } from './dto/numbering.dto.js';
+import { DocumentScopeQueryDto } from './dto/document-scope.dto.js';
 
 const PaginatedNumberingSeriesDto = paginatedResponseOf(
   NumberingSeriesResponseDto,
@@ -115,11 +116,17 @@ export class NumberingSeriesController {
   @Get(':id')
   @UseGuards(AuthGuard, AuthorizationGuard)
   @RequirePermission(NUMBERING_SERIES_PERMISSIONS.VIEW)
-  @ApiOperation({ summary: 'Get one numbering series.' })
+  @ApiOperation({ summary: 'Get one numbering series of one organization.' })
   @ApiOkResponse({ type: NumberingSeriesResponseDto })
-  @ApiNotFoundResponse({ description: 'Numbering series does not exist.' })
-  async get(@Param('id') id: string): Promise<NumberingSeriesResponseDto> {
-    return this.series.getNumberingSeries(id);
+  @ApiNotFoundResponse({
+    description:
+      'Numbering series does not exist or belongs to another organization.',
+  })
+  async get(
+    @Param('id') id: string,
+    @Query() query: DocumentScopeQueryDto,
+  ): Promise<NumberingSeriesResponseDto> {
+    return this.series.getNumberingSeries(query.organizationId, id);
   }
 
   @Patch(':id')
@@ -130,12 +137,16 @@ export class NumberingSeriesController {
       'Edit a numbering series (name, width, strategy, reuse policy, active state). The counter is never editable.',
   })
   @ApiOkResponse({ type: NumberingSeriesResponseDto })
-  @ApiNotFoundResponse({ description: 'Numbering series does not exist.' })
+  @ApiNotFoundResponse({
+    description:
+      'Numbering series does not exist or belongs to another organization.',
+  })
   async update(
     @Param('id') id: string,
+    @Query() query: DocumentScopeQueryDto,
     @Body() body: UpdateNumberingSeriesDto,
   ): Promise<NumberingSeriesResponseDto> {
-    return this.series.updateNumberingSeries(id, {
+    return this.series.updateNumberingSeries(query.organizationId, id, {
       name: body.name,
       strategy: body.strategy,
       width: body.width,
@@ -165,8 +176,9 @@ export class NumberingSeriesController {
     page: number;
     pageSize: number;
   }> {
-    // Resolve the series first so an unknown series is a 404 (not an empty list).
-    await this.series.getNumberingSeries(id);
+    // Resolve the series first — scoped to the requesting organization — so an
+    // unknown or foreign series is a 404 (not an empty list).
+    await this.series.getNumberingSeries(query.organizationId, id);
     return this.numbering.listAllocations({ ...query, seriesId: id });
   }
 }

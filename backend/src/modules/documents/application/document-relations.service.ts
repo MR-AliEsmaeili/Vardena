@@ -104,9 +104,11 @@ export class DocumentRelationsService {
     );
   }
 
-  async getRelation(id: string) {
+  async getRelation(organizationId: string, id: string) {
     await this.authorization.requireAllPermissions([RELATION_PERMISSIONS.VIEW]);
-    return toDocumentRelationDto(await this.mustFind(id));
+    return toDocumentRelationDto(
+      await this.requireRelationInOrganization(organizationId, id),
+    );
   }
 
   /** HTTP path: creating a relation is an explicit, permission-gated action. */
@@ -117,11 +119,14 @@ export class DocumentRelationsService {
     return this.linkDocuments(input);
   }
 
-  async deleteRelation(id: string) {
+  async deleteRelation(organizationId: string, id: string) {
     await this.authorization.requireAllPermissions([
       RELATION_PERMISSIONS.DELETE,
     ]);
-    const existing = await this.mustFind(id);
+    const existing = await this.requireRelationInOrganization(
+      organizationId,
+      id,
+    );
     const deleted = await this.repository.delete(id);
     if (deleted === null) throw AppException.notFound('Document relation', id);
     await publishEvent(this.events, {
@@ -209,9 +214,19 @@ export class DocumentRelationsService {
 
   // ---- internals ----------------------------------------------------------
 
-  private async mustFind(id: string): Promise<DocumentRelation> {
+  /**
+   * Organization-scoped by-id resolution (AR-07, ADR-0016). A relation that
+   * does not exist or belongs to another organization is reported as *not
+   * found*, so the API never confirms that an id from another tenant exists.
+   */
+  async requireRelationInOrganization(
+    organizationId: string,
+    id: string,
+  ): Promise<DocumentRelation> {
     const relation = await this.repository.findById(id);
-    if (relation === null) throw AppException.notFound('Document relation', id);
+    if (relation === null || relation.organizationId !== organizationId) {
+      throw AppException.notFound('Document relation', id);
+    }
     return relation;
   }
 }
