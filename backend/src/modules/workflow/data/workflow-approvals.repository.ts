@@ -126,8 +126,8 @@ export class WorkflowApprovalsRepository {
   async requestInLock(
     input: RequestApprovalInput,
   ): Promise<WorkflowApproval | null> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       const locked = await lockInstanceRow(tx, input.instanceId);
       if (locked === null || locked.organizationId !== input.organizationId) {
         return null;
@@ -186,8 +186,8 @@ export class WorkflowApprovalsRepository {
   async decideInLock(
     input: DecideApprovalInput,
   ): Promise<WorkflowApproval | null> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       const approval = await tx.workflowApproval.findUnique({
         where: { id: input.approvalId },
       });

@@ -157,8 +157,8 @@ export class WorkflowInstancesRepository {
   async executeTransition(
     input: ExecuteTransitionInput,
   ): Promise<ExecuteTransitionResult | null> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       const locked = await lockInstanceRow(tx, input.instanceId);
       if (locked === null || locked.organizationId !== input.organizationId) {
         return null;
