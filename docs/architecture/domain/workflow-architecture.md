@@ -294,3 +294,30 @@ of the action's registration, not of the configuration.
   no scripting (ADR-0018).
 - **D-18** Approval model is single-level in v1 with recorded decisions; multi-level
   and delegation are extension points (OQ-26).
+
+---
+
+## 10. As-built notes (Task 9, 2026-09-12)
+
+The implementation binding lives in ADR-0024 and
+`docs/task-9-implementation-report.md`. Concrete choices worth recording
+against the design above:
+
+- **Consuming surface:** 18 REST paths under `/api/v1/workflow` and 10
+  `Workflow.*` RBAC codes (`Definition.{View,Create,Edit}`,
+  `Version.{View,Create,Edit,Publish}`, `Instance.{View,Bind,Execute}`).
+  Transitions additionally name their own `required_permission` (any
+  registered code); the service re-checks both — D-15's "permissions are
+  code" holds at execution, not just at the guard.
+- **Events:** `WorkflowVersion.Published`, `WorkflowInstance.Bound`,
+  `WorkflowTransition.Completed`, `WorkflowApproval.Decided` on the existing
+  in-memory bus. The Completed event carries bound automations as
+  `[{ action, parameters }]`; executing them is future work (outbox/worker).
+- **Staleness:** approvals pin `base_sequence` (history length at request);
+  deciding or executing after the workflow moved fails with 422. The
+  concurrency loser of two transitions fails with 409 (`not_in_source_state`).
+- **No version PATCH, no history mutation routes, no `code`/endpoint updates.**
+  Immutability is structural (missing routes/fields), not just validated.
+- **Bindings are `(entity_module, entity_type, entity_id)`** with a ULID id —
+  the §6 document example binds as e.g. `('accounting', 'invoice', '<ulid>')`
+  with no FK into business tables.

@@ -67,6 +67,17 @@ model Organization {
   numberingAllocations NumberingAllocation[]
   documentRelations    DocumentRelation[]
 
+  // Back-relations for the Workflow Foundation (Task 9, ADR-0024). Virtual
+  // side only — the real FK columns stay `workflow.*.organization_id`.
+  workflowDefinitions  WorkflowDefinition[]
+  workflowVersions     WorkflowVersion[]
+  workflowStates       WorkflowState[]
+  workflowTransitions  WorkflowTransition[]
+  workflowInstances    WorkflowInstance[]
+  workflowHistory      WorkflowTransitionHistory[]
+  workflowApprovals    WorkflowApproval[]
+  workflowAutomations  WorkflowAutomationBinding[]
+
   // The organization code is the tenant root's business key: unique
   // deployment-wide (there is no wider scope to be unique within).
   @@unique([code], map: "uq_organizations_code")
