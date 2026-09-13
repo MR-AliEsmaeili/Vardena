@@ -29,6 +29,7 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { PartiesService } from '../application/parties.service.js';
 import { PARTY_PERMISSIONS } from '../domain/organization-permissions.js';
+import { OrganizationScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
   CreatePartyDto,
   ListPartiesQueryDto,
@@ -83,8 +84,11 @@ export class PartiesController {
   @ApiOperation({ summary: 'Get one party.' })
   @ApiOkResponse({ type: PartyResponseDto })
   @ApiNotFoundResponse({ description: 'Party does not exist.' })
-  async get(@Param('id') id: string): Promise<PartyResponseDto> {
-    return this.parties.getParty(id);
+  async get(
+    @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
+  ): Promise<PartyResponseDto> {
+    return this.parties.getParty(scope.organizationId, id);
   }
 
   @Post()
@@ -127,9 +131,10 @@ export class PartiesController {
   })
   async update(
     @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
     @Body() body: UpdatePartyDto,
   ): Promise<PartyResponseDto> {
-    return this.parties.updateParty(id, {
+    return this.parties.updateParty(scope.organizationId, id, {
       code: body.code,
       displayName: body.displayName,
       legalName: body.legalName,
@@ -148,8 +153,11 @@ export class PartiesController {
   @ApiOperation({ summary: 'Enable a disabled party.' })
   @ApiOkResponse({ type: PartyResponseDto })
   @ApiNotFoundResponse({ description: 'Party does not exist.' })
-  async enable(@Param('id') id: string): Promise<PartyResponseDto> {
-    return this.parties.enableParty(id);
+  async enable(
+    @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
+  ): Promise<PartyResponseDto> {
+    return this.parties.enableParty(scope.organizationId, id);
   }
 
   @Post(':id/disable')
@@ -162,7 +170,10 @@ export class PartiesController {
   })
   @ApiOkResponse({ type: PartyResponseDto })
   @ApiNotFoundResponse({ description: 'Party does not exist.' })
-  async disable(@Param('id') id: string): Promise<PartyResponseDto> {
-    return this.parties.disableParty(id);
+  async disable(
+    @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
+  ): Promise<PartyResponseDto> {
+    return this.parties.disableParty(scope.organizationId, id);
   }
 }

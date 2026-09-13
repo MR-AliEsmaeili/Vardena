@@ -107,9 +107,11 @@ export class UnitsService {
     );
   }
 
-  async getUnit(id: string): Promise<UnitDto> {
+  async getUnit(organizationId: string, id: string): Promise<UnitDto> {
     await this.authorization.requireAllPermissions([UNIT_PERMISSIONS.VIEW]);
-    return toUnitDto(await this.mustFind(id));
+    return toUnitDto(
+      await this.mustFindInOrganization(organizationId, id),
+    );
   }
 
   async createUnit(input: CreateUnitInput): Promise<UnitDto> {
@@ -172,9 +174,13 @@ export class UnitsService {
     return toUnitDto(created);
   }
 
-  async updateUnit(id: string, input: UpdateUnitInput): Promise<UnitDto> {
+  async updateUnit(
+    organizationId: string,
+    id: string,
+    input: UpdateUnitInput,
+  ): Promise<UnitDto> {
     await this.authorization.requireAllPermissions([UNIT_PERMISSIONS.EDIT]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     const code =
       input.code === undefined ? undefined : normalizeCode(input.code);
     const name =
@@ -227,12 +233,22 @@ export class UnitsService {
     return toUnitDto(updated);
   }
 
-  async enableUnit(id: string): Promise<UnitDto> {
-    return this.setActive(id, true, UNIT_PERMISSIONS.ENABLE);
+  async enableUnit(organizationId: string, id: string): Promise<UnitDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      true,
+      UNIT_PERMISSIONS.ENABLE,
+    );
   }
 
-  async disableUnit(id: string): Promise<UnitDto> {
-    return this.setActive(id, false, UNIT_PERMISSIONS.DISABLE);
+  async disableUnit(organizationId: string, id: string): Promise<UnitDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      false,
+      UNIT_PERMISSIONS.DISABLE,
+    );
   }
 
   /**
@@ -259,12 +275,13 @@ export class UnitsService {
   // ---- internals ----------------------------------------------------------
 
   private async setActive(
+    organizationId: string,
     id: string,
     isActive: boolean,
     permission: string,
   ): Promise<UnitDto> {
     await this.authorization.requireAllPermissions([permission]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     if (current.isActive === isActive) return toUnitDto(current);
 
     const updated = await this.repository.update(id, {
@@ -287,9 +304,21 @@ export class UnitsService {
     return toUnitDto(updated);
   }
 
-  private async mustFind(id: string): Promise<Unit> {
+  /**
+   * Scoped by-id resolution for the API surface (ADR-0021 §4): a unit in
+   * another organization is reported as not found. The deployment pin
+   * (ADR-0025) is enforced here too, so a direct service caller is as bounded
+   * as an HTTP caller.
+   */
+  private async mustFindInOrganization(
+    organizationId: string,
+    id: string,
+  ): Promise<Unit> {
+    this.organizations.assertOrganizationInScope(organizationId);
     const unit = await this.repository.findById(id);
-    if (unit === null) throw AppException.notFound('Unit', id);
+    if (unit === null || unit.organizationId !== organizationId) {
+      throw AppException.notFound('Unit', id);
+    }
     return unit;
   }
 }

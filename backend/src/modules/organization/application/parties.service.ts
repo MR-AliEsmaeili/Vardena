@@ -138,9 +138,11 @@ export class PartiesService {
     );
   }
 
-  async getParty(id: string): Promise<PartyDto> {
+  async getParty(organizationId: string, id: string): Promise<PartyDto> {
     await this.authorization.requireAllPermissions([PARTY_PERMISSIONS.VIEW]);
-    return toPartyDto(await this.mustFind(id));
+    return toPartyDto(
+      await this.mustFindInOrganization(organizationId, id),
+    );
   }
 
   async createParty(input: CreatePartyInput): Promise<PartyDto> {
@@ -219,9 +221,13 @@ export class PartiesService {
     return toPartyDto(created);
   }
 
-  async updateParty(id: string, input: UpdatePartyInput): Promise<PartyDto> {
+  async updateParty(
+    organizationId: string,
+    id: string,
+    input: UpdatePartyInput,
+  ): Promise<PartyDto> {
     await this.authorization.requireAllPermissions([PARTY_PERMISSIONS.EDIT]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
 
     const code =
       input.code === undefined ? undefined : normalizeCode(input.code);
@@ -310,12 +316,22 @@ export class PartiesService {
     return toPartyDto(updated);
   }
 
-  async enableParty(id: string): Promise<PartyDto> {
-    return this.setActive(id, true, PARTY_PERMISSIONS.ENABLE);
+  async enableParty(organizationId: string, id: string): Promise<PartyDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      true,
+      PARTY_PERMISSIONS.ENABLE,
+    );
   }
 
-  async disableParty(id: string): Promise<PartyDto> {
-    return this.setActive(id, false, PARTY_PERMISSIONS.DISABLE);
+  async disableParty(organizationId: string, id: string): Promise<PartyDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      false,
+      PARTY_PERMISSIONS.DISABLE,
+    );
   }
 
   /**
@@ -341,12 +357,13 @@ export class PartiesService {
   // ---- internals ----------------------------------------------------------
 
   private async setActive(
+    organizationId: string,
     id: string,
     isActive: boolean,
     permission: string,
   ): Promise<PartyDto> {
     await this.authorization.requireAllPermissions([permission]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     if (current.isActive === isActive) return toPartyDto(current);
 
     const updated = await this.repository.update(id, {
@@ -369,9 +386,15 @@ export class PartiesService {
     return toPartyDto(updated);
   }
 
-  private async mustFind(id: string): Promise<Party> {
+  private async mustFindInOrganization(
+    organizationId: string,
+    id: string,
+  ): Promise<Party> {
+    this.organizations.assertOrganizationInScope(organizationId);
     const party = await this.repository.findById(id);
-    if (party === null) throw AppException.notFound('Party', id);
+    if (party === null || party.organizationId !== organizationId) {
+      throw AppException.notFound('Party', id);
+    }
     return party;
   }
 }

@@ -50,6 +50,7 @@ deployments inject real env (dotenv never overrides real env).
 | `TRUST_PROXY`                      | `false`               | `true` behind a trusted reverse proxy (client IPs)  |
 | `RATE_LIMIT_WINDOW_MS`             | `60000`               | per-IP fixed window                                 |
 | `RATE_LIMIT_MAX`                   | `300`                 | requests per window per IP                          |
+| `DEPLOYMENT_ORGANIZATION_ID`       | _(unset)_             | ULID pin confining the deployment to one organization (ADR-0025); unset = structural scoping only |
 | `AUTH_COOKIE_NAME`                 | `vardena_session`     | httpOnly session cookie name (ADR-0007)             |
 | `AUTH_COOKIE_PATH`                 | `/`                   | cookie path                                         |
 | `AUTH_COOKIE_SAME_SITE`            | `lax`                 | `lax \| strict \| none` (default: lax)              |

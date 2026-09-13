@@ -169,9 +169,9 @@ export class ItemsService {
     );
   }
 
-  async getItem(id: string): Promise<ItemDto> {
+  async getItem(organizationId: string, id: string): Promise<ItemDto> {
     await this.authorization.requireAllPermissions([ITEM_PERMISSIONS.VIEW]);
-    return toItemDto(await this.mustFind(id));
+    return toItemDto(await this.mustFindInOrganization(organizationId, id));
   }
 
   async createItem(input: CreateItemInput): Promise<ItemDto> {
@@ -268,9 +268,13 @@ export class ItemsService {
     return toItemDto(created);
   }
 
-  async updateItem(id: string, input: UpdateItemInput): Promise<ItemDto> {
+  async updateItem(
+    organizationId: string,
+    id: string,
+    input: UpdateItemInput,
+  ): Promise<ItemDto> {
     await this.authorization.requireAllPermissions([ITEM_PERMISSIONS.EDIT]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
 
     const code =
       input.code === undefined ? undefined : normalizeCode(input.code);
@@ -411,12 +415,22 @@ export class ItemsService {
     return toItemDto(updated);
   }
 
-  async enableItem(id: string): Promise<ItemDto> {
-    return this.setActive(id, true, ITEM_PERMISSIONS.ENABLE);
+  async enableItem(organizationId: string, id: string): Promise<ItemDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      true,
+      ITEM_PERMISSIONS.ENABLE,
+    );
   }
 
-  async disableItem(id: string): Promise<ItemDto> {
-    return this.setActive(id, false, ITEM_PERMISSIONS.DISABLE);
+  async disableItem(organizationId: string, id: string): Promise<ItemDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      false,
+      ITEM_PERMISSIONS.DISABLE,
+    );
   }
 
   /**
@@ -447,12 +461,13 @@ export class ItemsService {
   // ---- internals ----------------------------------------------------------
 
   private async setActive(
+    organizationId: string,
     id: string,
     isActive: boolean,
     permission: string,
   ): Promise<ItemDto> {
     await this.authorization.requireAllPermissions([permission]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     if (current.isActive === isActive) return toItemDto(current);
 
     // Freeze guard (ADR-0022): disabling blocks new movements, so disabling
@@ -488,9 +503,21 @@ export class ItemsService {
     return toItemDto(updated);
   }
 
-  private async mustFind(id: string): Promise<Item> {
+  /**
+   * Scoped by-id resolution for the API surface (ADR-0021 §4): an item in
+   * another organization is reported as not found. The deployment pin
+   * (ADR-0025) is enforced here too, so a direct service caller is as bounded
+   * as an HTTP caller.
+   */
+  private async mustFindInOrganization(
+    organizationId: string,
+    id: string,
+  ): Promise<Item> {
+    this.organizations.assertOrganizationInScope(organizationId);
     const item = await this.repository.findById(id);
-    if (item === null) throw AppException.notFound('Item', id);
+    if (item === null || item.organizationId !== organizationId) {
+      throw AppException.notFound('Item', id);
+    }
     return item;
   }
 }

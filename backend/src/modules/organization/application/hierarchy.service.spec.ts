@@ -5,6 +5,7 @@ import {
 } from '../../../kernel/events/domain-event-bus.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { createMasterDataStores } from '../../../../test/support/master-data-repositories.js';
+import { UNPINNED_APP_CONFIG } from '../../../../test/support/app-config.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from './organizations.service.js';
 import { DepartmentsService } from './departments.service.js';
@@ -51,6 +52,7 @@ async function buildFixture(): Promise<Fixture> {
     authorization,
     loggerStub(),
     bus,
+    UNPINNED_APP_CONFIG,
   );
   const departments = new DepartmentsService(
     stores.departments,
@@ -111,7 +113,7 @@ describe('DepartmentsService hierarchy', () => {
       name: 'Engineering',
     });
     await expect(
-      fixture.departments.updateDepartment(root.id, {
+      fixture.departments.updateDepartment(fixture.orgA, root.id, {
         parentDepartmentId: root.id,
       }),
     ).rejects.toMatchObject({ code: 'BusinessRuleViolation' });
@@ -139,7 +141,7 @@ describe('DepartmentsService hierarchy', () => {
 
     // Moving the root under its own grandchild would close a cycle.
     await expect(
-      fixture.departments.updateDepartment(root.id, {
+      fixture.departments.updateDepartment(fixture.orgA, root.id, {
         parentDepartmentId: leaf.id,
       }),
     ).rejects.toMatchObject({ code: 'BusinessRuleViolation' });
@@ -158,14 +160,22 @@ describe('DepartmentsService hierarchy', () => {
       code: 'B',
       name: 'B',
     });
-    const moved = await fixture.departments.updateDepartment(b.id, {
-      parentDepartmentId: a.id,
-    });
+    const moved = await fixture.departments.updateDepartment(
+      fixture.orgA,
+      b.id,
+      {
+        parentDepartmentId: a.id,
+      },
+    );
     expect(moved.parentDepartmentId).toBe(a.id);
 
-    const promoted = await fixture.departments.updateDepartment(b.id, {
-      parentDepartmentId: null,
-    });
+    const promoted = await fixture.departments.updateDepartment(
+      fixture.orgA,
+      b.id,
+      {
+        parentDepartmentId: null,
+      },
+    );
     expect(promoted.parentDepartmentId).toBe(null);
   });
 
@@ -193,7 +203,7 @@ describe('DepartmentsService hierarchy', () => {
       code: 'ENG',
       name: 'Engineering',
     });
-    await fixture.departments.disableDepartment(root.id);
+    await fixture.departments.disableDepartment(fixture.orgA, root.id);
     await expect(
       fixture.departments.createDepartment({
         organizationId: fixture.orgA,
@@ -218,9 +228,12 @@ describe('DepartmentsService hierarchy', () => {
       code: 'QA',
       name: 'Quality',
     });
-    await fixture.departments.disableDepartment(root.id);
+    await fixture.departments.disableDepartment(fixture.orgA, root.id);
 
-    const fetched = await fixture.departments.getDepartment(child.id);
+    const fetched = await fixture.departments.getDepartment(
+      fixture.orgA,
+      child.id,
+    );
     expect(fetched.parentDepartmentId).toBe(root.id);
   });
 });
@@ -260,7 +273,9 @@ describe('ItemGroupsService hierarchy', () => {
       name: 'B',
     });
     await expect(
-      fixture.itemGroups.updateItemGroup(root.id, { parentId: child.id }),
+      fixture.itemGroups.updateItemGroup(fixture.orgA, root.id, {
+        parentId: child.id,
+      }),
     ).rejects.toMatchObject({ code: 'BusinessRuleViolation' });
   });
 

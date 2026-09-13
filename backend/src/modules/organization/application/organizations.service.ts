@@ -1,5 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  APP_CONFIG,
+  type AppConfig,
+} from '../../../kernel/config/app-config.js';
+import {
   DOMAIN_EVENT_BUS,
   type DomainEventBus,
 } from '../../../kernel/events/domain-event-bus.js';
@@ -86,6 +90,7 @@ export class OrganizationsService {
     private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
   async listOrganizations(
@@ -95,6 +100,22 @@ export class OrganizationsService {
       ORGANIZATION_PERMISSIONS.VIEW,
     ]);
     const { skip, take } = toOffset(query.page, query.pageSize);
+    const pin = this.config.deploymentOrganizationId;
+    if (pin !== null) {
+      // A pinned deployment lists exactly its own organization (ADR-0025):
+      // no filter can surface another tenant's row, not even an empty page
+      // that hints at existence.
+      const org = await this.repository.findById(pin);
+      const visible =
+        org !== null && this.matchesListFilters(org, query);
+      const pageItems = visible && skip === 0 ? [org] : [];
+      return toPaginatedResult(
+        pageItems.map(toOrganizationDto),
+        visible ? 1 : 0,
+        query.page,
+        query.pageSize,
+      );
+    }
     const { items, total } = await this.repository.list({
       where: { isActive: query.isActive, search: query.search },
       orderBy: resolveSort(query.sort, SORTABLE_FIELDS, [{ code: 'asc' }]),
@@ -122,6 +143,13 @@ export class OrganizationsService {
     await this.authorization.requireAllPermissions([
       ORGANIZATION_PERMISSIONS.CREATE,
     ]);
+    if (this.config.deploymentOrganizationId !== null) {
+      // The deployment serves exactly one organization (ADR-0025): the pinned
+      // organization is bootstrapped out-of-band, never created on demand.
+      throw AppException.businessRule(
+        'This deployment is pinned to a single organization; additional organizations cannot be created through the API.',
+      );
+    }
     const code = normalizeCode(input.code);
     const name = normalizeName(input.name);
     assertCodeAndName(code, name);
@@ -236,6 +264,7 @@ export class OrganizationsService {
     id: string,
     options: { allowInactive?: boolean } = {},
   ): Promise<Organization> {
+    this.assertOrganizationInScope(id);
     const organization = await this.repository.findById(id);
     if (organization === null) throw AppException.notFound('Organization', id);
     assertUsable('Organization', organization.isActive, {
@@ -244,7 +273,46 @@ export class OrganizationsService {
     return organization;
   }
 
+  /**
+   * Deployment organization pin (ADR-0025). Every organization-scoped write
+   * and every scoped by-id resolver calls this before touching data, so a
+   * direct service caller is bounded to the same organization as the HTTP
+   * surface. A mismatch answers `EntityNotFound` (not 403): the API never
+   * confirms that an out-of-scope id exists (ADR-0021 §4).
+   *
+   * No-op when no pin is configured: structural scoping (ADR-0021) remains
+   * the only guarantee and multi-organization isolation stays a product
+   * decision (OQ-01/OQ-22).
+   */
+  assertOrganizationInScope(id: string): void {
+    const pin = this.config.deploymentOrganizationId;
+    if (pin !== null && id !== pin) {
+      throw AppException.notFound('Organization', id);
+    }
+  }
+
   // ---- internals ----------------------------------------------------------
+
+  /** Whether one organization row satisfies the list filters. */
+  private matchesListFilters(
+    organization: Organization,
+    query: ListOrganizationsQuery,
+  ): boolean {
+    if (
+      query.isActive !== undefined &&
+      organization.isActive !== query.isActive
+    ) {
+      return false;
+    }
+    const search = query.search?.trim().toLowerCase();
+    if (search !== undefined && search !== '') {
+      return (
+        organization.code.toLowerCase().includes(search) ||
+        organization.name.toLowerCase().includes(search)
+      );
+    }
+    return true;
+  }
 
   private async setActive(
     id: string,
@@ -277,6 +345,7 @@ export class OrganizationsService {
   }
 
   private async mustFind(id: string): Promise<Organization> {
+    this.assertOrganizationInScope(id);
     const organization = await this.repository.findById(id);
     if (organization === null) throw AppException.notFound('Organization', id);
     return organization;

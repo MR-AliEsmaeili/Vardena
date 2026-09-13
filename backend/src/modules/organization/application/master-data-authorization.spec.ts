@@ -7,6 +7,7 @@ import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { runWithRequestContext } from '../../../kernel/correlation/request-context.js';
 import { createInMemoryStores } from '../../../../test/support/in-memory-repositories.js';
 import { createMasterDataStores } from '../../../../test/support/master-data-repositories.js';
+import { UNPINNED_APP_CONFIG } from '../../../../test/support/app-config.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { seedUser } from '../../../../test/support/in-memory-repositories.js';
 import { OrganizationsService } from './organizations.service.js';
@@ -105,6 +106,7 @@ async function buildFixture(): Promise<Fixture> {
     authorization,
     loggerStub(),
     bus,
+    UNPINNED_APP_CONFIG,
   );
   const branches = new BranchesService(
     masterStores.branches,
@@ -503,7 +505,9 @@ describe('BranchesService organization isolation', () => {
         name: 'Main',
       }),
     );
-    await asSystem(() => fixture.branches.disableBranch(branch.id));
+    await asSystem(() =>
+      fixture.branches.disableBranch(orgA, branch.id),
+    );
     await expect(
       asSystem(() =>
         fixture.branches.requireUsableBranchInOrganization(branch.id, orgA),
@@ -574,7 +578,7 @@ describe('BranchesService organization isolation', () => {
       }),
     );
     const updated = await asSystem(() =>
-      fixture.branches.updateBranch(branch.id, { name: 'Renamed' }),
+      fixture.branches.updateBranch(orgA, branch.id, { name: 'Renamed' }),
     );
     expect(updated.organizationId).toBe(orgA);
     expect(orgB).not.toBe(orgA);

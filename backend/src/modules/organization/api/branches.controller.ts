@@ -29,6 +29,7 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { BranchesService } from '../application/branches.service.js';
 import { BRANCH_PERMISSIONS } from '../domain/organization-permissions.js';
+import { OrganizationScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
   BranchResponseDto,
   CreateBranchDto,
@@ -80,8 +81,11 @@ export class BranchesController {
   @ApiOperation({ summary: 'Get one branch.' })
   @ApiOkResponse({ type: BranchResponseDto })
   @ApiNotFoundResponse({ description: 'Branch does not exist.' })
-  async get(@Param('id') id: string): Promise<BranchResponseDto> {
-    return this.branches.getBranch(id);
+  async get(
+    @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
+  ): Promise<BranchResponseDto> {
+    return this.branches.getBranch(scope.organizationId, id);
   }
 
   @Post()
@@ -112,9 +116,10 @@ export class BranchesController {
   })
   async update(
     @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
     @Body() body: UpdateBranchDto,
   ): Promise<BranchResponseDto> {
-    return this.branches.updateBranch(id, {
+    return this.branches.updateBranch(scope.organizationId, id, {
       code: body.code,
       name: body.name,
     });
@@ -127,8 +132,11 @@ export class BranchesController {
   @ApiOperation({ summary: 'Enable a disabled branch.' })
   @ApiOkResponse({ type: BranchResponseDto })
   @ApiNotFoundResponse({ description: 'Branch does not exist.' })
-  async enable(@Param('id') id: string): Promise<BranchResponseDto> {
-    return this.branches.enableBranch(id);
+  async enable(
+    @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
+  ): Promise<BranchResponseDto> {
+    return this.branches.enableBranch(scope.organizationId, id);
   }
 
   @Post(':id/disable')
@@ -141,7 +149,10 @@ export class BranchesController {
   })
   @ApiOkResponse({ type: BranchResponseDto })
   @ApiNotFoundResponse({ description: 'Branch does not exist.' })
-  async disable(@Param('id') id: string): Promise<BranchResponseDto> {
-    return this.branches.disableBranch(id);
+  async disable(
+    @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
+  ): Promise<BranchResponseDto> {
+    return this.branches.disableBranch(scope.organizationId, id);
   }
 }

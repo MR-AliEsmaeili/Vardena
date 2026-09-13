@@ -27,6 +27,7 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { InventoryMovementsService } from '../application/inventory-movements.service.js';
 import { MOVEMENT_PERMISSIONS } from '../domain/inventory-core-permissions.js';
+import { InventoryScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
   InventoryMovementResponseDto,
   ListInventoryMovementsQueryDto,
@@ -77,8 +78,11 @@ export class InventoryMovementsController {
   @ApiOperation({ summary: 'Get one movement.' })
   @ApiOkResponse({ type: InventoryMovementResponseDto })
   @ApiNotFoundResponse({ description: 'Movement does not exist.' })
-  async get(@Param('id') id: string): Promise<InventoryMovementResponseDto> {
-    return this.movements.getMovement(id);
+  async get(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<InventoryMovementResponseDto> {
+    return this.movements.getMovement(scope.organizationId, id);
   }
 
   @Post()
@@ -139,9 +143,10 @@ export class InventoryMovementsController {
   @ApiBadRequestResponse({ description: 'Validation failed.' })
   async reverse(
     @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
     @Body() body: ReverseInventoryMovementDto,
   ): Promise<InventoryMovementResponseDto> {
-    return this.movements.reverseMovement(id, {
+    return this.movements.reverseMovement(scope.organizationId, id, {
       operationKey: body.operationKey,
       movementDate: body.movementDate,
     });

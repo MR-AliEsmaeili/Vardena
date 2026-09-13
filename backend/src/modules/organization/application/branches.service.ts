@@ -106,9 +106,12 @@ export class BranchesService {
     );
   }
 
-  async getBranch(id: string): Promise<BranchDto> {
+  async getBranch(
+    organizationId: string,
+    id: string,
+  ): Promise<BranchDto> {
     await this.authorization.requireAllPermissions([BRANCH_PERMISSIONS.VIEW]);
-    return toBranchDto(await this.mustFind(id));
+    return toBranchDto(await this.mustFindInOrganization(organizationId, id));
   }
 
   async createBranch(input: CreateBranchInput): Promise<BranchDto> {
@@ -172,9 +175,13 @@ export class BranchesService {
     return toBranchDto(created);
   }
 
-  async updateBranch(id: string, input: UpdateBranchInput): Promise<BranchDto> {
+  async updateBranch(
+    organizationId: string,
+    id: string,
+    input: UpdateBranchInput,
+  ): Promise<BranchDto> {
     await this.authorization.requireAllPermissions([BRANCH_PERMISSIONS.EDIT]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     const code =
       input.code === undefined ? undefined : normalizeCode(input.code);
     const name =
@@ -219,12 +226,20 @@ export class BranchesService {
     return toBranchDto(updated);
   }
 
-  async enableBranch(id: string): Promise<BranchDto> {
-    return this.setActive(id, true, BRANCH_PERMISSIONS.ENABLE);
+  async enableBranch(organizationId: string, id: string): Promise<BranchDto> {
+    return this.setActive(organizationId, id, true, BRANCH_PERMISSIONS.ENABLE);
   }
 
-  async disableBranch(id: string): Promise<BranchDto> {
-    return this.setActive(id, false, BRANCH_PERMISSIONS.DISABLE);
+  async disableBranch(
+    organizationId: string,
+    id: string,
+  ): Promise<BranchDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      false,
+      BRANCH_PERMISSIONS.DISABLE,
+    );
   }
 
   /**
@@ -255,12 +270,13 @@ export class BranchesService {
   // ---- internals ----------------------------------------------------------
 
   private async setActive(
+    organizationId: string,
     id: string,
     isActive: boolean,
     permission: string,
   ): Promise<BranchDto> {
     await this.authorization.requireAllPermissions([permission]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     if (current.isActive === isActive) return toBranchDto(current);
 
     const updated = await this.repository.update(id, {
@@ -283,9 +299,22 @@ export class BranchesService {
     return toBranchDto(updated);
   }
 
-  private async mustFind(id: string): Promise<Branch> {
+  /**
+   * Scoped by-id resolution for the API surface (ADR-0021 §4): a branch in
+   * another organization is reported as not found, so the boundary cannot be
+   * crossed by guessing an id. The deployment organization pin (ADR-0025) is
+   * enforced here too, so direct service callers are bounded exactly like
+   * HTTP callers.
+   */
+  private async mustFindInOrganization(
+    organizationId: string,
+    id: string,
+  ): Promise<Branch> {
+    this.organizations.assertOrganizationInScope(organizationId);
     const branch = await this.repository.findById(id);
-    if (branch === null) throw AppException.notFound('Branch', id);
+    if (branch === null || branch.organizationId !== organizationId) {
+      throw AppException.notFound('Branch', id);
+    }
     return branch;
   }
 }

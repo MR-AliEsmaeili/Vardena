@@ -30,6 +30,7 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { ItemGroupsService } from '../application/item-groups.service.js';
 import { ITEM_GROUP_PERMISSIONS } from '../domain/inventory-permissions.js';
+import { InventoryScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
   CreateItemGroupDto,
   ItemGroupResponseDto,
@@ -81,8 +82,11 @@ export class ItemGroupsController {
   @ApiOperation({ summary: 'Get one item group.' })
   @ApiOkResponse({ type: ItemGroupResponseDto })
   @ApiNotFoundResponse({ description: 'Item group does not exist.' })
-  async get(@Param('id') id: string): Promise<ItemGroupResponseDto> {
-    return this.itemGroups.getItemGroup(id);
+  async get(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<ItemGroupResponseDto> {
+    return this.itemGroups.getItemGroup(scope.organizationId, id);
   }
 
   @Post()
@@ -128,9 +132,10 @@ export class ItemGroupsController {
   })
   async update(
     @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
     @Body() body: UpdateItemGroupDto,
   ): Promise<ItemGroupResponseDto> {
-    return this.itemGroups.updateItemGroup(id, {
+    return this.itemGroups.updateItemGroup(scope.organizationId, id, {
       parentId: body.parentId,
       code: body.code,
       name: body.name,
@@ -144,8 +149,11 @@ export class ItemGroupsController {
   @ApiOperation({ summary: 'Enable a disabled item group.' })
   @ApiOkResponse({ type: ItemGroupResponseDto })
   @ApiNotFoundResponse({ description: 'Item group does not exist.' })
-  async enable(@Param('id') id: string): Promise<ItemGroupResponseDto> {
-    return this.itemGroups.enableItemGroup(id);
+  async enable(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<ItemGroupResponseDto> {
+    return this.itemGroups.enableItemGroup(scope.organizationId, id);
   }
 
   @Post(':id/disable')
@@ -158,7 +166,10 @@ export class ItemGroupsController {
   })
   @ApiOkResponse({ type: ItemGroupResponseDto })
   @ApiNotFoundResponse({ description: 'Item group does not exist.' })
-  async disable(@Param('id') id: string): Promise<ItemGroupResponseDto> {
-    return this.itemGroups.disableItemGroup(id);
+  async disable(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<ItemGroupResponseDto> {
+    return this.itemGroups.disableItemGroup(scope.organizationId, id);
   }
 }

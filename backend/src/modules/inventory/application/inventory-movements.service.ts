@@ -36,6 +36,7 @@ import { INVENTORY_MOVEMENT_POSTED_EVENT } from '../domain/inventory-core.events
 import { publishEvent, resolveSort } from './master-data-support.js';
 import {
   buildRequestHash,
+  canonicalClientDate,
   normalizeReference,
   normalizeReason,
   requireOperationKey,
@@ -148,10 +149,16 @@ export class InventoryMovementsService {
     );
   }
 
-  async getMovement(id: string): Promise<InventoryMovementDto> {
+  async getMovement(
+    organizationId: string,
+    id: string,
+  ): Promise<InventoryMovementDto> {
     await this.authorization.requireAllPermissions([MOVEMENT_PERMISSIONS.VIEW]);
+    this.organizations.assertOrganizationInScope(organizationId);
     const movement = await this.movements.findById(id);
-    if (movement === null) throw AppException.notFound('Movement', id);
+    if (movement === null || movement.organizationId !== organizationId) {
+      throw AppException.notFound('Movement', id);
+    }
     return toInventoryMovementDto(movement);
   }
 
@@ -213,7 +220,11 @@ export class InventoryMovementsService {
       movementType,
       quantity: resolved.quantity,
       unitId: input.unitId,
-      movementDate: movementDate.toISOString(),
+      // Hash the client's date intent, not the effective clock: when the
+      // client omits the date it defaults to now() PER ATTEMPT, so including
+      // it would make a dateless retry hash differently and falsely 409
+      // instead of replaying (idempotency determinism, ADR-0022).
+      movementDate: canonicalClientDate(input.movementDate),
       reason,
       referenceType: reference.referenceType,
       referenceId: reference.referenceId,
@@ -335,20 +346,26 @@ export class InventoryMovementsService {
    * than introducing a new untracked one.
    */
   async reverseMovement(
+    organizationId: string,
     id: string,
     input: ReverseMovementInput,
   ): Promise<InventoryMovementDto> {
     await this.authorization.requireAllPermissions([
       MOVEMENT_PERMISSIONS.REVERSE,
     ]);
+    this.organizations.assertOrganizationInScope(organizationId);
     const operationKey = requireOperationKey(input.operationKey);
     const original = await this.movements.findById(id);
-    if (original === null) throw AppException.notFound('Movement', id);
+    if (original === null || original.organizationId !== organizationId) {
+      throw AppException.notFound('Movement', id);
+    }
 
     const movementDate = input.movementDate ?? new Date();
     const requestHash = buildRequestHash('movement_reversal', {
       movementId: original.id,
-      movementDate: movementDate.toISOString(),
+      // Same determinism rule as posting: hash the client date intent, never
+      // the server's defaulted clock (a dateless retry must replay).
+      movementDate: canonicalClientDate(input.movementDate),
     });
     const replay = await this.replayOrReject(
       original.organizationId,

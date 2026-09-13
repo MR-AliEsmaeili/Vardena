@@ -129,11 +129,16 @@ export class EmployeesService {
     );
   }
 
-  async getEmployee(id: string): Promise<EmployeeDto> {
+  async getEmployee(
+    organizationId: string,
+    id: string,
+  ): Promise<EmployeeDto> {
     await this.authorization.requireAllPermissions([
       EMPLOYEE_PERMISSIONS.VIEW,
     ]);
-    return toEmployeeDto(await this.mustFind(id));
+    return toEmployeeDto(
+      await this.mustFindInOrganization(organizationId, id),
+    );
   }
 
   async createEmployee(input: CreateEmployeeInput): Promise<EmployeeDto> {
@@ -217,11 +222,12 @@ export class EmployeesService {
   }
 
   async updateEmployee(
+    organizationId: string,
     id: string,
     input: UpdateEmployeeInput,
   ): Promise<EmployeeDto> {
     await this.authorization.requireAllPermissions([EMPLOYEE_PERMISSIONS.EDIT]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
 
     const employeeCode =
       input.employeeCode === undefined
@@ -307,12 +313,28 @@ export class EmployeesService {
     return toEmployeeDto(updated);
   }
 
-  async enableEmployee(id: string): Promise<EmployeeDto> {
-    return this.setActive(id, true, EMPLOYEE_PERMISSIONS.ENABLE);
+  async enableEmployee(
+    organizationId: string,
+    id: string,
+  ): Promise<EmployeeDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      true,
+      EMPLOYEE_PERMISSIONS.ENABLE,
+    );
   }
 
-  async disableEmployee(id: string): Promise<EmployeeDto> {
-    return this.setActive(id, false, EMPLOYEE_PERMISSIONS.DISABLE);
+  async disableEmployee(
+    organizationId: string,
+    id: string,
+  ): Promise<EmployeeDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      false,
+      EMPLOYEE_PERMISSIONS.DISABLE,
+    );
   }
 
   /** Reference resolution for future modules (documents, approvals). */
@@ -334,12 +356,13 @@ export class EmployeesService {
   // ---- internals ----------------------------------------------------------
 
   private async setActive(
+    organizationId: string,
     id: string,
     isActive: boolean,
     permission: string,
   ): Promise<EmployeeDto> {
     await this.authorization.requireAllPermissions([permission]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     if (current.isActive === isActive) return toEmployeeDto(current);
 
     const updated = await this.repository.update(id, {
@@ -362,9 +385,15 @@ export class EmployeesService {
     return toEmployeeDto(updated);
   }
 
-  private async mustFind(id: string): Promise<Employee> {
+  private async mustFindInOrganization(
+    organizationId: string,
+    id: string,
+  ): Promise<Employee> {
+    this.organizations.assertOrganizationInScope(organizationId);
     const employee = await this.repository.findById(id);
-    if (employee === null) throw AppException.notFound('Employee', id);
+    if (employee === null || employee.organizationId !== organizationId) {
+      throw AppException.notFound('Employee', id);
+    }
     return employee;
   }
 }
