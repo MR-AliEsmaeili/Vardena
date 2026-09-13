@@ -160,8 +160,12 @@ describe('resolveVersionAt', () => {
   ];
 
   it('returns the version in force at the instant', () => {
-    expect(resolveVersionAt(versions, D('2026-02-15T00:00:00Z'))?.id).toBe('v2');
-    expect(resolveVersionAt(versions, D('2027-01-01T00:00:00Z'))?.id).toBe('v3');
+    expect(resolveVersionAt(versions, D('2026-02-15T00:00:00Z'))?.id).toBe(
+      'v2',
+    );
+    expect(resolveVersionAt(versions, D('2027-01-01T00:00:00Z'))?.id).toBe(
+      'v3',
+    );
   });
 
   it('treats validFrom as inclusive', () => {
@@ -176,7 +180,9 @@ describe('resolveVersionAt', () => {
   it('returns the historical version for a past date, not the current one', () => {
     // This is the whole point of effective dating: a document dated in January
     // must resolve January's factor.
-    expect(resolveVersionAt(versions, D('2026-01-20T00:00:00Z'))?.id).toBe('v1');
+    expect(resolveVersionAt(versions, D('2026-01-20T00:00:00Z'))?.id).toBe(
+      'v1',
+    );
   });
 
   it('returns null when no version covers the instant', () => {

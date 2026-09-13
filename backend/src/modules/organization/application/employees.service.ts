@@ -103,9 +103,7 @@ export class EmployeesService {
   async listEmployees(
     query: ListEmployeesQuery,
   ): Promise<PaginatedResult<EmployeeDto>> {
-    await this.authorization.requireAllPermissions([
-      EMPLOYEE_PERMISSIONS.VIEW,
-    ]);
+    await this.authorization.requireAllPermissions([EMPLOYEE_PERMISSIONS.VIEW]);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {
@@ -129,16 +127,9 @@ export class EmployeesService {
     );
   }
 
-  async getEmployee(
-    organizationId: string,
-    id: string,
-  ): Promise<EmployeeDto> {
-    await this.authorization.requireAllPermissions([
-      EMPLOYEE_PERMISSIONS.VIEW,
-    ]);
-    return toEmployeeDto(
-      await this.mustFindInOrganization(organizationId, id),
-    );
+  async getEmployee(organizationId: string, id: string): Promise<EmployeeDto> {
+    await this.authorization.requireAllPermissions([EMPLOYEE_PERMISSIONS.VIEW]);
+    return toEmployeeDto(await this.mustFindInOrganization(organizationId, id));
   }
 
   async createEmployee(input: CreateEmployeeInput): Promise<EmployeeDto> {

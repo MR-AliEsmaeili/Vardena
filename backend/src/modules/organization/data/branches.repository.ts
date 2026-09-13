@@ -55,7 +55,12 @@ interface BranchUpdate {
 }
 
 type Client = {
-  branch: MasterDataDelegate<BranchRow, BranchWhere, BranchCreate, BranchUpdate>;
+  branch: MasterDataDelegate<
+    BranchRow,
+    BranchWhere,
+    BranchCreate,
+    BranchUpdate
+  >;
 };
 
 export interface BranchListFilter {

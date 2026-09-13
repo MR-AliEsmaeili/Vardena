@@ -416,21 +416,11 @@ export class ItemsService {
   }
 
   async enableItem(organizationId: string, id: string): Promise<ItemDto> {
-    return this.setActive(
-      organizationId,
-      id,
-      true,
-      ITEM_PERMISSIONS.ENABLE,
-    );
+    return this.setActive(organizationId, id, true, ITEM_PERMISSIONS.ENABLE);
   }
 
   async disableItem(organizationId: string, id: string): Promise<ItemDto> {
-    return this.setActive(
-      organizationId,
-      id,
-      false,
-      ITEM_PERMISSIONS.DISABLE,
-    );
+    return this.setActive(organizationId, id, false, ITEM_PERMISSIONS.DISABLE);
   }
 
   /**

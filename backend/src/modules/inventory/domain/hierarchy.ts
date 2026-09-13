@@ -11,10 +11,7 @@
  * Framework-free (AR-05).
  */
 
-export type HierarchyProblem =
-  | 'self_parent'
-  | 'cross_organization'
-  | 'cycle';
+export type HierarchyProblem = 'self_parent' | 'cross_organization' | 'cycle';
 
 export interface HierarchyCheckInput {
   id: string;

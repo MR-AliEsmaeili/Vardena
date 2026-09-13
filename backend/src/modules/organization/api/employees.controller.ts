@@ -64,9 +64,7 @@ export class EmployeesController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedEmployeeDto) }] },
   })
-  async list(
-    @Query() query: ListEmployeesQueryDto,
-  ): Promise<{
+  async list(@Query() query: ListEmployeesQueryDto): Promise<{
     items: EmployeeResponseDto[];
     total: number;
     page: number;

@@ -253,7 +253,9 @@ export class UnitConversionsRepository {
     close: CloseUpdate;
   }): Promise<UnitConversion> {
     const client = await this.prisma.getClient<
-      Client & { $transaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T> }
+      Client & {
+        $transaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>;
+      }
     >();
     return client.$transaction(async (tx) => {
       const scoped = tx as Client;
@@ -276,7 +278,9 @@ export class UnitConversionsRepository {
     close: CloseUpdate;
   }): Promise<UnitConversion> {
     const client = await this.prisma.getClient<
-      Client & { $transaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T> }
+      Client & {
+        $transaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>;
+      }
     >();
     return client.$transaction(async (tx) => {
       const scoped = tx as Client;

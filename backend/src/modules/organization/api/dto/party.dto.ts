@@ -178,7 +178,8 @@ export class ListPartiesQueryDto extends PageQueryDto {
   isActive?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Case-insensitive substring match on code, display or legal name.',
+    description:
+      'Case-insensitive substring match on code, display or legal name.',
   })
   @IsOptional()
   @IsString()

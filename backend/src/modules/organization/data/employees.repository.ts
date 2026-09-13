@@ -158,7 +158,8 @@ export class EmployeesRepository {
 function toWhere(filter: EmployeeListFilter): EmployeeWhere {
   const where: EmployeeWhere = { organizationId: filter.organizationId };
   if (filter.isActive !== undefined) where.isActive = filter.isActive;
-  if (filter.departmentId !== undefined) where.departmentId = filter.departmentId;
+  if (filter.departmentId !== undefined)
+    where.departmentId = filter.departmentId;
   if (filter.branchId !== undefined) where.branchId = filter.branchId;
   if (filter.search !== undefined && filter.search !== '') {
     where.OR = [

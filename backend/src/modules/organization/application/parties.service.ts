@@ -114,7 +114,9 @@ export class PartiesService {
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
   ) {}
 
-  async listParties(query: ListPartiesQuery): Promise<PaginatedResult<PartyDto>> {
+  async listParties(
+    query: ListPartiesQuery,
+  ): Promise<PaginatedResult<PartyDto>> {
     await this.authorization.requireAllPermissions([PARTY_PERMISSIONS.VIEW]);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
@@ -140,9 +142,7 @@ export class PartiesService {
 
   async getParty(organizationId: string, id: string): Promise<PartyDto> {
     await this.authorization.requireAllPermissions([PARTY_PERMISSIONS.VIEW]);
-    return toPartyDto(
-      await this.mustFindInOrganization(organizationId, id),
-    );
+    return toPartyDto(await this.mustFindInOrganization(organizationId, id));
   }
 
   async createParty(input: CreatePartyInput): Promise<PartyDto> {
@@ -317,21 +317,11 @@ export class PartiesService {
   }
 
   async enableParty(organizationId: string, id: string): Promise<PartyDto> {
-    return this.setActive(
-      organizationId,
-      id,
-      true,
-      PARTY_PERMISSIONS.ENABLE,
-    );
+    return this.setActive(organizationId, id, true, PARTY_PERMISSIONS.ENABLE);
   }
 
   async disableParty(organizationId: string, id: string): Promise<PartyDto> {
-    return this.setActive(
-      organizationId,
-      id,
-      false,
-      PARTY_PERMISSIONS.DISABLE,
-    );
+    return this.setActive(organizationId, id, false, PARTY_PERMISSIONS.DISABLE);
   }
 
   /**
@@ -410,7 +400,9 @@ function requirePartyType(value: string): PartyType {
   return value;
 }
 
-function normalizeOptionalName(value: string | null | undefined): string | null {
+function normalizeOptionalName(
+  value: string | null | undefined,
+): string | null {
   if (value === undefined || value === null) return null;
   const normalized = normalizeName(value);
   return normalized === '' ? null : normalized;

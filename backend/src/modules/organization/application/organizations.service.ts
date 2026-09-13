@@ -106,8 +106,7 @@ export class OrganizationsService {
       // no filter can surface another tenant's row, not even an empty page
       // that hints at existence.
       const org = await this.repository.findById(pin);
-      const visible =
-        org !== null && this.matchesListFilters(org, query);
+      const visible = org !== null && this.matchesListFilters(org, query);
       const pageItems = visible && skip === 0 ? [org] : [];
       return toPaginatedResult(
         pageItems.map(toOrganizationDto),
@@ -351,5 +350,3 @@ export class OrganizationsService {
     return organization;
   }
 }
-
-

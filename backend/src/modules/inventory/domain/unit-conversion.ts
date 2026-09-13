@@ -142,7 +142,10 @@ export function planNewVersion(params: {
 }
 
 /** Half-open overlap test: `[aFrom, aTo) ∩ [bFrom, bTo) ≠ ∅`. */
-export function windowsOverlap(a: ConversionWindow, b: ConversionWindow): boolean {
+export function windowsOverlap(
+  a: ConversionWindow,
+  b: ConversionWindow,
+): boolean {
   const aEnd = a.validTo?.getTime() ?? Number.POSITIVE_INFINITY;
   const bEnd = b.validTo?.getTime() ?? Number.POSITIVE_INFINITY;
   return a.validFrom.getTime() < bEnd && b.validFrom.getTime() < aEnd;

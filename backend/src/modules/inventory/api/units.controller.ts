@@ -64,9 +64,7 @@ export class UnitsController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedUnitDto) }] },
   })
-  async list(
-    @Query() query: ListUnitsQueryDto,
-  ): Promise<{
+  async list(@Query() query: ListUnitsQueryDto): Promise<{
     items: UnitResponseDto[];
     total: number;
     page: number;

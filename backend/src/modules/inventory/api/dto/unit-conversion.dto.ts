@@ -1,12 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import {
-  IsDate,
-  IsIn,
-  IsOptional,
-  IsString,
-  MaxLength,
-} from 'class-validator';
+import { IsDate, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
 
@@ -46,7 +40,10 @@ export class CreateUnitConversionDto {
   @IsUlid()
   fromUnitId!: string;
 
-  @ApiProperty({ format: 'ulid', description: 'Target unit (usually the base unit).' })
+  @ApiProperty({
+    format: 'ulid',
+    description: 'Target unit (usually the base unit).',
+  })
   @IsUlid()
   toUnitId!: string;
 
@@ -87,7 +84,7 @@ export class ListUnitConversionsQueryDto extends PageQueryDto {
     enum: CONVERSION_SCOPES,
     default: 'global',
     description:
-      '`global` lists organization-wide unit-pair conversions; `item` lists one item\'s conversions and requires `itemId`.',
+      "`global` lists organization-wide unit-pair conversions; `item` lists one item's conversions and requires `itemId`.",
   })
   @IsIn(CONVERSION_SCOPES as readonly string[])
   scope!: ConversionScope;

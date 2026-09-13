@@ -258,9 +258,7 @@ export class UnitConversionsService {
       existing,
     });
     if (plan.problem === 'invalid_window') {
-      throw AppException.businessRule(
-        'validTo must be later than validFrom.',
-      );
+      throw AppException.businessRule('validTo must be later than validFrom.');
     }
     if (plan.problem === 'overlapping_version') {
       throw AppException.businessRule(

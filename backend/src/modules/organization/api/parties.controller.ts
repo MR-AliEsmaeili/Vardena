@@ -67,9 +67,7 @@ export class PartiesController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedPartyDto) }] },
   })
-  async list(
-    @Query() query: ListPartiesQueryDto,
-  ): Promise<{
+  async list(@Query() query: ListPartiesQueryDto): Promise<{
     items: PartyResponseDto[];
     total: number;
     page: number;
