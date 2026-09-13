@@ -117,11 +117,16 @@ export class ItemGroupsService {
     );
   }
 
-  async getItemGroup(id: string): Promise<ItemGroupDto> {
+  async getItemGroup(
+    organizationId: string,
+    id: string,
+  ): Promise<ItemGroupDto> {
     await this.authorization.requireAllPermissions([
       ITEM_GROUP_PERMISSIONS.VIEW,
     ]);
-    return toItemGroupDto(await this.mustFind(id));
+    return toItemGroupDto(
+      await this.mustFindInOrganization(organizationId, id),
+    );
   }
 
   async createItemGroup(input: CreateItemGroupInput): Promise<ItemGroupDto> {
@@ -196,13 +201,14 @@ export class ItemGroupsService {
   }
 
   async updateItemGroup(
+    organizationId: string,
     id: string,
     input: UpdateItemGroupInput,
   ): Promise<ItemGroupDto> {
     await this.authorization.requireAllPermissions([
       ITEM_GROUP_PERMISSIONS.EDIT,
     ]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     const code =
       input.code === undefined ? undefined : normalizeCode(input.code);
     const name =
@@ -265,12 +271,28 @@ export class ItemGroupsService {
     return toItemGroupDto(updated);
   }
 
-  async enableItemGroup(id: string): Promise<ItemGroupDto> {
-    return this.setActive(id, true, ITEM_GROUP_PERMISSIONS.ENABLE);
+  async enableItemGroup(
+    organizationId: string,
+    id: string,
+  ): Promise<ItemGroupDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      true,
+      ITEM_GROUP_PERMISSIONS.ENABLE,
+    );
   }
 
-  async disableItemGroup(id: string): Promise<ItemGroupDto> {
-    return this.setActive(id, false, ITEM_GROUP_PERMISSIONS.DISABLE);
+  async disableItemGroup(
+    organizationId: string,
+    id: string,
+  ): Promise<ItemGroupDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      false,
+      ITEM_GROUP_PERMISSIONS.DISABLE,
+    );
   }
 
   /**
@@ -321,12 +343,13 @@ export class ItemGroupsService {
   }
 
   private async setActive(
+    organizationId: string,
     id: string,
     isActive: boolean,
     permission: string,
   ): Promise<ItemGroupDto> {
     await this.authorization.requireAllPermissions([permission]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     if (current.isActive === isActive) return toItemGroupDto(current);
 
     const updated = await this.repository.update(id, {
@@ -349,9 +372,21 @@ export class ItemGroupsService {
     return toItemGroupDto(updated);
   }
 
-  private async mustFind(id: string): Promise<ItemGroup> {
+  /**
+   * Scoped by-id resolution for the API surface (ADR-0021 §4): an item group
+   * in another organization is reported as not found. The deployment pin
+   * (ADR-0025) is enforced here too, so a direct service caller is as bounded
+   * as an HTTP caller.
+   */
+  private async mustFindInOrganization(
+    organizationId: string,
+    id: string,
+  ): Promise<ItemGroup> {
+    this.organizations.assertOrganizationInScope(organizationId);
     const group = await this.repository.findById(id);
-    if (group === null) throw AppException.notFound('ItemGroup', id);
+    if (group === null || group.organizationId !== organizationId) {
+      throw AppException.notFound('ItemGroup', id);
+    }
     return group;
   }
 }

@@ -25,6 +25,7 @@ import {
 import { publishEvent } from './master-data-support.js';
 import {
   buildRequestHash,
+  canonicalClientDate,
   normalizeReference,
   normalizeReason,
   requireOperationKey,
@@ -146,7 +147,10 @@ export class InventoryTransfersService {
       itemId: input.itemId,
       quantity: resolved.quantity,
       unitId: input.unitId,
-      movementDate: movementDate.toISOString(),
+      // Client date intent only: a defaulted `new Date()` must not enter the
+      // hash, or a dateless retry would hash differently and fail to replay
+      // (idempotency determinism, ADR-0022).
+      movementDate: canonicalClientDate(input.movementDate),
       reason,
       referenceType: reference.referenceType,
       referenceId: reference.referenceId,

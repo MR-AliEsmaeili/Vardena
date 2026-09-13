@@ -30,6 +30,7 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { ItemsService } from '../application/items.service.js';
 import { ITEM_PERMISSIONS } from '../domain/inventory-permissions.js';
+import { InventoryScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
   CreateItemDto,
   ItemResponseDto,
@@ -85,8 +86,11 @@ export class ItemsController {
   @ApiOperation({ summary: 'Get one item.' })
   @ApiOkResponse({ type: ItemResponseDto })
   @ApiNotFoundResponse({ description: 'Item does not exist.' })
-  async get(@Param('id') id: string): Promise<ItemResponseDto> {
-    return this.items.getItem(id);
+  async get(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<ItemResponseDto> {
+    return this.items.getItem(scope.organizationId, id);
   }
 
   @Post()
@@ -144,9 +148,10 @@ export class ItemsController {
   })
   async update(
     @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
     @Body() body: UpdateItemDto,
   ): Promise<ItemResponseDto> {
-    return this.items.updateItem(id, {
+    return this.items.updateItem(scope.organizationId, id, {
       code: body.code,
       name: body.name,
       description: body.description,
@@ -171,8 +176,11 @@ export class ItemsController {
   @ApiOperation({ summary: 'Enable a disabled item.' })
   @ApiOkResponse({ type: ItemResponseDto })
   @ApiNotFoundResponse({ description: 'Item does not exist.' })
-  async enable(@Param('id') id: string): Promise<ItemResponseDto> {
-    return this.items.enableItem(id);
+  async enable(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<ItemResponseDto> {
+    return this.items.enableItem(scope.organizationId, id);
   }
 
   @Post(':id/disable')
@@ -185,7 +193,10 @@ export class ItemsController {
   })
   @ApiOkResponse({ type: ItemResponseDto })
   @ApiNotFoundResponse({ description: 'Item does not exist.' })
-  async disable(@Param('id') id: string): Promise<ItemResponseDto> {
-    return this.items.disableItem(id);
+  async disable(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<ItemResponseDto> {
+    return this.items.disableItem(scope.organizationId, id);
   }
 }

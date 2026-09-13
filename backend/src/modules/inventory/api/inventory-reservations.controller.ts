@@ -29,6 +29,7 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { InventoryReservationsService } from '../application/inventory-reservations.service.js';
 import { RESERVATION_PERMISSIONS } from '../domain/inventory-core-permissions.js';
+import { InventoryScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
   CreateInventoryReservationDto,
   InventoryReservationResponseDto,
@@ -80,8 +81,11 @@ export class InventoryReservationsController {
   @ApiOperation({ summary: 'Get one reservation.' })
   @ApiOkResponse({ type: InventoryReservationResponseDto })
   @ApiNotFoundResponse({ description: 'Reservation does not exist.' })
-  async get(@Param('id') id: string): Promise<InventoryReservationResponseDto> {
-    return this.reservations.getReservation(id);
+  async get(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<InventoryReservationResponseDto> {
+    return this.reservations.getReservation(scope.organizationId, id);
   }
 
   @Post()
@@ -139,10 +143,15 @@ export class InventoryReservationsController {
   @ApiBadRequestResponse({ description: 'Validation failed.' })
   async release(
     @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
     @Body() body: ReleaseInventoryReservationDto,
   ): Promise<InventoryReservationResponseDto> {
-    return this.reservations.releaseReservation(id, {
-      operationKey: body.operationKey,
-    });
+    return this.reservations.releaseReservation(
+      scope.organizationId,
+      id,
+      {
+        operationKey: body.operationKey,
+      },
+    );
   }
 }

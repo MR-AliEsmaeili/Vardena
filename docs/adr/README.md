@@ -81,3 +81,7 @@ Keep ADRs **short** (≤ ~60 lines). If it needs more, it belongs in `docs/`.
 | [0019](./0019-document-foundation-and-relations.md) | Document foundation: typed tables, shared mechanics, controlled relations | Proposed |
 | [0020](./0020-organizational-scope-and-master-data.md) | Organizational scope, the Organization module and master-data ownership | Proposed |
 | [0021](./0021-organization-scoped-master-data.md) | Organization-scoped master data (every master-data row carries `organization_id`) | Proposed |
+| [0022](./0022-inventory-core-ledger.md) | Inventory Core — movement ledger, idempotent posting, availability policy | Accepted |
+| [0023](./0023-document-foundation-implementation.md) | Document Foundation implementation — type registry, numbering, relations | Accepted |
+| [0024](./0024-workflow-foundation.md) | Workflow foundation — reusable platform capability | Accepted |
+| [0025](./0025-single-organization-deployment-pin.md) | Optional single-organization deployment pin (`DEPLOYMENT_ORGANIZATION_ID`) | Accepted |

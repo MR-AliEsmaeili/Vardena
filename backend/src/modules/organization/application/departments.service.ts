@@ -115,11 +115,16 @@ export class DepartmentsService {
     );
   }
 
-  async getDepartment(id: string): Promise<DepartmentDto> {
+  async getDepartment(
+    organizationId: string,
+    id: string,
+  ): Promise<DepartmentDto> {
     await this.authorization.requireAllPermissions([
       DEPARTMENT_PERMISSIONS.VIEW,
     ]);
-    return toDepartmentDto(await this.mustFind(id));
+    return toDepartmentDto(
+      await this.mustFindInOrganization(organizationId, id),
+    );
   }
 
   async createDepartment(input: CreateDepartmentInput): Promise<DepartmentDto> {
@@ -197,13 +202,14 @@ export class DepartmentsService {
   }
 
   async updateDepartment(
+    organizationId: string,
     id: string,
     input: UpdateDepartmentInput,
   ): Promise<DepartmentDto> {
     await this.authorization.requireAllPermissions([
       DEPARTMENT_PERMISSIONS.EDIT,
     ]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     const code =
       input.code === undefined ? undefined : normalizeCode(input.code);
     const name =
@@ -272,12 +278,28 @@ export class DepartmentsService {
     return toDepartmentDto(updated);
   }
 
-  async enableDepartment(id: string): Promise<DepartmentDto> {
-    return this.setActive(id, true, DEPARTMENT_PERMISSIONS.ENABLE);
+  async enableDepartment(
+    organizationId: string,
+    id: string,
+  ): Promise<DepartmentDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      true,
+      DEPARTMENT_PERMISSIONS.ENABLE,
+    );
   }
 
-  async disableDepartment(id: string): Promise<DepartmentDto> {
-    return this.setActive(id, false, DEPARTMENT_PERMISSIONS.DISABLE);
+  async disableDepartment(
+    organizationId: string,
+    id: string,
+  ): Promise<DepartmentDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      false,
+      DEPARTMENT_PERMISSIONS.DISABLE,
+    );
   }
 
   /**
@@ -331,12 +353,13 @@ export class DepartmentsService {
   }
 
   private async setActive(
+    organizationId: string,
     id: string,
     isActive: boolean,
     permission: string,
   ): Promise<DepartmentDto> {
     await this.authorization.requireAllPermissions([permission]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     if (current.isActive === isActive) return toDepartmentDto(current);
 
     const updated = await this.repository.update(id, {
@@ -359,9 +382,22 @@ export class DepartmentsService {
     return toDepartmentDto(updated);
   }
 
-  private async mustFind(id: string): Promise<Department> {
+  /**
+   * Scoped by-id resolution for the API surface (ADR-0021 §4): a department
+   * in another organization is reported as not found, so the boundary cannot
+   * be crossed by guessing an id. The deployment organization pin
+   * (ADR-0025) is enforced here too, so direct service callers are bounded
+   * exactly like HTTP callers.
+   */
+  private async mustFindInOrganization(
+    organizationId: string,
+    id: string,
+  ): Promise<Department> {
+    this.organizations.assertOrganizationInScope(organizationId);
     const department = await this.repository.findById(id);
-    if (department === null) throw AppException.notFound('Department', id);
+    if (department === null || department.organizationId !== organizationId) {
+      throw AppException.notFound('Department', id);
+    }
     return department;
   }
 }

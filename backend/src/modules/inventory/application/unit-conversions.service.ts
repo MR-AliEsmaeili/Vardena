@@ -171,14 +171,24 @@ export class UnitConversionsService {
 
   /**
    * Read one version by id. Superseded (closed) versions stay readable — that
-   * is what makes historical interpretation possible.
+   * is what makes historical interpretation possible. Scoped by organization
+   * (ADR-0021 §4): a version owned by another organization answers 404.
    */
-  async getConversion(id: string): Promise<UnitConversionDto> {
+  async getConversion(
+    organizationId: string,
+    id: string,
+  ): Promise<UnitConversionDto> {
     await this.authorization.requireAllPermissions([
       UNIT_CONVERSION_PERMISSIONS.VIEW,
     ]);
+    this.organizations.assertOrganizationInScope(organizationId);
     const stored = await this.repository.findStoredById(id);
-    if (stored === null) throw AppException.notFound('UnitConversion', id);
+    if (
+      stored === null ||
+      stored.conversion.organizationId !== organizationId
+    ) {
+      throw AppException.notFound('UnitConversion', id);
+    }
     return toUnitConversionDto(stored.conversion);
   }
 

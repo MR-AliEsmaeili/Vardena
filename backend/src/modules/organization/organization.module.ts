@@ -1,6 +1,8 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { IdentityModule } from '../identity/identity.module.js';
 import { RbacModule } from '../rbac/rbac.module.js';
+import { DeploymentOrganizationScopeGuard } from './application/deployment-scope.guard.js';
 import { OrganizationsRepository } from './data/organizations.repository.js';
 import { BranchesRepository } from './data/branches.repository.js';
 import { DepartmentsRepository } from './data/departments.repository.js';
@@ -60,6 +62,10 @@ import { PartiesController } from './api/parties.controller.js';
     EmployeesService,
     PartiesService,
     OrganizationPermissionRegistration,
+    // Global pin enforcement (ADR-0025): no-op unless
+    // DEPLOYMENT_ORGANIZATION_ID is configured. Registered from the module
+    // that owns organizational scope so every module is confined.
+    { provide: APP_GUARD, useClass: DeploymentOrganizationScopeGuard },
   ],
   exports: [
     OrganizationsService,

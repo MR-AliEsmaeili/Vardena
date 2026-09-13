@@ -29,6 +29,7 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { DepartmentsService } from '../application/departments.service.js';
 import { DEPARTMENT_PERMISSIONS } from '../domain/organization-permissions.js';
+import { OrganizationScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
   CreateDepartmentDto,
   DepartmentResponseDto,
@@ -79,8 +80,11 @@ export class DepartmentsController {
   @ApiOperation({ summary: 'Get one department.' })
   @ApiOkResponse({ type: DepartmentResponseDto })
   @ApiNotFoundResponse({ description: 'Department does not exist.' })
-  async get(@Param('id') id: string): Promise<DepartmentResponseDto> {
-    return this.departments.getDepartment(id);
+  async get(
+    @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
+  ): Promise<DepartmentResponseDto> {
+    return this.departments.getDepartment(scope.organizationId, id);
   }
 
   @Post()
@@ -119,9 +123,10 @@ export class DepartmentsController {
   })
   async update(
     @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
     @Body() body: UpdateDepartmentDto,
   ): Promise<DepartmentResponseDto> {
-    return this.departments.updateDepartment(id, {
+    return this.departments.updateDepartment(scope.organizationId, id, {
       parentDepartmentId: body.parentDepartmentId,
       code: body.code,
       name: body.name,
@@ -135,8 +140,11 @@ export class DepartmentsController {
   @ApiOperation({ summary: 'Enable a disabled department.' })
   @ApiOkResponse({ type: DepartmentResponseDto })
   @ApiNotFoundResponse({ description: 'Department does not exist.' })
-  async enable(@Param('id') id: string): Promise<DepartmentResponseDto> {
-    return this.departments.enableDepartment(id);
+  async enable(
+    @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
+  ): Promise<DepartmentResponseDto> {
+    return this.departments.enableDepartment(scope.organizationId, id);
   }
 
   @Post(':id/disable')
@@ -149,7 +157,10 @@ export class DepartmentsController {
   })
   @ApiOkResponse({ type: DepartmentResponseDto })
   @ApiNotFoundResponse({ description: 'Department does not exist.' })
-  async disable(@Param('id') id: string): Promise<DepartmentResponseDto> {
-    return this.departments.disableDepartment(id);
+  async disable(
+    @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
+  ): Promise<DepartmentResponseDto> {
+    return this.departments.disableDepartment(scope.organizationId, id);
   }
 }

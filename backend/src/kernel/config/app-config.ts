@@ -70,6 +70,12 @@ export interface AppConfig {
   trustProxy: boolean;
   rateLimit: RateLimitConfig;
   auth: AuthConfig;
+  /**
+   * The single organization this deployment is confined to, or `null` when no
+   * deployment pin is configured (ADR-0025). When set, every request that
+   * names an organization must name this one; any other id answers 404.
+   */
+  deploymentOrganizationId: string | null;
 }
 
 const NODE_ENVS: readonly NodeEnv[] = ['development', 'test', 'production'];
@@ -157,6 +163,30 @@ function parseDatabaseUrl(
   if (!value.startsWith('postgresql://') && !value.startsWith('postgres://')) {
     errors.push('DATABASE_URL must be a postgresql:// connection string.');
     return undefined;
+  }
+  return value;
+}
+
+/**
+ * Optional deployment organization pin (ADR-0025). Empty/unset ⇒ structural
+ * scoping only (ADR-0021): organizationId stays a caller-supplied parameter.
+ * Set ⇒ every request that names an organization must name this one.
+ * Kept inline (no import from kernel/ids) so config validation stays
+ * dependency-free and can run before anything else boots.
+ */
+const ULID_PATTERN = /^[0-9A-HJKMNP-TV-Z]{26}$/i;
+
+function parseDeploymentOrganizationId(
+  raw: string | undefined,
+  errors: string[],
+): string | null {
+  if (raw === undefined || raw.trim() === '') return null;
+  const value = raw.trim();
+  if (!ULID_PATTERN.test(value)) {
+    errors.push(
+      'DEPLOYMENT_ORGANIZATION_ID must be a valid ULID when set (got an invalid value).',
+    );
+    return null;
   }
   return value;
 }
@@ -250,6 +280,11 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       errors,
     ) ?? 10; // 10 attempts per window
 
+  const deploymentOrganizationId = parseDeploymentOrganizationId(
+    env['DEPLOYMENT_ORGANIZATION_ID'],
+    errors,
+  );
+
   if (errors.length > 0) {
     throw new Error(
       `Invalid configuration:\n${errors.map((e) => `  - ${e}`).join('\n')}`,
@@ -276,5 +311,6 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       sessionAbsoluteTimeoutMs: absoluteTimeoutMs,
       loginRateLimit: { windowMs: loginWindowMs, max: loginMax },
     },
+    deploymentOrganizationId,
   };
 }

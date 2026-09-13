@@ -29,6 +29,7 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { UnitsService } from '../application/units.service.js';
 import { UNIT_PERMISSIONS } from '../domain/inventory-permissions.js';
+import { InventoryScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
   CreateUnitDto,
   ListUnitsQueryDto,
@@ -80,8 +81,11 @@ export class UnitsController {
   @ApiOperation({ summary: 'Get one unit.' })
   @ApiOkResponse({ type: UnitResponseDto })
   @ApiNotFoundResponse({ description: 'Unit does not exist.' })
-  async get(@Param('id') id: string): Promise<UnitResponseDto> {
-    return this.units.getUnit(id);
+  async get(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<UnitResponseDto> {
+    return this.units.getUnit(scope.organizationId, id);
   }
 
   @Post()
@@ -113,9 +117,10 @@ export class UnitsController {
   })
   async update(
     @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
     @Body() body: UpdateUnitDto,
   ): Promise<UnitResponseDto> {
-    return this.units.updateUnit(id, {
+    return this.units.updateUnit(scope.organizationId, id, {
       code: body.code,
       name: body.name,
       symbol: body.symbol,
@@ -129,8 +134,11 @@ export class UnitsController {
   @ApiOperation({ summary: 'Enable a disabled unit.' })
   @ApiOkResponse({ type: UnitResponseDto })
   @ApiNotFoundResponse({ description: 'Unit does not exist.' })
-  async enable(@Param('id') id: string): Promise<UnitResponseDto> {
-    return this.units.enableUnit(id);
+  async enable(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<UnitResponseDto> {
+    return this.units.enableUnit(scope.organizationId, id);
   }
 
   @Post(':id/disable')
@@ -143,7 +151,10 @@ export class UnitsController {
   })
   @ApiOkResponse({ type: UnitResponseDto })
   @ApiNotFoundResponse({ description: 'Unit does not exist.' })
-  async disable(@Param('id') id: string): Promise<UnitResponseDto> {
-    return this.units.disableUnit(id);
+  async disable(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<UnitResponseDto> {
+    return this.units.disableUnit(scope.organizationId, id);
   }
 }

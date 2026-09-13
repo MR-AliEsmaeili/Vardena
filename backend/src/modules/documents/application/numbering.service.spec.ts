@@ -8,6 +8,7 @@ import { generateId } from '../../../kernel/ids/ulid.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { createMasterDataStores } from '../../../../test/support/master-data-repositories.js';
+import { UNPINNED_APP_CONFIG } from '../../../../test/support/app-config.js';
 import {
   createDocumentStores,
   type DocumentStores,
@@ -72,6 +73,7 @@ async function buildFixture(): Promise<Fixture> {
     authorization,
     loggerStub(),
     bus,
+    UNPINNED_APP_CONFIG,
   );
   const registry = new DocumentTypeRegistry();
   registry.register([

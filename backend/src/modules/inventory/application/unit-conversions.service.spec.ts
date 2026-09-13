@@ -5,6 +5,7 @@ import {
 } from '../../../kernel/events/domain-event-bus.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { createMasterDataStores } from '../../../../test/support/master-data-repositories.js';
+import { UNPINNED_APP_CONFIG } from '../../../../test/support/app-config.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { UnitsService } from './units.service.js';
@@ -69,6 +70,7 @@ async function buildFixture(): Promise<Fixture> {
     authorization,
     loggerStub(),
     bus,
+    UNPINNED_APP_CONFIG,
   );
   const units = new UnitsService(
     stores.units,
@@ -254,7 +256,7 @@ describe('UnitConversionsService', () => {
     });
 
     // The old version is CLOSED, not deleted and not overwritten.
-    const closed = await fixture.conversions.getConversion(first.id);
+    const closed = await fixture.conversions.getConversion(fixture.organizationId, first.id);
     expect(closed.validTo).toBe(FEB.toISOString());
     expect(closed.factor).toBe('12');
 
@@ -556,7 +558,7 @@ describe('UnitConversionsService', () => {
       validTo: null,
     });
 
-    const historical = await fixture.conversions.getConversion(first.id);
+    const historical = await fixture.conversions.getConversion(fixture.organizationId, first.id);
     expect(historical.factor).toBe('12');
     expect(historical.validTo).toBe(FEB.toISOString());
   });
@@ -571,13 +573,13 @@ describe('UnitConversionsService', () => {
       validFrom: JAN,
       validTo: null,
     });
-    const fetched = await fixture.conversions.getConversion(itemConversion.id);
+    const fetched = await fixture.conversions.getConversion(fixture.organizationId, itemConversion.id);
     expect(fetched.itemId).toBe(fixture.itemId);
   });
 
   it('reports an unknown conversion id as not found', async () => {
     await expect(
-      fixture.conversions.getConversion('01NONEXISTENTCONVERSION000AA'),
+      fixture.conversions.getConversion(fixture.organizationId, '01NONEXISTENTCONVERSION000AA'),
     ).rejects.toMatchObject({ code: 'EntityNotFound' });
   });
 });

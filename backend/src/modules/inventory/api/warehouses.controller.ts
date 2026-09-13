@@ -29,6 +29,7 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { WarehousesService } from '../application/warehouses.service.js';
 import { WAREHOUSE_PERMISSIONS } from '../domain/inventory-permissions.js';
+import { InventoryScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
   CreateWarehouseDto,
   ListWarehousesQueryDto,
@@ -78,8 +79,11 @@ export class WarehousesController {
   @ApiOperation({ summary: 'Get one warehouse.' })
   @ApiOkResponse({ type: WarehouseResponseDto })
   @ApiNotFoundResponse({ description: 'Warehouse does not exist.' })
-  async get(@Param('id') id: string): Promise<WarehouseResponseDto> {
-    return this.warehouses.getWarehouse(id);
+  async get(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<WarehouseResponseDto> {
+    return this.warehouses.getWarehouse(scope.organizationId, id);
   }
 
   @Post()
@@ -120,9 +124,10 @@ export class WarehousesController {
   })
   async update(
     @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
     @Body() body: UpdateWarehouseDto,
   ): Promise<WarehouseResponseDto> {
-    return this.warehouses.updateWarehouse(id, {
+    return this.warehouses.updateWarehouse(scope.organizationId, id, {
       branchId: body.branchId,
       code: body.code,
       name: body.name,
@@ -137,8 +142,11 @@ export class WarehousesController {
   @ApiOperation({ summary: 'Enable a disabled warehouse.' })
   @ApiOkResponse({ type: WarehouseResponseDto })
   @ApiNotFoundResponse({ description: 'Warehouse does not exist.' })
-  async enable(@Param('id') id: string): Promise<WarehouseResponseDto> {
-    return this.warehouses.enableWarehouse(id);
+  async enable(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<WarehouseResponseDto> {
+    return this.warehouses.enableWarehouse(scope.organizationId, id);
   }
 
   @Post(':id/disable')
@@ -151,7 +159,10 @@ export class WarehousesController {
   })
   @ApiOkResponse({ type: WarehouseResponseDto })
   @ApiNotFoundResponse({ description: 'Warehouse does not exist.' })
-  async disable(@Param('id') id: string): Promise<WarehouseResponseDto> {
-    return this.warehouses.disableWarehouse(id);
+  async disable(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<WarehouseResponseDto> {
+    return this.warehouses.disableWarehouse(scope.organizationId, id);
   }
 }

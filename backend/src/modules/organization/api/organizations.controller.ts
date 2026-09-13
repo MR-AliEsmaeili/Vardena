@@ -28,6 +28,7 @@ import { AuthGuard } from '../../identity/application/auth.guard.js';
 import { AuthorizationGuard } from '../../rbac/application/authorization.guard.js';
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { OrganizationsService } from '../application/organizations.service.js';
+import { DeploymentOrganizationRoot } from '../application/deployment-scope.decorator.js';
 import { ORGANIZATION_PERMISSIONS } from '../domain/organization-permissions.js';
 import {
   CreateOrganizationDto,
@@ -84,6 +85,7 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Get one organization.' })
   @ApiOkResponse({ type: OrganizationResponseDto })
   @ApiNotFoundResponse({ description: 'Organization does not exist.' })
+  @DeploymentOrganizationRoot()
   async get(@Param('id') id: string): Promise<OrganizationResponseDto> {
     return this.organizations.getOrganization(id);
   }
@@ -111,6 +113,7 @@ export class OrganizationsController {
   @ApiOkResponse({ type: OrganizationResponseDto })
   @ApiNotFoundResponse({ description: 'Organization does not exist.' })
   @ApiConflictResponse({ description: 'Organization code already exists.' })
+  @DeploymentOrganizationRoot()
   async update(
     @Param('id') id: string,
     @Body() body: UpdateOrganizationDto,
@@ -128,6 +131,7 @@ export class OrganizationsController {
   @ApiOperation({ summary: 'Enable a disabled organization.' })
   @ApiOkResponse({ type: OrganizationResponseDto })
   @ApiNotFoundResponse({ description: 'Organization does not exist.' })
+  @DeploymentOrganizationRoot()
   async enable(@Param('id') id: string): Promise<OrganizationResponseDto> {
     return this.organizations.enableOrganization(id);
   }
@@ -142,6 +146,7 @@ export class OrganizationsController {
   })
   @ApiOkResponse({ type: OrganizationResponseDto })
   @ApiNotFoundResponse({ description: 'Organization does not exist.' })
+  @DeploymentOrganizationRoot()
   async disable(@Param('id') id: string): Promise<OrganizationResponseDto> {
     return this.organizations.disableOrganization(id);
   }

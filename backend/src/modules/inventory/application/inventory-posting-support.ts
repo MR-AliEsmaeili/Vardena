@@ -199,12 +199,30 @@ export async function resolveEnteredToBase(input: {
 }
 
 /**
+ * Canonical form of the CLIENT-SUPPLIED business date for idempotency
+ * hashing: the supplied instant as an ISO string, or an explicit `null` when
+ * the client omitted the date.
+ *
+ * The omission MUST be hashed as `null`, never as the server's effective
+ * `new Date()`. Postings without a business date default it to the first
+ * attempt's clock, but a retry is a different HTTP request milliseconds
+ * later: hashing that clock would make every dateless retry hash differently
+ * and turn the replay into a false `409` — the exact double-posting failure
+ * idempotency keys exist to prevent. The stored row keeps the first attempt's
+ * effective date; only the client's INTENT enters the hash.
+ */
+export function canonicalClientDate(value: Date | undefined): string | null {
+  return value === undefined ? null : value.toISOString();
+}
+
+/**
  * sha256 over the canonical request payload. The payloads are built with
  * fixed key order and canonical values (trimmed strings, ISO instants,
  * canonical decimals, explicit nulls), so two submissions of one logical
  * operation hash identically while any material difference changes the hash.
- * Generated ids (movement/transfer ids) are NEVER part of the hash — a retry
- * generates fresh ones, and they must not break the match.
+ * Generated ids (movement/transfer ids) and server-generated clocks are NEVER
+ * part of the hash — a retry generates fresh ones, and they must not break
+ * the match.
  */
 export function buildRequestHash(
   operation: InventoryOperationKind,

@@ -126,11 +126,16 @@ export class WarehousesService {
     );
   }
 
-  async getWarehouse(id: string): Promise<WarehouseDto> {
+  async getWarehouse(
+    organizationId: string,
+    id: string,
+  ): Promise<WarehouseDto> {
     await this.authorization.requireAllPermissions([
       WAREHOUSE_PERMISSIONS.VIEW,
     ]);
-    return toWarehouseDto(await this.mustFind(id));
+    return toWarehouseDto(
+      await this.mustFindInOrganization(organizationId, id),
+    );
   }
 
   async createWarehouse(input: CreateWarehouseInput): Promise<WarehouseDto> {
@@ -205,13 +210,14 @@ export class WarehousesService {
   }
 
   async updateWarehouse(
+    organizationId: string,
     id: string,
     input: UpdateWarehouseInput,
   ): Promise<WarehouseDto> {
     await this.authorization.requireAllPermissions([
       WAREHOUSE_PERMISSIONS.EDIT,
     ]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     const code =
       input.code === undefined ? undefined : normalizeCode(input.code);
     const name =
@@ -278,12 +284,28 @@ export class WarehousesService {
     return toWarehouseDto(updated);
   }
 
-  async enableWarehouse(id: string): Promise<WarehouseDto> {
-    return this.setActive(id, true, WAREHOUSE_PERMISSIONS.ENABLE);
+  async enableWarehouse(
+    organizationId: string,
+    id: string,
+  ): Promise<WarehouseDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      true,
+      WAREHOUSE_PERMISSIONS.ENABLE,
+    );
   }
 
-  async disableWarehouse(id: string): Promise<WarehouseDto> {
-    return this.setActive(id, false, WAREHOUSE_PERMISSIONS.DISABLE);
+  async disableWarehouse(
+    organizationId: string,
+    id: string,
+  ): Promise<WarehouseDto> {
+    return this.setActive(
+      organizationId,
+      id,
+      false,
+      WAREHOUSE_PERMISSIONS.DISABLE,
+    );
   }
 
   /**
@@ -308,12 +330,13 @@ export class WarehousesService {
   // ---- internals ----------------------------------------------------------
 
   private async setActive(
+    organizationId: string,
     id: string,
     isActive: boolean,
     permission: string,
   ): Promise<WarehouseDto> {
     await this.authorization.requireAllPermissions([permission]);
-    const current = await this.mustFind(id);
+    const current = await this.mustFindInOrganization(organizationId, id);
     if (current.isActive === isActive) return toWarehouseDto(current);
 
     // Freeze guard (ADR-0022): disabling blocks new movements, so disabling a
@@ -344,9 +367,21 @@ export class WarehousesService {
     return toWarehouseDto(updated);
   }
 
-  private async mustFind(id: string): Promise<Warehouse> {
+  /**
+   * Scoped by-id resolution for the API surface (ADR-0021 §4): a warehouse in
+   * another organization is reported as not found. The deployment pin
+   * (ADR-0025) is enforced here too, so a direct service caller is as bounded
+   * as an HTTP caller.
+   */
+  private async mustFindInOrganization(
+    organizationId: string,
+    id: string,
+  ): Promise<Warehouse> {
+    this.organizations.assertOrganizationInScope(organizationId);
     const warehouse = await this.repository.findById(id);
-    if (warehouse === null) throw AppException.notFound('Warehouse', id);
+    if (warehouse === null || warehouse.organizationId !== organizationId) {
+      throw AppException.notFound('Warehouse', id);
+    }
     return warehouse;
   }
 }

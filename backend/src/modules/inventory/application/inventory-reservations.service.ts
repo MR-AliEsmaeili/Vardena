@@ -137,12 +137,19 @@ export class InventoryReservationsService {
     );
   }
 
-  async getReservation(id: string): Promise<InventoryReservationDto> {
+  async getReservation(
+    organizationId: string,
+    id: string,
+  ): Promise<InventoryReservationDto> {
     await this.authorization.requireAllPermissions([
       RESERVATION_PERMISSIONS.VIEW,
     ]);
+    this.organizations.assertOrganizationInScope(organizationId);
     const reservation = await this.reservations.findById(id);
-    if (reservation === null) {
+    if (
+      reservation === null ||
+      reservation.organizationId !== organizationId
+    ) {
       throw AppException.notFound('Reservation', id);
     }
     return toInventoryReservationDto(reservation);
@@ -305,15 +312,22 @@ export class InventoryReservationsService {
   }
 
   async releaseReservation(
+    organizationId: string,
     id: string,
     input: ReleaseReservationInput,
   ): Promise<InventoryReservationDto> {
     await this.authorization.requireAllPermissions([
       RESERVATION_PERMISSIONS.RELEASE,
     ]);
+    this.organizations.assertOrganizationInScope(organizationId);
     const operationKey = requireOperationKey(input.operationKey);
     const current = await this.reservations.findById(id);
-    if (current === null) throw AppException.notFound('Reservation', id);
+    if (
+      current === null ||
+      current.organizationId !== organizationId
+    ) {
+      throw AppException.notFound('Reservation', id);
+    }
 
     const requestHash = buildRequestHash('reservation_release', {
       reservationId: current.id,

@@ -37,7 +37,31 @@ describe('loadAppConfig', () => {
         sessionAbsoluteTimeoutMs: 12 * 60 * 60 * 1000,
         loginRateLimit: { windowMs: 15 * 60 * 1000, max: 10 },
       },
+      deploymentOrganizationId: null,
     });
+  });
+
+  it('defaults the deployment organization pin to unset', () => {
+    const config = loadAppConfig({ DATABASE_URL: VALID_DB });
+    expect(config.deploymentOrganizationId).toBeNull();
+  });
+
+  it('accepts a well-formed deployment organization pin (ULID)', () => {
+    const pin = '01M2D8QVMY3ZQ1J5APCH7S5J00';
+    const config = loadAppConfig({
+      DATABASE_URL: VALID_DB,
+      DEPLOYMENT_ORGANIZATION_ID: pin,
+    });
+    expect(config.deploymentOrganizationId).toBe(pin);
+  });
+
+  it('rejects a deployment organization pin that is not a ULID', () => {
+    expect(() =>
+      loadAppConfig({
+        DATABASE_URL: VALID_DB,
+        DEPLOYMENT_ORGANIZATION_ID: 'not-a-ulid',
+      }),
+    ).toThrow(/DEPLOYMENT_ORGANIZATION_ID must be a valid ULID/);
   });
 
   it('applies development defaults', () => {

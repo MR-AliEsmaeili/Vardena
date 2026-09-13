@@ -316,9 +316,13 @@ describe('Organization + Inventory master data (e2e)', () => {
 
   it('journey 1: reads the chain back and lists it with pagination', async () => {
     await root.get(`/api/v1/organizations/${state.orgId}`).expect(200);
-    await root.get(`/api/v1/branches/${state.branchId}`).expect(200);
+    await root
+      .get(`/api/v1/branches/${state.branchId}`)
+      .query({ organizationId: state.orgId })
+      .expect(200);
     await root
       .get(`/api/v1/inventory/warehouses/${state.warehouseId}`)
+      .query({ organizationId: state.orgId })
       .expect(200);
 
     const list = await root
@@ -509,6 +513,7 @@ describe('Organization + Inventory master data (e2e)', () => {
     // The old version is CLOSED, never edited or deleted.
     const historical = await root
       .get(`/api/v1/inventory/unit-conversions/${state.conversionId}`)
+      .query({ organizationId: state.orgId })
       .expect(200);
     expect(historical.body.factor).toBe('12');
     expect(historical.body.validTo).toBe('2026-02-01T00:00:00.000Z');
@@ -742,6 +747,7 @@ describe('Organization + Inventory master data (e2e)', () => {
 
     const res = await root
       .patch(`/api/v1/departments/${state.departmentId}`)
+      .query({ organizationId: state.orgId })
       .send({ parentDepartmentId: child.body.id })
       .expect(422);
     expect(res.body.code).toBe('BusinessRuleViolation');
@@ -831,17 +837,20 @@ describe('Organization + Inventory master data (e2e)', () => {
   it('disables and re-enables through the lifecycle endpoints, never deleting', async () => {
     const disabled = await root
       .post(`/api/v1/inventory/warehouses/${state.warehouseId}/disable`)
+      .query({ organizationId: state.orgId })
       .expect(200);
     expect(disabled.body.isActive).toBe(false);
 
     // Still readable after being disabled — history is never hidden.
     const fetched = await root
       .get(`/api/v1/inventory/warehouses/${state.warehouseId}`)
+      .query({ organizationId: state.orgId })
       .expect(200);
     expect(fetched.body.isActive).toBe(false);
 
     const enabled = await root
       .post(`/api/v1/inventory/warehouses/${state.warehouseId}/enable`)
+      .query({ organizationId: state.orgId })
       .expect(200);
     expect(enabled.body.isActive).toBe(true);
   });
@@ -864,6 +873,7 @@ describe('Organization + Inventory master data (e2e)', () => {
     // The row survived all of those attempts.
     const still = await root
       .get(`/api/v1/inventory/items/${state.itemId}`)
+      .query({ organizationId: state.orgId })
       .expect(200);
     expect(still.body.code).toBe('ITM-0001');
   });

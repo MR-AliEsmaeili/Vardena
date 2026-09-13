@@ -27,6 +27,7 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { UnitConversionsService } from '../application/unit-conversions.service.js';
 import { UNIT_CONVERSION_PERMISSIONS } from '../domain/inventory-permissions.js';
+import { InventoryScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
   CreateUnitConversionDto,
   ListUnitConversionsQueryDto,
@@ -115,8 +116,11 @@ export class UnitConversionsController {
   })
   @ApiOkResponse({ type: UnitConversionResponseDto })
   @ApiNotFoundResponse({ description: 'Conversion version does not exist.' })
-  async get(@Param('id') id: string): Promise<UnitConversionResponseDto> {
-    return this.unitConversions.getConversion(id);
+  async get(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<UnitConversionResponseDto> {
+    return this.unitConversions.getConversion(scope.organizationId, id);
   }
 
   @Post()

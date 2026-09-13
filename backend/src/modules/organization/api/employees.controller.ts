@@ -29,6 +29,7 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { EmployeesService } from '../application/employees.service.js';
 import { EMPLOYEE_PERMISSIONS } from '../domain/organization-permissions.js';
+import { OrganizationScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
   CreateEmployeeDto,
   EmployeeResponseDto,
@@ -80,8 +81,11 @@ export class EmployeesController {
   @ApiOperation({ summary: 'Get one employee.' })
   @ApiOkResponse({ type: EmployeeResponseDto })
   @ApiNotFoundResponse({ description: 'Employee does not exist.' })
-  async get(@Param('id') id: string): Promise<EmployeeResponseDto> {
-    return this.employees.getEmployee(id);
+  async get(
+    @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
+  ): Promise<EmployeeResponseDto> {
+    return this.employees.getEmployee(scope.organizationId, id);
   }
 
   @Post()
@@ -115,9 +119,10 @@ export class EmployeesController {
   })
   async update(
     @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
     @Body() body: UpdateEmployeeDto,
   ): Promise<EmployeeResponseDto> {
-    return this.employees.updateEmployee(id, {
+    return this.employees.updateEmployee(scope.organizationId, id, {
       employeeCode: body.employeeCode,
       firstName: body.firstName,
       lastName: body.lastName,
@@ -133,8 +138,11 @@ export class EmployeesController {
   @ApiOperation({ summary: 'Enable a disabled employee.' })
   @ApiOkResponse({ type: EmployeeResponseDto })
   @ApiNotFoundResponse({ description: 'Employee does not exist.' })
-  async enable(@Param('id') id: string): Promise<EmployeeResponseDto> {
-    return this.employees.enableEmployee(id);
+  async enable(
+    @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
+  ): Promise<EmployeeResponseDto> {
+    return this.employees.enableEmployee(scope.organizationId, id);
   }
 
   @Post(':id/disable')
@@ -147,7 +155,10 @@ export class EmployeesController {
   })
   @ApiOkResponse({ type: EmployeeResponseDto })
   @ApiNotFoundResponse({ description: 'Employee does not exist.' })
-  async disable(@Param('id') id: string): Promise<EmployeeResponseDto> {
-    return this.employees.disableEmployee(id);
+  async disable(
+    @Param('id') id: string,
+    @Query() scope: OrganizationScopeQueryDto,
+  ): Promise<EmployeeResponseDto> {
+    return this.employees.disableEmployee(scope.organizationId, id);
   }
 }
