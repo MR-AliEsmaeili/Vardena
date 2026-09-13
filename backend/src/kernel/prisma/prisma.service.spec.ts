@@ -4,6 +4,26 @@ import { loadAppConfig } from '../config/app-config.js';
 import type { JsonLogger } from '../logging/json-logger.service.js';
 import { PrismaService, safeDatabaseLabel } from './prisma.service.js';
 
+// Hermeticity: unit tests must pass identically before AND after
+// `prisma generate`. The real generated client overwrites
+// src/generated/prisma/client.ts (see that file's docstring), flipping the
+// "codegen absent" path — so this spec pins the generated module to the
+// absent-codegen shape (constructor throws the actionable error, exactly
+// like the committed stub) instead of importing whatever is on disk.
+// The client-present path is covered by
+// prisma.service.client-present.spec.ts (mocked) and the live-DB e2e suites.
+vi.mock('../../generated/prisma/client.js', () => {
+  const ERROR_MSG =
+    'Prisma Client has not been generated. Run "npm run prisma:generate" from backend/ and retry.';
+  return {
+    PrismaClient: class {
+      constructor(_options: { adapter: unknown }) {
+        throw new Error(ERROR_MSG);
+      }
+    },
+  };
+});
+
 const DB_URL =
   'postgresql://vardena:s3cret@db.internal:5432/vardena?schema=public';
 
