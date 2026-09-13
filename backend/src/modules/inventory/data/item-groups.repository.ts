@@ -140,10 +140,7 @@ export class ItemGroupsRepository {
     return toDomain(await itemGroup.create({ data: input }));
   }
 
-  async update(
-    id: string,
-    patch: ItemGroupUpdate,
-  ): Promise<ItemGroup | null> {
+  async update(id: string, patch: ItemGroupUpdate): Promise<ItemGroup | null> {
     const { itemGroup } = await this.client();
     try {
       return toDomain(await itemGroup.update({ where: { id }, data: patch }));

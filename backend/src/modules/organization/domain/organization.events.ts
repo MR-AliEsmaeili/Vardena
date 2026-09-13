@@ -148,9 +148,18 @@ export const PARTY_UPDATED_EVENT = 'Party.Updated' as const;
 export const PARTY_ENABLED_EVENT = 'Party.Enabled' as const;
 export const PARTY_DISABLED_EVENT = 'Party.Disabled' as const;
 
-export type PartyCreatedEvent = ScopedEvent<typeof PARTY_CREATED_EVENT, 'Party'>;
-export type PartyUpdatedEvent = ScopedEvent<typeof PARTY_UPDATED_EVENT, 'Party'>;
-export type PartyEnabledEvent = ScopedEvent<typeof PARTY_ENABLED_EVENT, 'Party'>;
+export type PartyCreatedEvent = ScopedEvent<
+  typeof PARTY_CREATED_EVENT,
+  'Party'
+>;
+export type PartyUpdatedEvent = ScopedEvent<
+  typeof PARTY_UPDATED_EVENT,
+  'Party'
+>;
+export type PartyEnabledEvent = ScopedEvent<
+  typeof PARTY_ENABLED_EVENT,
+  'Party'
+>;
 export type PartyDisabledEvent = ScopedEvent<
   typeof PARTY_DISABLED_EVENT,
   'Party'

@@ -65,9 +65,7 @@ export class ItemGroupsController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedItemGroupDto) }] },
   })
-  async list(
-    @Query() query: ListItemGroupsQueryDto,
-  ): Promise<{
+  async list(@Query() query: ListItemGroupsQueryDto): Promise<{
     items: ItemGroupResponseDto[];
     total: number;
     page: number;
@@ -128,7 +126,8 @@ export class ItemGroupsController {
     description: 'Item group code already exists in this organization.',
   })
   @ApiUnprocessableEntityResponse({
-    description: 'The requested parent would create a cycle or crosses organizations.',
+    description:
+      'The requested parent would create a cycle or crosses organizations.',
   })
   async update(
     @Param('id') id: string,

@@ -505,9 +505,7 @@ describe('BranchesService organization isolation', () => {
         name: 'Main',
       }),
     );
-    await asSystem(() =>
-      fixture.branches.disableBranch(orgA, branch.id),
-    );
+    await asSystem(() => fixture.branches.disableBranch(orgA, branch.id));
     await expect(
       asSystem(() =>
         fixture.branches.requireUsableBranchInOrganization(branch.id, orgA),

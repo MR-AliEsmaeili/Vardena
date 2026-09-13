@@ -9,10 +9,7 @@ import {
 } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { parseQueryBoolean } from '../../../../kernel/http/parse-query-boolean.js';
-import {
-  MAX_CODE_LENGTH,
-  MAX_NAME_LENGTH,
-} from '../../domain/master-data.js';
+import { MAX_CODE_LENGTH, MAX_NAME_LENGTH } from '../../domain/master-data.js';
 
 /**
  * Organization API contracts (ADR-0014: DTOs are the OpenAPI contract).

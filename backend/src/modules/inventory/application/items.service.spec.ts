@@ -365,7 +365,11 @@ describe('ItemsService update', () => {
   });
 
   it('keeps the stored capability when a flag is omitted', async () => {
-    const updated = await fixture.items.updateItem(fixture.organizationId, itemId, { name: 'Renamed' });
+    const updated = await fixture.items.updateItem(
+      fixture.organizationId,
+      itemId,
+      { name: 'Renamed' },
+    );
     expect(updated.name).toBe('Renamed');
     expect(updated.isStockable).toBe(true);
     expect(updated.isValued).toBe(true);
@@ -373,15 +377,21 @@ describe('ItemsService update', () => {
 
   it('re-checks the invariants on the RESULTING capability set', async () => {
     await expect(
-      fixture.items.updateItem(fixture.organizationId, itemId, { isStockable: false }),
+      fixture.items.updateItem(fixture.organizationId, itemId, {
+        isStockable: false,
+      }),
     ).rejects.toMatchObject({ code: 'BusinessRuleViolation' });
   });
 
   it('accepts a consistent capability change', async () => {
-    const updated = await fixture.items.updateItem(fixture.organizationId, itemId, {
-      isStockable: false,
-      isValued: false,
-    });
+    const updated = await fixture.items.updateItem(
+      fixture.organizationId,
+      itemId,
+      {
+        isStockable: false,
+        isValued: false,
+      },
+    );
     expect(updated.isStockable).toBe(false);
     expect(updated.isValued).toBe(false);
     expect(fixture.events.map((event) => event.type)).toEqual([
@@ -392,18 +402,28 @@ describe('ItemsService update', () => {
   it('does not re-apply the kind defaults on edit', async () => {
     // The stored flags are the truth: editing the name must not resurrect a
     // default the user turned off.
-    await fixture.items.updateItem(fixture.organizationId, itemId, { isSellable: false });
-    const renamed = await fixture.items.updateItem(fixture.organizationId, itemId, {
-      name: 'Renamed again',
+    await fixture.items.updateItem(fixture.organizationId, itemId, {
+      isSellable: false,
     });
+    const renamed = await fixture.items.updateItem(
+      fixture.organizationId,
+      itemId,
+      {
+        name: 'Renamed again',
+      },
+    );
     expect(renamed.isSellable).toBe(false);
   });
 
   it('cannot change itemKind: the update input has no such field', async () => {
     const before = await fixture.items.getItem(fixture.organizationId, itemId);
-    const after = await fixture.items.updateItem(fixture.organizationId, itemId, {
-      name: 'Still a goods item',
-    });
+    const after = await fixture.items.updateItem(
+      fixture.organizationId,
+      itemId,
+      {
+        name: 'Still a goods item',
+      },
+    );
     expect(after.itemKind).toBe(before.itemKind);
     expect(after.itemKind).toBe('goods');
   });
@@ -417,15 +437,21 @@ describe('ItemsService update', () => {
       baseUnitId: fixture.unitId,
     });
     await expect(
-      fixture.items.updateItem(fixture.organizationId, itemId, { code: 'ITM-0101' }),
+      fixture.items.updateItem(fixture.organizationId, itemId, {
+        code: 'ITM-0101',
+      }),
     ).rejects.toMatchObject({ code: 'Conflict' });
   });
 
   it('allows renaming to its own current code', async () => {
-    const updated = await fixture.items.updateItem(fixture.organizationId, itemId, {
-      code: 'ITM-0100',
-      name: 'Unchanged code',
-    });
+    const updated = await fixture.items.updateItem(
+      fixture.organizationId,
+      itemId,
+      {
+        code: 'ITM-0100',
+        name: 'Unchanged code',
+      },
+    );
     expect(updated.code).toBe('ITM-0100');
   });
 
@@ -434,17 +460,25 @@ describe('ItemsService update', () => {
     // edit (master-data-strategy.md §7.4): the item keeps its base unit even
     // after that unit is disabled.
     await fixture.units.disableUnit(fixture.organizationId, fixture.unitId);
-    const renamed = await fixture.items.updateItem(fixture.organizationId, itemId, {
-      name: 'Still ok',
-    });
+    const renamed = await fixture.items.updateItem(
+      fixture.organizationId,
+      itemId,
+      {
+        name: 'Still ok',
+      },
+    );
     expect(renamed.name).toBe('Still ok');
     expect(renamed.baseUnitId).toBe(fixture.unitId);
 
     // Re-asserting the SAME unit is not a change, so it is a no-op rather than
     // an error — nothing about the item's references moved.
-    const reassigned = await fixture.items.updateItem(fixture.organizationId, itemId, {
-      baseUnitId: fixture.unitId,
-    });
+    const reassigned = await fixture.items.updateItem(
+      fixture.organizationId,
+      itemId,
+      {
+        baseUnitId: fixture.unitId,
+      },
+    );
     expect(reassigned.baseUnitId).toBe(fixture.unitId);
 
     // Moving it to a DIFFERENT disabled unit IS a change, and is refused.
@@ -455,7 +489,9 @@ describe('ItemsService update', () => {
     });
     await fixture.units.disableUnit(fixture.organizationId, otherUnit.id);
     await expect(
-      fixture.items.updateItem(fixture.organizationId, itemId, { baseUnitId: otherUnit.id }),
+      fixture.items.updateItem(fixture.organizationId, itemId, {
+        baseUnitId: otherUnit.id,
+      }),
     ).rejects.toMatchObject({ code: 'BusinessRuleViolation' });
   });
 
@@ -465,10 +501,16 @@ describe('ItemsService update', () => {
       code: 'FASTENERS',
       name: 'Fasteners',
     });
-    await fixture.items.updateItem(fixture.organizationId, itemId, { itemGroupId: group.id });
-    const cleared = await fixture.items.updateItem(fixture.organizationId, itemId, {
-      itemGroupId: null,
+    await fixture.items.updateItem(fixture.organizationId, itemId, {
+      itemGroupId: group.id,
     });
+    const cleared = await fixture.items.updateItem(
+      fixture.organizationId,
+      itemId,
+      {
+        itemGroupId: null,
+      },
+    );
     expect(cleared.itemGroupId).toBe(null);
   });
 

@@ -103,7 +103,10 @@ export class PartiesRepository {
     return row === null ? null : toDomain(row);
   }
 
-  async findByCode(organizationId: string, code: string): Promise<Party | null> {
+  async findByCode(
+    organizationId: string,
+    code: string,
+  ): Promise<Party | null> {
     const { party } = await this.client();
     const row = await party.findFirst({ where: { organizationId, code } });
     return row === null ? null : toDomain(row);

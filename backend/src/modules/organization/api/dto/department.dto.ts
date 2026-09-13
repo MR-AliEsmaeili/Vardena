@@ -10,10 +10,7 @@ import {
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { parseQueryBoolean } from '../../../../kernel/http/parse-query-boolean.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
-import {
-  MAX_CODE_LENGTH,
-  MAX_NAME_LENGTH,
-} from '../../domain/master-data.js';
+import { MAX_CODE_LENGTH, MAX_NAME_LENGTH } from '../../domain/master-data.js';
 
 /**
  * Department API contracts.

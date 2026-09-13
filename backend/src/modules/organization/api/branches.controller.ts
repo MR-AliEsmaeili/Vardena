@@ -64,9 +64,7 @@ export class BranchesController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedBranchDto) }] },
   })
-  async list(
-    @Query() query: ListBranchesQueryDto,
-  ): Promise<{
+  async list(@Query() query: ListBranchesQueryDto): Promise<{
     items: BranchResponseDto[];
     total: number;
     page: number;

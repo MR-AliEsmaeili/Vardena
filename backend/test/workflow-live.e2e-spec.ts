@@ -282,9 +282,14 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(
         AppException,
       );
+      // Both publishers pass the 422 pre-check as drafts; the loser fails the
+      // draft re-check inside the serialized transaction, so it surfaces as
+      // 409 Conflict ("re-read before retrying") — ADR-0024 §3: lost races →
+      // 409, same as the transition race above. A SEQUENTIAL republish stays
+      // 422 (workflow.e2e-spec.ts 'freezes its configuration').
       expect(
         ((rejected[0] as PromiseRejectedResult).reason as AppException).code,
-      ).toBe('BusinessRuleViolation');
+      ).toBe('Conflict');
 
       const published = await versions.getVersion(organizationId, version.id);
       expect(published.status).toBe('active');

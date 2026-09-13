@@ -57,9 +57,9 @@ describe('ITEM_KIND_DEFAULTS', () => {
 
   it('fails closed for the `other` kind', () => {
     // An unknown classification must not silently gain behaviour.
-    expect(Object.values(ITEM_KIND_DEFAULTS.other).every((v) => v === false)).toBe(
-      true,
-    );
+    expect(
+      Object.values(ITEM_KIND_DEFAULTS.other).every((v) => v === false),
+    ).toBe(true);
   });
 
   it('never enables lot/serial/expiry by default: §3.3 calls them per-item', () => {
@@ -80,10 +80,12 @@ describe('resolveCapabilities', () => {
   });
 
   it('lets an explicit override win over the kind default', () => {
-    expect(resolveCapabilities('service', { isStockable: true })).toMatchObject({
-      isStockable: true,
-      isSellable: true,
-    });
+    expect(resolveCapabilities('service', { isStockable: true })).toMatchObject(
+      {
+        isStockable: true,
+        isSellable: true,
+      },
+    );
   });
 
   it('treats an explicitly-undefined override as "not stated"', () => {

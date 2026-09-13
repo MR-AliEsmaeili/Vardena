@@ -90,8 +90,8 @@ export class WorkflowAutomationsRepository {
     versionId: string,
     input: WorkflowAutomationBindingCreate,
   ): Promise<WorkflowAutomationBinding> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       await requireDraftVersion(tx, versionId);
       return toDomain(
         await tx.workflowAutomationBinding.create({ data: input }),
@@ -105,8 +105,8 @@ export class WorkflowAutomationsRepository {
     id: string,
     patch: WorkflowAutomationBindingUpdate,
   ): Promise<WorkflowAutomationBinding | null> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       await requireDraftVersion(tx, versionId);
       try {
         return toDomain(
@@ -127,8 +127,8 @@ export class WorkflowAutomationsRepository {
     versionId: string,
     id: string,
   ): Promise<WorkflowAutomationBinding | null> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       await requireDraftVersion(tx, versionId);
       try {
         return toDomain(

@@ -109,9 +109,7 @@ export class UnitsService {
 
   async getUnit(organizationId: string, id: string): Promise<UnitDto> {
     await this.authorization.requireAllPermissions([UNIT_PERMISSIONS.VIEW]);
-    return toUnitDto(
-      await this.mustFindInOrganization(organizationId, id),
-    );
+    return toUnitDto(await this.mustFindInOrganization(organizationId, id));
   }
 
   async createUnit(input: CreateUnitInput): Promise<UnitDto> {
@@ -234,21 +232,11 @@ export class UnitsService {
   }
 
   async enableUnit(organizationId: string, id: string): Promise<UnitDto> {
-    return this.setActive(
-      organizationId,
-      id,
-      true,
-      UNIT_PERMISSIONS.ENABLE,
-    );
+    return this.setActive(organizationId, id, true, UNIT_PERMISSIONS.ENABLE);
   }
 
   async disableUnit(organizationId: string, id: string): Promise<UnitDto> {
-    return this.setActive(
-      organizationId,
-      id,
-      false,
-      UNIT_PERMISSIONS.DISABLE,
-    );
+    return this.setActive(organizationId, id, false, UNIT_PERMISSIONS.DISABLE);
   }
 
   /**

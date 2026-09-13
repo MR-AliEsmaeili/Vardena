@@ -106,10 +106,7 @@ export class BranchesService {
     );
   }
 
-  async getBranch(
-    organizationId: string,
-    id: string,
-  ): Promise<BranchDto> {
+  async getBranch(organizationId: string, id: string): Promise<BranchDto> {
     await this.authorization.requireAllPermissions([BRANCH_PERMISSIONS.VIEW]);
     return toBranchDto(await this.mustFindInOrganization(organizationId, id));
   }
@@ -230,10 +227,7 @@ export class BranchesService {
     return this.setActive(organizationId, id, true, BRANCH_PERMISSIONS.ENABLE);
   }
 
-  async disableBranch(
-    organizationId: string,
-    id: string,
-  ): Promise<BranchDto> {
+  async disableBranch(organizationId: string, id: string): Promise<BranchDto> {
     return this.setActive(
       organizationId,
       id,

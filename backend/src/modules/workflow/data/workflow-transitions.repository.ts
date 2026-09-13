@@ -121,8 +121,8 @@ export class WorkflowTransitionsRepository {
     versionId: string,
     input: WorkflowTransitionCreate,
   ): Promise<WorkflowTransition> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       await requireDraftVersion(tx, versionId);
       return toTransitionDomain(
         await tx.workflowTransition.create({ data: input }),
@@ -136,8 +136,8 @@ export class WorkflowTransitionsRepository {
     id: string,
     patch: WorkflowTransitionUpdate,
   ): Promise<WorkflowTransition | null> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       await requireDraftVersion(tx, versionId);
       try {
         return toTransitionDomain(
@@ -158,8 +158,8 @@ export class WorkflowTransitionsRepository {
     versionId: string,
     id: string,
   ): Promise<WorkflowTransition | null> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       await requireDraftVersion(tx, versionId);
       await tx.workflowAutomationBinding.deleteMany({
         where: { transitionId: id },

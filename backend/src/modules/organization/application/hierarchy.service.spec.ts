@@ -45,7 +45,10 @@ async function buildFixture(): Promise<Fixture> {
   const stores = createMasterDataStores();
   const bus = new DomainEventBus();
   const events: DomainEvent[] = [];
-  const authorization = new AuthorizationService(undefined as never, loggerStub());
+  const authorization = new AuthorizationService(
+    undefined as never,
+    loggerStub(),
+  );
 
   const organizations = new OrganizationsService(
     stores.organizations,
@@ -317,7 +320,7 @@ describe('ItemGroupsService hierarchy', () => {
     expect(children.items.map((group) => group.code)).toEqual(['BOLTS']);
   });
 
-  it('never exposes another organization\'s groups', async () => {
+  it("never exposes another organization's groups", async () => {
     await fixture.itemGroups.createItemGroup({
       organizationId: fixture.orgA,
       code: 'FASTENERS',

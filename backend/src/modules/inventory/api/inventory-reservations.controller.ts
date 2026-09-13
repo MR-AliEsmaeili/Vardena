@@ -146,12 +146,8 @@ export class InventoryReservationsController {
     @Query() scope: InventoryScopeQueryDto,
     @Body() body: ReleaseInventoryReservationDto,
   ): Promise<InventoryReservationResponseDto> {
-    return this.reservations.releaseReservation(
-      scope.organizationId,
-      id,
-      {
-        operationKey: body.operationKey,
-      },
-    );
+    return this.reservations.releaseReservation(scope.organizationId, id, {
+      operationKey: body.operationKey,
+    });
   }
 }

@@ -1,0 +1,108 @@
+# Vardena backend CI: quality gates + unit tests + build + e2e (incl. live-DB suites).
+#
+# Pipeline order mirrors backend/README.md "Tests" / "quality gates":
+#   prisma validate -> generate -> lint -> typecheck -> format:check
+#   -> unit -> build -> migrate deploy -> e2e (with VARDENA_TEST_DATABASE_URL)
+#
+# Notes:
+# - npm is upgraded to v11 first: npm 10's resolver crashes on this
+#   dependency graph ("Exit handler never called!" — see backend/README.md
+#   Requirements and backend/Dockerfile).
+# - The job-level DATABASE_URL is intentionally unreachable (same value as
+#   backend/vitest.config.e2e.ts): `prisma generate`/`validate` need the key
+#   present but never connect, unit tests are hermetic, and the non-live e2e
+#   specs assert the deterministic readiness/503 path. Only the
+#   `migrate deploy` step and the live-DB suites (via
+#   VARDENA_TEST_DATABASE_URL) talk to the Postgres service.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: vardena_test
+          POSTGRES_USER: vardena
+          POSTGRES_PASSWORD: vardena_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vardena -d vardena_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://vardena:invalid@127.0.0.1:1/vardena_test
+      VARDENA_TEST_DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Upgrade npm to v11
+        run: npm install -g npm@11
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci --no-audit --no-fund
+
+      - name: Prisma validate
+        working-directory: backend
+        run: npm run prisma:validate
+
+      - name: Prisma generate
+        working-directory: backend
+        run: npm run prisma:generate
+
+      - name: Lint
+        working-directory: backend
+        run: npm run lint
+
+      - name: Typecheck
+        working-directory: backend
+        run: npm run typecheck
+
+      - name: Format check
+        working-directory: backend
+        run: npm run format:check
+
+      - name: Unit tests
+        working-directory: backend
+        run: npm test
+
+      - name: Build
+        working-directory: backend
+        run: npm run build
+
+      - name: Migrate test database
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+        run: npm run prisma:deploy
+
+      - name: E2E tests (incl. live-DB suites)
+        working-directory: backend
+        run: npm run test:e2e

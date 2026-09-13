@@ -60,9 +60,9 @@ describe('findHierarchyProblem', () => {
   });
 
   it('accepts a parent that is a sibling of a descendant but not one itself', () => {
-    expect(
-      findHierarchyProblem(input({ descendantIds: ['a', 'b'] })),
-    ).toBe(null);
+    expect(findHierarchyProblem(input({ descendantIds: ['a', 'b'] }))).toBe(
+      null,
+    );
   });
 
   it('reports self-parenting before a cross-organization parent', () => {
@@ -111,7 +111,11 @@ describe('collectDescendantIds', () => {
   });
 
   it('returns only a branch when the root is an interior node', () => {
-    expect(collectDescendantIds(edges, 'a').sort()).toEqual(['a1', 'a1x', 'a2']);
+    expect(collectDescendantIds(edges, 'a').sort()).toEqual([
+      'a1',
+      'a1x',
+      'a2',
+    ]);
   });
 
   it('returns nothing for a leaf', () => {

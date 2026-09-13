@@ -57,9 +57,7 @@ const PaginatedUnitConversionDto = paginatedResponseOf(
 })
 @Controller({ path: 'inventory/unit-conversions', version: '1' })
 export class UnitConversionsController {
-  constructor(
-    private readonly unitConversions: UnitConversionsService,
-  ) {}
+  constructor(private readonly unitConversions: UnitConversionsService) {}
 
   @Get()
   @UseGuards(AuthGuard, AuthorizationGuard)
@@ -72,9 +70,7 @@ export class UnitConversionsController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedUnitConversionDto) }] },
   })
-  async list(
-    @Query() query: ListUnitConversionsQueryDto,
-  ): Promise<{
+  async list(@Query() query: ListUnitConversionsQueryDto): Promise<{
     items: UnitConversionResponseDto[];
     total: number;
     page: number;

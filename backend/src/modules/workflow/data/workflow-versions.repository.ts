@@ -207,8 +207,8 @@ export class WorkflowVersionsRepository {
     version: WorkflowVersion;
     supersededVersionId: string | null;
   } | null> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       const definitionExists = await lockDefinitionRow(tx, input.definitionId);
       if (!definitionExists) return null;
       const locked = await lockVersionRow(tx, input.versionId);

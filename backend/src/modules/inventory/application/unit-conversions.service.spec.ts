@@ -256,7 +256,10 @@ describe('UnitConversionsService', () => {
     });
 
     // The old version is CLOSED, not deleted and not overwritten.
-    const closed = await fixture.conversions.getConversion(fixture.organizationId, first.id);
+    const closed = await fixture.conversions.getConversion(
+      fixture.organizationId,
+      first.id,
+    );
     expect(closed.validTo).toBe(FEB.toISOString());
     expect(closed.factor).toBe('12');
 
@@ -558,7 +561,10 @@ describe('UnitConversionsService', () => {
       validTo: null,
     });
 
-    const historical = await fixture.conversions.getConversion(fixture.organizationId, first.id);
+    const historical = await fixture.conversions.getConversion(
+      fixture.organizationId,
+      first.id,
+    );
     expect(historical.factor).toBe('12');
     expect(historical.validTo).toBe(FEB.toISOString());
   });
@@ -573,13 +579,19 @@ describe('UnitConversionsService', () => {
       validFrom: JAN,
       validTo: null,
     });
-    const fetched = await fixture.conversions.getConversion(fixture.organizationId, itemConversion.id);
+    const fetched = await fixture.conversions.getConversion(
+      fixture.organizationId,
+      itemConversion.id,
+    );
     expect(fetched.itemId).toBe(fixture.itemId);
   });
 
   it('reports an unknown conversion id as not found', async () => {
     await expect(
-      fixture.conversions.getConversion(fixture.organizationId, '01NONEXISTENTCONVERSION000AA'),
+      fixture.conversions.getConversion(
+        fixture.organizationId,
+        '01NONEXISTENTCONVERSION000AA',
+      ),
     ).rejects.toMatchObject({ code: 'EntityNotFound' });
   });
 });

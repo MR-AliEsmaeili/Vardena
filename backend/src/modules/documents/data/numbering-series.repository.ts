@@ -138,8 +138,8 @@ export class NumberingSeriesRepository {
   async allocate(
     input: AllocateInput,
   ): Promise<{ allocation: NumberingAllocation; lastValue: bigint }> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       const locked = await lockSeriesRow(tx, input.seriesId);
       const next = nextSerialValue(
         locked.lastValue,

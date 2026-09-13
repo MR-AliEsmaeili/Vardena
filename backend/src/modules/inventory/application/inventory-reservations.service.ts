@@ -146,10 +146,7 @@ export class InventoryReservationsService {
     ]);
     this.organizations.assertOrganizationInScope(organizationId);
     const reservation = await this.reservations.findById(id);
-    if (
-      reservation === null ||
-      reservation.organizationId !== organizationId
-    ) {
+    if (reservation === null || reservation.organizationId !== organizationId) {
       throw AppException.notFound('Reservation', id);
     }
     return toInventoryReservationDto(reservation);
@@ -322,10 +319,7 @@ export class InventoryReservationsService {
     this.organizations.assertOrganizationInScope(organizationId);
     const operationKey = requireOperationKey(input.operationKey);
     const current = await this.reservations.findById(id);
-    if (
-      current === null ||
-      current.organizationId !== organizationId
-    ) {
+    if (current === null || current.organizationId !== organizationId) {
       throw AppException.notFound('Reservation', id);
     }
 

@@ -92,8 +92,8 @@ export class WorkflowStatesRepository {
     versionId: string,
     input: WorkflowStateCreate,
   ): Promise<WorkflowState> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       await requireDraftVersion(tx, versionId);
       return toStateDomain(await tx.workflowState.create({ data: input }));
     });
@@ -105,8 +105,8 @@ export class WorkflowStatesRepository {
     id: string,
     patch: WorkflowStateUpdate,
   ): Promise<WorkflowState | null> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       await requireDraftVersion(tx, versionId);
       try {
         return toStateDomain(
@@ -128,8 +128,8 @@ export class WorkflowStatesRepository {
     versionId: string,
     id: string,
   ): Promise<WorkflowState | null> {
-    const { $transaction } = await this.transacting();
-    return $transaction(async (tx) => {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
       await requireDraftVersion(tx, versionId);
       try {
         return toStateDomain(await tx.workflowState.delete({ where: { id } }));

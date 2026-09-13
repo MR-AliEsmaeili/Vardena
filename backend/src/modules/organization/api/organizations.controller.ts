@@ -68,9 +68,7 @@ export class OrganizationsController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedOrganizationDto) }] },
   })
-  async list(
-    @Query() query: ListOrganizationsQueryDto,
-  ): Promise<{
+  async list(@Query() query: ListOrganizationsQueryDto): Promise<{
     items: OrganizationResponseDto[];
     total: number;
     page: number;

@@ -118,10 +118,11 @@ export const WAREHOUSE_PERMISSIONS = {
   DISABLE: WAREHOUSE.DISABLE,
 } as const;
 
-export const INVENTORY_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] = [
-  ...ITEM.definitions,
-  ...ITEM_GROUP.definitions,
-  ...UNIT.definitions,
-  ...UNIT_CONVERSION.definitions,
-  ...WAREHOUSE.definitions,
-];
+export const INVENTORY_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] =
+  [
+    ...ITEM.definitions,
+    ...ITEM_GROUP.definitions,
+    ...UNIT.definitions,
+    ...UNIT_CONVERSION.definitions,
+    ...WAREHOUSE.definitions,
+  ];
