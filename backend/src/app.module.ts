@@ -9,6 +9,7 @@ import { OrganizationModule } from './modules/organization/organization.module.j
 import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { DocumentsModule } from './modules/documents/documents.module.js';
 import { WorkflowModule } from './modules/workflow/workflow.module.js';
+import { AccountingModule } from './modules/accounting/accounting.module.js';
 
 /**
  * API root module. Business modules register here (docs/architecture.md §6),
@@ -26,6 +27,7 @@ import { WorkflowModule } from './modules/workflow/workflow.module.js';
     InventoryModule,
     DocumentsModule,
     WorkflowModule,
+    AccountingModule,
   ],
 })
 export class AppModule {}

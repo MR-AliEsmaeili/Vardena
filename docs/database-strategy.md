@@ -238,7 +238,10 @@ through the module's data layer, never from `api/`.
   data (user profile, item master data) — version checked on update; conflict →
   `Conflict` error with 409.
 - **Pessimistic row locks** inside short transactions for stock balance updates
-  (Inventory) and number sequences — `SELECT … FOR UPDATE` scoped to the row.
+  (Inventory), number sequences, and the Accounting calendar guards — `SELECT …
+  FOR UPDATE` on the parent area/year row inside the module's guarded `data/`
+  transactions (lock order area → year → period, never reversed; the unique
+  indexes stay the backstop for identity races).
 - Journal entries: immutability instead of locking (AR-13).
 - No long-running transactions: anything that waits (external call, user
   confirmation) must have committed or rolled back first (outbox/import pattern).

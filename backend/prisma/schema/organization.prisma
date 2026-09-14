@@ -78,6 +78,13 @@ model Organization {
   workflowApprovals    WorkflowApproval[]
   workflowAutomations  WorkflowAutomationBinding[]
 
+  // Back-relations for the Accounting foundation (Task 10.2, ADR-0026).
+  // Virtual side only — the real FK columns stay
+  // `accounting.*.organization_id`.
+  financialAreas    FinancialArea[]
+  fiscalYears       FiscalYear[]
+  accountingPeriods AccountingPeriod[]
+
   // The organization code is the tenant root's business key: unique
   // deployment-wide (there is no wider scope to be unique within).
   @@unique([code], map: "uq_organizations_code")
