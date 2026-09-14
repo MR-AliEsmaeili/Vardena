@@ -103,19 +103,24 @@ describe.skipIf(DATABASE_URL === undefined)(
 
     afterAll(async () => {
       if (app !== undefined) {
-        // Test-only cleanup through the raw client; the API has no delete
-        // endpoints (OQ-18/OQ-20). Assignments cascade from these rows.
-        const client = await prisma.getClient<{
-          user: { deleteMany: (args: unknown) => Promise<unknown> };
-          role: { deleteMany: (args: unknown) => Promise<unknown> };
-        }>();
-        await client.user.deleteMany({
-          where: { username: { in: [ROOT_USERNAME, ALICE_USERNAME] } },
-        });
-        await client.role.deleteMany({
-          where: { id: { in: [rootRoleId, viewerRoleId] } },
-        });
-        await app.close();
+        try {
+          // Test-only cleanup through the raw client; the API has no delete
+          // endpoints (OQ-18/OQ-20). Assignments cascade from these rows.
+          const client = await prisma.getClient<{
+            user: { deleteMany: (args: unknown) => Promise<unknown> };
+            role: { deleteMany: (args: unknown) => Promise<unknown> };
+          }>();
+          await client.user.deleteMany({
+            where: { username: { in: [ROOT_USERNAME, ALICE_USERNAME] } },
+          });
+          await client.role.deleteMany({
+            where: { id: { in: [rootRoleId, viewerRoleId] } },
+          });
+        } finally {
+          // app.close() owns the Prisma client + pg pool teardown; it must
+          // run even when cleanup fails, or the worker process stays alive.
+          await app.close();
+        }
       }
     }, 60_000);
 

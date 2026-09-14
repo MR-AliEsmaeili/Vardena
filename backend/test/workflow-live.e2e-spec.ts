@@ -167,34 +167,39 @@ describe.skipIf(DATABASE_URL === undefined)(
           };
           organization: { deleteMany: (args: unknown) => Promise<unknown> };
         }>();
-        for (const orgId of [organizationId, otherOrganizationId]) {
-          await client.workflowTransitionHistory.deleteMany({
-            where: { organizationId: orgId },
-          });
-          await client.workflowApproval.deleteMany({
-            where: { organizationId: orgId },
-          });
-          await client.workflowAutomationBinding.deleteMany({
-            where: { organizationId: orgId },
-          });
-          await client.workflowInstance.deleteMany({
-            where: { organizationId: orgId },
-          });
-          await client.workflowTransition.deleteMany({
-            where: { organizationId: orgId },
-          });
-          await client.workflowState.deleteMany({
-            where: { organizationId: orgId },
-          });
-          await client.workflowVersion.deleteMany({
-            where: { organizationId: orgId },
-          });
-          await client.workflowDefinition.deleteMany({
-            where: { organizationId: orgId },
-          });
-          await client.organization.deleteMany({ where: { id: orgId } });
+        try {
+          for (const orgId of [organizationId, otherOrganizationId]) {
+            await client.workflowTransitionHistory.deleteMany({
+              where: { organizationId: orgId },
+            });
+            await client.workflowApproval.deleteMany({
+              where: { organizationId: orgId },
+            });
+            await client.workflowAutomationBinding.deleteMany({
+              where: { organizationId: orgId },
+            });
+            await client.workflowInstance.deleteMany({
+              where: { organizationId: orgId },
+            });
+            await client.workflowTransition.deleteMany({
+              where: { organizationId: orgId },
+            });
+            await client.workflowState.deleteMany({
+              where: { organizationId: orgId },
+            });
+            await client.workflowVersion.deleteMany({
+              where: { organizationId: orgId },
+            });
+            await client.workflowDefinition.deleteMany({
+              where: { organizationId: orgId },
+            });
+            await client.organization.deleteMany({ where: { id: orgId } });
+          }
+        } finally {
+          // app.close() owns the Prisma client + pg pool teardown; it must
+          // run even when cleanup fails, or the worker process stays alive.
+          await app.close();
         }
-        await app.close();
       }
     }, 60_000);
 
