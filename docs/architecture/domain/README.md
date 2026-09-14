@@ -20,7 +20,7 @@ APIs, or screens. The binding implementation order is set by
 | [`document-architecture.md`](./document-architecture.md) | The document foundation, document types, relationships, partial conversion, cancellation/reversal, numbering |
 | [`workflow-architecture.md`](./workflow-architecture.md) | Status vs transition vs permission vs approval vs automation, the minimum viable workflow model, versioning |
 | [`inventory-domain-analysis.md`](./inventory-domain-analysis.md) | Source of truth (movement ledger vs balance), stock balance materialization, lot/serial/expiry, valuation hooks, negative stock |
-| [`accounting-domain-analysis.md`](./accounting-domain-analysis.md) | Chart of accounts options, fiscal calendar, journals, posting/reversal/closing, inventory & sales & purchasing accounting effects (expert-gated) |
+| [`accounting-domain-analysis.md`](./accounting-domain-analysis.md) | Chart of accounts options, fiscal calendar, journals, posting/reversal/closing, inventory & sales & purchasing accounting effects (expert-gated). **Conceptual options only — the binding contract is [`docs/accounting/domain-contract.md`](../../accounting/domain-contract.md)** |
 | [`configurability-architecture.md`](./configurability-architecture.md) | The flexibility layers, configuration storage & versioning, custom fields (JSONB) policy, business-rule categories, reporting implications |
 | [`domain-decisions.md`](./domain-decisions.md) | The decision register: problem, options, pros, cons, recommendation, consequences, expert-validation flag |
 
@@ -42,6 +42,16 @@ APIs, or screens. The binding implementation order is set by
   (OQ-22 … OQ-35). **Unresolved business rules always win**: nothing in this folder
   overrides an open question, and every accounting/tax/legal statement is marked
   *Requires domain-expert validation* (§19 of the blueprint).
+- **Task 10.1 (2026-09-14) moved Accounting from analysis to contract.** The binding
+  Accounting domain contract — bounded context, financial area, fiscal year/period,
+  configurable coding structure, detail dimensions/floating detail, document shape and
+  lifecycle, source-posting contract, numbering, reporting boundary, invariants and
+  implementation gates — lives in
+  [`docs/accounting/domain-contract.md`](../../accounting/domain-contract.md), decided
+  by [ADR-0026](../../adr/0026-accounting-bounded-context.md) (Proposed) and registered
+  as OQ-39 … OQ-43. `accounting-domain-analysis.md` in this folder remains the
+  conceptual options record; where the two differ on structure or ownership, the
+  contract wins.
 
 ## How to read this without reading everything
 

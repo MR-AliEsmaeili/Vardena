@@ -85,3 +85,4 @@ Keep ADRs **short** (≤ ~60 lines). If it needs more, it belongs in `docs/`.
 | [0023](./0023-document-foundation-implementation.md) | Document Foundation implementation — type registry, numbering, relations | Accepted |
 | [0024](./0024-workflow-foundation.md) | Workflow foundation — reusable platform capability | Accepted |
 | [0025](./0025-single-organization-deployment-pin.md) | Optional single-organization deployment pin (`DEPLOYMENT_ORGANIZATION_ID`) | Accepted |
+| [0026](./0026-accounting-bounded-context.md) | Accounting bounded context — module boundary, fiscal-calendar ownership, system-posting contract | Proposed |
