@@ -1,8 +1,9 @@
 # ADR-0026: Accounting Bounded Context — Module Boundary, Fiscal-Calendar Ownership and the System-Posting Contract
 
-- **Status:** Proposed (design decision from Task 10.1 — accept before Task 10.2
-  writes any Accounting schema)
+- **Status:** Accepted (accepted 2026-09-14 — the design decision from Task 10.1,
+  before Task 10.2 writes any Accounting schema)
 - **Date:** 2026-09-14
+- **Accepted:** 2026-09-14
 - **Refines / partially supersedes:** ADR-0020 §2 (fiscal-calendar ownership)
 - **Implements:** nothing yet — this ADR gates the first Accounting migration
 
