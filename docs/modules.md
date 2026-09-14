@@ -18,11 +18,11 @@ published/consumed events, and extension points. Adding a module = new folder pe
 |---|---|---|---|
 | Identity | v1 core | Authentication: login, sessions, password handling | `identity` |
 | Users | v1 core | User records, profiles, enable/disable | `users` |
-| Organization | planned (ADR-0020, Proposed) | Organization structure, fiscal calendar, cross-module configuration, workflow definitions, party master | `organization` |
+| Organization | structure + party master implemented (Task 6); configuration half pending | Organization structure (branches, departments, employees), party master, cross-module configuration (fiscal calendar → Accounting per ADR-0026, numbering → Documents, workflow → Workflow) | `organization` |
 | RBAC | v1 core | Roles, granular permissions, assignments | `rbac` |
 | Audit | v1 core | Append-only audit log of sensitive operations | `audit` |
 | Notifications | v1 core | In-app notifications driven by events | `notifications` |
-| Accounting | v1 core | Chart of accounts, journal entries, periods, ledgers | `accounting` |
+| Accounting | contract only (Task 10.1; ADR-0026 Proposed — nothing implemented) | Financial areas, fiscal years/periods, chart of accounts, accounting documents + lines, posting rules | `accounting` (planned) |
 | Inventory | v1 core | Items, warehouses, stock, receipts/issues/transfers/adjustments | `inventory` |
 | Sales | v1 core | Customers, quotes, sales orders, invoices, returns | `sales` |
 | Purchasing | planned | Suppliers, purchase orders, supplier invoices | `purchasing` |
@@ -104,6 +104,14 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   tax definitions, workflow definitions and custom-field definitions — is **not**
   implemented and still waits on ADR-0020 acceptance and the gate in
   [`architecture/domain/domain-blueprint.md`](./architecture/domain/domain-blueprint.md) §21.
+  Three of those five have since moved out of this module: **numbering series** are
+  implemented by the Documents foundation (ADR-0023), **workflow definitions/versions**
+  by the Workflow foundation (ADR-0024), and the **fiscal calendar** (years, periods)
+  is proposed to move to Accounting by
+  [ADR-0026](./adr/0026-accounting-bounded-context.md) §2 (Proposed — see the
+  Accounting entry). Tax definitions and custom-field definitions remain here, still
+  unimplemented. The "Purpose" bullet below keeps the original ADR-0020 wording on
+  purpose; this note is the correction of record (AG-17).
 - **Owns (Task 6):** schema `organization` — `organizations`, `branches`, `departments`,
   `employees` (minimal reference data), `parties`. Every table carries `organization_id`
   (ADR-0021); business keys are unique per organization; lifecycle is `is_active` only.
@@ -194,24 +202,66 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 - **Write path:** modules emit audit data through the kernel audit port inside
   their business transaction; Audit persists it. Retention/archival = OQ-17.
 
-## Accounting (v1 core)
+## Accounting (v1 core — **contract only, nothing implemented**)
 
-- **Owns:** chart of accounts, journal entries + lines (immutable, AR-13),
-  accounting periods, account balances (materialized), posting rules
-  (**mapping from domain events → journal templates belongs here**).
-- **Consumes:** `InventoryReceipt.Created`, `InventoryIssue.Created`,
-  `StockAdjustment.Created`, `Invoice.Issued`, and (future) purchasing events —
-  each mapped to a journal-entry template defined and owned by Accounting.
-- **API:** accounts CRUD; journal entries list/detail (create only via events or
-  manual journal with permission `Accounting.Journal.Create`); period open/close;
-  ledger & balance inquiries (feeds reporting via module views).
-- **Publishes:** `JournalEntry.Posted`, `AccountingPeriod.Closed`.
-- **Rules:** double-entry; journal entries immutable (correction = reversing
-  entry); posting into a closed period is rejected (behavior detail OQ-11).
-  Accounting journal generation from events is idempotent (dedup on event id,
-  AR-15).
+- **Status:** no schema, no code, no API. Task 10.1 established the binding
+  **Accounting Domain Contract** — [`accounting/domain-contract.md`](./accounting/domain-contract.md)
+  (decisions `AC-D-01…AC-D-35`, invariants `AC-I-01…AC-I-22`, gates §28) — and
+  [ADR-0026](./adr/0026-accounting-bounded-context.md) (**Proposed**, must be
+  accepted before the first Accounting migration). The conceptual options record
+  stays in [`architecture/domain/accounting-domain-analysis.md`](./architecture/domain/accounting-domain-analysis.md).
+- **Owns (per ADR-0026):** financial areas (`حوزه مالی`), **fiscal years and
+  accounting periods**, the coding structure and chart of accounts (one account
+  tree, configurable levels), control-role mappings, detail dimensions/groups/items
+  (floating details), accounting documents + lines + line dimension assignments,
+  posting/finalization/correction, posting rules, the system-posting idempotency
+  ledger and balance projections (rebuildable, never the source of truth).
+- **Fiscal-calendar ownership moved here.** ADR-0020 §2 and the Organization entry
+  below gave the fiscal calendar to Organization; ADR-0026 §2 assigns fiscal
+  years/periods to Accounting (the module that enforces posting eligibility owns the
+  state it depends on — AR-08), following the accepted precedent that numbering went
+  to Documents (ADR-0023) and workflow definitions to Workflow (ADR-0024). Pending
+  acceptance, the contradiction is recorded here rather than silently resolved
+  (AG-17).
+- **Consumes:** inventory/sales/purchasing/treasury facts **only** through the
+  source-posting contract (contract §16.3: scope, financial area, source
+  module/entity/id/operation, `operationKey`, business date, validated payload naming
+  accounts **or control roles**) — never another module's tables (AR-07/AR-16).
+  Event names it will consume are the source modules' own (ADR-0005).
+- **API:** none yet. Planned surface follows the contract: financial areas, fiscal
+  years/periods (+ close/reopen/seal), coding structure, accounts, dimensions/items,
+  documents (+ finalize, reverse, correct, replace), ledger/balance inquiries through
+  Accounting-owned views consumed by Reporting (ADR-0009).
+- **Permissions:** none registered yet. The contract §22 vocabulary is granular
+  (`Accounting.{FinancialArea,FiscalYear,AccountingPeriod,CodingStructure,Account,
+  ControlRole,DetailDimension,DetailItem,Document,PostingRule,YearTransition,Balance,
+  SystemPosting}.*`) — no wildcard, no `Accounting.Journal.Create`-style catch-all,
+  and `Finalize` ≠ `Approve` (OQ-21, OQ-14).
+- **Publishes (planned, refines the catalog rows below):**
+  `AccountingDocument.{Created,Updated,Finalized,Deleted,Reversed,Corrected,Replaced}`,
+  `FiscalYear.{Created,Closed,Reopened,Sealed,Unsealed}`,
+  `AccountingPeriod.{Opened,Closed,Reopened,Sealed}`,
+  `FinancialArea.*`, `Account.*`, `DetailDimension.*`, `DetailItem.*`,
+  `AccountingYearTransition.Executed`, `AccountingPosting.Rejected` — on the existing
+  kernel bus (contract §21). The placeholders `JournalEntry.Posted` /
+  `AccountingPeriod.Closed` in the event catalog are superseded by these names when
+  the module ships.
+- **Rules (contract invariants, not policy):** Σ debit = Σ credit exactly with ≥2
+  lines (AC-I-07/08); `final` documents are structurally immutable and never deleted
+  (AC-I-05/06); corrections are new counter-documents — reversal / correction /
+  replacement / adjustment (AC-I-15); only postable leaf accounts receive lines
+  (AC-I-09); closed/sealed periods and years reject posting (AC-I-04); system posting
+  is idempotent through an Accounting-owned operation ledger (AC-I-12); organization
+  scoping and the 404-not-403 posture are inherited unchanged (AC-I-01/16,
+  ADR-0021/0022/0025). Policy — period/close/reopen rules, coding scheme, posting
+  eligibility defaults, dimension requiredness, correction windows, numbering year
+  components, currency, valuation mappings — stays open: OQ-03/11/12/23/24/25/27/30/31
+  and the new OQ-39…OQ-43.
 - **Not responsible for:** knowing *why* inventory moved (Inventory's business),
-  pricing (Sales), tax rules (OQ-05/13).
+  stock quantities or valuation quantities (ADR-0022), pricing/discounts (Sales),
+  tax computation (OQ-30), numbering mechanics (Documents — ADR-0023), workflow
+  mechanics (Workflow — ADR-0024), audit storage (Audit — AR-23), organization
+  structure or party master data (Organization).
 
 ## Inventory (v1 core)
 
@@ -406,7 +456,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 | `StockTransfer.Created` / `StockAdjustment.Created` | Inventory | Accounting (adjustment), Audit | stock changes |
 | `SalesOrder.Created` / `SalesOrder.Confirmed` | Sales | Audit, (Sync → outbox if configured) | sales flow |
 | `Invoice.Issued` | Sales | **Accounting (revenue journal)**, Audit, (Sync → taxpayer/faraPayam outbox if configured) | billing |
-| `JournalEntry.Posted` / `AccountingPeriod.Closed` | Accounting | Audit, Notifications | books |
+| `JournalEntry.Posted` / `AccountingPeriod.Closed` *(placeholders — refined by the Accounting Domain Contract §21 into `AccountingDocument.*`, `FiscalYear.*`, `AccountingPeriod.*` when the module ships)* | Accounting | Audit, Notifications | books |
 | `ImportSession.Completed` / `ImportSession.Failed` | Excel | Notifications, Audit | import feedback |
 | `PrintJob.Completed` / `PrintJob.Failed` | Print | Notifications, Audit | print feedback |
 | `OutboxItem.DeadLettered` / `Integration.Failed` | Sync / Integration | Audit, Notifications (admins) | sync health |

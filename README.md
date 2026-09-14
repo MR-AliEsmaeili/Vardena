@@ -52,6 +52,7 @@ production deployment.
 - [docs/integrations.md](docs/integrations.md) — external systems, adapter layer, synchronization
 - [docs/database-strategy.md](docs/database-strategy.md) — schemas, conventions, migrations, outbox DDL
 - [docs/reporting-strategy.md](docs/reporting-strategy.md) — reporting engine, views, export, performance
+- [docs/accounting/domain-contract.md](docs/accounting/domain-contract.md) — **Accounting Domain Contract** (Task 10.1): bounded context, financial area, fiscal year/period, chart of accounts & coding structure, detail dimensions, accounting documents, posting & integration boundaries, invariants, gates — contract only, nothing implemented
 - [docs/open-questions.md](docs/open-questions.md) — registered open questions
 - [docs/adr/](docs/adr/) — architecture decision records
 - [.vardena/](.vardena/) — agent context, architecture rules, development rules

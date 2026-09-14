@@ -4,6 +4,17 @@ Status: Proposed (design for review) · Updated: 2026-09-11
 Companion: [blueprint](./domain-blueprint.md) §9 · [glossary](./domain-glossary.md) ·
 ADR-0005 (events), ADR-0017 (inventory ledger), AR-13/16 · OQ-23, OQ-24, OQ-25, OQ-30
 
+> **Superseded in part (2026-09-14, Task 10.1).** This file remains the *conceptual
+> options analysis* (chart-of-accounts options, fiscal-calendar options, posting-rule
+> illustrations, expert-gate list). The **binding domain contract** — bounded context,
+> financial area, fiscal year/period model, configurable coding structure, detail
+> dimensions and floating detail, document shape, lifecycle and correction mechanisms,
+> the source-posting contract, numbering, reporting boundary, invariants and gates — is
+> [`docs/accounting/domain-contract.md`](../../accounting/domain-contract.md), decided
+> in [ADR-0026](../../adr/0026-accounting-bounded-context.md) (Proposed). Where the two
+> differ on structure or ownership, the contract and ADR-0026 win; where the contract
+> marks a rule EXPERT-GATED, the questions in §8 below are still the ones to answer.
+
 > **Expert boundary (explicit).** The project owner does not have formal accounting
 > expertise. This document is a *conceptual* analysis: it frames the decisions,
 > compares options and states what must not be built before an accountant (and where
