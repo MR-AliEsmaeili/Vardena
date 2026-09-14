@@ -29,7 +29,15 @@ export async function createTestApp(
   const module = await builder.compile();
   const app = module.createNestApplication();
   configureApp(app, app.get(APP_CONFIG));
-  await app.init();
+  try {
+    await app.init();
+  } catch (error) {
+    // The harness owns the app it created: a failed init must not orphan the
+    // module (its providers — e.g. the Prisma pg pool — would otherwise never
+    // see onModuleDestroy and can hold the test process alive).
+    await app.close().catch(() => undefined);
+    throw error;
+  }
   registerNotFoundFallback(app);
   return { app, module };
 }

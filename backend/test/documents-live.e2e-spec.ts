@@ -77,27 +77,38 @@ describe.skipIf(DATABASE_URL === undefined)(
 
     afterAll(async () => {
       if (app !== undefined) {
-        // Test-only cleanup through the raw client; the API has no delete
-        // endpoints for these rows (Task 8 §20).
-        const client = await prisma.getClient<{
-          numberingAllocation: {
-            deleteMany: (args: unknown) => Promise<unknown>;
-          };
-          numberingSeries: { deleteMany: (args: unknown) => Promise<unknown> };
-          documentTypeConfig: {
-            deleteMany: (args: unknown) => Promise<unknown>;
-          };
-          organization: { deleteMany: (args: unknown) => Promise<unknown> };
-        }>();
-        await client.numberingAllocation.deleteMany({
-          where: { organizationId },
-        });
-        await client.numberingSeries.deleteMany({ where: { organizationId } });
-        await client.documentTypeConfig.deleteMany({
-          where: { organizationId },
-        });
-        await client.organization.deleteMany({ where: { id: organizationId } });
-        await app.close();
+        try {
+          // Test-only cleanup through the raw client; the API has no delete
+          // endpoints for these rows (Task 8 §20).
+          const client = await prisma.getClient<{
+            numberingAllocation: {
+              deleteMany: (args: unknown) => Promise<unknown>;
+            };
+            numberingSeries: {
+              deleteMany: (args: unknown) => Promise<unknown>;
+            };
+            documentTypeConfig: {
+              deleteMany: (args: unknown) => Promise<unknown>;
+            };
+            organization: { deleteMany: (args: unknown) => Promise<unknown> };
+          }>();
+          await client.numberingAllocation.deleteMany({
+            where: { organizationId },
+          });
+          await client.numberingSeries.deleteMany({
+            where: { organizationId },
+          });
+          await client.documentTypeConfig.deleteMany({
+            where: { organizationId },
+          });
+          await client.organization.deleteMany({
+            where: { id: organizationId },
+          });
+        } finally {
+          // app.close() owns the Prisma client + pg pool teardown; it must
+          // run even when cleanup fails, or the worker process stays alive.
+          await app.close();
+        }
       }
     }, 60_000);
 
