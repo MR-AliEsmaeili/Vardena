@@ -23,9 +23,7 @@ export class AreaHasOpenYearsError extends Error {
   readonly openYearId: string;
 
   constructor(openYearId: string) {
-    super(
-      'The financial area has an open fiscal year and cannot be disabled.',
-    );
+    super('The financial area has an open fiscal year and cannot be disabled.');
     this.name = 'AreaHasOpenYearsError';
     this.openYearId = openYearId;
   }

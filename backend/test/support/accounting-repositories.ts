@@ -53,10 +53,7 @@ import {
 import type { FinancialAreasRepository } from '../../src/modules/accounting/data/financial-areas.repository.js';
 import type { FiscalYearsRepository } from '../../src/modules/accounting/data/fiscal-years.repository.js';
 import type { AccountingPeriodsRepository } from '../../src/modules/accounting/data/accounting-periods.repository.js';
-import {
-  InMemoryTable,
-  type Row,
-} from './master-data-repositories.js';
+import { InMemoryTable, type Row } from './master-data-repositories.js';
 import { uniqueViolation } from './in-memory-repositories.js';
 
 export type AccountingOrderBy = Array<Record<string, 'asc' | 'desc'>>;
@@ -140,7 +137,8 @@ function listPage<TRow extends Row>(
         (a as Record<string, unknown>)[field],
         (b as Record<string, unknown>)[field],
       );
-      if (comparison !== 0) return direction === 'desc' ? -comparison : comparison;
+      if (comparison !== 0)
+        return direction === 'desc' ? -comparison : comparison;
     }
     return 0;
   });
@@ -237,7 +235,8 @@ export class InMemoryFinancialAreasRepository {
       updatedAt: input.updatedAt,
       updatedBy: input.updatedBy,
     });
-    if (area === null) throw new Error(`Financial area "${input.id}" no longer exists.`);
+    if (area === null)
+      throw new Error(`Financial area "${input.id}" no longer exists.`);
     return { area, clearedId };
   }
 
@@ -391,7 +390,8 @@ export class InMemoryFiscalYearsRepository {
     if (input.code !== undefined) patch['code'] = input.code;
     if (input.title !== undefined) patch['title'] = input.title;
     if (input.isActive !== undefined) patch['isActive'] = input.isActive;
-    if (input.priorYearId !== undefined) patch['priorYearId'] = input.priorYearId;
+    if (input.priorYearId !== undefined)
+      patch['priorYearId'] = input.priorYearId;
     if (datesChanging) {
       const startDate = input.startDate ?? locked.startDate;
       const endDate = input.endDate ?? locked.endDate;
@@ -584,9 +584,7 @@ export class InMemoryAccountingPeriodsRepository {
     }
     const year = this.state.years.findById(route.fiscalYearId);
     if (year === null) {
-      throw new Error(
-        `Fiscal year "${route.fiscalYearId}" no longer exists.`,
-      );
+      throw new Error(`Fiscal year "${route.fiscalYearId}" no longer exists.`);
     }
     if (route.status !== input.from) {
       throw new PeriodTransitionConflictError(route.status);

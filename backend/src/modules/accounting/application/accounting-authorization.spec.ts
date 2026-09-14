@@ -69,7 +69,9 @@ const ORG_B = '01ORGANIZATIONB000000000BB';
 
 const ALL_FINANCIAL_AREA_CODES = Object.values(FINANCIAL_AREA_PERMISSIONS);
 const ALL_FISCAL_YEAR_CODES = Object.values(FISCAL_YEAR_PERMISSIONS);
-const ALL_ACCOUNTING_PERIOD_CODES = Object.values(ACCOUNTING_PERIOD_PERMISSIONS);
+const ALL_ACCOUNTING_PERIOD_CODES = Object.values(
+  ACCOUNTING_PERIOD_PERMISSIONS,
+);
 
 function loggerStub(): JsonLogger {
   return {
@@ -709,9 +711,7 @@ describe('FiscalYearsService', () => {
       ),
     ).rejects.toMatchObject({ code: 'BusinessRuleViolation' });
 
-    await asActor(ACTOR, () =>
-      fixture.areas.disableFinancialArea(orgA, areaA),
-    );
+    await asActor(ACTOR, () => fixture.areas.disableFinancialArea(orgA, areaA));
     await expect(
       asActor(ACTOR, () =>
         fixture.years.createFiscalYear({
@@ -1499,9 +1499,7 @@ describe('stale-state mapping', () => {
       error: () => {},
     } as unknown as JsonLogger;
     const years = new FiscalYearsService(
-      raced as unknown as ConstructorParameters<
-        typeof FiscalYearsService
-      >[0],
+      raced as unknown as ConstructorParameters<typeof FiscalYearsService>[0],
       fixture.areas,
       fixture.organizations,
       fixture.authorization,

@@ -324,9 +324,7 @@ export class FiscalYearsRepository {
    *   the request was in flight (maps to 409, not 422).
    * @throws FiscalYearSealBlockedError when sealing with an open period.
    */
-  async transitionChecked(
-    input: TransitionFiscalYearCheckedInput,
-  ): Promise<{
+  async transitionChecked(input: TransitionFiscalYearCheckedInput): Promise<{
     year: FiscalYear;
     cascadedPeriods: Array<{ id: string; sequence: number }>;
   }> {
@@ -376,7 +374,6 @@ export class FiscalYearsRepository {
       return { year: toDomain(updated), cascadedPeriods };
     });
   }
-
 }
 
 // ---- Internal helpers ----

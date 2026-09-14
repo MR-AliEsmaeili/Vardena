@@ -117,7 +117,9 @@ export class FinancialAreasRepository {
   ): Promise<FinancialArea | null> {
     const { financialArea } = await this.client();
     try {
-      return toDomain(await financialArea.update({ where: { id }, data: patch }));
+      return toDomain(
+        await financialArea.update({ where: { id }, data: patch }),
+      );
     } catch (error) {
       if (isRecordNotFound(error)) return null;
       throw error;

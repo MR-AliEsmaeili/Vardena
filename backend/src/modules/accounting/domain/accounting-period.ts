@@ -44,8 +44,7 @@ export function isAccountingPeriodStatus(
  */
 export const ACCOUNTING_PERIOD_KINDS = ['normal'] as const;
 
-export type AccountingPeriodKind =
-  (typeof ACCOUNTING_PERIOD_KINDS)[number];
+export type AccountingPeriodKind = (typeof ACCOUNTING_PERIOD_KINDS)[number];
 
 export interface AccountingPeriod {
   id: string;

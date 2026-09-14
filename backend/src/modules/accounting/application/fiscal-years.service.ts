@@ -32,10 +32,7 @@ import {
   type FiscalYearTransition,
 } from '../domain/fiscal-year.js';
 import { parseDateOnly } from '../domain/date-range.js';
-import {
-  normalizeCode,
-  normalizeTitle,
-} from '../domain/master-data.js';
+import { normalizeCode, normalizeTitle } from '../domain/master-data.js';
 import { FISCAL_YEAR_PERMISSIONS } from '../domain/accounting-permissions.js';
 import {
   ACCOUNTING_PERIOD_CLOSED_EVENT,
@@ -189,12 +186,12 @@ export class FiscalYearsService {
     await this.authorization.requireAllPermissions([
       FISCAL_YEAR_PERMISSIONS.VIEW,
     ]);
-    return toFiscalYearDto(await this.mustFindInOrganization(organizationId, id));
+    return toFiscalYearDto(
+      await this.mustFindInOrganization(organizationId, id),
+    );
   }
 
-  async createFiscalYear(
-    input: CreateFiscalYearInput,
-  ): Promise<FiscalYearDto> {
+  async createFiscalYear(input: CreateFiscalYearInput): Promise<FiscalYearDto> {
     await this.authorization.requireAllPermissions([
       FISCAL_YEAR_PERMISSIONS.CREATE,
     ]);

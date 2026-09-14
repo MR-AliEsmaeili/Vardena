@@ -17,7 +17,10 @@ import { AuthorizationService } from '../../rbac/application/authorization.servi
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { FinancialAreasRepository } from '../data/financial-areas.repository.js';
 import { AreaHasOpenYearsError } from '../data/accounting-calendar-errors.js';
-import type { FinancialArea, FinancialAreaDto } from '../domain/financial-area.js';
+import type {
+  FinancialArea,
+  FinancialAreaDto,
+} from '../domain/financial-area.js';
 import { toFinancialAreaDto } from '../domain/financial-area.js';
 import { normalizeCode, normalizeTitle } from '../domain/master-data.js';
 import { FINANCIAL_AREA_PERMISSIONS } from '../domain/accounting-permissions.js';
@@ -128,7 +131,9 @@ export class FinancialAreasService {
     await this.authorization.requireAllPermissions([
       FINANCIAL_AREA_PERMISSIONS.VIEW,
     ]);
-    return toFinancialAreaDto(await this.mustFindInOrganization(organizationId, id));
+    return toFinancialAreaDto(
+      await this.mustFindInOrganization(organizationId, id),
+    );
   }
 
   async createFinancialArea(

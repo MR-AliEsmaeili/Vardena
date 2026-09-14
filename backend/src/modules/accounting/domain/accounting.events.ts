@@ -43,8 +43,7 @@ export interface FiscalYearEventPayload {
 }
 
 /** Payload for fiscal-year lifecycle transitions. */
-export interface FiscalYearTransitionEventPayload
-  extends FiscalYearEventPayload {
+export interface FiscalYearTransitionEventPayload extends FiscalYearEventPayload {
   fromStatus: string;
   toStatus: string;
   reason: string;
@@ -65,8 +64,7 @@ export interface AccountingPeriodEventPayload {
 }
 
 /** Payload for accounting-period lifecycle transitions. */
-export interface AccountingPeriodTransitionEventPayload
-  extends AccountingPeriodEventPayload {
+export interface AccountingPeriodTransitionEventPayload extends AccountingPeriodEventPayload {
   fromStatus: string;
   toStatus: string;
   reason: string;
@@ -155,11 +153,14 @@ export type FiscalYearUnsealedEvent = ScopedEvent<
 // is no `Updated`: periods have no update endpoint (no `Edit` code in
 // contract §22).
 
-export const ACCOUNTING_PERIOD_OPENED_EVENT = 'AccountingPeriod.Opened' as const;
-export const ACCOUNTING_PERIOD_CLOSED_EVENT = 'AccountingPeriod.Closed' as const;
+export const ACCOUNTING_PERIOD_OPENED_EVENT =
+  'AccountingPeriod.Opened' as const;
+export const ACCOUNTING_PERIOD_CLOSED_EVENT =
+  'AccountingPeriod.Closed' as const;
 export const ACCOUNTING_PERIOD_REOPENED_EVENT =
   'AccountingPeriod.Reopened' as const;
-export const ACCOUNTING_PERIOD_SEALED_EVENT = 'AccountingPeriod.Sealed' as const;
+export const ACCOUNTING_PERIOD_SEALED_EVENT =
+  'AccountingPeriod.Sealed' as const;
 
 export type AccountingPeriodOpenedEvent = ScopedEvent<
   typeof ACCOUNTING_PERIOD_OPENED_EVENT,
