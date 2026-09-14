@@ -141,10 +141,20 @@ export class FinancialAreasRepository {
   }): Promise<{ area: FinancialArea; clearedId: string | null }> {
     const client = await this.transacting();
     return client.$transaction(async (tx) => {
-      // Throws when the row is gone (a bug — the service resolves the area
-      // first, and areas are never deleted).
-      await lockFinancialAreaRow(tx, input.id);
-      await lockFinancialAreasOfOrganization(tx, input.organizationId);
+      // ONE lock acquisition in ascending id order: the org-wide lock
+      // already covers the target row. Locking the target first and the
+      // org second would invert the order against a concurrent transfer
+      // (each holding its own row, each waiting on the other's) — a
+      // deadlock the live suite caught. Existence still throws: a target
+      // outside the locked set is gone (a bug — the service resolves the
+      // area first, and areas are never deleted).
+      const lockedIds = await lockFinancialAreasOfOrganization(
+        tx,
+        input.organizationId,
+      );
+      if (!lockedIds.includes(input.id)) {
+        throw new Error(`Financial area "${input.id}" no longer exists.`);
+      }
 
       const previous = await tx.financialArea.findFirst({
         where: { organizationId: input.organizationId, isDefault: true },

@@ -197,15 +197,12 @@ export class FiscalYearsRepository {
         existing: siblings,
       });
       // `invalid_range` cannot happen here — the service parses and orders
-      // the dates before calling — but fail closed rather than trust it.
-      if (check.problem === 'invalid_range' || check.conflictingId === null) {
-        if (check.problem === 'overlapping_year') {
-          throw new FiscalYearOverlapError('unknown');
-        }
-        throw new FiscalYearOverlapError('unknown');
+      // the dates before calling — so reaching it is a caller bug.
+      if (check.problem === 'invalid_range') {
+        throw new Error('Fiscal year createChecked called with end < start.');
       }
       if (check.problem === 'overlapping_year') {
-        throw new FiscalYearOverlapError(check.conflictingId);
+        throw new FiscalYearOverlapError(check.conflictingId ?? 'unknown');
       }
 
       const created = await tx.fiscalYear.create({
