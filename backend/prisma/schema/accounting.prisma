@@ -1,0 +1,139 @@
+// Accounting module schema — FOUNDATION ONLY (Task 10.2)
+// (docs/modules.md §Accounting, ADR-0026, docs/accounting/domain-contract.md
+// §4/§5/§6/§7, AC-D-01…AC-D-05).
+//
+// Owns the bookkeeping scope spine:
+//   `accounting.financial_areas`    — bookkeeping scopes (حوزه مالی), one
+//     organization may hold n ≥ 1 (OQ-40 interim: created explicitly, never
+//     seeded; no grants yet — structural scoping like `organizationId`).
+//   `accounting.fiscal_years`       — explicit dated years per area with the
+//     `open → closed → sealed` lifecycle (+ explicit reopen/unseal).
+//   `accounting.accounting_periods` — explicit dated rows inside one year,
+//     never computed months; several may be open at once.
+//
+// Explicitly NOT here (later Accounting tasks — contract §28.2): the coding
+// structure, chart of accounts, control-role mappings, detail dimensions /
+// groups / items, accounting documents + lines, posting rules, the
+// system-posting idempotency ledger and balance projections. Task 10.2 must
+// not create them.
+//
+// Conventions (docs/database-strategy.md, ADR-0021):
+// - every row carries `organization_id` (NOT NULL, FK RESTRICT): the
+//   tenant/security boundary (AC-D-01, AC-I-01);
+// - periods denormalize `organization_id` + `financial_area_id` so scope
+//   checks and list indexes lead with the scope (ADR-0021 §3);
+// - dates are inclusive date-only ranges (`DATE`, never timestamptz):
+//   `start_date`/`end_date` with the `[start, end]` overlap test living in
+//   `domain/date-range.ts` (AC-I-03);
+// - statuses are closed code-defined lists stored as TEXT (`open`/`closed`/
+//   `sealed`, `domain/fiscal-year.ts` / `domain/accounting-period.ts` are the
+//   source of truth); no CHECK constraints — value rules are enforced and
+//   unit-tested in the domain layer, because constraints Prisma cannot
+//   represent would be dropped by a later `prisma migrate dev` (the same
+//   reason the organization migration gives);
+// - overlap and lifecycle guards that must hold under concurrency are
+//   enforced by short `SELECT … FOR UPDATE` transactions in `data/`
+//   (docs/modules.md §Accounting, AR-11), NOT by exclusion constraints:
+//   an exclusion needs `btree_gist` (a superuser extension + deploy
+//   friction) and — worse — is invisible to Prisma, so the next generated
+//   migration would silently `DROP` it and lose the invariant. Parent-row
+//   locks serialize the same writers with no drift hazard.
+// - lifecycle: `is_active` only (OQ-36 posture); nothing here is deleted.
+//   `period_kind` carries the OQ-23 seam (`normal` is the only v1 value).
+
+model FinancialArea {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  code           String  @db.VarChar(64)
+  title          String  @db.VarChar(200)
+  /// Per-organization default area (§5.5): at most one area per organization
+  /// may hold `true`. Enforced in the application transaction
+  /// (`data/financial-areas.repository.ts`) — a partial unique index would
+  /// be invisible to Prisma and dropped by a later generated migration.
+  isDefault      Boolean @default(false) @map("is_default")
+  isActive       Boolean @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  fiscalYears  FiscalYear[]
+
+  // Back-relations for denormalized period scope columns. Virtual side only
+  // (the real FK columns stay `accounting_periods.organization_id` /
+  // `.financial_area_id`) — no migration impact.
+  accountingPeriods AccountingPeriod[]
+
+  @@unique([organizationId, code], map: "uq_financial_areas_organization_id_code")
+  @@index([organizationId, isActive], map: "idx_financial_areas_organization_id_is_active")
+  @@map("financial_areas")
+  @@schema("accounting")
+}
+
+model FiscalYear {
+  id              String   @id
+  organizationId  String   @map("organization_id")
+  financialAreaId String   @map("financial_area_id")
+  code            String   @db.VarChar(64)
+  title           String   @db.VarChar(200)
+  /// Inclusive bounds of the year (contract §6.1). Years of one
+  /// (organization, area) never overlap (AC-I-03).
+  startDate       DateTime @map("start_date") @db.Date
+  endDate         DateTime @map("end_date") @db.Date
+  /// `open` | `closed` | `sealed` (contract §6.3, domain/fiscal-year.ts).
+  status          String   @default("open") @db.VarChar(20)
+  isActive        Boolean  @default(true) @map("is_active")
+  /// Optional link to the previous year of the same (organization, area) —
+  /// the year-transition chain (contract §6.1). Informational only.
+  priorYearId     String?  @map("prior_year_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy       String?  @map("created_by")
+  updatedBy       String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea FinancialArea @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  priorYear    FiscalYear?  @relation("FiscalYearChain", fields: [priorYearId], references: [id], onDelete: Restrict)
+  followingYears FiscalYear[] @relation("FiscalYearChain")
+  accountingPeriods AccountingPeriod[]
+
+  @@unique([organizationId, financialAreaId, code], map: "uq_fiscal_years_organization_id_financial_area_id_code")
+  @@index([organizationId, financialAreaId], map: "idx_fiscal_years_organization_id_financial_area_id")
+  @@index([organizationId, financialAreaId, status], map: "idx_fiscal_years_organization_id_financial_area_id_status")
+  @@index([priorYearId], map: "idx_fiscal_years_prior_year_id")
+  @@map("fiscal_years")
+  @@schema("accounting")
+}
+
+model AccountingPeriod {
+  id              String   @id
+  organizationId  String   @map("organization_id")
+  financialAreaId String   @map("financial_area_id")
+  fiscalYearId    String   @map("fiscal_year_id")
+  /// 1-based ordinal inside the year; unique per year (contract §7.1).
+  sequence        Int
+  title           String   @db.VarChar(200)
+  /// Inclusive bounds; always inside the year's range (AC-I-03).
+  startDate       DateTime @map("start_date") @db.Date
+  endDate         DateTime @map("end_date") @db.Date
+  /// `open` | `closed` | `sealed` (contract §7.2, domain/accounting-period.ts).
+  status          String   @default("open") @db.VarChar(20)
+  /// v1 vocabulary: `normal` only. An adjustment/special period is an
+  /// EXPERT-GATED addition (OQ-23) — the seam exists, the value does not.
+  periodKind      String   @default("normal") @map("period_kind") @db.VarChar(20)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy       String?  @map("created_by")
+  updatedBy       String?  @map("updated_by")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea FinancialArea  @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  fiscalYear    FiscalYear     @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+
+  @@unique([fiscalYearId, sequence], map: "uq_accounting_periods_fiscal_year_id_sequence")
+  @@index([organizationId, fiscalYearId], map: "idx_accounting_periods_organization_id_fiscal_year_id")
+  @@index([organizationId, fiscalYearId, status], map: "idx_accounting_periods_organization_id_fiscal_year_id_status")
+  @@map("accounting_periods")
+  @@schema("accounting")
+}
