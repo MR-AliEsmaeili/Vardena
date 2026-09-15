@@ -238,10 +238,16 @@ through the module's data layer, never from `api/`.
   data (user profile, item master data) — version checked on update; conflict →
   `Conflict` error with 409.
 - **Pessimistic row locks** inside short transactions for stock balance updates
-  (Inventory), number sequences, and the Accounting calendar guards — `SELECT …
+  (Inventory), number sequences, and the Accounting guards — `SELECT …
   FOR UPDATE` on the parent area/year row inside the module's guarded `data/`
   transactions (lock order area → year → period, never reversed; the unique
-  indexes stay the backstop for identity races).
+  indexes stay the backstop for identity races). Task 10.3 extends the same rule
+  to the chart: order `coding-structure version → account`, publish locks every
+  version row of the organization ascending by id (that is what makes "exactly
+  one active coding structure per organization" hold), a child create locks its
+  parent row (so it serializes against a postability flip on that same row), a
+  re-parenting locks node + new parent ascending (so concurrent
+  cycle-forming moves serialize and exactly one wins).
 - Journal entries: immutability instead of locking (AR-13).
 - No long-running transactions: anything that waits (external call, user
   confirmation) must have committed or rolled back first (outbox/import pattern).

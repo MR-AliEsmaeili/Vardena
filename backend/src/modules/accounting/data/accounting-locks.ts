@@ -1,8 +1,8 @@
 import type { AccountingTxClient } from './accounting-rows.js';
 
 /**
- * Row locking for the fiscal-calendar guard transactions (Task 10.2,
- * AC-I-03/AC-I-04).
+ * Row locking for the Accounting guard transactions (Task 10.2 calendar
+ * AC-I-03/AC-I-04; Task 10.3 coding structure + chart AC-I-10/AC-I-11).
  *
  * Every calendar write holds a parent-row lock from BEFORE its guard check
  * until commit; that single rule is what makes the overlap, boundary and
@@ -20,10 +20,11 @@ import type { AccountingTxClient } from './accounting-rows.js';
  *   disabled area.
  *
  * Lock ORDER is fixed everywhere and never reversed — area → year →
- * period — so no deadlock cycle exists: no transaction holding a year lock
- * ever waits on an area lock (year transitions lock the year only; period
- * writes lock the year, then the period), and multi-row locks always
- * ascend by id.
+ * period, and (Task 10.3) coding-structure version → account — so no deadlock
+ * cycle exists: no transaction holding a year lock ever waits on an area lock
+ * (year transitions lock the year only; period writes lock the year, then the
+ * period), no account write ever locks a version row before its own account
+ * row, and multi-row locks always ascend by id.
  *
  * Prisma cannot express `SELECT … FOR UPDATE`, hence the parameterized raw
  * statements below — the documented concurrency-critical path
@@ -196,4 +197,152 @@ export async function lockOpenPeriodsOfYear(
      ORDER BY "id" ASC
      FOR UPDATE`;
   return rows.map((row) => ({ id: row.id, sequence: row.sequence }));
+}
+
+// ---------------------------------------------------------------------------
+// Coding structure versions (Task 10.3)
+// ---------------------------------------------------------------------------
+
+/** A locked coding-structure version row (status is the guard's input). */
+export interface LockedCodingStructureVersion {
+  id: string;
+  organizationId: string;
+  code: string;
+  versionNumber: number;
+  status: string;
+  maxDepth: number;
+  separator: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Lock one coding-structure version row.
+ *
+ * Draft-configuration writes take this lock BEFORE changing the version or
+ * replacing its levels and re-check `status = 'draft'` under it; the publish
+ * transaction takes the same row (via the organization-wide lock below). That
+ * is what makes "an active or superseded version is immutable" (§9.4) hold
+ * against a configuration write that started while the version was still a
+ * draft — the double check the Workflow Foundation records for exactly this
+ * race (ADR-0024).
+ *
+ * @returns null when the row does not exist (the service maps it to 404).
+ */
+export async function lockCodingStructureVersionRow(
+  tx: AccountingTxClient,
+  versionId: string,
+): Promise<LockedCodingStructureVersion | null> {
+  const rows = await tx.$queryRaw<LockedCodingStructureVersion>`
+    SELECT "id"              AS "id",
+           "organization_id" AS "organizationId",
+           "code"            AS "code",
+           "version_number"  AS "versionNumber",
+           "status"          AS "status",
+           "max_depth"       AS "maxDepth",
+           "separator"       AS "separator",
+           "created_at"     AS "createdAt",
+           "updated_at"     AS "updatedAt"
+      FROM "accounting"."coding_structure_versions"
+     WHERE "id" = ${versionId}
+     FOR UPDATE`;
+  const [row] = rows;
+  return row ?? null;
+}
+
+/**
+ * Lock EVERY coding-structure version row of one organization, ascending by
+ * id — the publish path's serialization point.
+ *
+ * "Exactly one version is ACTIVE per organization" (§9.4) is an
+ * organization-wide statement, so it needs an organization-wide lock: two
+ * concurrent publishes for one organization serialize here, and the loser
+ * re-reads the winner's committed rows inside the same transaction, so it can
+ * never leave two active versions behind. A partial unique index would be the
+ * database-side alternative and is rejected for the reason this module already
+ * gives for `financial_areas.is_default`: Prisma cannot represent it, so the
+ * next generated migration would drop it and silently lose the invariant.
+ */
+export async function lockCodingStructureVersionsOfOrganization(
+  tx: AccountingTxClient,
+  organizationId: string,
+): Promise<string[]> {
+  const rows = await tx.$queryRaw<{ id: string }>`
+    SELECT "id"
+      FROM "accounting"."coding_structure_versions"
+     WHERE "organization_id" = ${organizationId}
+     ORDER BY "id" ASC
+     FOR UPDATE`;
+  return rows.map((row) => row.id);
+}
+
+// ---------------------------------------------------------------------------
+// Accounts (Task 10.3)
+// ---------------------------------------------------------------------------
+
+/** A locked account row: everything the tree guards read. */
+export interface LockedAccount {
+  id: string;
+  organizationId: string;
+  code: string;
+  title: string;
+  parentId: string | null;
+  level: number;
+  codingStructureVersionId: string;
+  accountNature: string;
+  isPostable: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Lock one account row.
+ *
+ * Callers follow ONE order, which is what keeps the chart race-safe without a
+ * trigger (the database cannot express "no cycles" declaratively anyway):
+ *
+ * - CREATE a child   → lock the PARENT row, re-run `planAccountPlacement`
+ *   against the locked parent, insert. A racing `is_postable = true` on that
+ *   parent locks the same row, so the two paths serialize and the loser sees
+ *   the winner's committed state: no representable "postable parent with
+ *   children" (§14 rule 2) and no code collision the unique index does not
+ *   already forbid.
+ * - FLIP postability → lock the SAME row (the would-be parent) and count its
+ *   children under that lock.
+ * - MOVE             → lock the moved row and the new parent row in ASCENDING
+ *   id order. Every move that could close a cycle has to lock the node whose
+ *   subtree is being walked, so two concurrent cycle-forming moves serialize on
+ *   it and exactly one wins; the FK (`parent_id` → RESTRICT) makes a dangling
+ *   parent impossible.
+ * - Root CREATE      → lock the resolved coding-structure version row first
+ *   (`lockCodingStructureVersionRow`) and re-check it is still `active`.
+ *
+ * Version rows are locked before account rows and never the reverse, so no
+ * transaction holds the two in opposite orders and no deadlock cycle exists.
+ *
+ * @returns null when the row does not exist (the service maps it to 404).
+ */
+export async function lockAccountRow(
+  tx: AccountingTxClient,
+  accountId: string,
+): Promise<LockedAccount | null> {
+  const rows = await tx.$queryRaw<LockedAccount>`
+    SELECT "id"                            AS "id",
+           "organization_id"               AS "organizationId",
+           "code"                          AS "code",
+           "title"                         AS "title",
+           "parent_id"                     AS "parentId",
+           "level"                         AS "level",
+           "coding_structure_version_id"   AS "codingStructureVersionId",
+           "account_nature"                AS "accountNature",
+           "is_postable"                   AS "isPostable",
+           "is_active"                     AS "isActive",
+           "created_at"                    AS "createdAt",
+           "updated_at"                    AS "updatedAt"
+      FROM "accounting"."accounts"
+     WHERE "id" = ${accountId}
+     FOR UPDATE`;
+  const [row] = rows;
+  return row ?? null;
 }

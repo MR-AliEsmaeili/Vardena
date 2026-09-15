@@ -1,6 +1,6 @@
 /**
- * Shared row/delegate shapes for the Accounting foundation's data layer
- * (Task 10.2, ADR-0026).
+ * Shared row/delegate shapes for the Accounting data layer (Task 10.2
+ * calendar, Task 10.3 coding structure + chart of accounts, ADR-0026).
  *
  * Prisma models are private to their module (docs/database-strategy.md §2)
  * and codegen may not have run in a fresh checkout, so — like the
@@ -8,11 +8,13 @@
  * repositories declare the *structural* surface they use. Services work
  * with domain entities, never with these shapes.
  *
- * The calendar guards (overlap, year bounds, lifecycle moves) are the
- * module's documented concurrency-critical SQL (docs/modules.md
- * §Accounting, AR-11): parent rows are locked with `SELECT … FOR UPDATE`
- * (Prisma cannot express it) and the guard is re-evaluated inside the same
- * transaction as the write — never check-then-act across the boundary.
+ * The guards that need it (calendar overlap and lifecycle moves, "exactly one
+ * active coding-structure version", account placement: level derivation, code
+ * prefix, cycles, the postable-parent rule) are the module's documented
+ * concurrency-critical SQL (docs/modules.md §Accounting, AR-11): the relevant
+ * parent rows are locked with `SELECT … FOR UPDATE` (Prisma cannot express it)
+ * and the guard is re-evaluated inside the same transaction as the write —
+ * never check-then-act across the boundary.
  */
 
 /** `created_at`/`updated_at`/`created_by`/`updated_by` (AR-12). */
@@ -235,6 +237,196 @@ export interface AccountingPeriodDelegate {
 }
 
 // ---------------------------------------------------------------------------
+// Coding structure versions + levels
+// ---------------------------------------------------------------------------
+
+export type CodingStructureVersionRow = {
+  id: string;
+  organizationId: string;
+  code: string;
+  versionNumber: number;
+  status: string;
+  maxDepth: number;
+  separator: string;
+} & AuditColumns;
+
+export interface CodingStructureVersionWhere {
+  id?: string;
+  organizationId?: string;
+  code?: string;
+  status?: string;
+  OR?: Array<{
+    code?: { contains: string; mode: 'insensitive' };
+  }>;
+}
+
+export interface CodingStructureVersionCreate {
+  id: string;
+  organizationId: string;
+  code: string;
+  versionNumber: number;
+  status: string;
+  maxDepth: number;
+  separator: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface CodingStructureVersionUpdate {
+  maxDepth?: number | undefined;
+  separator?: string | undefined;
+  status?: string | undefined;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+export interface CodingStructureVersionDelegate {
+  findUnique(args: {
+    where: { id: string };
+  }): Promise<CodingStructureVersionRow | null>;
+  findFirst(args: {
+    where: CodingStructureVersionWhere;
+  }): Promise<CodingStructureVersionRow | null>;
+  findMany(args: {
+    where: CodingStructureVersionWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<CodingStructureVersionRow[]>;
+  count(args: { where: CodingStructureVersionWhere }): Promise<number>;
+  create(args: {
+    data: CodingStructureVersionCreate;
+  }): Promise<CodingStructureVersionRow>;
+  update(args: {
+    where: { id: string };
+    data: CodingStructureVersionUpdate;
+  }): Promise<CodingStructureVersionRow>;
+}
+
+export type CodingStructureLevelRow = {
+  id: string;
+  organizationId: string;
+  versionId: string;
+  levelIndex: number;
+  title: string;
+  digitLength: number;
+  defaultIsPostable: boolean;
+  levelKind: string | null;
+} & AuditColumns;
+
+export interface CodingStructureLevelCreate {
+  id: string;
+  organizationId: string;
+  versionId: string;
+  levelIndex: number;
+  title: string;
+  digitLength: number;
+  defaultIsPostable: boolean;
+  levelKind: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface CodingStructureLevelWhere {
+  versionId?: string | { in: string[] };
+  organizationId?: string;
+}
+
+export interface CodingStructureLevelDelegate {
+  findMany(args: {
+    where: CodingStructureLevelWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<CodingStructureLevelRow[]>;
+  create(args: {
+    data: CodingStructureLevelCreate;
+  }): Promise<CodingStructureLevelRow>;
+  /** DRAFT configuration only — see `coding-structures.repository.ts`. */
+  deleteMany(args: {
+    where: { versionId: string };
+  }): Promise<{ count: number }>;
+}
+
+// ---------------------------------------------------------------------------
+// Accounts (the chart of accounts tree)
+// ---------------------------------------------------------------------------
+
+export type AccountRow = {
+  id: string;
+  organizationId: string;
+  code: string;
+  title: string;
+  parentId: string | null;
+  level: number;
+  codingStructureVersionId: string;
+  accountNature: string;
+  isPostable: boolean;
+  isActive: boolean;
+} & AuditColumns;
+
+export interface AccountWhere {
+  id?: string;
+  organizationId?: string;
+  code?: string;
+  parentId?: string | null;
+  level?: number;
+  isActive?: boolean;
+  isPostable?: boolean;
+  codingStructureVersionId?: string;
+  OR?: Array<{
+    code?: { contains: string; mode: 'insensitive' };
+    title?: { contains: string; mode: 'insensitive' };
+  }>;
+}
+
+export interface AccountCreate {
+  id: string;
+  organizationId: string;
+  code: string;
+  title: string;
+  parentId: string | null;
+  level: number;
+  codingStructureVersionId: string;
+  accountNature: string;
+  isPostable: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface AccountUpdate {
+  title?: string | undefined;
+  parentId?: string | null | undefined;
+  level?: number | undefined;
+  accountNature?: string | undefined;
+  isPostable?: boolean | undefined;
+  isActive?: boolean | undefined;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+export interface AccountDelegate {
+  findUnique(args: { where: { id: string } }): Promise<AccountRow | null>;
+  findFirst(args: { where: AccountWhere }): Promise<AccountRow | null>;
+  findMany(args: {
+    where: AccountWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<AccountRow[]>;
+  count(args: { where: AccountWhere }): Promise<number>;
+  create(args: { data: AccountCreate }): Promise<AccountRow>;
+  update(args: {
+    where: { id: string };
+    data: AccountUpdate;
+  }): Promise<AccountRow>;
+}
+
+// ---------------------------------------------------------------------------
 // Transaction client
 // ---------------------------------------------------------------------------
 
@@ -266,6 +458,18 @@ export interface AccountingTxClient {
       data: { status: string; updatedAt: Date; updatedBy: string | null };
     }): Promise<{ count: number }>;
   };
+  codingStructureVersion: Pick<
+    CodingStructureVersionDelegate,
+    'findMany' | 'findFirst' | 'create' | 'update'
+  >;
+  codingStructureLevel: Pick<
+    CodingStructureLevelDelegate,
+    'findMany' | 'create' | 'deleteMany'
+  >;
+  account: Pick<
+    AccountDelegate,
+    'findMany' | 'findFirst' | 'create' | 'update' | 'count'
+  >;
 }
 
 export interface AccountingTransactionalClient {

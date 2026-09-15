@@ -1,14 +1,15 @@
 import type { PermissionDefinition } from '../../rbac/domain/permission-definition.js';
 
 /**
- * The Accounting module's permissions for the Task 10.2 foundation
- * (AR-22, ADR-0006, docs/security.md §3, contract §22 / AC-D-34).
+ * The Accounting module's permissions for the Task 10.2 foundation (areas,
+ * years, periods) and the Task 10.3 chart foundation (coding structure,
+ * accounts) — AR-22, ADR-0006, docs/security.md §3, contract §22 / AC-D-34.
  *
- * Codes follow the established `Module.Entity.Action` form. ONLY the codes
- * Task 10.2 enforces are registered: any code not enforced by code must
- * not exist (`docs/security.md` §3), so the remaining contract §22
- * vocabulary (CodingStructure, Account, Document, …) arrives with the
- * tasks that enforce it.
+ * Codes follow the established `Module.Entity.Action` form. ONLY the codes the
+ * module enforces are registered: any code not enforced by code must not exist
+ * (`docs/security.md` §3), so the remaining contract §22 vocabulary (Detail
+ * Dimension, Document, PostingRule, YearTransition, Balance, …) arrives with
+ * the tasks that enforce it.
  *
  * Two deliberate readings of the contract vocabulary:
  * - periods have no `Create` code: creating a period IS opening it (the
@@ -17,7 +18,14 @@ import type { PermissionDefinition } from '../../rbac/domain/permission-definiti
  * - periods have no `Edit` code, so Task 10.2 offers no period update
  *   endpoint at all (contract §22 lists `View, Open, Close, Reopen, Seal`
  *   only). Fiscal years DO have `Edit` (their dates stay editable while
- *   no document references them — contract §6.5).
+ *   no document references them — contract §6.5);
+ * - the coding structure gets `View` + `Configure` ONLY (§22: "versioned
+ *   configuration; no free-text structure editing"), so drafting, editing a
+ *   draft and publishing all run under `Configure` — splitting them would
+ *   invent authorities the contract does not define;
+ * - accounts get `View/Create/Edit/Enable/Disable` and deliberately NO `Delete`
+ *   (§22, §8.6: accounts are never deleted, so a delete permission could only
+ *   ever be a lie).
  *
  * No wildcards, no superuser, no implicit bypass (OQ-21).
  */
@@ -38,6 +46,19 @@ export const FISCAL_YEAR_PERMISSIONS = {
   REOPEN: 'Accounting.FiscalYear.Reopen',
   SEAL: 'Accounting.FiscalYear.Seal',
   UNSEAL: 'Accounting.FiscalYear.Unseal',
+} as const;
+
+export const CODING_STRUCTURE_PERMISSIONS = {
+  VIEW: 'Accounting.CodingStructure.View',
+  CONFIGURE: 'Accounting.CodingStructure.Configure',
+} as const;
+
+export const ACCOUNT_PERMISSIONS = {
+  VIEW: 'Accounting.Account.View',
+  CREATE: 'Accounting.Account.Create',
+  EDIT: 'Accounting.Account.Edit',
+  ENABLE: 'Accounting.Account.Enable',
+  DISABLE: 'Accounting.Account.Disable',
 } as const;
 
 export const ACCOUNTING_PERIOD_PERMISSIONS = {
@@ -118,5 +139,36 @@ export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] 
     {
       code: ACCOUNTING_PERIOD_PERMISSIONS.SEAL,
       description: 'Seal a closed accounting period.',
+    },
+    {
+      code: CODING_STRUCTURE_PERMISSIONS.VIEW,
+      description: 'View coding structures, their versions and levels.',
+    },
+    {
+      code: CODING_STRUCTURE_PERMISSIONS.CONFIGURE,
+      description:
+        'Draft, edit and publish a coding structure version (the only structure authority — there is no free-text structure editing).',
+    },
+    {
+      code: ACCOUNT_PERMISSIONS.VIEW,
+      description: 'View accounts and the chart of accounts.',
+    },
+    {
+      code: ACCOUNT_PERMISSIONS.CREATE,
+      description: 'Create accounts in the chart of accounts.',
+    },
+    {
+      code: ACCOUNT_PERMISSIONS.EDIT,
+      description:
+        'Edit an account (titles; and structure while the account is unreferenced).',
+    },
+    {
+      code: ACCOUNT_PERMISSIONS.ENABLE,
+      description: 'Re-enable a disabled account.',
+    },
+    {
+      code: ACCOUNT_PERMISSIONS.DISABLE,
+      description:
+        'Disable an account (blocks new postings and new children, keeps history readable). There is no delete.',
     },
   ];

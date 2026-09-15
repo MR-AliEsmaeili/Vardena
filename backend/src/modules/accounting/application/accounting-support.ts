@@ -5,6 +5,8 @@ import type {
   DomainEventBus,
 } from '../../../kernel/events/domain-event-bus.js';
 import type { OrderBy } from '../data/accounting-rows.js';
+import { ACCOUNT_CODE_PATTERN } from '../domain/account-code.js';
+import { MAX_ACCOUNT_CODE_LENGTH } from '../domain/coding-structure.js';
 import {
   isNonBlank,
   MAX_CODE_LENGTH,
@@ -104,6 +106,28 @@ export function assertCodeAndTitle(code: string, title: string): void {
   if (!isNonBlank(title) || title.length > MAX_TITLE_LENGTH) {
     throw AppException.badRequest(
       `Title is required and must be at most ${MAX_TITLE_LENGTH} characters.`,
+    );
+  }
+}
+
+/**
+ * The account write rule (§9.2): a canonical digits-only code inside the
+ * architecture length cap, plus the shared title rule.
+ *
+ * The digits-only rule is a DECIDED contract rule, not an invented numbering
+ * policy: the stored code is the concatenation of the level segments and
+ * nothing else. WHAT the segments are is configuration (the coding structure);
+ * normalization stays trim-only like every other master-data code — no
+ * separator stripping, no re-padding, no case folding.
+ */
+export function assertAccountCode(code: string): void {
+  if (
+    !isNonBlank(code) ||
+    code.length > MAX_ACCOUNT_CODE_LENGTH ||
+    !ACCOUNT_CODE_PATTERN.test(code)
+  ) {
+    throw AppException.badRequest(
+      `An account code must be 1-${MAX_ACCOUNT_CODE_LENGTH} digits (no separators, letters or spaces — the separator is a display concern).`,
     );
   }
 }
