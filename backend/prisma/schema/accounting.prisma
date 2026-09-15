@@ -1,8 +1,7 @@
-// Accounting module schema — FOUNDATION ONLY (Task 10.2)
-// (docs/modules.md §Accounting, ADR-0026, docs/accounting/domain-contract.md
-// §4/§5/§6/§7, AC-D-01…AC-D-05).
+// Accounting module schema (docs/modules.md §Accounting, ADR-0026,
+// docs/accounting/domain-contract.md).
 //
-// Owns the bookkeeping scope spine:
+// Task 10.2 — the bookkeeping scope spine:
 //   `accounting.financial_areas`    — bookkeeping scopes (حوزه مالی), one
 //     organization may hold n ≥ 1 (OQ-40 interim: created explicitly, never
 //     seeded; no grants yet — structural scoping like `organizationId`).
@@ -11,11 +10,43 @@
 //   `accounting.accounting_periods` — explicit dated rows inside one year,
 //     never computed months; several may be open at once.
 //
-// Explicitly NOT here (later Accounting tasks — contract §28.2): the coding
-// structure, chart of accounts, control-role mappings, detail dimensions /
-// groups / items, accounting documents + lines, posting rules, the
-// system-posting idempotency ledger and balance projections. Task 10.2 must
-// not create them.
+// Task 10.3 — the coding structure + chart of accounts (§8/§9,
+// AC-D-06…AC-D-10, AC-D-19, AC-I-10/11):
+//   `accounting.coding_structure_versions` — the organization's CONFIGURABLE
+//     coding structure (depth + per-level digit lengths + display-only
+//     separator), versioned `draft → active → superseded` with exactly one
+//     ACTIVE version per organization (§9.4). Nothing about the shape is
+//     hardcoded: `2 + 3 + 3` is one configuration among many.
+//   `accounting.coding_structure_levels`   — one row per level of ONE
+//     VERSION: a published/superseded version is never reinterpreted by a
+//     later structure change (§9.4), so levels belong to the version, not to
+//     a mutable "current structure" row.
+//   `accounting.accounts`                  — the whole chart of accounts in
+//     ONE table: adjacency (`parent_id`) + integer `level` (AC-D-06/07).
+//     There are deliberately no `groups`/`generals`/`subsidiaries`/`details`
+//     tables, and `level_kind` labels are informational only (§8.1).
+//
+// Explicitly NOT here (later Accounting tasks — contract §28.2): control-role
+// mappings, detail dimensions / groups / items (floating details), accounting
+// documents + lines, posting rules, the system-posting idempotency ledger and
+// balance projections.
+//
+// Deferred on purpose, with the seam recorded (no speculative columns —
+// AR-29):
+// - Area applicability of accounts (§8.3): the chart is ORGANIZATION-scoped
+//   (AC-D-04), so accounts carry no `financial_area_id` and `code` is unique
+//   per organization (§9.2). An applicability table has no consumer before
+//   posting validation exists (§10.6/§12.5) and its shape is entangled with
+//   OQ-40 (one chart vs per-area charts); if OQ-40 resolves to per-area
+//   charts, uniqueness widens to `(organization_id, financial_area_id, code)`
+//   as an additive change.
+// - `account_type` + `is_temporary` (§8.3): the vocabulary and the
+//   temporary-classification function are EXPERT-GATED (OQ-25) → no column is
+//   invented. `account_nature` (`debit|credit`) IS a decided closed list and
+//   is therefore stored.
+// - `control_role` (§8.7) and coding-structure `reserved_ranges` (§9.1): both
+//   are posting-rule inputs whose purpose vocabulary is OQ-25 → deferred with
+//   the posting task that consumes them.
 //
 // Conventions (docs/database-strategy.md, ADR-0021):
 // - every row carries `organization_id` (NOT NULL, FK RESTRICT): the
@@ -31,15 +62,22 @@
 //   unit-tested in the domain layer, because constraints Prisma cannot
 //   represent would be dropped by a later `prisma migrate dev` (the same
 //   reason the organization migration gives);
-// - overlap and lifecycle guards that must hold under concurrency are
-//   enforced by short `SELECT … FOR UPDATE` transactions in `data/`
-//   (docs/modules.md §Accounting, AR-11), NOT by exclusion constraints:
-//   an exclusion needs `btree_gist` (a superuser extension + deploy
-//   friction) and — worse — is invisible to Prisma, so the next generated
-//   migration would silently `DROP` it and lose the invariant. Parent-row
-//   locks serialize the same writers with no drift hazard.
-// - lifecycle: `is_active` only (OQ-36 posture); nothing here is deleted.
-//   `period_kind` carries the OQ-23 seam (`normal` is the only v1 value).
+// - guards that must hold under concurrency (calendar overlap, "exactly one
+//   active coding-structure version", account code placement, the postable-
+//   leaf invariant) are enforced by short `SELECT … FOR UPDATE` transactions
+//   in `data/` (docs/modules.md §Accounting, AR-11), NOT by exclusion
+//   constraints or triggers: both need either a superuser extension
+//   (`btree_gist`) or a PL/pgSQL function — and both are invisible to Prisma,
+//   so the next generated migration would silently `DROP` them and lose the
+//   invariant. Parent-row locks serialize the same writers with no drift
+//   hazard; the unique indexes below stay the hard backstop for identity
+//   races.
+// - lifecycle: `is_active` only (OQ-36 posture); no business row is deleted.
+//   The ONE exception is a coding-structure version's level rows while that
+//   version is still a `draft` — an unreferenced configuration workspace,
+//   deleted-and-replaced atomically (the ADR-0024 draft-configuration rule),
+//   never reachable from an account. `period_kind` carries the OQ-23 seam
+//   (`normal` is the only v1 value).
 
 model FinancialArea {
   id             String  @id
@@ -135,5 +173,175 @@ model AccountingPeriod {
   @@index([organizationId, fiscalYearId], map: "idx_accounting_periods_organization_id_fiscal_year_id")
   @@index([organizationId, fiscalYearId, status], map: "idx_accounting_periods_organization_id_fiscal_year_id_status")
   @@map("accounting_periods")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Coding structure + chart of accounts (Task 10.3, contract §8/§9)
+// ---------------------------------------------------------------------------
+
+/// One revision of an organization's coding structure (§9.1, AC-D-10).
+///
+/// `code` names the structure inside the organization (`DEFAULT`, `SIMPLE`, …)
+/// and `versionNumber` counts its revisions — the shape the Workflow
+/// Foundation established for versioned configuration (ADR-0024 §3, which
+/// §9.4 names explicitly): `draft → active → superseded`, one-way.
+///
+/// Exactly ONE version per organization is `active` (§9.4): it is the
+/// structure NEW root accounts are created under, and publishing a version
+/// supersedes the previous active one. Enforced inside a locked transaction
+/// (`data/coding-structures.repository.ts`) rather than by a partial unique
+/// index — a partial index is invisible to Prisma and would be dropped by the
+/// next generated migration (the same reason this file gives for `is_default`
+/// on `financial_areas`).
+///
+/// `maxDepth` + `separator` + the level rows below ARE the structure: no
+/// segment count, digit length or separator is hardcoded anywhere in the
+/// module (`2 + 3 + 3` is one configuration among many).
+model CodingStructureVersion {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  /// Structure identity inside the organization; versions of one structure
+  /// share it. Unique per (organization, code, versionNumber).
+  code           String  @db.VarChar(64)
+  /// 1-based ordinal per (organization, code), assigned at creation.
+  versionNumber  Int     @map("version_number")
+  /// `draft` | `active` | `superseded` (domain/coding-structure.ts).
+  status         String  @default("draft") @db.VarChar(16)
+  /// Number of levels: 1..MAX_CODING_STRUCTURE_DEPTH (architecture cap = 8).
+  maxDepth       Int     @map("max_depth")
+  /// DISPLAY ONLY (§9.1/§9.2): how a code is rendered (`-`, `/`, `.` or
+  /// empty = none). Never part of a stored code, never part of uniqueness.
+  separator      String  @default("") @db.VarChar(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  levels       CodingStructureLevel[]
+  accounts     Account[]
+
+  /// Two concurrent "create the next version" writes collide HERE (the loser
+  /// retries with the recomputed ordinal — the Workflow version precedent).
+  @@unique([organizationId, code, versionNumber], map: "uq_coding_structure_versions_organization_id_code_version_number")
+  /// "the organization's active version" — the resolver every new root
+  /// account and every picker needs; leads with the scope column (ADR-0021 §3).
+  @@index([organizationId, status], map: "idx_coding_structure_versions_organization_id_status")
+  @@index([organizationId, code], map: "idx_coding_structure_versions_organization_id_code")
+  @@map("coding_structure_versions")
+  @@schema("accounting")
+}
+
+/// One level of one coding-structure version (§9.1).
+///
+/// Levels belong to the VERSION (not to a mutable "current structure" row) so
+/// that a later structure change never reinterprets the codes accounts pinned
+/// to this version already carry (§9.4).
+model CodingStructureLevel {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  versionId      String  @map("coding_structure_version_id")
+  /// 1-based ordinal inside the version; every level 1..maxDepth must exist
+  /// before the version can become active (domain/coding-structure.ts).
+  levelIndex     Int     @map("level_index")
+  /// The level title the organization sees (§8.1: level titles are
+  /// organization configuration — `گروه / کل / معین / تفصیلی` are the common
+  /// Iranian vocabulary, not a code constant).
+  title          String  @db.VarChar(200)
+  /// Digits this level's segment contributes. ≥ 1, and the total across the
+  /// version is capped (MAX_ACCOUNT_CODE_LENGTH = 32) — architecture
+  /// constants that bound validation and index widths (§9.1), not policy.
+  digitLength    Int     @map("digit_length")
+  /// Per-level default for new accounts (§14 rule 4). A DEFAULT, not a rule:
+  /// `is_postable` is an account attribute the chart may override.
+  defaultIsPostable Boolean @default(false) @map("default_is_postable")
+  /// Informational label only (`group` | `general` | `subsidiary` | `detail`).
+  /// NOTHING derives behaviour from it (§8.1: the semantic hooks live on the
+  /// account, not on a level name), which is why duplicates across levels are
+  /// allowed and the list may be shorter than `maxDepth`.
+  levelKind      String?  @map("level_kind") @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  version      CodingStructureVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId, levelIndex], map: "uq_coding_structure_levels_coding_structure_version_id_level_index")
+  @@index([organizationId, versionId], map: "idx_coding_structure_levels_organization_id_version_id")
+  @@map("coding_structure_levels")
+  @@schema("accounting")
+}
+
+/// One node of the organization's chart of accounts (§8, AC-D-06…AC-D-08).
+///
+/// ONE table for the whole tree (AC-D-07): `parent_id` + `level` is the
+/// authority, the code prefix is the proof (§9.3). No `path` projection yet
+/// (§8.2 allows one as a rebuildable projection — it belongs with the
+/// reporting task that reads it).
+///
+/// Immutability: `code` is immutable once created (§8.3) — there is no code
+/// field on the update path at all, and nothing reuses a code (§8.6). The
+/// structural fields (`parent_id`, `level`, `account_nature`, `is_postable`)
+/// are immutable once the account has document lines (AC-I-11, §8.4 rule 4);
+/// document lines are Task 10.4+, so the domain rule is implemented behind the
+/// single documented seam in `domain/account.ts` (`isReferencedByDocumentLine`)
+/// — there is NO fake usage table (Task 10.3 §16 forbids inventing one).
+model Account {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  /// Canonical code: digits only, the concatenation of the level segments
+  /// (§9.2). Unique per ORGANIZATION because the chart is organization-scoped
+  /// (AC-D-04, §9.2). Width = MAX_ACCOUNT_CODE_LENGTH (the §9.1 cap), so the
+  /// length rule can never be expressed only in the domain layer.
+  code           String  @db.VarChar(32)
+  /// Persian-capable title (§2.3 C4); editable (titles change, codes do not).
+  title          String  @db.VarChar(200)
+  /// `null` for roots. ON DELETE RESTRICT: nothing is deleted, and the tree
+  /// can never lose an ancestor under a report's feet (§8.6, AR-13).
+  parentId       String? @map("parent_id")
+  /// 1-based depth, ALWAYS derived: root = 1, child = parent.level + 1
+  /// (AC-I-10 rule 1). Never supplied by a client.
+  level          Int
+  /// The structure version this account's code was composed under (§9.4,
+  /// D-21, AC-I-14) — historical codes stay interpretable without the
+  /// CURRENT structure. Derived: roots take the org's active version, children
+  /// inherit the parent's, so one subtree never mixes two versions.
+  codingStructureVersionId String @map("coding_structure_version_id")
+  /// Balance direction (`ماهیت`), `debit` | `credit` (§8.3). Reporting
+  /// semantics only — it does NOT restrict which side a future line uses
+  /// (§13.4).
+  accountNature  String   @map("account_nature") @db.VarChar(8)
+  /// §14 (`AC-D-19`): a validated attribute, not a level-name inference.
+  /// Invariant: postable ⇒ leaf, enforced on BOTH write paths (see
+  /// `AccountsRepository`).
+  isPostable     Boolean  @default(false) @map("is_postable")
+  /// `false` blocks new posting lines and new children, and changes nothing
+  /// else: history stays readable (§8.6).
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parent       Account?               @relation("AccountTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children     Account[]              @relation("AccountTree")
+  codingStructureVersion CodingStructureVersion @relation(fields: [codingStructureVersionId], references: [id], onDelete: Restrict)
+
+  /// The canonical-code uniqueness (§9.2) — the authoritative duplicate guard
+  /// for concurrent creates (the service pre-check only produces a nicer 409).
+  @@unique([organizationId, code], map: "uq_accounts_organization_id_code")
+  /// Children of one node (the `hasChildren` guard, the tree walk, the
+  /// direct-children list) — leads with the scope column (ADR-0021 §3).
+  @@index([organizationId, parentId], map: "idx_accounts_organization_id_parent_id")
+  @@index([organizationId, level], map: "idx_accounts_organization_id_level")
+  @@index([organizationId, isActive], map: "idx_accounts_organization_id_is_active")
+  /// "which accounts pin this version" — the query a structure-version
+  /// retirement and (later) a structure migration must answer.
+  @@index([codingStructureVersionId], map: "idx_accounts_coding_structure_version_id")
+  @@map("accounts")
   @@schema("accounting")
 }
