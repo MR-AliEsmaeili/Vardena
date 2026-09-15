@@ -1,0 +1,517 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import { isRecordNotFound } from '../../../kernel/prisma/prisma-errors.js';
+import type {
+  Account,
+  AccountImmutableField,
+  AccountPlacementParent,
+} from '../domain/account.js';
+import {
+  isAccountNature,
+  isReferencedByDocumentLine,
+  planAccountEdit,
+  planAccountPlacement,
+  planPostabilityChange,
+} from '../domain/account.js';
+import type { HierarchyEdge } from '../domain/hierarchy.js';
+import { collectDescendantIds } from '../domain/hierarchy.js';
+import type { CodingStructureLevel } from '../domain/coding-structure.js';
+import {
+  AccountImmutableAfterUseError,
+  AccountPlacementRejectedError,
+  AccountPostabilityRejectedError,
+  CodingStructureVersionNotActiveError,
+} from './accounting-structure-errors.js';
+import {
+  lockAccountRow,
+  lockCodingStructureVersionRow,
+} from './accounting-locks.js';
+import type { LockedAccount } from './accounting-locks.js';
+import type {
+  AccountingTransactionalClient,
+  AccountingTxClient,
+  AccountCreate,
+  AccountDelegate,
+  AccountRow,
+  AccountUpdate,
+  AccountWhere,
+  OrderBy,
+} from './accounting-rows.js';
+
+/**
+ * Data access for `accounting.accounts` — the chart of accounts tree.
+ *
+ * The `(organization_id, code)` unique index is authoritative for duplicate
+ * detection: the service pre-checks only to produce a 409 with a useful
+ * message, and the repository still surfaces the database failure when two
+ * writes race (SELECT-then-INSERT is never the guard).
+ *
+ * The tree invariants (AC-I-10, AC-I-11, §14) are re-evaluated INSIDE a locked
+ * transaction with the SAME decision table the service applied for fast
+ * feedback — `planAccountPlacement` / `planPostabilityChange` are imported here
+ * for exactly that reason (the `checkFiscalYearRange` precedent):
+ *
+ * - CREATE locks the PARENT row, so a concurrent postability flip on that
+ *   parent cannot slip past the "postable ⇒ leaf" rule;
+ * - CREATE of a ROOT locks the pinned coding-structure VERSION row and
+ *   re-checks it is still `active` (§9.4);
+ * - MOVE locks node + new parent in ascending id order, so two concurrent
+ *   cycle-forming re-parentings serialize on the shared node and exactly one
+ *   wins (a cycle can only be created by re-parenting a node under one of its
+ *   descendants, which always involves that node's row);
+ * - the postability FLIP counts children under the node's own lock — the same
+ *   lock a racing child create takes.
+ *
+ * Lock order is `version → account`, never the reverse, and multi-row locks
+ * always ascend by id, so no deadlock cycle exists (`accounting-locks.ts`).
+ */
+
+type Client = {
+  account: AccountDelegate;
+};
+
+/**
+ * Bound of the single-read tree walk a MOVE needs to compute the moved node's
+ * descendants. Charts are bounded by the coding structure's depth and are
+ * organization-scoped; the walk is a `findFirst`-free bulk read, so the bound is
+ * a memory guard, not a business rule (the calendar guards read siblings the same
+ * way).
+ */
+const MAX_TREE_EDGES = 10_000;
+
+export interface AccountListFilter {
+  /** Always set by the service: a list is never cross-organization. */
+  organizationId: string;
+  /** `null` filters roots; `undefined` does not filter at all. */
+  parentId?: string | null | undefined;
+  level?: number | undefined;
+  isActive?: boolean | undefined;
+  isPostable?: boolean | undefined;
+  codingStructureVersionId?: string | undefined;
+  search?: string | undefined;
+}
+
+/**
+ * The coding-structure snapshot the placement rules validate against. The
+ * SERVICE resolves it (roots: the organization's active version; children: the
+ * parent's pinned version), because reading another table's shape from a
+ * repository of a different aggregate would hide that choice (`AR-08`).
+ */
+export interface AccountStructureSnapshot {
+  versionId: string;
+  maxDepth: number;
+  levels: readonly Pick<
+    CodingStructureLevel,
+    'levelIndex' | 'digitLength' | 'defaultIsPostable'
+  >[];
+}
+
+@Injectable()
+export class AccountsRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private client(): Promise<Client> {
+    return this.prisma.getClient<Client>();
+  }
+
+  private transacting(): Promise<AccountingTransactionalClient> {
+    return this.prisma.getClient<AccountingTransactionalClient>();
+  }
+
+  async findById(id: string): Promise<Account | null> {
+    const { account } = await this.client();
+    const row = await account.findUnique({ where: { id } });
+    return row === null ? null : toDomain(row);
+  }
+
+  async findByCode(
+    organizationId: string,
+    code: string,
+  ): Promise<Account | null> {
+    const { account } = await this.client();
+    const row = await account.findFirst({ where: { organizationId, code } });
+    return row === null ? null : toDomain(row);
+  }
+
+  /** One child of an account, for a rejection message that names it. */
+  async findChild(
+    organizationId: string,
+    parentId: string,
+  ): Promise<Account | null> {
+    const { account } = await this.client();
+    const row = await account.findFirst({
+      where: { organizationId, parentId },
+    });
+    return row === null ? null : toDomain(row);
+  }
+
+  /** The whole organization's parent edges — the input of the tree walk. */
+  async listHierarchyEdges(organizationId: string): Promise<HierarchyEdge[]> {
+    const { account } = await this.client();
+    const rows = await account.findMany({
+      where: { organizationId },
+      orderBy: [{ id: 'asc' }],
+      skip: 0,
+      take: MAX_TREE_EDGES,
+    });
+    return rows.map((row) => ({ id: row.id, parentId: row.parentId }));
+  }
+
+  async list(params: {
+    where: AccountListFilter;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<{ items: Account[]; total: number }> {
+    const { account } = await this.client();
+    const where = toWhere(params.where);
+    const [rows, total] = await Promise.all([
+      account.findMany({
+        where,
+        orderBy: params.orderBy,
+        skip: params.skip,
+        take: params.take,
+      }),
+      account.count({ where }),
+    ]);
+    return { items: rows.map(toDomain), total };
+  }
+
+  /**
+   * Insert one account, validating placement against the LOCKED parent (or the
+   * LOCKED active version for a root).
+   *
+   * @throws AccountPlacementRejectedError for any violated tree invariant.
+   * @throws CodingStructureVersionNotActiveError when the organization's active
+   *   version changed between resolution and insert (stale request: retry).
+   * @throws `P2002` when the code is taken (the service maps it to 409).
+   */
+  async createChecked(input: {
+    id: string;
+    organizationId: string;
+    code: string;
+    title: string;
+    parentId: string | null;
+    accountNature: string;
+    isPostable: boolean;
+    structure: AccountStructureSnapshot;
+    now: Date;
+    actorId: string | null;
+  }): Promise<Account> {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
+      let parent: AccountPlacementParent | null = null;
+      if (input.parentId !== null) {
+        const lockedParent = await lockAccountRow(tx, input.parentId);
+        if (lockedParent === null) {
+          throw new AccountPlacementRejectedError('parent_not_found');
+        }
+        parent = placementParent(lockedParent);
+      } else {
+        // A root pins the organization's ACTIVE version; a racing publish must
+        // not leave the new account pinned to a version that just became
+        // superseded (§9.4).
+        const version = await lockCodingStructureVersionRow(
+          tx,
+          input.structure.versionId,
+        );
+        if (version === null || version.status !== 'active') {
+          throw new CodingStructureVersionNotActiveError(
+            version?.status ?? 'missing',
+          );
+        }
+      }
+
+      const plan = planAccountPlacement({
+        id: '',
+        organizationId: input.organizationId,
+        parentId: input.parentId,
+        code: input.code,
+        parent,
+        descendantIds: [],
+        current: null,
+        levels: input.structure.levels,
+        maxDepth: input.structure.maxDepth,
+      });
+      if (plan.problem !== null) {
+        throw new AccountPlacementRejectedError(plan.problem);
+      }
+      // A brand-new account has no children, so `is_postable` cannot violate
+      // the leaf rule here; the placement check covered the parent's side.
+
+      const data: AccountCreate = {
+        id: input.id,
+        organizationId: input.organizationId,
+        code: input.code,
+        title: input.title,
+        parentId: input.parentId,
+        level: plan.level,
+        codingStructureVersionId: input.structure.versionId,
+        accountNature: input.accountNature,
+        isPostable: input.isPostable,
+        isActive: true,
+        createdAt: input.now,
+        updatedAt: input.now,
+        createdBy: input.actorId,
+      };
+      return toDomain(await tx.account.create({ data }));
+    });
+  }
+
+  /**
+   * Apply an account edit under the locks the invariants need:
+   *
+   * - a MOVE re-runs the whole placement table against the locked rows — cycle,
+   *   level derivation, code prefix, postable/disabled parent, one-version
+   *   subtree, depth;
+   * - a postability flip counts children under the node lock;
+   * - structural fields are refused once a document line references the
+   *   account (AC-I-11; see `isReferencedByDocumentLine` for why that predicate
+   *   is a seam in this task).
+   *
+   * `code` is never part of the patch — it is immutable once created (§8.3) —
+   * and `level` is always re-derived, never client input.
+   */
+  async updateChecked(input: {
+    id: string;
+    title?: string | undefined;
+    accountNature?: string | undefined;
+    isPostable?: boolean | undefined;
+    parentId?: string | null | undefined;
+    /** Required for a move only (the code/prefix rules read the level rows). */
+    structure: AccountStructureSnapshot | null;
+    now: Date;
+    actorId: string | null;
+  }): Promise<Account> {
+    const requestedParentId =
+      input.parentId === undefined ? undefined : input.parentId;
+    const willLockParent =
+      requestedParentId !== undefined && requestedParentId !== null;
+
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
+      // Lock BOTH rows in ascending id order BEFORE reading either of them, so
+      // two racing moves of the same pair serialize instead of deadlocking.
+      const ids = [
+        ...new Set([input.id, ...(willLockParent ? [requestedParentId] : [])]),
+      ];
+      ids.sort();
+      const locked = new Map<string, LockedAccount>();
+      for (const id of ids) {
+        const row = await lockAccountRow(tx, id);
+        if (row === null) {
+          if (id === input.id) {
+            // Resolved by the service; rows are never deleted → a bug.
+            throw new Error(`Account "${input.id}" no longer exists.`);
+          }
+          throw new AccountPlacementRejectedError('parent_not_found');
+        }
+        locked.set(id, row);
+      }
+      const nodeRow = locked.get(input.id);
+      if (nodeRow === undefined) {
+        throw new Error(`Account "${input.id}" no longer exists.`);
+      }
+      const node = toDomain(nodeRow);
+      const parentRow =
+        requestedParentId === undefined || requestedParentId === null
+          ? undefined
+          : locked.get(requestedParentId);
+      const parentChanged =
+        requestedParentId !== undefined && requestedParentId !== node.parentId;
+      const parent: AccountPlacementParent | null =
+        parentRow === undefined ? null : placementParent(parentRow);
+
+      const refused = this.immutableRefusals(input, node, parentChanged);
+      if (refused.length > 0) {
+        throw new AccountImmutableAfterUseError(refused);
+      }
+
+      const children = await tx.account.findMany({
+        where: { organizationId: node.organizationId, parentId: node.id },
+        orderBy: [{ id: 'asc' }],
+        skip: 0,
+        take: 2,
+      });
+      const hasChildren = children.length > 0;
+
+      if (input.isPostable !== undefined) {
+        const problem = planPostabilityChange({
+          isPostable: input.isPostable,
+          hasChildren,
+        });
+        if (problem !== null) {
+          const [blocking] = children;
+          throw new AccountPostabilityRejectedError(blocking?.id ?? '');
+        }
+      }
+
+      let level = node.level;
+      if (parentChanged) {
+        if (input.structure === null) {
+          // The service always resolves the pinned version for a move; getting
+          // here without it is a caller bug, not an API outcome.
+          throw new Error(
+            'Account move requires the pinned coding-structure snapshot.',
+          );
+        }
+        const plan = planAccountPlacement({
+          id: node.id,
+          organizationId: node.organizationId,
+          parentId: requestedParentId ?? null,
+          code: node.code,
+          parent,
+          descendantIds: descendantsOf(
+            await edgesOf(tx, node.organizationId),
+            node.id,
+          ),
+          current: {
+            level: node.level,
+            codingStructureVersionId: node.codingStructureVersionId,
+            hasChildren,
+          },
+          levels: input.structure?.levels ?? [],
+          maxDepth: input.structure?.maxDepth ?? 0,
+        });
+        if (plan.problem !== null) {
+          throw new AccountPlacementRejectedError(plan.problem);
+        }
+        level = plan.level;
+      }
+
+      const patch: AccountUpdate = {
+        updatedAt: input.now,
+        updatedBy: input.actorId,
+      };
+      if (input.title !== undefined) patch.title = input.title;
+      if (input.accountNature !== undefined) {
+        patch.accountNature = input.accountNature;
+      }
+      if (input.isPostable !== undefined) patch.isPostable = input.isPostable;
+      if (parentChanged) {
+        patch.parentId = requestedParentId ?? null;
+        patch.level = level;
+      }
+      return toDomain(
+        await tx.account.update({ where: { id: node.id }, data: patch }),
+      );
+    });
+  }
+
+  /** Lifecycle flip (`is_active`) — no cross-row guard, so no transaction. */
+  async update(id: string, patch: AccountUpdate): Promise<Account | null> {
+    const { account } = await this.client();
+    try {
+      return toDomain(await account.update({ where: { id }, data: patch }));
+    } catch (error) {
+      if (isRecordNotFound(error)) return null;
+      throw error;
+    }
+  }
+
+  /**
+   * Which requested changes AC-I-11 freezes for a referenced account.
+   *
+   * `isReferencedByDocumentLine` is the documented Task 10.3 seam: no document
+   * line can exist yet, so this never refuses here — the RULE is what this
+   * task implements (and the posting task wires the predicate to real data).
+   */
+  private immutableRefusals(
+    input: {
+      isPostable?: boolean | undefined;
+      accountNature?: string | undefined;
+    },
+    node: Account,
+    parentChanged: boolean,
+  ): AccountImmutableField[] {
+    return planAccountEdit({
+      referencedByDocumentLine: isReferencedByDocumentLine(node),
+      changes: {
+        parentId: parentChanged,
+        // `level` moves with the parent; it is never an independent input.
+        level: parentChanged,
+        accountNature:
+          input.accountNature !== undefined &&
+          input.accountNature !== node.accountNature,
+        isPostable:
+          input.isPostable !== undefined &&
+          input.isPostable !== node.isPostable,
+      },
+    }).refused;
+  }
+}
+
+// ---- Internal helpers ----
+
+async function edgesOf(
+  tx: AccountingTxClient,
+  organizationId: string,
+): Promise<HierarchyEdge[]> {
+  const rows = await tx.account.findMany({
+    where: { organizationId },
+    orderBy: [{ id: 'asc' }],
+    skip: 0,
+    take: MAX_TREE_EDGES,
+  });
+  return rows.map((row) => ({ id: row.id, parentId: row.parentId }));
+}
+
+function descendantsOf(
+  edges: readonly HierarchyEdge[],
+  rootId: string,
+): string[] {
+  return collectDescendantIds(edges, rootId);
+}
+
+function toWhere(filter: AccountListFilter): AccountWhere {
+  const where: AccountWhere = { organizationId: filter.organizationId };
+  if (filter.parentId !== undefined) where.parentId = filter.parentId;
+  if (filter.level !== undefined) where.level = filter.level;
+  if (filter.isActive !== undefined) where.isActive = filter.isActive;
+  if (filter.isPostable !== undefined) where.isPostable = filter.isPostable;
+  if (filter.codingStructureVersionId !== undefined) {
+    where.codingStructureVersionId = filter.codingStructureVersionId;
+  }
+  if (filter.search !== undefined && filter.search !== '') {
+    where.OR = [
+      { code: { contains: filter.search, mode: 'insensitive' } },
+      { title: { contains: filter.search, mode: 'insensitive' } },
+    ];
+  }
+  return where;
+}
+
+function placementParent(
+  row: LockedAccount | AccountRow,
+): AccountPlacementParent {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    code: row.code,
+    level: row.level,
+    isPostable: row.isPostable,
+    isActive: row.isActive,
+    codingStructureVersionId: row.codingStructureVersionId,
+  };
+}
+
+function toDomain(row: AccountRow | LockedAccount): Account {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    code: row.code,
+    title: row.title,
+    parentId: row.parentId,
+    level: row.level,
+    codingStructureVersionId: row.codingStructureVersionId,
+    // Unreachable by construction (writes go through the closed list); the
+    // fallback picks the reading no report should silently treat as credit.
+    accountNature: isAccountNature(row.accountNature)
+      ? row.accountNature
+      : 'debit',
+    isPostable: row.isPostable,
+    isActive: row.isActive,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}

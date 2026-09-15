@@ -1,7 +1,7 @@
 import type { DomainEvent } from '../../../kernel/events/domain-event-bus.js';
 
 // ---------------------------------------------------------------------------
-// Accounting module domain events — Task 10.2 foundation
+// Accounting module domain events — Task 10.2 foundation + Task 10.3 chart
 // (docs/modules.md §Accounting "Publishes", §Event catalog, contract §21).
 //
 // Naming follows the repository convention `Entity.PastTenseVerb` and the
@@ -63,6 +63,20 @@ export interface AccountingPeriodEventPayload {
   sequence: number;
 }
 
+/** Payload shared by every account (chart of accounts) event — Task 10.3. */
+export interface AccountEventPayload {
+  /** ULID of the account. */
+  id: string;
+  /** Organization the account belongs to (the chart is organization-scoped). */
+  organizationId: string;
+  /** Canonical digits-only code (business key, never a title). */
+  code: string;
+  /** 1-based tree depth. */
+  level: number;
+  /** Coding-structure version the code was composed under (§9.4). */
+  codingStructureVersionId: string;
+}
+
 /** Payload for accounting-period lifecycle transitions. */
 export interface AccountingPeriodTransitionEventPayload extends AccountingPeriodEventPayload {
   fromStatus: string;
@@ -80,6 +94,45 @@ interface ScopedEvent<
   aggregateId: string;
   payload: TPayload;
 }
+
+// ---- Account (chart of accounts, Task 10.3) ---------------------------------
+// Contract §21 names exactly `Account.{Created,Updated,Enabled,Disabled}` for
+// chart maintenance, and deliberately NO `Account.Deleted`: accounts are never
+// deleted (§8.6).
+//
+// There is NO `CodingStructure.*` row in the §21 vocabulary, so publishing a
+// version emits nothing: the change is durable in the AR-12 columns
+// (`updated_by`/`updated_at` on the version row) and every consequence shows up
+// as `Account.Created` from the accounts created under the new version.
+// Inventing an event name the contract does not carry would extend the event
+// contract, which is ADR-gated (AR-29) — recorded here so the next task finds
+// the decision, not a silent gap.
+
+export const ACCOUNT_CREATED_EVENT = 'Account.Created' as const;
+export const ACCOUNT_UPDATED_EVENT = 'Account.Updated' as const;
+export const ACCOUNT_ENABLED_EVENT = 'Account.Enabled' as const;
+export const ACCOUNT_DISABLED_EVENT = 'Account.Disabled' as const;
+
+export type AccountCreatedEvent = ScopedEvent<
+  typeof ACCOUNT_CREATED_EVENT,
+  'Account',
+  AccountEventPayload
+>;
+export type AccountUpdatedEvent = ScopedEvent<
+  typeof ACCOUNT_UPDATED_EVENT,
+  'Account',
+  AccountEventPayload
+>;
+export type AccountEnabledEvent = ScopedEvent<
+  typeof ACCOUNT_ENABLED_EVENT,
+  'Account',
+  AccountEventPayload
+>;
+export type AccountDisabledEvent = ScopedEvent<
+  typeof ACCOUNT_DISABLED_EVENT,
+  'Account',
+  AccountEventPayload
+>;
 
 // ---- FinancialArea ----------------------------------------------------------
 
@@ -185,6 +238,10 @@ export type AccountingPeriodSealedEvent = ScopedEvent<
 
 /** Every event this module publishes (used by tests to assert the catalog). */
 export const ACCOUNTING_EVENT_TYPES = [
+  ACCOUNT_CREATED_EVENT,
+  ACCOUNT_UPDATED_EVENT,
+  ACCOUNT_ENABLED_EVENT,
+  ACCOUNT_DISABLED_EVENT,
   FINANCIAL_AREA_CREATED_EVENT,
   FINANCIAL_AREA_UPDATED_EVENT,
   FINANCIAL_AREA_ENABLED_EVENT,
