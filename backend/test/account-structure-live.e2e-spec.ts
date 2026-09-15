@@ -45,7 +45,6 @@ describe.skipIf(DATABASE_URL === undefined)(
     let app: INestApplication | undefined;
     let prisma: PrismaService;
     let organizationId = '';
-    let versionId = '';
 
     /** A 2 + 3 configuration, chosen to differ from the other suites'. */
     const CONFIGURATION = {
@@ -140,7 +139,6 @@ describe.skipIf(DATABASE_URL === undefined)(
         code: 'LIVE',
         ...CONFIGURATION,
       });
-      versionId = draft.id;
       await structures.publishVersion(organizationId, draft.id);
     }, 60_000);
 
@@ -227,7 +225,10 @@ describe.skipIf(DATABASE_URL === undefined)(
           );
         }
       }
-      // …but the persisted state must show EXACTLY ONE active version (§9.4).
+      // …but the persisted state must show EXACTLY ONE active version (§9.4) —
+      // and it is NOT the version this suite published in `beforeAll` anymore,
+      // which is why later tests read the pinned version off the rows instead
+      // of assuming a fixture id.
       const active = await versionRows({ status: 'active' });
       expect(active).toHaveLength(1);
       const superseded = await versionRows({ status: 'superseded' });
@@ -286,12 +287,26 @@ describe.skipIf(DATABASE_URL === undefined)(
       );
       const children = await rows({ parentId: parent.id });
       expect(children).toHaveLength(10);
+      const [persistedParent] = await rows({ code: '50' });
+      if (persistedParent === undefined) throw new Error('parent row missing');
       for (const child of children) {
         expect(child.level).toBe(2);
         expect(child.code.startsWith('50')).toBe(true);
         expect(child.code).toHaveLength(5);
-        expect(child.codingStructureVersionId).toBe(versionId);
+        // The rule under test is the CHILD rule: a child inherits the version
+        // its PARENT is pinned to — never "the current active one". Asserting
+        // that instead of a fixture id keeps this test independent of the
+        // publish race above, which legitimately supersedes the version this
+        // suite published in `beforeAll`.
+        expect(child.codingStructureVersionId).toBe(
+          persistedParent.codingStructureVersionId,
+        );
       }
+      // …and the version a ROOT landed on is a real, non-draft one.
+      const pinned = (await versionRows({})).find(
+        (row) => row.id === persistedParent.codingStructureVersionId,
+      );
+      expect(pinned?.status).not.toBe('draft');
     }, 60_000);
 
     it('leaves an acyclic graph after concurrent cycle-forming re-parentings', async () => {
