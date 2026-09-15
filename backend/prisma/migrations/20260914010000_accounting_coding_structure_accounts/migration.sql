@@ -102,7 +102,7 @@ CREATE TABLE "accounting"."coding_structure_versions" (
 -- precedent). "Exactly one active version per organization" is NOT a partial
 -- unique index on purpose — Prisma would drop it — it is guarded by the
 -- org-wide row locks in `data/coding-structures.repository.ts`.
-CREATE UNIQUE INDEX "uq_coding_structure_versions_organization_id_code_version_number"
+CREATE UNIQUE INDEX "uq_coding_structure_versions_org_id_code_version_number"
     ON "accounting"."coding_structure_versions" ("organization_id", "code", "version_number");
 
 CREATE INDEX "idx_coding_structure_versions_organization_id_status"
@@ -139,7 +139,7 @@ CREATE TABLE "accounting"."coding_structure_levels" (
 -- One row per level ordinal of one version: a duplicated level index is a
 -- database rejection, a MISSING one is refused at publish (the level set must
 -- cover exactly 1..max_depth).
-CREATE UNIQUE INDEX "uq_coding_structure_levels_coding_structure_version_id_level_index"
+CREATE UNIQUE INDEX "uq_coding_structure_levels_version_id_level_index"
     ON "accounting"."coding_structure_levels" ("coding_structure_version_id", "level_index");
 
 CREATE INDEX "idx_coding_structure_levels_organization_id_version_id"

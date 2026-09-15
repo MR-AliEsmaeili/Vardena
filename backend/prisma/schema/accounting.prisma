@@ -224,7 +224,7 @@ model CodingStructureVersion {
 
   /// Two concurrent "create the next version" writes collide HERE (the loser
   /// retries with the recomputed ordinal — the Workflow version precedent).
-  @@unique([organizationId, code, versionNumber], map: "uq_coding_structure_versions_organization_id_code_version_number")
+  @@unique([organizationId, code, versionNumber], map: "uq_coding_structure_versions_org_id_code_version_number")
   /// "the organization's active version" — the resolver every new root
   /// account and every picker needs; leads with the scope column (ADR-0021 §3).
   @@index([organizationId, status], map: "idx_coding_structure_versions_organization_id_status")
@@ -269,7 +269,7 @@ model CodingStructureLevel {
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   version      CodingStructureVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
 
-  @@unique([versionId, levelIndex], map: "uq_coding_structure_levels_coding_structure_version_id_level_index")
+  @@unique([versionId, levelIndex], map: "uq_coding_structure_levels_version_id_level_index")
   @@index([organizationId, versionId], map: "idx_coding_structure_levels_organization_id_version_id")
   @@map("coding_structure_levels")
   @@schema("accounting")
