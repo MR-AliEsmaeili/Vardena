@@ -17,6 +17,7 @@ import { FiscalYearsRepository } from '../src/modules/accounting/data/fiscal-yea
 import { AccountingPeriodsRepository } from '../src/modules/accounting/data/accounting-periods.repository.js';
 import { CodingStructuresRepository } from '../src/modules/accounting/data/coding-structures.repository.js';
 import { AccountsRepository } from '../src/modules/accounting/data/accounts.repository.js';
+import { AccountingDocumentLinesRepository } from '../src/modules/accounting/data/accounting-document-lines.repository.js';
 import {
   createInMemoryStores,
   type InMemoryStores,
@@ -107,7 +108,15 @@ describe('Accounting chart foundation (e2e)', () => {
           .overrideProvider(CodingStructuresRepository)
           .useValue(structure.structures)
           .overrideProvider(AccountsRepository)
-          .useValue(structure.accounts),
+          .useValue(structure.accounts)
+          // AC-I-11 (Task 10.4) makes an account's structural fields
+          // immutable once an `accounting_document_lines` row references it.
+          // This suite exercises the chart alone, so it wires the SAME state
+          // seam the structure fakes expose and answers "never referenced" —
+          // the interlock itself is covered by `accounting-documents.e2e-spec`,
+          // whose voucher fakes write the lines this seam counts.
+          .overrideProvider(AccountingDocumentLinesRepository)
+          .useValue({ countForAccount: async () => 0 }),
     });
     app = rebuilt.app;
     users = app.get(UsersService);

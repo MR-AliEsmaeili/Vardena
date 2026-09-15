@@ -8,7 +8,6 @@ import type {
 } from '../domain/account.js';
 import {
   isAccountNature,
-  isReferencedByDocumentLine,
   planAccountEdit,
   planAccountPlacement,
   planPostabilityChange,
@@ -26,6 +25,7 @@ import {
   lockAccountRow,
   lockCodingStructureVersionRow,
 } from './accounting-locks.js';
+import { countReferencingLinesInTx } from './accounting-document-lines.repository.js';
 import type { LockedAccount } from './accounting-locks.js';
 import type {
   AccountingTransactionalClient,
@@ -322,7 +322,18 @@ export class AccountsRepository {
       const parent: AccountPlacementParent | null =
         parentRow === undefined ? null : placementParent(parentRow);
 
-      const refused = this.immutableRefusals(input, node, parentChanged);
+      // AC-I-11's predicate, evaluated UNDER the account's `FOR UPDATE` lock:
+      // a concurrent voucher write holds the same row `FOR SHARE` while it
+      // inserts lines (`lockAccountsForLinesInTx`), so the count below either
+      // sees the committed lines or waits until they are committed.
+      const referencedByDocumentLine =
+        (await countReferencingLinesInTx(tx, node.id)) > 0;
+      const refused = this.immutableRefusals(
+        input,
+        node,
+        parentChanged,
+        referencedByDocumentLine,
+      );
       if (refused.length > 0) {
         throw new AccountImmutableAfterUseError(refused);
       }
@@ -410,11 +421,9 @@ export class AccountsRepository {
   }
 
   /**
-   * Which requested changes AC-I-11 freezes for a referenced account.
-   *
-   * `isReferencedByDocumentLine` is the documented Task 10.3 seam: no document
-   * line can exist yet, so this never refuses here — the RULE is what this
-   * task implements (and the posting task wires the predicate to real data).
+   * Which requested changes AC-I-11 freezes for a referenced account. The
+   * caller passes the line count's verdict (Task 10.4 wires it to
+   * `accounting_document_lines`); the decision itself stays in the domain.
    */
   private immutableRefusals(
     input: {
@@ -423,9 +432,10 @@ export class AccountsRepository {
     },
     node: Account,
     parentChanged: boolean,
+    referencedByDocumentLine: boolean,
   ): AccountImmutableField[] {
     return planAccountEdit({
-      referencedByDocumentLine: isReferencedByDocumentLine(node),
+      referencedByDocumentLine,
       changes: {
         parentId: parentChanged,
         // `level` moves with the parent; it is never an independent input.

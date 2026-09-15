@@ -31,7 +31,6 @@ import {
 } from '../../src/modules/accounting/domain/coding-structure.js';
 import type { Account } from '../../src/modules/accounting/domain/account.js';
 import {
-  isReferencedByDocumentLine,
   planAccountEdit,
   planAccountPlacement,
   planPostabilityChange,
@@ -429,8 +428,26 @@ export class InMemoryCodingStructuresRepository {
 // Accounts
 // ---------------------------------------------------------------------------
 
+/**
+ * AC-I-11's predicate, wired to real data by Task 10.4: a structural account
+ * field is frozen once `accounting_document_lines` references the account. The
+ * fake reads the SHARED document-line table (the same object the voucher fakes
+ * write), so a test that composes a voucher into an account observes the freeze
+ * — the cross-aggregate interlock the real transaction gets from the row locks.
+ */
+export interface AccountLineUsage {
+  countForAccount(accountId: string): number;
+}
+
+const NO_LINE_USAGE: AccountLineUsage = {
+  countForAccount: () => 0,
+};
+
 export class InMemoryAccountsRepository {
-  constructor(private readonly state: StructureState) {}
+  constructor(
+    private readonly state: StructureState,
+    private readonly lineUsage: AccountLineUsage = NO_LINE_USAGE,
+  ) {}
 
   async findById(id: string): Promise<Account | null> {
     return toAccount(this.state.accounts.findById(id));
@@ -557,7 +574,7 @@ export class InMemoryAccountsRepository {
     }
 
     const refused = planAccountEdit({
-      referencedByDocumentLine: isReferencedByDocumentLine(node),
+      referencedByDocumentLine: this.lineUsage.countForAccount(node.id) > 0,
       changes: {
         parentId: parentChanged,
         level: parentChanged,
@@ -704,10 +721,15 @@ export interface StructureStores {
   };
 }
 
-export function createStructureStores(): StructureStores {
+export function createStructureStores(
+  options: { lineUsage?: AccountLineUsage } = {},
+): StructureStores {
   const state = createStructureState();
   const structures = new InMemoryCodingStructuresRepository(state);
-  const accounts = new InMemoryAccountsRepository(state);
+  const accounts = new InMemoryAccountsRepository(
+    state,
+    options.lineUsage ?? NO_LINE_USAGE,
+  );
   return {
     structures: structures as unknown as CodingStructuresRepository,
     accounts: accounts as unknown as AccountsRepository,

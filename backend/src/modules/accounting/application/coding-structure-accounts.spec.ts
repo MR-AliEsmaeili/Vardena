@@ -23,6 +23,7 @@ import { AuthorizationService } from '../../rbac/application/authorization.servi
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { CodingStructuresService } from './coding-structures.service.js';
 import { AccountsService } from './accounts.service.js';
+import { AccountingDocumentLinesRepository } from '../data/accounting-document-lines.repository.js';
 import {
   ACCOUNTING_PERMISSION_DEFINITIONS,
   ACCOUNT_PERMISSIONS,
@@ -157,8 +158,18 @@ async function buildFixture(
     authorization,
     loggerStub(),
   );
+  /**
+   * AC-I-11's predicate (Task 10.4): the real `AccountingDocumentLinesRepository`
+   * counts `accounting_document_lines`. This suite exercises the chart alone, so
+   * the stub answers "never referenced" — the freeze rule itself is covered by
+   * the voucher suite, which shares the line table with the chart fakes.
+   */
+  const documentLines = {
+    countForAccount: async () => 0,
+  } as unknown as AccountingDocumentLinesRepository;
   const accounts = new AccountsService(
     stores.accounts,
+    documentLines,
     structures,
     organizations,
     authorization,
@@ -1459,13 +1470,18 @@ describe('Accounting event vocabulary (contract §21)', () => {
     }
   });
 
-  it('publishes no deletion event and no invented CodingStructure event', () => {
-    // Accounts and structures are never deleted (§8.6, OQ-36), and §21 defines
-    // no `CodingStructure.*` row — a structure publish is evidenced by the
-    // audit columns instead of an invented name (event vocabularies are
-    // ADR-gated, AR-29).
+  it('publishes no deletion event for master data and no invented CodingStructure event', () => {
+    // Accounts, areas, years, periods and structures are never deleted
+    // (§8.6, OQ-36; §5.6, §6.5): the ONLY deletion event §21 sanctions is
+    // `AccountingDocument.Deleted`, and that one fires pre-final only
+    // (§15.3 — a final document is never deletable, AC-I-06). A
+    // `CodingStructure.*` row does not exist at all — a structure publish is
+    // evidenced by the audit columns instead of an invented name (event
+    // vocabularies are ADR-gated, AR-29).
     expect(
-      ACCOUNTING_EVENT_TYPES.filter((t) => t.endsWith('.Deleted')),
+      ACCOUNTING_EVENT_TYPES.filter(
+        (t) => t.endsWith('.Deleted') && t !== 'AccountingDocument.Deleted',
+      ),
     ).toEqual([]);
     expect(
       ACCOUNTING_EVENT_TYPES.filter((t) => t.startsWith('CodingStructure')),

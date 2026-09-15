@@ -103,6 +103,11 @@ model FinancialArea {
   // `.financial_area_id`) — no migration impact.
   accountingPeriods AccountingPeriod[]
 
+  // Back-relations for the accounting documents of this area (Task 10.4):
+  // the number series scope (§18) and the denormalized line scope columns.
+  accountingDocuments AccountingDocument[]
+  documentLines       AccountingDocumentLine[]
+
   @@unique([organizationId, code], map: "uq_financial_areas_organization_id_code")
   @@index([organizationId, isActive], map: "idx_financial_areas_organization_id_is_active")
   @@map("financial_areas")
@@ -136,6 +141,11 @@ model FiscalYear {
   followingYears FiscalYear[] @relation("FiscalYearChain")
   accountingPeriods AccountingPeriod[]
 
+  // Back-relations for the documents/lines that pin this year (Task 10.4,
+  // contract §12.2: the resolved year is stored, never recomputed).
+  accountingDocuments AccountingDocument[]
+  documentLines       AccountingDocumentLine[]
+
   @@unique([organizationId, financialAreaId, code], map: "uq_fiscal_years_organization_id_financial_area_id_code")
   @@index([organizationId, financialAreaId], map: "idx_fiscal_years_organization_id_financial_area_id")
   @@index([organizationId, financialAreaId, status], map: "idx_fiscal_years_organization_id_financial_area_id_status")
@@ -168,6 +178,11 @@ model AccountingPeriod {
   organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   financialArea FinancialArea  @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
   fiscalYear    FiscalYear     @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+
+  // Back-relations for the documents/lines resolved into this period
+  // (Task 10.4 — the stored period resolution, AC-I-14).
+  accountingDocuments AccountingDocument[]
+  documentLines       AccountingDocumentLine[]
 
   @@unique([fiscalYearId, sequence], map: "uq_accounting_periods_fiscal_year_id_sequence")
   @@index([organizationId, fiscalYearId], map: "idx_accounting_periods_organization_id_fiscal_year_id")
@@ -330,6 +345,9 @@ model Account {
   parent       Account?               @relation("AccountTree", fields: [parentId], references: [id], onDelete: Restrict)
   children     Account[]              @relation("AccountTree")
   codingStructureVersion CodingStructureVersion @relation(fields: [codingStructureVersionId], references: [id], onDelete: Restrict)
+  /// The document lines that reference this account (Task 10.4). The real FK is
+  /// `accounting_document_lines.account_id` (RESTRICT); this is the virtual side.
+  documentLines AccountingDocumentLine[]
 
   /// The canonical-code uniqueness (§9.2) — the authoritative duplicate guard
   /// for concurrent creates (the service pre-check only produces a nicer 409).
@@ -343,5 +361,212 @@ model Account {
   /// retirement and (later) a structure migration must answer.
   @@index([codingStructureVersionId], map: "idx_accounts_coding_structure_version_id")
   @@map("accounts")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Accounting documents (Task 10.4, contract §12…§18, AC-D-16…AC-D-23)
+// ---------------------------------------------------------------------------
+
+/// The accounting document (voucher, `سند حسابداری`) HEADER — Accounting's own
+/// aggregate, NOT a universal document table (AC-D-16, contract §12.1).
+///
+/// `document_type` is the Document Foundation type code this row was composed
+/// under (`accounting_voucher` in v1; the year-transition types of §6.4 are
+/// planned, code-registered additions). It is stored so that a number's series,
+/// a lifecycle decision and an audit trail stay self-describing — it is NOT a
+/// client-inventable value: the type catalogue is code (`DocumentTypeRegistry`,
+/// ADR-0023 §2), so the column can only ever repeat a registered code.
+///
+/// State/phase: `state ∈ {draft, temporary, final}` where `draft` is the
+/// Foundation's PHASE (pre-issuance), not a third state (AC-D-20). `final` is
+/// structurally immutable — there is no update path in the service and no
+/// repository method that would let a caller reach around it (AC-I-05/06).
+///
+/// Ordering/identity: `document_number` is the numeric-only serial allocated by
+/// the Document Foundation at issuance (§18, AC-D-29) and is NULL while the
+/// document is still a draft. The number's uniqueness scope is the financial
+/// area (`uq_accounting_documents_org_area_number`), matching "one monotonic
+/// series per (organization, type, area)" — PostgreSQL treats NULLs as
+/// distinct, so any number of draft rows may share the NULL number.
+///
+/// `idempotency_reference`/`request_hash` are the SYSTEM-origin evidence
+/// (§12.2/§16.4): the posting-operation key that produced this document and the
+/// sha256 of that operation's canonical client intent. The ledger row itself
+/// lives in `accounting_posting_operations`; these two columns are the
+/// document-side reference the contract asks for. Manual documents leave them
+/// NULL — their evidence is `finalized_at`/`finalized_by` plus the operation
+/// ledger row keyed by the caller's `operationKey`.
+///
+/// Deferred by the contract, so NOT columns here (AR-29): the correction links
+/// and `correction_kind`/`correction_reason` (§15.4, AC-D-22 — the correction
+/// task), currency/exchange rate (§24.1, OQ-03), attachments (§12.6) and the
+/// quantity/statistical column (§12.6).
+model AccountingDocument {
+  id                 String   @id
+  organizationId     String   @map("organization_id")
+  financialAreaId    String   @map("financial_area_id")
+  /// Resolved from `document_date` at composition and re-validated at
+  /// finalization (contract §6.2 rule 4, AC-I-14): reports never recompute a
+  /// period from a date.
+  fiscalYearId       String   @map("fiscal_year_id")
+  accountingPeriodId String   @map("accounting_period_id")
+  /// Registered Document Foundation type code (ADR-0023 §2).
+  documentType       String   @default("accounting_voucher") @map("document_type") @db.VarChar(64)
+  /// Numeric-only serial, NULL until issuance; immutable once the document is
+  /// `final` (§15.2, AC-I-22).
+  documentNumber     String?  @map("document_number") @db.VarChar(32)
+  /// Business/occurrence date, date-only (`DATE`) — drives period resolution
+  /// and chronological reporting (contract §12.3). Never a timestamp.
+  documentDate       DateTime @map("document_date") @db.Date
+  /// Header narration; required and non-blank (contract §12.2).
+  description        String   @db.VarChar(500)
+  /// `draft` | `temporary` | `final` (domain/accounting-document.ts, AC-D-20).
+  state              String   @default("draft") @db.VarChar(16)
+  /// `manual` | `system` (contract §16.1, AC-D-24). Closed, code-defined list.
+  origin             String   @db.VarChar(16)
+  /// Optional operational scope dimension, header-level only (AC-D-17).
+  branchId           String?  @map("branch_id")
+  /// System-origin source identity (§16.3): module, entity type, entity id and
+  /// the operation that produced the posting — logical references, never FKs
+  /// (there is no universal document table, AR-07/08).
+  sourceModule       String?  @map("source_module") @db.VarChar(64)
+  sourceEntityType   String?  @map("source_entity_type") @db.VarChar(64)
+  sourceEntityId     String?  @map("source_entity_id")
+  sourceOperation    String?  @map("source_operation") @db.VarChar(32)
+  /// System-origin idempotency evidence (§16.4) — the ledger key + intent hash.
+  idempotencyReference String? @map("idempotency_reference") @db.VarChar(128)
+  requestHash        String?  @map("request_hash") @db.Char(64)
+  /// Finalization evidence (§15.5, §23).
+  finalizedAt        DateTime? @map("finalized_at") @db.Timestamptz(6)
+  finalizedBy        String?   @map("finalized_by")
+  /// End-to-end traceability (docs/architecture.md §9): the request that
+  /// created the document.
+  correlationId      String?  @map("correlation_id") @db.VarChar(64)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy          String?  @map("created_by")
+  updatedBy          String?  @map("updated_by")
+
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea    FinancialArea    @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  fiscalYear       FiscalYear       @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  accountingPeriod AccountingPeriod @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict)
+  branch           Branch?          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  lines            AccountingDocumentLine[]
+
+  /// The number's uniqueness scope: the financial area (§18 — one series per
+  /// (organization, type, area)); the `documents.numbering_allocations` ledger
+  /// stays the authoritative allocator, this index is the accounting-side
+  /// backstop that makes a duplicate number impossible to persist.
+  @@unique([organizationId, financialAreaId, documentNumber], map: "uq_accounting_documents_org_area_number")
+  @@index([organizationId, state], map: "idx_accounting_documents_organization_id_state")
+  @@index([organizationId, financialAreaId, documentDate], map: "idx_accounting_documents_org_area_date")
+  @@index([organizationId, accountingPeriodId], map: "idx_accounting_documents_org_period")
+  @@map("accounting_documents")
+  @@schema("accounting")
+}
+
+/// One line of an accounting document (contract §12.5, AC-I-07/08).
+///
+/// Lines are part of the aggregate: they are created/replaced only while the
+/// document is editable, in the SAME transaction as the header, and are never
+/// touched once it is `final` (AC-I-05/06). The scope columns are the
+/// header's, denormalized for indexed period/account reads (ADR-0021 §3); the
+/// write path derives all four from ONE resolved context, so they cannot drift.
+///
+/// `debit_amount`/`credit_amount` are `numeric(18,2)` (AR-12): non-negative
+/// exact decimals, exactly one non-zero per line (§13.2, AC-I-08). Money is
+/// carried as decimal STRINGS through the domain (module convention) and never
+/// compared as a float, and the Σ debit = Σ credit check is exact — no epsilon,
+/// no rounding to force balance (§13.1, AC-I-07).
+///
+/// `source_line_reference` is the optional logical line reference for system
+/// origin (§12.5, §20.3): an opaque `(module, entity, line)` token, never an FK.
+model AccountingDocumentLine {
+  id                 String   @id
+  documentId         String   @map("document_id")
+  organizationId     String   @map("organization_id")
+  financialAreaId    String   @map("financial_area_id")
+  fiscalYearId       String   @map("fiscal_year_id")
+  accountingPeriodId String   @map("accounting_period_id")
+  /// 1-based, unique per document and DENSE (no gaps) — the legal-book
+  /// rendering order (§12.5).
+  lineNo             Int      @map("line_no")
+  accountId          String   @map("account_id")
+  debitAmount        Decimal  @default(0) @map("debit_amount") @db.Decimal(18, 2)
+  creditAmount       Decimal  @default(0) @map("credit_amount") @db.Decimal(18, 2)
+  description        String?  @db.VarChar(500)
+  sourceLineReference String? @map("source_line_reference") @db.VarChar(128)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy          String?  @map("created_by")
+  updatedBy          String?  @map("updated_by")
+
+  /// CASCADE: a line has no existence outside its document, and deleting a
+  /// pre-final voucher (§15.3, AC-D-21) removes its aggregate parts in one
+  /// statement. `final` is never deletable, so no history row can be lost.
+  document       AccountingDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea  FinancialArea      @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  fiscalYear     FiscalYear         @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  accountingPeriod AccountingPeriod  @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict)
+  /// RESTRICT: an account with lines can never disappear (nothing is deleted,
+  /// and §8.6 freezes an account that has been used).
+  account        Account            @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([documentId, lineNo], map: "uq_accounting_document_lines_document_id_line_no")
+  @@index([organizationId, accountId], map: "idx_accounting_document_lines_org_account")
+  @@map("accounting_document_lines")
+  @@schema("accounting")
+}
+
+/// The Accounting-owned posting-operation ledger (contract §16.4, AC-I-12).
+///
+/// One row per completed posting operation, unique on
+/// `(organization_id, operation_key)`; written INSIDE the transaction that
+/// performs the effect (inserted last, like `inventory_operations`), so a
+/// committed effect always has its key and a failed one never does. Same key +
+/// same `request_hash` replays the stored result; the same key with a different
+/// hash is refused with 409 and nothing is applied.
+///
+/// `request_hash` is sha256 over the CANONICAL CLIENT INTENT only: no generated
+/// ids, no server clocks, an omitted optional value hashed as an explicit
+/// `null` (ADR-0022 §4 — the rule that makes a retry hash identically instead
+/// of falsely conflicting).
+///
+/// `operation` is a closed, code-defined list (`document_create`,
+/// `document_finalize` — `domain/accounting-document.ts`). The contract's list
+/// is explicitly illustrative (`§16.4` "e.g."); only the kinds this task
+/// actually performs are declared, and no kind is written that the code does
+/// not enforce (docs/security.md §3 posture).
+///
+/// The ledger is append-only and never deleted, so a pre-final voucher that is
+/// discarded (§15.3) leaves its operation rows behind: the audit trail is
+/// complete, and a replayed key whose document is gone answers 404 rather than
+/// re-creating it (§15.3 + append-only ledger).
+model AccountingPostingOperation {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  /// Caller-supplied idempotency key (opaque, at most 128 chars).
+  operationKey   String   @map("operation_key") @db.VarChar(128)
+  /// Closed, code-defined list of implemented posting operations.
+  operation      String   @db.VarChar(32)
+  /// sha256 hex over the canonical client intent.
+  requestHash    String   @map("request_hash") @db.Char(64)
+  /// Created-row ids, e.g. `{ "documentId": "…" }`. Opaque to the database (no
+  /// query pattern reads inside it) — the same envelope convention as
+  /// `inventory_operations.result`.
+  result         Json     @db.JsonB
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, operationKey], map: "uq_accounting_posting_operations_org_key")
+  @@index([organizationId, operation], map: "idx_accounting_posting_operations_org_operation")
+  @@map("accounting_posting_operations")
   @@schema("accounting")
 }

@@ -116,6 +116,9 @@ export interface FiscalYearWhere {
   code?: string;
   status?: string;
   isActive?: boolean;
+  /** Inclusive date-only bounds — used to resolve a document's business date. */
+  startDate?: { lte?: Date; gte?: Date };
+  endDate?: { lte?: Date; gte?: Date };
   OR?: Array<{
     code?: { contains: string; mode: 'insensitive' };
     title?: { contains: string; mode: 'insensitive' };
@@ -191,6 +194,9 @@ export interface AccountingPeriodWhere {
   fiscalYearId?: string;
   sequence?: number;
   status?: string;
+  /** Inclusive date-only bounds — used to resolve a document's business date. */
+  startDate?: { lte?: Date; gte?: Date };
+  endDate?: { lte?: Date; gte?: Date };
 }
 
 export interface AccountingPeriodCreate {
@@ -427,6 +433,210 @@ export interface AccountDelegate {
 }
 
 // ---------------------------------------------------------------------------
+// Accounting documents (Task 10.4, contract §12/§15/§16/§18)
+// ---------------------------------------------------------------------------
+
+export type AccountingDocumentRow = {
+  id: string;
+  organizationId: string;
+  financialAreaId: string;
+  fiscalYearId: string;
+  accountingPeriodId: string;
+  documentType: string;
+  documentNumber: string | null;
+  documentDate: Date;
+  description: string;
+  state: string;
+  origin: string;
+  branchId: string | null;
+  sourceModule: string | null;
+  sourceEntityType: string | null;
+  sourceEntityId: string | null;
+  sourceOperation: string | null;
+  idempotencyReference: string | null;
+  requestHash: string | null;
+  finalizedAt: Date | null;
+  finalizedBy: string | null;
+  correlationId: string | null;
+} & AuditColumns;
+
+/** A header row with its lines loaded (one batched query per page). */
+export type AccountingDocumentWithLinesRow = AccountingDocumentRow & {
+  lines: AccountingDocumentLineRow[];
+};
+
+export interface AccountingDocumentWhere {
+  id?: string;
+  organizationId?: string;
+  financialAreaId?: string;
+  fiscalYearId?: string;
+  accountingPeriodId?: string;
+  documentNumber?: string;
+  state?: string;
+  origin?: string;
+  branchId?: string;
+  documentDate?: { gte?: Date; lte?: Date };
+  description?: { contains: string; mode: 'insensitive' };
+}
+
+export interface AccountingDocumentCreate {
+  id: string;
+  organizationId: string;
+  financialAreaId: string;
+  fiscalYearId: string;
+  accountingPeriodId: string;
+  documentType: string;
+  documentNumber: string | null;
+  documentDate: Date;
+  description: string;
+  state: string;
+  origin: string;
+  branchId: string | null;
+  sourceModule: string | null;
+  sourceEntityType: string | null;
+  sourceEntityId: string | null;
+  sourceOperation: string | null;
+  idempotencyReference: string | null;
+  requestHash: string | null;
+  finalizedAt: Date | null;
+  finalizedBy: string | null;
+  correlationId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface AccountingDocumentUpdate {
+  financialAreaId?: string | undefined;
+  fiscalYearId?: string | undefined;
+  accountingPeriodId?: string | undefined;
+  documentNumber?: string | null | undefined;
+  documentDate?: Date | undefined;
+  description?: string | undefined;
+  state?: string | undefined;
+  branchId?: string | null | undefined;
+  finalizedAt?: Date | null | undefined;
+  finalizedBy?: string | null | undefined;
+  idempotencyReference?: string | null | undefined;
+  requestHash?: string | null | undefined;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+export interface AccountingDocumentDelegate {
+  findUnique(args: {
+    where: { id: string };
+  }): Promise<AccountingDocumentRow | null>;
+  findFirst(args: {
+    where: AccountingDocumentWhere;
+  }): Promise<AccountingDocumentRow | null>;
+  findMany(args: {
+    where: AccountingDocumentWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+    include?: { lines: true };
+  }): Promise<AccountingDocumentWithLinesRow[]>;
+  count(args: { where: AccountingDocumentWhere }): Promise<number>;
+  create(args: {
+    data: AccountingDocumentCreate;
+  }): Promise<AccountingDocumentRow>;
+  update(args: {
+    where: { id: string };
+    data: AccountingDocumentUpdate;
+  }): Promise<AccountingDocumentRow>;
+  delete(args: { where: { id: string } }): Promise<AccountingDocumentRow>;
+}
+
+export type AccountingDocumentLineRow = {
+  id: string;
+  documentId: string;
+  organizationId: string;
+  financialAreaId: string;
+  fiscalYearId: string;
+  accountingPeriodId: string;
+  lineNo: number;
+  accountId: string;
+  /** Prisma `Decimal` at runtime; the repository maps it to a string. */
+  debitAmount: unknown;
+  creditAmount: unknown;
+  description: string | null;
+  sourceLineReference: string | null;
+} & AuditColumns;
+
+export interface AccountingDocumentLineWhere {
+  id?: string;
+  documentId?: string | { in: string[] };
+  organizationId?: string;
+  accountId?: string;
+}
+
+export interface AccountingDocumentLineCreate {
+  id: string;
+  documentId: string;
+  organizationId: string;
+  financialAreaId: string;
+  fiscalYearId: string;
+  accountingPeriodId: string;
+  lineNo: number;
+  accountId: string;
+  debitAmount: string;
+  creditAmount: string;
+  description: string | null;
+  sourceLineReference: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface AccountingDocumentLineDelegate {
+  findMany(args: {
+    where: AccountingDocumentLineWhere;
+    orderBy: OrderBy;
+  }): Promise<AccountingDocumentLineRow[]>;
+  create(args: {
+    data: AccountingDocumentLineCreate;
+  }): Promise<AccountingDocumentLineRow>;
+  createMany(args: {
+    data: AccountingDocumentLineCreate[];
+  }): Promise<{ count: number }>;
+  deleteMany(args: {
+    where: AccountingDocumentLineWhere;
+  }): Promise<{ count: number }>;
+  count(args: { where: AccountingDocumentLineWhere }): Promise<number>;
+}
+
+export type AccountingPostingOperationRow = {
+  id: string;
+  organizationId: string;
+  operationKey: string;
+  operation: string;
+  requestHash: string;
+  result: unknown;
+} & AuditColumns;
+
+export interface AccountingPostingOperationCreate {
+  id: string;
+  organizationId: string;
+  operationKey: string;
+  operation: string;
+  requestHash: string;
+  result: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface AccountingPostingOperationDelegate {
+  findFirst(args: {
+    where: { organizationId: string; operationKey: string };
+  }): Promise<AccountingPostingOperationRow | null>;
+  create(args: {
+    data: AccountingPostingOperationCreate;
+  }): Promise<AccountingPostingOperationRow>;
+}
+
+// ---------------------------------------------------------------------------
 // Transaction client
 // ---------------------------------------------------------------------------
 
@@ -469,6 +679,34 @@ export interface AccountingTxClient {
   account: Pick<
     AccountDelegate,
     'findMany' | 'findFirst' | 'create' | 'update' | 'count'
+  >;
+  /** Task 10.4: the voucher header (guarded writes lock it FOR UPDATE). */
+  accountingDocument: Pick<
+    AccountingDocumentDelegate,
+    'findUnique' | 'findFirst' | 'create' | 'update' | 'delete'
+  > & {
+    updateMany(args: {
+      where: AccountingDocumentWhere;
+      data: AccountingDocumentUpdate;
+    }): Promise<{ count: number }>;
+  };
+  /**
+   * Task 10.4. `accountingDocumentLine.count` is what the account guard
+   * transaction asks to answer AC-I-11 ("is this account referenced by a
+   * document line?"), and `accountingDocumentLine.createMany` is how a
+   * voucher's lines are written in one statement.
+   */
+  accountingDocumentLine: Pick<
+    AccountingDocumentLineDelegate,
+    'findMany' | 'createMany' | 'deleteMany' | 'count'
+  >;
+  /**
+   * Task 10.4: the posting-operation ledger. The insert happens LAST inside
+   * the effect's transaction, so a committed effect always has its key.
+   */
+  accountingPostingOperation: Pick<
+    AccountingPostingOperationDelegate,
+    'findFirst' | 'create'
   >;
 }
 
