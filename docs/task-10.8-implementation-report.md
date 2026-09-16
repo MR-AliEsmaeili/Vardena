@@ -211,8 +211,8 @@ Exact commands, run from `backend/`, and exact results.
 | Build | `npm run build` | ✅ clean (`nest build`) |
 | Unit | `npm test` | ✅ **71 files / 884 tests passed** (baseline 70 / 866 ⇒ **+1 file, +18 tests**, 0 failures) |
 | E2E | `npm run test:e2e` | ✅ **189 passed / 37 skipped** over **15 passed / 7 skipped** files (22) — **byte-identical to the baseline**, i.e. zero regression through the delegation |
-| Prisma validate | `DATABASE_URL=… npm run prisma:validate` | ⛔ **BLOCKED** (sandbox egress): `request to https://binaries.prisma.sh/…/schema-engine.gz.sha256 failed … Client network socket disconnected before secure TLS connection was established`. Not a gate for this task: **no schema or migration file changed** (§2). Unchanged since Task 10.4. |
-| Live-DB suites | `npm run test:e2e` with `VARDENA_TEST_DATABASE_URL` | ⛔ **SKIPPED — no PostgreSQL in this sandbox.** Verified: no `psql`, no `docker`, TCP `127.0.0.1:5432` refused. The 37 skipped tests (7 files) are the live suites, CI-wired. **They are not counted as passing.** |
+| Prisma validate | `DATABASE_URL=… npm run prisma:validate` | ⛔ **BLOCKED** (sandbox egress): `request to https://binaries.prisma.sh/…/schema-engine.gz.sha256 failed … Client network socket disconnected before secure TLS connection was established`. Not a gate for this task: **no schema or migration file changed** (§2). Unchanged since Task 10.4. CI runs both Prisma steps green (`Prisma validate`, `Prisma generate` — §9.1). |
+| Live-DB suites | `npm run test:e2e` with `VARDENA_TEST_DATABASE_URL` | ⛔ **SKIPPED locally — no PostgreSQL in this sandbox.** Verified: no `psql`, no `docker`, TCP `127.0.0.1:5432` refused. The 37 skipped tests (7 files) are the live suites. **They are not counted as passing locally** — but CI ran them against real PostgreSQL on PR #23 and they pass (`Migrate test database` + `E2E tests (incl. live-DB suites)` both green, §9.1). |
 
 Baselines were measured on the clean base commit before any edit
 (`lint` 426 files 0/0 · `typecheck` ✅ · `build` ✅ · unit 70/866 · e2e
@@ -299,7 +299,14 @@ no dependency, no schema change, no event-contract change — AR-29).
    lock contention. CI must run `test:e2e` with `VARDENA_TEST_DATABASE_URL`
    before merge. Mitigation: the delegation is a plain call to the unchanged
    `finalizeChecked`, so the live suites exercise the same code path they did
-   at Task 10.7 — they now exercise it *through* the seam.
+   at Task 10.7 — they now exercise it *through* the seam. **Resolved on CI:**
+   PR #23's `backend` job passes in all 15 steps, including `Migrate test
+   database` and `E2E tests (incl. live-DB suites)`, plus `Prisma validate` and
+   `Prisma generate` which are blocked in this sandbox — so the live proofs ran
+   against real PostgreSQL and passed. The only live-suite failure CI ever
+   showed on this branch was a **pre-existing** test-side deserialization
+   assertion inherited from `main` (identical on PR #22 and on `main`'s merge
+   of it), diagnosed and fixed test-only in §9.1.
 2. **Prisma CLI gates stay blocked** (`binaries.prisma.sh` TLS failure), so
    `prisma validate`/`generate` could not run. Unlike Task 10.7, **this task
    changes no schema**, so nothing new depends on that gate; the checked-in
@@ -346,7 +353,62 @@ no dependency, no schema change, no event-contract change — AR-29).
 
 Committed on `arena/01a0ab4d-vardena` (branched from `1784216`) after the full
 diff was reviewed twice and all runnable gates were green (§5). The commit is
-`feat(accounting): add the posting orchestration seam (Task 10.8)`.
+`feat(accounting): add the posting orchestration seam (Task 10.8)`. Opened as
+PR **#23** into `main`.
+
+### 9.1 Second commit — the pre-existing live-suite money assertion (test only)
+
+PR #23's CI reproduced exactly the failure the brief anticipated, and it is
+**inherited from `main`, not introduced here**: `gh api …/check-runs/<job>/annotations`
+returns the identical assertion for PR #23's job, PR #22's job (Task 10.7,
+pre-merge) and the merge-commit run of PR #22 on `main` —
+
+```
+AssertionError: expected [ 0.1, 0.2, 0 ] to deeply equal [ '0.10', '0.20', '0.00' ]
+ ❯ test/ledger-entries-live.e2e-spec.ts:439:55
+```
+
+Everything else in CI passes: `Prisma validate` ✅, `Prisma generate` ✅, `Lint`
+✅, `Typecheck` ✅, `Format check` ✅, `Unit tests` ✅, `Build` ✅,
+`Migrate test database` ✅ — only `E2E tests (incl. live-DB suites)` fails, on
+that one assertion (22 files, 225 tests green).
+
+**Root cause (test-side deserialization, not production money).** The raw
+`$queryRaw` read assumed the driver hands back the `numeric` wire literal as a
+string ("`pg` returns numerics as strings"). Through Prisma's PostgreSQL
+adapter a *selected* `numeric` is deserialized instead, and arrives
+scale-stripped — `0.10` → `0.1`, `0.00` → `0` (note the received values in the
+CI message are unquoted: not the strings the assertion expected). So the
+assertion was testing the adapter's rendering, not the column, and could never
+pass.
+
+**Fix.** Cast the two amount columns to `::text` in that one query —
+PostgreSQL renders `numeric(18,2)` → `text` with the scale intact — so the
+existing expectations (`'0.10'`, `'0.20'`, `'0.00'`, `'0.30'`) are unchanged
+and now assert what the row physically stores. This is the only
+`$queryRaw` *read* of an amount column in the live suites (the other
+`debit_amount`/`credit_amount` hits are INSERT column lists and bind
+parameters, unaffected), and there is no custom `pg` type parser in the
+repository.
+
+**Constraints honoured.** No production money semantics were touched —
+`domain/money.ts`, the ledger decimal mapping, the repository read path and
+every `src/` file are byte-identical in this commit; it changes one test query
+plus its comment. It is kept as a **separate commit** so the Task 10.8
+implementation diff stays clean, and it deliberately does *not* weaken the
+invariant: asserting the physical `numeric(18,2)` scale is stronger evidence
+of exact persistence than asserting the canonical `'0.1'` form would be.
+
+**Verification.** Local gates green after the change (`format:check` ✅,
+`lint` 0/0 on 428 files ✅, `typecheck` ✅, e2e 189 passed / 37 skipped ✅ —
+identical to before, since the live suite still cannot run here). CI is the
+authority for the live part, and it is now **green**: PR #23's `backend` job on
+this commit succeeded in all 15 steps — `Prisma validate`, `Prisma generate`,
+`Lint`, `Typecheck`, `Format check`, `Unit tests`, `Build`, `Migrate test
+database` and `E2E tests (incl. live-DB suites)` — so the 37 locally-skipped
+live tests ran against real PostgreSQL and passed, including this assertion and
+the real atomicity / rollback / concurrency / `numeric(18,2)` proofs, which now
+run *through* the seam. That closes §8 risk 1 for this change.
 
 **Final status: READY FOR REVIEW.** This report does not mark the task
 Accepted — that decision is the reviewer's.
