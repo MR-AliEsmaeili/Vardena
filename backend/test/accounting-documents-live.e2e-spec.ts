@@ -52,6 +52,7 @@ describe.skipIf(DATABASE_URL === undefined)(
     let financialAreaId = '';
     let fiscalYearId = '';
     let accountingPeriodId = '';
+    let codingStructureVersionId = '';
     let debitAccountId = '';
     let creditAccountId = '';
 
@@ -175,10 +176,11 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(Array.isArray(area)).toBe(true);
       expect(area).toHaveLength(0);
 
+      const areaCode = `GA-${suffix}`;
       financialAreaId = generateId();
       await db.$queryRaw`INSERT INTO accounting.financial_areas (
         id, organization_id, code, title, is_active, is_default, created_at, updated_at
-      ) VALUES (${financialAreaId}, ${organizationId}, ${`GA${suffix}'`.slice(0, 8)}, ${'General area'}, true, false, now(), now())`;
+      ) VALUES (${financialAreaId}, ${organizationId}, ${areaCode}, ${'General area'}, true, false, now(), now())`;
 
       fiscalYearId = generateId();
       await db.$queryRaw`INSERT INTO accounting.fiscal_years (
@@ -188,11 +190,23 @@ describe.skipIf(DATABASE_URL === undefined)(
         DATE '2026-01-01', DATE '2026-12-31', 'open', true, now(), now())`;
 
       accountingPeriodId = generateId();
+      // `financial_area_id` is NOT NULL on `accounting_periods` (Task 10.2
+      // denormalizes the scope so a period can be filtered by area without a
+      // join): the fixture must write it, exactly as the period service does.
       await db.$queryRaw`INSERT INTO accounting.accounting_periods (
-        id, organization_id, fiscal_year_id, sequence, title, start_date, end_date,
-        status, created_at, updated_at
-      ) VALUES (${accountingPeriodId}, ${organizationId}, ${fiscalYearId}, 1, ${'Whole year'},
-        DATE '2026-01-01', DATE '2026-12-31', 'open', now(), now())`;
+        id, organization_id, financial_area_id, fiscal_year_id, sequence, title,
+        start_date, end_date, status, created_at, updated_at
+      ) VALUES (${accountingPeriodId}, ${organizationId}, ${financialAreaId}, ${fiscalYearId},
+        1, ${'Whole year'}, DATE '2026-01-01', DATE '2026-12-31', 'open', now(), now())`;
+
+      // A chart account cannot exist without the structure version its code was
+      // composed under (§9.4: `coding_structure_version_id` is NOT NULL and an
+      // FK), so the fixture publishes one single-level structure first.
+      codingStructureVersionId = generateId();
+      await db.$queryRaw`INSERT INTO accounting.coding_structure_versions (
+        id, organization_id, code, version_number, status, max_depth, separator,
+        created_at, updated_at
+      ) VALUES (${codingStructureVersionId}, ${organizationId}, ${'DEFAULT'}, 1, 'published', 1, '', now(), now())`;
 
       debitAccountId = generateId();
       creditAccountId = generateId();
@@ -202,8 +216,9 @@ describe.skipIf(DATABASE_URL === undefined)(
       ]) {
         await db.$queryRaw`INSERT INTO accounting.accounts (
           id, organization_id, code, title, account_nature, is_postable, is_active,
-          level, created_at, updated_at
-        ) VALUES (${id}, ${organizationId}, ${code}, ${title}, 'debit', true, true, 1, now(), now())`;
+          level, coding_structure_version_id, created_at, updated_at
+        ) VALUES (${id}, ${organizationId}, ${code}, ${title}, 'debit', true, true, 1,
+          ${codingStructureVersionId}, now(), now())`;
       }
 
       await series.createNumberingSeries({
