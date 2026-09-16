@@ -62,28 +62,43 @@
  *   stay immutable (AC-D-22, AC-I-15).
  *
  * =============================================================================
- * 4. Posting operation identity (Q5) + Idempotency (Q6)
+ * 4. Posting operation identity (Q5) + Idempotency (Q6) — CORRECTED
  * =============================================================================
  *
  * The existing `accounting_posting_operations` ledger (contract §16.4,
- * AC-I-12, ADR-0022 §3/§4) is SUFFICIENT. No second ledger, no second key
- * scheme (task §11).
+ * AC-I-12, ADR-0022 §3/§4) is SUFFICIENT as idempotency/evidence
+ * infrastructure. No second ledger, no second key scheme (task §11).
  *
- * - Key: `(organization_id, operation_key)` unique, as implemented.
- * - `request_hash`: sha256 over canonical client intent only (no generated
- *   ids, no server clocks, omitted optional hashed as explicit null).
- * - Kinds: closed code-defined list. `document_finalize` already exists and
- *   IS the posting operation identity for voucher→ledger. If the future engine
- *   ever materializes ledger entries in a separate transaction (e.g., async
- *   rebuild), it may use a deterministic key like `ledger-post-${voucherId}`
- *   with a new kind `ledger_post` — but still in the SAME table, same scheme.
- *   No new table is introduced.
- * - Replay: same key + same hash ⇒ replay stored result (re-reading current
- *   rows, never stale snapshot). Same key + different hash ⇒ 409, nothing
- *   applied.
+ * CRITICAL DISTINCTION (correction):
+ * - `accounting_posting_operations` is idempotency/evidence infrastructure,
+ *   NOT a Posting entity and NOT the canonical identity of a future Posting
+ *   domain object or persistent Posting record.
+ * - `operationKey` / `requestHash` = idempotency identity/evidence:
+ *   (organization_id, operation_key) unique, request_hash = sha256 over
+ *   canonical client intent only (no generated ids, no clocks, omitted
+ *   optional as explicit null). Replay: same key+same hash ⇒ replay stored
+ *   result (re-reading current rows, never stale snapshot); same key+different
+ *   hash ⇒ 409, nothing applied.
+ * - Posting = business/domain act that makes a final voucher part of the
+ *   books (finalization, §15.5 AC-D-23). It is NOT the idempotency row.
+ * - LedgerEntry = resulting historical accounting evidence (immutable).
  *
- * Therefore posting operation identity = (organizationId, operationKey) with
- * operation = `document_finalize` (or future `ledger_post` in same ledger).
+ * The accepted contract does NOT require a canonical Posting persistence
+ * identity in this foundation task. Therefore PostingResult carries NO
+ * artificial `id = accounting_posting_operations.id`. The persistence
+ * identity of a future Posting record, if such a record is eventually
+ * required, is DEFERRED to the Posting Engine / Ledger persistence task and
+ * must not be inferred from `accounting_posting_operations`.
+ *
+ * Idempotency reuse:
+ * - In the atomic model where finalization and ledger materialization occur
+ *   in one transaction (current §15.5), the same business operation can use
+ *   the existing `document_finalize` idempotency evidence.
+ * - If a future architecture intentionally separates ledger materialization
+ *   into another durable transaction, the idempotency boundary and operation
+ *   kind must be decided as part of that future transaction design (OQ-39
+ *   dependent). This contract does NOT pre-commit to `ledger-post-${voucherId}`
+ *   or any specific future kind — that decision belongs to the future task.
  *
  * =============================================================================
  * 5. State transition (Q7)
@@ -152,12 +167,17 @@
  *   requirements remain expressible, but no rule is hardcoded.
  *
  * =============================================================================
- * TRANSACTION BOUNDARY (future, not implemented — task §12)
+ * TRANSACTION BOUNDARY (future, not implemented — task §12) — CORRECTED WORDING
  * =============================================================================
  *
- * Conceptual atomic posting transaction (if ledger entries materialized
- * separately from finalization, otherwise this IS the finalization transaction
- * of §15.5):
+ * Conceptual atomic posting transaction. The current accepted model
+ * (§15.5 AC-D-23) is atomic: finalization IS posting and already follows
+ * this boundary. If a future architecture separates ledger materialization
+ * into another durable transaction, its idempotency boundary and operation
+ * kind are decided then (OQ-39 dependent) — this contract does not pre-commit.
+ *
+ * Atomic model (finalization + ledger materialization in one transaction,
+ * §15.5):
  *
  * ```
  * validate readiness (pure, no locks, domain/posting-readiness.ts)
@@ -170,14 +190,23 @@
  *   ↓
  * create posting evidence (state=final, finalized_at/by)
  *   ↓
- * create ledger entries (one per line, preserving traceability)
+ * create ledger entries (one per line, preserving traceability) — if
+ *   materialized as separate rows; otherwise final lines ARE the ledger
+ *   (§19.2 source of truth = final lines)
  *   ↓
- * record idempotency evidence (accounting_posting_operations insert LAST)
+ * record idempotency evidence (accounting_posting_operations insert LAST,
+ *   operation = document_finalize in atomic model)
  *   ↓
- * commit
+ * commit (all or nothing)
  *   ↓
- * publish AccountingDocument.Finalized + audit facts
+ * publish AccountingDocument.Finalized + audit facts (AC-D-35, §23)
  * ```
+ *
+ * Separated model (future, if ever required):
+ * - The idempotency boundary (operation kind, key derivation, evidence
+ *   placement) and whether a Posting persistence record is needed must be
+ *   decided as part of that future transaction design. No specific key
+ *   pattern like `ledger-post-${voucherId}` is mandated here.
  *
  * No contradictory locking order. Posting readiness evaluation itself takes
  * no locks, so it can never participate in deadlock (task 10.5 §10).
@@ -311,21 +340,31 @@ export interface PostingInput {
 }
 
 // ---------------------------------------------------------------------------
-// Posting Output
+// Posting Output — CORRECTED: no artificial id = accounting_posting_operations.id
 // ---------------------------------------------------------------------------
 
 /**
  * Posting result — stable machine-readable result of posting (task §7).
  *
- * Derived from existing domain contract: posting is the act that makes a
- * final voucher part of books (§15.5), so result contains posting identity
- * (the idempotency ledger row id), source voucher identity, and resulting
- * ledger entries. Balances are NOT part of result — they are rebuildable
- * projections (§19.3 AC-D-31).
+ * CORRECTED CONTRACT (review):
+ * - `accounting_posting_operations` is idempotency/evidence infrastructure,
+ *   NOT a Posting entity identity.
+ * - Posting = business/domain act (finalization makes voucher part of books,
+ *   §15.5 AC-D-23).
+ * - LedgerEntry = resulting historical evidence (immutable).
+ * - The persistence identity of a future Posting record, if ever required,
+ *   is DEFERRED to the Posting Engine / Ledger persistence task and must not
+ *   be inferred from `accounting_posting_operations`.
+ *
+ * Therefore PostingResult carries NO `id = accounting_posting_operations.id`.
+ * The accepted contract does NOT require a canonical Posting persistence id
+ * in this foundation task; result is identified by voucher + operationKey
+ * (idempotency evidence) + postedAt, plus the ledger entries.
+ *
+ * Balances are NOT part of result — they are rebuildable projections
+ * (§19.3 AC-D-31).
  */
 export interface PostingResult {
-  /** Posting identity — id of `accounting_posting_operations` row. */
-  readonly id: string;
   /** Tenant scope. */
   readonly organizationId: string;
   /** Bookkeeping scope. */
@@ -334,8 +373,10 @@ export interface PostingResult {
   readonly voucherId: string;
   /** Voucher number (numbering evidence). */
   readonly voucherNumber: string;
-  /** Operation key that made posting idempotent (AC-I-12). */
+  /** Operation key that made posting idempotent (AC-I-12) — idempotency identity. */
   readonly operationKey: string;
+  /** Request hash over canonical intent (ADR-0022 §4) — idempotency evidence. */
+  readonly requestHash: string;
   /** When posting happened (finalizedAt). */
   readonly postedAt: Date;
   /** Resulting ledger entries (N = lines.length, 1:1 traceability). */
@@ -643,26 +684,30 @@ export function toLedgerEntries(
 }
 
 /**
- * Convert posting input to a posting result (including posting identity).
+ * Convert posting input to a posting result.
+ *
+ * CORRECTED: no `postingId = accounting_posting_operations.id`. The result
+ * is identified by voucher + operationKey/requestHash (idempotency evidence)
+ * + postedAt, plus ledger entries. If a future Posting persistence record is
+ * ever required, its identity is deferred to that future task and must not be
+ * inferred from `accounting_posting_operations`.
  *
  * @param input Valid posting input
- * @param postingId Posting identity (id of accounting_posting_operations row)
  * @param generateId Id generator for ledger entries
  */
 export function toPostingResult(params: {
   input: PostingInput;
-  postingId: string;
   generateId: () => string;
 }): PostingResult {
-  const { input, postingId, generateId } = params;
+  const { input, generateId } = params;
   const ledgerEntries = toLedgerEntries(input, generateId);
   return {
-    id: postingId,
     organizationId: input.organizationId,
     financialAreaId: input.financialAreaId,
     voucherId: input.voucherId,
     voucherNumber: input.voucherNumber,
     operationKey: input.operationKey,
+    requestHash: input.requestHash,
     postedAt: new Date(input.finalizedAt.getTime()),
     ledgerEntries,
   };

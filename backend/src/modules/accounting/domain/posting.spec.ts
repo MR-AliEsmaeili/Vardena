@@ -7,19 +7,25 @@ import {
   toPostingInput,
   toPostingResult,
   type PostingInput,
+  type PostingResult,
 } from './posting.js';
 import { checkLedgerEntry } from './ledger-entry.js';
 
 /**
- * Posting & Ledger Contract Foundation tests (Task 10.6, §22).
+ * Posting & Ledger Contract Foundation tests (Task 10.6, §22) — CORRECTED.
+ *
+ * Correction: `accounting_posting_operations` is idempotency/evidence
+ * infrastructure, NOT Posting entity identity. PostingResult must NOT assert
+ * `id === accounting_posting_operations.id`. Persistence identity of future
+ * Posting record is deferred.
  *
  * Covers:
  * - valid contract: finalized voucher → valid posting input
  * - invalid cases: explicit domain-contract rejections
  * - immutability: cannot mutate source voucher
- * - identity: voucher and operation identity preserved
+ * - identity: voucher and operation identity preserved, but NOT conflated with ledger row id
  * - relationship: voucher line → ledger entry traceability
- * - idempotency: no second mechanism introduced (operationKey/requestHash reuse)
+ * - idempotency: no second mechanism, operationKey/requestHash remain, evidence vs business act distinguished
  */
 
 const ORG = '01ORGANIZATIONA000000000AA';
@@ -31,7 +37,6 @@ const CREDIT_ACCOUNT = '01ACCOUNTAAAAAAAAAAAAAAAAA02';
 const DOCUMENT_ID = '01VOUCHERAAAAAAAAAAAAAAAA01';
 const OPERATION_KEY = '01OPERATIONKEYAAAAAAAAAAAAAA01';
 const REQUEST_HASH = 'a'.repeat(64);
-const POSTING_ID = '01POSTINGAAAAAAAAAAAAAAAAAA01';
 
 const DOCUMENT_DATE = parseDateOnly('2026-04-05') as Date;
 const FINALIZED_AT = new Date('2026-04-05T08:00:00Z');
@@ -300,7 +305,7 @@ describe('posting input contract — immutability (task §22)', () => {
   });
 });
 
-describe('posting input contract — identity (task §22)', () => {
+describe('posting input contract — identity (task §22) — CORRECTED', () => {
   it('preserves voucher line identity for traceability', () => {
     const input = validPostingInput();
     let counter = 0;
@@ -321,22 +326,49 @@ describe('posting input contract — identity (task §22)', () => {
     }
   });
 
-  it('posting result preserves voucher and operation identity', () => {
+  it('posting result preserves voucher and operation identity WITHOUT conflating with accounting_posting_operations.id', () => {
     const input = validPostingInput();
     let counter = 0;
     const result = toPostingResult({
       input,
-      postingId: POSTING_ID,
       generateId: () => `01LEDGER${String(counter++).padStart(18, '0')}`,
     });
 
-    expect(result.id).toBe(POSTING_ID);
+    // No artificial id = accounting_posting_operations.id
+    expect((result as any).id).toBeUndefined();
     expect(result.voucherId).toBe(input.voucherId);
     expect(result.voucherNumber).toBe(input.voucherNumber);
     expect(result.operationKey).toBe(input.operationKey);
+    expect(result.requestHash).toBe(input.requestHash);
     expect(result.organizationId).toBe(input.organizationId);
     expect(result.financialAreaId).toBe(input.financialAreaId);
     expect(result.ledgerEntries).toHaveLength(2);
+  });
+
+  it('accounting_posting_operations is idempotency/evidence, not Posting entity identity', () => {
+    const input = validPostingInput();
+    let counter = 0;
+    const result: PostingResult = toPostingResult({
+      input,
+      generateId: () => `01LEDGER${String(counter++).padStart(18, '0')}`,
+    });
+
+    // Result must NOT have a field that claims to be the ledger row id
+    // The only identities it carries are business (voucher) + idempotency (operationKey/requestHash)
+    expect(Object.keys(result)).not.toContain('id');
+    expect(Object.keys(result)).toContain('operationKey');
+    expect(Object.keys(result)).toContain('requestHash');
+    expect(Object.keys(result)).toContain('voucherId');
+    expect(result.operationKey).toBe(OPERATION_KEY);
+    expect(result.requestHash).toBe(REQUEST_HASH);
+
+    // Explicitly distinguish:
+    // operationKey/requestHash = idempotency identity/evidence
+    // Posting = business/domain act (finalization makes voucher part of books)
+    // LedgerEntry = resulting historical evidence
+    expect(
+      result.ledgerEntries.every((e) => e.voucherId === result.voucherId),
+    ).toBe(true);
   });
 });
 
@@ -384,7 +416,7 @@ describe('posting input contract — relationship (task §22)', () => {
   });
 });
 
-describe('posting contract — idempotency boundary (task §22, §11)', () => {
+describe('posting contract — idempotency boundary (task §22, §11) — CORRECTED', () => {
   it('does not introduce second idempotency mechanism — reuses operationKey/requestHash', () => {
     const input = validPostingInput();
     // The contract's idempotency fields are exactly the existing ledger's
@@ -394,14 +426,23 @@ describe('posting contract — idempotency boundary (task §22, §11)', () => {
     expect(input.operationKey.trim().length).toBeGreaterThan(0);
     expect(input.requestHash.trim().length).toBe(64);
 
-    // PostingResult also carries same operationKey, not a new one
+    // PostingResult also carries same operationKey/requestHash, not a new one, and no id conflation
     let counter = 0;
     const result = toPostingResult({
       input,
-      postingId: POSTING_ID,
       generateId: () => `01LEDGER${String(counter++).padStart(18, '0')}`,
     });
     expect(result.operationKey).toBe(OPERATION_KEY);
+    expect(result.requestHash).toBe(REQUEST_HASH);
+    expect((result as any).id).toBeUndefined();
+  });
+
+  it('operationKey and requestHash remain part of posting input contract', () => {
+    const input = validPostingInput();
+    expect(input.operationKey).toBeDefined();
+    expect(input.requestHash).toBeDefined();
+    expect(checkPostingInput(input)).not.toContain('missing_operation_key');
+    expect(checkPostingInput(input)).not.toContain('missing_request_hash');
   });
 
   it('toPostingInput throws for non-final voucher (only final may be posted)', () => {
@@ -429,6 +470,16 @@ describe('posting contract — idempotency boundary (task §22, §11)', () => {
       }),
     ).toThrow(/unnumbered/);
   });
+
+  it('does NOT pre-commit to ledger-post-${voucherId} pattern', () => {
+    // The corrected contract explicitly does NOT mandate ledger-post-${voucherId}
+    // The idempotency boundary for a separated ledger materialization transaction
+    // must be decided in that future task (OQ-39 dependent).
+    const input = validPostingInput();
+    // Our current operationKey is the finalization's key, not a pre-committed ledger-post- pattern
+    expect(input.operationKey).toBe(OPERATION_KEY);
+    expect(input.operationKey).not.toMatch(/^ledger-post-/);
+  });
 });
 
 describe('posting contract — dimensions seam (OQ-41)', () => {
@@ -442,5 +493,21 @@ describe('posting contract — dimensions seam (OQ-41)', () => {
     for (const entry of entries) {
       expect(entry.dimensionAssignments).toEqual([]);
     }
+  });
+});
+
+describe('posting contract — no migration (task §20)', () => {
+  it('contract does not require new tables — uses existing accounting_posting_operations as evidence only', () => {
+    // This test documents that no new table is introduced; the contract is pure domain types.
+    // The presence of operationKey/requestHash proves reuse, not invention.
+    const input = validPostingInput();
+    expect(input.operationKey).toBe(OPERATION_KEY);
+    // PostingResult has no id that would imply a new Posting persistence table
+    let counter = 0;
+    const result = toPostingResult({
+      input,
+      generateId: () => `01LEDGER${String(counter++).padStart(18, '0')}`,
+    });
+    expect((result as any).id).toBeUndefined();
   });
 });
