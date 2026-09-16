@@ -202,7 +202,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 - **Write path:** modules emit audit data through the kernel audit port inside
   their business transaction; Audit persists it. Retention/archival = OQ-17.
 
-## Accounting (v1 core — **foundation + chart + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7)**; posting rules / corrections / balances still contract-only)
+## Accounting (v1 core — **foundation + chart + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8)**; posting rules / corrections / balances still contract-only)
 
 - **Status:** Task 10.2 implemented the **bookkeeping scope** — financial areas,
   fiscal years, accounting periods (contract §4/§5/§6/§7, AC-D-01…AC-D-05,
@@ -319,6 +319,32 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   transaction (ADR-0022 posture, `data/accounting-locks.ts` order unchanged).
   No permission code and no endpoint exist for it (AR-21 binds endpoints;
   the calling operation authorizes — the `requireUsable*` precedent).
+- **Posting orchestration seam (Task 10.8):** ONE application use case,
+  `PostingService.postVoucher({ organizationId, voucherId, operationKey })`
+  (`accounting/application/posting.service.ts`), is the boundary every caller
+  reaches posting through — `AccountingDocumentsService.finalizeDocument` is
+  now its HTTP-facing shell (authorize → delegate → map the outcome and the
+  guard errors), so no caller re-assembles the posting sequence. The seam
+  coordinates and nothing else: resolve in scope (404, AC-I-01/16) →
+  idempotency replay-or-reject on the EXISTING `(organization_id,
+  operation_key)` + `request_hash` identity of the `document_finalize` kind
+  (§16.4: same key + same hash replays by re-reading current rows, same key +
+  different hash is a 409 that mutates nothing — no second key scheme, no
+  `ledger-post-*` pattern) → the Foundation's lifecycle verdict
+  (`planVoucherFinalize`) → **Task 10.7's ONE atomic transaction, unwrapped**
+  (`finalizeChecked`: the module's fixed lock order, the in-transaction
+  re-validation, `state = final`, N immutable ledger entries, the operation
+  row LAST) → `AccountingDocument.Finalized` (still the posting evidence,
+  AC-D-20) → the Task 10.5 readiness verdict on the FINAL voucher → a
+  `PostingResult` (Task 10.6) assembled from the STORED entries, with
+  one-entry-per-line and the whole sourcing snapshot re-checked against the
+  voucher. It opens no transaction, takes no lock, writes no row of its own,
+  and adds no endpoint, no permission, no event, no table and no state. There
+  is deliberately **no Posting Engine** behind it: no posting rules, no account
+  mapping, no control roles, no dimensions, no balances/reports, no
+  correction/reversal, no source-module trigger, no outbox/queue/worker — and
+  OQ-39…OQ-43 stay open (a cross-module caller would need §16.3 plus OQ-39's
+  delivery decision first, so the seam is provided, not exported, AR-07).
 - **Fiscal-calendar ownership moved here.** ADR-0020 §2 and the Organization entry
   gave the fiscal calendar to Organization; ADR-0026 §2 assigns financial areas,
   fiscal years and periods to Accounting (the module that enforces posting
@@ -359,7 +385,9 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   asks for no draft phase), `PATCH :id` (edit while pre-final; the area is
   frozen at issuance), `POST :id/issue` (allocate the serial, idempotent
   replay), `POST :id/finalize` (the single act that posts — Task 10.7
-  materializes the ledger entries inside it), `DELETE :id` (discard
+  materializes the ledger entries inside it; since Task 10.8 the route is the
+  HTTP shell of `PostingService`, and there is still no `POST :id/post`),
+  `DELETE :id` (discard
   pre-final only; `final` is never deletable). No correction, reversal,
   reopen, approval or reporting route.
 - **API (still planned):** dimensions/items, document corrections

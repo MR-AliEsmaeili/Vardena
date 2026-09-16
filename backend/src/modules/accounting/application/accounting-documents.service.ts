@@ -22,10 +22,7 @@ import { BranchesService } from '../../organization/application/branches.service
 import { NumberingService } from '../../documents/application/numbering.service.js';
 import { DocumentTypesService } from '../../documents/application/document-types.service.js';
 import { AccountingDocumentsRepository } from '../data/accounting-documents.repository.js';
-import type {
-  AccountingDocumentLineWrite,
-  DocumentOperationRow,
-} from '../data/accounting-documents.repository.js';
+import type { AccountingDocumentLineWrite } from '../data/accounting-documents.repository.js';
 import { AccountingPostingOperationsRepository } from '../data/accounting-posting-operations.repository.js';
 import {
   AccountingDocumentAccountRejectedError,
@@ -45,7 +42,6 @@ import {
   planVoucherCreate,
   planVoucherDelete,
   planVoucherEdit,
-  planVoucherFinalize,
   planVoucherIssue,
   toAccountingDocumentDto,
   voucherScopeKey,
@@ -66,19 +62,21 @@ import {
   assertDescription,
   assertVoucherComposition,
   buildRequestHash,
+  documentOperationRow,
   normalizeLines,
   normalizeOriginSource,
   parseDocumentDate,
   parseOptionalDocumentDate,
+  publishDocumentEvent,
   requireOperationKey,
   type SubmittedAccountingDocumentLine,
 } from './accounting-document-support.js';
-import { publishEvent, resolveSort } from './accounting-support.js';
+import { resolveSort } from './accounting-support.js';
+import { PostingService } from './posting.service.js';
 import { ACCOUNTING_DOCUMENT_PERMISSIONS } from '../domain/accounting-permissions.js';
 import {
   ACCOUNTING_DOCUMENT_CREATED_EVENT,
   ACCOUNTING_DOCUMENT_DELETED_EVENT,
-  ACCOUNTING_DOCUMENT_FINALIZED_EVENT,
   ACCOUNTING_DOCUMENT_UPDATED_EVENT,
 } from '../domain/accounting.events.js';
 
@@ -116,12 +114,21 @@ const SORTABLE_FIELDS: Record<string, string> = {
  * number allocation is idempotent on the same key (§18: the operationKey IS
  * the allocation key), so a retried issuance replays the serial it already
  * allocated instead of burning another one.
+ *
+ * Since Task 10.8 FINALIZATION is delegated: `finalizeDocument` is the
+ * HTTP-facing shell of the posting seam (`PostingService`), which owns the
+ * posting sequence and the `document_finalize` half of the idempotency rule.
+ * This service keeps the composition half (`document_create`), because
+ * composition is its own operation with its own number allocation — one
+ * service per operation's replay rule is the module's existing posture (and
+ * Inventory's: each of its posting services owns its own `replayOrReject`).
  */
 @Injectable()
 export class AccountingDocumentsService {
   constructor(
     private readonly repository: AccountingDocumentsRepository,
     private readonly operations: AccountingPostingOperationsRepository,
+    private readonly posting: PostingService,
     private readonly accounts: AccountsService,
     private readonly areas: FinancialAreasService,
     private readonly branches: BranchesService,
@@ -292,7 +299,7 @@ export class AccountingDocumentsService {
         idempotencyReference: origin === 'system' ? operationKey : null,
         requestHash: origin === 'system' ? requestHash : null,
         lines: withLineIds(lines),
-        ledger: this.operationRow({
+        ledger: documentOperationRow({
           organizationId: input.organizationId,
           operationKey,
           operation: 'document_create',
@@ -304,7 +311,8 @@ export class AccountingDocumentsService {
         createdAt: now,
         createdBy: actorId,
       });
-      await this.publishDocumentEvent(
+      await publishDocumentEvent(
+        this.events,
         ACCOUNTING_DOCUMENT_CREATED_EVENT,
         created,
       );
@@ -415,7 +423,8 @@ export class AccountingDocumentsService {
         updatedAt: now,
         updatedBy: actorId,
       });
-      await this.publishDocumentEvent(
+      await publishDocumentEvent(
+        this.events,
         ACCOUNTING_DOCUMENT_UPDATED_EVENT,
         updated,
       );
@@ -470,7 +479,8 @@ export class AccountingDocumentsService {
         updatedAt: now,
         updatedBy: actorId,
       });
-      await this.publishDocumentEvent(
+      await publishDocumentEvent(
+        this.events,
         ACCOUNTING_DOCUMENT_UPDATED_EVENT,
         issued,
       );
@@ -490,10 +500,15 @@ export class AccountingDocumentsService {
 
   /**
    * Finalize (temporary → final, §15.5): the ONE act that makes a voucher part
-   * of the books. The authoritative re-validation (balance, both sides, account
-   * usability, open scope, description) runs INSIDE the document-locked
-   * transaction, and the idempotency row is written there too — a committed
-   * final voucher always has its key, and a retry replays it.
+   * of the books. Since Task 10.8 this operation is the HTTP-facing shell of
+   * the posting seam, not a second implementation of it: it authorizes, maps
+   * the outcome onto the API's document shape, and maps the repository's guard
+   * errors onto the API error model. The posting sequence itself — idempotency
+   * replay-or-reject, the lifecycle verdict, the ONE atomic transaction that
+   * writes the state, the N immutable ledger entries and the operation row,
+   * the `Finalized` event and the readiness/ledger verification of the result —
+   * lives in `PostingService` (`application/posting.service.ts`), so no caller
+   * ever re-assembles it (AR-04).
    *
    * `Accounting.Document.Finalize` is NOT approval: §17.2's approval is a
    * Workflow decision that may precede this call, and OQ-42 decides whether it
@@ -507,76 +522,17 @@ export class AccountingDocumentsService {
     await this.authorization.requireAllPermissions([
       ACCOUNTING_DOCUMENT_PERMISSIONS.FINALIZE,
     ]);
-    // The document must exist in THIS organization before anything else: a
-    // foreign id is indistinguishable from a missing one (AC-I-01/§4), and the
-    // ledger is consulted only for a document the caller may already see.
-    const current = await this.mustFindInOrganization(organizationId, id);
-
-    const operationKey = requireOperationKey(input.operationKey);
-    // The finalization intent is exactly the document it names: there is no
-    // other client input, and the server-resolved scope/number must not enter
-    // the hash (§16.4 — a retry would otherwise conflict with itself).
-    const requestHash = buildRequestHash('document_finalize', {
-      documentId: id,
-    });
-    // Replay BEFORE the lifecycle verdict: a retried finalization meets an
-    // already-final document, which must return the recorded result instead of
-    // being reported as an illegal transition (§16.4/ADR-0022 §3).
-    const replay = await this.replayOrReject(
-      organizationId,
-      operationKey,
-      requestHash,
-      'document_finalize',
-    );
-    if (replay !== null) return replay;
-
-    const plan = planVoucherFinalize(current.phase);
-    if (plan.problem !== null) {
-      throw this.lifecycleException(plan.problem);
-    }
-
-    const now = new Date();
-    const actorId = getPrincipal()?.userId ?? null;
     try {
-      const finalized = await this.repository.finalizeChecked({
-        id,
+      const outcome = await this.posting.postVoucher({
         organizationId,
-        ledger: this.operationRow({
-          organizationId,
-          operationKey,
-          operation: 'document_finalize',
-          requestHash,
-          documentId: id,
-          actorId,
-          now,
-        }),
-        finalizedAt: now,
-        finalizedBy: actorId,
+        voucherId: id,
+        operationKey: input.operationKey,
       });
-      await this.publishDocumentEvent(
-        ACCOUNTING_DOCUMENT_FINALIZED_EVENT,
-        finalized,
-      );
-      this.logger.log(
-        'Accounting document finalized',
-        {
-          documentId: finalized.id,
-          organizationId: finalized.organizationId,
-          documentNumber: finalized.documentNumber,
-        },
-        AccountingDocumentsService.name,
-      );
-      return toAccountingDocumentDto(finalized);
+      return toAccountingDocumentDto(outcome.document);
     } catch (error) {
-      if (isUniqueViolation(error)) {
-        const raced = await this.replayOrReject(
-          organizationId,
-          operationKey,
-          requestHash,
-          'document_finalize',
-        );
-        if (raced !== null) return raced;
-      }
+      // The seam propagates the data layer's guard errors untouched (the
+      // posting act is deliberately not HTTP-shaped — §16.5, OQ-39), so the
+      // module's ONE mapping decision table stays here, at the API boundary.
       throw mapDocumentGuardError(error) ?? error;
     }
   }
@@ -604,7 +560,8 @@ export class AccountingDocumentsService {
         id,
         organizationId,
       });
-      await this.publishDocumentEvent(
+      await publishDocumentEvent(
+        this.events,
         ACCOUNTING_DOCUMENT_DELETED_EVENT,
         discarded,
       );
@@ -739,54 +696,6 @@ export class AccountingDocumentsService {
       );
     }
     return toAccountingDocumentDto(document);
-  }
-
-  private operationRow(input: {
-    organizationId: string;
-    operationKey: string;
-    operation: 'document_create' | 'document_finalize';
-    requestHash: string;
-    documentId: string;
-    actorId: string | null;
-    now: Date;
-  }): DocumentOperationRow {
-    return {
-      id: generateId(),
-      organizationId: input.organizationId,
-      operationKey: input.operationKey,
-      operation: input.operation,
-      requestHash: input.requestHash,
-      result: { documentId: input.documentId },
-      createdAt: input.now,
-      updatedAt: input.now,
-      createdBy: input.actorId,
-    };
-  }
-
-  private async publishDocumentEvent(
-    type:
-      | typeof ACCOUNTING_DOCUMENT_CREATED_EVENT
-      | typeof ACCOUNTING_DOCUMENT_UPDATED_EVENT
-      | typeof ACCOUNTING_DOCUMENT_FINALIZED_EVENT
-      | typeof ACCOUNTING_DOCUMENT_DELETED_EVENT,
-    document: AccountingDocument,
-  ): Promise<void> {
-    await publishEvent(this.events, {
-      type,
-      aggregateType: 'AccountingDocument',
-      aggregateId: document.id,
-      payload: {
-        id: document.id,
-        organizationId: document.organizationId,
-        financialAreaId: document.financialAreaId,
-        fiscalYearId: document.fiscalYearId,
-        accountingPeriodId: document.accountingPeriodId,
-        documentType: document.documentType,
-        documentNumber: document.documentNumber,
-        state: document.phase,
-        origin: document.origin,
-      },
-    });
   }
 
   /**

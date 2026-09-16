@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 import { AppException } from '../../../kernel/errors/app-exception.js';
+import type { DomainEventBus } from '../../../kernel/events/domain-event-bus.js';
+import { generateId } from '../../../kernel/ids/ulid.js';
 import { parseDateOnly } from '../domain/date-range.js';
 import { canonicalizeAmount, validateEnteredAmount } from '../domain/money.js';
 import {
@@ -12,6 +14,7 @@ import {
 import {
   checkOriginEvidence,
   originProblemMessage,
+  type AccountingDocument,
   type AccountingDocumentOrigin,
   type AccountingDocumentSource,
 } from '../domain/accounting-document.js';
@@ -19,9 +22,19 @@ import {
   MAX_OPERATION_KEY_LENGTH,
   type AccountingPostingOperationKind,
 } from '../domain/accounting-posting-operation.js';
+import {
+  ACCOUNTING_DOCUMENT_CREATED_EVENT,
+  ACCOUNTING_DOCUMENT_DELETED_EVENT,
+  ACCOUNTING_DOCUMENT_FINALIZED_EVENT,
+  ACCOUNTING_DOCUMENT_UPDATED_EVENT,
+} from '../domain/accounting.events.js';
+import type { DocumentOperationRow } from '../data/accounting-documents.repository.js';
+import { publishEvent } from './accounting-support.js';
 
 /**
- * Shared helpers for the accounting-document application service (Task 10.4).
+ * Shared helpers for the accounting-document application services (Task 10.4;
+ * Task 10.8 adds the two shapes the posting seam and the voucher's own
+ * operations must not drift on: the idempotency ROW and the event payload).
  *
  * Same role as `inventory-posting-support.ts` for Inventory: the things that
  * must not drift between the voucher's operations — operation-key validation,
@@ -279,4 +292,75 @@ export function buildRequestHash(
   return createHash('sha256')
     .update(JSON.stringify({ operation, ...canonical }))
     .digest('hex');
+}
+
+/**
+ * Build the idempotency row an effect-creating voucher operation persists
+ * INSIDE its own transaction (§16.4, AC-I-12).
+ *
+ * One shape for every kind, because the ledger's contract is one rule: the
+ * caller owns the key, the canonical hash and the operation kind; the row's
+ * identity is a fresh ULID that is evidence identity ONLY — never the identity
+ * of a posting, of a voucher or of a ledger entry (Task 10.6 correction). The
+ * `documentId` envelope is what a replay re-reads current rows from, so a
+ * replay is never a stale snapshot.
+ */
+export function documentOperationRow(input: {
+  organizationId: string;
+  operationKey: string;
+  operation: AccountingPostingOperationKind;
+  requestHash: string;
+  documentId: string;
+  actorId: string | null;
+  now: Date;
+}): DocumentOperationRow {
+  return {
+    id: generateId(),
+    organizationId: input.organizationId,
+    operationKey: input.operationKey,
+    operation: input.operation,
+    requestHash: input.requestHash,
+    result: { documentId: input.documentId },
+    createdAt: input.now,
+    updatedAt: input.now,
+    createdBy: input.actorId,
+  };
+}
+
+/** The `AccountingDocument.*` event vocabulary this module publishes (§21). */
+export type AccountingDocumentEventType =
+  | typeof ACCOUNTING_DOCUMENT_CREATED_EVENT
+  | typeof ACCOUNTING_DOCUMENT_UPDATED_EVENT
+  | typeof ACCOUNTING_DOCUMENT_FINALIZED_EVENT
+  | typeof ACCOUNTING_DOCUMENT_DELETED_EVENT;
+
+/**
+ * Publish one `AccountingDocument.*` event with the ONE payload shape (§21,
+ * AC-D-35). There is deliberately no `AccountingDocument.Posted` event:
+ * `final` IS posted (AC-D-20), so `Finalized` is the posting evidence — and
+ * the posting seam (Task 10.8) publishes exactly this event, never a second
+ * one. The payload is the stored scope plus the numbering/state/origin
+ * snapshots; amounts never travel on it (a consumer reads the ledger entries).
+ */
+export function publishDocumentEvent(
+  events: DomainEventBus,
+  type: AccountingDocumentEventType,
+  document: AccountingDocument,
+): Promise<void> {
+  return publishEvent(events, {
+    type,
+    aggregateType: 'AccountingDocument',
+    aggregateId: document.id,
+    payload: {
+      id: document.id,
+      organizationId: document.organizationId,
+      financialAreaId: document.financialAreaId,
+      fiscalYearId: document.fiscalYearId,
+      accountingPeriodId: document.accountingPeriodId,
+      documentType: document.documentType,
+      documentNumber: document.documentNumber,
+      state: document.phase,
+      origin: document.origin,
+    },
+  });
 }
