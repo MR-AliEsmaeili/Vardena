@@ -295,12 +295,16 @@ microservice split, no unrelated refactor.
 
 ## 11. Commit
 
-One focused commit on `arena/01a0aab2-vardena` (hash filled after the
-review pass, §13.8):
-`feat(accounting): materialize immutable ledger entries in finalization (Task 10.7)`
+One focused implementation commit on `arena/01a0aab2-vardena`:
+
+- hash: `6946ea6e3892f1408212f7b6e215fbf9164f675a`
+- message: `feat(accounting): materialize immutable ledger entries in finalization (Task 10.7)`
+
 — the base history (`d8231ec`, PR #21) is untouched; only the additive
 working-tree changes above it, plus the review-pass deltas of §13
-(one narrowed function, one e2e pin, this report).
+(one narrowed function, one e2e pin, this report). A second, docs-only commit
+records this exact hash in the report (a hash cannot be embedded in the commit
+it identifies).
 
 ## 12. Pre-existing issues found, not fixed (out of scope, AG-03/AG-17)
 
@@ -465,4 +469,6 @@ comment, ~25 e2e assertion lines, and this addendum.
 OQ-39…OQ-43 remain **unchanged** (§7 still holds; `docs/open-questions.md`
 byte-identical).
 
-Exact commit: filled in §11 after commit.
+Exact commit: `6946ea6e3892f1408212f7b6e215fbf9164f675a`
+(`feat(accounting): materialize immutable ledger entries in finalization (Task 10.7)`,
+see §11).
