@@ -21,6 +21,7 @@ import { AccountingPermissionRegistration } from './application/accounting-permi
 import { AccountingDocumentTypeRegistration } from './application/accounting-document-type-registration.js';
 import { AccountingDocumentsService } from './application/accounting-documents.service.js';
 import { PostingReadinessService } from './application/posting-readiness.service.js';
+import { PostingService } from './application/posting.service.js';
 import { FinancialAreasController } from './api/financial-areas.controller.js';
 import { FiscalYearsController } from './api/fiscal-years.controller.js';
 import { AccountingPeriodsController } from './api/accounting-periods.controller.js';
@@ -120,6 +121,16 @@ import { AccountingDocumentsController } from './api/accounting-documents.contro
     AccountingDocumentsService,
     AccountingPermissionRegistration,
     AccountingDocumentTypeRegistration,
+    // Task 10.8: the posting orchestration seam — ONE entry point
+    // (`postVoucher`) for the atomic act §15.5 defines: idempotency
+    // replay-or-reject, the lifecycle verdict, the Task 10.7 transaction
+    // (never wrapped in a second one), the `Finalized` event, and the
+    // readiness/ledger verification of the result. Provided (not exported):
+    // its only caller today is this module's own document service, and a
+    // cross-module caller would need the §16.3 source-posting contract and
+    // OQ-39's delivery decision first (AR-07). It adds no endpoint, no
+    // permission, no event, no table and no transaction of its own.
+    PostingService,
     // Task 10.5: the posting-readiness seam. Provided (not exported) — it is
     // an IN-MODULE contract for the future Posting Engine, which is
     // Accounting-owned (ADR-0026 §1). A cross-module consumer would need the

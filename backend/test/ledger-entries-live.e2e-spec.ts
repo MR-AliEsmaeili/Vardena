@@ -421,14 +421,19 @@ describe.skipIf(DATABASE_URL === undefined)(
         expect.arrayContaining(ids),
       );
 
-      // The stored read: `numeric(18,2)` keeps its scale on the wire (`pg`
-      // returns numerics as strings), so the database holds exactly what the
-      // voucher carried — no binary-float drift at any layer.
+      // The stored read: `numeric(18,2)` keeps its scale on the wire, so the
+      // database holds exactly what the voucher carried — no binary-float
+      // drift at any layer. The amounts are cast to `text` because the
+      // driver adapter deserializes a selected `numeric` instead of handing
+      // back the wire literal (the value arrives scale-stripped, `0.10` →
+      // `0.1`), which would make this assertion test the adapter rather than
+      // the column. PostgreSQL renders `numeric(18,2)` → `text` with the
+      // scale intact, so `'0.10'` here is what the row physically stores.
       const db = await client();
       const stored = (await db.$queryRaw`SELECT
           line_no AS "lineNo",
-          debit_amount AS "debitAmount",
-          credit_amount AS "creditAmount",
+          debit_amount::text AS "debitAmount",
+          credit_amount::text AS "creditAmount",
           voucher_number AS "voucherNumber",
           origin AS "origin",
           source_module AS "sourceModule",
