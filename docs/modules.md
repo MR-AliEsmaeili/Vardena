@@ -269,6 +269,28 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   rule itself is implemented and unit-tested in the domain layer; `code`
   immutability is already absolute (§8.3: no `code` field exists on the update
   path, and codes are never reused).
+- **Posting readiness seam (Task 10.5):** an INTERNAL (non-HTTP, non-exported)
+  application contract between the finalized voucher and the future Posting
+  Engine: `PostingReadinessService.evaluateReadiness(organizationId,
+  documentId)` assembles a read-only snapshot (document + lines + stored
+  area/year/period + referenced accounts, by stored ids, no locks) and
+  delegates to the pure decision table `domain/posting-readiness.ts`, which
+  reuses `checkVoucherLines`/`checkOriginEvidence` verbatim. The verdict is
+  `ready | not_ready` with machine-readable reasons reusing the module's
+  problem vocabularies (`document_not_final`, `document_not_numbered`,
+  `missing_description`, the §13 line problems, `account_not_found`/
+  `account_not_postable`, `scope_unresolvable` with the area/year/period
+  scope). Deliberate NON-criteria, per contract: calendar statuses and account
+  activity (§7.2 rule 7, §8.6 — a period closed, a year sealed or an account
+  disabled after finalization leaves the voucher ready); dimension
+  requiredness (OQ-41), area applicability (OQ-40), approval/posting mode
+  (OQ-42) and delivery durability (OQ-39) remain open and are recorded as
+  seams in the domain file. Read-only by construction: no numbering, no
+  idempotency ledger, no events, no state — a `ready` verdict on a final
+  voucher is stable, and the future engine still re-validates inside its own
+  transaction (ADR-0022 posture, `data/accounting-locks.ts` order unchanged).
+  No permission code and no endpoint exist for it (AR-21 binds endpoints;
+  the calling operation authorizes — the `requireUsable*` precedent).
 - **Fiscal-calendar ownership moved here.** ADR-0020 §2 and the Organization entry
   gave the fiscal calendar to Organization; ADR-0026 §2 assigns financial areas,
   fiscal years and periods to Accounting (the module that enforces posting
