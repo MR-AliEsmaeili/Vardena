@@ -13,6 +13,10 @@ import type {
   AccountingDocumentLineWrite,
 } from '../src/modules/accounting/data/accounting-documents.repository.js';
 import { ACCOUNTING_VOUCHER_DOCUMENT_TYPE } from '../src/modules/accounting/domain/accounting-document.js';
+import {
+  AccountingDocumentFinalProtectedError,
+  AccountingDocumentPhaseConflictError,
+} from '../src/modules/accounting/data/accounting-document-errors.js';
 import { createTestApp } from './support/test-app.js';
 
 /**
@@ -102,6 +106,25 @@ describe.skipIf(DATABASE_URL === undefined)(
       creditAmount,
       description: null,
       sourceLineReference: null,
+    });
+
+    /** A well-formed sha256-shaped hash for the fixture ledger rows. */
+    const TEST_REQUEST_HASH = 'a'.repeat(64);
+
+    /** The idempotency row the service writes LAST inside the effect's tx. */
+    const ledgerRow = (
+      operationKey: string,
+      documentId: string,
+    ): NonNullable<CreateAccountingDocumentInput['ledger']> => ({
+      id: generateId(),
+      organizationId,
+      operationKey,
+      operation: 'document_create',
+      requestHash: TEST_REQUEST_HASH,
+      result: { documentId },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: null,
     });
 
     const draftInput = (
@@ -289,51 +312,56 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(reread?.lines).toEqual(created.lines);
     }, 60_000);
 
-    it('stores no header row, line or ledger entry when a write fails midway', async () => {
+    it('rolls the whole write back when the idempotency ledger rejects the key', async () => {
+      // The ledger row is inserted LAST in the document transaction, so a
+      // duplicate `(organization, operation_key)` fails AFTER the header and
+      // the lines have been written — the one place where a partial write would
+      // otherwise remain. The transaction must leave nothing behind.
       const db = await client();
-      const id = generateId();
-      const documentsBefore = await db.accountingDocument.count({
+      const operationKey = `atomic-${suffix}-1`;
+      const winnerId = generateId();
+
+      const winner = await documents.createChecked(
+        draftInput({
+          id: winnerId,
+          description: 'Ledger winner',
+          ledger: ledgerRow(operationKey, winnerId),
+        }),
+      );
+      expect(winner.id).toBe(winnerId);
+      const committed = await db.accountingDocument.count({
         where: { organizationId },
       });
-      const ledgerKey = `atomic-${id}`;
 
+      const loserId = generateId();
       await expect(
         documents.createChecked(
           draftInput({
-            id,
-            documentNumber: null,
-            ledger: {
-              id: generateId(),
-              organizationId,
-              operationKey: ledgerKey,
-              operation: 'document_create',
-              requestHash: 'deadbeef',
-              result: { documentId: id },
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              createdBy: null,
-            },
-            lines: [
-              line(debitAccountId, '10', '0', 1),
-              // The FK to a non-existent account aborts the whole transaction
-              // AFTER the header row and the first line were written.
-              line(generateId(), '0', '10', 2),
-            ],
+            id: loserId,
+            description: 'Ledger loser',
+            ledger: ledgerRow(operationKey, loserId),
           }),
         ),
-      ).rejects.toBeTruthy();
+      ).rejects.toMatchObject({ code: 'P2002' });
 
+      // Nothing of the loser survived: no header, no lines, no second ledger
+      // row — and the winner is untouched.
       expect(
-        await db.accountingDocument.count({ where: { organizationId } }),
-      ).toBe(documentsBefore);
-      expect(
-        await db.accountingDocumentLine.count({ where: { documentId: id } }),
+        await db.accountingDocument.count({ where: { id: loserId } }),
       ).toBe(0);
       expect(
-        await db.accountingPostingOperation.count({
-          where: { organizationId, operationKey: ledgerKey },
+        await db.accountingDocumentLine.count({
+          where: { documentId: loserId },
         }),
       ).toBe(0);
+      expect(
+        await db.accountingDocument.count({ where: { organizationId } }),
+      ).toBe(committed);
+      expect(
+        await db.accountingPostingOperation.count({
+          where: { organizationId, operationKey },
+        }),
+      ).toBe(1);
     }, 60_000);
 
     it('refuses a second document with the same number in the same area', async () => {
@@ -374,24 +402,29 @@ describe.skipIf(DATABASE_URL === undefined)(
       const numbers = allocated.map((allocation) => allocation.number);
       expect(new Set(numbers).size).toBe(12);
 
+      // ONE reference, two concurrent calls: replay is defined on the
+      // allocation key AND the reference, so a second call naming a different
+      // document is a conflict (409), not a replay (the `documents-live`
+      // suite asserts exactly that distinction).
+      const reference = {
+        referenceModule: 'accounting',
+        referenceDocumentType: 'accounting_voucher',
+        referenceDocumentId: generateId(),
+      };
       const [a, b] = await Promise.all([
         numbering.allocateNumber({
           organizationId,
           documentType: 'accounting_voucher',
           scopeKey: financialAreaId.toLowerCase(),
           allocationKey: 'live-same-key',
-          referenceModule: 'accounting',
-          referenceDocumentType: 'accounting_voucher',
-          referenceDocumentId: generateId(),
+          ...reference,
         }),
         numbering.allocateNumber({
           organizationId,
           documentType: 'accounting_voucher',
           scopeKey: financialAreaId.toLowerCase(),
           allocationKey: 'live-same-key',
-          referenceModule: 'accounting',
-          referenceDocumentType: 'accounting_voucher',
-          referenceDocumentId: generateId(),
+          ...reference,
         }),
       ]);
       expect(b.number).toBe(a.number);
@@ -426,7 +459,10 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(issued.phase).toBe('temporary');
       expect(issued.documentNumber).toBe(issuedNumber);
 
-      // Issuing twice is a phase conflict, not a silent second number.
+      // Issuing twice is a phase conflict, not a silent second number. The
+      // guard errors are identified by CLASS: the data layer throws plain
+      // errors (no `code` property — the transport code is the service's
+      // mapping concern, `mapDocumentGuardError`).
       await expect(
         documents.issueChecked({
           id: created.id,
@@ -435,7 +471,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           updatedAt: new Date(),
           updatedBy: null,
         }),
-      ).rejects.toMatchObject({ code: 'AccountingDocumentPhaseConflict' });
+      ).rejects.toBeInstanceOf(AccountingDocumentPhaseConflictError);
 
       const finalized = await documents.finalizeChecked({
         id: created.id,
@@ -445,7 +481,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           organizationId,
           operationKey: `live-finalize-${created.id}`,
           operation: 'document_finalize',
-          requestHash: 'sha256-live',
+          requestHash: TEST_REQUEST_HASH,
           result: { documentId: created.id },
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -472,10 +508,10 @@ describe.skipIf(DATABASE_URL === undefined)(
           updatedAt: new Date(),
           updatedBy: null,
         }),
-      ).rejects.toMatchObject({ code: 'AccountingDocumentFinalProtected' });
+      ).rejects.toBeInstanceOf(AccountingDocumentFinalProtectedError);
       await expect(
         documents.deleteChecked({ id: created.id, organizationId }),
-      ).rejects.toMatchObject({ code: 'AccountingDocumentFinalProtected' });
+      ).rejects.toBeInstanceOf(AccountingDocumentFinalProtectedError);
 
       // And the stored row is exactly what finalization left behind.
       const db = await client();
@@ -526,7 +562,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             organizationId,
             operationKey: `live-race-final-${created.id}`,
             operation: 'document_finalize',
-            requestHash: 'sha256-live',
+            requestHash: TEST_REQUEST_HASH,
             result: { documentId: created.id },
             createdAt: new Date(),
             updatedAt: new Date(),
