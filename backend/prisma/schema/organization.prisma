@@ -96,6 +96,11 @@ model Organization {
   accountingDocumentLines    AccountingDocumentLine[]
   accountingPostingOperations AccountingPostingOperation[]
 
+  // Back-relations for the immutable ledger entries (Task 10.7).
+  // Virtual side only — the real FK column stays
+  // `accounting.ledger_entries.organization_id`.
+  ledgerEntries LedgerEntry[]
+
   // The organization code is the tenant root's business key: unique
   // deployment-wide (there is no wider scope to be unique within).
   @@unique([code], map: "uq_organizations_code")
@@ -129,6 +134,10 @@ model Branch {
   // Back-relation for the accounting documents of this branch (Task 10.4,
   // AC-D-17: branch lives on the voucher header, never on a line).
   accountingDocuments AccountingDocument[]
+
+  // Back-relation for the ledger entries carrying this branch's operational
+  // scope snapshot (Task 10.7). Virtual side only — no migration impact.
+  ledgerEntries LedgerEntry[]
 
   // Uniqueness scope is the organization (master-data-strategy.md §7.1).
   @@unique([organizationId, code], map: "uq_branches_organization_id_code")

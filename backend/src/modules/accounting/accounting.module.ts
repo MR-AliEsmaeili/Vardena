@@ -11,6 +11,7 @@ import { AccountsRepository } from './data/accounts.repository.js';
 import { AccountingDocumentsRepository } from './data/accounting-documents.repository.js';
 import { AccountingDocumentLinesRepository } from './data/accounting-document-lines.repository.js';
 import { AccountingPostingOperationsRepository } from './data/accounting-posting-operations.repository.js';
+import { LedgerEntriesRepository } from './data/ledger-entries.repository.js';
 import { FinancialAreasService } from './application/financial-areas.service.js';
 import { FiscalYearsService } from './application/fiscal-years.service.js';
 import { AccountingPeriodsService } from './application/accounting-periods.service.js';
@@ -39,7 +40,10 @@ import { AccountingDocumentsController } from './api/accounting-documents.contro
  * posting-readiness seam (`PostingReadinessService` over the pure
  * `domain/posting-readiness.ts` decision): a read-only eligibility verdict
  * between the finalized voucher and the future Posting Engine — no posting,
- * no endpoint, no state. Detail dimensions, posting rules,
+ * no endpoint, no state. Task 10.7 materializes the immutable ledger entries
+ * atomically inside finalization (`finalizeChecked` + `LedgerEntriesRepository`,
+ * insert-only, no endpoint): `final` = posted, evidenced by the existing
+ * `document_finalize` operation row. Detail dimensions, posting rules,
  * balance projections and the correction mechanisms arrive with later tasks
  * (contract §28.2) and must not be anticipated here (AR-29).
  *
@@ -105,6 +109,9 @@ import { AccountingDocumentsController } from './api/accounting-documents.contro
     AccountingDocumentLinesRepository,
     AccountingDocumentsRepository,
     AccountingPostingOperationsRepository,
+    // Task 10.7: insert-only evidence reads (`findByVoucher`); the writes
+    // happen inside `finalizeChecked`, never through this provider directly.
+    LedgerEntriesRepository,
     FinancialAreasService,
     FiscalYearsService,
     AccountingPeriodsService,

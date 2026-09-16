@@ -348,8 +348,19 @@ export async function lockAccountRow(
 }
 
 // ---------------------------------------------------------------------------
-// Accounting documents (Task 10.4)
+// Accounting documents (Task 10.4) + ledger materialization (Task 10.7)
 // ---------------------------------------------------------------------------
+//
+// Task 10.7 adds NO new lock and NO new lock order: the ledger entries are
+// INSERTed inside the finalization transaction, between the state update and
+// the operation-ledger insert (which stays LAST, the §16.4 evidence rule), so
+// they ride the locks that transaction already holds. The document row lock
+// serializes concurrent finalizations of one voucher; the UNIQUE backstop on
+// `ledger_entries.voucher_line_id` makes a second entry for one line
+// impossible to persist even across separate transactions (a hand-written row
+// colliding with a finalization aborts that finalization, loudly). Fresh
+// INSERTs under an already-held document lock cannot deadlock: no path waits
+// on a ledger row, so there is no cycle to order against.
 
 /**
  * A locked accounting-document row: everything the document guards read

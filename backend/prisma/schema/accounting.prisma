@@ -27,9 +27,10 @@
 //     tables, and `level_kind` labels are informational only (§8.1).
 //
 // Explicitly NOT here (later Accounting tasks — contract §28.2): control-role
-// mappings, detail dimensions / groups / items (floating details), accounting
-// documents + lines, posting rules, the system-posting idempotency ledger and
-// balance projections.
+// mappings, detail dimensions / groups / items (floating details),
+// posting rules and balance projections. Accounting documents + lines and the
+// system-posting idempotency ledger shipped with Task 10.4; the immutable
+// ledger entries shipped with Task 10.7 (see below).
 //
 // Deferred on purpose, with the seam recorded (no speculative columns —
 // AR-29):
@@ -108,6 +109,11 @@ model FinancialArea {
   accountingDocuments AccountingDocument[]
   documentLines       AccountingDocumentLine[]
 
+  // Back-relations for the immutable ledger entries booked in this area
+  // (Task 10.7 — the bookkeeping scope is preserved on every entry).
+  // Virtual side only — no migration impact.
+  ledgerEntries LedgerEntry[]
+
   @@unique([organizationId, code], map: "uq_financial_areas_organization_id_code")
   @@index([organizationId, isActive], map: "idx_financial_areas_organization_id_is_active")
   @@map("financial_areas")
@@ -146,6 +152,10 @@ model FiscalYear {
   accountingDocuments AccountingDocument[]
   documentLines       AccountingDocumentLine[]
 
+  // Back-relations for the ledger entries resolved into this year (Task 10.7).
+  // Virtual side only — no migration impact.
+  ledgerEntries LedgerEntry[]
+
   @@unique([organizationId, financialAreaId, code], map: "uq_fiscal_years_organization_id_financial_area_id_code")
   @@index([organizationId, financialAreaId], map: "idx_fiscal_years_organization_id_financial_area_id")
   @@index([organizationId, financialAreaId, status], map: "idx_fiscal_years_organization_id_financial_area_id_status")
@@ -183,6 +193,11 @@ model AccountingPeriod {
   // (Task 10.4 — the stored period resolution, AC-I-14).
   accountingDocuments AccountingDocument[]
   documentLines       AccountingDocumentLine[]
+
+  // Back-relations for the ledger entries resolved into this period
+  // (Task 10.7 — the stored period resolution is preserved, never recomputed).
+  // Virtual side only — no migration impact.
+  ledgerEntries LedgerEntry[]
 
   @@unique([fiscalYearId, sequence], map: "uq_accounting_periods_fiscal_year_id_sequence")
   @@index([organizationId, fiscalYearId], map: "idx_accounting_periods_organization_id_fiscal_year_id")
@@ -349,6 +364,10 @@ model Account {
   /// `accounting_document_lines.account_id` (RESTRICT); this is the virtual side.
   documentLines AccountingDocumentLine[]
 
+  /// The immutable ledger entries posted to this account (Task 10.7). The real
+  /// FK is `ledger_entries.account_id` (RESTRICT); this is the virtual side.
+  ledgerEntries LedgerEntry[]
+
   /// The canonical-code uniqueness (§9.2) — the authoritative duplicate guard
   /// for concurrent creates (the service pre-check only produces a nicer 409).
   @@unique([organizationId, code], map: "uq_accounts_organization_id_code")
@@ -455,6 +474,11 @@ model AccountingDocument {
   branch           Branch?          @relation(fields: [branchId], references: [id], onDelete: Restrict)
   lines            AccountingDocumentLine[]
 
+  /// The immutable ledger entries materialized from this voucher's lines at
+  /// finalization (Task 10.7, 1 → N). The real FK is
+  /// `ledger_entries.voucher_id` (RESTRICT); this is the virtual side.
+  ledgerEntries LedgerEntry[]
+
   /// The number's uniqueness scope: the financial area (§18 — one series per
   /// (organization, type, area)); the `documents.numbering_allocations` ledger
   /// stays the authoritative allocator, this index is the accounting-side
@@ -514,6 +538,10 @@ model AccountingDocumentLine {
   /// RESTRICT: an account with lines can never disappear (nothing is deleted,
   /// and §8.6 freezes an account that has been used).
   account        Account            @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  /// The immutable ledger entry materialized from this line at finalization
+  /// (Task 10.7, 1 → 1). The real FK is `ledger_entries.voucher_line_id`
+  /// (RESTRICT + UNIQUE); this is the virtual side.
+  ledgerEntry LedgerEntry?
 
   @@unique([documentId, lineNo], map: "uq_accounting_document_lines_document_id_line_no")
   @@index([organizationId, accountId], map: "idx_accounting_document_lines_org_account")
@@ -568,5 +596,119 @@ model AccountingPostingOperation {
   @@unique([organizationId, operationKey], map: "uq_accounting_posting_operations_org_key")
   @@index([organizationId, operation], map: "idx_accounting_posting_operations_org_operation")
   @@map("accounting_posting_operations")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Immutable ledger entries (Task 10.7, contract §12/§13/§15/§19,
+// AC-D-16…AC-D-23, AC-I-05/06/07/08/14/19)
+// ---------------------------------------------------------------------------
+
+/// One immutable ledger entry — one voucher line posted to the books.
+///
+/// Materialized atomically inside the finalization transaction
+/// (`AccountingDocumentsRepository.finalizeChecked`, §15.5 AC-D-23): the
+/// document state, the N ledger rows (N = stored lines, ≥2) and the
+/// `accounting_posting_operations` evidence row commit together or not at
+/// all. There is deliberately NO separate `posted` state (AC-D-20):
+/// `final` = posted, and the idempotency evidence stays the existing
+/// `document_finalize` row — `accounting_posting_operations` is evidence
+/// infrastructure, NOT the ledger identity and NOT a Posting entity
+/// (Task 10.6 correction).
+///
+/// Identity: the row's own ULID (`id`), never reused, never derived from a
+/// mutable business field. It is NOT `accounting_posting_operations.id`.
+/// Traceability: `voucher_id` (N entries per voucher) + `voucher_line_id`
+/// (exactly ONE entry per line — the UNIQUE backstop below) + `line_no`,
+/// `voucher_number`, the stored scope and the account reference, so every
+/// entry is traceable to organization, area, year, period, voucher, voucher
+/// number, voucher line and account without re-reading mutable state.
+///
+/// Immutability is STRUCTURAL (no update/delete repository method, no API,
+/// §15.2/§15.3 AC-I-05/06): corrections are future counter-documents with
+/// new entries (AC-D-22). No CHECK constraints and no triggers — Prisma
+/// cannot represent them, so a later generated migration would `DROP` them
+/// and silently lose the invariant (the reason every previous migration in
+/// this module records). The amount/side/line-number rules live in the
+/// framework-free domain (`domain/ledger-entry.ts`, `domain/posting.ts`) and
+/// are evaluated inside the finalization transaction from the STORED lines.
+///
+/// Deferred by the contract, so NOT columns here (AR-29): dimension
+/// assignments (the typed child table of §10.6 arrives with OQ-41 — no
+/// `detail_1_id` columns, no EAV, no JSONB), currency/exchange rate (§24.1,
+/// OQ-03), balances/projections (§19.3 — a future rebuildable projection
+/// over these rows, never state maintained here).
+model LedgerEntry {
+  id                 String   @id
+  organizationId     String   @map("organization_id")
+  financialAreaId    String   @map("financial_area_id")
+  /// Stored resolutions copied from the finalized voucher header (AC-I-14):
+  /// reports never recompute a period from a date.
+  fiscalYearId       String   @map("fiscal_year_id")
+  accountingPeriodId String   @map("accounting_period_id")
+  /// Source voucher identity (AC-I-14, traceability).
+  voucherId          String   @map("voucher_id")
+  /// Numeric-only serial snapshot, immutable after final (AC-I-22, §18).
+  voucherNumber      String   @map("voucher_number") @db.VarChar(32)
+  /// Source voucher line identity — the 1:1 traceability key. UNIQUE.
+  voucherLineId      String   @map("voucher_line_id") @unique(map: "uq_ledger_entries_voucher_line_id")
+  /// 1-based dense rendering order snapshot (§12.5, legal-book order).
+  lineNo             Int      @map("line_no")
+  accountId          String   @map("account_id")
+  /// `numeric(18,2)` (AR-12): non-negative exact decimals, exactly one
+  /// non-zero per entry (§13.2, AC-I-08). Carried as decimal STRINGS through
+  /// the domain, never floats, never rounded (§13.1/§13.5, AC-I-07).
+  debitAmount        Decimal  @default(0) @map("debit_amount") @db.Decimal(18, 2)
+  creditAmount       Decimal  @default(0) @map("credit_amount") @db.Decimal(18, 2)
+  /// Line narration snapshot (nullable — the header narration lives on the
+  /// voucher, §12.2/§12.5).
+  description        String?  @db.VarChar(500)
+  /// Business/occurrence date snapshot, date-only (`DATE`, §12.3, Class C3).
+  documentDate       DateTime @map("document_date") @db.Date
+  /// System timestamp snapshot: when the voucher became final (`finalizedAt`,
+  /// §15.5) — the posting timestamp that keeps any entry-timing rule
+  /// measurable together with `document_date` (Class C3).
+  postingTimestamp   DateTime @map("posting_timestamp") @db.Timestamptz(6)
+  /// Operational scope snapshot, header-level (AC-D-17, Class C5).
+  branchId           String?  @map("branch_id")
+  /// `manual` | `system` (contract §16.1, AC-D-24). Closed, code-defined list.
+  origin             String   @db.VarChar(16)
+  /// System-origin source identity snapshot (§16.3): logical references,
+  /// never cross-module FKs (AR-07/08). NULL for `manual`.
+  sourceModule       String?  @map("source_module") @db.VarChar(64)
+  sourceEntityType   String?  @map("source_entity_type") @db.VarChar(64)
+  sourceEntityId     String?  @map("source_entity_id")
+  sourceOperation    String?  @map("source_operation") @db.VarChar(32)
+  /// End-to-end traceability snapshot (docs/architecture.md §9).
+  correlationId      String?  @map("correlation_id") @db.VarChar(64)
+  /// Finalization actor snapshot (audit evidence, §23).
+  finalizedBy        String?  @map("finalized_by")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy          String?  @map("created_by")
+  updatedBy          String?  @map("updated_by")
+
+  organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea    FinancialArea          @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  fiscalYear       FiscalYear             @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  accountingPeriod AccountingPeriod       @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict)
+  /// RESTRICT: a voucher with ledger evidence can never disappear (`final`
+  /// is never deletable, so this backstop only speaks for hand-written rows).
+  voucher          AccountingDocument     @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  /// RESTRICT + UNIQUE: exactly one entry per voucher line (1:1), and a line
+  /// with ledger evidence can never disappear.
+  voucherLine      AccountingDocumentLine @relation(fields: [voucherLineId], references: [id], onDelete: Restrict)
+  /// RESTRICT: an account with ledger entries can never disappear (§8.6).
+  account          Account                @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  branch           Branch?                @relation(fields: [branchId], references: [id], onDelete: Restrict)
+
+  /// The 1:1 backstop (VoucherLine → LedgerEntry): a second entry for the
+  /// same line is impossible to persist, however many times a finalization
+  /// is retried. The voucher side needs no uniqueness: one voucher yields N
+  /// entries (read via `idx_ledger_entries_org_voucher`).
+  @@index([organizationId, voucherId], map: "idx_ledger_entries_org_voucher")
+  @@index([organizationId, accountId], map: "idx_ledger_entries_org_account")
+  @@index([organizationId, accountingPeriodId], map: "idx_ledger_entries_org_period")
+  @@map("ledger_entries")
   @@schema("accounting")
 }
