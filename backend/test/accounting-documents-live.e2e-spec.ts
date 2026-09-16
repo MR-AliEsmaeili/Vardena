@@ -12,7 +12,7 @@ import type {
   CreateAccountingDocumentInput,
   AccountingDocumentLineWrite,
 } from '../src/modules/accounting/data/accounting-documents.repository.js';
-import { ACCOUNTING_VOUCHER_TYPE_DEFINITION } from '../src/modules/accounting/domain/accounting-document.js';
+import { ACCOUNTING_VOUCHER_DOCUMENT_TYPE } from '../src/modules/accounting/domain/accounting-document.js';
 import { createTestApp } from './support/test-app.js';
 
 /**
@@ -141,12 +141,21 @@ describe.skipIf(DATABASE_URL === undefined)(
       documents = app.get(AccountingDocumentsRepository);
       numbering = app.get(NumberingService);
 
-      // The voucher type is registered by the module at startup; registering
-      // the same definition twice is a no-op, and doing it here keeps the
-      // suite explicit about the type it exercises.
-      app
+      // The voucher type is OWNED by Accounting: `AccountingDocumentTypeRegistration`
+      // registers it during `app.init()` (ADR-0023 §2, contract §12.1
+      // AC-D-16), and `createTestApp` awaits that init before returning. The
+      // suite must therefore NOT register it again: `DocumentTypeRegistry`
+      // refuses any second registrant by design, and re-registering the
+      // production-owned type here is exactly what made this suite fail at
+      // startup. Assert the ownership the suite depends on instead.
+      const registered = app
         .get(DocumentTypeRegistry)
-        .register([ACCOUNTING_VOUCHER_TYPE_DEFINITION]);
+        .all()
+        .filter(
+          (definition) => definition.code === ACCOUNTING_VOUCHER_DOCUMENT_TYPE,
+        );
+      expect(registered).toHaveLength(1);
+      expect(registered[0]).toMatchObject({ module: 'accounting' });
 
       const organizations = app.get(OrganizationsService);
       const series = app.get(NumberingSeriesService);

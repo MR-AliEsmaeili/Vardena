@@ -2,6 +2,8 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
+import { DocumentTypeRegistry } from '../src/modules/documents/application/document-type-registry.js';
+import { ACCOUNTING_VOUCHER_TYPE_DEFINITION } from '../src/modules/accounting/domain/accounting-document.js';
 import { UsersRepository } from '../src/modules/users/data/users.repository.js';
 import { UsersService } from '../src/modules/users/application/users.service.js';
 import { SessionsRepository } from '../src/modules/identity/data/sessions.repository.js';
@@ -421,7 +423,22 @@ describe('Accounting documents (e2e)', () => {
 
   // ---- registration + security surface -------------------------------------
 
-  it('registers the voucher type in the Document Foundation at startup (§12.1)', async () => {
+  it('owns exactly one registration of the voucher type (§12.1, ADR-0023 §2)', async () => {
+    // `AccountingDocumentTypeRegistration` is the single owner: it registers
+    // the type during `app.init()`, so by the time this suite runs the
+    // vocabulary is fixed. Asserting the COUNT (not just presence) is what
+    // pins "exactly one owner" — the regression this suite guards is a second
+    // registrant, which the registry must keep refusing.
+    const registry = app.get(DocumentTypeRegistry);
+    const registered = registry
+      .all()
+      .filter((definition) => definition.code === 'accounting_voucher');
+    expect(registered).toHaveLength(1);
+    expect(registered[0]).toMatchObject({ module: 'accounting' });
+    expect(() =>
+      registry.register([ACCOUNTING_VOUCHER_TYPE_DEFINITION]),
+    ).toThrow(/already registered/);
+
     const res = await root
       .get('/api/v1/documents/types')
       .query({ organizationId: state.orgA })
