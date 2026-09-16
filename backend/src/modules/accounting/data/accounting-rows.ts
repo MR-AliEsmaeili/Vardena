@@ -637,6 +637,84 @@ export interface AccountingPostingOperationDelegate {
 }
 
 // ---------------------------------------------------------------------------
+// Ledger entries (Task 10.7, contract §12/§13/§15/§19 — immutable)
+// ---------------------------------------------------------------------------
+
+export type LedgerEntryRow = {
+  id: string;
+  organizationId: string;
+  financialAreaId: string;
+  fiscalYearId: string;
+  accountingPeriodId: string;
+  voucherId: string;
+  voucherNumber: string;
+  voucherLineId: string;
+  lineNo: number;
+  accountId: string;
+  /** Prisma `Decimal` at runtime; the repository maps it to a string. */
+  debitAmount: unknown;
+  creditAmount: unknown;
+  description: string | null;
+  documentDate: Date;
+  postingTimestamp: Date;
+  branchId: string | null;
+  origin: string;
+  sourceModule: string | null;
+  sourceEntityType: string | null;
+  sourceEntityId: string | null;
+  sourceOperation: string | null;
+  correlationId: string | null;
+  finalizedBy: string | null;
+} & AuditColumns;
+
+export interface LedgerEntryWhere {
+  organizationId?: string;
+  voucherId?: string;
+  voucherLineId?: string;
+}
+
+export interface LedgerEntryCreate {
+  id: string;
+  organizationId: string;
+  financialAreaId: string;
+  fiscalYearId: string;
+  accountingPeriodId: string;
+  voucherId: string;
+  voucherNumber: string;
+  voucherLineId: string;
+  lineNo: number;
+  accountId: string;
+  debitAmount: string;
+  creditAmount: string;
+  description: string | null;
+  documentDate: Date;
+  postingTimestamp: Date;
+  branchId: string | null;
+  origin: string;
+  sourceModule: string | null;
+  sourceEntityType: string | null;
+  sourceEntityId: string | null;
+  sourceOperation: string | null;
+  correlationId: string | null;
+  finalizedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+/**
+ * Insert-only + scoped reads: there is deliberately no update and no delete
+ * (AC-I-05/06 — corrections are future counter-documents with new entries).
+ */
+export interface LedgerEntryDelegate {
+  findMany(args: {
+    where: LedgerEntryWhere;
+    orderBy: OrderBy;
+  }): Promise<LedgerEntryRow[]>;
+  createMany(args: { data: LedgerEntryCreate[] }): Promise<{ count: number }>;
+}
+
+// ---------------------------------------------------------------------------
 // Transaction client
 // ---------------------------------------------------------------------------
 
@@ -708,6 +786,13 @@ export interface AccountingTxClient {
     AccountingPostingOperationDelegate,
     'findFirst' | 'create'
   >;
+  /**
+   * Task 10.7: the immutable ledger entries. Written only by
+   * `finalizeChecked`, between the state update and the operation-ledger
+   * insert — a plain `createMany` (never `skipDuplicates`: a second entry for
+   * one line must fail the transaction, not vanish silently).
+   */
+  ledgerEntry: Pick<LedgerEntryDelegate, 'createMany'>;
 }
 
 export interface AccountingTransactionalClient {

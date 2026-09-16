@@ -79,6 +79,10 @@ describe.skipIf(DATABASE_URL === undefined)(
         count: (args: unknown) => Promise<number>;
         deleteMany: (args: unknown) => Promise<unknown>;
       };
+      ledgerEntry: {
+        count: (args: unknown) => Promise<number>;
+        deleteMany: (args: unknown) => Promise<unknown>;
+      };
       accountingPeriod: { deleteMany: (args: unknown) => Promise<unknown> };
       numberingAllocation: { deleteMany: (args: unknown) => Promise<unknown> };
       numberingSeries: { deleteMany: (args: unknown) => Promise<unknown> };
@@ -259,6 +263,10 @@ describe.skipIf(DATABASE_URL === undefined)(
       if (app !== undefined) {
         try {
           const db = await client();
+          // Ledger entries FIRST (Task 10.7): they RESTRICT their voucher,
+          // their lines and their accounts, so nothing they reference can be
+          // removed before them.
+          await db.ledgerEntry.deleteMany({ where: { organizationId } });
           await db.accountingPostingOperation.deleteMany({
             where: { organizationId },
           });
@@ -539,6 +547,10 @@ describe.skipIf(DATABASE_URL === undefined)(
           },
         }),
       ).toBe(1);
+      // Task 10.7: the finalization materialized exactly one entry per line.
+      expect(
+        await db.ledgerEntry.count({ where: { voucherId: created.id } }),
+      ).toBe(2);
     }, 60_000);
 
     it('finalizes once under a repeated key: one state change, one ledger row', async () => {
@@ -602,6 +614,10 @@ describe.skipIf(DATABASE_URL === undefined)(
         where: { id: created.id },
       });
       expect(rows[0]?.['state']).toBe('final');
+      // Task 10.7: the winner posted exactly one entry set — never two.
+      expect(
+        await db.ledgerEntry.count({ where: { voucherId: created.id } }),
+      ).toBe(2);
     }, 60_000);
 
     it('cascades lines with the document and restricts deleting a referenced account', async () => {

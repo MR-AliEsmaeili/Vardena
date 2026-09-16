@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { generateId } from '../../../kernel/ids/ulid.js';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import type {
   AccountingDocument,
@@ -10,7 +11,9 @@ import {
   isAccountingDocumentOrigin,
   isAccountingDocumentPhase,
 } from '../domain/accounting-document.js';
+import type { LedgerEntry } from '../domain/ledger-entry.js';
 import { canonicalizeAmount } from '../domain/money.js';
+import { toLedgerEntries, toPostingInput } from '../domain/posting.js';
 import { checkVoucherLines } from '../domain/voucher-lines.js';
 import type { AccountingDocumentLineInput } from '../domain/voucher-lines.js';
 import {
@@ -25,6 +28,7 @@ import {
   AccountingDocumentStaleError,
 } from './accounting-document-errors.js';
 import { insertOperationRow } from './accounting-posting-operations.repository.js';
+import { insertLedgerEntries } from './ledger-entries.repository.js';
 import {
   lockAccountRowForShare,
   lockAccountingDocumentRow,
@@ -46,6 +50,7 @@ import type {
   AccountingPostingOperationCreate,
   AccountingTransactionalClient,
   AccountingTxClient,
+  LedgerEntryCreate,
   OrderBy,
 } from './accounting-rows.js';
 
@@ -467,11 +472,14 @@ export class AccountingDocumentsRepository {
    * the scope (year+period still OPEN, and the stored resolution still the one
    * `document_date` resolves to), the line composition and balance (§13.1),
    * every referenced account (§14) and the description, then writes the state,
-   * the finalization evidence and the posting-operation row — all or nothing.
+   * the finalization evidence, the N immutable ledger entries (Task 10.7 —
+   * one per stored line, via the `domain/posting.ts` contract, never a second
+   * implementation) and the posting-operation row — all or nothing.
    *
    * The operation row is written LAST: a unique violation on a lost key race
    * aborts the transaction, so a `final` document can never exist without its
-   * idempotency evidence and a retry can never finalize twice.
+   * entries and its idempotency evidence, and a retry can never finalize or
+   * post twice.
    */
   async finalizeChecked(
     input: FinalizeAccountingDocumentInput,
@@ -563,8 +571,29 @@ export class AccountingDocumentsRepository {
           updatedBy: input.finalizedBy,
         },
       });
+      // Task 10.7 — ledger materialization, in the SAME transaction: the
+      // entries are built from the FINAL aggregate (final-only, numbered, with
+      // evidence) through the posting contract — `toPostingInput` enforces the
+      // preconditions, `toLedgerEntries` re-asserts every entry invariant and
+      // the balance — and the UNIQUE backstop on `voucher_line_id` makes a
+      // second entry for one line impossible to persist. ULIDs are generated
+      // in the data layer here (the inventory/RBAC precedent): the ids belong
+      // to rows this transaction owns, and nothing outside it may observe them
+      // before commit.
+      const finalized = toDomain(row, lines);
+      const postingInput = toPostingInput({
+        document: finalized,
+        operationKey: input.ledger.operationKey,
+        requestHash: input.ledger.requestHash,
+      });
+      await insertLedgerEntries(
+        tx,
+        toLedgerEntries(postingInput, generateId).map((entry) =>
+          toLedgerEntryCreate(entry, input.finalizedAt, input.finalizedBy),
+        ),
+      );
       await insertOperationRow(tx, input.ledger);
-      return toDomain(row, lines);
+      return finalized;
     });
   }
 
@@ -911,6 +940,47 @@ async function readLinesInTx(
 }
 
 // ---- Row ⇄ domain mapping --------------------------------------------------
+
+/**
+ * Flatten a materialized entry into its insert payload (Task 10.7). The audit
+ * clock/actor are the finalization's own: the entries are created BY that act,
+ * so `created_at`/`updated_at` are `finalizedAt` and `created_by` is the
+ * finalizer — no second clock, no second actor.
+ */
+function toLedgerEntryCreate(
+  entry: LedgerEntry,
+  finalizedAt: Date,
+  finalizedBy: string | null,
+): LedgerEntryCreate {
+  return {
+    id: entry.id,
+    organizationId: entry.organizationId,
+    financialAreaId: entry.financialAreaId,
+    fiscalYearId: entry.fiscalYearId,
+    accountingPeriodId: entry.accountingPeriodId,
+    voucherId: entry.voucherId,
+    voucherNumber: entry.voucherNumber,
+    voucherLineId: entry.voucherLineId,
+    lineNo: entry.lineNo,
+    accountId: entry.accountId,
+    debitAmount: entry.debitAmount,
+    creditAmount: entry.creditAmount,
+    description: entry.description,
+    documentDate: entry.documentDate,
+    postingTimestamp: entry.postingTimestamp,
+    branchId: entry.branchId,
+    origin: entry.origin,
+    sourceModule: entry.source?.module ?? null,
+    sourceEntityType: entry.source?.entityType ?? null,
+    sourceEntityId: entry.source?.entityId ?? null,
+    sourceOperation: entry.source?.operation ?? null,
+    correlationId: entry.correlationId,
+    finalizedBy: entry.finalizedBy,
+    createdAt: finalizedAt,
+    updatedAt: finalizedAt,
+    createdBy: finalizedBy,
+  };
+}
 
 function toWhere(
   filter: AccountingDocumentListFilter,

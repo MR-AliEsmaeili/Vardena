@@ -22,7 +22,7 @@ published/consumed events, and extension points. Adding a module = new folder pe
 | RBAC | v1 core | Roles, granular permissions, assignments | `rbac` |
 | Audit | v1 core | Append-only audit log of sensitive operations | `audit` |
 | Notifications | v1 core | In-app notifications driven by events | `notifications` |
-| Accounting | foundation + coding structure/chart implemented (Tasks 10.2, 10.3; ADR-0026 Accepted); documents/posting contract-only | Financial areas, fiscal years/periods, coding structure, chart of accounts, accounting documents + lines, posting rules | `accounting` |
+| Accounting | foundation + chart + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7; ADR-0026 Accepted); posting rules / corrections / balances contract-only | Financial areas, fiscal years/periods, coding structure, chart of accounts, accounting documents + lines, ledger entries, posting rules | `accounting` |
 | Inventory | v1 core | Items, warehouses, stock, receipts/issues/transfers/adjustments | `inventory` |
 | Sales | v1 core | Customers, quotes, sales orders, invoices, returns | `sales` |
 | Purchasing | planned | Suppliers, purchase orders, supplier invoices | `purchasing` |
@@ -202,7 +202,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 - **Write path:** modules emit audit data through the kernel audit port inside
   their business transaction; Audit persists it. Retention/archival = OQ-17.
 
-## Accounting (v1 core — **foundation + chart structure implemented (Tasks 10.2, 10.3)**; posting still contract-only)
+## Accounting (v1 core — **foundation + chart + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7)**; posting rules / corrections / balances still contract-only)
 
 - **Status:** Task 10.2 implemented the **bookkeeping scope** — financial areas,
   fiscal years, accounting periods (contract §4/§5/§6/§7, AC-D-01…AC-D-05,
@@ -213,9 +213,21 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   `accounting.coding_structure_versions` / `_levels` / `accounts`
   (`20260914010000_accounting_coding_structure_accounts`), 7 more permissions
   (24 total) and `Account.{Created,Updated,Enabled,Disabled}` events.
+  Task 10.4 added the **accounting document aggregate** — the voucher header +
+  lines with the `draft → temporary → final` lifecycle (contract §12…§18,
+  AC-D-16…AC-D-23): `accounting.accounting_documents` /
+  `accounting_document_lines` / `accounting_posting_operations`
+  (`20260915000000_accounting_documents`), 5 document permissions (29 total)
+  and `AccountingDocument.{Created,Updated,Finalized,Deleted}` events.
+  Task 10.6 defined the **posting & ledger contracts** (`domain/posting.ts`,
+  `domain/ledger-entry.ts` — pure, framework-free, no persistence) and Task 10.7
+  persists them: **finalization atomically materializes one immutable ledger
+  entry per stored line** (`accounting.ledger_entries`,
+  `20260916000000_accounting_ledger`; `final` = posted, no separate state, no
+  endpoint, no new permission).
   [ADR-0026](./adr/0026-accounting-bounded-context.md) is **Accepted** (2026-09-14).
-  Everything past the chart structure — control roles, detail dimensions,
-  documents, posting rules, balance projections — is still contract-only. The binding contract stays
+  Still contract-only past the ledger: control roles, detail dimensions,
+  posting rules, correction/reversal mechanisms and balance projections. The binding contract stays
   [`accounting/domain-contract.md`](./accounting/domain-contract.md) (decisions
   `AC-D-01…AC-D-35`, invariants `AC-I-01…AC-I-22`, gates §28); the conceptual
   options record stays in
@@ -250,11 +262,27 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   **No DELETE**: nothing is deleted (OQ-36) — the one exception is a coding
   structure *draft*'s level rows, replaced atomically as unreferenced
   configuration workspace (ADR-0024's draft rule).
+- **Owns (Tasks 10.4 + 10.7):** `accounting_documents` (the voucher header:
+  stored scope, `draft|temporary|final` phase, numeric-only serial per
+  (organization, area), origin + logical source identity, finalization
+  evidence), `accounting_document_lines` (dense 1-based `line_no`, postable
+  account, `numeric(18,2)` debit/credit, exactly one side non-zero),
+  `accounting_posting_operations` (the `(organization_id, operation_key)`
+  idempotency ledger, written LAST inside the effect's transaction) and
+  `ledger_entries` (one immutable row per posted line, written inside
+  `finalizeChecked` between the state update and the operation row). Backstops:
+  unique number per (organization, area), unique `line_no` per document,
+  unique operation key per organization, and the 1:1
+  `uq_ledger_entries_voucher_line_id` — a second entry for one line is
+  impossible to persist. All ledger FKs (voucher, line, account, scope,
+  branch) are RESTRICT: a posted row can never disappear. Lock order is
+  unchanged (area → year → period → accounts `FOR SHARE` → document); the
+  materialization adds no lock — fresh INSERTs under the held document lock
+  cannot deadlock (`data/accounting-locks.ts`, AR-11).
 - **Owns (per ADR-0026, still to build):** control-role mappings, detail
-  dimensions/groups/items (floating details), accounting documents + lines +
-  line dimension assignments, posting/finalization/correction, posting rules,
-  the system-posting idempotency ledger and balance projections (rebuildable,
-  never the source of truth). **Deferred with the seam recorded, not invented
+  dimensions/groups/items (floating details) + line dimension assignments,
+  posting rules, correction/reversal mechanisms and balance projections
+  (rebuildable, never the source of truth). **Deferred with the seam recorded, not invented
   now** (AR-29): per-account financial-area applicability (§8.3 — the chart is
   organization-scoped per AC-D-04 and area applicability has no consumer before
   posting validation exists; if OQ-40 resolves to per-area charts, uniqueness
@@ -323,15 +351,27 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   chart-of-accounts/tree reads are reporting projections, contract §19.1), no
   per-level routes, and no code-editing route: `level` and
   `codingStructureVersionId` are derived by the server, `code` is immutable.
-- **API (still planned):** dimensions/items, documents (+ finalize, reverse,
-  correct, replace), ledger/balance inquiries through Accounting-owned views
-  consumed by Reporting (ADR-0009).
-- **Permissions (implemented, 24 codes):**
+- **API (Task 10.4):** `/api/v1/accounting-documents` — `GET` list (mandatory
+  `organizationId`; `financialAreaId`, `fiscalYearId`, `accountingPeriodId`,
+  `state`, `origin`, `branchId`, `documentNumber`, `dateFrom`/`dateTo`,
+  `search`), `GET :id`, `POST`
+  (compose a draft, or an issued `temporary` voucher when the organization
+  asks for no draft phase), `PATCH :id` (edit while pre-final; the area is
+  frozen at issuance), `POST :id/issue` (allocate the serial, idempotent
+  replay), `POST :id/finalize` (the single act that posts — Task 10.7
+  materializes the ledger entries inside it), `DELETE :id` (discard
+  pre-final only; `final` is never deletable). No correction, reversal,
+  reopen, approval or reporting route.
+- **API (still planned):** dimensions/items, document corrections
+  (reverse, correct, replace), ledger/balance inquiries through
+  Accounting-owned views consumed by Reporting (ADR-0009).
+- **Permissions (implemented, 29 codes):**
   `Accounting.FinancialArea.{View,Create,Edit,Enable,Disable}`,
   `Accounting.FiscalYear.{View,Create,Edit,Close,Reopen,Seal,Unseal}`,
   `Accounting.AccountingPeriod.{View,Open,Close,Reopen,Seal}`,
   `Accounting.CodingStructure.{View,Configure}`,
-  `Accounting.Account.{View,Create,Edit,Enable,Disable}` — enforced in the
+  `Accounting.Account.{View,Create,Edit,Enable,Disable}`,
+  `Accounting.Document.{View,Create,Edit,Delete,Finalize}` — enforced in the
   application services, not only by the route guards. Period creation is authorized
   by `Open` (the row is born `open`); there is no period `Create`/`Edit`. The
   coding structure has ONE write code (`Configure`: drafting, editing a draft and
@@ -340,25 +380,29 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   vocabulary is granular (no wildcard, no `Accounting.Journal.Create`-style
   catch-all, `Finalize` ≠ `Approve` — OQ-21, OQ-14) and arrives with the tasks
   that enforce it.
-- **Publishes (implemented, Tasks 10.2 + 10.3):**
+- **Publishes (implemented, Tasks 10.2 + 10.3 + 10.4):**
   `FinancialArea.{Created,Updated,Enabled,Disabled}`,
   `FiscalYear.{Created,Closed,Reopened,Sealed,Unsealed}`,
   `AccountingPeriod.{Opened,Closed,Reopened,Sealed}`,
-  `Account.{Created,Updated,Enabled,Disabled}` — payload is
+  `Account.{Created,Updated,Enabled,Disabled}`,
+  `AccountingDocument.{Created,Updated,Finalized,Deleted}` — payload is
   `{id, organizationId, …scope, code|sequence}`, plus `fromStatus`/`toStatus`/`reason`
   on transitions, plus `correlationId`/`occurredAt`; the `Account.*` payload adds
   `level` and `codingStructureVersionId`. There is deliberately **no
-  `*.Deleted`**: nothing is deleted. There is **no `CodingStructure.*` event**:
-  contract §21 defines none, so a structure publish is evidenced by the AR-12
-  audit columns instead of an invented name (event-vocabulary changes are
-  ADR-gated, AR-29).
+  `*.Deleted`** for master data: nothing is deleted (the `AccountingDocument.Deleted`
+  event is the one discard of a pre-final voucher, §15.3 — `final` is never
+  deleted). There is **no `CodingStructure.*` event** and **no
+  `AccountingDocument.Posted` event**: contract §21 defines none — `final` IS
+  posted (AC-D-20), so `Finalized` is the posting evidence — and a structure
+  publish is evidenced by the AR-12 audit columns instead of an invented name
+  (event-vocabulary changes are ADR-gated, AR-29). Task 10.7 emits no new event.
 - **Publishes (planned, refines the catalog rows below):**
-  `AccountingDocument.{Created,Updated,Finalized,Deleted,Reversed,Corrected,Replaced}`,
+  `AccountingDocument.{Reversed,Corrected,Replaced}`,
   `DetailDimension.*`, `DetailItem.*`,
   `AccountingYearTransition.Executed`, `AccountingPosting.Rejected` — on the existing
   kernel bus (contract §21). The placeholders `JournalEntry.Posted` /
   `AccountingPeriod.Closed` in the event catalog are superseded by the shipped names
-  above for years/periods/areas/accounts; the rest follow when their tasks ship.
+  above for years/periods/areas/accounts/documents; the rest follow when their tasks ship.
 - **Rules (contract invariants, not policy):** Σ debit = Σ credit exactly with ≥2
   lines (AC-I-07/08); `final` documents are structurally immutable and never deleted
   (AC-I-05/06); corrections are new counter-documents — reversal / correction /
@@ -575,7 +619,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 | `StockTransfer.Created` / `StockAdjustment.Created` | Inventory | Accounting (adjustment), Audit | stock changes |
 | `SalesOrder.Created` / `SalesOrder.Confirmed` | Sales | Audit, (Sync → outbox if configured) | sales flow |
 | `Invoice.Issued` | Sales | **Accounting (revenue journal)**, Audit, (Sync → taxpayer/faraPayam outbox if configured) | billing |
-| `JournalEntry.Posted` / `AccountingPeriod.Closed` *(placeholders — refined by the Accounting Domain Contract §21 into `AccountingDocument.*`, `FiscalYear.*`, `AccountingPeriod.*` when those ship; `FinancialArea.*`, `AccountingPeriod.*` and `Account.*` are already SHIPPED with their refined names — Tasks 10.2/10.3)* | Accounting | Audit, Notifications | books |
+| `JournalEntry.Posted` / `AccountingPeriod.Closed` *(placeholders — refined by the Accounting Domain Contract §21 into `AccountingDocument.*`, `FiscalYear.*`, `AccountingPeriod.*` when those ship; `FinancialArea.*`, `AccountingPeriod.*`, `Account.*` and `AccountingDocument.{Created,Updated,Finalized,Deleted}` are already SHIPPED with their refined names — Tasks 10.2/10.3/10.4)* | Accounting | Audit, Notifications | books |
 | `ImportSession.Completed` / `ImportSession.Failed` | Excel | Notifications, Audit | import feedback |
 | `PrintJob.Completed` / `PrintJob.Failed` | Print | Notifications, Audit | print feedback |
 | `OutboxItem.DeadLettered` / `Integration.Failed` | Sync / Integration | Audit, Notifications (admins) | sync health |

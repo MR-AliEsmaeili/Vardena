@@ -8,8 +8,8 @@
  * no Postgres, no Docker and no Prisma codegen.
  *
  * What is faked and what is not:
- * - faked: `AccountingDocumentsRepository`, the line reader and the
- *   posting-operation ledger;
+ * - faked: `AccountingDocumentsRepository`, the line reader, the
+ *   posting-operation ledger and (Task 10.7) the ledger-entry reader;
  * - NOT faked: authorization, organization/area/branch/account resolution,
  *   lifecycle planning, the Document Foundation's registry and allocation,
  *   composition rules, DTO validation.
@@ -20,17 +20,28 @@
  *   observable effect and throw the SAME plain errors from
  *   `accounting-document-errors.ts`, so ONE service mapping covers both paths;
  * - the database backstops are real here too: the `(organization, area,
- *   number)` unique index, the `(document, line_no)` unique index and the
- *   `(organization, operation_key)` ledger key all throw the `P2002` the
- *   services fall back on.
+ *   number)` unique index, the `(document, line_no)` unique index, the
+ *   `(organization, operation_key)` ledger key and (Task 10.7) the
+ *   `voucher_line_id` 1:1 backstop all throw the `P2002` the services fall
+ *   back on;
+ * - multi-step writes are atomic: `createChecked`/`finalizeChecked` snapshot
+ *   the tables before mutating and restore on failure, so a thrown backstop
+ *   leaves no partial header/lines/entries behind — the real transaction's
+ *   rollback, mirrored (a lost key race must not leak a `final` row).
  *
  * Locking has no observable effect in a single-threaded fake: what matters is
  * that the guard evaluates against the committed rows and the write applies
  * atomically, which a synchronous fake gives for free. True lock contention is
  * covered by the live-database suite instead.
  */
+import { generateId } from '../../src/kernel/ids/ulid.js';
 import type { AccountingDocument } from '../../src/modules/accounting/domain/accounting-document.js';
+import type { LedgerEntry } from '../../src/modules/accounting/domain/ledger-entry.js';
 import { canonicalizeAmount } from '../../src/modules/accounting/domain/money.js';
+import {
+  toLedgerEntries,
+  toPostingInput,
+} from '../../src/modules/accounting/domain/posting.js';
 import {
   checkVoucherLines,
   type AccountingDocumentLineInput,
@@ -55,6 +66,7 @@ import type {
 } from '../../src/modules/accounting/data/accounting-documents.repository.js';
 import type { AccountingDocumentLinesRepository } from '../../src/modules/accounting/data/accounting-document-lines.repository.js';
 import type { AccountingPostingOperationsRepository } from '../../src/modules/accounting/data/accounting-posting-operations.repository.js';
+import type { LedgerEntriesRepository } from '../../src/modules/accounting/data/ledger-entries.repository.js';
 import { InMemoryTable, type Row } from './master-data-repositories.js';
 import type { AccountingState } from './accounting-repositories.js';
 import type { StructureState } from './accounting-structure-repositories.js';
@@ -120,10 +132,40 @@ export interface AccountingOperationRecord extends Row {
   updatedBy: string | null;
 }
 
+export interface LedgerEntryRecord extends Row {
+  organizationId: string;
+  financialAreaId: string;
+  fiscalYearId: string;
+  accountingPeriodId: string;
+  voucherId: string;
+  voucherNumber: string;
+  voucherLineId: string;
+  lineNo: number;
+  accountId: string;
+  /** Canonical decimal strings (never floats, §13.1). */
+  debitAmount: string;
+  creditAmount: string;
+  description: string | null;
+  documentDate: Date;
+  postingTimestamp: Date;
+  branchId: string | null;
+  origin: string;
+  sourceModule: string | null;
+  sourceEntityType: string | null;
+  sourceEntityId: string | null;
+  sourceOperation: string | null;
+  correlationId: string | null;
+  finalizedBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
 export interface AccountingDocumentState {
   documents: InMemoryTable<AccountingDocumentRecord>;
   lines: InMemoryTable<AccountingDocumentLineRecord>;
   operations: InMemoryTable<AccountingOperationRecord>;
+  ledgerEntries: InMemoryTable<LedgerEntryRecord>;
 }
 
 export function createAccountingDocumentState(): AccountingDocumentState {
@@ -139,7 +181,36 @@ export function createAccountingDocumentState(): AccountingDocumentState {
     operations: new InMemoryTable<AccountingOperationRecord>([
       ['organizationId', 'operationKey'],
     ]),
+    ledgerEntries: new InMemoryTable<LedgerEntryRecord>([
+      // The 1:1 backstop (VoucherLine → LedgerEntry): a second entry for one
+      // line is impossible to persist (Task 10.7).
+      ['voucherLineId'],
+    ]),
   };
+}
+
+/**
+ * Run a multi-step fake write atomically: snapshot first, restore on failure.
+ * The real repositories get this from the transaction; the fakes — which
+ * mutate table by table — take it explicitly, so a thrown backstop (a
+ * duplicate ledger key, a duplicate entry) leaves no partial write behind.
+ */
+function withRollback<T>(state: AccountingDocumentState, mutate: () => T): T {
+  const snapshot = {
+    documents: state.documents.snapshot(),
+    lines: state.lines.snapshot(),
+    operations: state.operations.snapshot(),
+    ledgerEntries: state.ledgerEntries.snapshot(),
+  };
+  try {
+    return mutate();
+  } catch (error) {
+    state.documents.restore(snapshot.documents);
+    state.lines.restore(snapshot.lines);
+    state.operations.restore(snapshot.operations);
+    state.ledgerEntries.restore(snapshot.ledgerEntries);
+    throw error;
+  }
 }
 
 interface ListParams {
@@ -285,36 +356,39 @@ export class InMemoryAccountingDocumentsRepository {
     assertComposition(input.lines);
 
     const now = input.createdAt;
-    const row = this.state.documents.insert({
-      id: input.id,
-      organizationId: input.organizationId,
-      financialAreaId: input.financialAreaId,
-      fiscalYearId: scope.yearId,
-      accountingPeriodId: scope.periodId,
-      documentType: 'accounting_voucher',
-      documentNumber: input.documentNumber,
-      documentDate: input.documentDate,
-      description: input.description,
-      state: input.state,
-      origin: input.origin,
-      branchId: input.branchId,
-      sourceModule: input.source?.module ?? null,
-      sourceEntityType: input.source?.entityType ?? null,
-      sourceEntityId: input.source?.entityId ?? null,
-      sourceOperation: input.source?.operation ?? null,
-      idempotencyReference: input.idempotencyReference,
-      requestHash: input.requestHash,
-      finalizedAt: null,
-      finalizedBy: null,
-      correlationId: input.correlationId,
-      createdAt: now,
-      updatedAt: now,
-      createdBy: input.createdBy,
-      updatedBy: input.createdBy,
+    const row = withRollback(this.state, () => {
+      const inserted = this.state.documents.insert({
+        id: input.id,
+        organizationId: input.organizationId,
+        financialAreaId: input.financialAreaId,
+        fiscalYearId: scope.yearId,
+        accountingPeriodId: scope.periodId,
+        documentType: 'accounting_voucher',
+        documentNumber: input.documentNumber,
+        documentDate: input.documentDate,
+        description: input.description,
+        state: input.state,
+        origin: input.origin,
+        branchId: input.branchId,
+        sourceModule: input.source?.module ?? null,
+        sourceEntityType: input.source?.entityType ?? null,
+        sourceEntityId: input.source?.entityId ?? null,
+        sourceOperation: input.source?.operation ?? null,
+        idempotencyReference: input.idempotencyReference,
+        requestHash: input.requestHash,
+        finalizedAt: null,
+        finalizedBy: null,
+        correlationId: input.correlationId,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: input.createdBy,
+        updatedBy: input.createdBy,
+      });
+      this.writeLines(inserted, input.lines, input.createdBy, now);
+      if (input.ledger !== null)
+        this.state.operations.insert(input.ledger as AccountingOperationRecord);
+      return inserted;
     });
-    this.writeLines(row, input.lines, input.createdBy, now);
-    if (input.ledger !== null)
-      this.state.operations.insert(input.ledger as AccountingOperationRecord);
     return this.toDomain(row);
   }
 
@@ -434,23 +508,37 @@ export class InMemoryAccountingDocumentsRepository {
       })),
     );
 
-    const row = this.state.documents.patch(input.id, {
-      state: 'final',
-      finalizedAt: input.finalizedAt,
-      finalizedBy: input.finalizedBy,
-      ...(locked.origin === 'system'
-        ? {
-            idempotencyReference: input.ledger.operationKey,
-            requestHash: input.ledger.requestHash,
-          }
-        : {}),
-      updatedAt: input.finalizedAt,
-      updatedBy: input.finalizedBy,
+    const row = withRollback(this.state, () => {
+      const patched = this.state.documents.patch(input.id, {
+        state: 'final',
+        finalizedAt: input.finalizedAt,
+        finalizedBy: input.finalizedBy,
+        ...(locked.origin === 'system'
+          ? {
+              idempotencyReference: input.ledger.operationKey,
+              requestHash: input.ledger.requestHash,
+            }
+          : {}),
+        updatedAt: input.finalizedAt,
+        updatedBy: input.finalizedBy,
+      });
+      if (patched === null) throw new AccountingDocumentMissingError();
+      // Task 10.7 — the materialization, in the real transaction's position:
+      // after the state update, before the idempotency row (which stays LAST,
+      // the §16.4 evidence rule). Built through the posting contract, like the
+      // real repository — never a second implementation — and rolled back with
+      // everything else when a backstop throws.
+      this.writeLedgerEntries(
+        patched,
+        input.ledger.operationKey,
+        input.ledger.requestHash,
+      );
+      // The ledger row is written LAST, exactly like the real transaction, so
+      // a lost key race aborts the whole write — never a `final` row without
+      // its entries or its key.
+      this.state.operations.insert(input.ledger as AccountingOperationRecord);
+      return patched;
     });
-    if (row === null) throw new AccountingDocumentMissingError();
-    // The ledger row is written LAST, exactly like the real transaction, so a
-    // lost key race aborts before the state change is observable.
-    this.state.operations.insert(input.ledger as AccountingOperationRecord);
     return this.toDomain(row);
   }
 
@@ -604,6 +692,56 @@ export class InMemoryAccountingDocumentsRepository {
     }
   }
 
+  /**
+   * Materialize one ledger entry per stored line (Task 10.7) — the fake side
+   * of `finalizeChecked`'s in-transaction materialization. The entries come
+   * from `toPostingInput`/`toLedgerEntries`, exactly as in the real
+   * repository: the preconditions (final-only, numbered, evidenced) and the
+   * entry invariants + balance are re-asserted, and the `voucherLineId`
+   * backstop throws `P2002` on a second entry for one line.
+   */
+  private writeLedgerEntries(
+    document: AccountingDocumentRecord,
+    operationKey: string,
+    requestHash: string,
+  ): void {
+    const postingInput = toPostingInput({
+      document: this.toDomain(document),
+      operationKey,
+      requestHash,
+    });
+    for (const entry of toLedgerEntries(postingInput, generateId)) {
+      this.state.ledgerEntries.insert({
+        id: entry.id,
+        organizationId: entry.organizationId,
+        financialAreaId: entry.financialAreaId,
+        fiscalYearId: entry.fiscalYearId,
+        accountingPeriodId: entry.accountingPeriodId,
+        voucherId: entry.voucherId,
+        voucherNumber: entry.voucherNumber,
+        voucherLineId: entry.voucherLineId,
+        lineNo: entry.lineNo,
+        accountId: entry.accountId,
+        debitAmount: canonicalizeAmount(entry.debitAmount),
+        creditAmount: canonicalizeAmount(entry.creditAmount),
+        description: entry.description,
+        documentDate: entry.documentDate,
+        postingTimestamp: entry.postingTimestamp,
+        branchId: entry.branchId,
+        origin: entry.origin,
+        sourceModule: entry.source?.module ?? null,
+        sourceEntityType: entry.source?.entityType ?? null,
+        sourceEntityId: entry.source?.entityId ?? null,
+        sourceOperation: entry.source?.operation ?? null,
+        correlationId: entry.correlationId,
+        finalizedBy: entry.finalizedBy,
+        createdAt: document.finalizedAt ?? document.updatedAt,
+        updatedAt: document.finalizedAt ?? document.updatedAt,
+        createdBy: document.finalizedBy,
+      });
+    }
+  }
+
   private toDomain(row: AccountingDocumentRecord): AccountingDocument {
     const lines = this.state.lines
       .findMany((candidate) => candidate.documentId === row.id)
@@ -696,6 +834,63 @@ export class InMemoryAccountingPostingOperationsRepository {
   }
 }
 
+export class InMemoryLedgerEntriesRepository {
+  constructor(private readonly state: AccountingDocumentState) {}
+
+  async findByVoucher(
+    organizationId: string,
+    voucherId: string,
+  ): Promise<LedgerEntry[]> {
+    return this.state.ledgerEntries
+      .findMany(
+        (candidate) =>
+          candidate.organizationId === organizationId &&
+          candidate.voucherId === voucherId,
+      )
+      .sort((left, right) => left.lineNo - right.lineNo)
+      .map(toLedgerEntry);
+  }
+}
+
+function toLedgerEntry(record: LedgerEntryRecord): LedgerEntry {
+  if (record.origin !== 'manual' && record.origin !== 'system') {
+    throw new Error(
+      `Stored ledger entry "${record.id}" has an unknown origin "${record.origin}".`,
+    );
+  }
+  return {
+    id: record.id,
+    organizationId: record.organizationId,
+    financialAreaId: record.financialAreaId,
+    fiscalYearId: record.fiscalYearId,
+    accountingPeriodId: record.accountingPeriodId,
+    voucherId: record.voucherId,
+    voucherNumber: record.voucherNumber,
+    voucherLineId: record.voucherLineId,
+    lineNo: record.lineNo,
+    accountId: record.accountId,
+    debitAmount: canonicalizeAmount(record.debitAmount),
+    creditAmount: canonicalizeAmount(record.creditAmount),
+    description: record.description,
+    documentDate: record.documentDate,
+    postingTimestamp: record.postingTimestamp,
+    branchId: record.branchId,
+    origin: record.origin,
+    source:
+      record.sourceModule === null || record.sourceEntityType === null
+        ? null
+        : {
+            module: record.sourceModule,
+            entityType: record.sourceEntityType,
+            entityId: record.sourceEntityId ?? '',
+            operation: record.sourceOperation ?? '',
+          },
+    correlationId: record.correlationId,
+    finalizedBy: record.finalizedBy,
+    dimensionAssignments: [],
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Store bundle
 // ---------------------------------------------------------------------------
@@ -705,11 +900,13 @@ export interface AccountingDocumentStores {
   documents: AccountingDocumentsRepository;
   lines: AccountingDocumentLinesRepository;
   operations: AccountingPostingOperationsRepository;
+  ledgerEntries: LedgerEntriesRepository;
   /** Concrete stores for assertions and direct manipulation. */
   raw: {
     documents: InMemoryAccountingDocumentsRepository;
     lines: InMemoryAccountingDocumentLinesRepository;
     operations: InMemoryAccountingPostingOperationsRepository;
+    ledgerEntries: InMemoryLedgerEntriesRepository;
     state: AccountingDocumentState;
   };
 }
@@ -732,11 +929,13 @@ export function createAccountingDocumentStores(input: {
   );
   const lines = new InMemoryAccountingDocumentLinesRepository(state);
   const operations = new InMemoryAccountingPostingOperationsRepository(state);
+  const ledgerEntries = new InMemoryLedgerEntriesRepository(state);
   return {
     documents: documents as unknown as AccountingDocumentsRepository,
     lines: lines as unknown as AccountingDocumentLinesRepository,
     operations: operations as unknown as AccountingPostingOperationsRepository,
-    raw: { documents, lines, operations, state },
+    ledgerEntries: ledgerEntries as unknown as LedgerEntriesRepository,
+    raw: { documents, lines, operations, ledgerEntries, state },
   };
 }
 

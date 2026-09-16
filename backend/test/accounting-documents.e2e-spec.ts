@@ -23,6 +23,7 @@ import { AccountsRepository } from '../src/modules/accounting/data/accounts.repo
 import { AccountingDocumentsRepository } from '../src/modules/accounting/data/accounting-documents.repository.js';
 import { AccountingDocumentLinesRepository } from '../src/modules/accounting/data/accounting-document-lines.repository.js';
 import { AccountingPostingOperationsRepository } from '../src/modules/accounting/data/accounting-posting-operations.repository.js';
+import { LedgerEntriesRepository } from '../src/modules/accounting/data/ledger-entries.repository.js';
 import { PostingReadinessService } from '../src/modules/accounting/application/posting-readiness.service.js';
 import { DocumentTypeConfigsRepository } from '../src/modules/documents/data/document-type-configs.repository.js';
 import { NumberingSeriesRepository } from '../src/modules/documents/data/numbering-series.repository.js';
@@ -193,6 +194,8 @@ describe('Accounting documents (e2e)', () => {
           .useValue(vouchers.lines)
           .overrideProvider(AccountingPostingOperationsRepository)
           .useValue(vouchers.operations)
+          .overrideProvider(LedgerEntriesRepository)
+          .useValue(vouchers.ledgerEntries)
           .overrideProvider(DocumentTypeConfigsRepository)
           .useValue(documents.typeConfigs)
           .overrideProvider(NumberingSeriesRepository)
@@ -925,6 +928,168 @@ describe('Accounting documents (e2e)', () => {
     expect(reread.body.lines).toHaveLength(2);
   });
 
+  it('materializes one immutable ledger entry per line at finalization (Task 10.7)', async () => {
+    const created = await composer
+      .post('/api/v1/accounting-documents')
+      .send(
+        draft({
+          description: 'Ledger entry source',
+          lines: [
+            {
+              accountId: state.debitAccountA,
+              debitAmount: '1250.00',
+              creditAmount: '0',
+              description: 'Cash in',
+            },
+            {
+              accountId: state.creditAccountA,
+              debitAmount: '0',
+              creditAmount: '1250.00',
+              description: 'Revenue out',
+            },
+          ],
+        }),
+      )
+      .expect(201);
+    const id = created.body.id as string;
+    const issued = await composer
+      .post(`/api/v1/accounting-documents/${id}/issue`)
+      .query({ organizationId: state.orgA })
+      .send({ operationKey: `issue-ledger-${id}` })
+      .expect(200);
+    const serial = issued.body.documentNumber as string;
+
+    // Finalization is the act that posts: a draft or a temporary voucher has
+    // no ledger entries, whatever else is true about it.
+    expect(
+      await vouchers.raw.ledgerEntries.findByVoucher(state.orgA, id),
+    ).toHaveLength(0);
+
+    const finalizeKey = `finalize-ledger-${id}`;
+    const finalized = await finalizer
+      .post(`/api/v1/accounting-documents/${id}/finalize`)
+      .query({ organizationId: state.orgA })
+      .send({ operationKey: finalizeKey })
+      .expect(200);
+    expect(finalized.body.state).toBe('final');
+
+    // One entry per stored line (1:1), in legal-book order, carrying the full
+    // sourcing snapshot — amounts exact, never floats.
+    const entries = await vouchers.raw.ledgerEntries.findByVoucher(
+      state.orgA,
+      id,
+    );
+    expect(entries).toHaveLength(2);
+    const [debit, credit] = entries as [
+      (typeof entries)[number],
+      (typeof entries)[number],
+    ];
+    expect(debit).toMatchObject({
+      organizationId: state.orgA,
+      financialAreaId: state.areaA,
+      fiscalYearId: finalized.body.fiscalYearId,
+      accountingPeriodId: finalized.body.accountingPeriodId,
+      voucherId: id,
+      voucherNumber: serial,
+      lineNo: 1,
+      accountId: state.debitAccountA,
+      debitAmount: '1250',
+      creditAmount: '0',
+      description: 'Cash in',
+      branchId: null,
+      origin: 'manual',
+      source: null,
+      correlationId: finalized.body.correlationId,
+      finalizedBy: finalized.body.finalizedBy,
+      dimensionAssignments: [],
+    });
+    expect(credit).toMatchObject({
+      voucherId: id,
+      voucherNumber: serial,
+      lineNo: 2,
+      accountId: state.creditAccountA,
+      debitAmount: '0',
+      creditAmount: '1250',
+      description: 'Revenue out',
+    });
+    // The 1:1 traceability key: each entry names its own voucher line.
+    const lineIds = (finalized.body.lines as Array<{ id: string }>).map(
+      (line) => line.id,
+    );
+    expect([debit?.voucherLineId, credit?.voucherLineId].sort()).toEqual(
+      [...lineIds].sort(),
+    );
+    // The entry identity is its own ULID — never a line id, never the
+    // operation-ledger id (Task 10.6 correction, §22).
+    expect(debit?.id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+    expect(credit?.id).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+    expect(debit?.id).not.toBe(credit?.id);
+    expect(lineIds).not.toContain(debit?.id);
+    expect(lineIds).not.toContain(credit?.id);
+    // Business date + posting timestamp: the business date is the voucher's,
+    // the posting timestamp is the finalization evidence (§15.5, Class C3).
+    expect(debit?.documentDate.toISOString().slice(0, 10)).toBe('2026-04-05');
+    expect(debit?.postingTimestamp.toISOString()).toBe(
+      finalized.body.finalizedAt as string,
+    );
+    expect(credit?.postingTimestamp.toISOString()).toBe(
+      finalized.body.finalizedAt as string,
+    );
+
+    // A retried finalization replays: no second set of entries (§16.4).
+    await finalizer
+      .post(`/api/v1/accounting-documents/${id}/finalize`)
+      .query({ organizationId: state.orgA })
+      .send({ operationKey: finalizeKey })
+      .expect(200);
+    expect(
+      await vouchers.raw.ledgerEntries.findByVoucher(state.orgA, id),
+    ).toHaveLength(2);
+    // ...and a second finalization under a fresh key is refused, not posted.
+    await finalizer
+      .post(`/api/v1/accounting-documents/${id}/finalize`)
+      .query({ organizationId: state.orgA })
+      .send({ operationKey: `finalize-ledger-again-${id}` })
+      .expect(422);
+    expect(
+      await vouchers.raw.ledgerEntries.findByVoucher(state.orgA, id),
+    ).toHaveLength(2);
+
+    // Same key, different intent (another voucher) is a 409 conflict — the
+    // replay guard rejects before any transaction opens, so neither voucher
+    // gains entries and the second voucher stays temporary (§16.4).
+    const other = await composer
+      .post('/api/v1/accounting-documents')
+      .send(draft({ description: 'Ledger conflict probe' }))
+      .expect(201);
+    const otherId = other.body.id as string;
+    await composer
+      .post(`/api/v1/accounting-documents/${otherId}/issue`)
+      .query({ organizationId: state.orgA })
+      .send({ operationKey: `issue-ledger-${otherId}` })
+      .expect(200);
+    const conflict = await finalizer
+      .post(`/api/v1/accounting-documents/${otherId}/finalize`)
+      .query({ organizationId: state.orgA })
+      .send({ operationKey: finalizeKey })
+      .expect(409);
+    expect(conflict.body.code).toBe('Conflict');
+    expect(vouchers.raw.state.documents.findById(otherId)?.state).toBe(
+      'temporary',
+    );
+    expect(
+      await vouchers.raw.ledgerEntries.findByVoucher(state.orgA, otherId),
+    ).toHaveLength(0);
+    expect(
+      await vouchers.raw.ledgerEntries.findByVoucher(state.orgA, id),
+    ).toHaveLength(2);
+
+    // Organization isolation: the entries answer only inside their own scope.
+    expect(
+      await vouchers.raw.ledgerEntries.findByVoucher(state.orgB, id),
+    ).toHaveLength(0);
+  });
+
   it('discards a pre-final voucher and keeps a numbered one auditable (§15.3)', async () => {
     // A draft may be discarded outright.
     const draftDoc = await composer
@@ -1077,11 +1242,13 @@ describe('Accounting documents (e2e)', () => {
     ).rejects.toMatchObject({ code: 'EntityNotFound' });
 
     // Read-only: every store the evaluation reads is unchanged by it —
-    // no state, no serial, no idempotency row, no line, no timestamp.
+    // no state, no serial, no idempotency row, no line, no ledger entry, no
+    // timestamp (Task 10.7: readiness never materializes entries).
     const before = {
       documents: vouchers.raw.state.documents.snapshot(),
       lines: vouchers.raw.state.lines.snapshot(),
       operations: vouchers.raw.state.operations.snapshot(),
+      ledgerEntries: vouchers.raw.state.ledgerEntries.snapshot(),
     };
     await readiness.evaluateReadiness(state.orgA, state.finalizedId);
     await readiness.evaluateReadiness(state.orgA, state.finalizedId);
@@ -1089,6 +1256,7 @@ describe('Accounting documents (e2e)', () => {
       documents: vouchers.raw.state.documents.snapshot(),
       lines: vouchers.raw.state.lines.snapshot(),
       operations: vouchers.raw.state.operations.snapshot(),
+      ledgerEntries: vouchers.raw.state.ledgerEntries.snapshot(),
     }).toEqual(before);
   });
 });
