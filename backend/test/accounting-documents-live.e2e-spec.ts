@@ -80,6 +80,8 @@ describe.skipIf(DATABASE_URL === undefined)(
         deleteMany: (args: unknown) => Promise<unknown>;
       };
       accountingPeriod: { deleteMany: (args: unknown) => Promise<unknown> };
+      numberingAllocation: { deleteMany: (args: unknown) => Promise<unknown> };
+      numberingSeries: { deleteMany: (args: unknown) => Promise<unknown> };
       fiscalYear: { deleteMany: (args: unknown) => Promise<unknown> };
       account: {
         count: (args: unknown) => Promise<number>;
@@ -274,6 +276,15 @@ describe.skipIf(DATABASE_URL === undefined)(
             where: { organizationId },
           });
           await db.financialArea.deleteMany({ where: { organizationId } });
+          // The numbering series (and its allocations) that the fixture
+          // created are organization-scoped with an ON DELETE RESTRICT FK
+          // (`fk_numbering_series_organization`): without these two the
+          // organization could never be removed and the hook would fail.
+          // Allocations first — they reference the series.
+          await db.numberingAllocation.deleteMany({
+            where: { organizationId },
+          });
+          await db.numberingSeries.deleteMany({ where: { organizationId } });
           await db.organization.deleteMany({ where: { id: organizationId } });
         } finally {
           await app.close();
