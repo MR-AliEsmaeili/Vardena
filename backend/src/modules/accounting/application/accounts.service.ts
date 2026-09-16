@@ -26,6 +26,7 @@ import {
   AccountPostabilityRejectedError,
   CodingStructureVersionNotActiveError,
 } from '../data/accounting-structure-errors.js';
+import { AccountingDocumentLinesRepository } from '../data/accounting-document-lines.repository.js';
 import type {
   Account,
   AccountDto,
@@ -36,7 +37,6 @@ import {
   accountPlacementProblemMessage,
   defaultIsPostableForLevel,
   isAccountNature,
-  isReferencedByDocumentLine,
   planAccountEdit,
   planAccountPlacement,
   toAccountDto,
@@ -137,6 +137,13 @@ export interface UpdateAccountInput {
 export class AccountsService {
   constructor(
     private readonly repository: AccountsRepository,
+    /**
+     * AC-I-11's predicate (Task 10.4): structural account fields (parent,
+     * level, nature, postability) freeze once ANY document line references the
+     * account. The count is a read on another aggregate's lines — the account
+     * is the aggregate being guarded, so the dependency points this way only.
+     */
+    private readonly documentLines: AccountingDocumentLinesRepository,
     private readonly structures: CodingStructuresService,
     private readonly organizations: OrganizationsService,
     private readonly authorization: AuthorizationService,
@@ -362,7 +369,12 @@ export class AccountsService {
       });
     }
 
-    const refused = planAccountEditFor(input, current, parentChanging);
+    const refused = planAccountEditFor(
+      input,
+      current,
+      parentChanging,
+      (await this.documentLines.countForAccount(current.id)) > 0,
+    );
     if (refused.length > 0) {
       throw AppException.businessRule(
         `The account is referenced by accounting documents; ${refused.join(', ')} can no longer change. Create a new account and disable this one instead.`,
@@ -556,9 +568,10 @@ function planAccountEditFor(
   input: UpdateAccountInput,
   current: Account,
   parentChanging: boolean,
+  referencedByDocumentLine: boolean,
 ): readonly AccountImmutableField[] {
   return planAccountEdit({
-    referencedByDocumentLine: isReferencedByDocumentLine(current),
+    referencedByDocumentLine,
     changes: {
       parentId: parentChanging,
       level: parentChanging,

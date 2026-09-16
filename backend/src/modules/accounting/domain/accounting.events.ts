@@ -1,8 +1,9 @@
 import type { DomainEvent } from '../../../kernel/events/domain-event-bus.js';
 
 // ---------------------------------------------------------------------------
-// Accounting module domain events — Task 10.2 foundation + Task 10.3 chart
-// (docs/modules.md §Accounting "Publishes", §Event catalog, contract §21).
+// Accounting module domain events — Task 10.2 foundation, Task 10.3 chart and
+// Task 10.4 accounting documents (docs/modules.md §Accounting "Publishes",
+// §Event catalog, contract §21).
 //
 // Naming follows the repository convention `Entity.PastTenseVerb` and the
 // contract §21 vocabulary verbatim: `FiscalYear.*` and
@@ -236,6 +237,78 @@ export type AccountingPeriodSealedEvent = ScopedEvent<
   AccountingPeriodTransitionEventPayload
 >;
 
+// ---- AccountingDocument (documents, Task 10.4) --------------------------------
+// Contract §21 verbatim: `AccountingDocument.{Created,Updated,Finalized,
+// Deleted,Reversed,Corrected,Replaced}` with `Updated`/`Deleted` only
+// pre-final. Task 10.4 ships the four that its lifecycle produces:
+//   * `Created`  — a voucher was composed (draft or directly temporary);
+//   * `Updated`  — an editable voucher's header/lines changed, including the
+//                  draft → temporary issuance (there is no `Submitted`/
+//                  `Issued` row in the vocabulary, so the state change is an
+//                  `Updated` — inventing a name the contract does not carry
+//                  would extend the event contract, AR-29);
+//   * `Finalized` — the voucher became part of the books (§15.5);
+//   * `Deleted`  — a pre-final voucher was discarded (§15.3, AC-D-21).
+// `Reversed`/`Corrected`/`Replaced` arrive with the correction task (AC-D-22).
+//
+// Payload policy: identifiers, scope, the business number, the phase and the
+// origin — NO amounts. §21 allows amounts "for `Finalized` only where a
+// consumer needs them, and never as a substitute for reading the owning
+// module"; no consumer needs them yet, and the owning module is the only
+// legitimate reader of its own rows.
+
+/** Payload shared by every accounting-document event. */
+export interface AccountingDocumentEventPayload {
+  /** ULID of the document. */
+  id: string;
+  /** Organization the document belongs to. */
+  organizationId: string;
+  /** Financial area the document is booked in. */
+  financialAreaId: string;
+  /** Resolved fiscal year (stored, never recomputed — AC-I-14). */
+  fiscalYearId: string;
+  /** Resolved accounting period. */
+  accountingPeriodId: string;
+  /** Registered Document Foundation type (`accounting_voucher`). */
+  documentType: string;
+  /** Numeric-only serial, or `null` while the document is a draft. */
+  documentNumber: string | null;
+  /** The phase the document is in AFTER the event. */
+  state: string;
+  /** `manual` | `system` (§16.1). */
+  origin: string;
+}
+
+export const ACCOUNTING_DOCUMENT_CREATED_EVENT =
+  'AccountingDocument.Created' as const;
+export const ACCOUNTING_DOCUMENT_UPDATED_EVENT =
+  'AccountingDocument.Updated' as const;
+export const ACCOUNTING_DOCUMENT_FINALIZED_EVENT =
+  'AccountingDocument.Finalized' as const;
+export const ACCOUNTING_DOCUMENT_DELETED_EVENT =
+  'AccountingDocument.Deleted' as const;
+
+export type AccountingDocumentCreatedEvent = ScopedEvent<
+  typeof ACCOUNTING_DOCUMENT_CREATED_EVENT,
+  'AccountingDocument',
+  AccountingDocumentEventPayload
+>;
+export type AccountingDocumentUpdatedEvent = ScopedEvent<
+  typeof ACCOUNTING_DOCUMENT_UPDATED_EVENT,
+  'AccountingDocument',
+  AccountingDocumentEventPayload
+>;
+export type AccountingDocumentFinalizedEvent = ScopedEvent<
+  typeof ACCOUNTING_DOCUMENT_FINALIZED_EVENT,
+  'AccountingDocument',
+  AccountingDocumentEventPayload
+>;
+export type AccountingDocumentDeletedEvent = ScopedEvent<
+  typeof ACCOUNTING_DOCUMENT_DELETED_EVENT,
+  'AccountingDocument',
+  AccountingDocumentEventPayload
+>;
+
 /** Every event this module publishes (used by tests to assert the catalog). */
 export const ACCOUNTING_EVENT_TYPES = [
   ACCOUNT_CREATED_EVENT,
@@ -255,4 +328,8 @@ export const ACCOUNTING_EVENT_TYPES = [
   ACCOUNTING_PERIOD_CLOSED_EVENT,
   ACCOUNTING_PERIOD_REOPENED_EVENT,
   ACCOUNTING_PERIOD_SEALED_EVENT,
+  ACCOUNTING_DOCUMENT_CREATED_EVENT,
+  ACCOUNTING_DOCUMENT_UPDATED_EVENT,
+  ACCOUNTING_DOCUMENT_FINALIZED_EVENT,
+  ACCOUNTING_DOCUMENT_DELETED_EVENT,
 ] as const;

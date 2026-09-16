@@ -346,3 +346,119 @@ export async function lockAccountRow(
   const [row] = rows;
   return row ?? null;
 }
+
+// ---------------------------------------------------------------------------
+// Accounting documents (Task 10.4)
+// ---------------------------------------------------------------------------
+
+/**
+ * A locked accounting-document row: everything the document guards read
+ * (scope, the resolved calendar, the number, the phase, the origin).
+ */
+export interface LockedAccountingDocument {
+  id: string;
+  organizationId: string;
+  financialAreaId: string;
+  fiscalYearId: string;
+  accountingPeriodId: string;
+  documentType: string;
+  documentNumber: string | null;
+  documentDate: Date;
+  description: string;
+  state: string;
+  origin: string;
+  branchId: string | null;
+}
+
+/**
+ * Lock one accounting-document row. The lock is held until commit, so the
+ * phase the guard evaluated is the phase the write applies to: a concurrent
+ * edit/issuance/finalization/deletion of the same voucher serializes here and
+ * the loser re-evaluates against the winner's committed row.
+ *
+ * This lock is taken LAST in every document-write transaction — after the
+ * area → year → period → account locks — because it is the only row a
+ * voucher write takes that no calendar/account write ever waits for, so the
+ * global order `area → year → period → account → document` stays acyclic
+ * (a document lock never precedes a calendar lock anywhere).
+ *
+ * @returns null when the row does not exist. A pre-final voucher may be
+ *   deleted concurrently (§15.3), so a null answer is an ordinary outcome the
+ *   service maps to 404 — not, as with the calendar rows, a bug.
+ */
+export async function lockAccountingDocumentRow(
+  tx: AccountingTxClient,
+  documentId: string,
+): Promise<LockedAccountingDocument | null> {
+  const rows = await tx.$queryRaw<LockedAccountingDocument>`
+    SELECT "id"                   AS "id",
+           "organization_id"      AS "organizationId",
+           "financial_area_id"    AS "financialAreaId",
+           "fiscal_year_id"       AS "fiscalYearId",
+           "accounting_period_id" AS "accountingPeriodId",
+           "document_type"        AS "documentType",
+           "document_number"      AS "documentNumber",
+           "document_date"        AS "documentDate",
+           "description"          AS "description",
+           "state"                AS "state",
+           "origin"               AS "origin",
+           "branch_id"            AS "branchId"
+      FROM "accounting"."accounting_documents"
+     WHERE "id" = ${documentId}
+     FOR UPDATE`;
+  const [row] = rows;
+  return row ?? null;
+}
+
+/** A locked account row: the usability the line guard re-evaluates. */
+export interface LockedAccountUsage {
+  id: string;
+  organizationId: string;
+  code: string;
+  isPostable: boolean;
+  isActive: boolean;
+}
+
+/**
+ * Lock one account row FOR SHARE while a voucher's lines reference it.
+ *
+ * This is what makes AC-I-09 ("only postable, active accounts may receive
+ * lines") and AC-I-11 ("an account is frozen once a document line references
+ * it") hold against each other under concurrency:
+ *
+ * - the write path takes this lock BEFORE it re-evaluates postability/activity,
+ *   so the values it validates are the committed ones (PostgreSQL re-reads the
+ *   row after any wait — a concurrent postability flip is therefore either
+ *   committed and seen, or blocked until this transaction ends);
+ * - the account guard transaction takes `FOR UPDATE` on the same row and
+ *   counts referencing lines under that lock, so a flip cannot commit while a
+ *   line insert is in flight, and a line insert cannot commit while a flip
+ *   holds the row.
+ *
+ * `FOR SHARE` is chosen over the weaker `FOR KEY SHARE` because it conflicts
+ * with every account write path (`FOR UPDATE` / `FOR NO KEY UPDATE`), and over
+ * `FOR UPDATE` because a voucher must never block two other vouchers that
+ * merely share an account.
+ *
+ * Locks are always taken ascending by id (the caller sorts), and this lock is
+ * taken after the area → year → period locks, never before them.
+ *
+ * @returns null when the row does not exist (the service maps a missing or
+ *   foreign account to 404, AC-I-16).
+ */
+export async function lockAccountRowForShare(
+  tx: AccountingTxClient,
+  accountId: string,
+): Promise<LockedAccountUsage | null> {
+  const rows = await tx.$queryRaw<LockedAccountUsage>`
+    SELECT "id"             AS "id",
+           "organization_id" AS "organizationId",
+           "code"           AS "code",
+           "is_postable"    AS "isPostable",
+           "is_active"      AS "isActive"
+      FROM "accounting"."accounts"
+     WHERE "id" = ${accountId}
+     FOR SHARE`;
+  const [row] = rows;
+  return row ?? null;
+}

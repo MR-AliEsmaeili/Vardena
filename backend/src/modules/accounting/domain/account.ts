@@ -102,17 +102,15 @@ export function toAccountDto(account: Account): AccountDto {
 /**
  * Whether a document line already references this account.
  *
- * The predicate AC-I-11 is written against cannot exist yet: accounting
- * documents and lines are contract §12/§15 work (a later task), so no account
- * can be referenced. This function is the WHOLE seam — one call site, one
- * answer — that the posting task replaces with a real query. It deliberately
- * has no table, no `used_at` column and no usage counter: faking one here would
- * invent the mechanism the posting module owns (Task 10.3 §16), and an unused
- * flag is exactly the speculative column AR-29 forbids.
+ * The predicate AC-I-11 is written against is DATA, not a domain fact: it is
+ * "does `accounting_document_lines` hold a row for this account?". Task 10.4
+ * implements it for real — `AccountingDocumentLinesRepository.countForAccount`
+ * for the service pre-check, and `countReferencingLinesInTx` inside the
+ * account guard's transaction, where the count runs UNDER the account row's
+ * `FOR UPDATE` lock so it interlocks with a voucher's `FOR SHARE` lock
+ * (`accounting-locks.ts`). No `used_at` column and no usage counter exist on
+ * purpose: the lines ARE the evidence, and a denormalized flag could drift.
  */
-export function isReferencedByDocumentLine(_account: { id: string }): boolean {
-  return false;
-}
 
 /** The fields AC-I-11 freezes for a referenced account (§8.4 rule 4). */
 export const ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS = [

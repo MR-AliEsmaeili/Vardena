@@ -88,6 +88,14 @@ model Organization {
   codingStructureLevels     CodingStructureLevel[]
   accounts                  Account[]
 
+  // Back-relations for the accounting documents (Task 10.4, contract §12/§16).
+  // Virtual side only — the real FK columns stay
+  // `accounting.*.organization_id`, and the cross-module document references
+  // (source identity) are logical, never FKs.
+  accountingDocuments        AccountingDocument[]
+  accountingDocumentLines    AccountingDocumentLine[]
+  accountingPostingOperations AccountingPostingOperation[]
+
   // The organization code is the tenant root's business key: unique
   // deployment-wide (there is no wider scope to be unique within).
   @@unique([code], map: "uq_organizations_code")
@@ -117,6 +125,10 @@ model Branch {
   movements    InventoryMovement[]
   balances     InventoryBalance[]
   reservations InventoryReservation[]
+
+  // Back-relation for the accounting documents of this branch (Task 10.4,
+  // AC-D-17: branch lives on the voucher header, never on a line).
+  accountingDocuments AccountingDocument[]
 
   // Uniqueness scope is the organization (master-data-strategy.md §7.1).
   @@unique([organizationId, code], map: "uq_branches_organization_id_code")

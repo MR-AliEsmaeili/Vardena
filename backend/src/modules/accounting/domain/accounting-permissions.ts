@@ -2,14 +2,15 @@ import type { PermissionDefinition } from '../../rbac/domain/permission-definiti
 
 /**
  * The Accounting module's permissions for the Task 10.2 foundation (areas,
- * years, periods) and the Task 10.3 chart foundation (coding structure,
- * accounts) — AR-22, ADR-0006, docs/security.md §3, contract §22 / AC-D-34.
+ * years, periods), the Task 10.3 chart foundation (coding structure, accounts)
+ * and the Task 10.4 accounting documents — AR-22, ADR-0006, docs/security.md
+ * §3, contract §22 / AC-D-34.
  *
  * Codes follow the established `Module.Entity.Action` form. ONLY the codes the
  * module enforces are registered: any code not enforced by code must not exist
  * (`docs/security.md` §3), so the remaining contract §22 vocabulary (Detail
- * Dimension, Document, PostingRule, YearTransition, Balance, …) arrives with
- * the tasks that enforce it.
+ * Dimension, PostingRule, YearTransition, Balance, …) arrives with the tasks
+ * that enforce it.
  *
  * Two deliberate readings of the contract vocabulary:
  * - periods have no `Create` code: creating a period IS opening it (the
@@ -25,7 +26,15 @@ import type { PermissionDefinition } from '../../rbac/domain/permission-definiti
  *   invent authorities the contract does not define;
  * - accounts get `View/Create/Edit/Enable/Disable` and deliberately NO `Delete`
  *   (§22, §8.6: accounts are never deleted, so a delete permission could only
- *   ever be a lie).
+ *   ever be a lie);
+ * - documents get the five codes of the IMPLEMENTED surface —
+ *   `View/Create/Edit/Delete/Finalize`. `Delete` applies only to
+ *   `draft`/`temporary` (§15.3, AC-D-21) and is refused for `final`;
+ *   `Finalize` is deliberately NOT `Approve` (the contract keeps them
+ *   distinct, and approval is the Workflow Foundation's authority);
+ *   `Print`/`Export` are read capabilities with no reader in this task, and
+ *   `Approve`/`Reverse`/`Correct`/`Replace` belong to the correction and
+ *   posting tasks (AC-D-22), so none of them is registered here.
  *
  * No wildcards, no superuser, no implicit bypass (OQ-21).
  */
@@ -67,6 +76,14 @@ export const ACCOUNTING_PERIOD_PERMISSIONS = {
   CLOSE: 'Accounting.AccountingPeriod.Close',
   REOPEN: 'Accounting.AccountingPeriod.Reopen',
   SEAL: 'Accounting.AccountingPeriod.Seal',
+} as const;
+
+export const ACCOUNTING_DOCUMENT_PERMISSIONS = {
+  VIEW: 'Accounting.Document.View',
+  CREATE: 'Accounting.Document.Create',
+  EDIT: 'Accounting.Document.Edit',
+  DELETE: 'Accounting.Document.Delete',
+  FINALIZE: 'Accounting.Document.Finalize',
 } as const;
 
 export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] =
@@ -170,5 +187,28 @@ export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] 
       code: ACCOUNT_PERMISSIONS.DISABLE,
       description:
         'Disable an account (blocks new postings and new children, keeps history readable). There is no delete.',
+    },
+    {
+      code: ACCOUNTING_DOCUMENT_PERMISSIONS.VIEW,
+      description: 'View accounting documents and their lines.',
+    },
+    {
+      code: ACCOUNTING_DOCUMENT_PERMISSIONS.CREATE,
+      description: 'Compose a draft accounting document.',
+    },
+    {
+      code: ACCOUNTING_DOCUMENT_PERMISSIONS.EDIT,
+      description:
+        'Edit an editable accounting document (draft or temporary) and issue it (draft to temporary).',
+    },
+    {
+      code: ACCOUNTING_DOCUMENT_PERMISSIONS.DELETE,
+      description:
+        'Discard a pre-final accounting document (draft or temporary). Final documents are never deletable.',
+    },
+    {
+      code: ACCOUNTING_DOCUMENT_PERMISSIONS.FINALIZE,
+      description:
+        'Finalize a temporary accounting document, making it part of the books. Distinct from approval (the Workflow authority).',
     },
   ];
