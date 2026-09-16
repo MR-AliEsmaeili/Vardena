@@ -23,6 +23,7 @@ import { AccountsRepository } from '../src/modules/accounting/data/accounts.repo
 import { AccountingDocumentsRepository } from '../src/modules/accounting/data/accounting-documents.repository.js';
 import { AccountingDocumentLinesRepository } from '../src/modules/accounting/data/accounting-document-lines.repository.js';
 import { AccountingPostingOperationsRepository } from '../src/modules/accounting/data/accounting-posting-operations.repository.js';
+import { PostingReadinessService } from '../src/modules/accounting/application/posting-readiness.service.js';
 import { DocumentTypeConfigsRepository } from '../src/modules/documents/data/document-type-configs.repository.js';
 import { NumberingSeriesRepository } from '../src/modules/documents/data/numbering-series.repository.js';
 import { NumberingAllocationsRepository } from '../src/modules/documents/data/numbering-allocations.repository.js';
@@ -104,6 +105,8 @@ describe('Accounting documents (e2e)', () => {
     creditAccountA: '',
     nonPostableAccountA: '',
     foreignAccountB: '',
+    /** The voucher finalized by the lifecycle journey (Task 10.5 reads it). */
+    finalizedId: '',
   };
 
   const draft = (
@@ -876,6 +879,7 @@ describe('Accounting documents (e2e)', () => {
     expect(finalized.body.state).toBe('final');
     expect(finalized.body.finalizedAt).not.toBeNull();
     expect(finalized.body.documentNumber).toBe(serial);
+    state.finalizedId = id;
 
     // A retried finalization replays instead of finalizing twice (§16.4).
     const replay = await finalizer
@@ -1030,6 +1034,62 @@ describe('Accounting documents (e2e)', () => {
       .get('/api/v1/accounting-documents/reports/x')
       .query({ organizationId: state.orgA })
       .expect(404);
+  });
+
+  // ---- posting readiness (Task 10.5) ---------------------------------------
+
+  it('evaluates posting readiness for the future engine, read-only (Task 10.5)', async () => {
+    // The seam resolves from the booted application — the future Posting
+    // Engine's entry point. It is deliberately NOT an HTTP route (the scope
+    // audit above), so the journey goes through the service directly.
+    const readiness = app.get(PostingReadinessService);
+
+    // The finalized lifecycle voucher is READY: every permanent book
+    // invariant of §15.5 holds for the stored aggregate.
+    const verdict = await readiness.evaluateReadiness(
+      state.orgA,
+      state.finalizedId,
+    );
+    expect(verdict).toEqual({
+      status: 'ready',
+      documentId: state.finalizedId,
+      reasons: [],
+    });
+
+    // A draft is never consumable, whatever else is true about it.
+    const draftResponse = await composer
+      .post('/api/v1/accounting-documents')
+      .send(draft({ description: 'Not ready yet' }))
+      .expect(201);
+    const draftVerdict = await readiness.evaluateReadiness(
+      state.orgA,
+      draftResponse.body.id as string,
+    );
+    expect(draftVerdict.status).toBe('not_ready');
+    expect(draftVerdict.reasons).toEqual([
+      { problem: 'document_not_final', phase: 'draft' },
+    ]);
+
+    // Organization isolation: the foreign organization gets the uniform
+    // 404, never a verdict about another organization's voucher.
+    await expect(
+      readiness.evaluateReadiness(state.orgB, state.finalizedId),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+
+    // Read-only: every store the evaluation reads is unchanged by it —
+    // no state, no serial, no idempotency row, no line, no timestamp.
+    const before = {
+      documents: vouchers.raw.state.documents.snapshot(),
+      lines: vouchers.raw.state.lines.snapshot(),
+      operations: vouchers.raw.state.operations.snapshot(),
+    };
+    await readiness.evaluateReadiness(state.orgA, state.finalizedId);
+    await readiness.evaluateReadiness(state.orgA, state.finalizedId);
+    expect({
+      documents: vouchers.raw.state.documents.snapshot(),
+      lines: vouchers.raw.state.lines.snapshot(),
+      operations: vouchers.raw.state.operations.snapshot(),
+    }).toEqual(before);
   });
 });
 

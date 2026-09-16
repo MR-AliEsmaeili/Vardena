@@ -19,6 +19,7 @@ import { AccountsService } from './application/accounts.service.js';
 import { AccountingPermissionRegistration } from './application/accounting-permission-registration.js';
 import { AccountingDocumentTypeRegistration } from './application/accounting-document-type-registration.js';
 import { AccountingDocumentsService } from './application/accounting-documents.service.js';
+import { PostingReadinessService } from './application/posting-readiness.service.js';
 import { FinancialAreasController } from './api/financial-areas.controller.js';
 import { FiscalYearsController } from './api/fiscal-years.controller.js';
 import { AccountingPeriodsController } from './api/accounting-periods.controller.js';
@@ -34,7 +35,11 @@ import { AccountingDocumentsController } from './api/accounting-documents.contro
  * (the bookkeeping scope spine) plus the coding structure and the chart of
  * accounts (the account-structure spine) and the accounting document
  * aggregate — the voucher header + lines with its `draft → temporary → final`
- * lifecycle (Task 10.4, contract §12…§18). Detail dimensions, posting rules,
+ * lifecycle (Task 10.4, contract §12…§18). Task 10.5 adds the internal
+ * posting-readiness seam (`PostingReadinessService` over the pure
+ * `domain/posting-readiness.ts` decision): a read-only eligibility verdict
+ * between the finalized voucher and the future Posting Engine — no posting,
+ * no endpoint, no state. Detail dimensions, posting rules,
  * balance projections and the correction mechanisms arrive with later tasks
  * (contract §28.2) and must not be anticipated here (AR-29).
  *
@@ -108,6 +113,13 @@ import { AccountingDocumentsController } from './api/accounting-documents.contro
     AccountingDocumentsService,
     AccountingPermissionRegistration,
     AccountingDocumentTypeRegistration,
+    // Task 10.5: the posting-readiness seam. Provided (not exported) — it is
+    // an IN-MODULE contract for the future Posting Engine, which is
+    // Accounting-owned (ADR-0026 §1). A cross-module consumer would need the
+    // §16.3 source-posting contract and OQ-39's delivery decision first, so
+    // the seam deliberately stops at the module boundary (AR-07). Read-only:
+    // repositories + the organization pin are its only dependencies.
+    PostingReadinessService,
   ],
   exports: [
     FinancialAreasService,
