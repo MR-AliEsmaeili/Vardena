@@ -1073,9 +1073,30 @@ function toDomain(
   };
 }
 
-/** Prisma returns `Decimal` for `numeric(18,2)`; the domain carries strings. */
-function toAmountString(value: unknown): string {
+/**
+ * Map a stored `numeric(18,2)` line amount to the domain's decimal string —
+ * the narrowest safe mapping (the Task 10.7 ledger semantics, applied to the
+ * Task 10.4 document path): Prisma returns a `Decimal` object with an exact
+ * `toString()` in production, and the in-memory fakes store canonical
+ * strings. Anything else — especially a JS `number`, whose binary float
+ * semantics the contract forbids (§13.1/§13.5) — is refused loudly rather
+ * than stringified, because `String(0.1 + 0.2)` is float loss wearing a
+ * decimal costume. A malformed string still fails downstream in
+ * `canonicalizeAmount` / the line decision table, so no silent value can
+ * reach the domain.
+ *
+ * Exported for the focused mapping spec only; both call sites are in this file.
+ */
+export function toAmountString(value: unknown): string {
   if (typeof value === 'string') return value;
-  if (typeof value === 'number') return String(value);
-  return String(value as { toString(): string });
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { toString?: unknown }).toString === 'function'
+  ) {
+    return (value as { toString(): string }).toString();
+  }
+  throw new Error(
+    `Cannot map a document line amount of type "${typeof value}" to a decimal string without float semantics.`,
+  );
 }
