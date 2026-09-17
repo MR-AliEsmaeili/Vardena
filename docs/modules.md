@@ -232,6 +232,8 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   `AC-D-01…AC-D-35`, invariants `AC-I-01…AC-I-22`, gates §28); the conceptual
   options record stays in
   [`architecture/domain/accounting-domain-analysis.md`](./architecture/domain/accounting-domain-analysis.md).
+  The authoritative task sequence, candidate map and OQ gates live in
+  [`accounting/task-index.md`](./accounting/task-index.md) (Task 10.9: not formally defined).
 - **Owns (Tasks 10.2 + 10.3):** schema `accounting` — `financial_areas`,
   `fiscal_years`, `accounting_periods`, `coding_structure_versions`,
   `coding_structure_levels`, `accounts`. Every table carries `organization_id`
