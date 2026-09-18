@@ -240,8 +240,8 @@ describe.skipIf(DATABASE_URL === undefined)(
 
       accountingConfigurationId = generateId();
       await db.$queryRaw`INSERT INTO accounting.accounting_configurations (
-        id, organization_id, code, version_number, status, created_at, updated_at
-      ) VALUES (${accountingConfigurationId}, ${organizationId}, ${'DEFAULT'}, 1, 'published', now(), now())`;
+        id, organization_id, code, name, version_number, status, created_at, updated_at
+      ) VALUES (${accountingConfigurationId}, ${organizationId}, ${'DEFAULT'}, ${'Main'}, 1, 'ACTIVE', now(), now())`;
       await db.$queryRaw`INSERT INTO accounting.accounting_configuration_levels (
         id, organization_id, accounting_configuration_id, code, title, level_order, is_required, is_active, created_at, updated_at
       ) VALUES (${generateId()}, ${organizationId}, ${accountingConfigurationId}, ${'L1'}, ${'Level 1'}, 1, true, true, now(), now())`;
