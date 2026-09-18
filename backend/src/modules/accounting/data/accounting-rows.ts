@@ -484,8 +484,8 @@ export type AccountRow = {
   title: string;
   parentId: string | null;
   level: number;
-  codingStructureVersionId: string | null;
-  accountingConfigurationId: string | null;
+  codingStructureVersionId: string;
+  accountingConfigurationId: string;
   accountNature: string;
   isPostable: boolean;
   isActive: boolean;
@@ -514,8 +514,8 @@ export interface AccountCreate {
   title: string;
   parentId: string | null;
   level: number;
-  codingStructureVersionId: string | null;
-  accountingConfigurationId: string | null;
+  codingStructureVersionId: string;
+  accountingConfigurationId: string;
   accountNature: string;
   isPostable: boolean;
   isActive: boolean;
@@ -531,7 +531,6 @@ export interface AccountUpdate {
   accountNature?: string | undefined;
   isPostable?: boolean | undefined;
   isActive?: boolean | undefined;
-  accountingConfigurationId?: string | null | undefined;
   updatedAt: Date;
   updatedBy: string | null;
 }

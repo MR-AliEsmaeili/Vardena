@@ -850,8 +850,9 @@ describe('AccountsService', () => {
       isPostable: false,
       isActive: true,
     });
-    // Task 11 Final D1: accountingConfigurationId is sole scope, codingStructureVersionId nullable
+    // Task 11 Final D1/D2/D3: both accountingConfigurationId sole scope and codingStructureVersionId code shape NOT NULL
     expect(root.accountingConfigurationId).toBeTruthy();
+    expect(root.codingStructureVersionId).toBeTruthy();
     // The API never exposes audit actor ids (AR-24).
     expect(root).not.toHaveProperty('createdBy');
     expect(fixture.events.map((event) => event.type)).toEqual([

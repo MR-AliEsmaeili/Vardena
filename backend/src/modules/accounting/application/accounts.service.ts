@@ -209,7 +209,7 @@ export class AccountsService {
     let parent: AccountPlacementParent | null = null;
     let structure: { maxDepth: number; levels: any[] };
     let accountingConfigurationId: string;
-    let codingStructureVersionId: string | null = null;
+    let codingStructureVersionId: string;
 
     try {
       if (parentId !== null) {
@@ -217,31 +217,18 @@ export class AccountsService {
           input.organizationId,
           parentId,
         );
-        // Child inherits parent's accounting configuration — sole scope after D1/D3
-        if (parentAccount.accountingConfigurationId === null) {
-          // Legacy orphan parent — require active config for child (D1)
-          const activeConfig =
-            await this.configurations.requireActiveConfigurationOrThrow(
-              input.organizationId,
-            );
-          accountingConfigurationId = activeConfig.id;
-          structure = {
-            maxDepth: activeConfig.levels.length,
-            levels: activeConfig.levels,
-          };
-        } else {
-          accountingConfigurationId = parentAccount.accountingConfigurationId;
-          const parentConfig =
-            await this.configurations.requireConfigurationInOrganization(
-              input.organizationId,
-              parentAccount.accountingConfigurationId,
-            );
-          structure = {
-            maxDepth: parentConfig.levels.length,
-            levels: parentConfig.levels,
-          };
-        }
-        codingStructureVersionId = parentAccount.codingStructureVersionId ?? null;
+        // Child inherits parent's accounting configuration — sole scope D1/D3 NOT NULL
+        accountingConfigurationId = parentAccount.accountingConfigurationId;
+        codingStructureVersionId = parentAccount.codingStructureVersionId;
+        const parentConfig =
+          await this.configurations.requireConfigurationInOrganization(
+            input.organizationId,
+            parentAccount.accountingConfigurationId,
+          );
+        structure = {
+          maxDepth: parentConfig.levels.length,
+          levels: parentConfig.levels,
+        };
         parent = {
           id: parentAccount.id,
           organizationId: parentAccount.organizationId,
@@ -249,21 +236,26 @@ export class AccountsService {
           level: parentAccount.level,
           isPostable: parentAccount.isPostable,
           isActive: parentAccount.isActive,
-          codingStructureVersionId: parentAccount.codingStructureVersionId ?? null,
-          accountingConfigurationId: parentAccount.accountingConfigurationId ?? null,
+          codingStructureVersionId: parentAccount.codingStructureVersionId,
+          accountingConfigurationId: parentAccount.accountingConfigurationId,
         };
       } else {
-        // Root account — D1: MUST require active accounting configuration, no legacy fallback
+        // Root account — D1: MUST require ACTIVE accounting configuration, no legacy fallback
+        // D2: coding_structure_versions untouched, still required as code shape version
         const activeConfig =
           await this.configurations.requireActiveConfigurationOrThrow(
             input.organizationId,
           );
+        const activeCoding =
+          await this.structures.requireActiveVersionOrThrow(
+            input.organizationId,
+          );
         accountingConfigurationId = activeConfig.id;
+        codingStructureVersionId = activeCoding.id;
         structure = {
           maxDepth: activeConfig.levels.length,
           levels: activeConfig.levels,
         };
-        codingStructureVersionId = null;
       }
     } catch (error) {
       const mapped = mapAccountGuardError(error);
@@ -324,20 +316,8 @@ export class AccountsService {
       throw error;
     }
 
-    // D4: mark operationally used when account pinned on active config
-    try {
-      await this.configurations.markOperationallyUsed(
-        accountingConfigurationId,
-      );
-    } catch {
-      // Non-fatal — operationally used marker is best-effort, failure should not rollback account creation
-      // But log for observability
-      this.logger.warn(
-        'Failed to mark accounting configuration as operationally used',
-        { accountingConfigurationId },
-        AccountsService.name,
-      );
-    }
+    // D4: markOperationallyUsed NOT called in Task 11 — deferred to Posting/System Posting (first Voucher, not Account)
+    // The method remains as deferred abstraction without caller, documented in ADR-0028 and docs/accounting/configuration.md
 
     await this.publishAccountEvent(ACCOUNT_CREATED_EVENT, created);
     this.logger.log(
@@ -399,31 +379,20 @@ export class AccountsService {
           level: parentAccount.level,
           isPostable: parentAccount.isPostable,
           isActive: parentAccount.isActive,
-          codingStructureVersionId: parentAccount.codingStructureVersionId ?? null,
-          accountingConfigurationId:
-            parentAccount.accountingConfigurationId ?? null,
+          codingStructureVersionId: parentAccount.codingStructureVersionId,
+          accountingConfigurationId: parentAccount.accountingConfigurationId,
         };
-        if (parentAccount.accountingConfigurationId !== null) {
-          const parentConfig =
-            await this.configurations.requireConfigurationInOrganization(
-              current.organizationId,
-              parentAccount.accountingConfigurationId,
-            );
-          structureForMove = {
-            maxDepth: parentConfig.levels.length,
-            levels: parentConfig.levels,
-          };
-        } else {
-          const activeConfig =
-            await this.configurations.requireActiveConfigurationOrThrow(
-              current.organizationId,
-            );
-          structureForMove = {
-            maxDepth: activeConfig.levels.length,
-            levels: activeConfig.levels,
-          };
-        }
+        const parentConfig =
+          await this.configurations.requireConfigurationInOrganization(
+            current.organizationId,
+            parentAccount.accountingConfigurationId,
+          );
+        structureForMove = {
+          maxDepth: parentConfig.levels.length,
+          levels: parentConfig.levels,
+        };
       } else if (parentChanging && input.parentId === null) {
+        // Moving to root — still requires ACTIVE accounting config (D1) and coding version (D2)
         const activeConfig =
           await this.configurations.requireActiveConfigurationOrThrow(
             current.organizationId,
@@ -452,9 +421,8 @@ export class AccountsService {
         descendantIds: collectDescendantIds(edges, current.id),
         current: {
           level: current.level,
-          codingStructureVersionId: current.codingStructureVersionId ?? null,
-          accountingConfigurationId:
-            current.accountingConfigurationId ?? null,
+          codingStructureVersionId: current.codingStructureVersionId,
+          accountingConfigurationId: current.accountingConfigurationId,
           hasChildren:
             (await this.repository.findChild(
               current.organizationId,
@@ -490,8 +458,8 @@ export class AccountsService {
             ? null
             : snapshot(
                 structureForMove as any,
-                current.accountingConfigurationId ?? '',
-                current.codingStructureVersionId ?? null,
+                current.accountingConfigurationId,
+                current.codingStructureVersionId,
               ),
         now: new Date(),
         actorId: getPrincipal()?.userId ?? null,
@@ -573,8 +541,8 @@ export class AccountsService {
     descendantIds: readonly string[];
     current: {
       level: number;
-      codingStructureVersionId: string | null;
-      accountingConfigurationId: string | null;
+      codingStructureVersionId: string;
+      accountingConfigurationId: string;
       hasChildren: boolean;
     } | null;
     structure: { maxDepth: number; levels: any[] };
@@ -584,9 +552,9 @@ export class AccountsService {
       organizationId: input.organizationId,
       parentId: input.parentId,
       code: input.code,
-      parent: input.parent as any,
+      parent: input.parent,
       descendantIds: input.descendantIds,
-      current: input.current as any,
+      current: input.current,
       levels: (input.structure as any).levels,
       maxDepth: (input.structure as any).maxDepth,
     });
@@ -629,9 +597,8 @@ export class AccountsService {
         organizationId: account.organizationId,
         code: account.code,
         level: account.level,
-        codingStructureVersionId: account.codingStructureVersionId ?? null,
-        accountingConfigurationId:
-          account.accountingConfigurationId ?? null,
+        codingStructureVersionId: account.codingStructureVersionId,
+        accountingConfigurationId: account.accountingConfigurationId,
       },
     });
   }
@@ -660,11 +627,11 @@ export class AccountsService {
 function snapshot(
   structure: { maxDepth: number; levels: any[] },
   accountingConfigurationId: string,
-  codingStructureVersionId: string | null = null,
+  codingStructureVersionId: string,
 ): AccountStructureSnapshot {
   return {
     accountingConfigurationId,
-    versionId: codingStructureVersionId ?? '',
+    versionId: codingStructureVersionId,
     maxDepth: structure.maxDepth,
     levels: structure.levels,
   };

@@ -1,44 +1,45 @@
-# Accounting Configuration — Task 11 Foundation (Final)
+# Accounting Configuration — Task 11 Foundation (Final Round 2 per D1-D7)
 
-> Generic, organization-scoped, versioned root for all accounting configuration affecting Transaction, Posting, Reporting. Final per D1-D5, R1-R10.
+> Generic, organization-scoped, versioned root for all accounting configuration affecting Transaction, Posting, Reporting. Final per D1-D7, NOT NULL + deferred markOperationallyUsed.
 
-## Scope (Task 11 Final)
+## Scope (Task 11 Final Round 2)
 
-**Foundation (Task 11 Final):**
+**Foundation (Task 11 Final D1-D7):**
 - Configuration root: `accounting_configurations` + `accounting_configuration_levels`
 - Real versioning: `version_number` monotonic per `(organization_id, code)`
 - Status: `DRAFT` → `ACTIVE` → `SUPERSEDED`, exactly one ACTIVE per org (FOR UPDATE lock primary + partial unique index backstop)
-- Operational freeze: domain abstraction + D4 caller `AccountsService.createAccount` → `markOperationallyUsed`
-- Chart foundation: Account entity sole scope `accounting_configuration_id` (D1), nullable legacy `codingStructureVersionId`, recursive hierarchy, configurable coding, explicit nature, non-destructive lifecycle
-- Backfill D3: existing accounts get ACTIVE config if exists, else null legacy orphan documented
+- Operational freeze: domain abstraction + D4 deferred — `markOperationallyUsed` NOT called in Task 11, caller deferred to Posting/System Posting (first Voucher, not Account), remains as deferred abstraction without caller, explicitly documented as deferred (not dead code)
+- Chart foundation: Account entity sole scope `accounting_configuration_id` NOT NULL (D1,D3) + code shape `coding_structure_version_id` NOT NULL (D2 untouched), recursive hierarchy, configurable coding, explicit nature, non-destructive lifecycle
+- Backfill D3 NOT NULL: handles both orphan=0 and orphan>0 — legacy config strategy for orphan>0, simple backfill+NOT NULL for orphan=0. Orphan query blocked no live DB in sandbox, migration handles both.
+- D5 single migration, D6 typed errors only, D7 live DB test
 
 **Non-Goals (NOT in Task 11 Final):**
 - Posting Rules, Dimensions/Detail Structure, Control Roles, System Posting, Balances/Projections, Reports, Tax/Costing/Numbering/Closing Policies (seams only)
 - Frontend, Workflow, Outbox/Queue/Redis, Microservices
-- Refactor CodingStructuresService, change CodingStructureVersion lifecycle, backfill orgs without active config
-- `coding_structure_versions` name/effective_from/operationally_used_at changes (D2 out of scope)
-- `accounting_configurations.coding_structure_version_id` FK (R2 removed)
+- Refactor CodingStructuresService Task 10.3, change CodingStructureVersion lifecycle, LedgerEntry, PostingService, AccountingDocuments
+- `coding_structure_versions` name/effective_from/operationally_used_at changes (D2 out of scope — NOT touched)
+- Transform CodingStructureVersion to state inside AccountingConfiguration (separate ADR)
 
-## Data Model (Final)
+## Data Model (Final per D1-D7)
 
 ### `accounting_configurations`
 
 - `id` ULID PK
 - `organization_id` FK RESTRICT → organizations
-- `code` VARCHAR(64) identity inside org e.g. DEFAULT
+- `code` VARCHAR(64) identity inside org e.g. DEFAULT, LEGACY
 - `name` VARCHAR(200) human title
 - `version_number` INT 1-based per (org, code)
 - `status` VARCHAR(16) DRAFT|ACTIVE|SUPERSEDED default DRAFT
 - `effective_from` TIMESTAMPTZ nullable
 - `operationally_used_at` TIMESTAMPTZ nullable freeze marker
 - Audit: `created_at`, `updated_at`, `created_by`, `updated_by`
-- **NOT** `coding_structure_version_id` (per D2,R2 — no column)
+- **NOT** `coding_structure_version_id` (per D2 — no column, no touch coding_structure_versions)
 
 Constraints:
 - `UNIQUE (organization_id, code, version_number)` → `uq_accounting_configurations_org_code_version`
 - `INDEX (organization_id, status)` → `idx_accounting_configurations_org_status`
 - `INDEX (organization_id, code)` → `idx_accounting_configurations_org_code`
-- `UNIQUE INDEX uq_accounting_configurations_org_active ON (organization_id) WHERE status='ACTIVE'` — DB backstop, FOR UPDATE primary
+- `UNIQUE INDEX uq_accounting_configurations_org_active ON (organization_id) WHERE status='ACTIVE'` — DB backstop
 
 ### `accounting_configuration_levels`
 
@@ -56,23 +57,23 @@ Constraints:
 
 Levels belong to VERSION, immutable after publish. MAX depth 8 architecture cap.
 
-### `accounts` — final
+### `accounts` — final per D1,D2,D3
 
 - Existing: `id`, `organization_id`, `code`, `title`, `parent_id`, `level`, `account_nature`, `is_postable`, `is_active`, audit
-- `coding_structure_version_id` TEXT nullable FK RESTRICT → `coding_structure_versions` (legacy, nullable after Task 11 final per D1,D3)
-- `accounting_configuration_id` TEXT nullable FK RESTRICT → `accounting_configurations` (canonical sole scope D1, nullable for legacy orphan D3)
-  - New accounts MUST set it (D1 requires ACTIVE config for root)
-  - Child inherits parent's accounting_configuration_id — version isolation on accounting config
-  - Old rows backfilled from ACTIVE config per org if exists, else remains NULL legacy orphan
+- `coding_structure_version_id` TEXT NOT NULL FK RESTRICT → `coding_structure_versions` (code shape version, D2 untouched, remains NOT NULL)
+- `accounting_configuration_id` TEXT NOT NULL FK RESTRICT → `accounting_configurations` (canonical sole scope D1, NOT NULL after D3 backfill)
+  - New accounts MUST set it (D1 requires ACTIVE config for root, throws typed NoActiveAccountingConfigurationError)
+  - Child inherits parent's both ids — version isolation on both accounting_configuration_id and coding_structure_version_id
+  - Old rows backfilled: first from ACTIVE, then legacy LEGACY ACTIVE config created for orphan orgs per D3, second backfill, then SET NOT NULL
 
 Indexes:
 - `uq_accounts_organization_id_code` (existing)
 - `idx_accounts_accounting_configuration_id` (new)
-- `idx_accounts_coding_structure_version_id` (existing, now nullable)
+- `idx_accounts_coding_structure_version_id` (existing, remains NOT NULL per D2)
 
-### `coding_structure_versions` — NOT touched (D2,R2)
+### `coding_structure_versions` — NOT touched (D2)
 
-No `name`, `effective_from`, `operationally_used_at` addition in Task 11 final. No partial unique index on coding_structure_versions. Task 11 does not alter this table.
+No `name`, `effective_from`, `operationally_used_at` addition in Task 11 final. Task 11 does not alter this table. CodingStructureVersion Task 10.3 untouched.
 
 ## Lifecycle
 
@@ -88,33 +89,36 @@ DRAFT (mutable, not used) → ACTIVE (frozen, one per org) → SUPERSEDED (immut
 - SUPERSEDED immutable
 - operationally_used_at != null blocks mutation/deletion
 
-Single ACTIVE per org:
-- Primary: FOR UPDATE lock serializes publishes (same rationale as financial_areas.is_default)
-- Backstop: partial unique index `uq_accounting_configurations_org_active WHERE status='ACTIVE'` added in final migration `20260920000000` — guarantees invariant under race, Prisma invisible added via raw SQL (allowed per database-strategy.md)
+Single ACTIVE per org: primary FOR UPDATE lock, backstop partial unique index.
 
-## Operational Freeze — D4 Caller
+## Operational Freeze — D4 Deferred
 
 > هر Accounting Configuration که بر Transaction، Posting یا Reporting اثر می‌گذارد، قبل از اولین استفاده عملیاتی قابل تغییر است؛ پس از شروع استفاده عملیاتی، تغییر مخرب ممنوع است و تغییرات آینده باید از طریق Version جدید یا Migration کنترل‌شده انجام شوند.
 
-**Task 11 Final:**
+**Task 11 Final Round 2 per D4:**
 - Implements `operationally_used_at` marker + domain guards `canDestructivelyMutate`, `canDeleteConfiguration`, `assertConfigurationMutable`, `resolveFreezeState`
-- **D4 caller:** `AccountsService.createAccount` calls `AccountingConfigurationsService.markOperationallyUsed(accountingConfigurationId)` after successful pin on active config. Non-fatal, warn logged on failure. This is foundation evidence that config is used operationally.
+- **D4 deferred:** `markOperationallyUsed` NOT called in Task 11. Caller deferred to Posting/System Posting (first Voucher, not Account). Method remains as deferred abstraction without caller, explicitly documented as deferred in ADR-0028 and here — not implicit dead code. Future Posting task will call it on first Voucher finalization.
 - Does NOT yet enforce freeze based on posting/ledger/dimensions — future tasks will call same marker
-- Design centralized: `domain/accounting-configuration-freeze.ts` owns FreezeState mutable/frozen_active/frozen_used/superseded, `resolveFreezeState`, `isConfigurationFrozen`, `ConfigurationFrozenError`, `OperationalUsage`, `isConfigurationUsedOperationally` abstraction
+- Design centralized: `domain/accounting-configuration-freeze.ts` owns FreezeState, `resolveFreezeState`, `isConfigurationFrozen`, `ConfigurationFrozenError`
 - Repository: `markOperationallyUsed({id, now})` idempotent
 - D2: coding_structure_versions freeze columns out of scope
 
-MAX depth 8 architecture cap, not business rule.
+## Chart of Accounts Foundation (D1,D2,D3)
 
-## Chart of Accounts Foundation (D1,D3)
-
-- One table adjacency `parent_id` + `level` (AC-D-06/07) — no groups/generals/subsidiaries/details tables
+- One table adjacency `parent_id` + `level`
 - Level titles/kinds from `accounting_configuration_levels`, configurable — no hardcoded 1=Assets
 - `digit_length` per level configurable, `maxDepth` 1..8, `levelKind` informational
-- **D1 sole scope:** `accounting_configuration_id` is sole authority for new accounts. Root MUST require ACTIVE accounting configuration — throws typed `NoActiveAccountingConfigurationError` (R8), no fallback to `requireActiveVersionOrThrow` (removed)
-- Child inherits parent's accounting_configuration_id, version isolation checks accounting_configuration_id first, fallback to coding version only for legacy orphan (both sides null)
-- **D3 backfill:** `UPDATE accounts SET accounting_configuration_id = (SELECT ac.id FROM accounting_configurations WHERE organization_id = a.organization_id AND status='ACTIVE' LIMIT 1) WHERE NULL`. If org has no active config, remains NULL legacy orphan — documented in ADR-0028, not fake backfill
-- Parent same org + same config, cross-org 404, cycle prevention, postable-parent rule, depth bound, code prefix proof
+- **D1 sole scope NOT NULL:** `accounting_configuration_id` is sole authority, NOT NULL after D3. Root MUST require ACTIVE accounting configuration AND ACTIVE coding structure version (D2) — throws typed `NoActiveAccountingConfigurationError` (D6), no fallback, no string matching.
+- **D2 untouched:** `coding_structure_version_id` remains NOT NULL code shape version, Task 10.3 untouched
+- Child inherits parent's both ids, version isolation checks both
+- **D3 backfill + NOT NULL handling both orphan cases:**
+  1. Add column nullable
+  2. UPDATE from ACTIVE accounting_configurations
+  3. If orphan remains: create LEGACY ACTIVE config per orphan org (code LEGACY, name Legacy Accounting Configuration, version 1, status ACTIVE), copy levels from active coding_structure_versions if exists, else default 2 levels (Group 2, Detail 3)
+  4. Second UPDATE from LEGACY ACTIVE
+  5. ALTER COLUMN SET NOT NULL — must succeed for both orphan=0 and orphan>0
+  - Orphan query: blocked no live DB in sandbox, so migration must handle both
+- Parent same org + same config (both ids), cross-org 404, cycle prevention, postable-parent rule, depth bound, code prefix proof
 - Code immutable, unique per org 409, parent RESTRICT, lifecycle is_active only, no DELETE, no code reuse
 - Nature explicit DEBIT/CREDIT closed list
 
@@ -132,16 +136,17 @@ Permissions: `Accounting.AccountingConfiguration.View`, `Accounting.AccountingCo
 
 ## Invariants & Tests
 
-- `domain/accounting-configuration.spec.ts` 14 invariants: code/name, missing levels, gap/duplicate, digit_length, code_length cap, levelKind configurable, status transitions, delete/mutate guards, freeze state, effectiveFrom, blank title, pattern not hardcoded
-- `application/accounting-configurations.spec.ts` 8 service tests: draft+publish, single ACTIVE, immutable after publish, operational freeze blocks mutation/deletion, delete DRAFT, org isolation 404, configurable hierarchy, View vs Configure
+- `domain/accounting-configuration.spec.ts` 14 invariants
+- `application/accounting-configurations.spec.ts` 8 service tests
 - Chart: 29 tests
-- **R9 live DB FK mismatch test:** must verify real PostgreSQL FK (accounting_configuration_id RESTRICT + coding_structure_version_id nullable) — not in-memory fake. Ensures no cast `AccountingConfiguration.id as CodingStructureVersion.id`
-- Total accounting module ~348 green + R9
+- **D7:** `accounting-configuration-fix.spec.ts` deleted (FK mismatch in-memory fake). Live DB test `accounting-configuration-live.e2e-spec.ts` covers NOT NULL + legacy + FK mismatch (real PostgreSQL FK)
+- Total accounting module green
+- **D6:** typed errors only, no `isNoActiveAccountingConfigurationError` string matching
 
-## Migration (Final per D5)
+## Migration (Final per D5 + D3)
 
 - Single final `20260920000000_accounting_configuration_foundation`:
-  - CREATE `accounting_configurations` (id, org, code, name, version_number, status DRAFT default, effective_from, operationally_used_at, audit) — NO coding_structure_version_id column (D2,R2)
+  - CREATE `accounting_configurations` (id, org, code, name, version_number, status DRAFT default, effective_from, operationally_used_at, audit) — NO coding_structure_version_id column (D2)
   - CREATE UNIQUE `uq_accounting_configurations_org_code_version` (org, code, version_number)
   - CREATE INDEX `idx_accounting_configurations_org_status` (org, status), `idx_accounting_configurations_org_code` (org, code)
   - CREATE UNIQUE partial `uq_accounting_configurations_org_active` (org) WHERE status='ACTIVE' — DB backstop
@@ -151,14 +156,17 @@ Permissions: `Accounting.AccountingConfiguration.View`, `Accounting.AccountingCo
   - ALTER `accounts` ADD `accounting_configuration_id` TEXT nullable
   - ADD FK `fk_accounts_accounting_configuration` RESTRICT → accounting_configurations
   - CREATE INDEX `idx_accounts_accounting_configuration_id`
-  - Backfill per D3: set accounting_configuration_id to active config of same org if exists, else remains NULL legacy orphan
-  - No DROP of self-created objects (D5), no coding_structure_versions touch (D2), no coding partial unique index
+  - Backfill D3 step1: UPDATE from ACTIVE
+  - Legacy handling D3 step2: WITH orphan_orgs, legacy_insert gen_random_uuid LEGACY ACTIVE, copy levels from active coding_structure_versions, default 2 levels fallback
+  - Backfill D3 step3: second UPDATE from LEGACY ACTIVE
+  - SET NOT NULL per D1,D3
+  - No DROP of self-created objects (D5), no coding_structure_versions touch (D2)
 - Prisma schema source of truth, migration-only persistence, no triggers, partial indexes via raw SQL
 
 ## Future Extensions
 
-- Reference `accounting_configuration_id` as configuration scope
-- Call `markOperationallyUsed` when first used (D4 already done for accounts, future: posting, ledger, dimensions, etc.)
+- Reference `accounting_configuration_id` as configuration scope NOT NULL
+- Call `markOperationallyUsed` when first Voucher finalized (D4 deferred to Posting)
 - Guard destructive changes with `isConfigurationFrozen` / `resolveFreezeState`
 - New tables under `accounting` schema linked to configuration version
 
@@ -166,8 +174,9 @@ No change to foundation tables needed for extensions — only new tables referen
 
 ## Links
 
-- ADR-0028: `docs/adr/0028-accounting-configuration-foundation.md` (final)
+- ADR-0028: `docs/adr/0028-accounting-configuration-foundation.md` (final Round 2 D1-D7)
 - Domain: `backend/src/modules/accounting/domain/accounting-configuration.ts`, `account.ts`, `accounting-configuration-freeze.ts`
 - Data: `backend/src/modules/accounting/data/accounting-configurations.repository.ts`, `accounts.repository.ts`
 - Migration: `backend/prisma/migrations/20260920000000_accounting_configuration_foundation/migration.sql`
 - Prisma: `backend/prisma/schema/accounting.prisma`
+- Live DB test: `backend/test/accounting-configuration-live.e2e-spec.ts`

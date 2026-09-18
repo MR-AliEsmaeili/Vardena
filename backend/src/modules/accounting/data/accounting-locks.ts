@@ -343,8 +343,8 @@ export interface LockedAccount {
   title: string;
   parentId: string | null;
   level: number;
-  codingStructureVersionId: string | null;
-  accountingConfigurationId: string | null;
+  codingStructureVersionId: string;
+  accountingConfigurationId: string;
   accountNature: string;
   isPostable: boolean;
   isActive: boolean;

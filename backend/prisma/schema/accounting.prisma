@@ -335,15 +335,12 @@ model Account {
   /// 1-based depth, ALWAYS derived: root = 1, child = parent.level + 1
   /// (AC-I-10 rule 1). Never supplied by a client.
   level          Int
-  /// Legacy: the structure version this account's code was composed under (§9.4).
-  /// Kept for backward compat, nullable after Task 11 final — accounting_configuration_id
-  /// is now sole configuration scope (D1, D3). Existing rows keep their version,
-  /// new rows may set it to null or to parent's pinned version for traceability.
-  codingStructureVersionId String? @map("coding_structure_version_id")
-  /// Task 11 — canonical configuration scope. Nullable for legacy orphan (D3):
-  /// if org has no active accounting configuration, account remains with null.
-  /// New accounts MUST set it (D1).
-  accountingConfigurationId String? @map("accounting_configuration_id")
+  /// The structure version this account's code was composed under (§9.4).
+  /// Task 10.3 legacy, untouched in Task 11 per D2 — remains NOT NULL.
+  codingStructureVersionId String @map("coding_structure_version_id")
+  /// Task 11 — canonical configuration scope, sole scope per D1.
+  /// NOT NULL after D3 backfill (orphan handling). See migration 20260920.
+  accountingConfigurationId String @map("accounting_configuration_id")
   /// Balance direction (`ماهیت`), `debit` | `credit` (§8.3). Reporting
   /// semantics only — it does NOT restrict which side a future line uses
   /// (§13.4).
@@ -363,8 +360,8 @@ model Account {
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   parent       Account?               @relation("AccountTree", fields: [parentId], references: [id], onDelete: Restrict)
   children     Account[]              @relation("AccountTree")
-  codingStructureVersion CodingStructureVersion? @relation(fields: [codingStructureVersionId], references: [id], onDelete: Restrict)
-  accountingConfiguration AccountingConfiguration? @relation("AccountAccountingConfiguration", fields: [accountingConfigurationId], references: [id], onDelete: Restrict)
+  codingStructureVersion CodingStructureVersion @relation(fields: [codingStructureVersionId], references: [id], onDelete: Restrict)
+  accountingConfiguration AccountingConfiguration @relation("AccountAccountingConfiguration", fields: [accountingConfigurationId], references: [id], onDelete: Restrict)
   /// The document lines that reference this account (Task 10.4). The real FK is
   /// `accounting_document_lines.account_id` (RESTRICT); this is the virtual side.
   documentLines AccountingDocumentLine[]

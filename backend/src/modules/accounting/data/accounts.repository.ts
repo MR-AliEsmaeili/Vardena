@@ -97,15 +97,16 @@ export interface AccountListFilter {
  * children: the parent's pinned configuration), because reading another table's shape
  * from a repository of a different aggregate would hide that choice (`AR-08`).
  *
- * After Task 11 final (D1), accounting_configuration_id is sole configuration scope.
- * codingStructureVersionId is kept for backward compat (legacy orphan) but NOT used
- * for validation of new accounts.
+ * After Task 11 final per D1-D3:
+ * - accounting_configuration_id is sole configuration scope NOT NULL
+ * - coding_structure_version_id is code shape version NOT NULL (D2 untouched)
+ * Both are required for isolation checks.
  */
 export interface AccountStructureSnapshot {
-  /** Accounting configuration id — sole authority after Task 11 (D1) */
+  /** Accounting configuration id — sole authority after Task 11 (D1) NOT NULL */
   accountingConfigurationId: string;
-  /** Legacy coding version id nullable — kept for backward compat column, NOT used for validation (D1 sole scope) */
-  versionId: string | null;
+  /** Coding version id — code shape version (D2 untouched) NOT NULL */
+  versionId: string;
   maxDepth: number;
   levels: readonly Pick<
     CodingStructureLevel,
@@ -214,16 +215,19 @@ export class AccountsRepository {
           throw new AccountPlacementRejectedError('parent_not_found');
         }
         parent = placementParent(lockedParent);
-        // Child must belong to same accounting configuration as parent (version isolation)
+        // Child must belong to same accounting configuration AND same coding version as parent (D1 sole scope + D2 code shape)
         if (
-          lockedParent.accountingConfigurationId !== null &&
           lockedParent.accountingConfigurationId !==
-            input.structure.accountingConfigurationId
+          input.structure.accountingConfigurationId
         ) {
           throw new AccountPlacementRejectedError('version_mismatch');
         }
+        if (lockedParent.codingStructureVersionId !== input.structure.versionId) {
+          throw new AccountPlacementRejectedError('version_mismatch');
+        }
       } else {
-        // Root account — D1: MUST require active accounting configuration, no legacy fallback (R10 dead code removed)
+        // Root account — D1: MUST require ACTIVE accounting configuration, no legacy fallback
+        // D2: coding version untouched, still required as code shape — validate both ACTIVE
         const config = await lockAccountingConfigurationRow(
           tx,
           input.structure.accountingConfigurationId,
@@ -234,7 +238,8 @@ export class AccountsRepository {
         if (config.status !== 'ACTIVE') {
           throw new AccountingConfigurationNotActiveError(config.status);
         }
-        // codingStructureVersionId is nullable legacy — no lock needed (D1 sole scope)
+        // coding version is NOT NULL per D2 — versionId must be valid, lock not required here
+        // as structure levels come from accounting config, but version isolation still enforced via snapshot
       }
 
       const plan = planAccountPlacement({
@@ -261,7 +266,7 @@ export class AccountsRepository {
         title: input.title,
         parentId: input.parentId,
         level: plan.level,
-        codingStructureVersionId: input.structure.versionId || null,
+        codingStructureVersionId: input.structure.versionId,
         accountingConfigurationId: input.structure.accountingConfigurationId,
         accountNature: input.accountNature,
         isPostable: input.isPostable,
@@ -394,9 +399,8 @@ export class AccountsRepository {
           ),
           current: {
             level: node.level,
-            codingStructureVersionId: node.codingStructureVersionId ?? null,
-            accountingConfigurationId:
-              node.accountingConfigurationId ?? null,
+            codingStructureVersionId: node.codingStructureVersionId,
+            accountingConfigurationId: node.accountingConfigurationId,
             hasChildren,
           },
           levels: input.structure?.levels ?? [],
@@ -519,10 +523,8 @@ function placementParent(
     level: row.level,
     isPostable: row.isPostable,
     isActive: row.isActive,
-    codingStructureVersionId:
-      (row as any).codingStructureVersionId ?? null,
-    accountingConfigurationId:
-      (row as any).accountingConfigurationId ?? null,
+    codingStructureVersionId: (row as any).codingStructureVersionId,
+    accountingConfigurationId: (row as any).accountingConfigurationId,
   };
 }
 
@@ -535,10 +537,7 @@ function toDomain(row: AccountRow | LockedAccount): Account {
     parentId: row.parentId,
     level: row.level,
     codingStructureVersionId: row.codingStructureVersionId,
-    accountingConfigurationId:
-      (row as AccountRow).accountingConfigurationId ??
-      (row as LockedAccount).accountingConfigurationId ??
-      null,
+    accountingConfigurationId: (row as AccountRow).accountingConfigurationId,
     // Unreachable by construction (writes go through the closed list); the
     // fallback picks the reading no report should silently treat as credit.
     accountNature: isAccountNature(row.accountNature)

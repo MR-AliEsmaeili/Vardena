@@ -1,6 +1,7 @@
 /**
  * In-memory stand-ins for the Task 10.3 repositories (coding structure +
  * chart of accounts) and Task 11 (accounting configuration).
+ * Final per D1-D7: both accounting_configuration_id and coding_structure_version_id NOT NULL.
  */
 
 import type {
@@ -90,8 +91,8 @@ export interface AccountRecord extends Row {
   title: string;
   parentId: string | null;
   level: number;
-  codingStructureVersionId: string | null;
-  accountingConfigurationId: string | null;
+  codingStructureVersionId: string;
+  accountingConfigurationId: string;
   accountNature: string;
   isPostable: boolean;
   isActive: boolean;
@@ -110,7 +111,6 @@ export interface AccountingConfigurationRecord extends Row {
   status: string;
   effectiveFrom: Date | null;
   operationallyUsedAt: Date | null;
-  /** Task 11 Review Fix — explicit FK to coding_structure_versions.id */
   codingStructureVersionId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -550,8 +550,6 @@ export class InMemoryAccountingConfigurationsRepository {
     actorId: string | null;
   }): Promise<AccountingConfiguration & { levels: AccountingConfigurationLevel[] }> {
     const now = input.createdAt;
-    // Task 11 Final D1 — NO linked coding version (sole scope accounting config)
-    // codingStructureVersionId input ignored for final architecture
     const row: AccountingConfigurationRecord = {
       id: input.id,
       organizationId: input.organizationId,
@@ -698,7 +696,6 @@ export class InMemoryAccountingConfigurationsRepository {
       updatedAt: input.now,
       updatedBy: input.actorId,
     });
-    // Concurrency-safe ACTIVE uniqueness — partial unique index backstop simulation
     const activeConfigs = this.state.accountingConfigurations.findMany(
       (c) => c.organizationId === input.organizationId && c.status === 'ACTIVE',
     );
@@ -823,29 +820,29 @@ export class InMemoryAccountsRepository {
       throw new AccountPlacementRejectedError('parent_not_found');
     }
 
-    // Task 11 Final D1 — sole scope accounting_configuration_id, codingStructureVersionId nullable legacy
+    // Task 11 Final D1/D2/D3 — both NOT NULL
     const configId = input.structure.accountingConfigurationId;
-    if (configId === null || configId === undefined || (configId as any) === '') {
-      throw new Error(`FK violation: accounting_configuration_id is required (D1 sole scope) — got ${String(configId)}`);
+    if (!configId) {
+      throw new Error(`FK violation: accounting_configuration_id is required (D1) — got ${String(configId)}`);
     }
     const configRow = this.state.accountingConfigurations.findById(configId);
     if (configRow === null) {
-      throw new Error(`FK violation: accounting_configuration_id "${configId}" does not exist`);
+      throw new Error(`FK violation: accounting_configuration_id \"${configId}\" does not exist`);
     }
-    // codingStructureVersionId nullable — if provided must exist and must not be same as config id (cast bug)
-    const versionId = (input.structure as any).versionId ?? null;
-    if (versionId !== null && versionId !== '' && versionId !== undefined) {
-      const maybeConfig = this.state.accountingConfigurations.findById(versionId);
-      if (maybeConfig !== null) {
-        throw new Error(`FK mismatch: coding_structure_version_id "${versionId}" is actually an AccountingConfiguration.id (cast bug). Expected real CodingStructureVersion.id or null.`);
-      }
-      const codingRow = this.state.versions.findById(versionId);
-      if (codingRow === null) {
-        throw new Error(`FK violation: coding_structure_version_id "${versionId}" does not exist in coding_structure_versions`);
-      }
-      if (configRow.id === versionId) {
-        throw new Error(`FK mismatch: accounting_configuration_id and coding_structure_version_id identical "${configRow.id}"`);
-      }
+    const versionId = input.structure.versionId;
+    if (!versionId) {
+      throw new Error(`FK violation: coding_structure_version_id is required (D2) — got ${String(versionId)}`);
+    }
+    const maybeConfig = this.state.accountingConfigurations.findById(versionId);
+    if (maybeConfig !== null) {
+      throw new Error(`FK mismatch: coding_structure_version_id \"${versionId}\" is actually an AccountingConfiguration.id`);
+    }
+    const codingRow = this.state.versions.findById(versionId);
+    if (codingRow === null) {
+      throw new Error(`FK violation: coding_structure_version_id \"${versionId}\" does not exist`);
+    }
+    if (configRow.id === versionId) {
+      throw new Error(`FK mismatch: ids identical \"${configRow.id}\"`);
     }
 
     if (input.parentId === null) {
@@ -853,7 +850,10 @@ export class InMemoryAccountsRepository {
         throw new Error(`Accounting configuration ${configRow.id} status ${configRow.status} not ACTIVE`);
       }
     } else {
-      if (parentRow !== null && parentRow.accountingConfigurationId !== null && parentRow.accountingConfigurationId !== configId) {
+      if (parentRow !== null && parentRow.accountingConfigurationId !== configId) {
+        throw new AccountPlacementRejectedError('version_mismatch');
+      }
+      if (parentRow !== null && parentRow.codingStructureVersionId !== versionId) {
         throw new AccountPlacementRejectedError('version_mismatch');
       }
     }
@@ -878,8 +878,8 @@ export class InMemoryAccountsRepository {
       title: input.title,
       parentId: input.parentId,
       level: plan.level,
-      codingStructureVersionId: (input.structure as any).versionId ?? null,
-      accountingConfigurationId: input.structure.accountingConfigurationId ?? null,
+      codingStructureVersionId: input.structure.versionId,
+      accountingConfigurationId: input.structure.accountingConfigurationId,
       accountNature: input.accountNature,
       isPostable: input.isPostable,
       isActive: true,
@@ -961,8 +961,8 @@ export class InMemoryAccountsRepository {
         descendantIds: collectDescendantIds(edges, node.id),
         current: {
           level: node.level,
-          codingStructureVersionId: node.codingStructureVersionId ?? null,
-          accountingConfigurationId: node.accountingConfigurationId ?? null,
+          codingStructureVersionId: node.codingStructureVersionId,
+          accountingConfigurationId: node.accountingConfigurationId,
           hasChildren: children.length > 0,
         } as any,
         levels: input.structure?.levels ?? [],
@@ -1056,8 +1056,8 @@ function placementParent(row: AccountRecord) {
     level: row.level,
     isPostable: row.isPostable,
     isActive: row.isActive,
-    codingStructureVersionId: row.codingStructureVersionId ?? null,
-    accountingConfigurationId: row.accountingConfigurationId ?? null,
+    codingStructureVersionId: row.codingStructureVersionId,
+    accountingConfigurationId: row.accountingConfigurationId,
   };
 }
 
@@ -1071,7 +1071,7 @@ function toAccount(row: AccountRecord | null | undefined): Account | null {
     parentId: row.parentId,
     level: row.level,
     codingStructureVersionId: row.codingStructureVersionId,
-    accountingConfigurationId: row.accountingConfigurationId ?? null,
+    accountingConfigurationId: row.accountingConfigurationId,
     accountNature: row.accountNature as Account['accountNature'],
     isPostable: row.isPostable,
     isActive: row.isActive,
