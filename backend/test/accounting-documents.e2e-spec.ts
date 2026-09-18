@@ -19,6 +19,7 @@ import { FinancialAreasRepository } from '../src/modules/accounting/data/financi
 import { FiscalYearsRepository } from '../src/modules/accounting/data/fiscal-years.repository.js';
 import { AccountingPeriodsRepository } from '../src/modules/accounting/data/accounting-periods.repository.js';
 import { CodingStructuresRepository } from '../src/modules/accounting/data/coding-structures.repository.js';
+import { AccountingConfigurationsRepository } from '../src/modules/accounting/data/accounting-configurations.repository.js';
 import { AccountsRepository } from '../src/modules/accounting/data/accounts.repository.js';
 import { AccountingDocumentsRepository } from '../src/modules/accounting/data/accounting-documents.repository.js';
 import { AccountingDocumentLinesRepository } from '../src/modules/accounting/data/accounting-document-lines.repository.js';
@@ -186,6 +187,8 @@ describe('Accounting documents (e2e)', () => {
           .useValue(accounting.periods)
           .overrideProvider(CodingStructuresRepository)
           .useValue(structure.structures)
+          .overrideProvider(AccountingConfigurationsRepository)
+          .useValue(structure.configurations)
           .overrideProvider(AccountsRepository)
           .useValue(structure.accounts)
           .overrideProvider(AccountingDocumentsRepository)
@@ -349,6 +352,30 @@ describe('Accounting documents (e2e)', () => {
     ).body.id as string;
     await root
       .post(`/api/v1/coding-structures/${version}/publish`)
+      .query({ organizationId: state.orgA })
+      .expect(200);
+
+    const accConfig = (
+      await root
+        .post('/api/v1/accounting-configurations')
+        .send({
+          organizationId: state.orgA,
+          code: 'DEFAULT',
+          name: 'Default Accounting Config',
+          levels: [
+            {
+              levelIndex: 1,
+              title: 'Account',
+              digitLength: 4,
+              defaultIsPostable: true,
+              levelKind: 'detail',
+            },
+          ],
+        })
+        .expect(201)
+    ).body.id as string;
+    await root
+      .post(`/api/v1/accounting-configurations/${accConfig}/publish`)
       .query({ organizationId: state.orgA })
       .expect(200);
 
