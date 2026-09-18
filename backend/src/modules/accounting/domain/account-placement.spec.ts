@@ -42,6 +42,7 @@ function parent(
     isPostable: false,
     isActive: true,
     codingStructureVersionId: 'v1',
+    accountingConfigurationId: 'cfg1',
     ...overrides,
   };
 }
@@ -52,6 +53,7 @@ function current(
   return {
     level: 2,
     codingStructureVersionId: 'v1',
+    accountingConfigurationId: 'cfg1',
     hasChildren: false,
     ...overrides,
   };
@@ -273,8 +275,8 @@ describe('code ⇄ hierarchy consistency (§9.3)', () => {
   });
 });
 
-describe('one subtree, one coding-structure version (§9.4)', () => {
-  it('refuses moving a node under a parent pinned to another version', () => {
+describe('one subtree, one coding-structure version (§9.4) — now accounting config sole scope D1', () => {
+  it('refuses moving a node under a parent pinned to another version (coding legacy)', () => {
     expect(
       placement({
         id: 'A',
@@ -282,6 +284,25 @@ describe('one subtree, one coding-structure version (§9.4)', () => {
         parent: parent({ id: 'p2', codingStructureVersionId: 'v2' }),
         code: '02003',
         current: current(),
+      }).problem,
+    ).toBe('version_mismatch');
+  });
+
+  it('refuses moving a node under a parent pinned to another accounting config (D1 sole scope)', () => {
+    expect(
+      placement({
+        id: 'A',
+        parentId: 'p2',
+        parent: parent({
+          id: 'p2',
+          accountingConfigurationId: 'cfg2',
+          codingStructureVersionId: 'v1',
+        }),
+        code: '02003',
+        current: current({
+          accountingConfigurationId: 'cfg1',
+          codingStructureVersionId: 'v1',
+        }),
       }).problem,
     ).toBe('version_mismatch');
   });

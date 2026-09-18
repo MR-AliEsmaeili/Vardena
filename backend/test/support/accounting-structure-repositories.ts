@@ -1,26 +1,9 @@
 /**
  * In-memory stand-ins for the Task 10.3 repositories (coding structure +
- * chart of accounts).
- *
- * Same contract as the calendar fakes in `accounting-repositories.ts`: the
- * e2e suites run the FULL HTTP stack with no Postgres and no Prisma codegen,
- * so what is faked is data access only — authorization, organization
- * scoping, placement rules, code rules, version semantics and the guard
- * errors are the REAL ones, executed by the real services against these rows.
- *
- * The fakes mirror the guarded transactions' observable effects:
- * - the unique indexes (`(organizationId, code, versionNumber)` for versions,
- *   `(versionId, levelIndex)` for levels, `(organizationId, code)` for
- *   accounts) throw the same `P2002`;
- * - the guard methods (`updateDraftChecked`, `publishChecked`,
- *   `createChecked`, `updateChecked`) re-evaluate the SAME domain decision
- *   tables against the committed rows and throw the SAME plain errors the real
- *   repositories throw, so one service mapping covers both paths.
- *
- * Locking has no observable effect in a single-threaded fake; what matters is
- * that the guard evaluates against committed state and the write applies
- * atomically. True lock contention is covered by the live-database suite.
+ * chart of accounts) and Task 11 (accounting configuration).
+ * Final per D1-D7: both accounting_configuration_id and coding_structure_version_id NOT NULL.
  */
+
 import type {
   CodingStructureLevel,
   CodingStructureVersion,
@@ -29,6 +12,11 @@ import {
   isAccountLevelKind,
   planCodingStructure,
 } from '../../src/modules/accounting/domain/coding-structure.js';
+import type {
+  AccountingConfiguration,
+  AccountingConfigurationLevel,
+} from '../../src/modules/accounting/domain/accounting-configuration.js';
+import { planAccountingConfiguration } from '../../src/modules/accounting/domain/accounting-configuration.js';
 import type { Account } from '../../src/modules/accounting/domain/account.js';
 import {
   planAccountEdit,
@@ -40,6 +28,8 @@ import {
   AccountImmutableAfterUseError,
   AccountPlacementRejectedError,
   AccountPostabilityRejectedError,
+  AccountingConfigurationNotDraftError,
+  AccountingConfigurationPlanRejectedError,
   CodingStructureNotDraftError,
   CodingStructurePlanRejectedError,
   CodingStructureVersionNotActiveError,
@@ -48,6 +38,10 @@ import type { AccountStructureSnapshot } from '../../src/modules/accounting/data
 import type { LevelWrite } from '../../src/modules/accounting/data/coding-structures.repository.js';
 import type { CodingStructuresRepository } from '../../src/modules/accounting/data/coding-structures.repository.js';
 import type { AccountsRepository } from '../../src/modules/accounting/data/accounts.repository.js';
+import type {
+  AccountingConfigurationsRepository,
+  ConfigurationLevelWrite,
+} from '../../src/modules/accounting/data/accounting-configurations.repository.js';
 import { InMemoryTable, type Row } from './master-data-repositories.js';
 
 type OrderBy = Array<Record<string, 'asc' | 'desc'>>;
@@ -59,22 +53,23 @@ interface ListParams {
   take: number;
 }
 
-/** Version row as stored by the fake (levels are attached on read). */
 export interface CodingStructureVersionRecord extends Row {
   id: string;
   organizationId: string;
   code: string;
+  name?: string;
   versionNumber: number;
   status: string;
   maxDepth: number;
   separator: string;
+  effectiveFrom?: Date | null;
+  operationallyUsedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
   updatedBy: string | null;
 }
 
-/** Level row as stored by the fake (the domain entity has no scope columns). */
 export interface CodingStructureLevelRecord extends Row {
   id: string;
   versionId: string;
@@ -97,7 +92,8 @@ export interface AccountRecord extends Row {
   title: string;
   parentId: string | null;
   level: number;
-  codingStructureVersionId: string;
+  codingStructureVersionId: string | null;
+  accountingConfigurationId: string | null;
   accountNature: string;
   isPostable: boolean;
   isActive: boolean;
@@ -107,9 +103,42 @@ export interface AccountRecord extends Row {
   updatedBy: string | null;
 }
 
+export interface AccountingConfigurationRecord extends Row {
+  id: string;
+  organizationId: string;
+  code: string;
+  name: string;
+  versionNumber: number;
+  status: string;
+  effectiveFrom: Date | null;
+  operationallyUsedAt: Date | null;
+  codingStructureVersionId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+}
+
+export interface AccountingConfigurationLevelRecord extends Row {
+  id: string;
+  organizationId: string;
+  configurationId: string;
+  levelIndex: number;
+  title: string;
+  digitLength: number;
+  defaultIsPostable: boolean;
+  levelKind: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+}
+
 export interface StructureState {
   versions: InMemoryTable<CodingStructureVersionRecord>;
   levels: InMemoryTable<CodingStructureLevelRecord>;
+  accountingConfigurations: InMemoryTable<AccountingConfigurationRecord>;
+  accountingConfigurationLevels: InMemoryTable<AccountingConfigurationLevelRecord>;
   accounts: InMemoryTable<AccountRecord>;
 }
 
@@ -121,6 +150,13 @@ export function createStructureState(): StructureState {
     levels: new InMemoryTable<CodingStructureLevelRecord>([
       ['versionId', 'levelIndex'],
     ]),
+    accountingConfigurations: new InMemoryTable<AccountingConfigurationRecord>([
+      ['organizationId', 'code', 'versionNumber'],
+    ]),
+    accountingConfigurationLevels:
+      new InMemoryTable<AccountingConfigurationLevelRecord>([
+        ['configurationId', 'levelIndex'],
+      ]),
     accounts: new InMemoryTable<AccountRecord>([['organizationId', 'code']]),
   };
 }
@@ -132,10 +168,9 @@ function compareValues(left: unknown, right: unknown): number {
   if (typeof left === 'number' && typeof right === 'number') {
     return left - right;
   }
-  return String(left ?? '').localeCompare(String(right ?? ''));
+  return String(left ?? '').localeCompare(String(right ?? ''), 'en');
 }
 
-/** Equality filter + sort + page, like the real repositories' `where`. */
 function listPage<TRow extends Row>(
   table: InMemoryTable<TRow>,
   params: ListParams,
@@ -148,9 +183,11 @@ function listPage<TRow extends Row>(
       if (key === 'search') {
         const search = String(expected).toLowerCase();
         const code = record['code'];
+        const name = record['name'];
         const title = record['title'];
         const hit =
           (typeof code === 'string' && code.toLowerCase().includes(search)) ||
+          (typeof name === 'string' && name.toLowerCase().includes(search)) ||
           (typeof title === 'string' && title.toLowerCase().includes(search));
         if (!hit) return false;
         continue;
@@ -290,8 +327,6 @@ export class InMemoryCodingStructuresRepository {
       createdBy: input.actorId,
       updatedBy: input.actorId,
     };
-    // `insert` enforces the unique tuple and throws `P2002`, exactly like the
-    // index does, so the service's retry loop is exercised for real.
     this.state.versions.insert(row);
     for (const level of input.levels) {
       this.state.levels.insert(
@@ -425,16 +460,344 @@ export class InMemoryCodingStructuresRepository {
 }
 
 // ---------------------------------------------------------------------------
+// Accounting configurations (Task 11)
+// ---------------------------------------------------------------------------
+
+export class InMemoryAccountingConfigurationsRepository {
+  constructor(private readonly state: StructureState) {}
+
+  private levelsOf(configurationId: string): AccountingConfigurationLevel[] {
+    return this.state.accountingConfigurationLevels
+      .findMany((level) => level.configurationId === configurationId)
+      .sort((a, b) => a.levelIndex - b.levelIndex)
+      .map((level) => ({
+        id: level.id,
+        configurationId: level.configurationId,
+        levelIndex: level.levelIndex,
+        title: level.title,
+        digitLength: level.digitLength,
+        defaultIsPostable: level.defaultIsPostable,
+        levelKind: level.levelKind,
+      })) as AccountingConfigurationLevel[];
+  }
+
+  private withLevels(
+    row: AccountingConfigurationRecord,
+  ): AccountingConfiguration & { levels: AccountingConfigurationLevel[] } {
+    const levels = this.levelsOf(row.id);
+    return {
+      id: row.id,
+      organizationId: row.organizationId,
+      code: row.code,
+      name: row.name,
+      versionNumber: row.versionNumber,
+      status: row.status as AccountingConfiguration['status'],
+      effectiveFrom: row.effectiveFrom,
+      operationallyUsedAt: row.operationallyUsedAt,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      levels,
+    } as any;
+  }
+
+  async findById(
+    id: string,
+  ): Promise<
+    | (AccountingConfiguration & { levels: AccountingConfigurationLevel[] })
+    | null
+  > {
+    const row = this.state.accountingConfigurations.findById(id);
+    return row === null ? null : this.withLevels(row);
+  }
+
+  async findActiveForOrganization(
+    organizationId: string,
+  ): Promise<
+    | (AccountingConfiguration & { levels: AccountingConfigurationLevel[] })
+    | null
+  > {
+    const row = this.state.accountingConfigurations.findOne(
+      (candidate) =>
+        candidate.organizationId === organizationId &&
+        candidate.status === 'ACTIVE',
+    );
+    return row === null ? null : this.withLevels(row);
+  }
+
+  async findLatestForCode(
+    organizationId: string,
+    code: string,
+  ): Promise<{ versionNumber: number } | null> {
+    const rows = this.state.accountingConfigurations.findMany(
+      (row) => row.organizationId === organizationId && row.code === code,
+    );
+    if (rows.length === 0) return null;
+    const max = rows.reduce(
+      (best, row) => (row.versionNumber > best ? row.versionNumber : best),
+      0,
+    );
+    return { versionNumber: max };
+  }
+
+  async list(params: ListParams): Promise<{
+    items: (AccountingConfiguration & {
+      levels: AccountingConfigurationLevel[];
+    })[];
+    total: number;
+  }> {
+    const { items, total } = listPage(
+      this.state.accountingConfigurations,
+      params,
+    );
+    return { items: items.map((row) => this.withLevels(row)), total };
+  }
+
+  async createDraftWithLevels(input: {
+    id: string;
+    organizationId: string;
+    code: string;
+    name: string;
+    versionNumber: number;
+    effectiveFrom: Date | null;
+    codingStructureVersionId?: string | null;
+    levels: readonly ConfigurationLevelWrite[];
+    createdAt: Date;
+    actorId: string | null;
+  }): Promise<
+    AccountingConfiguration & { levels: AccountingConfigurationLevel[] }
+  > {
+    const now = input.createdAt;
+    const row: AccountingConfigurationRecord = {
+      id: input.id,
+      organizationId: input.organizationId,
+      code: input.code,
+      name: input.name,
+      versionNumber: input.versionNumber,
+      status: 'DRAFT',
+      effectiveFrom: input.effectiveFrom,
+      operationallyUsedAt: null,
+      codingStructureVersionId: input.codingStructureVersionId ?? null,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: input.actorId,
+      updatedBy: input.actorId,
+    };
+    this.state.accountingConfigurations.insert(row);
+    for (const level of input.levels) {
+      this.state.accountingConfigurationLevels.insert(
+        configurationLevelRecord(
+          level,
+          input.id,
+          input.organizationId,
+          now,
+          input.actorId,
+        ),
+      );
+    }
+    return this.withLevels(row);
+  }
+
+  async updateDraftChecked(input: {
+    id: string;
+    name?: string | undefined;
+    effectiveFrom?: Date | null | undefined;
+    levels?: readonly ConfigurationLevelWrite[] | undefined;
+    updatedAt: Date;
+    actorId: string | null;
+  }): Promise<
+    AccountingConfiguration & { levels: AccountingConfigurationLevel[] }
+  > {
+    const stored = this.state.accountingConfigurations.findById(input.id);
+    if (stored === null) {
+      throw new Error(
+        `Accounting configuration "${input.id}" no longer exists.`,
+      );
+    }
+    if (stored.status !== 'DRAFT') {
+      throw new AccountingConfigurationNotDraftError(stored.status);
+    }
+    if (stored.operationallyUsedAt !== null) {
+      throw new AccountingConfigurationNotDraftError('operationally_used');
+    }
+    const candidateName = input.name ?? stored.name;
+    const candidateEffectiveFrom =
+      input.effectiveFrom !== undefined
+        ? input.effectiveFrom
+        : stored.effectiveFrom;
+
+    const existing = this.levelsOf(input.id);
+    const candidates: readonly ConfigurationLevelWrite[] =
+      input.levels ??
+      existing.map((level) => ({
+        id: level.id,
+        levelIndex: level.levelIndex,
+        title: level.title,
+        digitLength: level.digitLength,
+        defaultIsPostable: level.defaultIsPostable,
+        levelKind: level.levelKind,
+      }));
+
+    const plan = planAccountingConfiguration({
+      code: stored.code,
+      name: candidateName,
+      effectiveFrom: candidateEffectiveFrom,
+      maxDepth: candidates.length,
+      levels: candidates,
+    });
+    if (plan.problem !== null) {
+      throw new AccountingConfigurationPlanRejectedError(
+        plan.problem,
+        plan.subject,
+      );
+    }
+
+    this.state.accountingConfigurations.patch(input.id, {
+      name: candidateName,
+      effectiveFrom: candidateEffectiveFrom,
+      updatedAt: input.updatedAt,
+      updatedBy: input.actorId,
+    });
+
+    if (input.levels !== undefined) {
+      for (const level of existing)
+        this.state.accountingConfigurationLevels.delete(level.id);
+      for (const level of input.levels) {
+        this.state.accountingConfigurationLevels.insert(
+          configurationLevelRecord(
+            level,
+            input.id,
+            stored.organizationId,
+            input.updatedAt,
+            input.actorId,
+          ),
+        );
+      }
+    }
+    const updated = this.state.accountingConfigurations.findById(input.id);
+    if (updated === null) {
+      throw new Error(
+        `Accounting configuration "${input.id}" no longer exists.`,
+      );
+    }
+    return this.withLevels(updated);
+  }
+
+  async publishChecked(input: {
+    configurationId: string;
+    organizationId: string;
+    now: Date;
+    actorId: string | null;
+  }): Promise<{
+    configuration: AccountingConfiguration & {
+      levels: AccountingConfigurationLevel[];
+    };
+    supersededId: string | null;
+  } | null> {
+    const target = this.state.accountingConfigurations.findById(
+      input.configurationId,
+    );
+    if (target === null || target.organizationId !== input.organizationId) {
+      return null;
+    }
+    if (target.status !== 'DRAFT') {
+      throw new AccountingConfigurationNotDraftError(target.status);
+    }
+    if (target.operationallyUsedAt !== null) {
+      throw new AccountingConfigurationNotDraftError('operationally_used');
+    }
+    const levels = this.levelsOf(input.configurationId);
+    const plan = planAccountingConfiguration({
+      code: target.code,
+      name: target.name,
+      effectiveFrom: target.effectiveFrom,
+      maxDepth: levels.length,
+      levels,
+    });
+    if (plan.problem !== null) {
+      throw new AccountingConfigurationPlanRejectedError(
+        plan.problem,
+        plan.subject,
+      );
+    }
+    let supersededId: string | null = null;
+    for (const row of this.state.accountingConfigurations.findMany(
+      (candidate) =>
+        candidate.organizationId === input.organizationId &&
+        candidate.status === 'ACTIVE' &&
+        candidate.id !== input.configurationId,
+    )) {
+      supersededId = row.id;
+      this.state.accountingConfigurations.patch(row.id, {
+        status: 'SUPERSEDED',
+        updatedAt: input.now,
+        updatedBy: input.actorId,
+      });
+    }
+    this.state.accountingConfigurations.patch(input.configurationId, {
+      status: 'ACTIVE',
+      updatedAt: input.now,
+      updatedBy: input.actorId,
+    });
+    const activeConfigs = this.state.accountingConfigurations.findMany(
+      (c) => c.organizationId === input.organizationId && c.status === 'ACTIVE',
+    );
+    if (activeConfigs.length > 1) {
+      throw new Error(
+        `Partial unique index violation: uq_accounting_configurations_org_active — organization ${input.organizationId} has ${activeConfigs.length} ACTIVE configs`,
+      );
+    }
+    const published = this.state.accountingConfigurations.findById(
+      input.configurationId,
+    );
+    if (published === null) {
+      throw new Error(
+        `Accounting configuration "${input.configurationId}" no longer exists.`,
+      );
+    }
+    return { configuration: this.withLevels(published), supersededId };
+  }
+
+  async markOperationallyUsed(input: {
+    id: string;
+    now: Date;
+  }): Promise<
+    | (AccountingConfiguration & { levels: AccountingConfigurationLevel[] })
+    | null
+  > {
+    const existing = this.state.accountingConfigurations.findById(input.id);
+    if (existing === null) return null;
+    if (existing.operationallyUsedAt !== null) {
+      return this.withLevels(existing);
+    }
+    this.state.accountingConfigurations.patch(input.id, {
+      operationallyUsedAt: input.now,
+      updatedAt: input.now,
+    });
+    const updated = this.state.accountingConfigurations.findById(input.id);
+    return updated === null ? null : this.withLevels(updated);
+  }
+
+  async deleteDraft(input: { id: string }): Promise<boolean> {
+    const existing = this.state.accountingConfigurations.findById(input.id);
+    if (existing === null) return false;
+    if (existing.status !== 'DRAFT') {
+      throw new AccountingConfigurationNotDraftError(existing.status);
+    }
+    if (existing.operationallyUsedAt !== null) {
+      throw new AccountingConfigurationNotDraftError('operationally_used');
+    }
+    for (const level of this.levelsOf(input.id)) {
+      this.state.accountingConfigurationLevels.delete(level.id);
+    }
+    this.state.accountingConfigurations.delete(input.id);
+    return true;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Accounts
 // ---------------------------------------------------------------------------
 
-/**
- * AC-I-11's predicate, wired to real data by Task 10.4: a structural account
- * field is frozen once `accounting_document_lines` references the account. The
- * fake reads the SHARED document-line table (the same object the voucher fakes
- * write), so a test that composes a voucher into an account observes the freeze
- * — the cross-aggregate interlock the real transaction gets from the row locks.
- */
 export interface AccountLineUsage {
   countForAccount(accountId: string): number;
 }
@@ -506,12 +869,60 @@ export class InMemoryAccountsRepository {
     if (input.parentId !== null && parentRow === null) {
       throw new AccountPlacementRejectedError('parent_not_found');
     }
+
+    // Task 11 Final D1/D2/D3 — both NOT NULL
+    const configId = input.structure.accountingConfigurationId;
+    if (!configId) {
+      throw new Error(
+        `FK violation: accounting_configuration_id is required (D1) — got ${String(configId)}`,
+      );
+    }
+    const configRow = this.state.accountingConfigurations.findById(configId);
+    if (configRow === null) {
+      throw new Error(
+        `FK violation: accounting_configuration_id "${configId}" does not exist`,
+      );
+    }
+    const versionId = input.structure.versionId;
+    if (!versionId) {
+      throw new Error(
+        `FK violation: coding_structure_version_id is required (D2) — got ${String(versionId)}`,
+      );
+    }
+    const maybeConfig = this.state.accountingConfigurations.findById(versionId);
+    if (maybeConfig !== null) {
+      throw new Error(
+        `FK mismatch: coding_structure_version_id "${versionId}" is actually an AccountingConfiguration.id`,
+      );
+    }
+    const codingRow = this.state.versions.findById(versionId);
+    if (codingRow === null) {
+      throw new Error(
+        `FK violation: coding_structure_version_id "${versionId}" does not exist`,
+      );
+    }
+    if (configRow.id === versionId) {
+      throw new Error(`FK mismatch: ids identical "${configRow.id}"`);
+    }
+
     if (input.parentId === null) {
-      const version = this.state.versions.findById(input.structure.versionId);
-      if (version === null || version.status !== 'active') {
-        throw new CodingStructureVersionNotActiveError(
-          version?.status ?? 'missing',
+      if (configRow.status !== 'ACTIVE') {
+        throw new Error(
+          `Accounting configuration ${configRow.id} status ${configRow.status} not ACTIVE`,
         );
+      }
+    } else {
+      if (
+        parentRow !== null &&
+        parentRow.accountingConfigurationId !== configId
+      ) {
+        throw new AccountPlacementRejectedError('version_mismatch');
+      }
+      if (
+        parentRow !== null &&
+        parentRow.codingStructureVersionId !== versionId
+      ) {
+        throw new AccountPlacementRejectedError('version_mismatch');
       }
     }
     const plan = planAccountPlacement({
@@ -536,6 +947,7 @@ export class InMemoryAccountsRepository {
       parentId: input.parentId,
       level: plan.level,
       codingStructureVersionId: input.structure.versionId,
+      accountingConfigurationId: input.structure.accountingConfigurationId,
       accountNature: input.accountNature,
       isPostable: input.isPostable,
       isActive: true,
@@ -613,13 +1025,14 @@ export class InMemoryAccountsRepository {
         organizationId: node.organizationId,
         parentId: requestedParentId,
         code: node.code,
-        parent: parentRow === null ? null : placementParent(parentRow),
+        parent: parentRow === null ? null : (placementParent(parentRow) as any),
         descendantIds: collectDescendantIds(edges, node.id),
         current: {
           level: node.level,
           codingStructureVersionId: node.codingStructureVersionId,
+          accountingConfigurationId: node.accountingConfigurationId,
           hasChildren: children.length > 0,
-        },
+        } as any,
         levels: input.structure?.levels ?? [],
         maxDepth: input.structure?.maxDepth ?? 0,
       });
@@ -680,6 +1093,29 @@ function levelRecord(
   };
 }
 
+function configurationLevelRecord(
+  level: ConfigurationLevelWrite,
+  configurationId: string,
+  organizationId: string,
+  now: Date,
+  actorId: string | null,
+): AccountingConfigurationLevelRecord {
+  return {
+    id: level.id,
+    configurationId,
+    organizationId,
+    levelIndex: level.levelIndex,
+    title: level.title,
+    digitLength: level.digitLength,
+    defaultIsPostable: level.defaultIsPostable,
+    levelKind: level.levelKind,
+    createdAt: now,
+    updatedAt: now,
+    createdBy: actorId,
+    updatedBy: actorId,
+  };
+}
+
 function placementParent(row: AccountRecord) {
   return {
     id: row.id,
@@ -689,6 +1125,7 @@ function placementParent(row: AccountRecord) {
     isPostable: row.isPostable,
     isActive: row.isActive,
     codingStructureVersionId: row.codingStructureVersionId,
+    accountingConfigurationId: row.accountingConfigurationId,
   };
 }
 
@@ -702,6 +1139,7 @@ function toAccount(row: AccountRecord | null | undefined): Account | null {
     parentId: row.parentId,
     level: row.level,
     codingStructureVersionId: row.codingStructureVersionId,
+    accountingConfigurationId: row.accountingConfigurationId,
     accountNature: row.accountNature as Account['accountNature'],
     isPostable: row.isPostable,
     isActive: row.isActive,
@@ -710,12 +1148,13 @@ function toAccount(row: AccountRecord | null | undefined): Account | null {
   };
 }
 
-/** Bundle exported through `createAccountingStores` (see that file). */
 export interface StructureStores {
   structures: CodingStructuresRepository;
+  configurations: AccountingConfigurationsRepository;
   accounts: AccountsRepository;
   raw: {
     structures: InMemoryCodingStructuresRepository;
+    configurations: InMemoryAccountingConfigurationsRepository;
     accounts: InMemoryAccountsRepository;
     state: StructureState;
   };
@@ -726,13 +1165,16 @@ export function createStructureStores(
 ): StructureStores {
   const state = createStructureState();
   const structures = new InMemoryCodingStructuresRepository(state);
+  const configurations = new InMemoryAccountingConfigurationsRepository(state);
   const accounts = new InMemoryAccountsRepository(
     state,
     options.lineUsage ?? NO_LINE_USAGE,
   );
   return {
     structures: structures as unknown as CodingStructuresRepository,
+    configurations:
+      configurations as unknown as AccountingConfigurationsRepository,
     accounts: accounts as unknown as AccountsRepository,
-    raw: { structures, accounts, state },
+    raw: { structures, configurations, accounts, state },
   };
 }

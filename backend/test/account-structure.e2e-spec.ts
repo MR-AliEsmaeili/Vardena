@@ -16,6 +16,7 @@ import { FinancialAreasRepository } from '../src/modules/accounting/data/financi
 import { FiscalYearsRepository } from '../src/modules/accounting/data/fiscal-years.repository.js';
 import { AccountingPeriodsRepository } from '../src/modules/accounting/data/accounting-periods.repository.js';
 import { CodingStructuresRepository } from '../src/modules/accounting/data/coding-structures.repository.js';
+import { AccountingConfigurationsRepository } from '../src/modules/accounting/data/accounting-configurations.repository.js';
 import { AccountsRepository } from '../src/modules/accounting/data/accounts.repository.js';
 import { AccountingDocumentLinesRepository } from '../src/modules/accounting/data/accounting-document-lines.repository.js';
 import {
@@ -107,6 +108,8 @@ describe('Accounting chart foundation (e2e)', () => {
           .useValue(accounting.periods)
           .overrideProvider(CodingStructuresRepository)
           .useValue(structure.structures)
+          .overrideProvider(AccountingConfigurationsRepository)
+          .useValue(structure.configurations)
           .overrideProvider(AccountsRepository)
           .useValue(structure.accounts)
           // AC-I-11 (Task 10.4) makes an account's structural fields
@@ -252,6 +255,36 @@ describe('Accounting chart foundation (e2e)', () => {
     state.versionA = version.body.id as string;
     await root
       .post(`/api/v1/coding-structures/${state.versionA}/publish`)
+      .query({ organizationId: state.orgA })
+      .expect(200);
+
+    // Task 11 D1: accounts require ACTIVE accounting configuration
+    const accConfig = await root
+      .post('/api/v1/accounting-configurations')
+      .send({
+        organizationId: state.orgA,
+        code: 'DEFAULT',
+        name: 'Default Accounting Config',
+        levels: [
+          {
+            levelIndex: 1,
+            title: 'گروه',
+            digitLength: 2,
+            defaultIsPostable: false,
+            levelKind: 'group',
+          },
+          {
+            levelIndex: 2,
+            title: 'تفصیلی',
+            digitLength: 3,
+            defaultIsPostable: true,
+            levelKind: 'detail',
+          },
+        ],
+      })
+      .expect(201);
+    await root
+      .post(`/api/v1/accounting-configurations/${accConfig.body.id}/publish`)
       .query({ organizationId: state.orgA })
       .expect(200);
   });
@@ -757,6 +790,32 @@ describe('Accounting chart foundation (e2e)', () => {
       .expect(201);
     await root
       .post(`/api/v1/coding-structures/${versionB.body.id}/publish`)
+      .query({ organizationId: state.orgB })
+      .expect(200);
+    const accConfigB = await root
+      .post('/api/v1/accounting-configurations')
+      .send({
+        organizationId: state.orgB,
+        code: 'DEFAULT',
+        name: 'Default Accounting Config B',
+        levels: [
+          {
+            levelIndex: 1,
+            title: 'Group',
+            digitLength: 1,
+            defaultIsPostable: false,
+          },
+          {
+            levelIndex: 2,
+            title: 'Detail',
+            digitLength: 4,
+            defaultIsPostable: true,
+          },
+        ],
+      })
+      .expect(201);
+    await root
+      .post(`/api/v1/accounting-configurations/${accConfigB.body.id}/publish`)
       .query({ organizationId: state.orgB })
       .expect(200);
     const accountB = await root

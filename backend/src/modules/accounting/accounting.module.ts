@@ -7,6 +7,7 @@ import { FinancialAreasRepository } from './data/financial-areas.repository.js';
 import { FiscalYearsRepository } from './data/fiscal-years.repository.js';
 import { AccountingPeriodsRepository } from './data/accounting-periods.repository.js';
 import { CodingStructuresRepository } from './data/coding-structures.repository.js';
+import { AccountingConfigurationsRepository } from './data/accounting-configurations.repository.js';
 import { AccountsRepository } from './data/accounts.repository.js';
 import { AccountingDocumentsRepository } from './data/accounting-documents.repository.js';
 import { AccountingDocumentLinesRepository } from './data/accounting-document-lines.repository.js';
@@ -16,6 +17,7 @@ import { FinancialAreasService } from './application/financial-areas.service.js'
 import { FiscalYearsService } from './application/fiscal-years.service.js';
 import { AccountingPeriodsService } from './application/accounting-periods.service.js';
 import { CodingStructuresService } from './application/coding-structures.service.js';
+import { AccountingConfigurationsService } from './application/accounting-configurations.service.js';
 import { AccountsService } from './application/accounts.service.js';
 import { AccountingPermissionRegistration } from './application/accounting-permission-registration.js';
 import { AccountingDocumentTypeRegistration } from './application/accounting-document-type-registration.js';
@@ -26,6 +28,7 @@ import { FinancialAreasController } from './api/financial-areas.controller.js';
 import { FiscalYearsController } from './api/fiscal-years.controller.js';
 import { AccountingPeriodsController } from './api/accounting-periods.controller.js';
 import { CodingStructuresController } from './api/coding-structures.controller.js';
+import { AccountingConfigurationsController } from './api/accounting-configurations.controller.js';
 import { AccountsController } from './api/accounts.controller.js';
 import { AccountingDocumentsController } from './api/accounting-documents.controller.js';
 
@@ -98,6 +101,7 @@ import { AccountingDocumentsController } from './api/accounting-documents.contro
     FiscalYearsController,
     AccountingPeriodsController,
     CodingStructuresController,
+    AccountingConfigurationsController,
     AccountsController,
     AccountingDocumentsController,
   ],
@@ -106,6 +110,7 @@ import { AccountingDocumentsController } from './api/accounting-documents.contro
     FiscalYearsRepository,
     AccountingPeriodsRepository,
     CodingStructuresRepository,
+    AccountingConfigurationsRepository,
     AccountsRepository,
     AccountingDocumentLinesRepository,
     AccountingDocumentsRepository,
@@ -117,6 +122,7 @@ import { AccountingDocumentsController } from './api/accounting-documents.contro
     FiscalYearsService,
     AccountingPeriodsService,
     CodingStructuresService,
+    AccountingConfigurationsService,
     AccountsService,
     AccountingDocumentsService,
     AccountingPermissionRegistration,
@@ -144,6 +150,7 @@ import { AccountingDocumentsController } from './api/accounting-documents.contro
     FiscalYearsService,
     AccountingPeriodsService,
     CodingStructuresService,
+    AccountingConfigurationsService,
     AccountsService,
     // Task 10.4: the document aggregate's application service. A future source
     // module composes system-origin documents through IT (contract §16.3) and

@@ -79,13 +79,16 @@ model Organization {
   workflowAutomations  WorkflowAutomationBinding[]
 
   // Back-relations for the Accounting foundation (Task 10.2, ADR-0026) and
-  // the coding structure + chart of accounts (Task 10.3). Virtual side only —
+  // the coding structure + chart of accounts (Task 10.3) plus the new
+  // Accounting Configuration foundation (Task 11). Virtual side only —
   // the real FK columns stay `accounting.*.organization_id`.
   financialAreas            FinancialArea[]
   fiscalYears               FiscalYear[]
   accountingPeriods         AccountingPeriod[]
   codingStructureVersions   CodingStructureVersion[]
   codingStructureLevels     CodingStructureLevel[]
+  accountingConfigurations  AccountingConfiguration[]
+  accountingConfigurationLevels AccountingConfigurationLevel[]
   accounts                  Account[]
 
   // Back-relations for the accounting documents (Task 10.4, contract §12/§16).
