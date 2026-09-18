@@ -243,8 +243,8 @@ describe.skipIf(DATABASE_URL === undefined)(
         id, organization_id, code, name, version_number, status, created_at, updated_at
       ) VALUES (${accountingConfigurationId}, ${organizationId}, ${'DEFAULT'}, ${'Main'}, 1, 'ACTIVE', now(), now())`;
       await db.$queryRaw`INSERT INTO accounting.accounting_configuration_levels (
-        id, organization_id, accounting_configuration_id, code, title, level_order, is_required, is_active, created_at, updated_at
-      ) VALUES (${generateId()}, ${organizationId}, ${accountingConfigurationId}, ${'L1'}, ${'Level 1'}, 1, true, true, now(), now())`;
+        id, organization_id, accounting_configuration_id, level_index, title, digit_length, default_is_postable, created_at, updated_at
+      ) VALUES (${generateId()}, ${organizationId}, ${accountingConfigurationId}, 1, ${'Level 1'}, 2, true, now(), now())`;
 
       debitAccountId = generateId();
       creditAccountId = generateId();
