@@ -2,15 +2,24 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { DomainEventBus } from '../../../kernel/events/domain-event-bus.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { runWithRequestContext } from '../../../kernel/correlation/request-context.js';
-import { createInMemoryStores, seedUser } from '../../../../test/support/in-memory-repositories.js';
+import {
+  createInMemoryStores,
+  seedUser,
+} from '../../../../test/support/in-memory-repositories.js';
 import { createMasterDataStores } from '../../../../test/support/master-data-repositories.js';
-import { createStructureStores, type StructureStores } from '../../../../test/support/accounting-structure-repositories.js';
+import {
+  createStructureStores,
+  type StructureStores,
+} from '../../../../test/support/accounting-structure-repositories.js';
 import { UNPINNED_APP_CONFIG } from '../../../../test/support/app-config.js';
 import type { AppConfig } from '../../../kernel/config/app-config.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { AccountingConfigurationsService } from './accounting-configurations.service.js';
-import { ACCOUNTING_PERMISSION_DEFINITIONS, ACCOUNTING_CONFIGURATION_PERMISSIONS } from '../domain/accounting-permissions.js';
+import {
+  ACCOUNTING_PERMISSION_DEFINITIONS,
+  ACCOUNTING_CONFIGURATION_PERMISSIONS,
+} from '../domain/accounting-permissions.js';
 
 const ACTOR = '01ACTOR000000000000000000A';
 
@@ -19,15 +28,29 @@ const TWO_LEVELS = {
   name: 'Main Config',
   levels: [
     { levelIndex: 1, title: 'Group', digitLength: 2, defaultIsPostable: false },
-    { levelIndex: 2, title: 'Detail', digitLength: 3, defaultIsPostable: true, levelKind: 'detail' },
+    {
+      levelIndex: 2,
+      title: 'Detail',
+      digitLength: 3,
+      defaultIsPostable: true,
+      levelKind: 'detail',
+    },
   ],
 };
 
 function loggerStub(): JsonLogger {
-  return { log: () => {}, warn: () => {}, error: () => {} } as unknown as JsonLogger;
+  return {
+    log: () => {},
+    warn: () => {},
+    error: () => {},
+  } as unknown as JsonLogger;
 }
 
-async function failure(promise: Promise<unknown>): Promise<{ code: string; message: string; details: Record<string, unknown> }> {
+async function failure(promise: Promise<unknown>): Promise<{
+  code: string;
+  message: string;
+  details: Record<string, unknown>;
+}> {
   let caught: unknown;
   try {
     await promise;
@@ -35,7 +58,10 @@ async function failure(promise: Promise<unknown>): Promise<{ code: string; messa
     caught = error;
   }
   if (caught === undefined) throw new Error('Expected to fail');
-  const exception = caught as { code: string; getResponse?: () => { message?: string; details?: unknown } };
+  const exception = caught as {
+    code: string;
+    getResponse?: () => { message?: string; details?: unknown };
+  };
   const response = exception.getResponse?.() ?? {};
   return {
     code: exception.code,
@@ -52,39 +78,85 @@ interface Fixture {
   grant: (userId: string, codes: readonly string[]) => Promise<void>;
 }
 
-async function buildFixture(config: AppConfig = UNPINNED_APP_CONFIG): Promise<Fixture> {
+async function buildFixture(
+  config: AppConfig = UNPINNED_APP_CONFIG,
+): Promise<Fixture> {
   const rbacStores = createInMemoryStores();
   const masterStores = createMasterDataStores();
   const stores = createStructureStores();
   const bus = new DomainEventBus();
 
-  await rbacStores.raw.permissions.syncDefinitions([...ACCOUNTING_PERMISSION_DEFINITIONS], new Date());
+  await rbacStores.raw.permissions.syncDefinitions(
+    [...ACCOUNTING_PERMISSION_DEFINITIONS],
+    new Date(),
+  );
 
-  const authorization = new AuthorizationService(rbacStores.userRoles, loggerStub());
-  const organizations = new OrganizationsService(masterStores.organizations, authorization, loggerStub(), bus, config);
-  const configurations = new AccountingConfigurationsService(stores.configurations, organizations, authorization, loggerStub());
+  const authorization = new AuthorizationService(
+    rbacStores.userRoles,
+    loggerStub(),
+  );
+  const organizations = new OrganizationsService(
+    masterStores.organizations,
+    authorization,
+    loggerStub(),
+    bus,
+    config,
+  );
+  const configurations = new AccountingConfigurationsService(
+    stores.configurations,
+    organizations,
+    authorization,
+    loggerStub(),
+  );
 
   let roleSeq = 0;
-  async function grant(userId: string, codes: readonly string[]): Promise<void> {
+  async function grant(
+    userId: string,
+    codes: readonly string[],
+  ): Promise<void> {
     const now = new Date();
     await seedUser(rbacStores, { id: userId });
-    const permissionIds = (await rbacStores.raw.permissions.findByCodes(codes)).map((p) => p.id);
-    if (permissionIds.length !== new Set(codes).size) throw new Error(`Unknown permission ${codes.join(', ')}`);
+    const permissionIds = (
+      await rbacStores.raw.permissions.findByCodes(codes)
+    ).map((p) => p.id);
+    if (permissionIds.length !== new Set(codes).size)
+      throw new Error(`Unknown permission ${codes.join(', ')}`);
     roleSeq += 1;
     const roleId = `01ROLE${String(roleSeq).padStart(20, '0')}`;
-    await rbacStores.raw.roles.createWithPermissions({ id: roleId, name: `role-${roleSeq}`, description: null, permissionIds, now, createdBy: null });
-    await rbacStores.raw.userRoles.assign({ userId, roleId, now, createdBy: null });
+    await rbacStores.raw.roles.createWithPermissions({
+      id: roleId,
+      name: `role-${roleSeq}`,
+      description: null,
+      permissionIds,
+      now,
+      createdBy: null,
+    });
+    await rbacStores.raw.userRoles.assign({
+      userId,
+      roleId,
+      now,
+      createdBy: null,
+    });
   }
 
   return { organizations, configurations, stores, master: masterStores, grant };
 }
 
-function asSystem<R>(fn: () => Promise<R>): Promise<R> { return fn(); }
+function asSystem<R>(fn: () => Promise<R>): Promise<R> {
+  return fn();
+}
 function asActor<R>(userId: string, fn: () => Promise<R>): Promise<R> {
-  return runWithRequestContext({ correlationId: 'corr-1', principal: { userId, sessionId: 'sess' } }, fn);
+  return runWithRequestContext(
+    { correlationId: 'corr-1', principal: { userId, sessionId: 'sess' } },
+    fn,
+  );
 }
 
-async function publishConfiguration(fixture: Fixture, organizationId: string, input?: Partial<typeof TWO_LEVELS>): Promise<string> {
+async function publishConfiguration(
+  fixture: Fixture,
+  organizationId: string,
+  input?: Partial<typeof TWO_LEVELS>,
+): Promise<string> {
   await fixture.grant(ACTOR, [ACCOUNTING_CONFIGURATION_PERMISSIONS.CONFIGURE]);
   const created = await asActor(ACTOR, () =>
     fixture.configurations.createConfiguration({
@@ -95,7 +167,9 @@ async function publishConfiguration(fixture: Fixture, organizationId: string, in
       levels: (input?.levels ?? TWO_LEVELS.levels) as any,
     }),
   );
-  await asActor(ACTOR, () => fixture.configurations.publishConfiguration(organizationId, created.id));
+  await asActor(ACTOR, () =>
+    fixture.configurations.publishConfiguration(organizationId, created.id),
+  );
   return created.id;
 }
 
@@ -106,9 +180,25 @@ describe('AccountingConfigurationsService — Task 11 foundation', () => {
 
   beforeEach(async () => {
     fixture = await buildFixture();
-    orgA = (await asSystem(() => fixture.organizations.createOrganization({ code: 'ORGA', name: 'Org A' }))).id;
-    orgB = (await asSystem(() => fixture.organizations.createOrganization({ code: 'ORGB', name: 'Org B' }))).id;
-    await fixture.grant(ACTOR, [...Object.values(ACCOUNTING_CONFIGURATION_PERMISSIONS)]);
+    orgA = (
+      await asSystem(() =>
+        fixture.organizations.createOrganization({
+          code: 'ORGA',
+          name: 'Org A',
+        }),
+      )
+    ).id;
+    orgB = (
+      await asSystem(() =>
+        fixture.organizations.createOrganization({
+          code: 'ORGB',
+          name: 'Org B',
+        }),
+      )
+    ).id;
+    await fixture.grant(ACTOR, [
+      ...Object.values(ACCOUNTING_CONFIGURATION_PERMISSIONS),
+    ]);
   });
 
   it('drafts a version with levels and activates it on publish', async () => {
@@ -127,9 +217,13 @@ describe('AccountingConfigurationsService — Task 11 foundation', () => {
     expect(draft.levels.map((l) => l.levelIndex)).toEqual([1, 2]);
     expect(draft.isOperationallyUsed).toBe(false);
 
-    const published = await asActor(ACTOR, () => fixture.configurations.publishConfiguration(orgA, draft.id));
+    const published = await asActor(ACTOR, () =>
+      fixture.configurations.publishConfiguration(orgA, draft.id),
+    );
     expect(published.status).toBe('ACTIVE');
-    const active = await asActor(ACTOR, () => fixture.configurations.getActiveConfiguration(orgA));
+    const active = await asActor(ACTOR, () =>
+      fixture.configurations.getActiveConfiguration(orgA),
+    );
     expect(active.id).toBe(draft.id);
   });
 
@@ -145,16 +239,40 @@ describe('AccountingConfigurationsService — Task 11 foundation', () => {
       }),
     );
     expect(secondDraft.versionNumber).toBe(2);
-    const second = await asActor(ACTOR, () => fixture.configurations.publishConfiguration(orgA, secondDraft.id));
+    const second = await asActor(ACTOR, () =>
+      fixture.configurations.publishConfiguration(orgA, secondDraft.id),
+    );
     expect(second.status).toBe('ACTIVE');
-    expect(await asActor(ACTOR, () => fixture.configurations.getConfiguration(orgA, first))).toMatchObject({ status: 'SUPERSEDED' });
-    expect(await asActor(ACTOR, () => fixture.configurations.getActiveConfiguration(orgA))).toMatchObject({ id: second.id });
+    expect(
+      await asActor(ACTOR, () =>
+        fixture.configurations.getConfiguration(orgA, first),
+      ),
+    ).toMatchObject({ status: 'SUPERSEDED' });
+    expect(
+      await asActor(ACTOR, () =>
+        fixture.configurations.getActiveConfiguration(orgA),
+      ),
+    ).toMatchObject({ id: second.id });
   });
 
   it('keeps published versions immutable', async () => {
     const id = await publishConfiguration(fixture, orgA);
-    expect(await failure(asActor(ACTOR, () => fixture.configurations.updateConfiguration(orgA, id, { name: 'Changed' })))).toMatchObject({ code: 'BusinessRuleViolation' });
-    expect(await failure(asActor(ACTOR, () => fixture.configurations.publishConfiguration(orgA, id)))).toMatchObject({ code: 'BusinessRuleViolation' });
+    expect(
+      await failure(
+        asActor(ACTOR, () =>
+          fixture.configurations.updateConfiguration(orgA, id, {
+            name: 'Changed',
+          }),
+        ),
+      ),
+    ).toMatchObject({ code: 'BusinessRuleViolation' });
+    expect(
+      await failure(
+        asActor(ACTOR, () =>
+          fixture.configurations.publishConfiguration(orgA, id),
+        ),
+      ),
+    ).toMatchObject({ code: 'BusinessRuleViolation' });
   });
 
   it('allows DRAFT mutation and blocks after operational use', async () => {
@@ -168,14 +286,35 @@ describe('AccountingConfigurationsService — Task 11 foundation', () => {
       }),
     );
     // Mutable while DRAFT not used
-    const updated = await asActor(ACTOR, () => fixture.configurations.updateConfiguration(orgA, draft.id, { name: 'Renamed' }));
+    const updated = await asActor(ACTOR, () =>
+      fixture.configurations.updateConfiguration(orgA, draft.id, {
+        name: 'Renamed',
+      }),
+    );
     expect(updated.name).toBe('Renamed');
 
     // Mark operationally used
-    await fixture.stores.raw.configurations.markOperationallyUsed({ id: draft.id, now: new Date() });
+    await fixture.stores.raw.configurations.markOperationallyUsed({
+      id: draft.id,
+      now: new Date(),
+    });
 
-    expect(await failure(asActor(ACTOR, () => fixture.configurations.updateConfiguration(orgA, draft.id, { name: 'Again' })))).toMatchObject({ code: 'BusinessRuleViolation' });
-    expect(await failure(asActor(ACTOR, () => fixture.configurations.deleteConfiguration(orgA, draft.id)))).toMatchObject({ code: 'BusinessRuleViolation' });
+    expect(
+      await failure(
+        asActor(ACTOR, () =>
+          fixture.configurations.updateConfiguration(orgA, draft.id, {
+            name: 'Again',
+          }),
+        ),
+      ),
+    ).toMatchObject({ code: 'BusinessRuleViolation' });
+    expect(
+      await failure(
+        asActor(ACTOR, () =>
+          fixture.configurations.deleteConfiguration(orgA, draft.id),
+        ),
+      ),
+    ).toMatchObject({ code: 'BusinessRuleViolation' });
   });
 
   it('allows deletion of DRAFT not yet used, forbids ACTIVE', async () => {
@@ -188,18 +327,48 @@ describe('AccountingConfigurationsService — Task 11 foundation', () => {
         levels: TWO_LEVELS.levels as any,
       }),
     );
-    await asActor(ACTOR, () => fixture.configurations.deleteConfiguration(orgA, draft.id));
-    expect(await failure(asActor(ACTOR, () => fixture.configurations.getConfiguration(orgA, draft.id)))).toMatchObject({ code: 'EntityNotFound' });
+    await asActor(ACTOR, () =>
+      fixture.configurations.deleteConfiguration(orgA, draft.id),
+    );
+    expect(
+      await failure(
+        asActor(ACTOR, () =>
+          fixture.configurations.getConfiguration(orgA, draft.id),
+        ),
+      ),
+    ).toMatchObject({ code: 'EntityNotFound' });
 
     const activeId = await publishConfiguration(fixture, orgA);
-    expect(await failure(asActor(ACTOR, () => fixture.configurations.deleteConfiguration(orgA, activeId)))).toMatchObject({ code: 'BusinessRuleViolation' });
+    expect(
+      await failure(
+        asActor(ACTOR, () =>
+          fixture.configurations.deleteConfiguration(orgA, activeId),
+        ),
+      ),
+    ).toMatchObject({ code: 'BusinessRuleViolation' });
   });
 
   it('scopes by organization (404, never 403)', async () => {
     const id = await publishConfiguration(fixture, orgA);
-    expect(await failure(asActor(ACTOR, () => fixture.configurations.getConfiguration(orgB, id)))).toMatchObject({ code: 'EntityNotFound' });
-    expect(await failure(asActor(ACTOR, () => fixture.configurations.updateConfiguration(orgB, id, { name: 'X' })))).toMatchObject({ code: 'EntityNotFound' });
-    expect(await failure(asActor(ACTOR, () => fixture.configurations.publishConfiguration(orgB, id)))).toMatchObject({ code: 'EntityNotFound' });
+    expect(
+      await failure(
+        asActor(ACTOR, () => fixture.configurations.getConfiguration(orgB, id)),
+      ),
+    ).toMatchObject({ code: 'EntityNotFound' });
+    expect(
+      await failure(
+        asActor(ACTOR, () =>
+          fixture.configurations.updateConfiguration(orgB, id, { name: 'X' }),
+        ),
+      ),
+    ).toMatchObject({ code: 'EntityNotFound' });
+    expect(
+      await failure(
+        asActor(ACTOR, () =>
+          fixture.configurations.publishConfiguration(orgB, id),
+        ),
+      ),
+    ).toMatchObject({ code: 'EntityNotFound' });
 
     const otherId = await publishConfiguration(fixture, orgB);
     expect(otherId).not.toBe(id);
@@ -214,9 +383,27 @@ describe('AccountingConfigurationsService — Task 11 foundation', () => {
         name: 'Custom Chart',
         effectiveFrom: new Date(),
         levels: [
-          { levelIndex: 1, title: 'My Group', digitLength: 1, defaultIsPostable: false, levelKind: 'my_group' },
-          { levelIndex: 2, title: 'My Sub', digitLength: 2, defaultIsPostable: false, levelKind: 'my_sub' },
-          { levelIndex: 3, title: 'My Detail', digitLength: 4, defaultIsPostable: true, levelKind: 'my_detail' },
+          {
+            levelIndex: 1,
+            title: 'My Group',
+            digitLength: 1,
+            defaultIsPostable: false,
+            levelKind: 'my_group',
+          },
+          {
+            levelIndex: 2,
+            title: 'My Sub',
+            digitLength: 2,
+            defaultIsPostable: false,
+            levelKind: 'my_sub',
+          },
+          {
+            levelIndex: 3,
+            title: 'My Detail',
+            digitLength: 4,
+            defaultIsPostable: true,
+            levelKind: 'my_detail',
+          },
         ] as any,
       }),
     );
@@ -228,9 +415,35 @@ describe('AccountingConfigurationsService — Task 11 foundation', () => {
     await fixture.grant(viewer, [ACCOUNTING_CONFIGURATION_PERMISSIONS.VIEW]);
     const id = await publishConfiguration(fixture, orgA);
 
-    expect(await failure(asActor(viewer, () => fixture.configurations.createConfiguration({ organizationId: orgA, code: 'NOPE', name: 'Nope', effectiveFrom: null, levels: TWO_LEVELS.levels as any })))).toMatchObject({ code: 'PermissionDenied' });
-    expect(await failure(asActor(viewer, () => fixture.configurations.publishConfiguration(orgA, id)))).toMatchObject({ code: 'PermissionDenied' });
+    expect(
+      await failure(
+        asActor(viewer, () =>
+          fixture.configurations.createConfiguration({
+            organizationId: orgA,
+            code: 'NOPE',
+            name: 'Nope',
+            effectiveFrom: null,
+            levels: TWO_LEVELS.levels as any,
+          }),
+        ),
+      ),
+    ).toMatchObject({ code: 'PermissionDenied' });
+    expect(
+      await failure(
+        asActor(viewer, () =>
+          fixture.configurations.publishConfiguration(orgA, id),
+        ),
+      ),
+    ).toMatchObject({ code: 'PermissionDenied' });
 
-    expect(await asActor(viewer, () => fixture.configurations.listConfigurations({ organizationId: orgA, page: 1, pageSize: 10 }))).toMatchObject({ total: 1 });
+    expect(
+      await asActor(viewer, () =>
+        fixture.configurations.listConfigurations({
+          organizationId: orgA,
+          page: 1,
+          pageSize: 10,
+        }),
+      ),
+    ).toMatchObject({ total: 1 });
   });
 });

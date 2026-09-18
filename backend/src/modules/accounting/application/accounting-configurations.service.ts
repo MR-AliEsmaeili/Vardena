@@ -236,7 +236,9 @@ export class AccountingConfigurationsService {
     const levels =
       input.levels === undefined ? undefined : normalizeLevels(input.levels);
 
-    const candidateName = input.name ? normalizeTitle(input.name) : current.name;
+    const candidateName = input.name
+      ? normalizeTitle(input.name)
+      : current.name;
     const candidateEffectiveFrom =
       input.effectiveFrom !== undefined
         ? input.effectiveFrom
@@ -310,10 +312,7 @@ export class AccountingConfigurationsService {
     return toAccountingConfigurationDto(published.configuration as any);
   }
 
-  async deleteConfiguration(
-    organizationId: string,
-    id: string,
-  ): Promise<void> {
+  async deleteConfiguration(organizationId: string, id: string): Promise<void> {
     await this.authorization.requireAllPermissions([
       ACCOUNTING_CONFIGURATION_PERMISSIONS.CONFIGURE,
     ]);
@@ -338,7 +337,9 @@ export class AccountingConfigurationsService {
 
   // Cross-service resolver for AccountsService — will use ACTIVE config to derive code shape.
   // Throws typed error NoActiveAccountingConfigurationError per R8 (no string matching)
-  async requireActiveConfigurationOrThrow(organizationId: string): Promise<any> {
+  async requireActiveConfigurationOrThrow(
+    organizationId: string,
+  ): Promise<any> {
     const active =
       await this.repository.findActiveForOrganization(organizationId);
     if (active === null) {

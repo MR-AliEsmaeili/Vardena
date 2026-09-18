@@ -64,9 +64,7 @@ export class AccountingConfigurationsController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedConfigurationDto) }] },
   })
-  async list(
-    @Query() query: ListAccountingConfigurationsQueryDto,
-  ): Promise<{
+  async list(@Query() query: ListAccountingConfigurationsQueryDto): Promise<{
     items: AccountingConfigurationResponseDto[];
     total: number;
     page: number;
@@ -79,8 +77,7 @@ export class AccountingConfigurationsController {
   @UseGuards(AuthGuard, AuthorizationGuard)
   @RequirePermission(ACCOUNTING_CONFIGURATION_PERMISSIONS.VIEW)
   @ApiOperation({
-    summary:
-      'Get the organization’s ACTIVE accounting configuration version.',
+    summary: 'Get the organization’s ACTIVE accounting configuration version.',
   })
   @ApiOkResponse({ type: AccountingConfigurationResponseDto })
   @ApiNotFoundResponse({
@@ -130,9 +127,7 @@ export class AccountingConfigurationsController {
       organizationId: body.organizationId,
       code: body.code,
       name: body.name,
-      effectiveFrom: body.effectiveFrom
-        ? new Date(body.effectiveFrom)
-        : null,
+      effectiveFrom: body.effectiveFrom ? new Date(body.effectiveFrom) : null,
       levels: body.levels,
     });
   }
@@ -159,20 +154,16 @@ export class AccountingConfigurationsController {
     @Query() scope: AccountingScopeQueryDto,
     @Body() body: UpdateAccountingConfigurationDto,
   ): Promise<AccountingConfigurationResponseDto> {
-    return this.configurations.updateConfiguration(
-      scope.organizationId,
-      id,
-      {
-        name: body.name,
-        effectiveFrom:
-          body.effectiveFrom === undefined
-            ? undefined
-            : body.effectiveFrom === null
-              ? null
-              : new Date(body.effectiveFrom),
-        levels: body.levels,
-      },
-    );
+    return this.configurations.updateConfiguration(scope.organizationId, id, {
+      name: body.name,
+      effectiveFrom:
+        body.effectiveFrom === undefined
+          ? undefined
+          : body.effectiveFrom === null
+            ? null
+            : new Date(body.effectiveFrom),
+      levels: body.levels,
+    });
   }
 
   @Post(':id/publish')
@@ -211,7 +202,8 @@ export class AccountingConfigurationsController {
     description: 'Accounting configuration does not exist.',
   })
   @ApiUnprocessableEntityResponse({
-    description: 'Only DRAFT configurations not yet operationally used can be deleted.',
+    description:
+      'Only DRAFT configurations not yet operationally used can be deleted.',
   })
   async remove(
     @Param('id') id: string,

@@ -22,7 +22,11 @@
  * This file is framework-free (AR-05): pure constants and functions.
  */
 
-import { isNonBlank, MAX_CODE_LENGTH, MAX_TITLE_LENGTH } from './master-data.js';
+import {
+  isNonBlank,
+  MAX_CODE_LENGTH,
+  MAX_TITLE_LENGTH,
+} from './master-data.js';
 
 /** Closed list — Task 11 §3.1/§4. */
 export const ACCOUNTING_CONFIGURATION_STATUSES = [
@@ -133,7 +137,10 @@ export function toAccountingConfigurationDto(
 }
 
 export function describeConfigurationPattern(
-  levels: readonly Pick<AccountingConfigurationLevel, 'levelIndex' | 'digitLength'>[],
+  levels: readonly Pick<
+    AccountingConfigurationLevel,
+    'levelIndex' | 'digitLength'
+  >[],
 ): string {
   return orderedConfigurationLevels(levels)
     .map((l) => String(l.digitLength))
@@ -320,7 +327,10 @@ export function planAccountingConfiguration(input: {
   }
   if (
     input.effectiveFrom !== null &&
-    !(input.effectiveFrom instanceof Date && !isNaN(input.effectiveFrom.getTime()))
+    !(
+      input.effectiveFrom instanceof Date &&
+      !isNaN(input.effectiveFrom.getTime())
+    )
   ) {
     return { problem: 'effective_from_invalid' };
   }

@@ -67,7 +67,9 @@ export class AccountingConfigurationsRepository {
     return this.prisma.getClient<AccountingTransactionalClient>();
   }
 
-  async findById(id: string): Promise<AccountingConfigurationWithLevels | null> {
+  async findById(
+    id: string,
+  ): Promise<AccountingConfigurationWithLevels | null> {
     const { accountingConfiguration } = await this.client();
     const row = await accountingConfiguration.findUnique({ where: { id } });
     if (row === null) return null;
@@ -408,6 +410,7 @@ export class AccountingConfigurationsRepository {
       data: {
         operationallyUsedAt: input.now,
         updatedAt: input.now,
+        updatedBy: null,
       },
     });
     return toDomain(updated, await this.listLevelRows(input.id));

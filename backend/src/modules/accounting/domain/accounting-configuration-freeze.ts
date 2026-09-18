@@ -52,10 +52,7 @@ import {
  * - `superseded`: SUPERSEDED — immutable, historical.
  */
 export type FreezeState =
-  | 'mutable'
-  | 'frozen_active'
-  | 'frozen_used'
-  | 'superseded';
+  'mutable' | 'frozen_active' | 'frozen_used' | 'superseded';
 
 export function resolveFreezeState(
   config: Pick<AccountingConfiguration, 'status' | 'operationallyUsedAt'>,

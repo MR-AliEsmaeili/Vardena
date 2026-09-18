@@ -222,7 +222,9 @@ export class AccountsRepository {
         ) {
           throw new AccountPlacementRejectedError('version_mismatch');
         }
-        if (lockedParent.codingStructureVersionId !== input.structure.versionId) {
+        if (
+          lockedParent.codingStructureVersionId !== input.structure.versionId
+        ) {
           throw new AccountPlacementRejectedError('version_mismatch');
         }
       } else {

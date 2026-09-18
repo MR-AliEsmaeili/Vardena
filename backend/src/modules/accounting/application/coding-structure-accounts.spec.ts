@@ -315,8 +315,16 @@ async function publishBoth(
     levels: readonly LevelConfig[];
   },
 ): Promise<{ codingId: string; configId: string }> {
-  const codingId = await publishStructure(fixture, organizationId, configuration);
-  const configId = await publishAccountingConfig(fixture, organizationId, configuration);
+  const codingId = await publishStructure(
+    fixture,
+    organizationId,
+    configuration,
+  );
+  const configId = await publishAccountingConfig(
+    fixture,
+    organizationId,
+    configuration,
+  );
   return { codingId, configId };
 }
 
@@ -863,7 +871,9 @@ describe('AccountsService', () => {
       code: '02',
       level: 1,
     });
-    expect((fixture.events[0]?.payload as any).accountingConfigurationId).toBeTruthy();
+    expect(
+      (fixture.events[0]?.payload as any).accountingConfigurationId,
+    ).toBeTruthy();
   });
 
   it('honours an explicit postability override against the level default', async () => {
@@ -890,7 +900,9 @@ describe('AccountsService', () => {
       parentId: root.id,
       isPostable: true,
     });
-    expect(child.accountingConfigurationId).toBe(root.accountingConfigurationId);
+    expect(child.accountingConfigurationId).toBe(
+      root.accountingConfigurationId,
+    );
     // maxDepth is 2, so a third level is beyond this configuration. The child
     // is made non-postable first so the DEPTH rule is what refuses it.
     await asActor(ACTOR, () =>

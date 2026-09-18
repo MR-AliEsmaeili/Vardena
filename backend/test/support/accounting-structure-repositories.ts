@@ -16,9 +16,7 @@ import type {
   AccountingConfiguration,
   AccountingConfigurationLevel,
 } from '../../src/modules/accounting/domain/accounting-configuration.js';
-import {
-  planAccountingConfiguration,
-} from '../../src/modules/accounting/domain/accounting-configuration.js';
+import { planAccountingConfiguration } from '../../src/modules/accounting/domain/accounting-configuration.js';
 import type { Account } from '../../src/modules/accounting/domain/account.js';
 import {
   planAccountEdit,
@@ -40,7 +38,10 @@ import type { AccountStructureSnapshot } from '../../src/modules/accounting/data
 import type { LevelWrite } from '../../src/modules/accounting/data/coding-structures.repository.js';
 import type { CodingStructuresRepository } from '../../src/modules/accounting/data/coding-structures.repository.js';
 import type { AccountsRepository } from '../../src/modules/accounting/data/accounts.repository.js';
-import type { AccountingConfigurationsRepository, ConfigurationLevelWrite } from '../../src/modules/accounting/data/accounting-configurations.repository.js';
+import type {
+  AccountingConfigurationsRepository,
+  ConfigurationLevelWrite,
+} from '../../src/modules/accounting/data/accounting-configurations.repository.js';
 import { InMemoryTable, type Row } from './master-data-repositories.js';
 
 type OrderBy = Array<Record<string, 'asc' | 'desc'>>;
@@ -91,8 +92,8 @@ export interface AccountRecord extends Row {
   title: string;
   parentId: string | null;
   level: number;
-  codingStructureVersionId: string;
-  accountingConfigurationId: string;
+  codingStructureVersionId: string | null;
+  accountingConfigurationId: string | null;
   accountNature: string;
   isPostable: boolean;
   isActive: boolean;
@@ -152,9 +153,10 @@ export function createStructureState(): StructureState {
     accountingConfigurations: new InMemoryTable<AccountingConfigurationRecord>([
       ['organizationId', 'code', 'versionNumber'],
     ]),
-    accountingConfigurationLevels: new InMemoryTable<AccountingConfigurationLevelRecord>([
-      ['configurationId', 'levelIndex'],
-    ]),
+    accountingConfigurationLevels:
+      new InMemoryTable<AccountingConfigurationLevelRecord>([
+        ['configurationId', 'levelIndex'],
+      ]),
     accounts: new InMemoryTable<AccountRecord>([['organizationId', 'code']]),
   };
 }
@@ -498,14 +500,22 @@ export class InMemoryAccountingConfigurationsRepository {
     } as any;
   }
 
-  async findById(id: string): Promise<(AccountingConfiguration & { levels: AccountingConfigurationLevel[] }) | null> {
+  async findById(
+    id: string,
+  ): Promise<
+    | (AccountingConfiguration & { levels: AccountingConfigurationLevel[] })
+    | null
+  > {
     const row = this.state.accountingConfigurations.findById(id);
     return row === null ? null : this.withLevels(row);
   }
 
   async findActiveForOrganization(
     organizationId: string,
-  ): Promise<(AccountingConfiguration & { levels: AccountingConfigurationLevel[] }) | null> {
+  ): Promise<
+    | (AccountingConfiguration & { levels: AccountingConfigurationLevel[] })
+    | null
+  > {
     const row = this.state.accountingConfigurations.findOne(
       (candidate) =>
         candidate.organizationId === organizationId &&
@@ -530,10 +540,15 @@ export class InMemoryAccountingConfigurationsRepository {
   }
 
   async list(params: ListParams): Promise<{
-    items: (AccountingConfiguration & { levels: AccountingConfigurationLevel[] })[];
+    items: (AccountingConfiguration & {
+      levels: AccountingConfigurationLevel[];
+    })[];
     total: number;
   }> {
-    const { items, total } = listPage(this.state.accountingConfigurations, params);
+    const { items, total } = listPage(
+      this.state.accountingConfigurations,
+      params,
+    );
     return { items: items.map((row) => this.withLevels(row)), total };
   }
 
@@ -548,7 +563,9 @@ export class InMemoryAccountingConfigurationsRepository {
     levels: readonly ConfigurationLevelWrite[];
     createdAt: Date;
     actorId: string | null;
-  }): Promise<AccountingConfiguration & { levels: AccountingConfigurationLevel[] }> {
+  }): Promise<
+    AccountingConfiguration & { levels: AccountingConfigurationLevel[] }
+  > {
     const now = input.createdAt;
     const row: AccountingConfigurationRecord = {
       id: input.id,
@@ -568,7 +585,13 @@ export class InMemoryAccountingConfigurationsRepository {
     this.state.accountingConfigurations.insert(row);
     for (const level of input.levels) {
       this.state.accountingConfigurationLevels.insert(
-        configurationLevelRecord(level, input.id, input.organizationId, now, input.actorId),
+        configurationLevelRecord(
+          level,
+          input.id,
+          input.organizationId,
+          now,
+          input.actorId,
+        ),
       );
     }
     return this.withLevels(row);
@@ -581,7 +604,9 @@ export class InMemoryAccountingConfigurationsRepository {
     levels?: readonly ConfigurationLevelWrite[] | undefined;
     updatedAt: Date;
     actorId: string | null;
-  }): Promise<AccountingConfiguration & { levels: AccountingConfigurationLevel[] }> {
+  }): Promise<
+    AccountingConfiguration & { levels: AccountingConfigurationLevel[] }
+  > {
     const stored = this.state.accountingConfigurations.findById(input.id);
     if (stored === null) {
       throw new Error(
@@ -620,7 +645,10 @@ export class InMemoryAccountingConfigurationsRepository {
       levels: candidates,
     });
     if (plan.problem !== null) {
-      throw new AccountingConfigurationPlanRejectedError(plan.problem, plan.subject);
+      throw new AccountingConfigurationPlanRejectedError(
+        plan.problem,
+        plan.subject,
+      );
     }
 
     this.state.accountingConfigurations.patch(input.id, {
@@ -631,10 +659,17 @@ export class InMemoryAccountingConfigurationsRepository {
     });
 
     if (input.levels !== undefined) {
-      for (const level of existing) this.state.accountingConfigurationLevels.delete(level.id);
+      for (const level of existing)
+        this.state.accountingConfigurationLevels.delete(level.id);
       for (const level of input.levels) {
         this.state.accountingConfigurationLevels.insert(
-          configurationLevelRecord(level, input.id, stored.organizationId, input.updatedAt, input.actorId),
+          configurationLevelRecord(
+            level,
+            input.id,
+            stored.organizationId,
+            input.updatedAt,
+            input.actorId,
+          ),
         );
       }
     }
@@ -653,10 +688,14 @@ export class InMemoryAccountingConfigurationsRepository {
     now: Date;
     actorId: string | null;
   }): Promise<{
-    configuration: AccountingConfiguration & { levels: AccountingConfigurationLevel[] };
+    configuration: AccountingConfiguration & {
+      levels: AccountingConfigurationLevel[];
+    };
     supersededId: string | null;
   } | null> {
-    const target = this.state.accountingConfigurations.findById(input.configurationId);
+    const target = this.state.accountingConfigurations.findById(
+      input.configurationId,
+    );
     if (target === null || target.organizationId !== input.organizationId) {
       return null;
     }
@@ -675,7 +714,10 @@ export class InMemoryAccountingConfigurationsRepository {
       levels,
     });
     if (plan.problem !== null) {
-      throw new AccountingConfigurationPlanRejectedError(plan.problem, plan.subject);
+      throw new AccountingConfigurationPlanRejectedError(
+        plan.problem,
+        plan.subject,
+      );
     }
     let supersededId: string | null = null;
     for (const row of this.state.accountingConfigurations.findMany(
@@ -704,7 +746,9 @@ export class InMemoryAccountingConfigurationsRepository {
         `Partial unique index violation: uq_accounting_configurations_org_active — organization ${input.organizationId} has ${activeConfigs.length} ACTIVE configs`,
       );
     }
-    const published = this.state.accountingConfigurations.findById(input.configurationId);
+    const published = this.state.accountingConfigurations.findById(
+      input.configurationId,
+    );
     if (published === null) {
       throw new Error(
         `Accounting configuration \"${input.configurationId}\" no longer exists.`,
@@ -713,7 +757,13 @@ export class InMemoryAccountingConfigurationsRepository {
     return { configuration: this.withLevels(published), supersededId };
   }
 
-  async markOperationallyUsed(input: { id: string; now: Date }): Promise<(AccountingConfiguration & { levels: AccountingConfigurationLevel[] }) | null> {
+  async markOperationallyUsed(input: {
+    id: string;
+    now: Date;
+  }): Promise<
+    | (AccountingConfiguration & { levels: AccountingConfigurationLevel[] })
+    | null
+  > {
     const existing = this.state.accountingConfigurations.findById(input.id);
     if (existing === null) return null;
     if (existing.operationallyUsedAt !== null) {
@@ -823,23 +873,33 @@ export class InMemoryAccountsRepository {
     // Task 11 Final D1/D2/D3 — both NOT NULL
     const configId = input.structure.accountingConfigurationId;
     if (!configId) {
-      throw new Error(`FK violation: accounting_configuration_id is required (D1) — got ${String(configId)}`);
+      throw new Error(
+        `FK violation: accounting_configuration_id is required (D1) — got ${String(configId)}`,
+      );
     }
     const configRow = this.state.accountingConfigurations.findById(configId);
     if (configRow === null) {
-      throw new Error(`FK violation: accounting_configuration_id \"${configId}\" does not exist`);
+      throw new Error(
+        `FK violation: accounting_configuration_id \"${configId}\" does not exist`,
+      );
     }
     const versionId = input.structure.versionId;
     if (!versionId) {
-      throw new Error(`FK violation: coding_structure_version_id is required (D2) — got ${String(versionId)}`);
+      throw new Error(
+        `FK violation: coding_structure_version_id is required (D2) — got ${String(versionId)}`,
+      );
     }
     const maybeConfig = this.state.accountingConfigurations.findById(versionId);
     if (maybeConfig !== null) {
-      throw new Error(`FK mismatch: coding_structure_version_id \"${versionId}\" is actually an AccountingConfiguration.id`);
+      throw new Error(
+        `FK mismatch: coding_structure_version_id \"${versionId}\" is actually an AccountingConfiguration.id`,
+      );
     }
     const codingRow = this.state.versions.findById(versionId);
     if (codingRow === null) {
-      throw new Error(`FK violation: coding_structure_version_id \"${versionId}\" does not exist`);
+      throw new Error(
+        `FK violation: coding_structure_version_id \"${versionId}\" does not exist`,
+      );
     }
     if (configRow.id === versionId) {
       throw new Error(`FK mismatch: ids identical \"${configRow.id}\"`);
@@ -847,13 +907,21 @@ export class InMemoryAccountsRepository {
 
     if (input.parentId === null) {
       if (configRow.status !== 'ACTIVE') {
-        throw new Error(`Accounting configuration ${configRow.id} status ${configRow.status} not ACTIVE`);
+        throw new Error(
+          `Accounting configuration ${configRow.id} status ${configRow.status} not ACTIVE`,
+        );
       }
     } else {
-      if (parentRow !== null && parentRow.accountingConfigurationId !== configId) {
+      if (
+        parentRow !== null &&
+        parentRow.accountingConfigurationId !== configId
+      ) {
         throw new AccountPlacementRejectedError('version_mismatch');
       }
-      if (parentRow !== null && parentRow.codingStructureVersionId !== versionId) {
+      if (
+        parentRow !== null &&
+        parentRow.codingStructureVersionId !== versionId
+      ) {
         throw new AccountPlacementRejectedError('version_mismatch');
       }
     }
@@ -957,7 +1025,7 @@ export class InMemoryAccountsRepository {
         organizationId: node.organizationId,
         parentId: requestedParentId,
         code: node.code,
-        parent: parentRow === null ? null : placementParent(parentRow) as any,
+        parent: parentRow === null ? null : (placementParent(parentRow) as any),
         descendantIds: collectDescendantIds(edges, node.id),
         current: {
           level: node.level,
@@ -1104,7 +1172,8 @@ export function createStructureStores(
   );
   return {
     structures: structures as unknown as CodingStructuresRepository,
-    configurations: configurations as unknown as AccountingConfigurationsRepository,
+    configurations:
+      configurations as unknown as AccountingConfigurationsRepository,
     accounts: accounts as unknown as AccountsRepository,
     raw: { structures, configurations, accounts, state },
   };

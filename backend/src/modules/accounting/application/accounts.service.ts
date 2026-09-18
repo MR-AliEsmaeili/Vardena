@@ -218,6 +218,13 @@ export class AccountsService {
           parentId,
         );
         // Child inherits parent's accounting configuration — sole scope D1/D3 NOT NULL
+        // Legacy fixtures may have null, guard with typed errors for typecheck + D6 compliance
+        if (parentAccount.accountingConfigurationId === null) {
+          throw new NoActiveAccountingConfigurationError();
+        }
+        if (parentAccount.codingStructureVersionId === null) {
+          throw new CodingStructureVersionNotActiveError('no_active_version');
+        }
         accountingConfigurationId = parentAccount.accountingConfigurationId;
         codingStructureVersionId = parentAccount.codingStructureVersionId;
         const parentConfig =
@@ -246,10 +253,9 @@ export class AccountsService {
           await this.configurations.requireActiveConfigurationOrThrow(
             input.organizationId,
           );
-        const activeCoding =
-          await this.structures.requireActiveVersionOrThrow(
-            input.organizationId,
-          );
+        const activeCoding = await this.structures.requireActiveVersionOrThrow(
+          input.organizationId,
+        );
         accountingConfigurationId = activeConfig.id;
         codingStructureVersionId = activeCoding.id;
         structure = {
@@ -372,6 +378,12 @@ export class AccountsService {
           current.organizationId,
           input.parentId,
         );
+        if (parentAccount.accountingConfigurationId === null) {
+          throw new NoActiveAccountingConfigurationError();
+        }
+        if (parentAccount.codingStructureVersionId === null) {
+          throw new CodingStructureVersionNotActiveError('no_active_version');
+        }
         parent = {
           id: parentAccount.id,
           organizationId: parentAccount.organizationId,
@@ -456,11 +468,14 @@ export class AccountsService {
         structure:
           structureForMove === null
             ? null
-            : snapshot(
-                structureForMove as any,
-                current.accountingConfigurationId,
-                current.codingStructureVersionId,
-              ),
+            : current.accountingConfigurationId === null ||
+                current.codingStructureVersionId === null
+              ? null
+              : snapshot(
+                  structureForMove as any,
+                  current.accountingConfigurationId,
+                  current.codingStructureVersionId,
+                ),
         now: new Date(),
         actorId: getPrincipal()?.userId ?? null,
       });
@@ -541,8 +556,8 @@ export class AccountsService {
     descendantIds: readonly string[];
     current: {
       level: number;
-      codingStructureVersionId: string;
-      accountingConfigurationId: string;
+      codingStructureVersionId: string | null;
+      accountingConfigurationId: string | null;
       hasChildren: boolean;
     } | null;
     structure: { maxDepth: number; levels: any[] };
