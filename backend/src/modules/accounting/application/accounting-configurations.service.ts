@@ -224,7 +224,7 @@ export class AccountingConfigurationsService {
     const current = await this.mustFindInOrganization(organizationId, id);
     if (current.status !== 'DRAFT') {
       throw AppException.businessRule(
-        `Accounting configuration version ${current.versionNumber} is \"${current.status}\" and cannot be changed. Create a new version instead.`,
+        `Accounting configuration version ${current.versionNumber} is "${current.status}" and cannot be changed. Create a new version instead.`,
       );
     }
     if (current.operationallyUsedAt !== null) {
@@ -275,7 +275,7 @@ export class AccountingConfigurationsService {
     const current = await this.mustFindInOrganization(organizationId, id);
     if (current.status !== 'DRAFT') {
       throw AppException.businessRule(
-        `Only a DRAFT accounting configuration can be published (this one is \"${current.status}\").`,
+        `Only a DRAFT accounting configuration can be published (this one is "${current.status}").`,
       );
     }
     this.assertPlan(

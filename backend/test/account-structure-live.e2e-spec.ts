@@ -5,6 +5,7 @@ import { generateId } from '../src/kernel/ids/ulid.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
 import { OrganizationsService } from '../src/modules/organization/application/organizations.service.js';
 import { CodingStructuresService } from '../src/modules/accounting/application/coding-structures.service.js';
+import { AccountingConfigurationsService } from '../src/modules/accounting/application/accounting-configurations.service.js';
 import { AccountsService } from '../src/modules/accounting/application/accounts.service.js';
 import { createTestApp } from './support/test-app.js';
 
@@ -128,6 +129,7 @@ describe.skipIf(DATABASE_URL === undefined)(
 
       const organizations = app.get(OrganizationsService);
       const structures = app.get(CodingStructuresService);
+      const configurations = app.get(AccountingConfigurationsService);
       organizationId = (
         await organizations.createOrganization({
           code: `CHART-${suffix}`,
@@ -140,6 +142,13 @@ describe.skipIf(DATABASE_URL === undefined)(
         ...CONFIGURATION,
       });
       await structures.publishVersion(organizationId, draft.id);
+      const accDraft = await configurations.createConfiguration({
+        organizationId,
+        code: 'LIVE',
+        name: 'Live config',
+        levels: CONFIGURATION.levels as any,
+      });
+      await configurations.publishConfiguration(organizationId, accDraft.id);
     }, 60_000);
 
     afterAll(async () => {
@@ -149,6 +158,12 @@ describe.skipIf(DATABASE_URL === undefined)(
           // endpoints for these rows (§8.6 — accounts are never deleted).
           const client = await prisma.getClient<{
             account: { deleteMany: (args: unknown) => Promise<unknown> };
+            accountingConfigurationLevel: {
+              deleteMany: (args: unknown) => Promise<unknown>;
+            };
+            accountingConfiguration: {
+              deleteMany: (args: unknown) => Promise<unknown>;
+            };
             codingStructureLevel: {
               deleteMany: (args: unknown) => Promise<unknown>;
             };
@@ -158,6 +173,12 @@ describe.skipIf(DATABASE_URL === undefined)(
             organization: { deleteMany: (args: unknown) => Promise<unknown> };
           }>();
           await client.account.deleteMany({ where: { organizationId } });
+          await client.accountingConfigurationLevel.deleteMany({
+            where: { organizationId },
+          });
+          await client.accountingConfiguration.deleteMany({
+            where: { organizationId },
+          });
           await client.codingStructureLevel.deleteMany({
             where: { organizationId },
           });

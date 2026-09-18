@@ -196,9 +196,7 @@ describe('AccountingConfigurationsService — Task 11 foundation', () => {
         }),
       )
     ).id;
-    await fixture.grant(ACTOR, [
-      ...Object.values(ACCOUNTING_CONFIGURATION_PERMISSIONS),
-    ]);
+    await fixture.grant(ACTOR, Object.values(ACCOUNTING_CONFIGURATION_PERMISSIONS));
   });
 
   it('drafts a version with levels and activates it on publish', async () => {

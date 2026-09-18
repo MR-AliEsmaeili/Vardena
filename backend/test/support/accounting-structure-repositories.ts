@@ -347,7 +347,7 @@ export class InMemoryCodingStructuresRepository {
     const stored = this.state.versions.findById(input.id);
     if (stored === null) {
       throw new Error(
-        `Coding structure version \"${input.id}\" no longer exists.`,
+        `Coding structure version "${input.id}" no longer exists.`,
       );
     }
     if (stored.status !== 'draft') {
@@ -398,7 +398,7 @@ export class InMemoryCodingStructuresRepository {
     const updated = this.state.versions.findById(input.id);
     if (updated === null) {
       throw new Error(
-        `Coding structure version \"${input.id}\" no longer exists.`,
+        `Coding structure version "${input.id}" no longer exists.`,
       );
     }
     return this.withLevels(updated);
@@ -452,7 +452,7 @@ export class InMemoryCodingStructuresRepository {
     const published = this.state.versions.findById(input.versionId);
     if (published === null) {
       throw new Error(
-        `Coding structure version \"${input.versionId}\" no longer exists.`,
+        `Coding structure version "${input.versionId}" no longer exists.`,
       );
     }
     return { version: this.withLevels(published), supersededVersionId };
@@ -610,7 +610,7 @@ export class InMemoryAccountingConfigurationsRepository {
     const stored = this.state.accountingConfigurations.findById(input.id);
     if (stored === null) {
       throw new Error(
-        `Accounting configuration \"${input.id}\" no longer exists.`,
+        `Accounting configuration "${input.id}" no longer exists.`,
       );
     }
     if (stored.status !== 'DRAFT') {
@@ -676,7 +676,7 @@ export class InMemoryAccountingConfigurationsRepository {
     const updated = this.state.accountingConfigurations.findById(input.id);
     if (updated === null) {
       throw new Error(
-        `Accounting configuration \"${input.id}\" no longer exists.`,
+        `Accounting configuration "${input.id}" no longer exists.`,
       );
     }
     return this.withLevels(updated);
@@ -751,7 +751,7 @@ export class InMemoryAccountingConfigurationsRepository {
     );
     if (published === null) {
       throw new Error(
-        `Accounting configuration \"${input.configurationId}\" no longer exists.`,
+        `Accounting configuration "${input.configurationId}" no longer exists.`,
       );
     }
     return { configuration: this.withLevels(published), supersededId };
@@ -880,7 +880,7 @@ export class InMemoryAccountsRepository {
     const configRow = this.state.accountingConfigurations.findById(configId);
     if (configRow === null) {
       throw new Error(
-        `FK violation: accounting_configuration_id \"${configId}\" does not exist`,
+        `FK violation: accounting_configuration_id "${configId}" does not exist`,
       );
     }
     const versionId = input.structure.versionId;
@@ -892,17 +892,17 @@ export class InMemoryAccountsRepository {
     const maybeConfig = this.state.accountingConfigurations.findById(versionId);
     if (maybeConfig !== null) {
       throw new Error(
-        `FK mismatch: coding_structure_version_id \"${versionId}\" is actually an AccountingConfiguration.id`,
+        `FK mismatch: coding_structure_version_id "${versionId}" is actually an AccountingConfiguration.id`,
       );
     }
     const codingRow = this.state.versions.findById(versionId);
     if (codingRow === null) {
       throw new Error(
-        `FK violation: coding_structure_version_id \"${versionId}\" does not exist`,
+        `FK violation: coding_structure_version_id "${versionId}" does not exist`,
       );
     }
     if (configRow.id === versionId) {
-      throw new Error(`FK mismatch: ids identical \"${configRow.id}\"`);
+      throw new Error(`FK mismatch: ids identical "${configRow.id}"`);
     }
 
     if (input.parentId === null) {
@@ -972,7 +972,7 @@ export class InMemoryAccountsRepository {
   }): Promise<Account> {
     const node = this.state.accounts.findById(input.id);
     if (node === null) {
-      throw new Error(`Account \"${input.id}\" no longer exists.`);
+      throw new Error(`Account "${input.id}" no longer exists.`);
     }
     const requestedParentId =
       input.parentId === undefined ? node.parentId : input.parentId;
@@ -1053,7 +1053,7 @@ export class InMemoryAccountsRepository {
     });
     const updated = this.state.accounts.findById(node.id);
     if (updated === null) {
-      throw new Error(`Account \"${node.id}\" no longer exists.`);
+      throw new Error(`Account "${node.id}" no longer exists.`);
     }
     return toAccount(updated) as Account;
   }

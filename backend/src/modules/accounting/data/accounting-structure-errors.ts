@@ -114,7 +114,7 @@ export class AccountingConfigurationNotDraftError extends Error {
 
   constructor(status: string) {
     super(
-      `Accounting configuration is \"${status}\" and cannot be changed. Create a new version instead.`,
+      `Accounting configuration is "${status}" and cannot be changed. Create a new version instead.`,
     );
     this.name = 'AccountingConfigurationNotDraftError';
     this.status = status;
@@ -141,7 +141,7 @@ export class AccountingConfigurationNotActiveError extends Error {
 
   constructor(status: string) {
     super(
-      `The accounting configuration is \"${status}\"; only ACTIVE configurations may be used.`,
+      `The accounting configuration is "${status}"; only ACTIVE configurations may be used.`,
     );
     this.name = 'AccountingConfigurationNotActiveError';
     this.status = status;

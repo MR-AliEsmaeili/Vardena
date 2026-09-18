@@ -202,7 +202,7 @@ export class AccountingConfigurationsRepository {
       const locked = await lockAccountingConfigurationRow(tx, input.id);
       if (locked === null) {
         throw new Error(
-          `Accounting configuration \"${input.id}\" no longer exists.`,
+          `Accounting configuration "${input.id}" no longer exists.`,
         );
       }
       if (locked.status !== 'DRAFT') {
@@ -287,7 +287,7 @@ export class AccountingConfigurationsRepository {
       });
       if (row === null) {
         throw new Error(
-          `Accounting configuration \"${input.id}\" no longer exists.`,
+          `Accounting configuration "${input.id}" no longer exists.`,
         );
       }
       const levels = await tx.accountingConfigurationLevel.findMany({
