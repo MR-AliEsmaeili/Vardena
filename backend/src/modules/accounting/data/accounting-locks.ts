@@ -277,6 +277,61 @@ export async function lockCodingStructureVersionsOfOrganization(
 }
 
 // ---------------------------------------------------------------------------
+// Accounting Configurations (Task 11 — Configuration Foundation)
+// ---------------------------------------------------------------------------
+
+/** A locked accounting-configuration row. */
+export interface LockedAccountingConfiguration {
+  id: string;
+  organizationId: string;
+  code: string;
+  name: string;
+  versionNumber: number;
+  status: string;
+  effectiveFrom: Date | null;
+  operationallyUsedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  // For draft validation that needs level count.
+  levelsCount?: number | undefined;
+}
+
+export async function lockAccountingConfigurationRow(
+  tx: AccountingTxClient,
+  configurationId: string,
+): Promise<LockedAccountingConfiguration | null> {
+  const rows = await tx.$queryRaw<LockedAccountingConfiguration>`
+    SELECT "id"                    AS "id",
+           "organization_id"       AS "organizationId",
+           "code"                  AS "code",
+           "name"                  AS "name",
+           "version_number"        AS "versionNumber",
+           "status"                AS "status",
+           "effective_from"        AS "effectiveFrom",
+           "operationally_used_at" AS "operationallyUsedAt",
+           "created_at"            AS "createdAt",
+           "updated_at"            AS "updatedAt"
+      FROM "accounting"."accounting_configurations"
+     WHERE "id" = ${configurationId}
+     FOR UPDATE`;
+  const [row] = rows;
+  return row ?? null;
+}
+
+export async function lockAccountingConfigurationsOfOrganization(
+  tx: AccountingTxClient,
+  organizationId: string,
+): Promise<string[]> {
+  const rows = await tx.$queryRaw<{ id: string }>`
+    SELECT "id"
+      FROM "accounting"."accounting_configurations"
+     WHERE "organization_id" = ${organizationId}
+     ORDER BY "id" ASC
+     FOR UPDATE`;
+  return rows.map((r) => r.id);
+}
+
+// ---------------------------------------------------------------------------
 // Accounts (Task 10.3)
 // ---------------------------------------------------------------------------
 
@@ -288,7 +343,8 @@ export interface LockedAccount {
   title: string;
   parentId: string | null;
   level: number;
-  codingStructureVersionId: string;
+  codingStructureVersionId: string | null;
+  accountingConfigurationId: string | null;
   accountNature: string;
   isPostable: boolean;
   isActive: boolean;
@@ -335,6 +391,7 @@ export async function lockAccountRow(
            "parent_id"                     AS "parentId",
            "level"                         AS "level",
            "coding_structure_version_id"   AS "codingStructureVersionId",
+           "accounting_configuration_id"   AS "accountingConfigurationId",
            "account_nature"                AS "accountNature",
            "is_postable"                   AS "isPostable",
            "is_active"                     AS "isActive",

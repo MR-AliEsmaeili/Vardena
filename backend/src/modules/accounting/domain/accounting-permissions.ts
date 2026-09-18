@@ -62,6 +62,11 @@ export const CODING_STRUCTURE_PERMISSIONS = {
   CONFIGURE: 'Accounting.CodingStructure.Configure',
 } as const;
 
+export const ACCOUNTING_CONFIGURATION_PERMISSIONS = {
+  VIEW: 'Accounting.AccountingConfiguration.View',
+  CONFIGURE: 'Accounting.AccountingConfiguration.Configure',
+} as const;
+
 export const ACCOUNT_PERMISSIONS = {
   VIEW: 'Accounting.Account.View',
   CREATE: 'Accounting.Account.Create',
@@ -165,6 +170,15 @@ export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] 
       code: CODING_STRUCTURE_PERMISSIONS.CONFIGURE,
       description:
         'Draft, edit and publish a coding structure version (the only structure authority — there is no free-text structure editing).',
+    },
+    {
+      code: ACCOUNTING_CONFIGURATION_PERMISSIONS.VIEW,
+      description: 'View accounting configurations, their versions and levels.',
+    },
+    {
+      code: ACCOUNTING_CONFIGURATION_PERMISSIONS.CONFIGURE,
+      description:
+        'Draft, edit and publish an accounting configuration version (Task 11 foundation — the generic versioned root for all accounting configuration).',
     },
     {
       code: ACCOUNT_PERMISSIONS.VIEW,

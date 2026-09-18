@@ -102,3 +102,66 @@ export class AccountImmutableAfterUseError extends Error {
     this.fields = fields;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Accounting Configuration (Task 11)
+// ---------------------------------------------------------------------------
+
+import type { AccountingConfigurationProblem } from '../domain/accounting-configuration.js';
+
+export class AccountingConfigurationNotDraftError extends Error {
+  readonly status: string;
+
+  constructor(status: string) {
+    super(
+      `Accounting configuration is \"${status}\" and cannot be changed. Create a new version instead.`,
+    );
+    this.name = 'AccountingConfigurationNotDraftError';
+    this.status = status;
+  }
+}
+
+export class AccountingConfigurationPlanRejectedError extends Error {
+  readonly problem: AccountingConfigurationProblem;
+  readonly subject: string | undefined;
+
+  constructor(
+    problem: AccountingConfigurationProblem,
+    subject?: string | undefined,
+  ) {
+    super(`The accounting configuration is not publishable (${problem}).`);
+    this.name = 'AccountingConfigurationPlanRejectedError';
+    this.problem = problem;
+    this.subject = subject;
+  }
+}
+
+export class AccountingConfigurationNotActiveError extends Error {
+  readonly status: string;
+
+  constructor(status: string) {
+    super(
+      `The accounting configuration is \"${status}\"; only ACTIVE configurations may be used.`,
+    );
+    this.name = 'AccountingConfigurationNotActiveError';
+    this.status = status;
+  }
+}
+
+export class NoActiveAccountingConfigurationError extends Error {
+  constructor() {
+    super(
+      'The organization has no active accounting configuration, so accounts cannot be validated.',
+    );
+    this.name = 'NoActiveAccountingConfigurationError';
+  }
+}
+
+export class AccountingConfigurationOperationallyUsedError extends Error {
+  constructor() {
+    super(
+      'The accounting configuration has already been used operationally and cannot be changed or deleted.',
+    );
+    this.name = 'AccountingConfigurationOperationallyUsedError';
+  }
+}

@@ -54,8 +54,10 @@ export interface Account {
   parentId: string | null;
   /** 1-based depth, always DERIVED (never client input). */
   level: number;
-  /** The structure version this code was composed under (§9.4). */
-  codingStructureVersionId: string;
+  /** Legacy: structure version this code was composed under. Nullable after Task 11 final — accountingConfigurationId is sole scope. */
+  codingStructureVersionId: string | null;
+  /** The accounting configuration version this account belongs to (Task 11 foundation). Nullable for legacy orphan (D3). */
+  accountingConfigurationId: string | null;
   accountNature: AccountNature;
   isPostable: boolean;
   isActive: boolean;
@@ -70,7 +72,8 @@ export interface AccountDto {
   title: string;
   parentId: string | null;
   level: number;
-  codingStructureVersionId: string;
+  codingStructureVersionId: string | null;
+  accountingConfigurationId: string | null;
   accountNature: AccountNature;
   isPostable: boolean;
   isActive: boolean;
@@ -87,6 +90,7 @@ export function toAccountDto(account: Account): AccountDto {
     parentId: account.parentId,
     level: account.level,
     codingStructureVersionId: account.codingStructureVersionId,
+    accountingConfigurationId: account.accountingConfigurationId,
     accountNature: account.accountNature,
     isPostable: account.isPostable,
     isActive: account.isActive,
@@ -156,13 +160,15 @@ export interface AccountPlacementParent {
   level: number;
   isPostable: boolean;
   isActive: boolean;
-  codingStructureVersionId: string;
+  codingStructureVersionId: string | null;
+  accountingConfigurationId: string | null;
 }
 
 /** The part of the moved row the placement rules read (`null` on a create). */
 export interface AccountPlacementCurrent {
   level: number;
-  codingStructureVersionId: string;
+  codingStructureVersionId: string | null;
+  accountingConfigurationId: string | null;
   hasChildren: boolean;
 }
 
@@ -267,10 +273,20 @@ export function planAccountPlacement(input: {
     return fail('depth_exceeded');
   }
   if (parent !== null && input.current !== null) {
-    if (
-      input.current.codingStructureVersionId !== parent.codingStructureVersionId
-    ) {
-      return fail('version_mismatch');
+    // After Task 11 final, accounting_configuration_id is sole scope (D1, D3).
+    // Check accounting config isolation first; fallback to coding version for legacy orphan.
+    const curAccId = input.current.accountingConfigurationId ?? null;
+    const parAccId = (parent as any).accountingConfigurationId ?? null;
+    if (curAccId !== null || parAccId !== null) {
+      if (curAccId !== parAccId) {
+        return fail('version_mismatch');
+      }
+    } else {
+      const curCodId = input.current.codingStructureVersionId ?? null;
+      const parCodId = (parent as any).codingStructureVersionId ?? null;
+      if (curCodId !== parCodId) {
+        return fail('version_mismatch');
+      }
     }
     if (input.current.hasChildren && input.current.level !== level) {
       return fail('restructure_with_children');

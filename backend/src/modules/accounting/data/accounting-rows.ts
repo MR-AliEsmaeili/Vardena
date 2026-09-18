@@ -357,6 +357,123 @@ export interface CodingStructureLevelDelegate {
 }
 
 // ---------------------------------------------------------------------------
+// Accounting Configuration Foundation (Task 11)
+// ---------------------------------------------------------------------------
+
+export type AccountingConfigurationRow = {
+  id: string;
+  organizationId: string;
+  code: string;
+  name: string;
+  versionNumber: number;
+  status: string;
+  effectiveFrom: Date | null;
+  operationallyUsedAt: Date | null;
+} & AuditColumns;
+
+export interface AccountingConfigurationWhere {
+  id?: string;
+  organizationId?: string;
+  code?: string;
+  status?: string;
+  OR?: Array<{
+    code?: { contains: string; mode: 'insensitive' };
+    name?: { contains: string; mode: 'insensitive' };
+  }>;
+}
+
+export interface AccountingConfigurationCreate {
+  id: string;
+  organizationId: string;
+  code: string;
+  name: string;
+  versionNumber: number;
+  status: string;
+  effectiveFrom: Date | null;
+  operationallyUsedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface AccountingConfigurationUpdate {
+  name?: string | undefined;
+  status?: string | undefined;
+  effectiveFrom?: Date | null | undefined;
+  operationallyUsedAt?: Date | null | undefined;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+export interface AccountingConfigurationDelegate {
+  findUnique(args: {
+    where: { id: string };
+  }): Promise<AccountingConfigurationRow | null>;
+  findFirst(args: {
+    where: AccountingConfigurationWhere;
+  }): Promise<AccountingConfigurationRow | null>;
+  findMany(args: {
+    where: AccountingConfigurationWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<AccountingConfigurationRow[]>;
+  count(args: { where: AccountingConfigurationWhere }): Promise<number>;
+  create(args: {
+    data: AccountingConfigurationCreate;
+  }): Promise<AccountingConfigurationRow>;
+  update(args: {
+    where: { id: string };
+    data: AccountingConfigurationUpdate;
+  }): Promise<AccountingConfigurationRow>;
+}
+
+export type AccountingConfigurationLevelRow = {
+  id: string;
+  organizationId: string;
+  configurationId: string;
+  levelIndex: number;
+  title: string;
+  digitLength: number;
+  defaultIsPostable: boolean;
+  levelKind: string | null;
+} & AuditColumns;
+
+export interface AccountingConfigurationLevelCreate {
+  id: string;
+  organizationId: string;
+  configurationId: string;
+  levelIndex: number;
+  title: string;
+  digitLength: number;
+  defaultIsPostable: boolean;
+  levelKind: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface AccountingConfigurationLevelWhere {
+  configurationId?: string | { in: string[] };
+  organizationId?: string;
+}
+
+export interface AccountingConfigurationLevelDelegate {
+  findMany(args: {
+    where: AccountingConfigurationLevelWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<AccountingConfigurationLevelRow[]>;
+  create(args: {
+    data: AccountingConfigurationLevelCreate;
+  }): Promise<AccountingConfigurationLevelRow>;
+  deleteMany(args: {
+    where: { configurationId: string };
+  }): Promise<{ count: number }>;
+}
+
+// ---------------------------------------------------------------------------
 // Accounts (the chart of accounts tree)
 // ---------------------------------------------------------------------------
 
@@ -367,7 +484,8 @@ export type AccountRow = {
   title: string;
   parentId: string | null;
   level: number;
-  codingStructureVersionId: string;
+  codingStructureVersionId: string | null;
+  accountingConfigurationId: string | null;
   accountNature: string;
   isPostable: boolean;
   isActive: boolean;
@@ -382,6 +500,7 @@ export interface AccountWhere {
   isActive?: boolean;
   isPostable?: boolean;
   codingStructureVersionId?: string;
+  accountingConfigurationId?: string;
   OR?: Array<{
     code?: { contains: string; mode: 'insensitive' };
     title?: { contains: string; mode: 'insensitive' };
@@ -395,7 +514,8 @@ export interface AccountCreate {
   title: string;
   parentId: string | null;
   level: number;
-  codingStructureVersionId: string;
+  codingStructureVersionId: string | null;
+  accountingConfigurationId: string | null;
   accountNature: string;
   isPostable: boolean;
   isActive: boolean;
@@ -411,6 +531,7 @@ export interface AccountUpdate {
   accountNature?: string | undefined;
   isPostable?: boolean | undefined;
   isActive?: boolean | undefined;
+  accountingConfigurationId?: string | null | undefined;
   updatedAt: Date;
   updatedBy: string | null;
 }
@@ -752,6 +873,14 @@ export interface AccountingTxClient {
   >;
   codingStructureLevel: Pick<
     CodingStructureLevelDelegate,
+    'findMany' | 'create' | 'deleteMany'
+  >;
+  accountingConfiguration: Pick<
+    AccountingConfigurationDelegate,
+    'findMany' | 'findFirst' | 'create' | 'update' | 'count'
+  >;
+  accountingConfigurationLevel: Pick<
+    AccountingConfigurationLevelDelegate,
     'findMany' | 'create' | 'deleteMany'
   >;
   account: Pick<

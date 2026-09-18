@@ -24,7 +24,9 @@ import {
   AccountImmutableAfterUseError,
   AccountPlacementRejectedError,
   AccountPostabilityRejectedError,
+  AccountingConfigurationNotActiveError,
   CodingStructureVersionNotActiveError,
+  NoActiveAccountingConfigurationError,
 } from '../data/accounting-structure-errors.js';
 import { AccountingDocumentLinesRepository } from '../data/accounting-document-lines.repository.js';
 import type {
@@ -60,6 +62,7 @@ import {
   resolveSort,
 } from './accounting-support.js';
 import { CodingStructuresService } from './coding-structures.service.js';
+import { AccountingConfigurationsService } from './accounting-configurations.service.js';
 
 /**
  * Chart of accounts (§8/§14; AC-D-06…AC-D-09, AC-D-19, AC-I-10/AC-I-11).
@@ -145,6 +148,7 @@ export class AccountsService {
      */
     private readonly documentLines: AccountingDocumentLinesRepository,
     private readonly structures: CodingStructuresService,
+    private readonly configurations: AccountingConfigurationsService,
     private readonly organizations: OrganizationsService,
     private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
@@ -203,29 +207,68 @@ export class AccountsService {
 
     const parentId = input.parentId ?? null;
     let parent: AccountPlacementParent | null = null;
-    let structure: CodingStructureVersion;
-    if (parentId !== null) {
-      const parentAccount = await this.mustFindInOrganization(
-        input.organizationId,
-        parentId,
-      );
-      structure = await this.structures.requireVersionInOrganization(
-        input.organizationId,
-        parentAccount.codingStructureVersionId,
-      );
-      parent = {
-        id: parentAccount.id,
-        organizationId: parentAccount.organizationId,
-        code: parentAccount.code,
-        level: parentAccount.level,
-        isPostable: parentAccount.isPostable,
-        isActive: parentAccount.isActive,
-        codingStructureVersionId: parentAccount.codingStructureVersionId,
-      };
-    } else {
-      structure = await this.structures.requireActiveVersionOrThrow(
-        input.organizationId,
-      );
+    let structure: { maxDepth: number; levels: any[] };
+    let accountingConfigurationId: string;
+    let codingStructureVersionId: string | null = null;
+
+    try {
+      if (parentId !== null) {
+        const parentAccount = await this.mustFindInOrganization(
+          input.organizationId,
+          parentId,
+        );
+        // Child inherits parent's accounting configuration — sole scope after D1/D3
+        if (parentAccount.accountingConfigurationId === null) {
+          // Legacy orphan parent — require active config for child (D1)
+          const activeConfig =
+            await this.configurations.requireActiveConfigurationOrThrow(
+              input.organizationId,
+            );
+          accountingConfigurationId = activeConfig.id;
+          structure = {
+            maxDepth: activeConfig.levels.length,
+            levels: activeConfig.levels,
+          };
+        } else {
+          accountingConfigurationId = parentAccount.accountingConfigurationId;
+          const parentConfig =
+            await this.configurations.requireConfigurationInOrganization(
+              input.organizationId,
+              parentAccount.accountingConfigurationId,
+            );
+          structure = {
+            maxDepth: parentConfig.levels.length,
+            levels: parentConfig.levels,
+          };
+        }
+        codingStructureVersionId = parentAccount.codingStructureVersionId ?? null;
+        parent = {
+          id: parentAccount.id,
+          organizationId: parentAccount.organizationId,
+          code: parentAccount.code,
+          level: parentAccount.level,
+          isPostable: parentAccount.isPostable,
+          isActive: parentAccount.isActive,
+          codingStructureVersionId: parentAccount.codingStructureVersionId ?? null,
+          accountingConfigurationId: parentAccount.accountingConfigurationId ?? null,
+        };
+      } else {
+        // Root account — D1: MUST require active accounting configuration, no legacy fallback
+        const activeConfig =
+          await this.configurations.requireActiveConfigurationOrThrow(
+            input.organizationId,
+          );
+        accountingConfigurationId = activeConfig.id;
+        structure = {
+          maxDepth: activeConfig.levels.length,
+          levels: activeConfig.levels,
+        };
+        codingStructureVersionId = null;
+      }
+    } catch (error) {
+      const mapped = mapAccountGuardError(error);
+      if (mapped !== null) throw mapped;
+      throw error;
     }
 
     const level = parent === null ? 1 : parent.level + 1;
@@ -238,11 +281,12 @@ export class AccountsService {
       parent,
       descendantIds: [],
       current: null,
-      structure,
+      structure: structure as any,
     });
 
     const isPostable =
-      input.isPostable ?? defaultIsPostableForLevel(structure.levels, level);
+      input.isPostable ??
+      defaultIsPostableForLevel((structure as any).levels, level);
 
     const existing = await this.repository.findByCode(
       input.organizationId,
@@ -266,7 +310,11 @@ export class AccountsService {
         parentId,
         accountNature: input.accountNature,
         isPostable,
-        structure: snapshot(structure),
+        structure: snapshot(
+          structure as any,
+          accountingConfigurationId,
+          codingStructureVersionId,
+        ),
         now,
         actorId,
       });
@@ -274,6 +322,21 @@ export class AccountsService {
       const mapped = mapAccountGuardError(error);
       if (mapped !== null) throw mapped;
       throw error;
+    }
+
+    // D4: mark operationally used when account pinned on active config
+    try {
+      await this.configurations.markOperationallyUsed(
+        accountingConfigurationId,
+      );
+    } catch {
+      // Non-fatal — operationally used marker is best-effort, failure should not rollback account creation
+      // But log for observability
+      this.logger.warn(
+        'Failed to mark accounting configuration as operationally used',
+        { accountingConfigurationId },
+        AccountsService.name,
+      );
     }
 
     await this.publishAccountEvent(ACCOUNT_CREATED_EVENT, created);
@@ -284,6 +347,7 @@ export class AccountsService {
         organizationId: created.organizationId,
         code: created.code,
         level: created.level,
+        accountingConfigurationId: created.accountingConfigurationId,
       },
       AccountsService.name,
     );
@@ -316,36 +380,66 @@ export class AccountsService {
       input.parentId !== undefined &&
       (input.parentId ?? null) !== current.parentId;
     let parent: AccountPlacementParent | null = null;
-    if (
-      parentChanging &&
-      input.parentId !== undefined &&
-      input.parentId !== null
-    ) {
-      const parentAccount = await this.mustFindInOrganization(
-        current.organizationId,
-        input.parentId,
-      );
-      parent = {
-        id: parentAccount.id,
-        organizationId: parentAccount.organizationId,
-        code: parentAccount.code,
-        level: parentAccount.level,
-        isPostable: parentAccount.isPostable,
-        isActive: parentAccount.isActive,
-        codingStructureVersionId: parentAccount.codingStructureVersionId,
-      };
-    }
-    // A subtree is coded under ONE version: the node keeps its own pin, so the
-    // new parent must share it and the code is re-proved against it. Only a
-    // MOVE needs the level rows — a title or nature edit never consults them.
-    const structure = parentChanging
-      ? await this.structures.requireVersionInOrganization(
-          current.organizationId,
-          current.codingStructureVersionId,
-        )
-      : null;
+    let structureForMove: { maxDepth: number; levels: any[] } | null = null;
 
-    if (parentChanging && structure !== null) {
+    try {
+      if (
+        parentChanging &&
+        input.parentId !== undefined &&
+        input.parentId !== null
+      ) {
+        const parentAccount = await this.mustFindInOrganization(
+          current.organizationId,
+          input.parentId,
+        );
+        parent = {
+          id: parentAccount.id,
+          organizationId: parentAccount.organizationId,
+          code: parentAccount.code,
+          level: parentAccount.level,
+          isPostable: parentAccount.isPostable,
+          isActive: parentAccount.isActive,
+          codingStructureVersionId: parentAccount.codingStructureVersionId ?? null,
+          accountingConfigurationId:
+            parentAccount.accountingConfigurationId ?? null,
+        };
+        if (parentAccount.accountingConfigurationId !== null) {
+          const parentConfig =
+            await this.configurations.requireConfigurationInOrganization(
+              current.organizationId,
+              parentAccount.accountingConfigurationId,
+            );
+          structureForMove = {
+            maxDepth: parentConfig.levels.length,
+            levels: parentConfig.levels,
+          };
+        } else {
+          const activeConfig =
+            await this.configurations.requireActiveConfigurationOrThrow(
+              current.organizationId,
+            );
+          structureForMove = {
+            maxDepth: activeConfig.levels.length,
+            levels: activeConfig.levels,
+          };
+        }
+      } else if (parentChanging && input.parentId === null) {
+        const activeConfig =
+          await this.configurations.requireActiveConfigurationOrThrow(
+            current.organizationId,
+          );
+        structureForMove = {
+          maxDepth: activeConfig.levels.length,
+          levels: activeConfig.levels,
+        };
+      }
+    } catch (error) {
+      const mapped = mapAccountGuardError(error);
+      if (mapped !== null) throw mapped;
+      throw error;
+    }
+
+    if (parentChanging && structureForMove !== null) {
       const edges = await this.repository.listHierarchyEdges(
         current.organizationId,
       );
@@ -358,14 +452,16 @@ export class AccountsService {
         descendantIds: collectDescendantIds(edges, current.id),
         current: {
           level: current.level,
-          codingStructureVersionId: current.codingStructureVersionId,
+          codingStructureVersionId: current.codingStructureVersionId ?? null,
+          accountingConfigurationId:
+            current.accountingConfigurationId ?? null,
           hasChildren:
             (await this.repository.findChild(
               current.organizationId,
               current.id,
             )) !== null,
         },
-        structure,
+        structure: structureForMove as any,
       });
     }
 
@@ -389,7 +485,14 @@ export class AccountsService {
         accountNature: input.accountNature,
         isPostable: input.isPostable,
         parentId: input.parentId,
-        structure: structure === null ? null : snapshot(structure),
+        structure:
+          structureForMove === null
+            ? null
+            : snapshot(
+                structureForMove as any,
+                current.accountingConfigurationId ?? '',
+                current.codingStructureVersionId ?? null,
+              ),
         now: new Date(),
         actorId: getPrincipal()?.userId ?? null,
       });
@@ -470,21 +573,22 @@ export class AccountsService {
     descendantIds: readonly string[];
     current: {
       level: number;
-      codingStructureVersionId: string;
+      codingStructureVersionId: string | null;
+      accountingConfigurationId: string | null;
       hasChildren: boolean;
     } | null;
-    structure: CodingStructureVersion;
+    structure: { maxDepth: number; levels: any[] };
   }): void {
     const plan = planAccountPlacement({
       id: input.id,
       organizationId: input.organizationId,
       parentId: input.parentId,
       code: input.code,
-      parent: input.parent,
+      parent: input.parent as any,
       descendantIds: input.descendantIds,
-      current: input.current,
-      levels: input.structure.levels,
-      maxDepth: input.structure.maxDepth,
+      current: input.current as any,
+      levels: (input.structure as any).levels,
+      maxDepth: (input.structure as any).maxDepth,
     });
     if (plan.problem !== null) {
       throw placementException(plan.problem, plan.field);
@@ -525,7 +629,9 @@ export class AccountsService {
         organizationId: account.organizationId,
         code: account.code,
         level: account.level,
-        codingStructureVersionId: account.codingStructureVersionId,
+        codingStructureVersionId: account.codingStructureVersionId ?? null,
+        accountingConfigurationId:
+          account.accountingConfigurationId ?? null,
       },
     });
   }
@@ -551,11 +657,16 @@ export class AccountsService {
 
 // ---- Internal helpers ----
 
-function snapshot(version: CodingStructureVersion): AccountStructureSnapshot {
+function snapshot(
+  structure: { maxDepth: number; levels: any[] },
+  accountingConfigurationId: string,
+  codingStructureVersionId: string | null = null,
+): AccountStructureSnapshot {
   return {
-    versionId: version.id,
-    maxDepth: version.maxDepth,
-    levels: version.levels,
+    accountingConfigurationId,
+    versionId: codingStructureVersionId ?? '',
+    maxDepth: structure.maxDepth,
+    levels: structure.levels,
   };
 }
 
@@ -617,6 +728,16 @@ function mapAccountGuardError(error: unknown): AppException | null {
   if (error instanceof CodingStructureVersionNotActiveError) {
     return AppException.conflict(
       'The organization’s active coding structure changed while this request was running. Retry it.',
+    );
+  }
+  if (error instanceof NoActiveAccountingConfigurationError) {
+    return AppException.businessRule(
+      'This organization has no active accounting configuration. Configure one and publish it before creating accounts.',
+    );
+  }
+  if (error instanceof AccountingConfigurationNotActiveError) {
+    return AppException.businessRule(
+      'The active accounting configuration is not ACTIVE. Publish it before creating accounts.',
     );
   }
   if (isUniqueViolation(error)) {

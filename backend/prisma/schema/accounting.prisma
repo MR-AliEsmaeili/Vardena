@@ -335,11 +335,15 @@ model Account {
   /// 1-based depth, ALWAYS derived: root = 1, child = parent.level + 1
   /// (AC-I-10 rule 1). Never supplied by a client.
   level          Int
-  /// The structure version this account's code was composed under (§9.4,
-  /// D-21, AC-I-14) — historical codes stay interpretable without the
-  /// CURRENT structure. Derived: roots take the org's active version, children
-  /// inherit the parent's, so one subtree never mixes two versions.
-  codingStructureVersionId String @map("coding_structure_version_id")
+  /// Legacy: the structure version this account's code was composed under (§9.4).
+  /// Kept for backward compat, nullable after Task 11 final — accounting_configuration_id
+  /// is now sole configuration scope (D1, D3). Existing rows keep their version,
+  /// new rows may set it to null or to parent's pinned version for traceability.
+  codingStructureVersionId String? @map("coding_structure_version_id")
+  /// Task 11 — canonical configuration scope. Nullable for legacy orphan (D3):
+  /// if org has no active accounting configuration, account remains with null.
+  /// New accounts MUST set it (D1).
+  accountingConfigurationId String? @map("accounting_configuration_id")
   /// Balance direction (`ماهیت`), `debit` | `credit` (§8.3). Reporting
   /// semantics only — it does NOT restrict which side a future line uses
   /// (§13.4).
@@ -359,7 +363,8 @@ model Account {
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   parent       Account?               @relation("AccountTree", fields: [parentId], references: [id], onDelete: Restrict)
   children     Account[]              @relation("AccountTree")
-  codingStructureVersion CodingStructureVersion @relation(fields: [codingStructureVersionId], references: [id], onDelete: Restrict)
+  codingStructureVersion CodingStructureVersion? @relation(fields: [codingStructureVersionId], references: [id], onDelete: Restrict)
+  accountingConfiguration AccountingConfiguration? @relation("AccountAccountingConfiguration", fields: [accountingConfigurationId], references: [id], onDelete: Restrict)
   /// The document lines that reference this account (Task 10.4). The real FK is
   /// `accounting_document_lines.account_id` (RESTRICT); this is the virtual side.
   documentLines AccountingDocumentLine[]
@@ -379,7 +384,109 @@ model Account {
   /// "which accounts pin this version" — the query a structure-version
   /// retirement and (later) a structure migration must answer.
   @@index([codingStructureVersionId], map: "idx_accounts_coding_structure_version_id")
+  @@index([accountingConfigurationId], map: "idx_accounts_accounting_configuration_id")
   @@map("accounts")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Accounting Configuration Foundation (Task 11)
+// ---------------------------------------------------------------------------
+//
+// The generic, organization-scoped, versioned configuration root that Task 11
+// requires. It is the umbrella for the chart, coding, and future dimensions,
+// posting rules, etc. — without implementing any of those yet (non-goals).
+//
+// `accounting_configurations` — the root, versioned `DRAFT → ACTIVE →
+// SUPERSEDED`, exactly one ACTIVE per organization (same pattern as
+// `coding_structure_versions`). `name` is the human title, `code` is the
+// identity inside the organization (e.g. DEFAULT), `versionNumber` counts
+// revisions, `effective_from` is the effective-from semantics, and
+// `operationally_used_at` marks the freeze point (operational freeze policy).
+//
+// `accounting_configuration_levels` — the configurable level definitions for
+// one configuration version (Group, General, Subsidiary, Detail are example
+// titles, not constants). Levels belong to the VERSION, so a later change
+// never reinterprets existing account codes. This mirrors the coding-structure
+// levels but is owned by the generic configuration root, so future tasks can
+// extend it without touching the legacy coding-structure tables.
+//
+// Accounts are already scoped to organization + configuration version via
+// `coding_structure_version_id`; Task 11 adds `accounting_configuration_id`
+// as the new canonical scope, kept nullable for backward compatibility with
+// existing rows. New accounts MUST pin an accounting configuration; the old
+// column stays for the migration period and for regression safety.
+//
+// Integrity: organization scope, configuration version scope, unique code
+// within organization+code+version, parent-child consistency and version
+// isolation are enforced by the application locks (same pattern as existing
+// guards) plus unique indexes as hard backstops. No triggers, no partial
+// unique indexes (Prisma-invisible).
+
+model AccountingConfiguration {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  /// Identity inside the organization (e.g. DEFAULT). Unique per
+  /// (organization, code, versionNumber).
+  code           String  @db.VarChar(64)
+  /// Human title (Task 11 — name).
+  name           String  @db.VarChar(200)
+  /// 1-based version ordinal per (organization, code).
+  versionNumber  Int     @map("version_number")
+  /// `DRAFT` | `ACTIVE` | `SUPERSEDED` (domain/accounting-configuration.ts).
+  status         String  @default("DRAFT") @db.VarChar(16)
+  /// Effective-from semantics — when this configuration becomes effective.
+  /// Null = immediately.
+  effectiveFrom  DateTime? @map("effective_from") @db.Timestamptz(6)
+  /// When the configuration was first used operationally (freeze policy).
+  /// Null = not yet used.
+  operationallyUsedAt DateTime? @map("operationally_used_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  levels       AccountingConfigurationLevel[]
+  /// Accounts pinned to this configuration version (canonical scope).
+  /// The real FK is `accounts.accounting_configuration_id`; this is the
+  /// virtual side.
+  accounts     Account[] @relation("AccountAccountingConfiguration")
+
+  @@unique([organizationId, code, versionNumber], map: "uq_accounting_configurations_org_code_version")
+  @@index([organizationId, status], map: "idx_accounting_configurations_org_status")
+  @@index([organizationId, code], map: "idx_accounting_configurations_org_code")
+  @@map("accounting_configurations")
+  @@schema("accounting")
+}
+
+model AccountingConfigurationLevel {
+  id             String  @id
+  organizationId String  @map("organization_id")
+  configurationId String @map("accounting_configuration_id")
+  /// 1-based ordinal inside the configuration version.
+  levelIndex     Int     @map("level_index")
+  /// The level title the organization sees (Group, General, Subsidiary,
+  /// Detail are common Iranian vocabulary, not constants).
+  title          String  @db.VarChar(200)
+  /// Digits this level's segment contributes.
+  digitLength    Int     @map("digit_length")
+  /// Per-level default for new accounts (is_postable default).
+  defaultIsPostable Boolean @default(false) @map("default_is_postable")
+  /// Informational label only (group/general/subsidiary/detail). Nothing
+  /// derives behaviour from it.
+  levelKind      String?  @map("level_kind") @db.VarChar(20)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  configuration AccountingConfiguration @relation(fields: [configurationId], references: [id], onDelete: Restrict)
+
+  @@unique([configurationId, levelIndex], map: "uq_accounting_configuration_levels_config_level")
+  @@index([organizationId, configurationId], map: "idx_accounting_configuration_levels_org_config")
+  @@map("accounting_configuration_levels")
   @@schema("accounting")
 }
 

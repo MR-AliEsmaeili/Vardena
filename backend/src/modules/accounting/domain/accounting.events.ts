@@ -64,7 +64,7 @@ export interface AccountingPeriodEventPayload {
   sequence: number;
 }
 
-/** Payload shared by every account (chart of accounts) event — Task 10.3. */
+/** Payload shared by every account (chart of accounts) event — Task 10.3, updated Task 11 final. */
 export interface AccountEventPayload {
   /** ULID of the account. */
   id: string;
@@ -74,8 +74,10 @@ export interface AccountEventPayload {
   code: string;
   /** 1-based tree depth. */
   level: number;
-  /** Coding-structure version the code was composed under (§9.4). */
-  codingStructureVersionId: string;
+  /** Legacy: coding-structure version the code was composed under (§9.4). Nullable after Task 11 final. */
+  codingStructureVersionId: string | null;
+  /** Canonical configuration scope after Task 11 final (D1). Nullable for legacy orphan D3. */
+  accountingConfigurationId: string | null;
 }
 
 /** Payload for accounting-period lifecycle transitions. */

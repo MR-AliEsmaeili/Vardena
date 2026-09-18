@@ -22,9 +22,11 @@ import type { AppConfig } from '../../../kernel/config/app-config.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { CodingStructuresService } from './coding-structures.service.js';
+import { AccountingConfigurationsService } from './accounting-configurations.service.js';
 import { AccountsService } from './accounts.service.js';
 import { AccountingDocumentLinesRepository } from '../data/accounting-document-lines.repository.js';
 import {
+  ACCOUNTING_CONFIGURATION_PERMISSIONS,
   ACCOUNTING_PERMISSION_DEFINITIONS,
   ACCOUNT_PERMISSIONS,
   CODING_STRUCTURE_PERMISSIONS,
@@ -107,6 +109,7 @@ async function failure(promise: Promise<unknown>): Promise<{
 interface Fixture {
   organizations: OrganizationsService;
   structures: CodingStructuresService;
+  configurations: AccountingConfigurationsService;
   accounts: AccountsService;
   stores: StructureStores;
   master: ReturnType<typeof createMasterDataStores>;
@@ -158,12 +161,12 @@ async function buildFixture(
     authorization,
     loggerStub(),
   );
-  /**
-   * AC-I-11's predicate (Task 10.4): the real `AccountingDocumentLinesRepository`
-   * counts `accounting_document_lines`. This suite exercises the chart alone, so
-   * the stub answers "never referenced" — the freeze rule itself is covered by
-   * the voucher suite, which shares the line table with the chart fakes.
-   */
+  const configurations = new AccountingConfigurationsService(
+    stores.configurations,
+    organizations,
+    authorization,
+    loggerStub(),
+  );
   const documentLines = {
     countForAccount: async () => 0,
   } as unknown as AccountingDocumentLinesRepository;
@@ -171,6 +174,7 @@ async function buildFixture(
     stores.accounts,
     documentLines,
     structures,
+    configurations,
     organizations,
     authorization,
     loggerStub(),
@@ -214,6 +218,7 @@ async function buildFixture(
   return {
     organizations,
     structures,
+    configurations,
     accounts,
     stores,
     master: masterStores,
@@ -239,6 +244,36 @@ type LevelConfig = (typeof TWO_LEVELS)['levels'][number] & {
 };
 
 /** Draft + publish a configuration for one organization; returns the version id. */
+async function publishAccountingConfig(
+  fixture: Fixture,
+  organizationId: string,
+  configuration: {
+    code?: string;
+    maxDepth: number;
+    levels: readonly LevelConfig[];
+  },
+): Promise<string> {
+  await fixture.grant(ACTOR, [ACCOUNTING_CONFIGURATION_PERMISSIONS.CONFIGURE]);
+  const created = await asActor(ACTOR, () =>
+    fixture.configurations.createConfiguration({
+      organizationId,
+      code: configuration.code ?? 'DEFAULT',
+      name: configuration.code ?? 'DEFAULT',
+      levels: configuration.levels.map((l) => ({
+        levelIndex: l.levelIndex,
+        title: l.title,
+        digitLength: l.digitLength,
+        defaultIsPostable: l.defaultIsPostable,
+        levelKind: (l as any).levelKind ?? null,
+      })),
+    }),
+  );
+  const published = await asActor(ACTOR, () =>
+    fixture.configurations.publishConfiguration(organizationId, created.id),
+  );
+  return published.id;
+}
+
 async function publishStructure(
   fixture: Fixture,
   organizationId: string,
@@ -262,7 +297,27 @@ async function publishStructure(
   await asActor(ACTOR, () =>
     fixture.structures.publishVersion(organizationId, created.id),
   );
+  // Task 11 Final D1: also publish accounting configuration so AccountsService can create accounts
+  try {
+    await publishAccountingConfig(fixture, organizationId, configuration);
+  } catch {
+    // Ignore if already exists — publishAccountingConfig will handle version increment
+  }
   return created.id;
+}
+
+async function publishBoth(
+  fixture: Fixture,
+  organizationId: string,
+  configuration: {
+    code?: string;
+    maxDepth: number;
+    levels: readonly LevelConfig[];
+  },
+): Promise<{ codingId: string; configId: string }> {
+  const codingId = await publishStructure(fixture, organizationId, configuration);
+  const configId = await publishAccountingConfig(fixture, organizationId, configuration);
+  return { codingId, configId };
 }
 
 interface RootOverrides {
@@ -771,8 +826,13 @@ describe('AccountsService', () => {
     await fixture.grant(ACTOR, [
       ...Object.values(CODING_STRUCTURE_PERMISSIONS),
       ...Object.values(ACCOUNT_PERMISSIONS),
+      ...Object.values(ACCOUNTING_CONFIGURATION_PERMISSIONS),
     ]);
     versionId = await publishStructure(fixture, orgA, TWO_LEVELS);
+    // Ensure accounting config exists for orgA
+    try {
+      await publishAccountingConfig(fixture, orgA, TWO_LEVELS);
+    } catch {}
     fixture.events.length = 0;
   });
 
@@ -785,12 +845,13 @@ describe('AccountsService', () => {
       title: 'Current Assets',
       parentId: null,
       level: 1,
-      codingStructureVersionId: versionId,
       accountNature: 'debit',
       // Level 1 of THIS configuration defaults to non-postable (§14 rule 4).
       isPostable: false,
       isActive: true,
     });
+    // Task 11 Final D1: accountingConfigurationId is sole scope, codingStructureVersionId nullable
+    expect(root.accountingConfigurationId).toBeTruthy();
     // The API never exposes audit actor ids (AR-24).
     expect(root).not.toHaveProperty('createdBy');
     expect(fixture.events.map((event) => event.type)).toEqual([
@@ -800,8 +861,8 @@ describe('AccountsService', () => {
       organizationId: orgA,
       code: '02',
       level: 1,
-      codingStructureVersionId: versionId,
     });
+    expect((fixture.events[0]?.payload as any).accountingConfigurationId).toBeTruthy();
   });
 
   it('honours an explicit postability override against the level default', async () => {
@@ -827,8 +888,8 @@ describe('AccountsService', () => {
       level: 2,
       parentId: root.id,
       isPostable: true,
-      codingStructureVersionId: versionId,
     });
+    expect(child.accountingConfigurationId).toBe(root.accountingConfigurationId);
     // maxDepth is 2, so a third level is beyond this configuration. The child
     // is made non-postable first so the DEPTH rule is what refuses it.
     await asActor(ACTOR, () =>
@@ -926,8 +987,37 @@ describe('AccountsService', () => {
     ).toMatchObject({ code: 'EntityNotFound' });
   });
 
-  it('refuses to create an account in an organization with no active structure', async () => {
-    expect(await accountFailures(fixture).create(orgB, '02')).toMatchObject({
+  it('refuses to create an account in an organization with no active structure (now accounting config per D1)', async () => {
+    // orgB has no accounting config yet — publishStructure not called for orgB in this test
+    // Ensure orgB has no active accounting config
+    const freshFixture = await buildFixture();
+    const orgB2 = (
+      await asSystem(() =>
+        freshFixture.organizations.createOrganization({
+          code: 'ORGB2',
+          name: 'Org B2',
+        }),
+      )
+    ).id;
+    await freshFixture.grant(ACTOR, [
+      ...Object.values(CODING_STRUCTURE_PERMISSIONS),
+      ...Object.values(ACCOUNT_PERMISSIONS),
+      ...Object.values(ACCOUNTING_CONFIGURATION_PERMISSIONS),
+    ]);
+    const failures = {
+      create: (organizationId: string, code: string) =>
+        failure(
+          asActor(ACTOR, () =>
+            freshFixture.accounts.createAccount({
+              organizationId,
+              code,
+              title: `Account ${code}`,
+              accountNature: 'debit',
+            }),
+          ),
+        ),
+    };
+    expect(await failures.create(orgB2, '02')).toMatchObject({
       code: 'BusinessRuleViolation',
     });
   });

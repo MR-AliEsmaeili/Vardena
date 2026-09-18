@@ -201,8 +201,11 @@ export class AccountResponseDto {
   @ApiProperty({ example: 2 })
   level!: number;
 
-  @ApiProperty({ format: 'ulid' })
-  codingStructureVersionId!: string;
+  @ApiProperty({ format: 'ulid', nullable: true })
+  codingStructureVersionId!: string | null;
+
+  @ApiProperty({ format: 'ulid', nullable: true })
+  accountingConfigurationId!: string | null;
 
   @ApiProperty({ enum: ACCOUNT_NATURES })
   accountNature!: (typeof ACCOUNT_NATURES)[number];
