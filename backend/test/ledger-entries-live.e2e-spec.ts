@@ -65,6 +65,7 @@ describe.skipIf(DATABASE_URL === undefined)(
     let fiscalYearId = '';
     let accountingPeriodId = '';
     let codingStructureVersionId = '';
+    let accountingConfigurationId = '';
     let debitAccountId = '';
     let creditAccountId = '';
     let branchId = '';
@@ -255,6 +256,14 @@ describe.skipIf(DATABASE_URL === undefined)(
         created_at, updated_at
       ) VALUES (${codingStructureVersionId}, ${organizationId}, ${'DEFAULT'}, 1, 'published', 1, '', now(), now())`;
 
+      accountingConfigurationId = generateId();
+      await db.$queryRaw`INSERT INTO accounting.accounting_configurations (
+        id, organization_id, code, version_number, status, created_at, updated_at
+      ) VALUES (${accountingConfigurationId}, ${organizationId}, ${'DEFAULT'}, 1, 'published', now(), now())`;
+      await db.$queryRaw`INSERT INTO accounting.accounting_configuration_levels (
+        id, organization_id, accounting_configuration_id, code, title, level_order, is_required, is_active, created_at, updated_at
+      ) VALUES (${generateId()}, ${organizationId}, ${accountingConfigurationId}, ${'L1'}, ${'Level 1'}, 1, true, true, now(), now())`;
+
       debitAccountId = generateId();
       creditAccountId = generateId();
       for (const [id, code, title] of [
@@ -263,9 +272,9 @@ describe.skipIf(DATABASE_URL === undefined)(
       ]) {
         await db.$queryRaw`INSERT INTO accounting.accounts (
           id, organization_id, code, title, account_nature, is_postable, is_active,
-          level, coding_structure_version_id, created_at, updated_at
+          level, coding_structure_version_id, accounting_configuration_id, created_at, updated_at
         ) VALUES (${id}, ${organizationId}, ${code}, ${title}, 'debit', true, true, 1,
-          ${codingStructureVersionId}, now(), now())`;
+          ${codingStructureVersionId}, ${accountingConfigurationId}, now(), now())`;
       }
 
       // The operational scope dimension lives on the voucher header (AC-D-17):
@@ -304,6 +313,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           await db.fiscalYear.deleteMany({ where: { organizationId } });
           await db.account.deleteMany({ where: { organizationId } });
           await db.branch.deleteMany({ where: { organizationId } });
+          await db.$queryRaw`DELETE FROM accounting.accounting_configuration_levels WHERE organization_id = ${organizationId}`;
+          await db.$queryRaw`DELETE FROM accounting.accounting_configurations WHERE organization_id = ${organizationId}`;
           await db.codingStructureLevel.deleteMany({
             where: { organizationId },
           });
