@@ -103,6 +103,20 @@ jobs:
           DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
         run: npm run prisma:deploy
 
+      # The populated pre-Task-11 backfill cannot be observed on a database that
+      # was migrated from empty, so this step proves it the only way possible:
+      # a disposable database created from the service, the 12 pre-Task-11
+      # migrations, the seeded fixture (multi-org, one-level, orphan, draft and
+      # superseded-only organizations), the Task 11 migration applied in one
+      # transaction under a lock probe, then verify.sql's assertions. On success
+      # the database is dropped; on failure it is left in place and the step
+      # fails, so a regression is visible without reading logs.
+      - name: Migration rehearsal (populated pre-Task-11 data)
+        working-directory: backend
+        env:
+          VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
+        run: npm run test:migration-rehearsal
+
       - name: E2E tests (incl. live-DB suites)
         working-directory: backend
         run: npm run test:e2e

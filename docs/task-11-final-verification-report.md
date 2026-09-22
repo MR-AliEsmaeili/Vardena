@@ -290,7 +290,7 @@ are the verified part.
 
 ## D. Remaining risks or gaps
 
-1. **G1 — repository call-site coverage (test gap, not a defect).** Removing the
+1. ~~**G1 — repository call-site coverage**~~ — **CLOSED in the follow-up pass (§F).** Removing the
    move-pin refusal from the real `AccountsRepository.updateChecked` leaves all
    364 accounting unit tests green (mutation M8). The invariant is still guarded
    by the domain function, the in-memory twin and the service contract, and the
@@ -314,9 +314,9 @@ are the verified part.
 5. **G5 — OQ-64 / freeze inert:** `operationally_used_at` is never set in
    production; the freeze promise is unrealizable until the Posting task wires the
    caller inside the finalization transaction (decision note §3/§6).
-6. **G6 — rehearsal is not part of CI.** It is run manually (or by a future
-   pipeline change); the CI job applies migrations but does not run
-   `npm run test:migration-rehearsal`.
+6. ~~**G6 — rehearsal is not part of CI**~~ — **CLOSED in the follow-up pass (§F):** the
+   pipeline now runs `npm run test:migration-rehearsal` between `migrate deploy`
+   and the e2e step.
 7. **G7 — raw-SQL-only partial index drift.** `uq_accounting_configurations_org_active`
    exists only in the migration; a future `prisma migrate dev` regenerating the
    schema from the Prisma models would drop it. Guarded by the live index-definition
@@ -356,3 +356,57 @@ invariants are demonstrated by executable evidence"):
 The gaps in §D are coverage/maintenance items (G1, G2, G6, G7) and open product
 decisions (G3, G4, G5) — not evidence that a Task 11 invariant fails. They are
 recorded with concrete follow-ups so acceptance does not hide them.
+
+---
+
+## F. Follow-up closure pass (same day, after this verification)
+
+Both closable gaps from §D were closed; no production behaviour changed (one new
+test file, one CI step, documentation).
+
+### F1 — G1 closed: the repository PIN refusals are now tested at their real call sites
+
+| Item | Detail |
+|---|---|
+| New file | `backend/src/modules/accounting/data/accounts.repository.spec.ts` — **7 tests** against the REAL `AccountsRepository` through a minimal fake transactional client (the surface the two paths touch: `$transaction`, `$queryRaw` locks, `account.create/findMany/update`, `accountingDocumentLine.count`) |
+| Move path (item 1) | refuses a snapshot naming **another configuration**, refuses one naming **another coding version** (both `AccountPlacementRejectedError` / `version_mismatch`, **and** asserts `account.update` was never called), refuses a move with **no** snapshot, plus a **CONTROL** that the account's own pair passes and the move is applied |
+| Root path (D1 + §9.4) | refuses a coding version that is no longer `active`, refuses a configuration that is not `ACTIVE` (both write nothing), plus a **CONTROL** that the ACTIVE pair is accepted and the row is created |
+| Mutation re-check | **M8** (move refusal deleted from the real repository): accounting unit suite → **2 failed / 371**, restored → **371 passed**. **M8b** (root coding-version re-check deleted): → **1 failed / 371**, restored → **371 passed**. Both mutations previously passed silently; the gap is closed |
+| Honest note | the first version of this spec was itself caught being vacuous: the fake row was already a root, so `parentChanged` was false and the move tests never reached the pin check (4 failed). Fixed by giving the locked row a parent, and the reason is documented in the spec |
+
+### F2 — G6 closed: the migration rehearsal runs in CI
+
+`.github/workflows/ci.yml` gained one step between `Migrate test database` and
+`E2E tests (incl. live-DB suites)` (14 steps total, workflow validated as YAML):
+
+```yaml
+      - name: Migration rehearsal (populated pre-Task-11 data)
+        working-directory: backend
+        env:
+          VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
+        run: npm run test:migration-rehearsal
+```
+
+- The `postgres:16` service's `POSTGRES_USER: vardena` is a superuser, so
+  `CREATE DATABASE` / `DROP DATABASE` for the disposable rehearsal database work;
+  the rehearsal drops its database on success and leaves it in place when it
+  fails (the runner exits non-zero), so a future regression is visible.
+- Command shape verified locally against the same role/user/database layout
+  (`… @127.0.0.1:55432/postgres`): exit 0, all checks PASS.
+- The step's behaviour in the real pipeline is proven by the CI run recorded in
+  §F3.
+
+### F3 — Re-verification after the closure (executed)
+
+| Suite | Result |
+|---|---|
+| `npm test` | **76 → 77 files / 926 → 933 tests passed** |
+| `npm run test:e2e` | 15 files passed + 8 skipped; 189 passed + 45 skipped |
+| `npm run typecheck` · `lint` · `format:check` | clean · 0 errors / 4 warnings · clean |
+| `npm run test:migration-rehearsal` | PASSED (19 PASS + 1 OBSERVED) |
+| CI | see the run quoted in the pull request for the follow-up commit — the new rehearsal step must appear as `success` there; until that run is green the CI wiring is **VERIFIED-by-layout, not yet VERIFIED-in-pipeline** |
+
+Documents updated in this pass: this report (§D G1/G6, §F),
+`docs/task-11-implementation-report.md` (§I item 8 — the "not wired into CI"
+follow-up is now closed), `docs/accounting/configuration.md` (test inventory
+gains the repository contract spec).
