@@ -29,8 +29,10 @@ authorization, and API. The frontend talks only to the Vardena API.
 
 - **The backend is implemented** (Tasks 1–11). `backend/` is a NestJS modular
   monolith: `backend/src/kernel` (config, errors, ids, logging, pagination,
-  Prisma service, request context) plus `backend/src/modules/{identity,users,
-  rbac,organization,inventory,documents,workflow,accounting}`; Prisma schemas in
+  Prisma service, request context) plus nine modules under `backend/src/modules`
+  — `health` and the eight domain modules
+  `{users,identity,rbac,organization,inventory,documents,workflow,accounting}`
+  (the order `app.module.ts` registers them); Prisma schemas in
   `backend/prisma/schema/` (schema-per-module) and 13 migrations in
   `backend/prisma/migrations/`.
 - **Accounting (Tasks 10.x + 11)** is the most advanced module: financial
@@ -81,7 +83,7 @@ docs/
   task-11-implementation-report.md ← latest task evidence (A–J format)
 backend/
   src/kernel/        ← cross-cutting kernel (config, errors, ids, logging, Prisma)
-  src/modules/       ← the eight modules (NestJS modules + domain/application/data/api)
+  src/modules/       ← health + the eight domain modules (domain/application/data/api)
   test/              ← e2e specs + support harness (live suites opt-in)
   prisma/schema/     ← schema-per-module Prisma sources
   prisma/migrations/ ← 13 applied migrations + the Task 11 rehearsal fixture
