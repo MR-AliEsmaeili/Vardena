@@ -406,18 +406,22 @@ export class AccountsService {
           codingStructureVersionId: parentAccount.codingStructureVersionId,
           accountingConfigurationId: parentAccount.accountingConfigurationId,
         };
-        const parentConfig =
+        // A move is validated against the account's OWN pinned configuration's
+        // levels (Task 11 remediation, Defect 1): no validation may accidentally
+        // use another configuration's levels, and an existing pin must not
+        // silently remain valid under an incompatible configuration. The
+        // structure for the pre-flight check therefore comes from the pinned
+        // pair, not from the target parent; the parent's configuration is still
+        // checked for equality via `planAccountPlacement.version_mismatch`.
+        pinned = this.pinnedPairForMove(current);
+        const pinnedConfig =
           await this.configurations.requireConfigurationInOrganization(
             current.organizationId,
-            parentAccount.accountingConfigurationId,
+            pinned.accountingConfigurationId,
           );
-        // A child may only join the parent's own configuration + version
-        // (D1/D2), and the move is validated against the levels of THAT
-        // configuration — never another one's.
-        pinned = this.pinnedPairForMove(current);
         structureForMove = {
-          maxDepth: parentConfig.levels.length,
-          levels: parentConfig.levels,
+          maxDepth: pinnedConfig.levels.length,
+          levels: pinnedConfig.levels,
         };
       } else if (parentChanging && input.parentId === null) {
         // Moving to root keeps the account pinned to ITS OWN configuration and
