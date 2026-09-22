@@ -1,6 +1,6 @@
 # Task 12 — Accounting Balance Projection — Implementation Report (READY FOR REVIEW, not Accepted)
 
-- **Branch:** `arena/01a0ca12-vardena` (from `d160b64`, review fixes `2026-09-22` — lock-order R-01 + pagination R-02)
+- **Branch:** `arena/01a0ca12-vardena` @ `69d0c60ecfd84e1cc8d17457ea55a7d710f423a5` (from `d160b64`, 2026-09-22 review fixes R-01+R-02 — see `git log 69d0c60`)
 - **Status:** `READY FOR REVIEW` — implemented as a strict vertical slice, **not Accepted** (promotion gate `docs/accounting/task-index.md §7` not yet passed; `ADR-0031` stays `Proposed`)
 - **Task number:** **Task 12** (not 10.9 — 10.9 intentionally skipped; see `task-index §6` and `docs/task-12-balance-projection-promotion-package-fa.md §1 PO decision 1`)
 - **ADR:** `docs/adr/0031-balance-projection.md` (Proposed, created by this implementation — not marked Accepted outside normal process, AG-07)
