@@ -1,6 +1,6 @@
 # Vardena — Accounting Task Index
 
-Status: **Authoritative** · Date: 2026-09-22 · Type: governance / index (documentation only) · Task 11: **ACCEPTED 2026-09-22**
+Status: **Authoritative** · Date: 2026-09-22 · Type: governance / index (documentation only) · Task 11: **ACCEPTED 2026-09-22** · Task 12: **READY FOR REVIEW 2026-09-22 (not Accepted)**
 
 > This document is the authoritative record of which Accounting implementation
 > tasks exist, what state the module is in, which capabilities are still only
@@ -39,13 +39,14 @@ Task 11 (PR #25) is recorded the same way, plus the remediation evidence
 | 10.7 | #22                           | `ledger_entries` persistence; finalization atomically materializes one immutable entry per stored line; no endpoint, permission, or event                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `20260916000000_accounting_ledger`, `docs/task-10.7-implementation-report.md`                                                                                                 |
 | 10.8 | #23                           | Posting orchestration seam (`PostingService.postVoucher`; `finalizeDocument` delegates); provided, not exported; no schema/API/permission/event change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `docs/task-10.8-implementation-report.md`, `docs/modules.md`                                                                                                                  |
 | 11   | #25 (+ #29 defect-resolution) | **ACCEPTED 2026-09-22** — Accounting Configuration Foundation per D1–D7: `accounting_configurations` + `accounting_configuration_levels`, `accounts.accounting_configuration_id` NOT NULL (D1/D3), LEGACY backfill for orphan organizations, freeze abstraction with D4 deferred; remediation (2026-09-22) fixed the level-copy/fallback semantics, aligned the `levelKind` contract, and added cross-configuration regression tests + the migration rehearsal; defect-resolution (PR #29, `docs/task-11-defect-resolution-report.md`, CI `35755493453`/`35755917087` success) verified isolation, per-definition consistency, active-status, one-level preservation, levelKind and test-evidence defects — **Task 11 — Accounting Configuration Foundation: ACCEPTED** | `20260920000000_accounting_configuration_foundation`, `docs/accounting/configuration.md`, `docs/task-11-implementation-report.md`, `docs/task-11-defect-resolution-report.md` |
+| 12   | PR #__ (this branch `arena/01a0ca12-vardena`) | **READY FOR REVIEW 2026-09-22 (not Accepted)** — Balance Projection (turnover-only, rebuildable) per ADR-0031, contract §19.3 AC-D-31 + §25 AC-I-19: `accounting.account_balance_projections` (org, area, year, period, account) with `period_debit/credit numeric(18,2)` only — no `branch_id`/currency/dimension/opening columns (AR-29); derived `period_net/opening/closing` via `vw_account_balance_derived` (window by `accounting_periods.sequence`, partitioned by year/account never crossing years) + domain `deriveBalances`; transactional maintenance inside `finalizeChecked` (UPSERT per key after ledger inserts, before operation row) with lock order `area→year→period→accounts FOR SHARE→balances FOR UPDATE→document FOR UPDATE`; explicit audited rebuild `POST /balances/rebuild` (org-wide optionally area/year, idempotent-by-replacement, `AccountBalance.Rebuilt` event, `FOR UPDATE` slice lock); reads `GET /balances`, `GET /balances/:accountId`, `GET /balances/reconciliation` (`Balance.View`, 404 for foreign keys) + `vw_balance_reconciliation` FULL OUTER JOIN (`missing/extra/debit/credit/both_mismatch`); migration `20260922000000_accounting_balance_projection` (single-strategy insert-from-ledger backfill HAVING <>0, two views); permissions `Accounting.Balance.View/Rebuild` (31→33); out-of-scope §17 preserved (no zero-row persistence, no Redis/triggers/microservices/EAV, OQ-62/63/64/G7 still OPEN, 10.9 intentionally skipped — next free integer after 11). Gate §7 not yet marked Accepted — requires review + follow-up task gate per §8. | `20260922000000_accounting_balance_projection`, `backend/src/modules/accounting/domain/balance-projection.ts`, `backend/src/modules/accounting/data/account-balance-projections.repository.ts`, `backend/src/modules/accounting/application/accounting-balances.service.ts` + `api/accounting-balances.controller.ts`, `docs/adr/0031-balance-projection.md`, `docs/accounting/lock-order-matrix.md` |
 
 A repository-wide search for `10.9` returns **zero hits**: no task brief, report,
 ADR, OQ, comment, or test defines or references it (see §7).
 
-## 3. Current architecture (after Task 11 — ACCEPTED 2026-09-22)
+## 3. Current architecture (after Task 11 — ACCEPTED 2026-09-22; Task 12 — READY FOR REVIEW not Accepted)
 
-Accounting currently contains (Task 11 ACCEPTED — see §2/§6/§9):
+Accounting currently contains (Task 11 ACCEPTED — see §2/§6/§9). Task 12's balance projection is implemented on `arena/01a0ca12-vardena` as READY FOR REVIEW (see §2 row 12) and is therefore not yet part of the ACCEPTED architecture:
 
 - **Document Foundation** — typed `accounting_voucher` aggregate (header + lines),
   `draft → temporary → final`, Document Foundation numbering per
@@ -109,7 +110,7 @@ Accepted facts this index preserves (Tasks 10.5–10.8, do not reinterpret):
 - `LedgerEntry` is **immutable and insert-only**: no update, delete, or unscoped-read path.
 - Posting is **synchronous, in-process, inside the finalization transaction**:
   no async posting, no Redis/Kafka, no microservice, no worker.
-- **Dimensions, posting rules, balances, and reports do not exist** in code.
+- **Dimensions, posting rules and reports do not exist** in code. **Balances**: the turnover projection (`account_balance_projections` + derived views + transactional maintenance + rebuild) is **implemented as Task 12 (READY FOR REVIEW, ADR-0031 Proposed)** on `arena/01a0ca12-vardena` — ledger remains the sole accepted source until the promotion gate (§7) is passed; until then this line retains its candidate status in the accepted record.
 - **Inventory does not post automatically** to Accounting; no source-module trigger exists.
 - **Outbox/delivery semantics are undecided** (OQ-39); the only publication is the
   in-memory `AccountingDocument.Finalized` event.
@@ -126,7 +127,7 @@ these is an approved task.** No priority order is implied.
 | Detail dimensions / groups / items (incl. floating detail)                     | Candidate · Blocked by OQ                                  | OQ-41                                                        | Contract §10/§11 (AC-D-11…AC-D-15); `docs/modules.md` "still to build" |
 | Posting rules / account mapping (incl. tax & valuation mappings)               | Candidate · Blocked by OQ                                  | OQ-24, OQ-25, OQ-30                                          | Contract §20.2; `docs/modules.md` "still to build"                     |
 | Correction / reversal / replacement mechanisms                                 | Candidate · Blocked by OQ                                  | OQ-27 (OQ-23 for period dating)                              | Contract §15.4 (AC-D-22); `docs/modules.md` "still to build"           |
-| Balance projections (rebuildable, never the source of truth)                   | Candidate · Requires Architecture Decision                 | Materialization choice belongs to the balance task (AC-D-31) | Contract §19.3; `docs/modules.md` "still to build"                     |
+| Balance projections (rebuildable, never the source of truth)                   | **Implemented — READY FOR REVIEW (not Accepted)** · ADR-0031 Proposed | ADR-0031 + AC-D-31/AC-I-19; transactional finalizeChecked UPSERT + audited rebuild | Task 12: `account_balance_projections` + `vw_*` + 4 endpoints, Task 12 report + lock matrix |
 | Accounting reporting (ledgers, trial balances, statements via Reporting)       | Candidate · Blocked by OQ                                  | OQ-25, OQ-43 (layouts)                                       | Contract §19 (AC-D-30); `docs/modules.md` planned API                  |
 | Inventory → Accounting integration                                             | Candidate · Blocked by OQ                                  | OQ-24, OQ-25, OQ-30, OQ-39                                   | Contract §20 (AC-D-32), activation gate §20.4                          |
 | Durable integration / outbox (delivery semantics)                              | Candidate · Requires Architecture Decision · Blocked by OQ | OQ-39 (transactional subscription vs durable queue)          | Contract §16.6 (AC-D-26), §21; Task 10.8 report §7                     |
@@ -177,15 +178,21 @@ Other load-bearing Accounting OQs identified by the repository
 | OQ-30 | Tax model: taxes, inclusive/exclusive, rounding, liability accounts                   | Posting rules, invoice content                   |
 | OQ-31 | Inter-branch / inter-company treatment, second legal entity                           | Consolidation (deferred; needs its own ADR)      |
 
-## 6. Task 11 acceptance and Task 10.9 status
+## 6. Task 11 acceptance, Task 12 readiness, and Task 10.9 status
 
 > **Task 11 — Accounting Configuration Foundation: ACCEPTED 2026-09-22.**
+>
+> **Task 12 — Balance Projection: READY FOR REVIEW 2026-09-22 (not Accepted — promotion gate §7 not yet passed, follow-up tasks per §8 not yet defined).**
 >
 > **Task 10.9 is not formally defined in the repository at this time.**
 >
 > **NOT FORMALLY DEFINED** (10.9)
 
 **Task 11 — ACCEPTED** — The foundation per D1–D7 (PR #25 + remediation 2026-09-22 + defect-resolution PR #29, `docs/task-11-defect-resolution-report.md`, CI `35755493453`/`35755917087` success) is the authoritative implemented state. Preserved explicitly:
+
+**Task 12 — READY FOR REVIEW (not Accepted)** — Balance Projection delivered on `arena/01a0ca12-vardena` (2026-09-22) per ADR-0031: `accounting.account_balance_projections` (org, area, year, period, account; `period_debit/credit numeric(18,2)` only) + two views (`vw_account_balance_derived`, `vw_balance_reconciliation`) + transactional `finalizeChecked` UPSERT/DELETE + explicit audited rebuild + org+financial-scope reads + `Accounting.Balance.View/Rebuild` (31→33) + `AccountBalance.Rebuilt` event. Preserved explicitly: `NOT Accepted` (gate §7 requires review), `10.9 intentionally SKIPPED` (monotonic numbering after 11), `ADR-0031 Proposed` (not marked Accepted outside normal process), `OQ-62/63/64/G7` still OPEN (not silently absorbed), out-of-scope §17 intact (no branch/currency/dimension/opening columns, no Redis/triggers/microservices/EAV, no zero-row persistence). Task 11 stays **ACCEPTED/CLOSED** — not reopened.
+
+Original §6 preserved for Task 11:
 
 - **OQ-62: OPEN** — pin compatibility requires future Product + Architecture decision.
 - **OQ-63: OPEN** — legacy fallback shape.
@@ -264,3 +271,4 @@ own explicitly defined task (per §7) before any work; none of them is the
 | 2026-09-17 | Created: index of Tasks 10.1–10.8, current architecture, candidate map, OQ mapping, Task 10.9 status, task definition rule. No code, schema, OQ, or ADR change.                                                                                                                                                                                            |
 | 2026-09-22 | Task 11 recorded (PR #25) in §2/§3 and its remediation summarised: D3 level-copy/fallback correction, `levelKind` contract alignment, cross-configuration regression tests, deterministic migration rehearsal (`npm run test:migration-rehearsal`), OQ-62…OQ-64, and the D4 decision note. §8 follow-ups updated; `.vardena/project-context.md` refreshed. |
 | 2026-09-22 | **Task 11 — Accounting Configuration Foundation: ACCEPTED** (PR #29 defect-resolution `docs/task-11-defect-resolution-report.md`, CI `35755493453`/`35755917087` success). §2/§3/§6/§8/§9 updated to reflect ACCEPTED; preserved explicitly OQ-62 OPEN, OQ-63 OPEN, OQ-64 OPEN/DEFERRED, G7 ACCEPTED RISK.                                                 |
+| 2026-09-22 | **Task 12 — Balance Projection: READY FOR REVIEW (not Accepted)** (branch `arena/01a0ca12-vardena`) — `account_balance_projections` + two views + transactional maintenance + audited rebuild + 4 endpoints. §2/§4/§6/§9 updated; ADR-0031 Proposed (not Accepted), gate §7 not yet passed, 10.9 intentionally skipped, OQ-62/63/64/G7 still OPEN. |

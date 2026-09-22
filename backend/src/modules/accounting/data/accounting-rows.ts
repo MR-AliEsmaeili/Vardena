@@ -757,6 +757,99 @@ export interface AccountingPostingOperationDelegate {
 }
 
 // ---------------------------------------------------------------------------
+// Balance projections (Task 12, contract §19.3 AC-D-31, ADR-0031)
+// ---------------------------------------------------------------------------
+
+export type AccountBalanceProjectionRow = {
+  id: string;
+  organizationId: string;
+  financialAreaId: string;
+  fiscalYearId: string;
+  accountingPeriodId: string;
+  accountId: string;
+  /** Prisma `Decimal` at runtime; repository maps to string. */
+  periodDebitAmount: unknown;
+  periodCreditAmount: unknown;
+} & AuditColumns;
+
+export interface AccountBalanceProjectionWhere {
+  organizationId?: string;
+  financialAreaId?: string;
+  fiscalYearId?: string;
+  accountingPeriodId?: string;
+  accountId?: string;
+}
+
+export interface AccountBalanceProjectionCreate {
+  id: string;
+  organizationId: string;
+  financialAreaId: string;
+  fiscalYearId: string;
+  accountingPeriodId: string;
+  accountId: string;
+  periodDebitAmount: string;
+  periodCreditAmount: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
+}
+
+export interface AccountBalanceProjectionUpdate {
+  periodDebitAmount: string;
+  periodCreditAmount: string;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+/**
+ * Scope-scoped reads + transactional upserts: no free-text cross-org reads.
+ * The unique key is (org, area, year, period, account) — every persistence
+ * path writes by that key.
+ */
+export interface AccountBalanceProjectionDelegate {
+  findMany(args: {
+    where: AccountBalanceProjectionWhere;
+    orderBy?: OrderBy;
+    skip?: number;
+    take?: number;
+  }): Promise<AccountBalanceProjectionRow[]>;
+  count(args: { where: AccountBalanceProjectionWhere }): Promise<number>;
+  /** Distinct `findUnique` is not exposed — key lookups are `findMany` + 1. */
+  findFirst(args: {
+    where: AccountBalanceProjectionWhere;
+  }): Promise<AccountBalanceProjectionRow | null>;
+  create(args: {
+    data: AccountBalanceProjectionCreate;
+  }): Promise<AccountBalanceProjectionRow>;
+  update(args: {
+    where: { id: string };
+    data: AccountBalanceProjectionUpdate;
+  }): Promise<AccountBalanceProjectionRow>;
+  /** UPSERT used only inside the finalization transaction (see repository). */
+  upsert(args: {
+    where: {
+      organizationId_financialAreaId_fiscalYearId_accountingPeriodId_accountId: {
+        organizationId: string;
+        financialAreaId: string;
+        fiscalYearId: string;
+        accountingPeriodId: string;
+        accountId: string;
+      };
+    };
+    create: AccountBalanceProjectionCreate;
+    update: AccountBalanceProjectionUpdate;
+  }): Promise<AccountBalanceProjectionRow>;
+  delete(args: { where: { id: string } }): Promise<AccountBalanceProjectionRow>;
+  deleteMany(args: {
+    where: AccountBalanceProjectionWhere;
+  }): Promise<{ count: number }>;
+  createMany(args: {
+    data: AccountBalanceProjectionCreate[];
+  }): Promise<{ count: number }>;
+}
+
+// ---------------------------------------------------------------------------
 // Ledger entries (Task 10.7, contract §12/§13/§15/§19 — immutable)
 // ---------------------------------------------------------------------------
 
@@ -920,7 +1013,13 @@ export interface AccountingTxClient {
    * insert — a plain `createMany` (never `skipDuplicates`: a second entry for
    * one line must fail the transaction, not vanish silently).
    */
-  ledgerEntry: Pick<LedgerEntryDelegate, 'createMany'>;
+  ledgerEntry: Pick<LedgerEntryDelegate, 'createMany' | 'findMany'>;
+  /**
+   * Task 12: turnover projection rows, written transactionally by
+   * `finalizeChecked` (UPSERT per key, or DELETE when Σ=0) and by the
+   * explicit `rebuild` transaction (atomic replace per scope).
+   */
+  accountBalanceProjection: AccountBalanceProjectionDelegate;
 }
 
 export interface AccountingTransactionalClient {

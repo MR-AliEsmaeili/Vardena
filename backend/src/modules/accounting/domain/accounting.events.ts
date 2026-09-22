@@ -311,6 +311,35 @@ export type AccountingDocumentDeletedEvent = ScopedEvent<
   AccountingDocumentEventPayload
 >;
 
+// ---- Balance projection (Task 12, ADR-0031, contract §19.3 AC-D-31) ------------
+// Rebuild is the ONE mutating operation on the projection and is an
+// audited maintenance event — the Inventory `Reconciliation.Execute`
+// precedent (§19.3). The event carries the scoped slice (always the org;
+// optionally the area/year the rebuild re-derived) plus the audit
+// evidence (actor + reason + inserted/deleted counts) because there is
+// no transition history table (same posture as the calendar lifecycle
+// reasons). The ledger stays the source of truth; this event is the
+// projection's evidence.
+
+export const ACCOUNT_BALANCE_REBUILT_EVENT = 'AccountBalance.Rebuilt' as const;
+
+export interface AccountBalanceRebuiltEventPayload {
+  organizationId: string;
+  financialAreaId: string | null;
+  fiscalYearId: string | null;
+  deleted: number;
+  inserted: number;
+  reason: string | null;
+  rebuiltBy: string | null;
+  rebuiltAt: string;
+}
+
+export type AccountBalanceRebuiltEvent = ScopedEvent<
+  typeof ACCOUNT_BALANCE_REBUILT_EVENT,
+  'AccountBalanceProjection',
+  AccountBalanceRebuiltEventPayload
+>;
+
 /** Every event this module publishes (used by tests to assert the catalog). */
 export const ACCOUNTING_EVENT_TYPES = [
   ACCOUNT_CREATED_EVENT,
@@ -334,4 +363,5 @@ export const ACCOUNTING_EVENT_TYPES = [
   ACCOUNTING_DOCUMENT_UPDATED_EVENT,
   ACCOUNTING_DOCUMENT_FINALIZED_EVENT,
   ACCOUNTING_DOCUMENT_DELETED_EVENT,
+  ACCOUNT_BALANCE_REBUILT_EVENT,
 ] as const;

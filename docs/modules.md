@@ -22,7 +22,7 @@ published/consumed events, and extension points. Adding a module = new folder pe
 | RBAC          | v1 core                                                                                                                                                                                                                 | Roles, granular permissions, assignments                                                                                                                                                    | `rbac`          |
 | Audit         | v1 core                                                                                                                                                                                                                 | Append-only audit log of sensitive operations                                                                                                                                               | `audit`         |
 | Notifications | v1 core                                                                                                                                                                                                                 | In-app notifications driven by events                                                                                                                                                       | `notifications` |
-| Accounting    | foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11 — **Task 11 ACCEPTED 2026-09-22**; ADR-0026 Accepted); posting rules / corrections / balances contract-only | Financial areas, fiscal years/periods, coding structure, accounting configurations, chart of accounts, accounting documents + lines, ledger entries, posting rules                          | `accounting`    |
+| Accounting    | foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11 — **Task 11 ACCEPTED 2026-09-22**; ADR-0026 Accepted); posting rules / corrections contract-only; **balances READY FOR REVIEW as Task 12 (ADR-0031 Proposed, not Accepted)** | Financial areas, fiscal years/periods, coding structure, accounting configurations, chart of accounts, accounting documents + lines, ledger entries, balance projection (READY FOR REVIEW), posting rules                          | `accounting`    |
 | Inventory     | v1 core                                                                                                                                                                                                                 | Items, warehouses, stock, receipts/issues/transfers/adjustments                                                                                                                             | `inventory`     |
 | Sales         | v1 core                                                                                                                                                                                                                 | Customers, quotes, sales orders, invoices, returns                                                                                                                                          | `sales`         |
 | Purchasing    | planned                                                                                                                                                                                                                 | Suppliers, purchase orders, supplier invoices                                                                                                                                               | `purchasing`    |
@@ -202,7 +202,7 @@ Remove`. No `Rbac.Role.Delete` (OQ-20).
 - **Write path:** modules emit audit data through the kernel audit port inside
   their business transaction; Audit persists it. Retention/archival = OQ-17.
 
-## Accounting (v1 core — **foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11 — Task 11 ACCEPTED 2026-09-22)**; posting rules / corrections / balances still contract-only)
+## Accounting (v1 core — **foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11 — Task 11 ACCEPTED 2026-09-22)**; posting rules / corrections still contract-only; **balances READY FOR REVIEW as Task 12 (not Accepted)**)
 
 - **Status:** Task 10.2 implemented the **bookkeeping scope** — financial areas,
   fiscal years, accounting periods (contract §4/§5/§6/§7, AC-D-01…AC-D-05,
@@ -428,7 +428,7 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   `Accounting.CodingStructure.{View,Configure}`,
   `Accounting.AccountingConfiguration.{View,Configure}`,
   `Accounting.Account.{View,Create,Edit,Enable,Disable}`,
-  `Accounting.Document.{View,Create,Edit,Delete,Finalize}` — enforced in the
+  `Accounting.Document.{View,Create,Edit,Delete,Finalize}` + `Accounting.Balance.{View,Rebuild}` (Task 12, READY FOR REVIEW) — enforced in the
   application services, not only by the route guards. Period creation is authorized
   by `Open` (the row is born `open`); there is no period `Create`/`Edit`. The
   coding structure has ONE write code (`Configure`: drafting, editing a draft and
@@ -437,12 +437,13 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   vocabulary is granular (no wildcard, no `Accounting.Journal.Create`-style
   catch-all, `Finalize` ≠ `Approve` — OQ-21, OQ-14) and arrives with the tasks
   that enforce it.
-- **Publishes (implemented, Tasks 10.2 + 10.3 + 10.4):**
+- **Publishes (implemented, Tasks 10.2 + 10.3 + 10.4; Task 12 READY FOR REVIEW):**
   `FinancialArea.{Created,Updated,Enabled,Disabled}`,
   `FiscalYear.{Created,Closed,Reopened,Sealed,Unsealed}`,
   `AccountingPeriod.{Opened,Closed,Reopened,Sealed}`,
   `Account.{Created,Updated,Enabled,Disabled}`,
-  `AccountingDocument.{Created,Updated,Finalized,Deleted}` — payload is
+  `AccountingDocument.{Created,Updated,Finalized,Deleted}`,
+  `AccountBalance.Rebuilt` (Task 12, audited slice rebuild, payload `{organizationId, financialAreaId?, fiscalYearId?, deleted, inserted, reason, rebuiltBy, rebuiltAt}` — ledger stays truth) — payload is
   `{id, organizationId, …scope, code|sequence}`, plus `fromStatus`/`toStatus`/`reason`
   on transitions, plus `correlationId`/`occurredAt`; the `Account.*` payload adds
   `level` and `codingStructureVersionId`. There is deliberately **no

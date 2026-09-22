@@ -24,6 +24,8 @@ import { AccountingDocumentTypeRegistration } from './application/accounting-doc
 import { AccountingDocumentsService } from './application/accounting-documents.service.js';
 import { PostingReadinessService } from './application/posting-readiness.service.js';
 import { PostingService } from './application/posting.service.js';
+import { AccountBalanceProjectionsRepository } from './data/account-balance-projections.repository.js';
+import { AccountingBalancesService } from './application/accounting-balances.service.js';
 import { FinancialAreasController } from './api/financial-areas.controller.js';
 import { FiscalYearsController } from './api/fiscal-years.controller.js';
 import { AccountingPeriodsController } from './api/accounting-periods.controller.js';
@@ -31,6 +33,7 @@ import { CodingStructuresController } from './api/coding-structures.controller.j
 import { AccountingConfigurationsController } from './api/accounting-configurations.controller.js';
 import { AccountsController } from './api/accounts.controller.js';
 import { AccountingDocumentsController } from './api/accounting-documents.controller.js';
+import { AccountingBalancesController } from './api/accounting-balances.controller.js';
 
 /**
  * Accounting module — foundation + chart structure (Task 10.2, Task 10.3;
@@ -104,6 +107,7 @@ import { AccountingDocumentsController } from './api/accounting-documents.contro
     AccountingConfigurationsController,
     AccountsController,
     AccountingDocumentsController,
+    AccountingBalancesController,
   ],
   providers: [
     FinancialAreasRepository,
@@ -118,6 +122,9 @@ import { AccountingDocumentsController } from './api/accounting-documents.contro
     // Task 10.7: insert-only evidence reads (`findByVoucher`); the writes
     // happen inside `finalizeChecked`, never through this provider directly.
     LedgerEntriesRepository,
+    // Task 12: turnover projection — rebuildable, report-only, maintained
+    // transactionally inside finalization and via explicit audited rebuild.
+    AccountBalanceProjectionsRepository,
     FinancialAreasService,
     FiscalYearsService,
     AccountingPeriodsService,
@@ -125,6 +132,7 @@ import { AccountingDocumentsController } from './api/accounting-documents.contro
     AccountingConfigurationsService,
     AccountsService,
     AccountingDocumentsService,
+    AccountingBalancesService,
     AccountingPermissionRegistration,
     AccountingDocumentTypeRegistration,
     // Task 10.8: the posting orchestration seam — ONE entry point

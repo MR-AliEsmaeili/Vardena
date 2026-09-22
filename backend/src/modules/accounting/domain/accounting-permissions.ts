@@ -91,6 +91,24 @@ export const ACCOUNTING_DOCUMENT_PERMISSIONS = {
   FINALIZE: 'Accounting.Document.Finalize',
 } as const;
 
+/**
+ * Balance projection (Task 12, contract §19.3 AC-D-31, §25 AC-I-19, ADR-0031).
+ *
+ * TWO codes, mirroring the projection's contract split:
+ * - `View` covers every read: `GET /balances`, `GET /balances/:accountId`,
+ *   `GET /balances/reconciliation` (the same projection authority, because
+ *   reconciliation reads only the projection + ledger aggregate);
+ * - `Rebuild` is the ONE write (explicit audited slice replacement) — a
+ *   maintenance authority (the Inventory `Reconciliation.Execute` precedent),
+ *   kept explicit because rebuild mutates `account_balance_projections`.
+ *
+ * No wildcards, no superuser, no implicit bypass (OQ-21).
+ */
+export const BALANCE_PERMISSIONS = {
+  VIEW: 'Accounting.Balance.View',
+  REBUILD: 'Accounting.Balance.Rebuild',
+} as const;
+
 export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] =
   [
     {
@@ -224,5 +242,15 @@ export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] 
       code: ACCOUNTING_DOCUMENT_PERMISSIONS.FINALIZE,
       description:
         'Finalize a temporary accounting document, making it part of the books. Distinct from approval (the Workflow authority).',
+    },
+    {
+      code: BALANCE_PERMISSIONS.VIEW,
+      description:
+        'View balance projections and their reconciliation (rebuildable turnover per period × account, derived opening/closing).',
+    },
+    {
+      code: BALANCE_PERMISSIONS.REBUILD,
+      description:
+        'Rebuild balance projections from the ledger (explicit audited slice replacement; source of truth stays the ledger).',
     },
   ];
