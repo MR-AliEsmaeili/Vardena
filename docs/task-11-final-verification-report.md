@@ -277,7 +277,7 @@ HARMLESS and honestly documented — not architecturally misleading.**
 | Live-DB e2e in the default e2e run | `npm run test:e2e` | 8 live files listed as `↓ skipped` | **SKIPPED** (by design: opt-in via `VARDENA_TEST_DATABASE_URL`) |
 | `prisma validate` / `generate` | `DATABASE_URL=… npm run prisma:validate` | `request to https://binaries.prisma.sh/… failed` | **NOT EXECUTED** (environment) — **PASS in CI** |
 | Typecheck / lint / format | `npm run typecheck`, `npm run lint`, `npm run format:check` | clean / 0 errors 4 warnings / clean | **PASS** (executed locally) |
-| CI | runs `35727571225` (`6ff4f48`, code) and `35728013047` (`f39f1bb`, docs) | `conclusion=success`; **all 15 steps success**, including `Prisma validate`, `Prisma generate`, `Migrate test database`, `E2E tests (incl. live-DB suites)` | **PASS — verifiable CI evidence** (`gh api …/actions/runs/<id>/jobs`) |
+| CI | runs `35727571225` (`6ff4f48`, code), `35728013047` (`f39f1bb`, report) and `35732135269` (`72df242`, this verification pass) | `conclusion=success` each; **all 15 steps success**, including `Prisma validate`, `Prisma generate`, `Migrate test database`, `E2E tests (incl. live-DB suites)` | **PASS — verifiable CI evidence** (`gh api …/actions/runs/<id>/jobs`) |
 
 CI evidence is quoted from the GitHub API (not from memory), and its limitation is
 stated: the per-test stdout of the e2e step could not be retrieved in this sandbox
