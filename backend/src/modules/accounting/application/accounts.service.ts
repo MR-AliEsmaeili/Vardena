@@ -76,6 +76,10 @@ import { AccountingConfigurationsService } from './accounting-configurations.ser
  *   code       = parent.code + the level's digit segment, digits only (§9.2/9.3)
  *   version    = the parent's pinned coding-structure version (roots take the
  *                organization's ACTIVE one) — so a subtree never mixes versions
+ *   config     = the parent's pinned accounting configuration (roots take the
+ *                organization's ACTIVE one); an EXISTING account is always
+ *                validated against the configuration it REFERENCES, never
+ *                against whichever configuration is currently ACTIVE
  *   postable   = the level's default unless the caller overrides it (§14 rule 4)
  *
  * What is REFUSED, with 422, is any placement that would make the tree lie: a
@@ -367,6 +371,14 @@ export class AccountsService {
       (input.parentId ?? null) !== current.parentId;
     let parent: AccountPlacementParent | null = null;
     let structureForMove: { maxDepth: number; levels: any[] } | null = null;
+    // The pair a MOVE is validated against — the account's OWN configuration
+    // and coding-structure version (Task 11 remediation). Resolved once, used
+    // for both the pre-flight check here and the repository's locked
+    // re-check, so the two can never disagree.
+    let pinned: {
+      accountingConfigurationId: string;
+      codingStructureVersionId: string;
+    } | null = null;
 
     try {
       if (
@@ -399,19 +411,36 @@ export class AccountsService {
             current.organizationId,
             parentAccount.accountingConfigurationId,
           );
+        // A child may only join the parent's own configuration + version
+        // (D1/D2), and the move is validated against the levels of THAT
+        // configuration — never another one's.
+        pinned = this.pinnedPairForMove(current);
         structureForMove = {
           maxDepth: parentConfig.levels.length,
           levels: parentConfig.levels,
         };
       } else if (parentChanging && input.parentId === null) {
-        // Moving to root — still requires ACTIVE accounting config (D1) and coding version (D2)
-        const activeConfig =
-          await this.configurations.requireActiveConfigurationOrThrow(
+        // Moving to root keeps the account pinned to ITS OWN configuration and
+        // version (Task 11 remediation): the levels used for validation are
+        // read from the configuration this account actually references — never
+        // from whatever configuration happens to be ACTIVE for the
+        // organization. Mixing the two would validate an account's code
+        // against another configuration's level widths.
+        //
+        // The account's own configuration is deliberately NOT required to be
+        // ACTIVE: existing accounts stay pinned to the configuration they were
+        // created under when a newer version becomes ACTIVE (children inherit
+        // it the same way). ACTIVE is required when a configuration is
+        // *chosen* for a new root, not when an existing pin is re-validated.
+        pinned = this.pinnedPairForMove(current);
+        const ownConfig =
+          await this.configurations.requireConfigurationInOrganization(
             current.organizationId,
+            pinned.accountingConfigurationId,
           );
         structureForMove = {
-          maxDepth: activeConfig.levels.length,
-          levels: activeConfig.levels,
+          maxDepth: ownConfig.levels.length,
+          levels: ownConfig.levels,
         };
       }
     } catch (error) {
@@ -466,16 +495,13 @@ export class AccountsService {
         isPostable: input.isPostable,
         parentId: input.parentId,
         structure:
-          structureForMove === null
+          structureForMove === null || pinned === null
             ? null
-            : current.accountingConfigurationId === null ||
-                current.codingStructureVersionId === null
-              ? null
-              : snapshot(
-                  structureForMove as any,
-                  current.accountingConfigurationId,
-                  current.codingStructureVersionId,
-                ),
+            : snapshot(
+                structureForMove as any,
+                pinned.accountingConfigurationId,
+                pinned.codingStructureVersionId,
+              ),
         now: new Date(),
         actorId: getPrincipal()?.userId ?? null,
       });
@@ -537,6 +563,29 @@ export class AccountsService {
   }
 
   // ---- internals ----------------------------------------------------------
+
+  /**
+   * The pair an account's MOVE is validated against: the configuration the
+   * account REFERENCES and the coding-structure version it is pinned to
+   * (D1/D2, Task 11 remediation). Both are NOT NULL after the Task 11
+   * migration; an incomplete legacy row is reported with the same typed errors
+   * the create path uses (D6) instead of an unmapped 500.
+   */
+  private pinnedPairForMove(current: Account): {
+    accountingConfigurationId: string;
+    codingStructureVersionId: string;
+  } {
+    if (current.accountingConfigurationId === null) {
+      throw new NoActiveAccountingConfigurationError();
+    }
+    if (current.codingStructureVersionId === null) {
+      throw new CodingStructureVersionNotActiveError('no_active_version');
+    }
+    return {
+      accountingConfigurationId: current.accountingConfigurationId,
+      codingStructureVersionId: current.codingStructureVersionId,
+    };
+  }
 
   private assertNature(nature: string): void {
     if (!isAccountNature(nature)) {

@@ -22,7 +22,7 @@ published/consumed events, and extension points. Adding a module = new folder pe
 | RBAC | v1 core | Roles, granular permissions, assignments | `rbac` |
 | Audit | v1 core | Append-only audit log of sensitive operations | `audit` |
 | Notifications | v1 core | In-app notifications driven by events | `notifications` |
-| Accounting | foundation + chart + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7; ADR-0026 Accepted); posting rules / corrections / balances contract-only | Financial areas, fiscal years/periods, coding structure, chart of accounts, accounting documents + lines, ledger entries, posting rules | `accounting` |
+| Accounting | foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11; ADR-0026 Accepted); posting rules / corrections / balances contract-only | Financial areas, fiscal years/periods, coding structure, accounting configurations, chart of accounts, accounting documents + lines, ledger entries, posting rules | `accounting` |
 | Inventory | v1 core | Items, warehouses, stock, receipts/issues/transfers/adjustments | `inventory` |
 | Sales | v1 core | Customers, quotes, sales orders, invoices, returns | `sales` |
 | Purchasing | planned | Suppliers, purchase orders, supplier invoices | `purchasing` |
@@ -202,7 +202,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 - **Write path:** modules emit audit data through the kernel audit port inside
   their business transaction; Audit persists it. Retention/archival = OQ-17.
 
-## Accounting (v1 core — **foundation + chart + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8)**; posting rules / corrections / balances still contract-only)
+## Accounting (v1 core — **foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11)**; posting rules / corrections / balances still contract-only)
 
 - **Status:** Task 10.2 implemented the **bookkeeping scope** — financial areas,
   fiscal years, accounting periods (contract §4/§5/§6/§7, AC-D-01…AC-D-05,
@@ -225,6 +225,21 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   entry per stored line** (`accounting.ledger_entries`,
   `20260916000000_accounting_ledger`; `final` = posted, no separate state, no
   endpoint, no new permission).
+  Task 11 (PR #25, remediated 2026-09-22) added the **accounting configuration
+  foundation** (D1–D7): `accounting.accounting_configurations` /
+  `accounting_configuration_levels` (`20260920000000_accounting_configuration_foundation`),
+  DRAFT → ACTIVE → SUPERSEDED with exactly one ACTIVE per organization (row
+  locks primary, the partial unique index `uq_accounting_configurations_org_active`
+  as the DB backstop), `accounts.accounting_configuration_id` NOT NULL as the
+  sole configuration scope (D1) beside the untouched code-shape pin
+  `coding_structure_version_id` (D2), a LEGACY configuration backfilled per
+  organization that had accounts but no ACTIVE configuration, and 2 permissions
+  (31 total). Root creation and moves validate **only** against the account's
+  own configuration/version pair, re-checked under lock at the write boundary;
+  the operational-freeze abstraction exists but `markOperationallyUsed` stays
+  deferred (D4 — decision note + OQ-64). The populated pre-Task-11 backfill is
+  verified by `npm run test:migration-rehearsal`
+  (`backend/prisma/rehearsal/task-11-configuration-foundation/`).
   [ADR-0026](./adr/0026-accounting-bounded-context.md) is **Accepted** (2026-09-14).
   Still contract-only past the ledger: control roles, detail dimensions,
   posting rules, correction/reversal mechanisms and balance projections. The binding contract stays
@@ -234,9 +249,10 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   [`architecture/domain/accounting-domain-analysis.md`](./architecture/domain/accounting-domain-analysis.md).
   The authoritative task sequence, candidate map and OQ gates live in
   [`accounting/task-index.md`](./accounting/task-index.md) (Task 10.9: not formally defined).
-- **Owns (Tasks 10.2 + 10.3):** schema `accounting` — `financial_areas`,
+- **Owns (Tasks 10.2 + 10.3 + 11):** schema `accounting` — `financial_areas`,
   `fiscal_years`, `accounting_periods`, `coding_structure_versions`,
-  `coding_structure_levels`, `accounts`. Every table carries `organization_id`
+  `coding_structure_levels`, `accounting_configurations`,
+  `accounting_configuration_levels`, `accounts`. Every table carries `organization_id`
   (ADR-0021, FK RESTRICT; cross-schema FK direction strictly Accounting →
   Organization);
   business keys are unique per scope (area code per organization; year code per
@@ -392,14 +408,25 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   `DELETE :id` (discard
   pre-final only; `final` is never deletable). No correction, reversal,
   reopen, approval or reporting route.
+- **API (Task 11):** `/api/v1/accounting-configurations` — `GET` list
+  (mandatory `organizationId`; `code`/`status`/`search`, pagination, sorting),
+  `GET /active` (the organization's ACTIVE configuration with its levels),
+  `GET :id`, `POST` (draft a version with its levels), `PATCH :id` (edit while
+  `DRAFT` and never operationally used), `POST :id/publish` (validate, activate,
+  supersede the previous ACTIVE one in one transaction), `DELETE :id` (only a
+  `DRAFT` that was never operationally used; the database additionally refuses a
+  delete of any configuration an account references — FK RESTRICT). Accounts expose the
+  pinned `accountingConfigurationId`; neither pin is editable through the API
+  (both are derived server-side).
 - **API (still planned):** dimensions/items, document corrections
   (reverse, correct, replace), ledger/balance inquiries through
   Accounting-owned views consumed by Reporting (ADR-0009).
-- **Permissions (implemented, 29 codes):**
+- **Permissions (implemented, 31 codes):**
   `Accounting.FinancialArea.{View,Create,Edit,Enable,Disable}`,
   `Accounting.FiscalYear.{View,Create,Edit,Close,Reopen,Seal,Unseal}`,
   `Accounting.AccountingPeriod.{View,Open,Close,Reopen,Seal}`,
   `Accounting.CodingStructure.{View,Configure}`,
+  `Accounting.AccountingConfiguration.{View,Configure}`,
   `Accounting.Account.{View,Create,Edit,Enable,Disable}`,
   `Accounting.Document.{View,Create,Edit,Delete,Finalize}` — enforced in the
   application services, not only by the route guards. Period creation is authorized

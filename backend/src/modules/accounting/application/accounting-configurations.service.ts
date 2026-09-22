@@ -355,8 +355,17 @@ export class AccountingConfigurationsService {
     return this.mustFindInOrganization(organizationId, id);
   }
 
+  /**
+   * Operational-freeze marker (D4 — DEFERRED, no caller in Task 11).
+   *
+   * Deliberately NOT called by `AccountsService.createAccount`: creating an
+   * account is not operational use. The caller is deferred to
+   * Posting/System Posting at the first Voucher finalization, inside that
+   * transaction — see `docs/accounting/task-11-mark-operationally-used-decision-note.md`.
+   * The method exists so the freeze abstraction has one seam; it is kept, not
+   * dead code, and it is idempotent in the repository.
+   */
   async markOperationallyUsed(id: string): Promise<void> {
-    // D4: called from AccountsService.createAccount when account pinned on active config
     await this.repository.markOperationallyUsed({ id, now: new Date() });
   }
 

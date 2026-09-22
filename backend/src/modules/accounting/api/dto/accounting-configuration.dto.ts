@@ -21,6 +21,7 @@ import {
   ACCOUNTING_CONFIGURATION_STATUSES,
   MAX_ACCOUNTING_CONFIGURATION_DEPTH,
   MAX_ACCOUNTING_CONFIGURATION_CODE_LENGTH,
+  MAX_LEVEL_KIND_LENGTH,
   MIN_CONFIGURATION_LEVEL_DIGIT_LENGTH,
 } from '../../domain/accounting-configuration.js';
 import { MAX_CODE_LENGTH, MAX_TITLE_LENGTH } from '../../domain/master-data.js';
@@ -66,12 +67,15 @@ export class AccountingConfigurationLevelInputDto {
 
   @ApiPropertyOptional({
     nullable: true,
+    maxLength: MAX_LEVEL_KIND_LENGTH,
     description:
-      'Informational level kind — explicit and configurable, not hardcoded (Task 11).',
+      `Informational level kind — explicit and configurable, not hardcoded (Task 11). ` +
+      `At most ${MAX_LEVEL_KIND_LENGTH} characters: the declared width of ` +
+      'accounting_configuration_levels.level_kind. Longer values are refused (400), never truncated.',
   })
   @IsOptional()
   @IsString()
-  @MaxLength(64)
+  @MaxLength(MAX_LEVEL_KIND_LENGTH)
   levelKind?: string | null;
 }
 

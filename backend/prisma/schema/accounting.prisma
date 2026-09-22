@@ -417,8 +417,16 @@ model Account {
 // Integrity: organization scope, configuration version scope, unique code
 // within organization+code+version, parent-child consistency and version
 // isolation are enforced by the application locks (same pattern as existing
-// guards) plus unique indexes as hard backstops. No triggers, no partial
-// unique indexes (Prisma-invisible).
+// guards) plus unique indexes as hard backstops. No triggers.
+//
+// `uq_accounting_configurations_org_active` IS a raw-SQL partial unique index
+// (`WHERE status = 'ACTIVE'`), created only by the Task 11 migration because
+// Prisma cannot declare it; the "exactly one ACTIVE configuration per
+// organization" guarantee therefore has a database backstop, and the
+// drift risk this module otherwise avoids (a later generated migration
+// dropping what Prisma cannot represent) is carried deliberately here and
+// verified by `test/accounting-configuration-live.e2e-spec.ts` and the Task 11
+// migration rehearsal.
 
 model AccountingConfiguration {
   id             String  @id

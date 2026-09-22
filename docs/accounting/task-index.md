@@ -1,6 +1,6 @@
 # Vardena — Accounting Task Index
 
-Status: **Authoritative** · Date: 2026-09-17 · Type: governance / index (documentation only)
+Status: **Authoritative** · Date: 2026-09-22 · Type: governance / index (documentation only)
 
 > This document is the authoritative record of which Accounting implementation
 > tasks exist, what state the module is in, which capabilities are still only
@@ -24,7 +24,9 @@ Remove ambiguity around Accounting task sequencing after Task 10.8, so that:
 
 Tasks 10.1–10.8 were verified as complete from merged PRs #15–#23, their file
 lists, the implementation reports in `docs/`, the migrations under
-`backend/prisma/migrations/`, and the Accounting entry in `docs/modules.md`:
+`backend/prisma/migrations/`, and the Accounting entry in `docs/modules.md`.
+Task 11 (PR #25) is recorded the same way, plus the remediation evidence
+(`docs/task-11-implementation-report.md`):
 
 | Task | Merged PR | Delivered | Primary evidence |
 |---|---|---|---|
@@ -36,6 +38,7 @@ lists, the implementation reports in `docs/`, the migrations under
 | 10.6 | #21 | Posting & ledger contracts (`domain/posting.ts`, `domain/ledger-entry.ts` + specs; pure, framework-free, no persistence) | PR #21 file list, source headers, `docs/task-10.7-implementation-report.md` §2 |
 | 10.7 | #22 | `ledger_entries` persistence; finalization atomically materializes one immutable entry per stored line; no endpoint, permission, or event | `20260916000000_accounting_ledger`, `docs/task-10.7-implementation-report.md` |
 | 10.8 | #23 | Posting orchestration seam (`PostingService.postVoucher`; `finalizeDocument` delegates); provided, not exported; no schema/API/permission/event change | `docs/task-10.8-implementation-report.md`, `docs/modules.md` |
+| 11 | #25 | Accounting Configuration Foundation per D1–D7: `accounting_configurations` + `accounting_configuration_levels`, `accounts.accounting_configuration_id` NOT NULL (D1/D3), LEGACY backfill for orphan organizations, freeze abstraction with D4 deferred; remediation (2026-09-22) fixed the level-copy/fallback semantics, aligned the `levelKind` contract, and added cross-configuration regression tests + the migration rehearsal | `20260920000000_accounting_configuration_foundation`, `docs/accounting/configuration.md`, `docs/task-11-implementation-report.md` |
 
 A repository-wide search for `10.9` returns **zero hits**: no task brief, report,
 ADR, OQ, comment, or test defines or references it (see §7).
@@ -75,6 +78,27 @@ LedgerEntry persistence
   ↓
 Posting Orchestration
 ```
+
+**Task 11 (PR #25, remediated 2026-09-22) added the configuration root:**
+
+- `accounting.accounting_configurations` + `accounting_configuration_levels`
+  (DRAFT → ACTIVE → SUPERSEDED, exactly one ACTIVE per organization: `FOR UPDATE`
+  lock primary, partial unique index `uq_accounting_configurations_org_active`
+  backstop);
+- `accounts.accounting_configuration_id` — the sole configuration scope,
+  NOT NULL after the D3 backfill (LEGACY configuration per organization with
+  accounts and no ACTIVE one); `coding_structure_version_id` (D2) is untouched
+  and remains the code-shape pin;
+- root creation and moves validate **only** against the pair the account is
+  assigned/inherited from, re-checked under lock at the write boundary
+  (`planRootAccountPin`, `planAccountMovePin`);
+- the operational-freeze abstraction exists with **D4 deferred**: no caller for
+  `markOperationallyUsed` (decision note:
+  `accounting/task-11-mark-operationally-used-decision-note.md`, OQ-64);
+- the D3 backfill behaviour is verified by the deterministic rehearsal
+  (`backend/prisma/rehearsal/task-11-configuration-foundation/rehearse.mjs`,
+  `npm run test:migration-rehearsal`) — populated pre-Task-11 data, lock probe,
+  row/reference/level/constraint assertions.
 
 Accepted facts this index preserves (Tasks 10.5–10.8, do not reinterpret):
 
@@ -167,6 +191,10 @@ Consequences:
   acceptance criterion may be invented for it.
 - The next Accounting implementation task takes the next free number only after
   passing the rule in §8.
+- **Task 11 is different:** it is formally defined and implemented (PR #25,
+  remediated 2026-09-22 — §2/§3), having predated this index's §7 gate. Every
+  *future* Accounting task, numbered `10.9` or otherwise, still passes §7 before
+  any implementation.
 
 ## 7. Future task definition rule
 
@@ -216,11 +244,25 @@ own explicitly defined task (per §7) before any work; none of them is the
   calendar/year-transition task (Task 10.5 report §12.2).
 - **Live fixtures use `status = 'published'`**, outside the domain vocabulary
   (`draft|active|superseded`) (Task 10.7 report §12.3).
-- **`.vardena/project-context.md` staleness**: still describes the repo as
-  Task 9-era in places (flagged since Task 10.4).
+- **Account pin compatibility is unenforced** (OQ-62): nothing guarantees that an
+  account's `coding_structure_version_id` (D2) and `accounting_configuration_id`
+  (D1) describe the same level shape, and the Task 11 rehearsal produced a legacy
+  organization where they genuinely disagree. Detection or repair needs the
+  product/architecture decision first (Task 11 report §C/§I).
+- **LEGACY fallback shape is a documented default, not derived** (OQ-63):
+  organizations with accounts but no ACTIVE coding-structure version receive
+  Group 2 / Detail 3; whether the newest SUPERSEDED version's shape should be
+  derived instead is open.
+- **D4 `markOperationallyUsed` has no caller** (OQ-64): implementation is blocked
+  on the voucher → configuration cardinality and the marker's position in the
+  module's lock order; the shape is recorded in
+  `accounting/task-11-mark-operationally-used-decision-note.md`.
+- **`.vardena/project-context.md` staleness**: resolved 2026-09-22 — the file now
+  describes the implemented backend instead of the documentation-only era.
 
 ## 9. Document history
 
 | Date | Change |
 |---|---|
 | 2026-09-17 | Created: index of Tasks 10.1–10.8, current architecture, candidate map, OQ mapping, Task 10.9 status, task definition rule. No code, schema, OQ, or ADR change. |
+| 2026-09-22 | Task 11 recorded (PR #25) in §2/§3 and its remediation summarised: D3 level-copy/fallback correction, `levelKind` contract alignment, cross-configuration regression tests, deterministic migration rehearsal (`npm run test:migration-rehearsal`), OQ-62…OQ-64, and the D4 decision note. §8 follow-ups updated; `.vardena/project-context.md` refreshed. |

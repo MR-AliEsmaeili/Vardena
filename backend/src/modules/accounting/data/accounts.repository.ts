@@ -9,8 +9,10 @@ import type {
 import {
   isAccountNature,
   planAccountEdit,
+  planAccountMovePin,
   planAccountPlacement,
   planPostabilityChange,
+  planRootAccountPin,
 } from '../domain/account.js';
 import type { HierarchyEdge } from '../domain/hierarchy.js';
 import { collectDescendantIds } from '../domain/hierarchy.js';
@@ -20,10 +22,12 @@ import {
   AccountPlacementRejectedError,
   AccountPostabilityRejectedError,
   AccountingConfigurationNotActiveError,
+  CodingStructureVersionNotActiveError,
 } from './accounting-structure-errors.js';
 import {
   lockAccountRow,
   lockAccountingConfigurationRow,
+  lockCodingStructureVersionRow,
 } from './accounting-locks.js';
 import { countReferencingLinesInTx } from './accounting-document-lines.repository.js';
 import type { LockedAccount } from './accounting-locks.js';
@@ -53,17 +57,24 @@ import type {
  *
  * - CREATE locks the PARENT row, so a concurrent postability flip on that
  *   parent cannot slip past the "postable ⇒ leaf" rule;
- * - CREATE of a ROOT locks the pinned coding-structure VERSION row and
- *   re-checks it is still `active` (§9.4);
+ * - CREATE of a ROOT locks the pinned coding-structure VERSION row and the
+ *   pinned ACCOUNTING CONFIGURATION row and re-checks BOTH are still `active`
+ *   /`ACTIVE` (§9.4, D1) — the authoritative write boundary, so a root can
+ *   never be pinned to a version or configuration that just stopped being the
+ *   organization's active one;
  * - MOVE locks node + new parent in ascending id order, so two concurrent
  *   cycle-forming re-parentings serialize on the shared node and exactly one
  *   wins (a cycle can only be created by re-parenting a node under one of its
- *   descendants, which always involves that node's row);
+ *   descendants, which always involves that node's row). A move is validated
+ *   against the pair the account is ALREADY pinned to, re-checked under the
+ *   lock; a snapshot naming any other configuration/version is refused;
  * - the postability FLIP counts children under the node's own lock — the same
  *   lock a racing child create takes.
  *
- * Lock order is `version → account`, never the reverse, and multi-row locks
- * always ascend by id, so no deadlock cycle exists (`accounting-locks.ts`).
+ * Lock order is `[coding-structure version → accounting configuration] →
+ * account`, never the reverse, and multi-row locks always ascend by id, so no
+ * deadlock cycle exists (`accounting-locks.ts`): no other transaction takes an
+ * accounting-configuration lock and then a coding-structure-version lock.
  */
 
 type Client = {
@@ -187,11 +198,14 @@ export class AccountsRepository {
 
   /**
    * Insert one account, validating placement against the LOCKED parent (or the
-   * LOCKED active version for a root).
+   * LOCKED active configuration + coding-structure version for a root).
    *
    * @throws AccountPlacementRejectedError for any violated tree invariant.
-   * @throws CodingStructureVersionNotActiveError when the organization's active
-   *   version changed between resolution and insert (stale request: retry).
+   * @throws CodingStructureVersionNotActiveError when the coding-structure
+   *   version a ROOT would be pinned to is not (or is no longer) the
+   *   organization's `active` one (stale request: retry).
+   * @throws AccountingConfigurationNotActiveError when the accounting
+   *   configuration a ROOT would be pinned to is not `ACTIVE`.
    * @throws `P2002` when the code is taken (the service maps it to 409).
    */
   async createChecked(input: {
@@ -228,20 +242,48 @@ export class AccountsRepository {
           throw new AccountPlacementRejectedError('version_mismatch');
         }
       } else {
-        // Root account — D1: MUST require ACTIVE accounting configuration, no legacy fallback
-        // D2: coding version untouched, still required as code shape — validate both ACTIVE
+        // Root account — D1 + §9.4: BOTH rows the new root is pinned to are
+        // locked and re-checked here, at the authoritative write boundary.
+        // The levels the snapshot validated against come from this very
+        // configuration (the service resolved it by id), and an ACTIVE
+        // configuration/version is immutable, so the locked rows cannot
+        // disagree with the snapshot.
+        //
+        // Lock order: coding-structure version, then accounting
+        // configuration, then (implicitly) the new account row. No other
+        // transaction takes these two in the opposite order.
+        const version = await lockCodingStructureVersionRow(
+          tx,
+          input.structure.versionId,
+        );
         const config = await lockAccountingConfigurationRow(
           tx,
           input.structure.accountingConfigurationId,
         );
-        if (config === null || config.organizationId !== input.organizationId) {
+        const pinProblem = planRootAccountPin({
+          organizationId: input.organizationId,
+          snapshot: {
+            accountingConfigurationId:
+              input.structure.accountingConfigurationId,
+            versionId: input.structure.versionId,
+          },
+          configuration: config,
+          version,
+        });
+        if (pinProblem === 'configuration_missing') {
           throw new AccountingConfigurationNotActiveError('missing');
         }
-        if (config.status !== 'ACTIVE') {
-          throw new AccountingConfigurationNotActiveError(config.status);
+        if (pinProblem === 'configuration_not_active') {
+          // `planRootAccountPin` returns this only for a non-null row, so the
+          // status is the locked row's own.
+          throw new AccountingConfigurationNotActiveError(config!.status);
         }
-        // coding version is NOT NULL per D2 — versionId must be valid, lock not required here
-        // as structure levels come from accounting config, but version isolation still enforced via snapshot
+        if (pinProblem === 'coding_version_missing') {
+          throw new CodingStructureVersionNotActiveError('missing');
+        }
+        if (pinProblem === 'coding_version_not_active') {
+          throw new CodingStructureVersionNotActiveError(version!.status);
+        }
       }
 
       const plan = planAccountPlacement({
@@ -286,7 +328,9 @@ export class AccountsRepository {
    *
    * - a MOVE re-runs the whole placement table against the locked rows — cycle,
    *   level derivation, code prefix, postable/disabled parent, one-version
-   *   subtree, depth;
+   *   subtree, depth — and refuses a snapshot that is not the pair the account is
+   *   already pinned to, so validation can never read another configuration's or
+   *   version's levels;
    * - a postability flip counts children under the node lock;
    * - structural fields are refused once a document line references the
    *   account (AC-I-11; see `isReferencedByDocumentLine` for why that predicate
@@ -383,11 +427,25 @@ export class AccountsRepository {
       let level = node.level;
       if (parentChanged) {
         if (input.structure === null) {
-          // The service always resolves the pinned version for a move; getting
-          // here without it is a caller bug, not an API outcome.
+          // The service always resolves the pinned configuration/version for a
+          // move; getting here without it is a caller bug, not an API outcome.
           throw new Error(
-            'Account move requires the pinned coding-structure snapshot.',
+            'Account move requires the pinned configuration snapshot.',
           );
+        }
+        // The authoritative pin check (D1 + D2): a move is validated against
+        // the configuration and version the account is pinned to — nothing
+        // else. A snapshot naming another configuration/version is refused
+        // here even if a caller bypassed the service pre-check.
+        const pinProblem = planAccountMovePin({
+          pinned: {
+            accountingConfigurationId: node.accountingConfigurationId,
+            codingStructureVersionId: node.codingStructureVersionId,
+          },
+          snapshot: input.structure,
+        });
+        if (pinProblem !== null) {
+          throw new AccountPlacementRejectedError('version_mismatch');
         }
         const plan = planAccountPlacement({
           id: node.id,
