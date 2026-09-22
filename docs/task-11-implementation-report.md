@@ -271,13 +271,13 @@ local run (0 errors, 4 warnings).
 7. **Not verified in this sandbox**: live-DB e2e execution (needs the CI
    database; CI run 35727571225 passed it — see §G); everything else above was
    executed here.
-8. **Rehearsal not wired into CI** (deliberate: the CI workflow is out of scope
-   for this task). CI runs Prisma validate/generate/lint/typecheck/format/unit/
-   build/`migrate deploy`/e2e only, so the populated-backfill rehearsal is run
-   manually or by a future pipeline change; adding
-   `npm run test:migration-rehearsal` after the `migrate deploy` step is the
-   obvious next step (it needs `CREATE DATABASE` on the service, which the CI
-   `postgres:16` service grants).
+8. **Rehearsal is now wired into CI** (was: run manually). The pipeline runs
+   `npm run test:migration-rehearsal` between `migrate deploy` and the e2e step,
+   so the populated pre-Task-11 backfill is verified on every change; the step
+   drops its disposable database on success and fails the job otherwise (it
+   needs `CREATE DATABASE` on the service, which the CI `postgres:16` service
+   grants). Recorded in
+   `docs/task-11-final-verification-report.md` §F2.
 
 ---
 
