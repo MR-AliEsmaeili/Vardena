@@ -1,5 +1,7 @@
 # گزارش نهایی تأیید تسک ۱۲ — تصویر ماندهٔ تراز حسابداری (Accounting Balance Projection)
-**وضعیت: READY FOR REVIEW (نه Accepted) — شاخه `arena/01a0ca12-vardena` از `d160b64`**
+**وضعیت: READY FOR REVIEW
+> **به‌روزرسانی ۲۰۲۶-۰۹-۲۲ (CHANGES REQUIRED):** helper قدیمی `document→balances` حذف، fallback بدون کپ ۱۰۰۰۰ (batch ۵۰۰۰ تا ۵۰۰۰۰)، توضیح `abp_+md5` vs ULID، تفسیر A و فصل مالی صریح در ADR، آزمون‌های ۴۰۱/۴۰۳/۴۰۴، و تأکید PGlite ≠ production PG — همه با ۹۸۴ تست پاس.
+ (نه Accepted) — شاخه `arena/01a0ca12-vardena` از `d160b64` — به‌روزرسانی ۲۰۲۶-۰۹-۲۲ برای CHANGES REQUIRED**
 
 > این گزارش پاسخ مستقیم به «بررسی دوم ۲۰۲۶-۰۹-۲۲» است که تسک ۱۲ را به‌دلیل **R-02 NOT ACCEPTED** (ناسازگاری گزارش §۱۳ با کد: «org-wide GET /balances paginates raw projection rows; deriveBalances per page; opening may reset to zero» در برابر ادعای رفع از طریق `vw_account_balance_derived` window before LIMIT/OFFSET) رد کرده بود. همهٔ موارد ۸گانهٔ خواسته‌شده در بررسی دوم در همین PR رفع شده و شواهد زنده (live PG) با **PGlite** تولید شده است. تسک ۱۱ دست‌نخورده و **ACCEPTED/CLOSED** باقی مانده، **ADR-0031 Proposed**، و OQ-62/63/64 و G7 جذب نشده‌اند.
 
@@ -128,7 +130,7 @@ financial_area → fiscal_year → accounting_period → accounts FOR SHARE ASC
   - `GET /balances` بدون view (fallback fetch-all → derive → slice) همان opening را حفظ کرد
   - هر دو از `AccountingBalancesController.list` فراخوانی شدند، تا قرارداد HTTP (DTO → service → DTO) نیز درست باشد.
 
-کل مجموعه اکنون **۹۷۶ تست در ۸۵ فایل — همه PASS** (قبلاً ۹۷۴/۸۴)، `tsc --noEmit` ۰ خطا، `oxlint` ۴ هشدارِ ازپیش‌موجود (۰ خطا، ۰ هشدار از فایل‌های تسک ۱۲ پس از تمیزکاری PGlite).
+کل مجموعه اکنون **۹۸۴ تست در ۸۶ فایل — همه PASS** (قبلاً ۹۷۴/۸۴)، `tsc --noEmit` ۰ خطا، `oxlint` ۴ هشدارِ ازپیش‌موجود (۰ خطا، ۰ هشدار از فایل‌های تسک ۱۲ پس از تمیزکاری PGlite).
 
 ---
 
