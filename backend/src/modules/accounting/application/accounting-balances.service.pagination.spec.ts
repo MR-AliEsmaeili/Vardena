@@ -50,9 +50,8 @@ describe('AccountingBalancesService pagination (Task 12 view vs derive)', () => 
     const all = [makeProjection(P1, '100.00', '0'), makeProjection(P2, '50.00', '0'), makeProjection(P3, '25.00', '0')];
     const balances = makeFakeBalances(
       vi.fn(async ({ skip, take }: any) => {
-        // fallback path fetches skip 0 take 10000 => return all
-        if (skip === 0 && take === 10000) return { items: all, total: all.length };
-        // the initial view-probe would have been attempted, but we force it to fail
+        // fallback path fetches in batches (5000) until exhausted — return all on first batch
+        if (skip === 0 && (take === 5000 || take === 10000)) return { items: all, total: all.length };
         return { items: [], total: 0 };
       }),
     );

@@ -170,6 +170,14 @@ SELECT
     -- prefixed so the shape stays TEXT id-compatible. Any stable deterministic
     -- function serves: `id` is never a business key, immutability is on the
     -- projection KEY, not on this synthetic id.
+    -- This does NOT violate AR-08 (ULID): runtime UPSERTs use `generateId()`
+    -- (ULID) in `account-balance-projections.repository.ts`; the backfill's
+    -- `abp_`+md5 is a one-time deterministic TEXT PK for migration
+    -- idempotency only, shape-compatible with TEXT PK, never used as ULID
+    -- outside the migration. A future INSERT via the app never uses this path.
+    -- `ledger_entries` at this point contains only finalized rows (only
+    -- `finalizeChecked` ever INSERTs ledger rows), so the GROUP re-derives
+    -- exactly the finalized turnover without needing a status filter.
     'abp_' || md5(
         le."organization_id" || '|' || le."financial_area_id" || '|' ||
         le."fiscal_year_id" || '|' || le."accounting_period_id" || '|' ||

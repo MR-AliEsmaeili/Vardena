@@ -111,7 +111,7 @@ describe('AccountingBalancesController pagination regression (Task 12 R-02 via c
     const all = [makeProjection(P1, '100.00', '0'), makeProjection(P2, '50.00', '0'), makeProjection(P3, '25.00', '0')];
     const balances = makeFakeBalances(
       vi.fn(async ({ skip, take }: any) => {
-        if (skip === 0 && take === 10000) return { items: all, total: all.length };
+        if (skip === 0 && (take === 5000 || take === 10000)) return { items: all, total: all.length };
         return { items: [], total: 0 };
       }),
     );

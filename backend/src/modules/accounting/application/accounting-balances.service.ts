@@ -337,7 +337,7 @@ export class AccountingBalancesService {
 
   private buildViewOrderBySql(orderBy: Array<Record<string, 'asc' | 'desc'>>): string {
     if (orderBy.length === 0) {
-      return `"financial_area_id" ASC, "fiscal_year_id" ASC, "period_sequence" ASC, "account_id" ASC`;
+      return '"financial_area_id" ASC, "fiscal_year_id" ASC, "period_sequence" ASC, "account_id" ASC';
     }
     const colOf: Record<string, string> = {
       periodSequence: 'period_sequence',
@@ -356,7 +356,7 @@ export class AccountingBalancesService {
       parts.push(`"${col}" ${d}`);
     }
     if (parts.length === 0) {
-      return `"financial_area_id" ASC, "fiscal_year_id" ASC, "period_sequence" ASC, "account_id" ASC`;
+      return '"financial_area_id" ASC, "fiscal_year_id" ASC, "period_sequence" ASC, "account_id" ASC';
     }
     parts.push('"financial_area_id" ASC', '"fiscal_year_id" ASC', '"period_sequence" ASC', '"account_id" ASC');
     return parts.join(', ');
@@ -367,18 +367,42 @@ export class AccountingBalancesService {
     skip: number,
     take: number,
   ): Promise<PaginatedResult<BalanceDerivedDto>> {
-    const all = await this.balances.list({
-      where: {
-        organizationId: query.organizationId,
-        financialAreaId: query.financialAreaId,
-        fiscalYearId: query.fiscalYearId,
-        accountingPeriodId: query.accountingPeriodId,
-        accountId: query.accountId,
-      },
-      orderBy: [{ organizationId: 'asc' }],
-      skip: 0,
-      take: 10000,
-    });
+    // Fallback path is TEST-ONLY: production always succeeds via the view (no cap).
+    // When the view is unavailable (fake Prisma in unit tests), we must derive
+    // over the FULL filtered set before paginating — otherwise opening resets
+    // to 0 on later pages (R-02). We fetch in batches without a 10000 cap so
+    // org-wide multi-account/year queries are not silently truncated (review
+    // §5 risk). A warning is emitted if the result grows beyond 50000 rows,
+    // which signals a caller should narrow its scope or rely on the view path.
+    const allItems: Awaited<ReturnType<typeof this.balances.list>>['items'] = [];
+    const batchSize = 5000;
+    let offset = 0;
+    while (true) {
+      const page = await this.balances.list({
+        where: {
+          organizationId: query.organizationId,
+          financialAreaId: query.financialAreaId,
+          fiscalYearId: query.fiscalYearId,
+          accountingPeriodId: query.accountingPeriodId,
+          accountId: query.accountId,
+        },
+        orderBy: [{ organizationId: 'asc' }],
+        skip: offset,
+        take: batchSize,
+      });
+      allItems.push(...page.items);
+      if (page.items.length < batchSize) break;
+      offset += batchSize;
+      if (allItems.length >= 50000) {
+        this.logger.warn(
+          'Balance fallback fetch reached 50000 rows — consider narrowing scope or using the view path',
+          { organizationId: query.organizationId },
+          AccountingBalancesService.name,
+        );
+        break;
+      }
+    }
+    const all = { items: allItems, total: allItems.length } as const;
 
     if (all.items.length === 0) {
       return toPaginatedResult([], 0, query.page, query.pageSize);

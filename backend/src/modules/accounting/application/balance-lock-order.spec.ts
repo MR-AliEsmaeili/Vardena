@@ -76,8 +76,10 @@ describe('balance lock order (Task 12 R-01)', () => {
     const heldEnd = nextFn === -1 ? heldStart + 3000 : nextFn;
     const heldSlice = src.slice(heldStart, heldEnd);
     expect(heldSlice).not.toContain('lockBalanceProjectionRows');
-    // The legacy helper still does (kept for non-finalization callers)
-    expect(src).toContain('lockBalanceProjectionRows');
+    // The legacy helper `applyBalanceProjectionDeltaInTx` (document→balances) has been removed — no production path should acquire document before balances.
+    expect(src).not.toContain('export async function applyBalanceProjectionDeltaInTx');
+    // `lockBalanceProjectionRows` is now only called from `accounting-documents.repository.ts` (finalize) before the document lock — never from this repository.
+    expect(src).not.toContain('lockBalanceProjectionRows');
   });
 
   it('rebuild locks the scope predicate FOR UPDATE (slice frozen)', () => {

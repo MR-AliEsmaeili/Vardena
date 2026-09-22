@@ -158,43 +158,6 @@ export class AccountBalanceProjectionsRepository {
 // ---------------------------------------------------------------------------
 
 /**
- * Legacy wrapper — applies delta WITH internal locking (document → projection
- * order). Kept for tests that call it outside the fixed finalization lock
- * tail. Production finalization now uses
- * `applyBalanceProjectionDeltasWithLocksHeldInTx` after locking projection
- * rows BEFORE the document (accounts → balances → document, see
- * accounting-locks.ts Task 12 tail + docs/accounting/lock-order-matrix.md).
- * The wrapper's order is documented as the pre-fix Document→Projection order
- * and must not be used for new transactional writers that already hold
- * projection locks.
- *
- * @deprecated Use `applyBalanceProjectionDeltasWithLocksHeldInTx` after
- * explicitly locking projection keys before the document.
- */
-export async function applyBalanceProjectionDeltaInTx(
-  tx: AccountingTxClient,
-  entries: readonly {
-    organizationId: string;
-    financialAreaId: string;
-    fiscalYearId: string;
-    accountingPeriodId: string;
-    accountId: string;
-    debitAmount: string;
-    creditAmount: string;
-  }[],
-  now: Date,
-  actorId: string | null,
-): Promise<void> {
-  if (entries.length === 0) return;
-
-  const deltaByKey = aggregateDeltas(entries);
-  const keys = [...deltaByKey.values()].map((b) => b.key);
-  const { lockBalanceProjectionRows } = await import('./accounting-locks.js');
-  const locked = await lockBalanceProjectionRows(tx, keys);
-  await upsertDeltasWithLocks(tx, deltaByKey, locked, now, actorId);
-}
-
-/**
  * Production helper — applies delta ASSUMING the caller already holds
  * `FOR UPDATE` on the touched projection keys (accounts → balances → document
  * order). `finalizeChecked` locks projection keys BEFORE the document, then
@@ -202,6 +165,11 @@ export async function applyBalanceProjectionDeltaInTx(
  * without acquiring a second lock tail (which would be Document→Projection and
  * would violate the global order). The helper re-reads the locked rows' current
  * sums and upserts/deletes — it never acquires new row locks.
+ *
+ * The pre-fix helper `applyBalanceProjectionDeltaInTx` (document → balances)
+ * has been removed — no production caller should ever acquire document before
+ * balances. See git history for the deprecated wrapper and
+ * docs/accounting/lock-order-matrix.md D4′.
  */
 export async function applyBalanceProjectionDeltasWithLocksHeldInTx(
   tx: AccountingTxClient,
