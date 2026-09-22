@@ -404,7 +404,7 @@ test file, one CI step, documentation).
 | `npm run test:e2e` | 15 files passed + 8 skipped; 189 passed + 45 skipped |
 | `npm run typecheck` · `lint` · `format:check` | clean · 0 errors / 4 warnings · clean |
 | `npm run test:migration-rehearsal` | PASSED (19 PASS + 1 OBSERVED) |
-| CI | see the run quoted in the pull request for the follow-up commit — the new rehearsal step must appear as `success` there; until that run is green the CI wiring is **VERIFIED-by-layout, not yet VERIFIED-in-pipeline** |
+| CI | run **35736248152** (`5d580f0`, PR #28) — `conclusion=success`, all steps green, including the **new step 15 `Migration rehearsal (populated pre-Task-11 data): success`**: the wiring is **VERIFIED in the pipeline**, not just by layout |
 
 Documents updated in this pass: this report (§D G1/G6, §F),
 `docs/task-11-implementation-report.md` (§I item 8 — the "not wired into CI"
