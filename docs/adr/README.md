@@ -86,3 +86,6 @@ Keep ADRs **short** (≤ ~60 lines). If it needs more, it belongs in `docs/`.
 | [0024](./0024-workflow-foundation.md) | Workflow foundation — reusable platform capability | Accepted |
 | [0025](./0025-single-organization-deployment-pin.md) | Optional single-organization deployment pin (`DEPLOYMENT_ORGANIZATION_ID`) | Accepted |
 | [0026](./0026-accounting-bounded-context.md) | Accounting bounded context — module boundary, fiscal-calendar ownership, system-posting contract | Accepted |
+| [0028](./0028-accounting-configuration-foundation.md) | Accounting configuration foundation — versioned root, single ACTIVE, operational freeze | Accepted |
+| [0029](./0029-machine-api-access-model.md) | Machine/API access model — licensed API keys on the RBAC permission model | Proposed |
+| [0030](./0030-license-foundation.md) | License foundation — minimal, non-punitive, enforcement-off | Proposed |
