@@ -14,27 +14,27 @@ published/consumed events, and extension points. Adding a module = new folder pe
 
 ## Module Map
 
-| Module | Status | One-line purpose | Owned schema(s) |
-|---|---|---|---|
-| Identity | v1 core | Authentication: login, sessions, password handling | `identity` |
-| Users | v1 core | User records, profiles, enable/disable | `users` |
-| Organization | structure + party master implemented (Task 6); configuration half pending | Organization structure (branches, departments, employees), party master, cross-module configuration (fiscal calendar → Accounting per ADR-0026, numbering → Documents, workflow → Workflow) | `organization` |
-| RBAC | v1 core | Roles, granular permissions, assignments | `rbac` |
-| Audit | v1 core | Append-only audit log of sensitive operations | `audit` |
-| Notifications | v1 core | In-app notifications driven by events | `notifications` |
-| Accounting | foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11; ADR-0026 Accepted); posting rules / corrections / balances contract-only | Financial areas, fiscal years/periods, coding structure, accounting configurations, chart of accounts, accounting documents + lines, ledger entries, posting rules | `accounting` |
-| Inventory | v1 core | Items, warehouses, stock, receipts/issues/transfers/adjustments | `inventory` |
-| Sales | v1 core | Customers, quotes, sales orders, invoices, returns | `sales` |
-| Purchasing | planned | Suppliers, purchase orders, supplier invoices | `purchasing` |
-| Reporting | v1 core | Report registry, query pipeline, dashboards | (none in v1) |
-| Excel | v1 core | Import engine (validated workflow) + export engine | `excel` |
-| Print | v1 core | Document templates, rendering, PDF jobs | `print` |
-| Customization | v1 core | User preferences (UI, dashboards, filters, print, report) | `customization` |
-| Integration | v1 core | External system adapters + credentials + sync state | `integration` |
-| Sync | v1 core | Outbox + dispatch policies, retry, dead-letter, admin controls | `sync` |
-| Jobs | v1 core | DB-backed job queue + scheduler | `jobs` |
+| Module        | Status                                                                                                                                                                                                                  | One-line purpose                                                                                                                                                                            | Owned schema(s) |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
+| Identity      | v1 core                                                                                                                                                                                                                 | Authentication: login, sessions, password handling                                                                                                                                          | `identity`      |
+| Users         | v1 core                                                                                                                                                                                                                 | User records, profiles, enable/disable                                                                                                                                                      | `users`         |
+| Organization  | structure + party master implemented (Task 6); configuration half pending                                                                                                                                               | Organization structure (branches, departments, employees), party master, cross-module configuration (fiscal calendar → Accounting per ADR-0026, numbering → Documents, workflow → Workflow) | `organization`  |
+| RBAC          | v1 core                                                                                                                                                                                                                 | Roles, granular permissions, assignments                                                                                                                                                    | `rbac`          |
+| Audit         | v1 core                                                                                                                                                                                                                 | Append-only audit log of sensitive operations                                                                                                                                               | `audit`         |
+| Notifications | v1 core                                                                                                                                                                                                                 | In-app notifications driven by events                                                                                                                                                       | `notifications` |
+| Accounting    | foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11 — **Task 11 ACCEPTED 2026-09-22**; ADR-0026 Accepted); posting rules / corrections / balances contract-only | Financial areas, fiscal years/periods, coding structure, accounting configurations, chart of accounts, accounting documents + lines, ledger entries, posting rules                          | `accounting`    |
+| Inventory     | v1 core                                                                                                                                                                                                                 | Items, warehouses, stock, receipts/issues/transfers/adjustments                                                                                                                             | `inventory`     |
+| Sales         | v1 core                                                                                                                                                                                                                 | Customers, quotes, sales orders, invoices, returns                                                                                                                                          | `sales`         |
+| Purchasing    | planned                                                                                                                                                                                                                 | Suppliers, purchase orders, supplier invoices                                                                                                                                               | `purchasing`    |
+| Reporting     | v1 core                                                                                                                                                                                                                 | Report registry, query pipeline, dashboards                                                                                                                                                 | (none in v1)    |
+| Excel         | v1 core                                                                                                                                                                                                                 | Import engine (validated workflow) + export engine                                                                                                                                          | `excel`         |
+| Print         | v1 core                                                                                                                                                                                                                 | Document templates, rendering, PDF jobs                                                                                                                                                     | `print`         |
+| Customization | v1 core                                                                                                                                                                                                                 | User preferences (UI, dashboards, filters, print, report)                                                                                                                                   | `customization` |
+| Integration   | v1 core                                                                                                                                                                                                                 | External system adapters + credentials + sync state                                                                                                                                         | `integration`   |
+| Sync          | v1 core                                                                                                                                                                                                                 | Outbox + dispatch policies, retry, dead-letter, admin controls                                                                                                                              | `sync`          |
+| Jobs          | v1 core                                                                                                                                                                                                                 | DB-backed job queue + scheduler                                                                                                                                                             | `jobs`          |
 
-**Purchasing** is marked *planned* because the product requirements imply it
+**Purchasing** is marked _planned_ because the product requirements imply it
 (purchase → inventory receipt → accounting journal entry) but do not place it in
 the initial scope explicitly. See OQ-16. Until it exists, purchase-driven stock
 inflows can be entered as manual inventory receipts.
@@ -44,7 +44,7 @@ inflows can be entered as manual inventory receipts.
 - **Vertical modules** own a business domain: Identity, Users, RBAC, Accounting,
   Inventory, Sales, Purchasing.
 - **Horizontal modules** provide capabilities to vertical modules through
-  **extension points** — they are *served by* vertical modules, never the owner of
+  **extension points** — they are _served by_ vertical modules, never the owner of
   vertical data:
   - **Reporting** consumes `reports/` definitions + module-owned views.
   - **Excel** consumes `imports/` ImportSpecs (import) and Reporting's pipeline
@@ -52,10 +52,10 @@ inflows can be entered as manual inventory receipts.
   - **Print** consumes `documents/` providers (data shape per document type).
   - **Customization** stores preferences that other features read
     (grid columns, dashboards, print prefs, report prefs).
-  - **Audit**, **Notifications**, **Sync** are event *subscribers* to everything.
+  - **Audit**, **Notifications**, **Sync** are event _subscribers_ to everything.
 
 Rule: a horizontal module must never own vertical data or encode vertical business
-rules; it defines the *mechanism*, vertical modules provide the *content*
+rules; it defines the _mechanism_, vertical modules provide the _content_
 (AR-08).
 
 ---
@@ -81,11 +81,11 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   columns, `deleted_at` reserved for soft delete). Profile/email/display-name
   fields are later Users sessions; MFA hooks are reserved (OQ-06).
 - **API (implemented):** `GET /users` (paginated, `isActive` filter), `GET
-  /users/{id}`, `POST /users`, `PATCH /users/{id}` (username), `POST
-  /users/{id}/enable|disable`, `POST /users/{id}/password-reset` (admin reset,
+/users/{id}`, `POST /users`, `PATCH /users/{id}` (username), `POST
+/users/{id}/enable|disable`, `POST /users/{id}/password-reset` (admin reset,
   204). No delete endpoint (OQ-18) and no self-service profile in v1.
 - **Permissions (own registry, AR-22):** `Users.User.View|Create|Edit|Enable|
-  Disable|ResetPassword`. There is no delete permission because there is no
+Disable|ResetPassword`. There is no delete permission because there is no
   delete endpoint.
 - **Publishes:** `User.Created`, `User.Updated`, `User.Enabled`, `User.Disabled`,
   `User.PasswordReset` (security-relevant lifecycle; the password itself is
@@ -100,7 +100,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 ## Organization (implemented — structure & party master data)
 
 - **Status:** implemented in Task 6 for the organizational-structure and party half
-  (ADR-0020, ADR-0021). The *configuration* half — fiscal calendar, numbering series,
+  (ADR-0020, ADR-0021). The _configuration_ half — fiscal calendar, numbering series,
   tax definitions, workflow definitions and custom-field definitions — is **not**
   implemented and still waits on ADR-0020 acceptance and the gate in
   [`architecture/domain/domain-blueprint.md`](./architecture/domain/domain-blueprint.md) §21.
@@ -122,7 +122,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 - **Permissions:** `Organization.{Organization,Branch,Department,Employee,Party}` ×
   `{View,Create,Edit,Enable,Disable}` (25 codes), enforced in the application services,
   not only by the route guards.
-- **Purpose:** own what is *organization-wide*: the organization structure (branches,
+- **Purpose:** own what is _organization-wide_: the organization structure (branches,
   departments, employees as minimal reference data), the **fiscal calendar** (years and
   periods), and **cross-module configuration** (numbering series, tax definitions,
   effective-dated settings, workflow definitions/versions, custom-field definitions).
@@ -165,13 +165,13 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   permissions), `POST /roles` (optionally with an initial permission set, written
   in one transaction), `PATCH /roles/{id}`; `POST /roles/{id}/permissions` +
   `DELETE /roles/{id}/permissions/{code}`; `POST /roles/{id}/users` + `DELETE
-  /roles/{id}/users/{userId}`; `GET /permissions` (registry mirror);
+/roles/{id}/users/{userId}`; `GET /permissions` (registry mirror);
   `GET /permissions/effective` (the caller's own codes — authenticated, no code
   declared, AR-21 exception). There is deliberately **no** permission
   create/update endpoint: permissions come from code (ADR-0006).
 - **Permissions (own registry, AR-22):** `Rbac.Permission.View`, `Rbac.Role.View|
-  Create|Edit`, `Rbac.RolePermission.Assign|Remove`, `Rbac.UserRole.Assign|
-  Remove`. No `Rbac.Role.Delete` (OQ-20).
+Create|Edit`, `Rbac.RolePermission.Assign|Remove`, `Rbac.UserRole.Assign|
+Remove`. No `Rbac.Role.Delete` (OQ-20).
 - **Authorization service (public):** `hasAllPermissions(userId, codes)`,
   `hasAnyPermission(userId, codes)`, `effectivePermissionCodes(userId)` and
   `requireAllPermissions(codes)` for application services. Evaluation reads the
@@ -186,7 +186,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   `RolePermission.Removed`, `UserRole.Assigned`, `UserRole.Removed`.
 - **Seed roles are a business decision (OQ-14)** — do not invent them; the first
   administrator's bootstrap procedure is OQ-19.
-- **Not responsible for:** deciding *where* checks happen (that's every module's
+- **Not responsible for:** deciding _where_ checks happen (that's every module's
   application layer, AR-21) or audit of denials (Audit module).
 
 ## Audit (v1 core)
@@ -202,7 +202,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 - **Write path:** modules emit audit data through the kernel audit port inside
   their business transaction; Audit persists it. Retention/archival = OQ-17.
 
-## Accounting (v1 core — **foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11)**; posting rules / corrections / balances still contract-only)
+## Accounting (v1 core — **foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11 — Task 11 ACCEPTED 2026-09-22)**; posting rules / corrections / balances still contract-only)
 
 - **Status:** Task 10.2 implemented the **bookkeeping scope** — financial areas,
   fiscal years, accounting periods (contract §4/§5/§6/§7, AC-D-01…AC-D-05,
@@ -225,7 +225,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   entry per stored line** (`accounting.ledger_entries`,
   `20260916000000_accounting_ledger`; `final` = posted, no separate state, no
   endpoint, no new permission).
-  Task 11 (PR #25, remediated 2026-09-22) added the **accounting configuration
+  Task 11 — **ACCEPTED 2026-09-22** (PR #25, remediated 2026-09-22, defect-resolution PR #29 `docs/task-11-defect-resolution-report.md`, CI `35755493453`/`35755917087` success) added the **accounting configuration
   foundation** (D1–D7): `accounting.accounting_configurations` /
   `accounting_configuration_levels` (`20260920000000_accounting_configuration_foundation`),
   DRAFT → ACTIVE → SUPERSEDED with exactly one ACTIVE per organization (row
@@ -239,7 +239,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   the operational-freeze abstraction exists but `markOperationallyUsed` stays
   deferred (D4 — decision note + OQ-64). The populated pre-Task-11 backfill is
   verified by `npm run test:migration-rehearsal`
-  (`backend/prisma/rehearsal/task-11-configuration-foundation/`).
+  (`backend/prisma/rehearsal/task-11-configuration-foundation/`). Preserved explicitly: **OQ-62: OPEN** (pin compatibility requires future Product + Architecture decision), **OQ-63: OPEN** (legacy fallback shape), **OQ-64: OPEN / DEFERRED** (operational freeze integration belongs to Posting integration), **G7: ACCEPTED RISK** (raw-SQL partial index `uq_accounting_configurations_org_active` guarded by live `pg_indexes` verification and migration rehearsal).
   [ADR-0026](./adr/0026-accounting-bounded-context.md) is **Accepted** (2026-09-14).
   Still contract-only past the ledger: control roles, detail dimensions,
   posting rules, correction/reversal mechanisms and balance projections. The binding contract stays
@@ -278,7 +278,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   `coding_structure_version_id` (AC-I-14). Lifecycle is `is_active` plus
   `status` (`open|closed|sealed`); periods carry no `is_active` (contract §7.1).
   **No DELETE**: nothing is deleted (OQ-36) — the one exception is a coding
-  structure *draft*'s level rows, replaced atomically as unreferenced
+  structure _draft_'s level rows, replaced atomically as unreferenced
   configuration workspace (ADR-0024's draft rule).
 - **Owns (Tasks 10.4 + 10.7):** `accounting_documents` (the voucher header:
   stored scope, `draft|temporary|final` phase, numeric-only serial per
@@ -318,7 +318,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 - **Posting readiness seam (Task 10.5):** an INTERNAL (non-HTTP, non-exported)
   application contract between the finalized voucher and the future Posting
   Engine: `PostingReadinessService.evaluateReadiness(organizationId,
-  documentId)` assembles a read-only snapshot (document + lines + stored
+documentId)` assembles a read-only snapshot (document + lines + stored
   area/year/period + referenced accounts, by stored ids, no locks) and
   delegates to the pure decision table `domain/posting-readiness.ts`, which
   reuses `checkVoucherLines`/`checkOriginEvidence` verbatim. The verdict is
@@ -345,7 +345,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   guard errors), so no caller re-assembles the posting sequence. The seam
   coordinates and nothing else: resolve in scope (404, AC-I-01/16) →
   idempotency replay-or-reject on the EXISTING `(organization_id,
-  operation_key)` + `request_hash` identity of the `document_finalize` kind
+operation_key)` + `request_hash` identity of the `document_finalize` kind
   (§16.4: same key + same hash replays by re-reading current rows, same key +
   different hash is a 409 that mutates nothing — no second key scheme, no
   `ledger-post-*` pattern) → the Foundation's lifecycle verdict
@@ -477,7 +477,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   eligibility defaults, dimension requiredness, correction windows, numbering year
   components, currency, valuation mappings — stays open: OQ-03/11/12/23/24/25/27/30/31
   and the new OQ-39…OQ-43.
-- **Not responsible for:** knowing *why* inventory moved (Inventory's business),
+- **Not responsible for:** knowing _why_ inventory moved (Inventory's business),
   stock quantities or valuation quantities (ADR-0022), pricing/discounts (Sales),
   tax computation (OQ-30), numbering mechanics (Documents — ADR-0023), workflow
   mechanics (Workflow — ADR-0024), audit storage (Audit — AR-23), organization
@@ -503,7 +503,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   transfer/adjustment create (with permissions per AR-22); stock movement history.
 - **Publishes:** `InventoryReceipt.Created`, `InventoryIssue.Created`,
   `StockTransfer.Created`, `StockAdjustment.Created` (+ `Item.Created/Updated/
-  Archived` etc.).
+Archived` etc.).
 - **Extension points:** `reports/` (stock on hand, movements, valuation views),
   `imports/` (item import, stock adjustment import), `documents/` (goods receipt
   note, issue note).
@@ -516,7 +516,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 ## Sales (v1 core)
 
 - **Owns:** customers*, quotes, sales orders, invoices, returns.
-  \* Party (customer/supplier) *master data* moves to the **Organization** module
+  \* Party (customer/supplier) _master data_ moves to the **Organization** module
   when [ADR-0020](./adr/0020-organizational-scope-and-master-data.md) is accepted; Sales then owns
   the commercial relationship (price lists, credit policy, sales documents) referencing
   `party_id`. See [`architecture/domain/master-data-strategy.md`](./architecture/domain/master-data-strategy.md) §5.
@@ -560,7 +560,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 
 - **Import engine — the mandated workflow (ADR-0011):**
   `Upload → Parse → Validate → Preview → User confirmation → Transaction →
-  Persist → Result summary`, with row-level status/errors. Sessions and rows
+Persist → Result summary`, with row-level status/errors. Sessions and rows
   live in `excel.import_sessions` / `excel.import_rows`.
 - **Target contracts:** each vertical module provides `imports/` **ImportSpecs**
   (target entity, allowed columns, per-row validators, upsert key, batch size,
@@ -595,7 +595,7 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   (ADR-0013). Categories: `ui.table`, `ui.filters`, `ui.dashboard`, `ui.theme`,
   `ui.general`, `print`, `report`.
 - **API:** get/set preferences (self); organization defaults later (OQ-09).
-- **Design rule:** preferences are *user data about the UI*, never business data;
+- **Design rule:** preferences are _user data about the UI_, never business data;
   unknown keys are rejected; values are validated server-side.
 - **Not responsible for:** persisting business state; any "preference" that
   changes business behavior is a business rule and belongs in the business
@@ -609,12 +609,12 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   external system calls in).
 - **Contract:** every adapter implements the kernel adapter port
   (see `docs/integrations.md` §Adapter contract): `send(operation, payload,
-  meta)`, idempotency support, retryable-vs-permanent error taxonomy, health.
+meta)`, idempotency support, retryable-vs-permanent error taxonomy, health.
 - **Publishes:** `Integration.Failed` (for dead-letter handling),
   `Integration.Connected/Disconnected`.
-- **Not responsible for:** deciding *what* to sync (that's the business modules'
+- **Not responsible for:** deciding _what_ to sync (that's the business modules'
   outbox rows + Sync policies), mapping ownership (mapping configuration belongs
-  here as *data*, business semantics belong to the owning module).
+  here as _data_, business semantics belong to the owning module).
 
 ## Sync (v1 core)
 
@@ -649,8 +649,8 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
   extension — channel choice is OQ-15 (product decision).
 - **Consumes:** the cross-cutting events of other modules (import completed,
   print job finished, dead-letter, period closed, …) and maps them to
-  user-facing notifications via per-module notification *rules* (template text
-  lives in the Notifications module; *which events notify which users* is a
+  user-facing notifications via per-module notification _rules_ (template text
+  lives in the Notifications module; _which events notify which users_ is a
   per-module policy registered by each module).
 - **API:** list my notifications, mark read, unread count.
 
@@ -662,34 +662,34 @@ rules; it defines the *mechanism*, vertical modules provide the *content*
 > it grows with implementation. Event schemas are versioned; changing an existing
 > event's field semantics requires an ADR (AR-29).
 
-| Event | Publisher | Main consumers | Purpose |
-|---|---|---|---|
-| `UserSession.Created` / `UserSession.Revoked` / `Login.Failed` | Identity | Audit, (Notifications for lockout) | session lifecycle trail |
-| `User.Created` / `User.Updated` / `User.Enabled` / `User.Disabled` / `User.PasswordReset` | Users | Audit, Identity (revoke sessions on disable/reset), Notifications | user lifecycle |
-| `Role.Created` / `Role.Updated` / `RolePermission.Assigned` / `RolePermission.Removed` / `UserRole.Assigned` / `UserRole.Removed` | RBAC | Audit, UI refetch of effective permissions | permission changes (no server-side cache to invalidate — ADR-0016) |
-| `Organization.Created` / `Organization.Updated` / `Organization.Enabled` / `Organization.Disabled` | Organization | Audit | organization root lifecycle (implemented, Task 6) |
-| `Branch.*` / `Department.*` / `Employee.*` / `Party.*` (`Created` / `Updated` / `Enabled` / `Disabled`) | Organization | Audit | organization-structure and party master-data lifecycle (implemented, Task 6) |
-| `Item.*` / `ItemGroup.*` / `Unit.*` / `Warehouse.*` (`Created` / `Updated` / `Enabled` / `Disabled`) | Inventory | Audit | inventory master-data lifecycle (implemented, Task 6) |
-| `UnitConversion.Created` | Inventory | Audit | a new effective-dated conversion version (payload carries `supersededConversionId`); **no update/disable event exists** — versions are never edited in place |
-| `InventoryReceipt.Created` | Inventory | **Accounting (journal)**, Audit, (Sync → outbox if configured) | stock in |
-| `InventoryIssue.Created` | Inventory | **Accounting**, Audit | stock out |
-| `StockTransfer.Created` / `StockAdjustment.Created` | Inventory | Accounting (adjustment), Audit | stock changes |
-| `SalesOrder.Created` / `SalesOrder.Confirmed` | Sales | Audit, (Sync → outbox if configured) | sales flow |
-| `Invoice.Issued` | Sales | **Accounting (revenue journal)**, Audit, (Sync → taxpayer/faraPayam outbox if configured) | billing |
-| `JournalEntry.Posted` / `AccountingPeriod.Closed` *(placeholders — refined by the Accounting Domain Contract §21 into `AccountingDocument.*`, `FiscalYear.*`, `AccountingPeriod.*` when those ship; `FinancialArea.*`, `AccountingPeriod.*`, `Account.*` and `AccountingDocument.{Created,Updated,Finalized,Deleted}` are already SHIPPED with their refined names — Tasks 10.2/10.3/10.4)* | Accounting | Audit, Notifications | books |
-| `ImportSession.Completed` / `ImportSession.Failed` | Excel | Notifications, Audit | import feedback |
-| `PrintJob.Completed` / `PrintJob.Failed` | Print | Notifications, Audit | print feedback |
-| `OutboxItem.DeadLettered` / `Integration.Failed` | Sync / Integration | Audit, Notifications (admins) | sync health |
-| `Job.Failed` | Jobs | Notifications (admins) | job health |
+| Event                                                                                                                                                                                                                                                                                                                                                                                       | Publisher          | Main consumers                                                                            | Purpose                                                                                                                                                      |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `UserSession.Created` / `UserSession.Revoked` / `Login.Failed`                                                                                                                                                                                                                                                                                                                              | Identity           | Audit, (Notifications for lockout)                                                        | session lifecycle trail                                                                                                                                      |
+| `User.Created` / `User.Updated` / `User.Enabled` / `User.Disabled` / `User.PasswordReset`                                                                                                                                                                                                                                                                                                   | Users              | Audit, Identity (revoke sessions on disable/reset), Notifications                         | user lifecycle                                                                                                                                               |
+| `Role.Created` / `Role.Updated` / `RolePermission.Assigned` / `RolePermission.Removed` / `UserRole.Assigned` / `UserRole.Removed`                                                                                                                                                                                                                                                           | RBAC               | Audit, UI refetch of effective permissions                                                | permission changes (no server-side cache to invalidate — ADR-0016)                                                                                           |
+| `Organization.Created` / `Organization.Updated` / `Organization.Enabled` / `Organization.Disabled`                                                                                                                                                                                                                                                                                          | Organization       | Audit                                                                                     | organization root lifecycle (implemented, Task 6)                                                                                                            |
+| `Branch.*` / `Department.*` / `Employee.*` / `Party.*` (`Created` / `Updated` / `Enabled` / `Disabled`)                                                                                                                                                                                                                                                                                     | Organization       | Audit                                                                                     | organization-structure and party master-data lifecycle (implemented, Task 6)                                                                                 |
+| `Item.*` / `ItemGroup.*` / `Unit.*` / `Warehouse.*` (`Created` / `Updated` / `Enabled` / `Disabled`)                                                                                                                                                                                                                                                                                        | Inventory          | Audit                                                                                     | inventory master-data lifecycle (implemented, Task 6)                                                                                                        |
+| `UnitConversion.Created`                                                                                                                                                                                                                                                                                                                                                                    | Inventory          | Audit                                                                                     | a new effective-dated conversion version (payload carries `supersededConversionId`); **no update/disable event exists** — versions are never edited in place |
+| `InventoryReceipt.Created`                                                                                                                                                                                                                                                                                                                                                                  | Inventory          | **Accounting (journal)**, Audit, (Sync → outbox if configured)                            | stock in                                                                                                                                                     |
+| `InventoryIssue.Created`                                                                                                                                                                                                                                                                                                                                                                    | Inventory          | **Accounting**, Audit                                                                     | stock out                                                                                                                                                    |
+| `StockTransfer.Created` / `StockAdjustment.Created`                                                                                                                                                                                                                                                                                                                                         | Inventory          | Accounting (adjustment), Audit                                                            | stock changes                                                                                                                                                |
+| `SalesOrder.Created` / `SalesOrder.Confirmed`                                                                                                                                                                                                                                                                                                                                               | Sales              | Audit, (Sync → outbox if configured)                                                      | sales flow                                                                                                                                                   |
+| `Invoice.Issued`                                                                                                                                                                                                                                                                                                                                                                            | Sales              | **Accounting (revenue journal)**, Audit, (Sync → taxpayer/faraPayam outbox if configured) | billing                                                                                                                                                      |
+| `JournalEntry.Posted` / `AccountingPeriod.Closed` _(placeholders — refined by the Accounting Domain Contract §21 into `AccountingDocument.*`, `FiscalYear.*`, `AccountingPeriod.*` when those ship; `FinancialArea.*`, `AccountingPeriod.*`, `Account.*` and `AccountingDocument.{Created,Updated,Finalized,Deleted}` are already SHIPPED with their refined names — Tasks 10.2/10.3/10.4)_ | Accounting         | Audit, Notifications                                                                      | books                                                                                                                                                        |
+| `ImportSession.Completed` / `ImportSession.Failed`                                                                                                                                                                                                                                                                                                                                          | Excel              | Notifications, Audit                                                                      | import feedback                                                                                                                                              |
+| `PrintJob.Completed` / `PrintJob.Failed`                                                                                                                                                                                                                                                                                                                                                    | Print              | Notifications, Audit                                                                      | print feedback                                                                                                                                               |
+| `OutboxItem.DeadLettered` / `Integration.Failed`                                                                                                                                                                                                                                                                                                                                            | Sync / Integration | Audit, Notifications (admins)                                                             | sync health                                                                                                                                                  |
+| `Job.Failed`                                                                                                                                                                                                                                                                                                                                                                                | Jobs               | Notifications (admins)                                                                    | job health                                                                                                                                                   |
 
 > **Payload convention for the Task 6 master-data events:** `{id, organizationId,
-> code}` (the organization root uses `{id, code}`), plus `correlationId` and
+code}` (the organization root uses `{id, code}`), plus `correlationId` and
 > `occurredAt`. `UnitConversion.Created` additionally carries `itemId`,
 > `fromUnitId`, `toUnitId`, `factor`, `validFrom` and `supersededConversionId`.
 > None of them is a `*.Deleted` event: master data is deactivated, never deleted
 > (OQ-36).
 
-**Outbox operations vs domain events:** an outbox *row* records an external
+**Outbox operations vs domain events:** an outbox _row_ records an external
 delivery operation (e.g. destination `faraPayam`, operation
 `InventoryReceipt.Created`) and is written by the business module **inside its
 own transaction** using the kernel outbox port — it is not "emitted to the Sync
