@@ -953,6 +953,90 @@ describe('AccountsService', () => {
     });
   });
 
+  it("validates a move against the account's OWN configuration, never the organization's active one", async () => {
+    // Org A runs on TWO_LEVELS (2 + 3): root '02', child '02003'.
+    const root = await createAccount(fixture, orgA, '02');
+    const child = await createAccount(fixture, orgA, '02003', {
+      parentId: root.id,
+    });
+    const pinnedConfigId = child.accountingConfigurationId;
+    const pinnedVersionId = child.codingStructureVersionId;
+
+    // A SECOND configuration becomes ACTIVE for the same organization, with a
+    // 5-digit level 1 — exactly the child code's length. A move validated
+    // against THIS configuration would accept '02003' as a root code.
+    await publishAccountingConfig(fixture, orgA, {
+      code: 'WIDE',
+      maxDepth: 2,
+      levels: [
+        {
+          levelIndex: 1,
+          title: 'Wide',
+          digitLength: 5,
+          defaultIsPostable: false,
+        },
+        {
+          levelIndex: 2,
+          title: 'Narrow',
+          digitLength: 1,
+          defaultIsPostable: true,
+        },
+      ],
+    });
+    const activeNow = await asActor(ACTOR, () =>
+      fixture.configurations.getActiveConfiguration(orgA),
+    );
+    expect(activeNow.id).not.toBe(pinnedConfigId);
+
+    // The move to root is decided by the account's OWN configuration (2 + 3 →
+    // '02003' is a level-2 code, not a root), never by the active one.
+    expect(
+      await accountFailures(fixture).update(orgA, child.id, {
+        parentId: null,
+      }),
+    ).toMatchObject({
+      code: 'BusinessRuleViolation',
+      details: { rule: 'level_length_mismatch' },
+    });
+
+    // Nothing moved, and the account is still pinned to its own pair.
+    expect(fixture.stores.raw.state.accounts.findById(child.id)).toMatchObject({
+      parentId: root.id,
+      level: 2,
+      accountingConfigurationId: pinnedConfigId,
+      codingStructureVersionId: pinnedVersionId,
+    });
+  });
+
+  it('refuses to pin a new root to a coding version that stopped being active between resolution and write', async () => {
+    // Simulate the concurrent publish: the service resolves the ACTIVE version
+    // and a competing request supersedes it before the repository's locked
+    // write runs. The write boundary must re-check the pin — it may not trust
+    // the resolution that happened before the lock.
+    const raw = fixture.stores.raw.structures;
+    const original = raw.findActiveForOrganization.bind(raw);
+    raw.findActiveForOrganization = async (organizationId: string) => {
+      const version = await original(organizationId);
+      if (version !== null) {
+        fixture.stores.raw.state.versions.patch(version.id, {
+          status: 'superseded',
+        });
+      }
+      return version;
+    };
+
+    expect(await accountFailures(fixture).create(orgA, '09')).toMatchObject({
+      code: 'Conflict',
+    });
+
+    // The failed create wrote nothing.
+    expect(
+      fixture.stores.raw.state.accounts.findMany(
+        (row) => row.organizationId === orgA,
+      ),
+    ).toEqual([]);
+  });
+
   it('rejects an invalid code shape as a client error', async () => {
     const root = await createAccount(fixture, orgA, '02');
     expect(

@@ -105,6 +105,11 @@ WHERE a."accounting_configuration_id" IS NULL;
 -- This implements Product Strategy 5 Legacy Config strategy for orphan>0 case.
 -- If orphan=0, this inserts 0 rows and is no-op.
 -- Uses gen_random_uuid() for ids (TEXT column accepts uuid text).
+-- Level handling (Task 11 remediation): a legacy configuration either COPIES
+-- the organization's active coding-structure level set (all of it, unchanged —
+-- including a ONE-level set) or, when there is nothing to copy, receives the
+-- two documented default levels below. Levels are never appended to a copied
+-- set.
 
 -- Create legacy accounting_configurations for orphan orgs
 WITH orphan_orgs AS (
@@ -124,35 +129,58 @@ legacy_insert AS (
   RETURNING "id", "organization_id"
 )
 -- Copy levels from active coding_structure_versions if exists (preserve code shape), else will create defaults below
+-- Copy the level set of the organization's ACTIVE coding structure, so the
+-- legacy configuration describes the SAME shape the organization's codes were
+-- composed under. The "active" version is selected deterministically (newest
+-- version_number, then id) instead of relying on the "exactly one active
+-- version" invariant holding in legacy data: were that invariant violated, a
+-- multi-row join would insert two rows for one level_index and abort the whole
+-- migration on uq_accounting_configuration_levels_config_level.
 INSERT INTO "accounting"."accounting_configuration_levels"
   ("id", "organization_id", "accounting_configuration_id", "level_index", "title", "digit_length", "default_is_postable", "level_kind", "created_at", "updated_at")
 SELECT gen_random_uuid()::text, li."organization_id", li."accounting_configuration_id", li."level_index", li."title", li."digit_length", li."default_is_postable", li."level_kind", NOW(), NOW()
 FROM (
   SELECT lc."id" AS accounting_configuration_id, lc."organization_id", csl."level_index", csl."title", csl."digit_length", csl."default_is_postable", csl."level_kind"
   FROM legacy_insert lc
-  JOIN "accounting"."coding_structure_versions" csv ON csv."organization_id" = lc."organization_id" AND csv."status" = 'active'
+  JOIN "accounting"."coding_structure_versions" csv
+    ON csv."organization_id" = lc."organization_id"
+   AND csv."status" = 'active'
+   AND csv."id" = (
+         SELECT v."id"
+         FROM "accounting"."coding_structure_versions" v
+         WHERE v."organization_id" = lc."organization_id"
+           AND v."status" = 'active'
+         ORDER BY v."version_number" DESC, v."id" ASC
+         LIMIT 1
+       )
   JOIN "accounting"."coding_structure_levels" csl ON csl."coding_structure_version_id" = csv."id"
 ) li;
 
--- For legacy configs that still have no levels (no active coding version), create default 2 levels (2 + 3) as fallback
--- This ensures every ACTIVE config has at least one level definition
+-- Fallback for a legacy configuration whose organization had NO usable coding
+-- structure (no active version, or a version with no level rows): insert the
+-- documented default shape — level 1 = Group/2 digits (not postable),
+-- level 2 = Detail/3 digits (postable) — in ONE statement.
+--
+-- The guard is "this configuration has NO level rows", deliberately NOT
+-- "it has exactly one level row": a configuration COPIED from a ONE-LEVEL
+-- coding structure already has exactly one level row, and appending a second
+-- level would silently widen that organization's active code shape (its
+-- accounts would become creatable one level deeper than the coding structure
+-- allows). A copied level set is never extended.
 INSERT INTO "accounting"."accounting_configuration_levels"
   ("id", "organization_id", "accounting_configuration_id", "level_index", "title", "digit_length", "default_is_postable", "level_kind", "created_at", "updated_at")
-SELECT gen_random_uuid()::text, lc."organization_id", lc."id", 1, 'Group', 2, false, NULL, NOW(), NOW()
+SELECT gen_random_uuid()::text, lc."organization_id", lc."id", d."level_index", d."title", d."digit_length", d."default_is_postable", NULL, NOW(), NOW()
 FROM "accounting"."accounting_configurations" lc
+CROSS JOIN (
+  VALUES
+    (1, 'Group', 2, false),
+    (2, 'Detail', 3, true)
+) AS d("level_index", "title", "digit_length", "default_is_postable")
 WHERE lc."code" = 'LEGACY'
   AND lc."status" = 'ACTIVE'
   AND NOT EXISTS (
     SELECT 1 FROM "accounting"."accounting_configuration_levels" acl WHERE acl."accounting_configuration_id" = lc."id"
   );
-
-INSERT INTO "accounting"."accounting_configuration_levels"
-  ("id", "organization_id", "accounting_configuration_id", "level_index", "title", "digit_length", "default_is_postable", "level_kind", "created_at", "updated_at")
-SELECT gen_random_uuid()::text, lc."organization_id", lc."id", 2, 'Detail', 3, true, NULL, NOW(), NOW()
-FROM "accounting"."accounting_configurations" lc
-WHERE lc."code" = 'LEGACY'
-  AND lc."status" = 'ACTIVE'
-  AND (SELECT COUNT(*) FROM "accounting"."accounting_configuration_levels" acl WHERE acl."accounting_configuration_id" = lc."id") = 1;
 
 -- Second backfill: after legacy configs created, fill remaining NULL accounts (orphan case)
 UPDATE "accounting"."accounts" a

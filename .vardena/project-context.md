@@ -27,12 +27,29 @@ authorization, and API. The frontend talks only to the Vardena API.
 
 ## Current Repository State
 
-- **Documentation-only.** No application code exists yet. The directory layouts in
-  `docs/architecture.md` are the *target* layout for the first implementation phase.
-- The first implementation phase (scaffolding) has **not** started. Do not assume
-  existing code patterns; the docs are the source of truth.
-- Any ambiguity about business behavior: see `docs/open-questions.md`. **Do not
-  invent business rules** (numbering, tax, ledger behavior, approval flows, policies).
+- **The backend is implemented** (Tasks 1–11). `backend/` is a NestJS modular
+  monolith: `backend/src/kernel` (config, errors, ids, logging, pagination,
+  Prisma service, request context) plus `backend/src/modules/{identity,users,
+  rbac,organization,inventory,documents,workflow,accounting}`; Prisma schemas in
+  `backend/prisma/schema/` (schema-per-module) and 13 migrations in
+  `backend/prisma/migrations/`.
+- **Accounting (Tasks 10.x + 11)** is the most advanced module: financial
+  areas / fiscal years / periods, coding structures + chart of accounts,
+  accounting configurations (Task 11, D1–D7), vouchers + lines, posting
+  readiness, the posting/ledger contract, immutable `ledger_entries`,
+  `PostingService` orchestration — and nothing past the ledger (no posting
+  rules, dimensions, balances, corrections or reports).
+- **Tests:** unit specs live beside the code (`backend/src/**/*.spec.ts`);
+  e2e specs in `backend/test/**/*.e2e-spec.ts`. Live-database suites are opt-in
+  via `VARDENA_TEST_DATABASE_URL`; the migration rehearsal
+  (`npm run test:migration-rehearsal`) proves the Task 11 backfill against
+  populated pre-Task-11 data on a disposable PostgreSQL.
+- **The frontend has not started**; `frontend/` is still the target layout.
+- **Governance:** the authoritative accounting task sequence is
+  `docs/accounting/task-index.md`; the current task's evidence is
+  `docs/task-11-implementation-report.md`. Any ambiguity about business
+  behavior: see `docs/open-questions.md` (OQ-01…OQ-64). **Do not invent
+  business rules** (numbering, tax, ledger behavior, approval flows, policies).
 
 ## Technology (fixed — see ADR-0002)
 
@@ -60,9 +77,16 @@ docs/
   reporting-strategy.md ← reporting architecture, raw SQL policy, export/print
   open-questions.md  ← registered open architectural/business questions (OQ-xx)
   adr/               ← architecture decision records (ADR-xxxx)
-backend/             ← (target) NestJS modular monolith + Prisma + worker
+  accounting/        ← accounting contract, task index, configuration, decision notes
+  task-11-implementation-report.md ← latest task evidence (A–J format)
+backend/
+  src/kernel/        ← cross-cutting kernel (config, errors, ids, logging, Prisma)
+  src/modules/       ← the eight modules (NestJS modules + domain/application/data/api)
+  test/              ← e2e specs + support harness (live suites opt-in)
+  prisma/schema/     ← schema-per-module Prisma sources
+  prisma/migrations/ ← 13 applied migrations + the Task 11 rehearsal fixture
 frontend/            ← (target) React SPA
-docker-compose.yml   ← (target)
+docker-compose.yml   ← API + worker + PostgreSQL
 ```
 
 ## Golden Rules (the 10 that matter most)

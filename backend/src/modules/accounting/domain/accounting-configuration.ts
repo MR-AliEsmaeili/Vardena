@@ -50,6 +50,19 @@ export function isAccountingConfigurationStatus(
 export const MAX_ACCOUNTING_CONFIGURATION_DEPTH = 8;
 export const MAX_ACCOUNTING_CONFIGURATION_CODE_LENGTH = 32;
 export const MIN_CONFIGURATION_LEVEL_DIGIT_LENGTH = 1;
+/**
+ * `accounting_configuration_levels.level_kind` storage width
+ * (`level_kind varchar(20)` in the migration, `@db.VarChar(20)` in
+ * `prisma/schema/accounting.prisma`).
+ *
+ * The level kind is an INFORMATIONAL, organization-configurable label — it is
+ * deliberately not a closed list here (unlike the coding structure's
+ * `group|general|subsidiary|detail`), so the only bound the contract can carry
+ * is the storage width. The API DTO and this domain check both use THIS
+ * constant: a value that the column cannot store is refused with a 400/422
+ * before it reaches PostgreSQL, and it is never truncated.
+ */
+export const MAX_LEVEL_KIND_LENGTH = 20;
 
 /** One level of an accounting configuration version. */
 export interface AccountingConfigurationLevel {
@@ -305,7 +318,8 @@ export type AccountingConfigurationProblem =
   | 'digit_length_invalid'
   | 'code_length_too_large'
   | 'level_title_invalid'
-  | 'level_kind_invalid';
+  | 'level_kind_invalid'
+  | 'level_kind_too_long';
 
 export interface AccountingConfigurationPlan {
   problem: AccountingConfigurationProblem | null;
@@ -383,19 +397,25 @@ export function planAccountingConfiguration(input: {
         subject: String(level.levelIndex),
       };
     }
-    // levelKind is informational only — allow any non-blank or null, but
-    // validate against known kinds if provided? Task says level semantics
-    // explicit and configurable, not hardcoded. So we allow any string? But
-    // to keep compatibility with existing ACCOUNT_LEVEL_KINDS, we allow
-    // known kinds or any custom? For Task 11 foundation, we allow known kinds
-    // plus any custom title — but we validate against known list for safety,
-    // while still allowing null. We will allow any non-empty string as
-    // custom levelKind to keep it configurable and not hardcoded.
-    if (level.levelKind !== null && level.levelKind.trim() === '') {
-      return {
-        problem: 'level_kind_invalid',
-        subject: String(level.levelIndex),
-      };
+    // levelKind is informational and organization-configurable, so it is NOT a
+    // closed list (unlike the coding structure's `group|general|subsidiary|
+    // detail`): any non-blank value is accepted, but it must FIT THE COLUMN.
+    // A longer value is refused here — it is never truncated — because
+    // `level_kind varchar(20)` is the declared width shared by the DTO, this
+    // domain check and the Prisma schema (`MAX_LEVEL_KIND_LENGTH`).
+    if (level.levelKind !== null) {
+      if (!isNonBlank(level.levelKind)) {
+        return {
+          problem: 'level_kind_invalid',
+          subject: String(level.levelIndex),
+        };
+      }
+      if (level.levelKind.length > MAX_LEVEL_KIND_LENGTH) {
+        return {
+          problem: 'level_kind_too_long',
+          subject: String(level.levelIndex),
+        };
+      }
     }
   }
 
@@ -439,6 +459,8 @@ export function accountingConfigurationProblemMessage(
     case 'level_title_invalid':
       return 'Every level needs a non-blank title.';
     case 'level_kind_invalid':
-      return 'levelKind must be non-empty string or null.';
+      return 'levelKind must be a non-blank string or null.';
+    case 'level_kind_too_long':
+      return `levelKind must be at most ${MAX_LEVEL_KIND_LENGTH} characters (the stored column width); longer values are refused, never truncated.`;
   }
 }

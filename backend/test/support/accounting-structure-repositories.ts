@@ -20,14 +20,17 @@ import { planAccountingConfiguration } from '../../src/modules/accounting/domain
 import type { Account } from '../../src/modules/accounting/domain/account.js';
 import {
   planAccountEdit,
+  planAccountMovePin,
   planAccountPlacement,
   planPostabilityChange,
+  planRootAccountPin,
 } from '../../src/modules/accounting/domain/account.js';
 import { collectDescendantIds } from '../../src/modules/accounting/domain/hierarchy.js';
 import {
   AccountImmutableAfterUseError,
   AccountPlacementRejectedError,
   AccountPostabilityRejectedError,
+  AccountingConfigurationNotActiveError,
   AccountingConfigurationNotDraftError,
   AccountingConfigurationPlanRejectedError,
   CodingStructureNotDraftError,
@@ -906,10 +909,29 @@ export class InMemoryAccountsRepository {
     }
 
     if (input.parentId === null) {
-      if (configRow.status !== 'ACTIVE') {
-        throw new Error(
-          `Accounting configuration ${configRow.id} status ${configRow.status} not ACTIVE`,
-        );
+      // The SAME write-boundary decision the real repository applies under its
+      // locks (`planRootAccountPin`): a root is pinned only to an ACTIVE
+      // accounting configuration AND an `active` coding-structure version.
+      const pinProblem = planRootAccountPin({
+        organizationId: input.organizationId,
+        snapshot: {
+          accountingConfigurationId: configId,
+          versionId,
+        },
+        configuration: configRow,
+        version: codingRow,
+      });
+      if (pinProblem === 'configuration_missing') {
+        throw new AccountingConfigurationNotActiveError('missing');
+      }
+      if (pinProblem === 'configuration_not_active') {
+        throw new AccountingConfigurationNotActiveError(configRow.status);
+      }
+      if (pinProblem === 'coding_version_missing') {
+        throw new CodingStructureVersionNotActiveError('missing');
+      }
+      if (pinProblem === 'coding_version_not_active') {
+        throw new CodingStructureVersionNotActiveError(codingRow.status);
       }
     } else {
       if (
@@ -1017,6 +1039,24 @@ export class InMemoryAccountsRepository {
 
     let level = node.level;
     if (parentChanged) {
+      if (input.structure === null) {
+        throw new Error(
+          'Account move requires the pinned configuration snapshot.',
+        );
+      }
+      // The SAME write-boundary decision the real repository applies under its
+      // locks (`planAccountMovePin`): a move is validated only against the
+      // configuration/version the account is ALREADY pinned to.
+      const pinProblem = planAccountMovePin({
+        pinned: {
+          accountingConfigurationId: node.accountingConfigurationId,
+          codingStructureVersionId: node.codingStructureVersionId,
+        },
+        snapshot: input.structure,
+      });
+      if (pinProblem !== null) {
+        throw new AccountPlacementRejectedError('version_mismatch');
+      }
       const edges = this.state.accounts
         .findMany((row) => row.organizationId === node.organizationId)
         .map((row) => ({ id: row.id, parentId: row.parentId }));
@@ -1033,8 +1073,8 @@ export class InMemoryAccountsRepository {
           accountingConfigurationId: node.accountingConfigurationId,
           hasChildren: children.length > 0,
         } as any,
-        levels: input.structure?.levels ?? [],
-        maxDepth: input.structure?.maxDepth ?? 0,
+        levels: input.structure.levels,
+        maxDepth: input.structure.maxDepth,
       });
       if (plan.problem !== null) {
         throw new AccountPlacementRejectedError(plan.problem);

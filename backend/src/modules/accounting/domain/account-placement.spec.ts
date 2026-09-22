@@ -10,8 +10,10 @@ import {
   defaultIsPostableForLevel,
   isAccountNature,
   planAccountEdit,
+  planAccountMovePin,
   planAccountPlacement,
   planPostabilityChange,
+  planRootAccountPin,
 } from './account.js';
 import { collectDescendantIds } from './hierarchy.js';
 
@@ -307,6 +309,62 @@ describe('one subtree, one coding-structure version (§9.4) — now accounting c
     ).toBe('version_mismatch');
   });
 
+  it('refuses a move whose snapshot names another configuration or version than the account is pinned to', () => {
+    // The write boundary must validate the account against ITS OWN pair only —
+    // a move validated against another configuration's levels is the
+    // cross-configuration validation Task 11 remediation forbids.
+    expect(
+      planAccountMovePin({
+        pinned: {
+          accountingConfigurationId: 'cfg1',
+          codingStructureVersionId: 'v1',
+        },
+        snapshot: {
+          accountingConfigurationId: 'cfg2',
+          versionId: 'v1',
+        },
+      }),
+    ).toBe('pin_mismatch');
+    expect(
+      planAccountMovePin({
+        pinned: {
+          accountingConfigurationId: 'cfg1',
+          codingStructureVersionId: 'v1',
+        },
+        snapshot: {
+          accountingConfigurationId: 'cfg1',
+          versionId: 'v2',
+        },
+      }),
+    ).toBe('pin_mismatch');
+    // An incomplete (legacy) pin can never match a complete snapshot either.
+    expect(
+      planAccountMovePin({
+        pinned: {
+          accountingConfigurationId: null,
+          codingStructureVersionId: 'v1',
+        },
+        snapshot: {
+          accountingConfigurationId: 'cfg1',
+          versionId: 'v1',
+        },
+      }),
+    ).toBe('pin_mismatch');
+    // The account's own pair passes unchanged.
+    expect(
+      planAccountMovePin({
+        pinned: {
+          accountingConfigurationId: 'cfg1',
+          codingStructureVersionId: 'v1',
+        },
+        snapshot: {
+          accountingConfigurationId: 'cfg1',
+          versionId: 'v1',
+        },
+      }),
+    ).toBeNull();
+  });
+
   it('refuses re-levelling a node that has children (OQ-25 policy)', () => {
     // Same-depth reparenting is allowed: the codes stay valid.
     expect(
@@ -401,6 +459,83 @@ describe('AC-I-11 immutability after use', () => {
         },
       }).refused,
     ).toEqual([...ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS]);
+  });
+});
+
+describe('root pin write boundary (D1 + §9.4)', () => {
+  const snapshot = {
+    accountingConfigurationId: 'cfg1',
+    versionId: 'v1',
+  };
+
+  it('accepts only an ACTIVE configuration and an active coding version of the same organization', () => {
+    expect(
+      planRootAccountPin({
+        organizationId: 'org-1',
+        snapshot,
+        configuration: { organizationId: 'org-1', status: 'ACTIVE' },
+        version: { organizationId: 'org-1', status: 'active' },
+      }),
+    ).toBeNull();
+  });
+
+  it('refuses a missing/foreign configuration or a non-ACTIVE one', () => {
+    expect(
+      planRootAccountPin({
+        organizationId: 'org-1',
+        snapshot,
+        configuration: null,
+        version: { organizationId: 'org-1', status: 'active' },
+      }),
+    ).toBe('configuration_missing');
+    expect(
+      planRootAccountPin({
+        organizationId: 'org-1',
+        snapshot,
+        configuration: { organizationId: 'org-2', status: 'ACTIVE' },
+        version: { organizationId: 'org-1', status: 'active' },
+      }),
+    ).toBe('configuration_missing');
+    for (const status of ['DRAFT', 'SUPERSEDED']) {
+      expect(
+        planRootAccountPin({
+          organizationId: 'org-1',
+          snapshot,
+          configuration: { organizationId: 'org-1', status },
+          version: { organizationId: 'org-1', status: 'active' },
+        }),
+      ).toBe('configuration_not_active');
+    }
+  });
+
+  it('refuses a missing/foreign coding version or one that is not active', () => {
+    const configuration = { organizationId: 'org-1', status: 'ACTIVE' };
+    expect(
+      planRootAccountPin({
+        organizationId: 'org-1',
+        snapshot,
+        configuration,
+        version: null,
+      }),
+    ).toBe('coding_version_missing');
+    expect(
+      planRootAccountPin({
+        organizationId: 'org-1',
+        snapshot,
+        configuration,
+        version: { organizationId: 'org-2', status: 'active' },
+      }),
+    ).toBe('coding_version_missing');
+    for (const status of ['draft', 'superseded']) {
+      expect(
+        planRootAccountPin({
+          organizationId: 'org-1',
+          snapshot,
+          configuration,
+          version: { organizationId: 'org-1', status },
+        }),
+      ).toBe('coding_version_not_active');
+    }
   });
 });
 

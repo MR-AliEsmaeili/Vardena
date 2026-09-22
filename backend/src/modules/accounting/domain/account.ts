@@ -303,6 +303,99 @@ export function planAccountPlacement(input: {
   return { problem: null, level, field: 'code' };
 }
 
+// ---------------------------------------------------------------------------
+// Configuration/version pin (Task 11 remediation, D1 + D2)
+// ---------------------------------------------------------------------------
+//
+// An account is pinned to exactly ONE pair: the accounting configuration it is
+// validated under (`accountingConfigurationId`, D1) and the coding-structure
+// version its code shape comes from (`codingStructureVersionId`, D2). The pair
+// is written together and never re-derived from a second source, so validation
+// can never use the levels of a DIFFERENT configuration than the one the
+// account references.
+//
+// The two functions below are that decision table. They are pure so the
+// repository (the authoritative write boundary, inside its locked transaction)
+// and the in-memory test stand-in evaluate the SAME rules — the pattern this
+// module already uses for placement and postability.
+
+/** Why a root account's pin could not be established. */
+export type RootAccountPinProblem =
+  | 'configuration_missing'
+  | 'configuration_not_active'
+  | 'coding_version_missing'
+  | 'coding_version_not_active';
+
+/**
+ * The ROOT write boundary: a new root is validated against the levels of the
+ * configuration it is about to be pinned to, and that configuration and the
+ * pinned coding version must still be the organization's ACTIVE ones under the
+ * locks the insert holds (D1 + §9.4). A MISSING or FOREIGN row is reported as
+ * `*_missing` (the service resolved both from the caller's organization, so a
+ * mismatch is a stale/bugged resolution, never a legitimate write).
+ */
+export function planRootAccountPin(input: {
+  organizationId: string;
+  snapshot: {
+    accountingConfigurationId: string;
+    versionId: string;
+  };
+  configuration: {
+    organizationId: string;
+    status: string;
+  } | null;
+  version: {
+    organizationId: string;
+    status: string;
+  } | null;
+}): RootAccountPinProblem | null {
+  const configuration = input.configuration;
+  if (
+    configuration === null ||
+    configuration.organizationId !== input.organizationId
+  ) {
+    return 'configuration_missing';
+  }
+  if (configuration.status !== 'ACTIVE') {
+    return 'configuration_not_active';
+  }
+  const version = input.version;
+  if (version === null || version.organizationId !== input.organizationId) {
+    return 'coding_version_missing';
+  }
+  if (version.status !== 'active') {
+    return 'coding_version_not_active';
+  }
+  return null;
+}
+
+/**
+ * The MOVE write boundary: the snapshot a move is validated against must be the
+ * pair the account is ALREADY pinned to. Anything else would validate an
+ * account's code against another configuration's (or version's) levels while
+ * the row keeps its own pin — the cross-configuration validation this
+ * remediation forbids.
+ */
+export function planAccountMovePin(input: {
+  pinned: {
+    accountingConfigurationId: string | null;
+    codingStructureVersionId: string | null;
+  };
+  snapshot: {
+    accountingConfigurationId: string;
+    versionId: string;
+  };
+}): 'pin_mismatch' | null {
+  if (
+    input.pinned.accountingConfigurationId !==
+      input.snapshot.accountingConfigurationId ||
+    input.pinned.codingStructureVersionId !== input.snapshot.versionId
+  ) {
+    return 'pin_mismatch';
+  }
+  return null;
+}
+
 /** Human-readable message per problem (AR-24). */
 export function accountPlacementProblemMessage(
   problem: AccountPlacementProblem,

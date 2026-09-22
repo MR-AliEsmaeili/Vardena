@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   canDeleteConfiguration,
   canDestructivelyMutate,
+  MAX_LEVEL_KIND_LENGTH,
   planAccountingConfiguration,
   planConfigurationTransition,
 } from './accounting-configuration.js';
@@ -201,6 +202,43 @@ describe('Accounting Configuration Foundation — Task 11 invariants', () => {
       ],
     });
     expect(plan.problem).toBeNull();
+  });
+
+  it('bounds levelKind by the stored column width — 20 accepted, 21 and 64 refused', () => {
+    // The boundary is `MAX_LEVEL_KIND_LENGTH` = the declared width of
+    // `accounting_configuration_levels.level_kind` (see the migration and the
+    // Prisma schema). A longer value is REFUSED, never truncated.
+    expect(MAX_LEVEL_KIND_LENGTH).toBe(20);
+
+    const plan = (levelKind: string | null) =>
+      planAccountingConfiguration({
+        code: 'DEFAULT',
+        name: 'Main',
+        effectiveFrom: null,
+        maxDepth: 1,
+        levels: [
+          {
+            levelIndex: 1,
+            title: 'Group',
+            digitLength: 2,
+            defaultIsPostable: false,
+            levelKind,
+          },
+        ],
+      });
+
+    const twenty = 'k'.repeat(20);
+    const twentyOne = 'k'.repeat(21);
+    const sixtyFour = 'k'.repeat(64);
+
+    expect(plan(twenty).problem).toBeNull();
+    expect(plan(twentyOne).problem).toBe('level_kind_too_long');
+    expect(plan(sixtyFour).problem).toBe('level_kind_too_long');
+    // The refusal carries the offending level, so a caller can point at it.
+    expect(plan(twentyOne).subject).toBe('1');
+    // Blank (but not null) kinds are still refused as invalid, not as long.
+    expect(plan('   ').problem).toBe('level_kind_invalid');
+    expect(plan(null).problem).toBeNull();
   });
 
   it('enforces status transition rules', () => {

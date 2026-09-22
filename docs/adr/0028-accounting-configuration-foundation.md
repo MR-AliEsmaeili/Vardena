@@ -131,6 +131,47 @@ Only generic root + accounts sole scope NOT NULL. No posting rules, dimensions, 
 - Tests: domain + service remain green, in-memory FK mismatch test deleted per D7, live DB test `accounting-configuration-live.e2e-spec.ts` covers NOT NULL + legacy + FK mismatch
 - Future Posting task will call `markOperationallyUsed` on first Voucher finalization
 
+## Remediation Addendum (2026-09-22)
+
+The decisions above stand. The independent review of Task 11 produced five
+clarifications that are now implemented and verified; they refine the wording,
+not the intent:
+
+1. **D3 level copying (implemented semantics):** the LEGACY configuration copies
+   the level set of the organization's ACTIVE coding-structure version, selected
+   deterministically (newest `version_number`, then id). A copied level set is
+   **never extended** — a ONE-level structure stays one level. The documented
+   default `2 levels (Group 2, Detail 3)` is inserted **only** when there is no
+   level set to copy, in one statement guarded by "this configuration has no
+   level rows" (the earlier `COUNT(*)=1` guard silently widened one-level
+   copies). Organizations whose accounts pin only a SUPERSEDED version therefore
+   receive the default shape: recorded as OQ-63.
+2. **The "sandbox has no live DB" limitation is resolved** for the backfill:
+   `backend/prisma/rehearsal/task-11-configuration-foundation/` applies every
+   pre-Task-11 migration to a disposable PostgreSQL, seeds populated data
+   (orphan organizations, one-level structures, draft/superseded versions,
+   multiple organizations), applies this migration in a single transaction with
+   a lock probe, and asserts row/reference/level/constraint outcomes
+   (`npm run test:migration-rehearsal`).
+3. **`levelKind` contract:** `MAX_LEVEL_KIND_LENGTH = 20` in the domain, Prisma
+   `@db.VarChar(20)`, SQL `VARCHAR(20)` and the API `@MaxLength(20)` now agree;
+   longer values are refused, never truncated (`level_kind_too_long`).
+4. **D4 stays deferred and is now documented as a decision:** the caller,
+   transaction boundary, idempotency/replay behaviour and the
+   multi-configuration voucher question are analysed in
+   `docs/accounting/task-11-mark-operationally-used-decision-note.md`
+   (OQ-64). The marker is still not called anywhere in production code.
+5. **Account pin compatibility between D1 and D2 is not enforced** — both pins
+   are assigned together at creation and inherited by children, and no
+   constraint compares their level shapes. The rehearsal produced a legacy
+   organization where they genuinely disagree; recorded as OQ-62.
+
+The live-DB suite `test/accounting-configuration-live.e2e-spec.ts` was repaired
+so the FK-negative test fails when the FK is missing (control insert + database
+state as the oracle) and the partial-unique test challenges
+`uq_accounting_configurations_org_active` itself; the populated-backfill claim
+moved to the rehearsal above. Full evidence: `docs/task-11-implementation-report.md`.
+
 ## Links
 
 - Task 11 final Round 2: D1-D7
