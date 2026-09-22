@@ -1,16 +1,6 @@
 
-  ! eslint(no-unused-vars): Type 'AccountingConfigurationLevelCreate' is imported but never used.
-    ,-[src/modules/accounting/data/accounting-configurations.repository.ts:23:3]
- 22 |   AccountingConfigurationDelegate,
- 23 |   AccountingConfigurationLevelCreate,
-    :   ^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
-    :                    `-- 'AccountingConfigurationLevelCreate' is imported here
- 24 |   AccountingConfigurationLevelDelegate,
-    `----
-  help: Consider removing this import.
-
   ! eslint(no-unused-vars): Function 'publishBoth' is declared but never used.
-     ,-[src/modules/accounting/application/coding-structure-accounts.spec.ts:309:16]
+     ,-[backend/src/modules/accounting/application/coding-structure-accounts.spec.ts:309:16]
  308 | 
  309 | async function publishBoth(
      :                ^^^^^|^^^^^
@@ -20,7 +10,7 @@
   help: Consider removing this declaration.
 
   ! eslint(no-unsafe-optional-chaining): Unsafe usage of optional chaining
-     ,-[src/modules/accounting/application/coding-structure-accounts.spec.ts:875:8]
+     ,-[backend/src/modules/accounting/application/coding-structure-accounts.spec.ts:875:8]
  874 |     expect(
  875 |       (fixture.events[0]?.payload as any).accountingConfigurationId,
      :        ^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -29,7 +19,7 @@
   help: If this short-circuits with 'undefined' the evaluation will throw TypeError
 
   ! eslint(no-unused-vars): Type 'CodingStructureVersion' is imported but never used.
-    ,-[src/modules/accounting/application/accounts.service.ts:48:15]
+    ,-[backend/src/modules/accounting/application/accounts.service.ts:48:15]
  47 | import { collectDescendantIds } from '../domain/hierarchy.js';
  48 | import type { CodingStructureVersion } from '../domain/coding-structure.js';
     :               ^^^^^^^^^^^|^^^^^^^^^^
@@ -38,6 +28,15 @@
     `----
   help: Consider removing this import.
 
+  ! eslint(no-unused-vars): Type 'AccountingConfigurationLevelCreate' is imported but never used.
+    ,-[backend/src/modules/accounting/data/accounting-configurations.repository.ts:23:3]
+ 22 |   AccountingConfigurationDelegate,
+ 23 |   AccountingConfigurationLevelCreate,
+    :   ^^^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^^
+    :                    `-- 'AccountingConfigurationLevelCreate' is imported here
+ 24 |   AccountingConfigurationLevelDelegate,
+    `----
+  help: Consider removing this import.
+
 Found 4 warnings and 0 errors.
-Finished in 80ms on 455 files with 96 rules using 2 threads.
-oxlint exit:0
+Finished in 65ms on 457 files with 96 rules using 2 threads.

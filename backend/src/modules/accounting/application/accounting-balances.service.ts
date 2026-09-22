@@ -470,32 +470,10 @@ export class AccountingBalancesService {
     const pageSize = query.pageSize ?? 50;
     const { skip, take } = toOffset(page, pageSize);
 
-    const { items: _scopedPageItems } = await this.balances.list({
-      where: {
-        organizationId: query.organizationId,
-        financialAreaId: query.financialAreaId,
-        fiscalYearId: query.fiscalYearId,
-        accountingPeriodId: query.accountingPeriodId,
-        accountId: query.accountId,
-      },
-      orderBy: [{ organizationId: 'asc' }],
-      skip,
-      take,
-    });
-
-    const fiscalYearIds = [...new Set(_scopedPageItems.map((r) => r.fiscalYearId))];
-    // For account-scoped read, load ALL periods of the fiscal years that appear
-    // so derivation can include correct opening even when paginating (the account
-    // case is the reporting-correct path — we compute opening over the whole
-    // year, then slice the derived series to the requested page).
-    const periodsByYear = await this.loadPeriodsByYear(
-      query.organizationId,
-      fiscalYearIds,
-    );
-
     // For single-account, we want full-year derived series so opening is exact.
     // Fetch ALL projections for this account+org+optional filters (not just page),
-    // derive, then paginate the derived series.
+    // derive over the full year-partitioned context, then paginate the derived
+    // series. This ensures opening stays exact even when paginating.
     const all = await this.balances.list({
       where: {
         organizationId: query.organizationId,
@@ -508,6 +486,12 @@ export class AccountingBalancesService {
       skip: 0,
       take: 10000, // cap — an account's year rarely has > 13 periods; pagination still slices.
     });
+
+    const fiscalYearIds = [...new Set(all.items.map((r) => r.fiscalYearId))];
+    const periodsByYear = await this.loadPeriodsByYear(
+      query.organizationId,
+      fiscalYearIds,
+    );
 
     const allProjections = all.items.map((r) => ({
       id: r.id,

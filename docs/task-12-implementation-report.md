@@ -281,11 +281,10 @@ All 404s for foreign org/area/year/period/account are produced at the service (A
 
 ---
 
-## 13. Known Limitations / Follow-ups (not absorbed as OQs) — UPDATED 2026-09-22 (R-02 fixed)
+## 13. Known Limitations / Follow-ups (not absorbed as OQs)
 
-- **Pagination of derived `{opening, closing}` is now correct for BOTH reads.** `GET /balances` primary path queries `vw_account_balance_derived` (SQL window before `LIMIT`, so opening is exact across page boundaries; verified by pagination regression + service pagination specs). The fallback `derive-before-pagination` path (fetch-all → derive → slice) also keeps opening exact for org-wide lists; the only remaining pagination-adjacent limit is the `take: 10000` guard cap on the fallback fetch — the view path has no cap (pure SQL pagination). The previous limitation ("org-wide paginates raw rows and derives per page, so first row on later page is 0") is **CLOSED** by the fix.
-- `accounting-balances.service.ts#getAccountBalances` (and the fallback for `listBalances`) caps the in-memory fetch at `take: 10000` (enough for any account's periods — a year rarely has > 13; the endpoint is `50` per page, reconciliation is pre-filtered by the view before Node slicing). The primary view path does not have this cap.
-- The `voucher_line → ledger 1:1` backstop still lives on `ledger_entries(voucher_line_id)` (Task 10.7); the projection's `UNIQUE` is a separate, coarser backstop (turnover-level). A future correction task (AC-D-22) will produce new vouchers/lines/ledger rows and, through the same `applyBalanceProjectionDeltaInTx`, new turnover deltas — counter-documents correct history, not updates.
+- `accounting-balances.service.ts#getAccountBalances` (and the fallback for `listBalances`) caps the in-memory fallback fetch at `take: 10000` (only the **fallback** path; the primary `vw_account_balance_derived` path has no cap — pure SQL `COUNT` + window before `LIMIT/OFFSET`). This is enough for any account's periods — a year rarely has > 13; the endpoint is `50` per page, reconciliation is pre-filtered by the view before Node slicing.
+- The `voucher_line → ledger 1:1` backstop still lives on `ledger_entries(voucher_line_id)` (Task 10.7); the projection's `UNIQUE` is a separate, coarser backstop (turnover-level). A future correction task (AC-D-22) will produce new vouchers/lines/ledger rows and, through the same `applyBalanceProjectionDeltasWithLocksHeldInTx` / legacy `applyBalanceProjectionDeltaInTx`, new turnover deltas — counter-documents correct history, not updates.
 - `.vardena/project-context.md` **not** re-patched in this PR — it already describes the implemented backend (§8 of `task-index`).
 
 ---
@@ -313,16 +312,6 @@ DATABASE_URL=… node backend/prisma/rehearsal/task-12-balance-projection/rehear
 # GET  /api/v1/accounting/balances/reconciliation?organizationId=… → empty again
 # Authorization: unauthenticated → 401; without Accounting.Balance.View → 403; cross-org areaId → 404 (AC-I-16)
 ```
-# then Exercise:
-# POST /api/v1/accounting-documents (create draft + issue + finalize) → ledger N rows
-# GET  /api/v1/accounting/balances?organizationId=… → turnover appears
-# GET  /api/v1/accounting/balances/:accountId?organizationId=… → opening/closing exact
-# GET  /api/v1/accounting/balances/reconciliation?organizationId=… → empty (matched)
-# (manual drift: DELETE FROM accounting.account_balance_projections WHERE …) → GET …/reconciliation → missing_projection
-# POST /api/v1/accounting/balances/rebuild {"organizationId":"…"} → {deleted, inserted}
-# GET  /api/v1/accounting/balances/reconciliation?organizationId=… → empty again
-# Authorization: without Accounting.Balance.View → 403; cross-org → 404; anonymous → 401
-```
 
 ---
 
@@ -337,5 +326,6 @@ DATABASE_URL=… node backend/prisma/rehearsal/task-12-balance-projection/rehear
 - [ ] Migration is self-sufficient (insert-from-ledger backfill, no mandatory operator step afterwards) and the alternative (empty-table-only) is documented as rejected.
 - [ ] The four endpoints answer 404 (never 403) for foreign keys, 401 for anonymous, 403 for missing `Balance.*` permissions, and never invent a per-read ledger aggregation (balances read the projection; reconciliation aggregates via the view by design).
 - [ ] The lock-order matrix (§6.3, this report §5.3) is correct and consistent with `accounting-locks.ts` — the projection is after accounts and before the document, deduplicated + sorted; no `Promise.all` across `FOR` queries; no `account` row held during the rebuild's ledger GROUP.
+- [ ] Pagination correctness (R-02): `GET /balances` (view window before LIMIT) and fallback derive-before-pagination both return exact `opening` on page 2+ (opening on page 2 == cumulative prior), verified by `accounting-balances.service.pagination.spec.ts` + `accounting-balances.controller.pagination.spec.ts` + `balance-pagination-regression.spec.ts`; `getAccountBalances` also derives over full year set before slicing (periods loaded from full `all`, not page slice).
 
 When the reviewer ticks these, they may mark **Task 12 → ACCEPTED** in `task-index` (row 12 revision, §3/§6/§9 date, `modules.md` accounting header/row, `ADR-0031` Status `Accepted`, history row), create a patch tag/PR against `main`, and merge. Until then this branch stays `READY FOR REVIEW`.

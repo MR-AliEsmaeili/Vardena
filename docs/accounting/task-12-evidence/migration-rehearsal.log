@@ -1,5 +1,5 @@
 == Task 12 migration rehearsal ==
-date: 2026-09-22T18:26:11.643Z
+date: 2026-09-22T18:35:14.654Z
 migration: 20260922000000_accounting_balance_projection
   sql bytes: 16901
   checks:
@@ -24,4 +24,3 @@ migration: 20260922000000_accounting_balance_projection
   CI will run live PG suite via `npm run test:e2e:live` gated on that env.
 
 == rehearsal (dry-run) PASSED ==
-rehearse exit:0
