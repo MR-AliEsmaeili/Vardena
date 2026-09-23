@@ -90,6 +90,9 @@ describe.skipIf(DATABASE_URL === undefined)(
         count: (args: unknown) => Promise<number>;
         deleteMany: (args: unknown) => Promise<unknown>;
       };
+      accountBalanceProjection: {
+        deleteMany: (args: unknown) => Promise<unknown>;
+      };
       accountingPeriod: { deleteMany: (args: unknown) => Promise<unknown> };
       numberingAllocation: { deleteMany: (args: unknown) => Promise<unknown> };
       numberingSeries: { deleteMany: (args: unknown) => Promise<unknown> };
@@ -300,6 +303,12 @@ describe.skipIf(DATABASE_URL === undefined)(
           // Ledger entries FIRST: they RESTRICT their voucher, their lines and
           // their accounts, so nothing they reference can be removed first.
           await db.ledgerEntry.deleteMany({ where: { organizationId } });
+          // Task 12: balance projections RESTRICT their period/year/area/account
+          // (same lifecycle as ledger entries, sibling of the period), so they
+          // must be removed before their parents.
+          await db.accountBalanceProjection.deleteMany({
+            where: { organizationId },
+          });
           await db.accountingPostingOperation.deleteMany({
             where: { organizationId },
           });

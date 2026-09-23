@@ -84,6 +84,9 @@ describe.skipIf(DATABASE_URL === undefined)(
         count: (args: unknown) => Promise<number>;
         deleteMany: (args: unknown) => Promise<unknown>;
       };
+      accountBalanceProjection: {
+        deleteMany: (args: unknown) => Promise<unknown>;
+      };
       accountingPeriod: { deleteMany: (args: unknown) => Promise<unknown> };
       numberingAllocation: { deleteMany: (args: unknown) => Promise<unknown> };
       numberingSeries: { deleteMany: (args: unknown) => Promise<unknown> };
@@ -276,6 +279,13 @@ describe.skipIf(DATABASE_URL === undefined)(
           // their lines and their accounts, so nothing they reference can be
           // removed before them.
           await db.ledgerEntry.deleteMany({ where: { organizationId } });
+          // Task 12: balance projections RESTRICT their period/year/area/account
+          // (migration comment §FKs are RESTRICT), so they must be removed
+          // before their parents — same lifecycle as ledger entries, but the
+          // projection is a sibling, not a child, of the period.
+          await db.accountBalanceProjection.deleteMany({
+            where: { organizationId },
+          });
           await db.accountingPostingOperation.deleteMany({
             where: { organizationId },
           });

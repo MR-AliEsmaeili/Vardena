@@ -29,10 +29,12 @@ import {
 } from './accounting-document-errors.js';
 import { insertOperationRow } from './accounting-posting-operations.repository.js';
 import { insertLedgerEntries } from './ledger-entries.repository.js';
+import { applyBalanceProjectionDeltasWithLocksHeldInTx } from './account-balance-projections.repository.js';
 import {
   lockAccountRowForShare,
   lockAccountingDocumentRow,
   lockAccountingPeriodRow,
+  lockBalanceProjectionRows,
   lockFinancialAreaRow,
   lockFiscalYearRow,
 } from './accounting-locks.js';
@@ -56,12 +58,18 @@ import type {
 
 /**
  * Data access for `accounting.accounting_documents` + `…_document_lines`
- * (Task 10.4, contract §12/§13/§15/§18).
+ * (Task 10.4, contract §12/§13/§15/§18; Task 12 projection maintenance).
  *
  * Every WRITE owns ONE transaction with the module's fixed lock order —
  * financial area → fiscal year → accounting period → referenced accounts
- * (ascending by id, `FOR SHARE`) → the document row — and re-evaluates its
- * guard against the LOCKED rows (AR-11, docs/database-strategy.md §13):
+ * (ascending by id, `FOR SHARE`) → account_balance_projections (ascending
+ * projection-key, `FOR UPDATE`, Task 12 only) → the document row — and
+ * re-evaluates its guard against the LOCKED rows (AR-11,
+ * docs/database-strategy.md §13). `finalizeChecked` is the ONLY path that
+ * takes the projection tail; `createChecked`/`updateChecked`/`issueChecked`/
+ * `deleteChecked` keep the four-step `area→year→period→accounts→document`
+ * order (see `accounting-locks.ts` Task 12 tail and
+ * `docs/accounting/lock-order-matrix.md` R1…R8):
  *
  * - the AREA lock is what a concurrent year/period/area write serializes on,
  *   so the calendar a voucher resolves against cannot change under it;
@@ -508,6 +516,26 @@ export class AccountingDocumentsRepository {
         lockedAccountIds,
       );
 
+      // Task 12 — global order `… → accounts FOR SHARE → balance_projections FOR UPDATE → document FOR UPDATE`.
+      // Lock touched projection keys BEFORE the document so two concurrent
+      // finalizations for the same (period, account) tail `→ balances → document`
+      // and do not invert to `document → balances` (which would deadlock against
+      // `rebuildScoped` which also holds `balances FOR UPDATE`).
+      // Keys are derived from the already-locked calendar scope (header+scope)
+      // plus the document's referenced accounts — exactly the keys `apply…`
+      // will upsert after the ledger INSERT.
+      const projectionKeys = lockedAccountIds.map((accountId) => ({
+        organizationId: input.organizationId,
+        financialAreaId: header.financialAreaId,
+        fiscalYearId: scope.year.id,
+        accountingPeriodId: scope.period.id,
+        accountId,
+      }));
+      const lockedBalances = await lockBalanceProjectionRows(
+        tx,
+        projectionKeys,
+      );
+
       const locked = await this.lockDocumentInTx(
         tx,
         input.id,
@@ -586,11 +614,33 @@ export class AccountingDocumentsRepository {
         operationKey: input.ledger.operationKey,
         requestHash: input.ledger.requestHash,
       });
-      await insertLedgerEntries(
-        tx,
-        toLedgerEntries(postingInput, generateId).map((entry) =>
+      const ledgerCreates = toLedgerEntries(postingInput, generateId).map(
+        (entry) =>
           toLedgerEntryCreate(entry, input.finalizedAt, input.finalizedBy),
-        ),
+      );
+      await insertLedgerEntries(tx, ledgerCreates);
+      // Task 12 — balance projection maintenance, SAME transaction, AFTER the
+      // ledger INSERTs and BEFORE the operation row (which stays LAST per
+      // §16.4). Ledger entries are the source; balances are the projection.
+      // Each entry contributes its turnover to one (period, account) key — we
+      // map the creates (not the domain entries) so amounts/ids match exactly.
+      // Uses the `lockedBalances` acquired BEFORE the document (accounts →
+      // balances → document) so the transaction does NOT re-take a
+      // `document → balances` lock tail.
+      await applyBalanceProjectionDeltasWithLocksHeldInTx(
+        tx,
+        ledgerCreates.map((c) => ({
+          organizationId: c.organizationId,
+          financialAreaId: c.financialAreaId,
+          fiscalYearId: c.fiscalYearId,
+          accountingPeriodId: c.accountingPeriodId,
+          accountId: c.accountId,
+          debitAmount: c.debitAmount,
+          creditAmount: c.creditAmount,
+        })),
+        input.finalizedAt,
+        input.finalizedBy,
+        lockedBalances,
       );
       await insertOperationRow(tx, input.ledger);
       return finalized;

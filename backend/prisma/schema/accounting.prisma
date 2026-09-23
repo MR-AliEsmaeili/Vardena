@@ -114,6 +114,10 @@ model FinancialArea {
   // Virtual side only — no migration impact.
   ledgerEntries LedgerEntry[]
 
+  // Back-relations for the balance projection (Task 12).
+  // Virtual side only — no migration impact.
+  accountBalanceProjections AccountBalanceProjection[]
+
   @@unique([organizationId, code], map: "uq_financial_areas_organization_id_code")
   @@index([organizationId, isActive], map: "idx_financial_areas_organization_id_is_active")
   @@map("financial_areas")
@@ -155,6 +159,10 @@ model FiscalYear {
   // Back-relations for the ledger entries resolved into this year (Task 10.7).
   // Virtual side only — no migration impact.
   ledgerEntries LedgerEntry[]
+
+  // Back-relations for the balance projection (Task 12).
+  // Virtual side only — no migration impact.
+  accountBalanceProjections AccountBalanceProjection[]
 
   @@unique([organizationId, financialAreaId, code], map: "uq_fiscal_years_organization_id_financial_area_id_code")
   @@index([organizationId, financialAreaId], map: "idx_fiscal_years_organization_id_financial_area_id")
@@ -198,6 +206,10 @@ model AccountingPeriod {
   // (Task 10.7 — the stored period resolution is preserved, never recomputed).
   // Virtual side only — no migration impact.
   ledgerEntries LedgerEntry[]
+
+  // Back-relations for the balance projection (Task 12).
+  // Virtual side only — no migration impact.
+  accountBalanceProjections AccountBalanceProjection[]
 
   @@unique([fiscalYearId, sequence], map: "uq_accounting_periods_fiscal_year_id_sequence")
   @@index([organizationId, fiscalYearId], map: "idx_accounting_periods_organization_id_fiscal_year_id")
@@ -369,6 +381,10 @@ model Account {
   /// The immutable ledger entries posted to this account (Task 10.7). The real
   /// FK is `ledger_entries.account_id` (RESTRICT); this is the virtual side.
   ledgerEntries LedgerEntry[]
+
+  /// The balance projections for this account (Task 12). Virtual side only —
+  /// the real FK is `account_balance_projections.account_id` (RESTRICT).
+  accountBalanceProjections AccountBalanceProjection[]
 
   /// The canonical-code uniqueness (§9.2) — the authoritative duplicate guard
   /// for concurrent creates (the service pre-check only produces a nicer 409).
@@ -822,5 +838,60 @@ model LedgerEntry {
   @@index([organizationId, accountId], map: "idx_ledger_entries_org_account")
   @@index([organizationId, accountingPeriodId], map: "idx_ledger_entries_org_period")
   @@map("ledger_entries")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Balance projection — materialized, rebuildable turnover (Task 12,
+// contract §19.3 AC-D-31, §25 AC-I-19, ADR-0031)
+//
+// One row per (organization, financial_area, fiscal_year, accounting_period,
+// account) aggregated from finalized ledger entries. Stored measures are ONLY
+// period turnover (debit/credit) — opening/closing are derived in reporting
+// views (contract §19.2). Absence = zero turnover (no zero-only rows).
+//
+// Deferred by design (AR-29): no branch_id (AC-D-17 — branch is a report
+// filter, not a balance key), no currency_code (OQ-03 — base-currency-only),
+// no detail dimension FKs (OQ-41), no opening/closing columns. Widening the
+// key later is an additive migration with a new ADR.
+//
+// Conventions: AR-12 (id/created_at/updated_at/created_by/updated_by,
+// numeric(18,2) for money), ADR-0021 (organization scope leads indexes),
+// AR-11 (no CHECK — domain-enforced, see domain/balance-projection.ts).
+// ---------------------------------------------------------------------------
+
+model AccountBalanceProjection {
+  id                 String   @id
+  organizationId     String   @map("organization_id")
+  financialAreaId    String   @map("financial_area_id")
+  fiscalYearId       String   @map("fiscal_year_id")
+  accountingPeriodId String   @map("accounting_period_id")
+  accountId          String   @map("account_id")
+
+  /// Period turnover — sum of ledger debit for this key, non-negative exact
+  /// decimal (§13, AC-I-19a). Stored as numeric(18,2) (AR-12).
+  periodDebitAmount  Decimal  @default(0) @map("period_debit_amount")  @db.Decimal(18, 2)
+  /// Period turnover — sum of ledger credit for this key, non-negative exact.
+  periodCreditAmount Decimal  @default(0) @map("period_credit_amount") @db.Decimal(18, 2)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea    FinancialArea    @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  fiscalYear       FiscalYear       @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
+  accountingPeriod AccountingPeriod @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict)
+  account          Account          @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  /// Projection key — one row per (org, area, year, period, account). Hard
+  /// backstop for concurrent UPSERT races (Task 12).
+  @@unique([organizationId, financialAreaId, fiscalYearId, accountingPeriodId, accountId], map: "uq_account_balance_projections_org_area_year_period_account")
+  /// Hot reads — trial balance & area-year list.
+  @@index([organizationId, financialAreaId, fiscalYearId], map: "idx_account_balance_projections_org_area_year")
+  @@index([organizationId, accountId],                map: "idx_account_balance_projections_org_account")
+  @@index([organizationId, accountingPeriodId],        map: "idx_account_balance_projections_org_period")
+  @@map("account_balance_projections")
   @@schema("accounting")
 }

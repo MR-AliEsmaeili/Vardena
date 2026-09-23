@@ -112,8 +112,8 @@ async function main() {
   const before = dirs.filter((name) => name < TASK_11_MIGRATION);
   const after = dirs.filter((name) => name > TASK_11_MIGRATION);
   if (after.length > 0) {
-    throw new Error(
-      `This rehearsal expects ${TASK_11_MIGRATION} to be the LAST migration; found ${after.join(', ')}`,
+    log(
+      `    note: ${after.length} migration(s) after Task 11 found (${after.join(', ')}) — rehearsal only covers up to Task 11, later migrations are ignored for this check (Task 12 is expected)`,
     );
   }
 
