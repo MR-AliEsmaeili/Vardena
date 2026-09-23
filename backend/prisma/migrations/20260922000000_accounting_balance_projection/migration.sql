@@ -194,7 +194,7 @@ GROUP BY le."organization_id", le."financial_area_id", le."fiscal_year_id",
 -- persisted (AC-I-19c — absence = zero). A numeric exact 0 check on
 -- DECIMAL(18,2) is safe — ledger invariants guarantee exactly one of
 -- (debit,credit) non-zero per entry, so SUMs are never null.
-HAVING SUM(le."debit_amount") <> 0 OR SUM(le."credit_amount") <> 0
+HAVING SUM(le."debit_amount") <> 0 OR SUM(le."credit_amount") <> 0;
 -- The GROUP above is already unique, so no ON CONFLICT is needed; the UNIQUE
 -- index is the backstop for any later concurrent UPSERTs.
 
