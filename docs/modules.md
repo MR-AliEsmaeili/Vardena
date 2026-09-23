@@ -236,10 +236,40 @@ Remove`. No `Rbac.Role.Delete` (OQ-20).
   organization that had accounts but no ACTIVE configuration, and 2 permissions
   (31 total). Root creation and moves validate **only** against the account's
   own configuration/version pair, re-checked under lock at the write boundary;
-  the operational-freeze abstraction exists but `markOperationallyUsed` stays
-  deferred (D4 — decision note + OQ-64). The populated pre-Task-11 backfill is
+  the operational-freeze abstraction existed without a caller (D4 — decision
+  note + OQ-64) and is **wired by Task 13**, below. The populated pre-Task-11 backfill is
   verified by `npm run test:migration-rehearsal`
-  (`backend/prisma/rehearsal/task-11-configuration-foundation/`). Preserved explicitly: **OQ-62: OPEN** (pin compatibility requires future Product + Architecture decision), **OQ-63: OPEN** (legacy fallback shape), **OQ-64: OPEN / DEFERRED** (operational freeze integration belongs to Posting integration), **G7: ACCEPTED RISK** (raw-SQL partial index `uq_accounting_configurations_org_active` guarded by live `pg_indexes` verification and migration rehearsal).
+  (`backend/prisma/rehearsal/task-11-configuration-foundation/`). Preserved explicitly: **OQ-62: OPEN** (pin compatibility requires future Product + Architecture decision), **OQ-63: OPEN** (legacy fallback shape), **OQ-64: **RESOLVED 2026-09-23** by Task 13 (operational freeze wired into finalization), **G7: ACCEPTED RISK** (raw-SQL partial index `uq_accounting_configurations_org_active` guarded by live `pg_indexes` verification and migration rehearsal).
+  Task 13 — **IN PROGRESS (self-review, 2026-09-23)**, branch
+  `arena/01a0cd89-vardena`, report `docs/task-13-implementation-report.md` —
+  wired the operational freeze (D4). `AccountingDocumentsRepository.finalizeChecked`
+  now marks `accounting.accounting_configurations.operationally_used_at` with
+  ONE guarded statement per DISTINCT configuration pinned by the voucher's lines
+  (`data/accounting-configuration-usage.ts`, the column's only writer, whose
+  resolution rule lives in the domain file): inside the finalization transaction,
+  after the line accounts are resolved from the stored lines and BEFORE they are
+  locked `FOR SHARE` — the module's existing configuration position of the global
+  lock order, recorded as row `D4″` of `docs/accounting/lock-order-matrix.md`, so
+  no new position is added and the chart's configuration-before-account order
+  (A1/A5) is preserved (the inverted order deadlocks; demonstrated by
+  `backend/prisma/rehearsal/task-13-operational-freeze/rehearse.mjs`).
+  Semantics, all three decided in Task 11's note §5/§6 and now in code:
+  **first use wins** (`WHERE … operationally_used_at IS NULL`, so a concurrent
+  finalizer waits on the row lock, re-evaluates against the committed row and
+  updates nothing, and a replay cannot move the timestamp); **atomicity** (a
+  rejected validation or a failed ledger insert rolls the mark back, and an
+  unresolvable account→configuration pin aborts finalization with the typed
+  `ConfigurationUsageReferenceError` BEFORE the first write — a voucher is never
+  `final` while its configuration reads as unused); **mixed vouchers freeze every
+  configuration they touched**, including a `SUPERSEDED` pin, which is what makes
+  "no edit/delete of a used version" true. Chart work is not use: account
+  creation, enable and disable mark nothing (a chart row is not a business
+  effect), and a `pending`/`temporary` voucher freezes nothing. No migration, no
+  endpoint, no permission, no event, no status; `AccountingConfigurationsService.markOperationallyUsed`
+  keeps its no-endpoint design and is now organization-scoped + first-use-wins,
+  delegating to the same statement. Known limitation: usage predating this change
+  is not backfilled (a data-only migration was rejected as an unaudited business
+  effect) — the repair statement is in the report §9.
   [ADR-0026](./adr/0026-accounting-bounded-context.md) is **Accepted** (2026-09-14).
   Still contract-only past the ledger: control roles, detail dimensions,
   posting rules, correction/reversal mechanisms and balance projections. The binding contract stays
@@ -351,8 +381,8 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   `ledger-post-*` pattern) → the Foundation's lifecycle verdict
   (`planVoucherFinalize`) → **Task 10.7's ONE atomic transaction, unwrapped**
   (`finalizeChecked`: the module's fixed lock order, the in-transaction
-  re-validation, `state = final`, N immutable ledger entries, the operation
-  row LAST) → `AccountingDocument.Finalized` (still the posting evidence,
+  re-validation, the Task 13 usage marker at the configuration position,
+  `state = final`, N immutable ledger entries, the operation row LAST) → `AccountingDocument.Finalized` (still the posting evidence,
   AC-D-20) → the Task 10.5 readiness verdict on the FINAL voucher → a
   `PostingResult` (Task 10.6) assembled from the STORED entries, with
   one-entry-per-line and the whole sourcing snapshot re-checked against the

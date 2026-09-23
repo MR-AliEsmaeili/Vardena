@@ -8,6 +8,7 @@ import { NumberingService } from '../src/modules/documents/application/numbering
 import { NumberingSeriesService } from '../src/modules/documents/application/numbering-series.service.js';
 import { OrganizationsService } from '../src/modules/organization/application/organizations.service.js';
 import { AccountingDocumentsRepository } from '../src/modules/accounting/data/accounting-documents.repository.js';
+import { PostingService } from '../src/modules/accounting/application/posting.service.js';
 import type {
   CreateAccountingDocumentInput,
   AccountingDocumentLineWrite,
@@ -31,6 +32,10 @@ import { createTestApp } from './support/test-app.js';
  *   unique index under real concurrency;
  * - transaction atomicity: a failed line write leaves no header, no lines and
  *   no ledger row behind;
+ * - the Task 13 operational freeze, POSITIVELY: a committed finalization marks
+ *   the configuration its lines pinned and a rolled-back one does not — read
+ *   back from `accounting_configurations` itself, the one place a fake cannot
+ *   answer for;
  * - the foreign keys: cascade from a document to its lines, restrict from an
  *   account referenced by a line;
  * - final-state protection enforced by the guard inside the transaction;
@@ -51,6 +56,7 @@ describe.skipIf(DATABASE_URL === undefined)(
     let prisma: PrismaService;
     let documents: AccountingDocumentsRepository;
     let numbering: NumberingService;
+    let posting: PostingService;
 
     let organizationId = '';
     let financialAreaId = '';
@@ -163,6 +169,95 @@ describe.skipIf(DATABASE_URL === undefined)(
       ...overrides,
     });
 
+    /**
+     * Seeds a configuration for the two Task 13 marker tests. The rows go in
+     * raw exactly as the fixture above seeds its own, so the tests depend on the
+     * tables and on the production finalization path — and on nothing else.
+     *
+     * `SUPERSEDED` is deliberate twice over: the organization already owns its
+     * one ACTIVE configuration (`uq_accounting_configurations_org_active`), and
+     * a superseded version is the case Task 13 had to get right — the marker
+     * follows the version the books were written under, never "whatever is
+     * ACTIVE" (decision note §5, OQ-64).
+     */
+    const seedMarkerConfiguration = async (code: string): Promise<string> => {
+      const db = await client();
+      const id = generateId();
+      await db.$queryRaw`INSERT INTO accounting.accounting_configurations (
+        id, organization_id, code, name, version_number, status, created_at, updated_at
+      ) VALUES (${id}, ${organizationId}, ${code}, ${'Marker probe'}, 1, 'SUPERSEDED', now(), now())`;
+      await db.$queryRaw`INSERT INTO accounting.accounting_configuration_levels (
+        id, organization_id, accounting_configuration_id, level_index, title, digit_length, default_is_postable, created_at, updated_at
+      ) VALUES (${generateId()}, ${organizationId}, ${id}, 1, ${'Level 1'}, 2, true, now(), now())`;
+      return id;
+    };
+
+    /** A postable account pinned to `configurationId` — the pin the marker reads. */
+    const seedMarkerAccount = async (
+      code: string,
+      configurationId: string,
+    ): Promise<string> => {
+      const db = await client();
+      const id = generateId();
+      await db.$queryRaw`INSERT INTO accounting.accounts (
+        id, organization_id, code, title, account_nature, is_postable, is_active,
+        level, coding_structure_version_id, accounting_configuration_id, created_at, updated_at
+      ) VALUES (${id}, ${organizationId}, ${code}, ${'Marker probe account'}, 'debit',
+        true, true, 1, ${codingStructureVersionId}, ${configurationId}, now(), now())`;
+      return id;
+    };
+
+    /**
+     * The marker as PostgreSQL stores it. Read with raw SQL on purpose: the
+     * configuration DTO is derived state the module already tests elsewhere, and
+     * the property under test is the COLUMN — so the test asks the database.
+     */
+    const markerRow = async (
+      configurationId: string,
+    ): Promise<{
+      operationallyUsedAt: Date | null;
+      updatedAt: Date;
+      updatedBy: string | null;
+    }> => {
+      const db = await client();
+      const rows =
+        (await db.$queryRaw`SELECT "operationally_used_at" AS "operationallyUsedAt",
+                          "updated_at" AS "updatedAt",
+                          "updated_by" AS "updatedBy"
+                     FROM accounting.accounting_configurations
+                    WHERE id = ${configurationId}`) as Array<{
+          operationallyUsedAt: Date | null;
+          updatedAt: Date;
+          updatedBy: string | null;
+        }>;
+      const [row] = rows;
+      if (row === undefined) {
+        throw new Error(
+          `The marker probe needs exactly one configuration row, got ${rows.length}.`,
+        );
+      }
+      return row;
+    };
+
+    /** The stored document row, read from PostgreSQL rather than from a DTO. */
+    const documentRow = async (
+      documentId: string,
+    ): Promise<{ state: string; finalizedAt: Date | null }> => {
+      const db = await client();
+      const rows =
+        (await db.$queryRaw`SELECT "state" AS state, "finalized_at" AS "finalizedAt"
+                         FROM accounting.accounting_documents
+                        WHERE id = ${documentId}`) as Array<{
+          state: string;
+          finalizedAt: Date | null;
+        }>;
+      const [row] = rows;
+      if (row === undefined) {
+        throw new Error(`The voucher row ${documentId} must exist.`);
+      }
+      return row;
+    };
+
     beforeAll(async () => {
       const built = await createTestApp({
         override: (builder) =>
@@ -174,6 +269,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       prisma = built.module.get(PrismaService);
       documents = app.get(AccountingDocumentsRepository);
       numbering = app.get(NumberingService);
+      posting = app.get(PostingService);
 
       // The voucher type is OWNED by Accounting: `AccountingDocumentTypeRegistration`
       // registers it during `app.init()` (ADR-0023 §2, contract §12.1
@@ -673,6 +769,226 @@ describe.skipIf(DATABASE_URL === undefined)(
       // The account still exists: nothing about discarding a voucher may
       // remove master data (§5.6).
       expect(await db.account.count({ where: { id: debitAccountId } })).toBe(1);
+    }, 60_000);
+
+    it('Task 13 D4: finalizing a real voucher marks the configuration its lines pinned', async () => {
+      const db = await client();
+      const usedConfigurationId = await seedMarkerConfiguration('MRK-USED');
+      const untouchedConfigurationId =
+        await seedMarkerConfiguration('MRK-UNTOUCHED');
+      const usedDebitAccountId = await seedMarkerAccount(
+        '9001',
+        usedConfigurationId,
+      );
+      const usedCreditAccountId = await seedMarkerAccount(
+        '9002',
+        usedConfigurationId,
+      );
+      const untouchedAccountId = await seedMarkerAccount(
+        '9003',
+        untouchedConfigurationId,
+      );
+
+      // Neither configuration has been used operationally.
+      expect(
+        (await markerRow(usedConfigurationId)).operationallyUsedAt,
+      ).toBeNull();
+      expect(
+        (await markerRow(untouchedConfigurationId)).operationallyUsedAt,
+      ).toBeNull();
+
+      const created = await documents.createChecked(
+        draftInput({
+          description: 'Marks the configuration it used',
+          lines: [
+            line(usedDebitAccountId, '75.25', '0', 1),
+            line(usedCreditAccountId, '0', '75.25', 2),
+          ],
+        }),
+      );
+      const serial = (
+        await numbering.allocateNumber({
+          organizationId,
+          documentType: 'accounting_voucher',
+          scopeKey: financialAreaId.toLowerCase(),
+          allocationKey: `live-marker-${created.id}`,
+          referenceModule: 'accounting',
+          referenceDocumentType: 'accounting_voucher',
+          referenceDocumentId: created.id,
+        })
+      ).number;
+      await documents.issueChecked({
+        id: created.id,
+        organizationId,
+        documentNumber: serial,
+        updatedAt: new Date(),
+        updatedBy: null,
+      });
+
+      // THE PRODUCTION ENTRY POINT, unshortened: `finalizeDocument` is
+      // `PostingService.postVoucher`, and `postVoucher` is what
+      // `POST /accounting-documents/:id/finalize` reaches (ADR-0023 §2). No
+      // marker method is invoked by hand and no transaction is opened by the
+      // test, so this fails the moment the wiring is removed — which is exactly
+      // the assertion the fixture-level suites could not make.
+      const outcome = await posting.postVoucher({
+        organizationId,
+        voucherId: created.id,
+        operationKey: `live-marker-${created.id}`,
+      });
+      expect(outcome.kind).toBe('posted');
+      expect(outcome.document.phase).toBe('final');
+      expect(outcome.result.ledgerEntries).toHaveLength(2);
+
+      // The posting is real rows, not an echo of them in an aggregate.
+      expect(
+        await db.ledgerEntry.count({ where: { voucherId: created.id } }),
+      ).toBe(2);
+      const postedRow = await documentRow(created.id);
+      expect(postedRow.state).toBe('final');
+
+      const marked = await markerRow(usedConfigurationId);
+      // (a) the column is NOT NULL, (b) it holds a real timestamp — a text or
+      // epoch drift would not survive the instance check — and (c) it is the
+      // FINALIZATION INSTANT: the same `input.finalizedAt` the document row
+      // carries and that the marker statement wrote into `updated_at`. A second,
+      // detached write could not reproduce that triple.
+      const usedAt = marked.operationallyUsedAt;
+      expect(usedAt instanceof Date && !Number.isNaN(usedAt.getTime())).toBe(
+        true,
+      );
+      // `expect.any` would accept any Date; this pins the SAME instant the
+      // document row carries, which is what "written by this finalization" means.
+      const finalizedAt = postedRow.finalizedAt;
+      expect(finalizedAt).toBeInstanceOf(Date);
+      expect(usedAt?.getTime()).toBe(finalizedAt?.getTime());
+      expect(marked.updatedAt.getTime()).toBe(finalizedAt?.getTime());
+      // No HTTP principal exists in this suite, so the actor the marker records
+      // is the finalization's own: NULL, never a fabricated one.
+      expect(marked.updatedBy).toBeNull();
+
+      // And ONLY the configuration the voucher used. `untouchedAccountId` is a
+      // postable, active account under a different configuration, in the same
+      // organization, that this voucher never referenced — marking "the ACTIVE
+      // configuration", or marking everything, leaves a NULL here. That is the
+      // one live discrimination between the touched pin and its neighbours.
+      expect(
+        (await markerRow(untouchedConfigurationId)).operationallyUsedAt,
+      ).toBeNull();
+      expect(
+        await db.account.count({ where: { id: untouchedAccountId } }),
+      ).toBe(1);
+    }, 60_000);
+
+    it('Task 13 D4: a finalization that rolls back leaves the configuration unused', async () => {
+      const db = await client();
+      const configurationId = await seedMarkerConfiguration('MRK-ROLLBACK');
+      const rollbackDebitAccountId = await seedMarkerAccount(
+        '9011',
+        configurationId,
+      );
+      const rollbackCreditAccountId = await seedMarkerAccount(
+        '9012',
+        configurationId,
+      );
+
+      const created = await documents.createChecked(
+        draftInput({
+          description: 'Rolled back after the marker',
+          lines: [
+            line(rollbackDebitAccountId, '40.00', '0', 1),
+            line(rollbackCreditAccountId, '0', '40.00', 2),
+          ],
+        }),
+      );
+      const serial = (
+        await numbering.allocateNumber({
+          organizationId,
+          documentType: 'accounting_voucher',
+          scopeKey: financialAreaId.toLowerCase(),
+          allocationKey: `live-marker-rollback-${created.id}`,
+          referenceModule: 'accounting',
+          referenceDocumentType: 'accounting_voucher',
+          referenceDocumentId: created.id,
+        })
+      ).number;
+      await documents.issueChecked({
+        id: created.id,
+        organizationId,
+        documentNumber: serial,
+        updatedAt: new Date(),
+        updatedBy: null,
+      });
+      const operationKey = `live-marker-rollback-${created.id}`;
+      const before = await markerRow(configurationId);
+      expect(before.operationallyUsedAt).toBeNull();
+
+      // A deterministic failure inside the finalization transaction, positioned
+      // AFTER the marker statement: a hand-written entry for line 1 makes
+      // `uq_ledger_entries_voucher_line_id` refuse the materialization. The
+      // abort is a real `23505` from the database — the convention
+      // `ledger-entries-live.e2e-spec.ts` already uses — not a stub, a timeout
+      // or a killed process.
+      const [firstLine] = created.lines;
+      if (firstLine === undefined) {
+        throw new Error('The fixture voucher must carry lines.');
+      }
+      const handWrittenId = generateId();
+      await db.$queryRaw`INSERT INTO accounting.ledger_entries (
+        id, organization_id, financial_area_id, fiscal_year_id,
+        accounting_period_id, voucher_id, voucher_number, voucher_line_id,
+        line_no, account_id, debit_amount, credit_amount, document_date,
+        posting_timestamp, origin, created_at, updated_at
+      ) VALUES (${handWrittenId}, ${organizationId}, ${financialAreaId}, ${fiscalYearId},
+        ${accountingPeriodId}, ${created.id}, ${serial}, ${firstLine.id},
+        1, ${firstLine.accountId}, ${firstLine.debitAmount}, ${firstLine.creditAmount},
+        DATE '2026-04-05', now(), 'manual', now(), now())`;
+
+      await expect(
+        posting.postVoucher({
+          organizationId,
+          voucherId: created.id,
+          operationKey,
+        }),
+      ).rejects.toMatchObject({ code: 'P2002' });
+
+      // Nothing about the attempt survived: no state change, no finalization
+      // instant, no entry set, no idempotency evidence.
+      expect((await documents.findById(created.id))?.phase).toBe('temporary');
+      expect(await documentRow(created.id)).toEqual({
+        state: 'temporary',
+        finalizedAt: null,
+      });
+      expect(
+        await db.ledgerEntry.count({ where: { voucherId: created.id } }),
+      ).toBe(1);
+      expect(
+        await db.accountingPostingOperation.count({
+          where: { organizationId, operationKey },
+        }),
+      ).toBe(0);
+
+      // The marker is gone with them — and not merely still NULL: `updated_at`
+      // still holds the seed's own value, so the guarded statement matched zero
+      // rows and the row was never touched. A marker written outside the
+      // transaction would leave exactly the opposite evidence here.
+      const after = await markerRow(configurationId);
+      expect(after.operationallyUsedAt).toBeNull();
+      expect(after.updatedAt.getTime()).toBe(before.updatedAt.getTime());
+      expect(after.updatedBy).toBeNull();
+
+      // The retry that follows the failed attempt is a fresh posting, not a
+      // replay of one that never happened — and it is what finally marks.
+      await db.$queryRaw`DELETE FROM accounting.ledger_entries WHERE id = ${handWrittenId}`;
+      const retried = await posting.postVoucher({
+        organizationId,
+        voucherId: created.id,
+        operationKey: `live-marker-retry-${created.id}`,
+      });
+      expect(retried.kind).toBe('posted');
+      expect(
+        (await markerRow(configurationId)).operationallyUsedAt,
+      ).toBeInstanceOf(Date);
     }, 60_000);
   },
 );

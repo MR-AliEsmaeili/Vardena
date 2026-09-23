@@ -8,7 +8,7 @@
 - Configuration root: `accounting_configurations` + `accounting_configuration_levels`
 - Real versioning: `version_number` monotonic per `(organization_id, code)`
 - Status: `DRAFT` → `ACTIVE` → `SUPERSEDED`, exactly one ACTIVE per org (FOR UPDATE lock primary + partial unique index backstop)
-- Operational freeze: domain abstraction + D4 deferred — `markOperationallyUsed` NOT called in Task 11, caller deferred to Posting/System Posting (first Voucher, not Account), remains as deferred abstraction without caller, explicitly documented as deferred (not dead code)
+- Operational freeze: domain abstraction shipped in Task 11 with D4 **deferred**, and **wired by Task 13 (2026-09-23)** — the marker is written from the finalization transaction (`AccountingDocumentsRepository.finalizeChecked`) for the configurations the voucher's lines actually pinned; Account creation/activation never marks (Posting, not the chart) and no endpoint or permission exists for marking. See [Operational freeze — wired](#operational-freeze--wired-task-13)
 - Chart foundation: Account entity sole scope `accounting_configuration_id` NOT NULL (D1,D3) + code shape `coding_structure_version_id` NOT NULL (D2 untouched), recursive hierarchy, configurable coding, explicit nature, non-destructive lifecycle
 - Backfill D3 NOT NULL: handles both orphan=0 and orphan>0 — legacy config strategy for orphan>0, simple backfill+NOT NULL for orphan=0. Orphan query blocked no live DB in sandbox, migration handles both.
 - D5 single migration, D6 typed errors only, D7 live DB test
@@ -97,12 +97,62 @@ Single ACTIVE per org: primary FOR UPDATE lock, backstop partial unique index.
 
 **Task 11 Final Round 2 per D4:**
 - Implements `operationally_used_at` marker + domain guards `canDestructivelyMutate`, `canDeleteConfiguration`, `assertConfigurationMutable`, `resolveFreezeState`
-- **D4 deferred:** `markOperationallyUsed` NOT called in Task 11. Caller deferred to Posting/System Posting (first Voucher, not Account). Method remains as deferred abstraction without caller, explicitly documented as deferred in ADR-0028 and here — not implicit dead code. Future Posting task will call it on first Voucher finalization.
+- **D4 — deferred by Task 11, WIRED by Task 13 (2026-09-23):** the marker is written inside `finalizeChecked`, after the line accounts are resolved and before they are locked, for the DISTINCT set of `accounts.accounting_configuration_id` values the voucher's lines actually used (resolved by the same transaction, never by reading "the ACTIVE configuration"). Account creation/activation still marks nothing — D4's caller is Posting, not the chart, and a `pending`/`temporary` voucher freezes nothing. `AccountingConfigurationsService.markOperationallyUsed` stays endpoint-free (no route, no permission): it is the transactional seam the data layer uses, now organization-scoped and first-use-wins.
 - Does NOT yet enforce freeze based on posting/ledger/dimensions — future tasks will call same marker
 - Design centralized: `domain/accounting-configuration-freeze.ts` owns FreezeState, `resolveFreezeState`, `isConfigurationFrozen`, `ConfigurationFrozenError`
-- Repository: `markOperationallyUsed({id, now})` idempotent
+- Repository: `markOperationallyUsed({id, now})` idempotent — as of Task 13 it takes `organizationId`, returns the marked row or `null` (no row matched the guard), and delegates to the one guarded statement `UPDATE … SET operationally_used_at/updated_at/updated_by WHERE id = ? AND organization_id = ? AND operationally_used_at IS NULL RETURNING id` (`data/accounting-configuration-usage.ts`), which is also what the finalization path calls per touched configuration
 - D2: coding_structure_versions freeze columns out of scope
-- **Still deferred after the 2026-09-22 remediation** (OQ-64): which configuration a voucher freezes (multi-configuration vouchers), the marker's position in the module's lock order, first-use-wins idempotency and replay behaviour are analysed — not implemented — in [`task-11-mark-operationally-used-decision-note.md`](./task-11-mark-operationally-used-decision-note.md)
+- **Resolved by Task 13** (OQ-64 → **RESOLVED**): the four questions analysed in [`task-11-mark-operationally-used-decision-note.md`](./task-11-mark-operationally-used-decision-note.md) are now decided in code — (a) the marked set is the distinct pinned configuration of every line of the voucher (a SUPERSEDED pin is marked too, so a mixed voucher freezes both configurations and neither can be deleted); (b) the marker sits at the configuration position of the module's lock order, recorded as row `D4″` in [`lock-order-matrix.md`](./lock-order-matrix.md), before the account locks; (c) first-use-wins comes from the `IS NULL` guard in the statement, so a racing writer waits, re-evaluates and updates 0 rows; (d) replay is idempotent twice over — `PostingService` returns from the operation row before the transaction opens, and even a repeated mark matches 0 rows. Evidence: unit suites + `backend/prisma/rehearsal/task-13-operational-freeze/rehearse.mjs` (`docs/accounting/task-13-evidence/postgres-rehearsal.log`) + `docs/task-13-implementation-report.md`
+
+## Operational freeze — wired (Task 13)
+
+The rule the foundation exists to enforce, in one line: **a configuration is
+mutable until something uses it, and what uses it is a posted voucher — not a
+chart row, not a draft.** Task 13 connected that rule; Task 11 designed it and
+deliberately left the caller out (decision note §2).
+
+- **Where the mark happens** — `AccountingDocumentsRepository.finalizeChecked`,
+  inside the finalization transaction, after the line accounts are resolved from
+  the stored lines and before those accounts are locked `FOR SHARE`. The
+  statement lives in `data/accounting-configuration-usage.ts`
+  (`markConfigurationsUsedByDocumentInTx` = read the pins + resolve + mark) and
+  `data/accounting-configuration-usage.ts` is the ONLY writer of
+  `accounting_configurations.operationally_used_at` in the module.
+- **What gets marked** — the DISTINCT `accounts.accounting_configuration_id`
+  values of the voucher's lines, ascending. Not "the ACTIVE configuration": a
+  line may legitimately point at an account pinned to a `SUPERSEDED`
+  configuration (the shape Task 11's backfill produces), and marking the ACTIVE
+  row would freeze the wrong version. Marking every touched one is what makes
+  "no edit/delete of a used version" true for a mixed-configuration voucher
+  (OQ-64's question, now resolved).
+- **Fail closed** — an account whose pin cannot be read (a missing or
+  inconsistent `accountingConfigurationId`) raises a typed
+  `ConfigurationUsageReferenceError` BEFORE the first write, so the whole
+  finalization aborts; a voucher is never `final` while its configuration reads
+  as unused. The resolution is a pure domain rule
+  (`domain/accounting-configuration-freeze.ts`, `resolveUsedConfigurationIds`),
+  framework-free and unit-tested.
+- **Atomicity** — a rejected validation or a failed ledger insert rolls the mark
+  back with everything else (same transaction), and a rollback leaves the column
+  `NULL`, so a configuration that was never effectively used stays editable.
+  This is exactly the property the freeze policy's `reason` comment describes
+  ("the caller's transaction rolls it back with the ledger").
+- **Idempotency / concurrency** — `WHERE … operationally_used_at IS NULL` makes
+  the mark monotonic: only the first use stamps it. A concurrent finalizer blocks
+  on the row lock, re-evaluates the predicate against the committed row and
+  updates 0 rows; a replayed request never reaches the marker at all (the
+  posting-operation row short-circuits it, contract §16.4). `updated_at` /
+  `updated_by` are written as `now()` / the caller's actor inside that
+  transaction, which is what makes the mutation auditable (AG-16).
+- **Lifecycle consequence** — `publish` / `updateDraft` / `deleteDraft` refuse on
+  `operationally_used_at IS NULL` alone: no operation history table, no event
+  registry, no new status or permission was added.
+- **Known limitation (documented, not patched with a migration):** the marker
+  only exists from Task 13's deployment onward. Databases that already hold
+  `final` vouchers over configurations with `operationally_used_at IS NULL` keep
+  them editable until the repair `UPDATE` in
+  `docs/task-13-implementation-report.md` §9 is run; Task 11's backfill set the
+  LEGACY row's status, never the marker.
 
 ## Chart of Accounts Foundation (D1,D2,D3)
 
@@ -154,7 +204,7 @@ Permissions: `Accounting.AccountingConfiguration.View`, `Accounting.AccountingCo
 3. **Migration semantics corrected**: deterministic single-ACTIVE-version level copy, and the "no level rows" fallback guard (no silent widening of a ONE-level copy). Verified by the rehearsal.
 4. **`levelKind` contract aligned**: domain `MAX_LEVEL_KIND_LENGTH = 20` = Prisma `@db.VarChar(20)` = SQL `VARCHAR(20)` = API `@MaxLength(20)`; 21/64-character values are refused, never truncated.
 5. **Live e2e tests repaired** (FK-negative test now fails when the FK is missing; the partial-index test challenges the index itself instead of counting ACTIVE rows) and the populated-backfill claim moved to the rehearsal.
-6. **Deferred D4 documented, not implemented**: `docs/accounting/task-11-mark-operationally-used-decision-note.md` (OQ-64).
+6. **Deferred D4 documented, not implemented**: `docs/accounting/task-11-mark-operationally-used-decision-note.md` (OQ-64). — *status 2026-09-23: implemented; the note's decision (mark on finalization from Posting, never from the chart) is what Task 13 wired.*
 
 ## Migration (Final per D5 + D3)
 
@@ -180,7 +230,7 @@ Permissions: `Accounting.AccountingConfiguration.View`, `Accounting.AccountingCo
 ## Future Extensions
 
 - Reference `accounting_configuration_id` as configuration scope NOT NULL
-- Call `markOperationallyUsed` when first Voucher finalized (D4 deferred to Posting)
+- ~~Call `markOperationallyUsed` when first Voucher finalized (D4 deferred to Posting)~~ — **done in Task 13**: `finalizeChecked` marks the configurations its lines pinned, in the finalization transaction (see [Operational freeze — wired](#operational-freeze--wired-task-13))
 - Guard destructive changes with `isConfigurationFrozen` / `resolveFreezeState`
 - New tables under `accounting` schema linked to configuration version
 
@@ -188,13 +238,13 @@ No change to foundation tables needed for extensions — only new tables referen
 
 ## Links
 
-- ADR-0028: `docs/adr/0028-accounting-configuration-foundation.md` (final Round 2 D1-D7)
+- ADR-0028: `docs/adr/0028-accounting-configuration-foundation.md` (final Round 2 D1-D7; §3 + the Operational Freeze Implementation Addendum 2026-09-23 for D4)
 - Domain: `backend/src/modules/accounting/domain/accounting-configuration.ts`, `account.ts`, `accounting-configuration-freeze.ts`
-- Data: `backend/src/modules/accounting/data/accounting-configurations.repository.ts`, `accounts.repository.ts`
+- Data: `backend/src/modules/accounting/data/accounting-configurations.repository.ts`, `accounts.repository.ts`; the usage marker and its pin read: `backend/src/modules/accounting/data/accounting-configuration-usage.ts` (the only writer of `operationally_used_at`), called from `accounting-documents.repository.ts`
 - Migration: `backend/prisma/migrations/20260920000000_accounting_configuration_foundation/migration.sql`
 - Prisma: `backend/prisma/schema/accounting.prisma`
-- Live DB test: `backend/test/accounting-configuration-live.e2e-spec.ts`
+- Live DB test: `backend/test/accounting-configuration-live.e2e-spec.ts` (incl. "D4 — the marker is NOT called on Account creation") + the SQL-level rehearsal `backend/prisma/rehearsal/task-13-operational-freeze/rehearse.mjs`, output `docs/accounting/task-13-evidence/postgres-rehearsal.log`
 - Decision note (D4): `docs/accounting/task-11-mark-operationally-used-decision-note.md`
 - Migration rehearsal: `backend/prisma/rehearsal/task-11-configuration-foundation/` (`npm run test:migration-rehearsal`)
 - Remediation report: `docs/task-11-implementation-report.md` (sections A–J)
-- Open Questions raised by the remediation: OQ-62 (pin compatibility), OQ-63 (legacy fallback shape), OQ-64 (operational-use boundary)
+- Open Questions raised by the remediation: OQ-62 (pin compatibility, OPEN), OQ-63 (legacy fallback shape, OPEN), OQ-64 (operational-use boundary — **RESOLVED 2026-09-23** by Task 13, `docs/task-13-implementation-report.md`)

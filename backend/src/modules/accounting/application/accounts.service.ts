@@ -326,8 +326,15 @@ export class AccountsService {
       throw error;
     }
 
-    // D4: markOperationallyUsed NOT called in Task 11 — deferred to Posting/System Posting (first Voucher, not Account)
-    // The method remains as deferred abstraction without caller, documented in ADR-0028 and docs/accounting/configuration.md
+    // D4 (Task 11) + Task 13: NO operational-use marker here, deliberately.
+    // Creating (or activating) an account is configuration AUTHORING, not a
+    // durable business effect: the marker belongs to the transaction that
+    // commits the first ledger effect over the accounts — voucher finalization
+    // (`AccountingDocumentsRepository.finalizeChecked`), which marks the
+    // configuration each posted line's account is pinned to. An account becomes
+    // evidence of use only through a FINAL document that references it.
+    // Pinned by `test/accounting-configuration-live.e2e-spec.ts` ("D4 … NOT
+    // called on Account creation"). See docs/task-13-implementation-report.md §4.
 
     await this.publishAccountEvent(ACCOUNT_CREATED_EVENT, created);
     this.logger.log(

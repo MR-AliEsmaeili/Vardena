@@ -1,6 +1,6 @@
 # Vardena — Accounting Task Index
 
-Status: **Authoritative** · Date: 2026-09-23 · Type: governance / index (documentation only) · Task 11: **ACCEPTED 2026-09-22** · Task 12: **ACCEPTED WITH FOLLOW-UP 2026-09-23**
+Status: **Authoritative** · Date: 2026-09-23 · Type: governance / index (documentation only) · Task 11: **ACCEPTED 2026-09-22** · Task 12: **ACCEPTED WITH FOLLOW-UP 2026-09-23** · Task 13: **IN PROGRESS (self-review, 2026-09-23)** — PR #31 open, required CI **green** (`5ad94f6` run `35852213257`; head `692ee0f` run `35852746750`); not Accepted (see §2 row 13, §6, §9)
 
 > This document is the authoritative record of which Accounting implementation
 > tasks exist, what state the module is in, which capabilities are still only
@@ -40,6 +40,7 @@ Task 11 (PR #25) is recorded the same way, plus the remediation evidence
 | 10.8 | #23                           | Posting orchestration seam (`PostingService.postVoucher`; `finalizeDocument` delegates); provided, not exported; no schema/API/permission/event change                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `docs/task-10.8-implementation-report.md`, `docs/modules.md`                                                                                                                  |
 | 11   | #25 (+ #29 defect-resolution) | **ACCEPTED 2026-09-22** — Accounting Configuration Foundation per D1–D7: `accounting_configurations` + `accounting_configuration_levels`, `accounts.accounting_configuration_id` NOT NULL (D1/D3), LEGACY backfill for orphan organizations, freeze abstraction with D4 deferred; remediation (2026-09-22) fixed the level-copy/fallback semantics, aligned the `levelKind` contract, and added cross-configuration regression tests + the migration rehearsal; defect-resolution (PR #29, `docs/task-11-defect-resolution-report.md`, CI `35755493453`/`35755917087` success) verified isolation, per-definition consistency, active-status, one-level preservation, levelKind and test-evidence defects — **Task 11 — Accounting Configuration Foundation: ACCEPTED** | `20260920000000_accounting_configuration_foundation`, `docs/accounting/configuration.md`, `docs/task-11-implementation-report.md`, `docs/task-11-defect-resolution-report.md` |
 | 12   | `a62a13d` (branch `arena/01a0ca12-vardena`, remediated `f2f10be`/`264a395`/`a62a13d`) | **ACCEPTED WITH FOLLOW-UP 2026-09-23** — Balance Projection (turnover-only, rebuildable) per ADR-0031, contract §19.3 AC-D-31 + §25 AC-I-19: `accounting.account_balance_projections` (org, area, year, period, account) with `period_debit/credit numeric(18,2)` only — no `branch_id`/currency/dimension/opening columns (AR-29); derived `period_net/opening/closing` via `vw_account_balance_derived` (window by `accounting_periods.sequence`, partitioned by year/account never crossing years) + domain `deriveBalances`; transactional maintenance inside `finalizeChecked` (UPSERT per key after ledger inserts, before operation row) with canonical lock order `area→year→period→accounts FOR SHARE→balances FOR UPDATE→document FOR UPDATE` (legacy `document→balances` helper removed); explicit audited rebuild `POST /balances/rebuild` (org-wide optionally area/year, idempotent-by-replacement, `AccountBalance.Rebuilt` event, `FOR UPDATE` slice lock); reads `GET /balances` (batched fallback without silent `take:10000` truncation), `GET /balances/:accountId`, `GET /balances/reconciliation` (`Balance.View`, 404 for foreign keys) + `vw_balance_reconciliation` FULL OUTER JOIN (`missing/extra/debit/credit/both_mismatch` — debit/credit/both tested); migration `20260922000000_accounting_balance_projection` (single-strategy insert-from-ledger backfill HAVING <>0, two views, `abp_`+md5 clarified as one-time deterministic TEXT PK vs ULID for runtime); permissions `Accounting.Balance.View/Rebuild` (31→33); out-of-scope §17 preserved (no zero-row persistence, no Redis/triggers/microservices/EAV, OQ-62/63/64/G7 still OPEN, 10.9 intentionally skipped — next free integer after 11). **Acceptance rationale:** R-01 legacy helper removed, R-02/R-06 canonical lock order documented & statically verified, R-03 silent truncation eliminated (batched fetch), R-04 opening/fiscal-year semantics documented (ADR-0031 §4/§9, first period opening 0, carry-forward OUT OF SCOPE), R-05 reconciliation coverage expanded (all 4 mismatch states + decimals/multi-scope), migration/API/auth/tenant/pagination/build/typecheck/PGlite rehearsal gates PASS. **Mandatory P1 follow-up:** Real PostgreSQL concurrency verification was NOT executed (runtime unavailable) — tracked as P1 follow-up requiring separate PostgreSQL execution with independent connections and lock-timeout/deadlock assertions; do not claim production PG concurrency safety proven by PGlite. ADR-0031 remains **Proposed** per governance; Task 11 remains CLOSED. | `20260922000000_accounting_balance_projection`, `backend/src/modules/accounting/domain/balance-projection.ts`, `backend/src/modules/accounting/data/account-balance-projections.repository.ts` (legacy helper removed), `backend/src/modules/accounting/application/accounting-balances.service.ts` (batched fallback) + `api/accounting-balances.controller.ts`, `docs/adr/0031-balance-projection.md` (interpretation A + fiscal-year deferral), `docs/accounting/lock-order-matrix.md`, `docs/task-12-remediation-report.md` (`a62a13d`, 19 sections, READY FOR REVIEW → ACCEPTED WITH FOLLOW-UP) |
+| 13   | `arena/01a0cd89-vardena` (self-review deliverable; pushed SHA recorded in §9 once opened) | **IN PROGRESS (self-review, 2026-09-23) — NOT Accepted** — Accounting Operational Freeze (D4 marker wiring), per `docs/accounting/task-11-mark-operationally-used-decision-note.md` §5/§6 and OQ-64 (now **RESOLVED**): `operationally_used_at` is written by exactly ONE guarded statement — `UPDATE accounting_configurations SET operationally_used_at/updated_at/updated_by WHERE id = ? AND organization_id = ? AND operationally_used_at IS NULL RETURNING id` — issued per DISTINCT pinned configuration of the finalized voucher's lines, inside `finalizeChecked` after the line accounts are resolved and BEFORE they are locked `FOR SHARE` (lock-order row `D4″`, no new position); Account creation/activation marks nothing; a `pending`/`temporary` voucher freezes nothing; a rolled-back finalization leaves `NULL`; replay/second-voucher keep the first timestamp; an unresolvable account pin fails closed before any write; NO new migration/column/table/status/DTO/endpoint/permission/event; `markOperationallyUsed` stays endpoint-free (org-scoped, first-use-wins, delegating to the same statement). **Verification:** `npx tsc --noEmit` clean; unit suites `posting.service.spec.ts` 25 + `posting-readiness.spec.ts` 13 + `accounting-configuration-usage.spec.ts` (domain 10 + data 12) + `accounting-configurations.spec.ts` 11 + `coding-structure-accounts.spec.ts` 32; real-PostgreSQL rehearsal `backend/prisma/rehearsal/task-13-operational-freeze/rehearse.mjs` 23/23 (lock wait, first-use-wins, rollback, org scope, deadlock asymmetry) → `docs/accounting/task-13-evidence/postgres-rehearsal.log`; report `docs/task-13-implementation-report.md`. **Not executed in the sandbox** (no `prisma generate`): the Prisma `*-live.e2e-spec.ts` suites and `build` — the required CI job then ran them on head `5ad94f6` (run `35852213257`, `completed success`, incl. `Prisma generate` + `E2E tests (incl. live-DB suites)` on `postgres:16`) per report §5.4. A post-review remediation added two positive live tests for the marker itself (report §5.5). | `docs/accounting/lock-order-matrix.md` (D4″), `docs/accounting/configuration.md` (Operational freeze — wired), `backend/src/modules/accounting/data/accounting-configuration-usage.ts`, `docs/task-13-implementation-report.md` |
 
 A repository-wide search for `10.9` returns **zero hits**: no task brief, report,
 ADR, OQ, comment, or test defines or references it (see §7).
@@ -79,6 +80,16 @@ LedgerEntry persistence
   ↓
 Posting Orchestration
 ```
+
+**Task 13 — Operational Freeze (D4 marker): IN PROGRESS (self-review, 2026-09-23)** added the one caller the
+configuration foundation deliberately lacked: `finalizeChecked` marks the configurations its lines used through
+`data/accounting-configuration-usage.ts` (the module's only writer of `operationally_used_at`), at the existing
+configuration position of the lock order (matrix row `D4″`), and `docs/accounting/configuration.md` §Operational freeze
+— wired replaced the "deferred" text. Nothing else changed: no migration, no endpoint, no permission, no event, no
+status; the freeze policy itself (`domain/accounting-configuration-freeze.ts`) is unchanged apart from the new
+pin-resolution rule.
+
+Original Task 11 note preserved for the record:
 
 **Task 11 — Accounting Configuration Foundation: ACCEPTED 2026-09-22 (PR #25 remediated 2026-09-22 + PR #29 defect-resolution `docs/task-11-defect-resolution-report.md`, CI `35755493453`/`35755917087` success) added the configuration root:**
 
@@ -127,6 +138,7 @@ these is an approved task.** No priority order is implied.
 | Detail dimensions / groups / items (incl. floating detail)                     | Candidate · Blocked by OQ                                  | OQ-41                                                        | Contract §10/§11 (AC-D-11…AC-D-15); `docs/modules.md` "still to build" |
 | Posting rules / account mapping (incl. tax & valuation mappings)               | Candidate · Blocked by OQ                                  | OQ-24, OQ-25, OQ-30                                          | Contract §20.2; `docs/modules.md` "still to build"                     |
 | Correction / reversal / replacement mechanisms                                 | Candidate · Blocked by OQ                                  | OQ-27 (OQ-23 for period dating)                              | Contract §15.4 (AC-D-22); `docs/modules.md` "still to build"           |
+| Configuration operational freeze (D4 marker, first use wins)                | **IN PROGRESS (self-review) 2026-09-23 · Task 13** — implementation on `arena/01a0cd89-vardena`, awaiting human acceptance | OQ-64 **RESOLVED**; ADR-0028 §3 + 2026-09-23 addendum; lock-order row `D4″` | `docs/task-13-implementation-report.md`, `docs/accounting/task-13-evidence/postgres-rehearsal.log` |
 | Balance projections (rebuildable, never the source of truth)                   | **ACCEPTED WITH FOLLOW-UP 2026-09-23** · ADR-0031 Proposed (P1: real PostgreSQL concurrency verification) | ADR-0031 + AC-D-31/AC-I-19; canonical lock order, batched fallback, opening within fiscal year only, full reconciliation | Task 12: `account_balance_projections` + `vw_*` + 4 endpoints, `a62a13d` remediation report (19 sections), lock matrix, PGlite rehearsal |
 | Accounting reporting (ledgers, trial balances, statements via Reporting)       | Candidate · Blocked by OQ                                  | OQ-25, OQ-43 (layouts)                                       | Contract §19 (AC-D-30); `docs/modules.md` planned API                  |
 | Inventory → Accounting integration                                             | Candidate · Blocked by OQ                                  | OQ-24, OQ-25, OQ-30, OQ-39                                   | Contract §20 (AC-D-32), activation gate §20.4                          |
@@ -145,7 +157,10 @@ Statuses used: `Implemented` · `Candidate` · `Blocked by OQ` ·
 
 All entries below are **OPEN** in [`docs/open-questions.md`](../open-questions.md),
 which remains the single source of truth for OQ text and status. This index
-changes none of them — it only records which candidates each one constrains:
+changes none of them — it only records which candidates each one constrains.
+(**OQ-64 is the exception:** Task 13 resolved it on 2026-09-23 and the row moved
+to that file's Resolved table — recorded here so this index does not contradict
+it.)
 
 ```text
 Future Capability
@@ -178,8 +193,35 @@ Other load-bearing Accounting OQs identified by the repository
 | OQ-30 | Tax model: taxes, inclusive/exclusive, rounding, liability accounts                   | Posting rules, invoice content                   |
 | OQ-31 | Inter-branch / inter-company treatment, second legal entity                           | Consolidation (deferred; needs its own ADR)      |
 
-## 6. Task 11 acceptance, Task 12 acceptance with follow-up, and Task 10.9 status
+## 6. Task 11 acceptance, Task 12 acceptance with follow-up, Task 13 status, and Task 10.9 status
 
+> **Task 13 — Accounting Operational Freeze (D4 marker wiring): IN PROGRESS (self-review,
+> 2026-09-23).** The implementation, its evidence and its limits are in
+> `docs/task-13-implementation-report.md`. It is **not** Accepted: per §7's rule
+> and this index's status vocabulary, acceptance requires human acceptance + push
+> to the remote branch + an open PR + PR checks and the required CI job green on
+> the head SHA (`lint → typecheck → format:check → unit tests → build →
+> migrate deploy + live e2e` on PostgreSQL). The branch is pushed and PR **#31** is
+> open; the required job is **green on head `5ad94f6`** (run `35852213257`: Prisma
+> generate, lint, typecheck, format, 1017 unit tests, build, migrate deploy, the
+> Task 11 migration rehearsal and the live-DB e2e suites on `postgres:16`) —
+> report §5.4, then re-run green on the docs-only heads that followed (`692ee0f`,
+> run `35852746750`, and `0aa45f0`, run `35853236723`). The gate this sandbox could
+> not execute is therefore closed by CI, not by local evidence
+> (`docs/accounting/task-13-evidence/postgres-rehearsal.log` covers the SQL/data
+> layer only). The residual evidence gap it left — no **positive** live assertion
+> that finalization marks the pinned configuration — is now closed in code as well:
+> `backend/test/accounting-documents-live.e2e-spec.ts` gained
+> `Task 13 D4: finalizing a real voucher marks the configuration its lines pinned`
+> and `Task 13 D4: a finalization that rolls back leaves the configuration unused`
+> (report §5.5). They execute only where a generated Prisma client and a migrated
+> database exist — i.e. in the CI job on `postgres:16` (`VARDENA_TEST_DATABASE_URL` is
+> job-level, so the suite's `skipIf` does not fire there) — and they have: head
+> `23942af`, run `35866991009`, `completed success`, step
+> `E2E tests (incl. live-DB suites)` green. Both new tests therefore ran against a real
+> PostgreSQL 16 and passed; the task stays **IN PROGRESS (self-review)** because
+> acceptance is a human decision (§7).
+>
 > **Task 11 — Accounting Configuration Foundation: ACCEPTED 2026-09-22.**
 >
 > **Task 12 — Accounting Balance Projection: ACCEPTED WITH FOLLOW-UP 2026-09-23.**
@@ -261,7 +303,20 @@ own explicitly defined task (per §7) before any work; none of them is the
   (`draft|active|superseded`) (Task 10.7 report §12.3).
 - **Account pin compatibility is unenforced — OQ-62: OPEN** — pin compatibility requires future Product + Architecture decision. Nothing guarantees that an account's `coding_structure_version_id` (D2) and `accounting_configuration_id` (D1) describe the same level shape, and the Task 11 rehearsal produced a legacy organization where they genuinely disagree. Detection or repair needs the product/architecture decision first (Task 11 report §C/§I).
 - **LEGACY fallback shape is a documented default, not derived — OQ-63: OPEN** — legacy fallback shape. Organizations with accounts but no ACTIVE coding-structure version receive Group 2 / Detail 3; whether the newest SUPERSEDED version's shape should be derived instead is open.
-- **D4 `markOperationallyUsed` has no caller — OQ-64: OPEN / DEFERRED** — operational freeze integration belongs to Posting integration. Implementation is blocked on the voucher → configuration cardinality and the marker's position in the module's lock order; the shape is recorded in `accounting/task-11-mark-operationally-used-decision-note.md`.
+- **D4 marker wired — OQ-64: RESOLVED 2026-09-23 (Task 13)** — the caller exists:
+  `finalizeChecked` → `markConfigurationsUsedByDocumentInTx`, one guarded
+  first-use-wins statement per distinct pinned configuration of the voucher's
+  lines, at the configuration position of the lock order (row `D4″`). Two
+  findings survive from that work and are follow-ups, not new tasks:
+  (a) **pre-existing usage is not backfilled** — the marker only exists from
+  Task 13's deployment onward, so databases with older `final` vouchers keep the
+  affected configurations editable until the repair `UPDATE` in
+  `docs/task-13-implementation-report.md` §9 is run (a data-only migration was
+  rejected: it would be an unaudited business effect and the first-use instant is
+  not reliably reconstructable); (b) **the usage `reason` stays unpersisted** —
+  the domain's `OperationalUsage.reason` (`first_voucher`) is computed for the
+  freeze decision but has no column: the task's scope rule forbids a new column (no speculative schema, report §1/§10-R2).
+- **D4 `markOperationallyUsed` had no caller (historical, resolved above)** — operational freeze integration belongs to Posting integration. Implementation is blocked on the voucher → configuration cardinality and the marker's position in the module's lock order; the shape is recorded in `accounting/task-11-mark-operationally-used-decision-note.md`.
 - **G7: ACCEPTED RISK — raw-SQL partial index `uq_accounting_configurations_org_active` is guarded by live `pg_indexes` verification and migration rehearsal.** The index exists only in the migration (Prisma cannot declare a partial unique index); a future `prisma migrate dev` regenerating the schema would drop it. The live-DB suite (`test/accounting-configuration-live.e2e-spec.ts` item 6) and the rehearsal (`verify.sql` #14–#16) verify it; the drift is accepted and documented in `prisma/schema/accounting.prisma`.
 - **`.vardena/project-context.md` staleness**: resolved 2026-09-22 — the file now
   describes the implemented backend instead of the documentation-only era.
@@ -274,4 +329,7 @@ own explicitly defined task (per §7) before any work; none of them is the
 | 2026-09-22 | Task 11 recorded (PR #25) in §2/§3 and its remediation summarised: D3 level-copy/fallback correction, `levelKind` contract alignment, cross-configuration regression tests, deterministic migration rehearsal (`npm run test:migration-rehearsal`), OQ-62…OQ-64, and the D4 decision note. §8 follow-ups updated; `.vardena/project-context.md` refreshed. |
 | 2026-09-22 | **Task 11 — Accounting Configuration Foundation: ACCEPTED** (PR #29 defect-resolution `docs/task-11-defect-resolution-report.md`, CI `35755493453`/`35755917087` success). §2/§3/§6/§8/§9 updated to reflect ACCEPTED; preserved explicitly OQ-62 OPEN, OQ-63 OPEN, OQ-64 OPEN/DEFERRED, G7 ACCEPTED RISK.                                                 |
 | 2026-09-22 | **Task 12 — Balance Projection: READY FOR REVIEW (not Accepted)** (branch `arena/01a0ca12-vardena`) — `account_balance_projections` + two views + transactional maintenance + audited rebuild + 4 endpoints. §2/§4/§6/§9 updated; ADR-0031 Proposed (not Accepted), gate §7 not yet passed, 10.9 intentionally skipped, OQ-62/63/64/G7 still OPEN. |
+| 2026-09-23 | **Task 13 — remediation: the positive live PostgreSQL marker assertion was added.** `backend/test/accounting-documents-live.e2e-spec.ts` gained two live tests (+316 lines, −0: test-only, no existing assertion touched) — a committed `PostingService.postVoucher` finalization marks the configuration its lines pinned, asserted on the raw `accounting_configurations` row (`operationally_used_at = finalized_at`, `updated_at` the same instant, `updated_by` NULL, and a decoy `SUPERSEDED` configuration in the same organization left NULL), and a finalization aborted by `uq_ledger_entries_voucher_line_id` (`23505`) inside the same transaction leaves the marker NULL with the row untouched (`updated_at` unchanged), after which a fresh-key retry marks it. No production file, migration, endpoint, permission or event changed, and no new marker entry point exists. The sandbox cannot execute live suites (no `prisma generate`); CI did — run `35866991009` on head `23942af` and `35867656089` on the docs head `0718d4e`, both `completed success`, step `E2E tests (incl. live-DB suites)` green on `postgres:16`, i.e. both tests really executed and passed (report §5.5). The task remains **IN PROGRESS (self-review)** — acceptance is a human decision (§7). |
+| 2026-09-23 | **Task 13 — CI gate closed on the pushed branch**: PR **#31** (`arena/01a0cd89-vardena` → `main`, head `5ad94f6`), required `backend` job **`completed success`** (run `35852213257`) — Prisma generate, lint, typecheck, format:check, 1017 unit tests, build, migrate deploy, Task 11 migration rehearsal, **live-DB e2e suites on `postgres:16`**. Report §5.4 records it and narrows the residual gap to "no positive live assertion for the marker"; the task index status stays **IN PROGRESS (self-review)** because acceptance is a human decision (§7). |
 | 2026-09-23 | **Task 12 — Accounting Balance Projection: ACCEPTED WITH FOLLOW-UP** (branch `arena/01a0ca12-vardena` `a62a13d`/`f2f10be`/`264a395`/`a62a13d`) — R-01 legacy helper removed, canonical lock order documented & statically verified, silent `take:10000` eliminated (batched 5000), opening/fiscal-year semantics documented (ADR-0031 §4/§9), reconciliation coverage expanded (all 4 mismatch states), migration/API/auth/tenant/pagination/build/typecheck/PGlite rehearsal gates PASS. **Mandatory P1 follow-up:** Real PostgreSQL concurrency verification NOT executed (runtime unavailable) — tracked as P1 follow-up requiring separate PostgreSQL execution with independent connections and lock-timeout/deadlock assertions; do not claim production PG concurrency safety proven by PGlite. ADR-0031 remains Proposed, Task 11 remains CLOSED, OQ-62/63/64/G7 still OPEN. §2/§3/§4/§6/§8/§9 updated; remediation report `docs/task-12-remediation-report.md` (19 sections, `a62a13d`) is the acceptance evidence. |
+| 2026-09-23 | **Task 13 — Accounting Operational Freeze: IN PROGRESS (self-review)** on `arena/01a0cd89-vardena` — the D4 marker is wired into `finalizeChecked` (one guarded, organization-scoped, first-use-wins statement per distinct pinned configuration of the voucher's lines, at lock-order row `D4″`); the service seam is now org-scoped and delegates to the same SQL; account create/enable/disable still mark nothing; `docs/accounting/configuration.md`, `docs/accounting/lock-order-matrix.md`, `docs/accounting/task-11-mark-operationally-used-decision-note.md` (status banner only), `docs/modules.md` and OQ-64 (**RESOLVED**, moved to the Resolved table) were updated in the same change; no migration, no endpoint, no permission, no event. Not Accepted — see §2 row 13 and §6. |

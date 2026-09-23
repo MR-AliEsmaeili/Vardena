@@ -87,6 +87,9 @@ const YEAR = '01YEARAAAAAAAAAAAAAAAAAAAA01';
 const PERIOD = '01PERIODAAAAAAAAAAAAAAAAAAA01';
 const DEBIT_ACCOUNT = '01ACCOUNTAAAAAAAAAAAAAAAAA01';
 const CREDIT_ACCOUNT = '01ACCOUNTAAAAAAAAAAAAAAAAA02';
+const LEGACY_ACCOUNT = '01ACCOUNTAAAAAAAAAAAAAAAAA03';
+const CONFIGURATION = '01CONFIGAAAAAAAAAAAAAAAAAA01';
+const LEGACY_CONFIGURATION = '01CONFIGAAAAAAAAAAAAAAAAAA02';
 
 const DOCUMENT_DATE = parseDateOnly('2026-04-05') as Date;
 
@@ -207,9 +210,38 @@ function seedScope(fx: Fixture): void {
     createdAt: now,
     updatedAt: now,
   });
-  for (const [id, code, title] of [
-    [DEBIT_ACCOUNT, '1000', 'Cash'],
-    [CREDIT_ACCOUNT, '2000', 'Revenue'],
+  // The chart of the accepted model: every account pins ONE accounting
+  // configuration (`accounts.accounting_configuration_id`, NOT NULL since
+  // Task 11 D1/D3). Task 13's operational-freeze marker reads exactly that
+  // pin at finalization, so the fixture carries it — including the
+  // mixed-configuration shape the Task 11 backfill produces (older accounts
+  // pinned to a superseded configuration, newer ones to the ACTIVE one), which
+  // a voucher may legitimately straddle.
+  const structureId = '01STRUCTAAAAAAAAAAAAAAAAA01';
+  for (const [id, code, status] of [
+    [CONFIGURATION, 'DEFAULT', 'ACTIVE'],
+    [LEGACY_CONFIGURATION, 'LEGACY', 'SUPERSEDED'],
+  ] as const) {
+    fx.structure.raw.state.accountingConfigurations.seed({
+      id,
+      organizationId: ORG_A,
+      code,
+      name: `Config ${code}`,
+      versionNumber: 1,
+      status,
+      effectiveFrom: null,
+      operationallyUsedAt: null,
+      codingStructureVersionId: structureId,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: null,
+      updatedBy: null,
+    });
+  }
+  for (const [id, code, title, configurationId] of [
+    [DEBIT_ACCOUNT, '1000', 'Cash', CONFIGURATION],
+    [CREDIT_ACCOUNT, '2000', 'Revenue', CONFIGURATION],
+    [LEGACY_ACCOUNT, '2100', 'Legacy revenue', LEGACY_CONFIGURATION],
   ] as const) {
     fx.structure.raw.state.accounts.seed({
       id,
@@ -218,8 +250,8 @@ function seedScope(fx: Fixture): void {
       title,
       parentId: null,
       level: 1,
-      codingStructureVersionId: '01STRUCTAAAAAAAAAAAAAAAAA01',
-      accountingConfigurationId: null,
+      codingStructureVersionId: structureId,
+      accountingConfigurationId: configurationId,
       accountNature: 'debit',
       isPostable: true,
       isActive: true,
@@ -248,6 +280,16 @@ async function composeVoucher(
     description?: string;
     debitAmount?: string;
     creditAmount?: string;
+    /**
+     * Task 13: the line set, when the default two lines of one configuration
+     * are not the shape under test (e.g. a voucher straddling two
+     * configurations). Amounts stay exact decimal strings (§13.1).
+     */
+    lines?: readonly {
+      accountId: string;
+      debitAmount: string;
+      creditAmount: string;
+    }[];
   } = {},
 ): Promise<AccountingDocument> {
   const now = new Date();
@@ -269,26 +311,37 @@ async function composeVoucher(
     correlationId: null,
     idempotencyReference: null,
     requestHash: null,
-    lines: [
-      {
-        id: generateId(),
-        lineNo: 1,
-        accountId: DEBIT_ACCOUNT,
-        debitAmount: overrides.debitAmount ?? '0.10',
-        creditAmount: '0',
-        description: 'Cash in',
-        sourceLineReference: null,
-      },
-      {
-        id: generateId(),
-        lineNo: 2,
-        accountId: CREDIT_ACCOUNT,
-        debitAmount: '0',
-        creditAmount: overrides.creditAmount ?? '0.10',
-        description: 'Revenue out',
-        sourceLineReference: null,
-      },
-    ],
+    lines:
+      overrides.lines !== undefined
+        ? overrides.lines.map((line, index) => ({
+            id: generateId(),
+            lineNo: index + 1,
+            accountId: line.accountId,
+            debitAmount: line.debitAmount,
+            creditAmount: line.creditAmount,
+            description: `Line ${index + 1}`,
+            sourceLineReference: null,
+          }))
+        : [
+            {
+              id: generateId(),
+              lineNo: 1,
+              accountId: DEBIT_ACCOUNT,
+              debitAmount: overrides.debitAmount ?? '0.10',
+              creditAmount: '0',
+              description: 'Cash in',
+              sourceLineReference: null,
+            },
+            {
+              id: generateId(),
+              lineNo: 2,
+              accountId: CREDIT_ACCOUNT,
+              debitAmount: '0',
+              creditAmount: overrides.creditAmount ?? '0.10',
+              description: 'Revenue out',
+              sourceLineReference: null,
+            },
+          ],
     ledger:
       phase === 'draft'
         ? null
@@ -340,6 +393,9 @@ function snapshotStores(fx: Fixture) {
     years: fx.accounting.raw.state.years.snapshot(),
     periods: fx.accounting.raw.state.periods.snapshot(),
     accounts: fx.structure.raw.state.accounts.snapshot(),
+    // Task 13: the freeze marker lives here, so "mutated nothing" now also
+    // proves no configuration was marked used by a refused or replayed call.
+    configurations: fx.structure.raw.state.accountingConfigurations.snapshot(),
   };
 }
 
@@ -1114,6 +1170,209 @@ describe('PostingService (Task 10.8 seam)', () => {
       repository.finalizeChecked = finalizeChecked;
     }
     expect(calls).toBe(1);
+  });
+
+  // ---- 8. operational freeze — the usage marker (Task 13) ------------------
+  //
+  // The boundary Task 11 deferred to this seam's transaction: the FIRST use of
+  // an accounting configuration is the posting that runs over it, and the mark
+  // is written by `finalizeChecked` — never by this service, never by a caller
+  // that only reads or drafts. The in-memory documents fake mirrors the real
+  // transaction's atomicity (its `withRollback` now covers the configuration
+  // rows), so what these tests pin is the BOUNDARY and its semantics; the
+  // statement itself (guard, organization predicate, lock position) is
+  // `data/accounting-configuration-usage.spec.ts`, and the real-PostgreSQL
+  // behaviour is the Task 13 rehearsal + the live suite.
+
+  /** The stored marker of one configuration (the fake table is the oracle). */
+  function usageMarkOf(fx: Fixture, configurationId: string): unknown {
+    return fx.structure.raw.state.accountingConfigurations.findById(
+      configurationId,
+    )?.operationallyUsedAt;
+  }
+
+  it('marks the configuration the posting used, with the finalization clock and actor', async () => {
+    const voucher = await composeVoucher(fixture);
+    expect(usageMarkOf(fixture, CONFIGURATION)).toBeNull();
+
+    const outcome = await fixture.posting.postVoucher({
+      organizationId: ORG_A,
+      voucherId: voucher.id,
+      operationKey: `post-${voucher.id}`,
+    });
+
+    expect(outcome.kind).toBe('posted');
+    const marked =
+      fixture.structure.raw.state.accountingConfigurations.findById(
+        CONFIGURATION,
+      );
+    // First use, and the ONLY use recorded: the marker is a first-use instant,
+    // not a counter, and its clock/actor are the finalization's own (no second
+    // `new Date()`, no separate actor).
+    expect(marked?.operationallyUsedAt).toBeInstanceOf(Date);
+    expect(marked?.operationallyUsedAt?.toISOString()).toBe(
+      outcome.document.finalizedAt?.toISOString(),
+    );
+    expect(marked?.updatedBy).toBe(outcome.document.finalizedBy);
+    // The configuration the voucher did NOT touch stays untouched.
+    expect(usageMarkOf(fixture, LEGACY_CONFIGURATION)).toBeNull();
+  });
+
+  it('marks nothing for a draft, and nothing for an issued-but-unposted voucher', async () => {
+    // Draft: reading/drafting a configuration is authoring, not use (§3A).
+    const draft = await composeVoucher(fixture, 'draft');
+    expect(usageMarkOf(fixture, CONFIGURATION)).toBeNull();
+
+    // Issued (draft → temporary): still no durable accounting effect, so still
+    // no mark — the marker belongs to the ledger, not to the serial.
+    await fixture.vouchers.documents.issueChecked({
+      id: draft.id,
+      organizationId: ORG_A,
+      documentNumber: '0001',
+      updatedAt: new Date(),
+      updatedBy: null,
+    });
+    expect(fixture.vouchers.raw.state.documents.findById(draft.id)?.state).toBe(
+      'temporary',
+    );
+    expect(usageMarkOf(fixture, CONFIGURATION)).toBeNull();
+  });
+
+  it('rolls the usage mark back when the posting does not commit', async () => {
+    const voucher = await composeVoucher(fixture);
+    const table = fixture.vouchers.raw.state.ledgerEntries;
+    const insert = table.insert.bind(table);
+    table.insert = (): never => {
+      throw uniqueViolation();
+    };
+    try {
+      await expect(
+        fixture.posting.postVoucher({
+          organizationId: ORG_A,
+          voucherId: voucher.id,
+          operationKey: `post-${voucher.id}`,
+        }),
+      ).rejects.toMatchObject({ code: 'P2002' });
+    } finally {
+      table.insert = insert;
+    }
+
+    // No false positive: the effect and its usage evidence are one atomic fact.
+    expect(usageMarkOf(fixture, CONFIGURATION)).toBeNull();
+    expect(
+      fixture.vouchers.raw.state.documents.findById(voucher.id)?.state,
+    ).toBe('temporary');
+    expect(await storedEntries(fixture, ORG_A, voucher.id)).toHaveLength(0);
+  });
+
+  it('keeps the first-use timestamp across a replay and across a second posting', async () => {
+    const first = await composeVoucher(fixture);
+    const operationKey = `post-${first.id}`;
+    await fixture.posting.postVoucher({
+      organizationId: ORG_A,
+      voucherId: first.id,
+      operationKey,
+    });
+    const firstUse = usageMarkOf(fixture, CONFIGURATION);
+    expect(firstUse).toBeInstanceOf(Date);
+
+    // Replay of the same intent: the idempotency ledger answers before the
+    // transaction is even opened, so the marker statement never runs twice.
+    await fixture.posting.postVoucher({
+      organizationId: ORG_A,
+      voucherId: first.id,
+      operationKey,
+    });
+    expect(usageMarkOf(fixture, CONFIGURATION)).toEqual(firstUse);
+
+    // A DIFFERENT voucher over the same configuration is a second real use —
+    // and still no new mark: first use wins, nothing appends, nothing moves.
+    const second = await composeVoucher(fixture);
+    await fixture.posting.postVoucher({
+      organizationId: ORG_A,
+      voucherId: second.id,
+      operationKey: `post-${second.id}`,
+    });
+    expect(usageMarkOf(fixture, CONFIGURATION)).toEqual(firstUse);
+    // Exactly one marker row per configuration — no duplicate usage evidence.
+    expect(
+      fixture.structure.raw.state.accountingConfigurations.findMany(
+        (row) => row.operationallyUsedAt !== null,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('marks every configuration a mixed-configuration voucher posted over', async () => {
+    // OQ-64's cardinality question, answered by the model: the configurations a
+    // posting used are the pins of the accounts its lines reference — so a
+    // voucher that straddles the ACTIVE and a SUPERSEDED configuration (the
+    // shape the Task 11 backfill produces) marks BOTH, and freezes neither more
+    // nor less than what it touched.
+    const voucher = await composeVoucher(fixture, 'temporary', {
+      lines: [
+        { accountId: DEBIT_ACCOUNT, debitAmount: '0.10', creditAmount: '0' },
+        { accountId: LEGACY_ACCOUNT, debitAmount: '0', creditAmount: '0.10' },
+      ],
+    });
+    expect(usageMarkOf(fixture, CONFIGURATION)).toBeNull();
+    expect(usageMarkOf(fixture, LEGACY_CONFIGURATION)).toBeNull();
+
+    await fixture.posting.postVoucher({
+      organizationId: ORG_A,
+      voucherId: voucher.id,
+      operationKey: `post-${voucher.id}`,
+    });
+
+    expect(usageMarkOf(fixture, CONFIGURATION)).toBeInstanceOf(Date);
+    expect(usageMarkOf(fixture, LEGACY_CONFIGURATION)).toBeInstanceOf(Date);
+  });
+
+  it("fails closed when a posted line's account carries no configuration pin", async () => {
+    const voucher = await composeVoucher(fixture);
+    // The impossible state under Task 11 D1/D3 (the pin is NOT NULL): reached
+    // here by degrading the fixture. The seam must refuse the whole posting
+    // rather than record a partial or invented usage record.
+    fixture.structure.raw.state.accounts.patch(DEBIT_ACCOUNT, {
+      accountingConfigurationId: null,
+    });
+
+    await expect(
+      fixture.posting.postVoucher({
+        organizationId: ORG_A,
+        voucherId: voucher.id,
+        operationKey: `post-${voucher.id}`,
+      }),
+    ).rejects.toThrow(/account_pin_missing/);
+
+    expect(usageMarkOf(fixture, CONFIGURATION)).toBeNull();
+    expect(
+      fixture.vouchers.raw.state.documents.findById(voucher.id)?.state,
+    ).toBe('temporary');
+    expect(await storedEntries(fixture, ORG_A, voucher.id)).toHaveLength(0);
+    expect(fixture.finalizedEvents).toHaveLength(0);
+  });
+
+  it('publishes no second usage record: the marker rides the configuration row', async () => {
+    const voucher = await composeVoucher(fixture);
+    await fixture.posting.postVoucher({
+      organizationId: ORG_A,
+      voucherId: voucher.id,
+      operationKey: `post-${voucher.id}`,
+    });
+    // Task 13 added no table and no event: usage lives in the one column, and
+    // the durable effect (entries + evidence row) stays its explanation.
+    expect(
+      fixture.vouchers.raw.state.operations
+        .snapshot()
+        .filter(
+          (row) =>
+            row.operation !== 'document_finalize' &&
+            row.operation !== 'document_create',
+        ),
+    ).toEqual([]);
+    expect(
+      fixture.structure.raw.state.accountingConfigurations.snapshot(),
+    ).toHaveLength(2);
   });
 });
 

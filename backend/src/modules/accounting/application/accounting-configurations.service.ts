@@ -356,17 +356,37 @@ export class AccountingConfigurationsService {
   }
 
   /**
-   * Operational-freeze marker (D4 — DEFERRED, no caller in Task 11).
+   * Operational-freeze marker (Task 11 D4 seam, connected by Task 13).
    *
-   * Deliberately NOT called by `AccountsService.createAccount`: creating an
-   * account is not operational use. The caller is deferred to
-   * Posting/System Posting at the first Voucher finalization, inside that
-   * transaction — see `docs/accounting/task-11-mark-operationally-used-decision-note.md`.
-   * The method exists so the freeze abstraction has one seam; it is kept, not
-   * dead code, and it is idempotent in the repository.
+   * STILL has no caller — by design. Task 13 connected the MARKER, not this
+   * method: the production marking happens inside the finalization transaction
+   * (`data/accounting-documents.repository.ts` → `accounting-configuration-usage.ts`)
+   * and there is no endpoint, no permission and no service call that marks
+   * usage on request, because usage is a fact about a committed business effect
+   * and never a client-supplied state. This seam stays for the future
+   * configuration types Task 11 named (dimensions, posting rules, …) and for
+   * controlled repair of a data anomaly; it now writes through the same guarded
+   * statement as the production path, and it is organization-scoped so it
+   * cannot touch another tenant's configuration.
+   *
+   * Deliberately NOT called by `AccountsService.createAccount`: creating or
+   * activating an account is not operational use (D4 — "first Voucher, not
+   * Account"), which the live regression in
+   * `test/accounting-configuration-live.e2e-spec.ts` keeps pinned.
+   * See `docs/accounting/task-11-mark-operationally-used-decision-note.md` and
+   * `docs/task-13-implementation-report.md`.
    */
-  async markOperationallyUsed(id: string): Promise<void> {
-    await this.repository.markOperationallyUsed({ id, now: new Date() });
+  async markOperationallyUsed(
+    organizationId: string,
+    id: string,
+    actorId: string | null = null,
+  ): Promise<void> {
+    await this.repository.markOperationallyUsed({
+      id,
+      organizationId,
+      now: new Date(),
+      actorId,
+    });
   }
 
   // Internals

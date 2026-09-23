@@ -294,9 +294,10 @@ describe('AccountingConfigurationsService — Task 11 foundation', () => {
     );
     expect(updated.name).toBe('Renamed');
 
-    // Mark operationally used
+    // Mark operationally used (Task 13: the seam is organization-scoped).
     await fixture.stores.raw.configurations.markOperationallyUsed({
       id: draft.id,
+      organizationId: orgA,
       now: new Date(),
     });
 
@@ -446,5 +447,110 @@ describe('AccountingConfigurationsService — Task 11 foundation', () => {
         }),
       ),
     ).toMatchObject({ total: 1 });
+  });
+
+  // ---- operational freeze: the marker seam (Task 13) -----------------------
+  //
+  // Task 13 connected the MARKER to the finalization transaction; these tests
+  // pin the properties the seam itself must keep — the marker is one row's
+  // first-use instant, it cannot cross an organization boundary, and the
+  // lifecycle guards read it. They are NOT a way to mark usage: no endpoint and
+  // no permission exists for it (see
+  // `data/accounting-configuration-usage.spec.ts`, "operational-freeze boundary
+  // contract"), and `markOperationallyUsed` has no production caller.
+
+  it("marks nothing for another organization's configuration", async () => {
+    const id = await publishConfiguration(fixture, orgA);
+    expect(
+      await fixture.stores.raw.configurations.markOperationallyUsed({
+        id,
+        organizationId: orgB,
+        now: new Date('2026-04-05T06:00:00.000Z'),
+      }),
+    ).toBeNull();
+    expect(
+      (
+        await asActor(ACTOR, () =>
+          fixture.configurations.getConfiguration(orgA, id),
+        )
+      ).operationallyUsedAt,
+    ).toBeNull();
+
+    // The owning organization marks it, with the same call shape.
+    await asActor(ACTOR, () =>
+      fixture.configurations.markOperationallyUsed(orgA, id, ACTOR),
+    );
+    expect(
+      (
+        await asActor(ACTOR, () =>
+          fixture.configurations.getConfiguration(orgA, id),
+        )
+      ).isOperationallyUsed,
+    ).toBe(true);
+  });
+
+  it('keeps the first-use instant: a repeated mark is a no-op, not an update', async () => {
+    const id = await publishConfiguration(fixture, orgA);
+    await fixture.stores.raw.configurations.markOperationallyUsed({
+      id,
+      organizationId: orgA,
+      now: new Date('2026-04-05T06:00:00.000Z'),
+    });
+    for (const later of [
+      '2027-01-01T00:00:00.000Z',
+      '2028-01-01T00:00:00.000Z',
+    ]) {
+      // eslint-disable-next-line no-await-in-loop
+      await fixture.stores.raw.configurations.markOperationallyUsed({
+        id,
+        organizationId: orgA,
+        now: new Date(later),
+      });
+    }
+    const row = fixture.stores.raw.state.accountingConfigurations.findById(id);
+    // Safe retry / concurrent loser / replay all land here: the FIRST timestamp
+    // survives, and there is exactly one mark to find.
+    expect(row?.operationallyUsedAt?.toISOString()).toBe(
+      '2026-04-05T06:00:00.000Z',
+    );
+  });
+
+  it('blocks publish once the configuration has been used', async () => {
+    // A DRAFT that somehow got used must not be publishable either: the freeze
+    // is read by every configuration mutation, not only by edit/delete.
+    const created = await asActor(ACTOR, () =>
+      fixture.configurations.createConfiguration({
+        organizationId: orgA,
+        code: 'PREUSED',
+        name: 'Used before publish',
+        effectiveFrom: null,
+        levels: TWO_LEVELS.levels as any,
+      }),
+    );
+    expect(
+      await failure(
+        asActor(ACTOR, () =>
+          fixture.stores.raw.configurations
+            .markOperationallyUsed({
+              id: created.id,
+              organizationId: orgA,
+              now: new Date(),
+            })
+            .then(() =>
+              fixture.configurations.publishConfiguration(orgA, created.id),
+            ),
+        ),
+      ),
+    ).toMatchObject({ code: 'BusinessRuleViolation' });
+    expect(
+      await asActor(ACTOR, () =>
+        fixture.configurations.listConfigurations({
+          organizationId: orgA,
+          page: 1,
+          pageSize: 10,
+          code: 'PREUSED',
+        }),
+      ),
+    ).toMatchObject({ items: [{ status: 'DRAFT' }] });
   });
 });

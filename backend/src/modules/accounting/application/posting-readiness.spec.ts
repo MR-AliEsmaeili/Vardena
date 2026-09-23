@@ -60,6 +60,7 @@ const YEAR = '01YEARAAAAAAAAAAAAAAAAAAAA01';
 const PERIOD = '01PERIODAAAAAAAAAAAAAAAAAAA01';
 const DEBIT_ACCOUNT = '01ACCOUNTAAAAAAAAAAAAAAAAA01';
 const CREDIT_ACCOUNT = '01ACCOUNTAAAAAAAAAAAAAAAAA02';
+const CONFIGURATION = '01CONFIGAAAAAAAAAAAAAAAAAA01';
 
 const DOCUMENT_DATE = parseDateOnly('2026-04-05') as Date;
 
@@ -154,6 +155,24 @@ function seedScope(fx: Fixture): void {
     createdAt: now,
     updatedAt: now,
   });
+  // Task 11 D1/D3 made `accounts.accounting_configuration_id` NOT NULL, so the
+  // fixture pins one exactly like the real chart does — and Task 13's
+  // operational-freeze marker reads that pin at finalization.
+  fx.structure.raw.state.accountingConfigurations.seed({
+    id: CONFIGURATION,
+    organizationId: ORG_A,
+    code: 'DEFAULT',
+    name: 'Main Config',
+    versionNumber: 1,
+    status: 'ACTIVE',
+    effectiveFrom: null,
+    operationallyUsedAt: null,
+    codingStructureVersionId: '01STRUCTAAAAAAAAAAAAAAAAA01',
+    createdAt: now,
+    updatedAt: now,
+    createdBy: null,
+    updatedBy: null,
+  });
   for (const [id, code, title] of [
     [DEBIT_ACCOUNT, '1000', 'Cash'],
     [CREDIT_ACCOUNT, '2000', 'Revenue'],
@@ -166,7 +185,7 @@ function seedScope(fx: Fixture): void {
       parentId: null,
       level: 1,
       codingStructureVersionId: '01STRUCTAAAAAAAAAAAAAAAAA01',
-      accountingConfigurationId: null,
+      accountingConfigurationId: CONFIGURATION,
       accountNature: 'debit',
       isPostable: true,
       isActive: true,
