@@ -1,6 +1,6 @@
 # Vardena — Accounting Task Index
 
-Status: **Authoritative** · Date: 2026-09-23 · Type: governance / index (documentation only) · Task 11: **ACCEPTED 2026-09-22** · Task 12: **ACCEPTED WITH FOLLOW-UP 2026-09-23** · Task 13: **IN PROGRESS (self-review, 2026-09-23)** — PR #31 open, required CI green on head `5ad94f6`; not Accepted (see §2 row 13, §6, §9)
+Status: **Authoritative** · Date: 2026-09-23 · Type: governance / index (documentation only) · Task 11: **ACCEPTED 2026-09-22** · Task 12: **ACCEPTED WITH FOLLOW-UP 2026-09-23** · Task 13: **IN PROGRESS (self-review, 2026-09-23)** — PR #31 open, required CI **green** (`5ad94f6` run `35852213257`; head `692ee0f` run `35852746750`); not Accepted (see §2 row 13, §6, §9)
 
 > This document is the authoritative record of which Accounting implementation
 > tasks exist, what state the module is in, which capabilities are still only

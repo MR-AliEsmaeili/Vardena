@@ -4,8 +4,9 @@ Branch: `arena/01a0cd89-vardena` · Baseline: `1ce8d78` (`Merge pull request #30
 Date: 2026-09-23 · Area: Accounting (module 3) — `domain/` + `data/` + `application/` seams + test fakes + docs
 Governance status: **READY FOR REVIEW — IN PROGRESS (self-review), NOT Accepted** (per `docs/accounting/task-index.md` §6/§7: acceptance needs human acceptance + push + open PR + PR checks and the required CI green on the head SHA). The branch was pushed and **PR #31** was opened
 > (`https://github.com/MR-AliEsmaeili/Vardena/pull/31`, head
-> `5ad94f6`, base `main`, `MERGEABLE`), and the required CI job **passed on that
-> head**: run `35852213257`, job `backend`, `completed success`, every step green
+> `692ee0f`, base `main`, `MERGEABLE`), and the required CI job is **green**:
+> `completed success` on the code head `5ad94f6` **and** again on the current head
+> `692ee0f` (run `35852746750`, docs-only delta): run `35852213257`, job `backend`, `completed success`, every step green
 > including `Prisma generate`, `Unit tests`, `Build`, `Migrate test database`,
 > `Migration rehearsal (populated pre-Task-11 data)` and
 > **`E2E tests (incl. live-DB suites)`** on `postgres:16` (§5.4). That closes the
@@ -13,7 +14,7 @@ Governance status: **READY FOR REVIEW — IN PROGRESS (self-review), NOT Accepte
 > human decision; nothing in this report claims it. (An earlier run
 > `35852180644` on head `3e198d2` was auto-cancelled when the docs-only follow-up
 > was pushed; no code changed between them.)
-Implementation commit: **`a0d90d3d7d22c45b11936439243bdee856c3e14a`** — `feat(accounting): wire the operational-freeze marker into finalization (Task 13, D4)`, 27 files, the only commit on top of the baseline `1ce8d78`. This report, the tests, the docs and both evidence scripts are in it; the follow-up commit `docs(task-13): record the implementation commit SHA` only amended this line (a commit cannot contain its own hash)
+Implementation commit: **`a0d90d3d7d22c45b11936439243bdee856c3e14a`** — `feat(accounting): wire the operational-freeze marker into finalization (Task 13, D4)`, 27 files: the code, both evidence scripts, all doc updates and this report. It is followed only by documentation commits that record the review state — `3e198d2` (this SHA line), `5ad94f6` (PR/CI status), `64335c5` (§5.4 CI results), `692ee0f` (task index, current PR head) — no code, schema, migration or test line changed in them (a commit cannot contain its own hash, which is why this line names the follow-ups rather than itself)
 
 ## 1. Task definition — what was asked
 
@@ -239,7 +240,7 @@ tests), `accounting-documents-live.e2e-spec.ts` and
 `ledger-entries-live.e2e-spec.ts` (the finalize transaction that now carries the
 marker, through the real `$queryRaw` plumbing).
 
-**Evidence label: VERIFIED-on-CI (GitHub Actions, `postgres:16`, head `5ad94f6`).**
+**Evidence label: VERIFIED-on-CI (GitHub Actions, `postgres:16`, head `5ad94f6`; re-run green on `692ee0f`, run `35852746750`, docs-only delta).**
 Reported from `gh run view 35852213257`, not inferred; step-level conclusions are
 what CI published, and the raw log was not re-parsed here. Two caveats: CI does
 **not** run this task's rehearsal (`test:operational-freeze-rehearsal` is
@@ -331,7 +332,7 @@ All from `/home/user/Vardena/backend`. Baseline `1ce8d78` was clean; every comma
 | `npx prisma generate` / `prisma validate` / `migrate dev` | **NOT AVAILABLE** in this sandbox — the engine download is network-blocked. `schema-engine` binary fetch fails; consequently all `*-live.e2e-spec.ts` suites cannot run here. Nothing under `prisma/` changed except the two new rehearsal scripts (plain `pg`, no codegen). |
 | `npm run test:operational-freeze-rehearsal` (= `rehearse.mjs` then `backfill-repair-probe.mjs`, needs `DATABASE_URL` at a migrated PostgreSQL) | **PASS** — 23/23 then 5/5; the rehearsal was run three times in a row with identical output, zero residue (verified by row counts; the repair probe rolls its own transaction back) |
 | `git status` on `backend/prisma/schema/`, `backend/prisma/migrations/` | clean — no schema or migration change |
-| CI (pushed head `5ad94f6`) | **PASS** — run `35852213257` / job `backend` `completed success`, all steps incl. `Prisma generate`, `E2E tests (incl. live-DB suites)` and the Task 11 `Migration rehearsal` (§5.4) |
+| CI (PR #31) | **PASS** — run `35852213257` on head `5ad94f6` and run `35852746750` on head `692ee0f`, job `backend` `completed success`: all steps green incl. `Prisma generate`, `Unit tests`, `Build`, `Migrate test database`, `Migration rehearsal (populated pre-Task-11 data)` and `E2E tests (incl. live-DB suites)` on `postgres:16` (§5.4) |
 
 Sandbox-only artifacts deliberately **not** committed: the locally installed real PostgreSQL binaries (`node_modules/@embedded-postgres/*`), `pg`/`pglite` installed with `--no-save`, and the throwaway cluster at `127.0.0.1:55432`. `pg` is already a runtime dependency of the app, so the rehearsal scripts need no new package.
 
