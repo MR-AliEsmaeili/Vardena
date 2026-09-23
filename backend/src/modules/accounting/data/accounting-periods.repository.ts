@@ -53,6 +53,14 @@ import type {
  * There is deliberately no `update` here at all: periods have no update
  * endpoint (no `Accounting.AccountingPeriod.Edit` code in contract §22),
  * so the only mutation path is the guarded `transitionChecked`.
+ *
+ * Task 14 adds NO lock and NO lock order to this file: the organization
+ * ownership of the LOCKED year and period rows is verified inside the very
+ * transaction that writes the status, so a foreign id can never become a
+ * cross-organization lifecycle write even if a future caller skips the
+ * service's in-scope resolution. The `status` column of the locked row
+ * remains the single authority for "which lifecycle move is legal now"
+ * (the plan itself is the pure `planAccountingPeriodTransition`).
  */
 
 type Client = {
@@ -81,6 +89,8 @@ export interface CreateAccountingPeriodCheckedInput {
 }
 
 export interface TransitionAccountingPeriodCheckedInput {
+  /** The caller's organization; the locked rows must belong to it. */
+  organizationId: string;
   id: string;
   /** The status the caller planned from (pre-checked by the service). */
   from: string;
@@ -156,6 +166,12 @@ export class AccountingPeriodsRepository {
    * overlap guards inside the year-locked transaction. The row is born
    * `open` with `period_kind = 'normal'` (contract §7.1/§7.2).
    *
+   * The locked year must belong to the caller's organization and to the
+   * financial area the period is being created under: a foreign year is a
+   * boundary violation, never a lucky insert (Task 14 — the service's
+   * in-scope resolution is repeated here so the guard is self-sufficient
+   * inside its own transaction, the `lockScopeInTx` posture).
+   *
    * @throws PeriodYearNotUsableError when the year is disabled.
    * @throws PeriodYearNotOpenError when the year is closed or sealed.
    * @throws PeriodOutsideYearError when the range leaves the year.
@@ -169,6 +185,14 @@ export class AccountingPeriodsRepository {
       // Throws when the row is gone (a bug — the service resolves the year
       // first, and years are never deleted).
       const year = await lockFiscalYearRow(tx, input.fiscalYearId);
+      if (
+        year.organizationId !== input.organizationId ||
+        year.financialAreaId !== input.financialAreaId
+      ) {
+        throw new Error(
+          `Fiscal year "${year.id}" does not belong to organization "${input.organizationId}" and financial area "${input.financialAreaId}".`,
+        );
+      }
       if (!year.isActive) throw new PeriodYearNotUsableError();
       if (year.status !== 'open') {
         throw new PeriodYearNotOpenError(year.status);
@@ -217,10 +241,16 @@ export class AccountingPeriodsRepository {
   }
 
   /**
-   * Apply one lifecycle move, verifying the locked current status and the
-   * year-level gate inside the transaction. `close` and `reopen` are
-   * refused while the year is sealed (contract §7.2 rule 4); `seal` is
-   * the period's own finality and carries no year-status gate.
+   * Apply one lifecycle move, verifying the locked current status, the
+   * organization ownership of the locked rows and the year-level gate
+   * inside the transaction. `close` and `reopen` are refused while the
+   * year is sealed (contract §7.2 rule 4); `seal` is the period's own
+   * finality and carries no year-status gate.
+   *
+   * Both rows are read FOR UPDATE before they are judged: the status this
+   * transition validates is the committed one, so `close` racing the
+   * finalization of a voucher dated in this period serializes on the same
+   * period row the posting path locks first (see `accounting-locks.ts`).
    *
    * @throws PeriodTransitionConflictError when the period moved while the
    *   request was in flight (maps to 409, not 422).
@@ -249,7 +279,21 @@ export class AccountingPeriodsRepository {
       }
       // Year first, then the period — the fixed order (see above).
       const year = await lockFiscalYearRow(tx, route.fiscalYearId);
+      if (year.organizationId !== input.organizationId) {
+        throw new Error(
+          `Fiscal year "${year.id}" does not belong to organization "${input.organizationId}".`,
+        );
+      }
       const locked = await lockAccountingPeriodRow(tx, input.id);
+      if (locked.organizationId !== input.organizationId) {
+        // The service resolves the period in scope first and answers 404 for
+        // a foreign id (AC-I-16); reaching this inside the transaction means
+        // the row belongs to another organization, which is a boundary
+        // violation, not a missing row.
+        throw new Error(
+          `Accounting period "${input.id}" does not belong to organization "${input.organizationId}".`,
+        );
+      }
       if (locked.status !== input.from) {
         throw new PeriodTransitionConflictError(locked.status);
       }

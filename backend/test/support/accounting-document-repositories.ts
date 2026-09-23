@@ -526,6 +526,12 @@ export class InMemoryAccountingDocumentsRepository {
       header.financialAreaId,
       header.documentDate,
     );
+    // Task 14 — the lifecycle gate refuses a closed/sealed period BEFORE
+    // anything else happens, exactly like the real transaction's fail-fast
+    // position (the real one has no locks to demonstrate; the fake proves the
+    // refusal happens before the account check, the ledger write, the freeze
+    // marker and the idempotency row).
+    assertOpenScope(scope);
     this.assertUsableAccounts(
       input.organizationId,
       this.state.lines

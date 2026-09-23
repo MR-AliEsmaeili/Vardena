@@ -381,7 +381,10 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   `ledger-post-*` pattern) → the Foundation's lifecycle verdict
   (`planVoucherFinalize`) → **Task 10.7's ONE atomic transaction, unwrapped**
   (`finalizeChecked`: the module's fixed lock order, the in-transaction
-  re-validation, the Task 13 usage marker at the configuration position,
+  re-validation, **the Task 14 period-lifecycle gate first — the locked
+  period/year status is judged immediately after the scope locks, before the
+  usage marker, the account/projection locks and any write (row `D4‴` of the
+  lock-order matrix) — the Task 13 usage marker at the configuration position,
   `state = final`, N immutable ledger entries, the operation row LAST) → `AccountingDocument.Finalized` (still the posting evidence,
   AC-D-20) → the Task 10.5 readiness verdict on the FINAL voucher → a
   `PostingResult` (Task 10.6) assembled from the STORED entries, with
@@ -411,7 +414,14 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   transitions as `POST :id/{close, reopen, seal, unseal}` with a mandatory `reason`
   (years support all four; periods support close/reopen/seal). Year close cascades
   onto its open periods in the same transaction; seal requires every period closed
-  (fail closed, OQ-23). **No DELETE.**
+  (fail closed, OQ-23); a sealed year gates period close/reopen. **No DELETE.**
+  **Task 14:** the lifecycle is enforced inside the finalization transaction (a
+  `closed`/`sealed` period refuses a new finalization with
+  `422 businessRule` `{scope, status}` before any write), and the two backward moves
+  the contract explicitly permits — `CLOSED → OPEN` and `SEALED → OPEN` after the
+  audited year `unseal` — remain reachable **only** through this endpoint, with their
+  own permission, mandatory reason and audit event. No force-close, no wildcard bypass,
+  no endpoint accepting an arbitrary target status (ADR-0032).
 - **API (Task 10.3):**
   `/api/v1/coding-structures` — `GET` list of versions (mandatory
   `organizationId`, optional `code`/`status`/`search`), `GET /active`

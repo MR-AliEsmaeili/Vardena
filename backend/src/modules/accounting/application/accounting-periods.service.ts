@@ -274,6 +274,13 @@ export class AccountingPeriodsService {
   /**
    * Apply one lifecycle move (`close`, `reopen`, `seal`). Each move
    * carries its own permission (contract §22) and a mandatory reason.
+   *
+   * The plan below is re-evaluated against the LOCKED row inside the
+   * repository transaction (organization ownership of the year and the
+   * period verified there too), so the decision is made on persisted state,
+   * never on the pre-read copy: a period that moved while the request was in
+   * flight answers 409, a move the current status refuses answers 422, and a
+   * sealed fiscal year gates `close`/`reopen` (contract §7.2 rule 4).
    */
   async transitionAccountingPeriod(
     input: TransitionAccountingPeriodInput,
@@ -301,6 +308,7 @@ export class AccountingPeriodsService {
     let updated: AccountingPeriod;
     try {
       updated = await this.repository.transitionChecked({
+        organizationId: input.organizationId,
         id: input.id,
         from: current.status,
         to: plan.to,

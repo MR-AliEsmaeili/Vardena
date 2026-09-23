@@ -89,3 +89,5 @@ Keep ADRs **short** (≤ ~60 lines). If it needs more, it belongs in `docs/`.
 | [0028](./0028-accounting-configuration-foundation.md) | Accounting configuration foundation — versioned root, single ACTIVE, operational freeze | Accepted |
 | [0029](./0029-machine-api-access-model.md) | Machine/API access model — licensed API keys on the RBAC permission model | Proposed |
 | [0030](./0030-license-foundation.md) | License foundation — minimal, non-punitive, enforcement-off | Proposed |
+| [0031](./0031-balance-projection.md) | Accounting balance projection — rebuildable turnover-only materialization | Proposed |
+| [0032](./0032-accounting-period-close-enforcement.md) | Accounting period close — in-transaction enforcement, gate placement and the reopen exception | Proposed |

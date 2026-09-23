@@ -58,9 +58,19 @@ export interface LockedFiscalYear {
   endDate: Date;
 }
 
-/** A locked accounting-period row: the routing + status the guards need. */
+/**
+ * A locked accounting-period row: the routing + status the guards need.
+ *
+ * `organizationId` is carried since Task 14 so a lifecycle transition can
+ * verify organization ownership of the LOCKED row inside its own transaction
+ * (the service resolves the period in scope first and answers 404 for a
+ * foreign id; this is the authoritative re-check, so no future caller can
+ * mutate a period across the boundary by handing the repository a foreign
+ * id).
+ */
 export interface LockedAccountingPeriod {
   id: string;
+  organizationId: string;
   fiscalYearId: string;
   status: string;
 }
@@ -174,8 +184,9 @@ export async function lockAccountingPeriodRow(
 ): Promise<LockedAccountingPeriod> {
   const rows = await tx.$queryRaw<LockedAccountingPeriod>`
     SELECT "id",
-           "fiscal_year_id" AS "fiscalYearId",
-           "status"         AS "status"
+           "organization_id" AS "organizationId",
+           "fiscal_year_id"  AS "fiscalYearId",
+           "status"          AS "status"
       FROM "accounting"."accounting_periods"
      WHERE "id" = ${periodId}
      FOR UPDATE`;

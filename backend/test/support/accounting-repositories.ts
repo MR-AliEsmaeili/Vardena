@@ -544,6 +544,17 @@ export class InMemoryAccountingPeriodsRepository {
     if (year === null) {
       throw new Error(`Fiscal year "${input.fiscalYearId}" no longer exists.`);
     }
+    // Task 14: the locked year must belong to the caller's organization and
+    // area — the real transaction verifies both, and one mapping covers both
+    // paths only while the fake refuses the same shapes.
+    if (
+      year.organizationId !== input.organizationId ||
+      year.financialAreaId !== input.financialAreaId
+    ) {
+      throw new Error(
+        `Fiscal year "${year.id}" does not belong to organization "${input.organizationId}" and financial area "${input.financialAreaId}".`,
+      );
+    }
     if (!year.isActive) throw new PeriodYearNotUsableError();
     if (year.status !== 'open') throw new PeriodYearNotOpenError(year.status);
     const siblings = this.state.periods.findMany(
@@ -569,8 +580,12 @@ export class InMemoryAccountingPeriodsRepository {
     } as AccountingPeriod);
   }
 
-  /** Mirrors the real transition transaction: status + year-seal gate. */
+  /**
+   * Mirrors the real transition transaction: organization ownership of the
+   * year and the period, then the current status, then the year-seal gate.
+   */
   async transitionChecked(input: {
+    organizationId: string;
     id: string;
     from: string;
     to: string;
@@ -585,6 +600,18 @@ export class InMemoryAccountingPeriodsRepository {
     const year = this.state.years.findById(route.fiscalYearId);
     if (year === null) {
       throw new Error(`Fiscal year "${route.fiscalYearId}" no longer exists.`);
+    }
+    // Task 14: ownership of both locked rows, exactly like the real
+    // transaction (a foreign id is a boundary violation, never a write).
+    if (year.organizationId !== input.organizationId) {
+      throw new Error(
+        `Fiscal year "${year.id}" does not belong to organization "${input.organizationId}".`,
+      );
+    }
+    if (route.organizationId !== input.organizationId) {
+      throw new Error(
+        `Accounting period "${input.id}" does not belong to organization "${input.organizationId}".`,
+      );
     }
     if (route.status !== input.from) {
       throw new PeriodTransitionConflictError(route.status);

@@ -76,7 +76,11 @@ import type {
  *   so the calendar a voucher resolves against cannot change under it;
  * - the YEAR and PERIOD row locks make the §7.2 status gate race-safe: a
  *   concurrent close/seal either commits first (and is observed) or waits
- *   until the document transaction ends;
+ *   until the document transaction ends. Task 14 evaluates that gate
+ *   IMMEDIATELY after those locks (fail closed, before the freeze marker and
+ *   before any account/projection lock or write — see `finalizeChecked`), so
+ *   a locked period refuses the whole finalization instead of merely rolling
+ *   it back at the end;
  * - the ACCOUNT `FOR SHARE` locks make AC-I-09 (postable + active) hold
  *   against a concurrent postability flip or deactivation, and interlock with
  *   the account guard's `FOR UPDATE` that counts line references (AC-I-11);
@@ -494,6 +498,18 @@ export class AccountingDocumentsRepository {
    * aborts the transaction, so a `final` document can never exist without its
    * entries and its idempotency evidence, and a retry can never finalize or
    * post twice.
+   *
+   * Task 14 — the accounting-period lifecycle gate. As soon as the resolved
+   * year and period are locked, the scope is asserted OPEN and the whole
+   * transaction fails closed for `closed`/`sealed` — before the freeze marker,
+   * before the account/projection locks, before any write. There is no
+   * redirect into "another period", no implicit reopen, and no way to reach
+   * the ledger of a locked period: the ledger INSERTs (and the balance
+   * projection UPSERTs and the evidence row that accompany them) sit strictly
+   * after the gate, inside the same transaction. A posting that loses the race
+   * against a `close` therefore leaves NOTHING behind — no `state = 'final'`,
+   * no ledger entry, no balance delta, no posting-operation row, no freeze
+   * marker — because the refusal rolls the single transaction back as a unit.
    */
   async finalizeChecked(
     input: FinalizeAccountingDocumentInput,
@@ -515,6 +531,19 @@ export class AccountingDocumentsRepository {
         financialAreaId: header.financialAreaId,
         documentDate: header.documentDate,
       });
+      // Task 14 — the accounting-period lifecycle gate, FIRST and fail-closed
+      // (contract §7.2 rules 4/8, §15.5 step 1). The resolved year and period
+      // are now locked, so their status is the committed one; if the period is
+      // `closed`/`sealed` (or its year is), the finalization is refused HERE —
+      // before the operational-freeze marker, before the account `FOR SHARE`
+      // locks, before the projection locks, before any row is written. Nothing
+      // reaches the ledger, and a refused posting does not even take the locks
+      // of a posting that would have committed: the period row is the
+      // serialization point, so a concurrent `close` either commits first (and
+      // is seen here) or waits until this transaction ends. The re-assertion
+      // after the document lock below is the Task 10.7 stored-scope check, kept
+      // as the authoritative verdict on the re-read scope.
+      assertOpenScope(scope);
       const lockedAccountIds = await accountIdsInTx(tx, input.id);
       // Task 13 — operational freeze. The configurations this posting USES are
       // marked here, inside the finalization transaction and at the
@@ -808,9 +837,16 @@ async function lockScopeInTx(
     throw new AccountingDocumentDateUnresolvableError(input.documentDate);
   }
   const period = await lockAccountingPeriodRow(tx, resolvedPeriod.id);
-  if (period.fiscalYearId !== year.id) {
+  if (
+    period.fiscalYearId !== year.id ||
+    period.organizationId !== input.organizationId
+  ) {
+    // The period must be the locked year's own, inside the caller's
+    // organization: a period read from another scope would mean the
+    // denormalized scope columns disagree with the year (Task 14 verifies
+    // ownership of the LOCKED row, not only of the row that routed us here).
     throw new Error(
-      `Accounting period "${period.id}" does not belong to fiscal year "${year.id}".`,
+      `Accounting period "${period.id}" does not belong to fiscal year "${year.id}" of organization "${input.organizationId}".`,
     );
   }
   return { year, period };
