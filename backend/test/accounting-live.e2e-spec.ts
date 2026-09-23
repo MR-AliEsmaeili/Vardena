@@ -72,6 +72,9 @@ describe.skipIf(DATABASE_URL === undefined)(
           // Test-only cleanup through the raw client; the API has no delete
           // endpoints for these rows (Task 10.2 §20).
           const client = await prisma.getClient<{
+            accountBalanceProjection: {
+              deleteMany: (args: unknown) => Promise<unknown>;
+            };
             accountingPeriod: {
               deleteMany: (args: unknown) => Promise<unknown>;
             };
@@ -81,6 +84,11 @@ describe.skipIf(DATABASE_URL === undefined)(
             };
             organization: { deleteMany: (args: unknown) => Promise<unknown> };
           }>();
+          // Task 12: balance projections RESTRICT their period/account/etc.,
+          // so delete them before their parents (same as ledger-entries).
+          await client.accountBalanceProjection.deleteMany({
+            where: { organizationId },
+          });
           await client.accountingPeriod.deleteMany({
             where: { organizationId },
           });
