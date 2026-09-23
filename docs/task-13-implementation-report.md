@@ -270,7 +270,7 @@ not every property in §4.
 ### 5.5 Positive live PostgreSQL marker assertion
 
 Added after review, to close the one gap §12 used to leave open. **Test-only**: one
-file, `backend/test/accounting-documents-live.e2e-spec.ts`, +309 lines and **0
+file, `backend/test/accounting-documents-live.e2e-spec.ts`, +316 lines and **0
 deleted** — no existing assertion was touched, and no production, schema,
 migration, permission or DTO file changed.
 
@@ -340,7 +340,9 @@ Because `VARDENA_TEST_DATABASE_URL` is a job-level env
 `describe.skipIf(DATABASE_URL === undefined)` guard in this file does not fire in CI,
 so both new tests really ran against PostgreSQL 16 and passed — a red assertion in
 either would have turned step 16 red. **Label: VERIFIED-on-CI (live PostgreSQL 16,
-head `23942af`).** The raw CI log is not retrievable from this sandbox (`gh run view
+head `23942af`).** The documentation head that followed it is green as well (run
+`35867656089` on `0718d4e`, `completed success`), so the PR head itself carries a
+passing live run. The raw CI log is not retrievable from this sandbox (`gh run view
 --log` and the job-log endpoint both fail), so what is recorded here is the
 step-level conclusion plus the `skipIf` mechanism — stated, not implied.
 
@@ -507,7 +509,7 @@ Measured against the baseline (`git diff --numstat` + the new files):
 | production `src/modules/accounting/**` (non-spec) | **+461 / −40** — 173 of those insertions are the new `data/accounting-configuration-usage.ts`; a large share of the rest is the rationale headers the module convention requires (AG-07/AG-16) |
 | shared test doubles (`test/support/`)             | +118 / −34                                                                                                                                                                                     |
 | unit specs                                        | +1042 / −27                                                                                                                                                                                    |
-| live e2e (remediation, §5.5)                      | +309 / −0 — one file, `backend/test/accounting-documents-live.e2e-spec.ts`; nothing removed, so no existing assertion was weakened                                                             |
+| live e2e (remediation, §5.5)                      | +316 / −0 — one file, `backend/test/accounting-documents-live.e2e-spec.ts`; nothing removed, so no existing assertion was weakened                                                             |
 | docs                                              | +179 / −25 (+335 for this report)                                                                                                                                                              |
 | evidence scripts + logs                           | +1264 (scripts) + 68 (captured logs)                                                                                                                                                           |
 
