@@ -4,6 +4,8 @@ on:
     branches: [arena/01a0ca12-vardena]
 permissions:
   contents: read
+  pull-requests: write
+  issues: write
 jobs:
   debug:
     runs-on: ubuntu-latest
@@ -30,6 +32,9 @@ jobs:
           echo "--- schema snippet ---"
           sed -n '870,880p' prisma/schema/accounting.prisma
           echo "--- end ---"
+          cp /tmp/prisma-validate.log /tmp/out.txt
+          echo "EXIT:$EXIT" >> /tmp/out.txt
+          sed -n '870,880p' prisma/schema/accounting.prisma >> /tmp/out.txt
           exit $EXIT
       - name: Show schema
         if: always()
@@ -38,3 +43,22 @@ jobs:
           sed -n '870,885p' backend/prisma/schema/accounting.prisma
           echo "=== grep unique ==="
           grep -n "uq_account_balance" backend/prisma/schema/accounting.prisma || true
+      - name: Post result as PR comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let out = '';
+            try { out = fs.readFileSync('/tmp/out.txt', 'utf8'); } catch(e) { out = 'no log file: ' + e.message; }
+            // also cat the file directly if exists
+            try { out += '\n--- full log ---\n' + fs.readFileSync('/tmp/prisma-validate.log','utf8'); } catch(e) {}
+            out = out.slice(0, 60000);
+            const body = `**debug-prisma** run \`${{ github.run_id }}\` \n\`\`\`\n${out}\n\`\`\``;
+            // find PR number for this branch
+            const prs = await github.rest.pulls.list({owner: context.repo.owner, repo: context.repo.repo, head: `${context.repo.owner}:arena/01a0ca12-vardena`, state: 'open'});
+            if (prs.data.length > 0) {
+              await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: prs.data[0].number, body});
+            } else {
+              core.info('no open PR found');
+            }
