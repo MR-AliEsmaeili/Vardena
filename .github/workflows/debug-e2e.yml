@@ -36,6 +36,8 @@ jobs:
       - run: npm install -g npm@11
       - run: npm ci --no-audit --no-fund
         working-directory: backend
+      - run: npm run prisma:generate
+        working-directory: backend
       - run: npm run prisma:deploy
         working-directory: backend
       - name: Run E2E (capture)
