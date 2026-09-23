@@ -3,6 +3,28 @@
 Status: **Decision note** (no code, no schema change) · Date: 2026-09-22 · Task: Task 11 remediation §9 (Operational freeze)
 Related: ADR-0028, [`configuration.md`](./configuration.md) §Operational Freeze, OQ-64 (registered by this note)
 
+> **IMPLEMENTED — 2026-09-23 (Task 13).** The three questions this note left open
+> are decided and wired: the marker is written from
+> `AccountingDocumentsRepository.finalizeChecked` through
+> `markConfigurationsUsedByDocumentInTx`
+> (`backend/src/modules/accounting/data/accounting-configuration-usage.ts`) for
+> the distinct configurations the voucher's lines pinned; it sits at the module's
+> existing configuration position of the lock order, recorded as row `D4″` in
+> `docs/accounting/lock-order-matrix.md`; and `operationally_used_at` is
+> first-use-wins by a single guarded statement. §5's recommended resolution is
+> what was implemented, including its two open sub-points (Account creation/
+> activation marks nothing; `PostingService.markConfigurationUsed` was NOT added —
+> the seam stays in the data layer and the service method is caller-free).
+> Evidence: `docs/task-13-implementation-report.md` + the real-PostgreSQL
+> rehearsal log `docs/accounting/task-13-evidence/postgres-rehearsal.log`.
+> **OQ-64: RESOLVED** (moved to the Resolved table in `docs/open-questions.md`).
+>
+> The text below is the **2026-09-22 analysis, preserved verbatim as the decision
+> record** — including §1's "what exists today" inspection, which described the
+> pre-Task-13 state (no caller, no resolution, no ledger read path). It is not
+> maintained as current architecture; `docs/accounting/configuration.md` §Operational
+> freeze — wired (Task 13) is.
+
 > This note inspects the operational-freeze abstraction that Task 11 (D4) left
 > without a caller and records what must be decided before it is wired up. It
 > deliberately implements nothing: the invariant ("which configuration does a

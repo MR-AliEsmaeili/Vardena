@@ -760,21 +760,31 @@ export class InMemoryAccountingConfigurationsRepository {
     return { configuration: this.withLevels(published), supersededId };
   }
 
+  /**
+   * Mirrors the real repository's Task 13 shape: organization-scoped and
+   * first-use-wins (the guarded `WHERE operationally_used_at IS NULL`), so a
+   * second call never moves the original timestamp.
+   */
   async markOperationallyUsed(input: {
     id: string;
+    organizationId: string;
     now: Date;
+    actorId?: string | null;
   }): Promise<
     | (AccountingConfiguration & { levels: AccountingConfigurationLevel[] })
     | null
   > {
     const existing = this.state.accountingConfigurations.findById(input.id);
-    if (existing === null) return null;
+    if (existing === null || existing.organizationId !== input.organizationId) {
+      return null;
+    }
     if (existing.operationallyUsedAt !== null) {
       return this.withLevels(existing);
     }
     this.state.accountingConfigurations.patch(input.id, {
       operationallyUsedAt: input.now,
       updatedAt: input.now,
+      updatedBy: input.actorId ?? null,
     });
     const updated = this.state.accountingConfigurations.findById(input.id);
     return updated === null ? null : this.withLevels(updated);

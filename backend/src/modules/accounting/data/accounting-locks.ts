@@ -26,6 +26,14 @@ import type { AccountingTxClient } from './accounting-rows.js';
  * period), no account write ever locks a version row before its own account
  * row, and multi-row locks always ascend by id.
  *
+ * Task 13 (operational freeze) added no new lock POSITION: the
+ * configuration row an accounting-configuration marker updates already sits
+ * between the period and the accounts in the order below, so
+ * `finalizeChecked` takes it there — after `lockScopeInTx` and BEFORE
+ * `lockAccountRowForShare` — with the ids ascending. Full matrix + the
+ * deadlock argument against root-account creation/publish:
+ * `docs/accounting/lock-order-matrix.md` (row D4″).
+ *
  * Prisma cannot express `SELECT … FOR UPDATE`, hence the parameterized raw
  * statements below — the documented concurrency-critical path
  * (docs/modules.md §Accounting, AR-11).
@@ -279,6 +287,13 @@ export async function lockCodingStructureVersionsOfOrganization(
 // ---------------------------------------------------------------------------
 // Accounting Configurations (Task 11 — Configuration Foundation)
 // ---------------------------------------------------------------------------
+//
+// Task 13 reuses this position for the operational-freeze marker: the guarded
+// `UPDATE … WHERE operationally_used_at IS NULL` that finalization issues
+// (`accounting-configuration-usage.ts`) is an exclusive lock on exactly these
+// rows, taken here — after the calendar, before the accounts. No other writer
+// of a configuration row reaches an account or document lock afterwards, so the
+// pair `configuration → account` is never held in the opposite order.
 
 /** A locked accounting-configuration row. */
 export interface LockedAccountingConfiguration {

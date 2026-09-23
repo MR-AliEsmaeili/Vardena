@@ -27,7 +27,9 @@
  * - multi-step writes are atomic: `createChecked`/`finalizeChecked` snapshot
  *   the tables before mutating and restore on failure, so a thrown backstop
  *   leaves no partial header/lines/entries behind — the real transaction's
- *   rollback, mirrored (a lost key race must not leak a `final` row).
+ *   rollback, mirrored (a lost key race must not leak a `final` row). Since
+ *   Task 13 the atomic unit of `finalizeChecked` also covers the configuration
+ *   rows its operational-freeze marker writes.
  *
  * Locking has no observable effect in a single-threaded fake: what matters is
  * that the guard evaluates against the committed rows and the write applies
@@ -64,6 +66,7 @@ import type {
   IssueAccountingDocumentInput,
   UpdateAccountingDocumentInput,
 } from '../../src/modules/accounting/data/accounting-documents.repository.js';
+import { resolveUsedConfigurationIds } from '../../src/modules/accounting/domain/accounting-configuration-freeze.js';
 import type { AccountingDocumentLinesRepository } from '../../src/modules/accounting/data/accounting-document-lines.repository.js';
 import type { AccountingPostingOperationsRepository } from '../../src/modules/accounting/data/accounting-posting-operations.repository.js';
 import type { LedgerEntriesRepository } from '../../src/modules/accounting/data/ledger-entries.repository.js';
@@ -194,14 +197,25 @@ export function createAccountingDocumentState(): AccountingDocumentState {
  * The real repositories get this from the transaction; the fakes — which
  * mutate table by table — take it explicitly, so a thrown backstop (a
  * duplicate ledger key, a duplicate entry) leaves no partial write behind.
+ *
+ * `extraTables` extends the atomic unit to rows a write touches OUTSIDE the
+ * document state — Task 13's operational-freeze marker lives on
+ * `accounting_configurations`, and the real statement commits or rolls back
+ * with the ledger entries, so the fake must too (otherwise a rolled-back
+ * finalization would leave a false "used" configuration behind).
  */
-function withRollback<T>(state: AccountingDocumentState, mutate: () => T): T {
+function withRollback<T>(
+  state: AccountingDocumentState,
+  mutate: () => T,
+  extraTables: readonly InMemoryTable<Row>[] = [],
+): T {
   const snapshot = {
     documents: state.documents.snapshot(),
     lines: state.lines.snapshot(),
     operations: state.operations.snapshot(),
     ledgerEntries: state.ledgerEntries.snapshot(),
   };
+  const extraSnapshot = extraTables.map((table) => table.snapshot());
   try {
     return mutate();
   } catch (error) {
@@ -209,8 +223,50 @@ function withRollback<T>(state: AccountingDocumentState, mutate: () => T): T {
     state.lines.restore(snapshot.lines);
     state.operations.restore(snapshot.operations);
     state.ledgerEntries.restore(snapshot.ledgerEntries);
+    extraTables.forEach((table, index) => {
+      table.restore(extraSnapshot[index] ?? []);
+    });
     throw error;
   }
+}
+
+/**
+ * Task 13 — the fake's mirror of `markConfigurationsUsedByDocumentInTx`:
+ * resolve the configurations the posted lines used through the SAME domain
+ * rule (`resolveUsedConfigurationIds`) and mark them first-use-wins,
+ * organization-scoped, inside the caller's atomic block.
+ */
+function markConfigurationsUsedInMemory(
+  structure: StructureState,
+  input: {
+    organizationId: string;
+    accountIds: readonly string[];
+    now: Date;
+    actorId: string | null;
+  },
+): string[] {
+  const pins = input.accountIds.map((accountId) => ({
+    accountId,
+    accountingConfigurationId:
+      structure.accounts.findById(accountId)?.accountingConfigurationId ?? null,
+  }));
+  const marked: string[] = [];
+  for (const configurationId of resolveUsedConfigurationIds({
+    accountIds: input.accountIds,
+    pins,
+  })) {
+    const row = structure.accountingConfigurations.findById(configurationId);
+    // The guarded `WHERE organization_id = … AND operationally_used_at IS NULL`.
+    if (row === null || row.organizationId !== input.organizationId) continue;
+    if (row.operationallyUsedAt !== null) continue;
+    structure.accountingConfigurations.patch(configurationId, {
+      operationallyUsedAt: input.now,
+      updatedAt: input.now,
+      updatedBy: input.actorId,
+    });
+    marked.push(configurationId);
+  }
+  return marked;
 }
 
 interface ListParams {
@@ -508,37 +564,55 @@ export class InMemoryAccountingDocumentsRepository {
       })),
     );
 
-    const row = withRollback(this.state, () => {
-      const patched = this.state.documents.patch(input.id, {
-        state: 'final',
-        finalizedAt: input.finalizedAt,
-        finalizedBy: input.finalizedBy,
-        ...(locked.origin === 'system'
-          ? {
-              idempotencyReference: input.ledger.operationKey,
-              requestHash: input.ledger.requestHash,
-            }
-          : {}),
-        updatedAt: input.finalizedAt,
-        updatedBy: input.finalizedBy,
-      });
-      if (patched === null) throw new AccountingDocumentMissingError();
-      // Task 10.7 — the materialization, in the real transaction's position:
-      // after the state update, before the idempotency row (which stays LAST,
-      // the §16.4 evidence rule). Built through the posting contract, like the
-      // real repository — never a second implementation — and rolled back with
-      // everything else when a backstop throws.
-      this.writeLedgerEntries(
-        patched,
-        input.ledger.operationKey,
-        input.ledger.requestHash,
-      );
-      // The ledger row is written LAST, exactly like the real transaction, so
-      // a lost key race aborts the whole write — never a `final` row without
-      // its entries or its key.
-      this.state.operations.insert(input.ledger as AccountingOperationRecord);
-      return patched;
-    });
+    const row = withRollback(
+      this.state,
+      () => {
+        const patched = this.state.documents.patch(input.id, {
+          state: 'final',
+          finalizedAt: input.finalizedAt,
+          finalizedBy: input.finalizedBy,
+          ...(locked.origin === 'system'
+            ? {
+                idempotencyReference: input.ledger.operationKey,
+                requestHash: input.ledger.requestHash,
+              }
+            : {}),
+          updatedAt: input.finalizedAt,
+          updatedBy: input.finalizedBy,
+        });
+        if (patched === null) throw new AccountingDocumentMissingError();
+        // Task 10.7 — the materialization, in the real transaction's position:
+        // after the state update, before the idempotency row (which stays LAST,
+        // the §16.4 evidence rule). Built through the posting contract, like the
+        // real repository — never a second implementation — and rolled back with
+        // everything else when a backstop throws.
+        this.writeLedgerEntries(
+          patched,
+          input.ledger.operationKey,
+          input.ledger.requestHash,
+        );
+        // Task 13 — the operational-freeze marker, in the SAME atomic block as
+        // the ledger entries (the real one runs at the configuration position
+        // of the lock order; a fake has no locks, only the atomicity that
+        // matters here). A backstop thrown below therefore also rolls the
+        // marker back — never a configuration left "used" by a finalization
+        // that did not commit.
+        markConfigurationsUsedInMemory(this.structure, {
+          organizationId: input.organizationId,
+          accountIds: [
+            ...new Set(storedLines.map((line) => line.accountId)),
+          ].sort(),
+          now: input.finalizedAt,
+          actorId: input.finalizedBy,
+        });
+        // The ledger row is written LAST, exactly like the real transaction, so
+        // a lost key race aborts the whole write — never a `final` row without
+        // its entries or its key.
+        this.state.operations.insert(input.ledger as AccountingOperationRecord);
+        return patched;
+      },
+      [this.structure.accountingConfigurations],
+    );
     return this.toDomain(row);
   }
 

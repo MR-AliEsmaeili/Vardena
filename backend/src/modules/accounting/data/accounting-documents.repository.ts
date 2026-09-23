@@ -29,6 +29,7 @@ import {
 } from './accounting-document-errors.js';
 import { insertOperationRow } from './accounting-posting-operations.repository.js';
 import { insertLedgerEntries } from './ledger-entries.repository.js';
+import { markConfigurationsUsedByDocumentInTx } from './accounting-configuration-usage.js';
 import { applyBalanceProjectionDeltasWithLocksHeldInTx } from './account-balance-projections.repository.js';
 import {
   lockAccountRowForShare,
@@ -482,7 +483,12 @@ export class AccountingDocumentsRepository {
    * every referenced account (§14) and the description, then writes the state,
    * the finalization evidence, the N immutable ledger entries (Task 10.7 —
    * one per stored line, via the `domain/posting.ts` contract, never a second
-   * implementation) and the posting-operation row — all or nothing.
+   * implementation), the operational-freeze marks of the configurations this
+   * posting used (Task 13 — `accounting-configuration-usage.ts`, at the
+   * configuration position of the lock order, i.e. BEFORE the accounts are
+   * locked `FOR SHARE`) and the posting-operation row — all or nothing: a
+   * refusal below rolls the markers back with everything else, so a
+   * finalization that did not commit never leaves a configuration looking used.
    *
    * The operation row is written LAST: a unique violation on a lost key race
    * aborts the transaction, so a `final` document can never exist without its
@@ -510,6 +516,26 @@ export class AccountingDocumentsRepository {
         documentDate: header.documentDate,
       });
       const lockedAccountIds = await accountIdsInTx(tx, input.id);
+      // Task 13 — operational freeze. The configurations this posting USES are
+      // marked here, inside the finalization transaction and at the
+      // configuration position of the module's lock order (calendar →
+      // configuration → accounts `FOR SHARE` → projections → document), never
+      // after the document lock. Two properties carry the whole guarantee:
+      // the guarded statement makes the mark first-use-wins and idempotent, and
+      // the shared transaction makes it atomic with the ledger entries — a
+      // refusal below (phase, stale scope, closed period, bad composition)
+      // rolls the marker back with everything else, so a finalization that did
+      // not commit can never leave a configuration looking used. A REPLAY never
+      // reaches this method at all (`PostingService` returns on the idempotency
+      // row), so a retry re-marks nothing. See
+      // `data/accounting-configuration-usage.ts`.
+      await markConfigurationsUsedByDocumentInTx(tx, {
+        organizationId: input.organizationId,
+        documentId: input.id,
+        accountIds: lockedAccountIds,
+        now: input.finalizedAt,
+        actorId: input.finalizedBy,
+      });
       await lockAccountsForLinesInTx(
         tx,
         input.organizationId,

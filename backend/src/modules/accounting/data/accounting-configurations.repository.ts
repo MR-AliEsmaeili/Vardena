@@ -17,6 +17,7 @@ import {
   lockAccountingConfigurationRow,
   lockAccountingConfigurationsOfOrganization,
 } from './accounting-locks.js';
+import { markConfigurationsUsedInDb } from './accounting-configuration-usage.js';
 import type {
   AccountingConfigurationCreate,
   AccountingConfigurationDelegate,
@@ -26,11 +27,14 @@ import type {
   AccountingConfigurationRow,
   AccountingTransactionalClient,
   OrderBy,
+  RawQuery,
 } from './accounting-rows.js';
 
 type Client = {
   accountingConfiguration: AccountingConfigurationDelegate;
   accountingConfigurationLevel: AccountingConfigurationLevelDelegate;
+  /** The guarded marker statement (`accounting-configuration-usage.ts`). */
+  $queryRaw: RawQuery;
 };
 
 const MAX_LEVEL_ROWS = 8;
@@ -393,27 +397,44 @@ export class AccountingConfigurationsRepository {
     });
   }
 
+  /**
+   * The operational-freeze marker seam Task 11 left without a caller (D4),
+   * hardened by Task 13 to the shape the decision note prescribes for the
+   * implementation:
+   *
+   * - ORGANIZATION-SCOPED — `organizationId` is now part of the write, so the
+   *   seam cannot mark another organization's configuration even when handed its
+   *   id (the pre-Task-13 version took an id alone);
+   * - FIRST USE WINS — the write is the module's single guarded statement
+   *   (`… WHERE operationally_used_at IS NULL`), not a read-then-write, so two
+   *   racing callers can never overwrite the original timestamp;
+   * - SAME STATEMENT as the production path — `finalizeChecked` marks through
+   *   `accounting-configuration-usage.ts`, which this method delegates to. There
+   *   is one writer of `operationally_used_at` in the module.
+   *
+   * There is deliberately NO endpoint and no authorized caller for this: usage
+   * is recorded by business operations, never on request. The method is the
+   * freeze contract's seam (kept for the future configuration types Task 11
+   * enumerated); the only production marking is the finalization transaction.
+   */
   async markOperationallyUsed(input: {
     id: string;
+    organizationId: string;
     now: Date;
+    actorId?: string | null;
   }): Promise<AccountingConfigurationWithLevels | null> {
-    const { accountingConfiguration } = await this.client();
-    const existing = await accountingConfiguration.findUnique({
-      where: { id: input.id },
+    const client = await this.client();
+    await markConfigurationsUsedInDb(client, {
+      organizationId: input.organizationId,
+      configurationIds: [input.id],
+      now: input.now,
+      actorId: input.actorId ?? null,
     });
-    if (existing === null) return null;
-    if (existing.operationallyUsedAt !== null) {
-      return toDomain(existing, await this.listLevelRows(input.id));
-    }
-    const updated = await accountingConfiguration.update({
-      where: { id: input.id },
-      data: {
-        operationallyUsedAt: input.now,
-        updatedAt: input.now,
-        updatedBy: null,
-      },
+    const row = await client.accountingConfiguration.findFirst({
+      where: { id: input.id, organizationId: input.organizationId },
     });
-    return toDomain(updated, await this.listLevelRows(input.id));
+    if (row === null) return null;
+    return toDomain(row, await this.listLevelRows(input.id));
   }
 
   async deleteDraft(input: { id: string }): Promise<boolean> {

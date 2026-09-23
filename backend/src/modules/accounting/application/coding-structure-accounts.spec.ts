@@ -1497,6 +1497,76 @@ describe('AccountsService', () => {
       'active',
     );
   });
+  // ---- chart work records NO configuration usage (Task 13 §3A) -------------
+  //
+  // Task 11 D4 decided the marker's caller is Posting, not the chart, and
+  // Task 13 kept that boundary: a configuration becomes operationally used when
+  // a FINAL document posts over an account pinned to it — never because a chart
+  // was built, renamed, activated or deactivated. These tests are the local
+  // half of that rule (the live-DB half is
+  // `test/accounting-configuration-live.e2e-spec.ts`, "D4 … NOT called on
+  // Account creation").
+
+  it('creates, edits and toggles accounts without marking the pinned configuration', async () => {
+    const configurationId = await publishAccountingConfig(
+      fixture,
+      orgA,
+      TWO_LEVELS,
+    );
+    const usedAt = () =>
+      fixture.stores.raw.state.accountingConfigurations.findById(
+        configurationId,
+      )?.operationallyUsedAt ?? null;
+    expect(usedAt()).toBeNull();
+
+    // A root pinned to the ACTIVE configuration: the pin exists, the marker does
+    // not.
+    const root = await createAccount(fixture, orgA, '10', {
+      isPostable: false,
+    });
+    expect(
+      fixture.stores.raw.state.accounts.findById(root.id)
+        ?.accountingConfigurationId,
+    ).toBe(configurationId);
+    expect(usedAt()).toBeNull();
+
+    // A child, a title edit, a postability flip and an activation cycle.
+    const child = await createAccount(fixture, orgA, '10001', {
+      parentId: root.id,
+      isPostable: true,
+    });
+    await asActor(ACTOR, () =>
+      fixture.accounts.updateAccount(orgA, child.id, { title: 'Renamed' }),
+    );
+    await asActor(ACTOR, () => fixture.accounts.disableAccount(orgA, child.id));
+    await asActor(ACTOR, () => fixture.accounts.enableAccount(orgA, child.id));
+    expect(usedAt()).toBeNull();
+
+    // …and the configuration stays fully editable while it is only authored:
+    // a DRAFT is mutable until something USES it, and chart work is not use.
+    const draft = await asActor(ACTOR, () =>
+      fixture.configurations.createConfiguration({
+        organizationId: orgA,
+        code: 'DRAFT2',
+        name: 'Draft v2',
+        effectiveFrom: null,
+        levels: TWO_LEVELS.levels as any,
+      }),
+    );
+    await asActor(ACTOR, () =>
+      fixture.configurations.updateConfiguration(orgA, draft.id, {
+        name: 'Draft v2 renamed',
+      }),
+    );
+    expect(
+      (
+        await asActor(ACTOR, () =>
+          fixture.configurations.getConfiguration(orgA, draft.id),
+        )
+      ).name,
+    ).toBe('Draft v2 renamed');
+    expect(usedAt()).toBeNull();
+  });
 });
 
 describe('deployment organization pin over the Task 10.3 surface (ADR-0025)', () => {
