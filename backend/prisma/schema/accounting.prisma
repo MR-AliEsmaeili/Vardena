@@ -871,8 +871,7 @@ model AccountBalanceProjection {
 
   /// Projection key — one row per (org, area, year, period, account). Hard
   /// backstop for concurrent UPSERT races (Task 12).
-  @@unique([organizationId, financialAreaId, fiscalYearId, accountingPeriodId, accountId],
-           map: "uq_account_balance_projections_org_area_year_period_account")
+  @@unique([organizationId, financialAreaId, fiscalYearId, accountingPeriodId, accountId], map: "uq_account_balance_projections_org_area_year_period_account")
   /// Hot reads — trial balance & area-year list.
   @@index([organizationId, financialAreaId, fiscalYearId], map: "idx_account_balance_projections_org_area_year")
   @@index([organizationId, accountId],                map: "idx_account_balance_projections_org_account")

@@ -20,9 +20,18 @@ import path from 'node:path';
  * invariant reviewers check.
  */
 describe('balance lock order (Task 12 R-01)', () => {
-  const repoPath = path.join(process.cwd(), 'src/modules/accounting/data/accounting-documents.repository.ts');
-  const locksPath = path.join(process.cwd(), 'src/modules/accounting/data/accounting-locks.ts');
-  const projRepoPath = path.join(process.cwd(), 'src/modules/accounting/data/account-balance-projections.repository.ts');
+  const repoPath = path.join(
+    process.cwd(),
+    'src/modules/accounting/data/accounting-documents.repository.ts',
+  );
+  const locksPath = path.join(
+    process.cwd(),
+    'src/modules/accounting/data/accounting-locks.ts',
+  );
+  const projRepoPath = path.join(
+    process.cwd(),
+    'src/modules/accounting/data/account-balance-projections.repository.ts',
+  );
 
   it('finalizeChecked locks projection rows BEFORE the document', () => {
     const src = fs.readFileSync(repoPath, 'utf-8');
@@ -31,13 +40,25 @@ describe('balance lock order (Task 12 R-01)', () => {
     const finalizeStart = src.indexOf('async finalizeChecked');
     expect(finalizeStart).toBeGreaterThan(-1);
     const finalizeEnd = src.indexOf('async deleteChecked', finalizeStart);
-    const slice = src.slice(finalizeStart, finalizeEnd === -1 ? undefined : finalizeEnd);
+    const slice = src.slice(
+      finalizeStart,
+      finalizeEnd === -1 ? undefined : finalizeEnd,
+    );
     const posBalances = slice.indexOf('lockBalanceProjectionRows(');
     const posDocument = slice.indexOf('lockDocumentInTx(');
     const posAccounts = slice.indexOf('lockAccountsForLinesInTx(');
-    expect(posBalances, 'lockBalanceProjectionRows must appear in finalizeChecked').toBeGreaterThan(-1);
-    expect(posDocument, 'lockDocumentInTx must appear in finalizeChecked').toBeGreaterThan(-1);
-    expect(posAccounts, 'lockAccountsForLinesInTx must appear in finalizeChecked').toBeGreaterThan(-1);
+    expect(
+      posBalances,
+      'lockBalanceProjectionRows must appear in finalizeChecked',
+    ).toBeGreaterThan(-1);
+    expect(
+      posDocument,
+      'lockDocumentInTx must appear in finalizeChecked',
+    ).toBeGreaterThan(-1);
+    expect(
+      posAccounts,
+      'lockAccountsForLinesInTx must appear in finalizeChecked',
+    ).toBeGreaterThan(-1);
     expect(posBalances).toBeLessThan(posDocument);
     expect(posAccounts).toBeLessThan(posBalances);
   });
@@ -48,7 +69,10 @@ describe('balance lock order (Task 12 R-01)', () => {
     // The legacy helper that locks internally must NOT be used on the
     // production finalization path (it would be document→balances).
     // Keep it only for tests that call it outside the tail.
-    const finalizeSlice = src.slice(src.indexOf('async finalizeChecked'), src.indexOf('async deleteChecked'));
+    const finalizeSlice = src.slice(
+      src.indexOf('async finalizeChecked'),
+      src.indexOf('async deleteChecked'),
+    );
     expect(finalizeSlice).not.toContain('applyBalanceProjectionDeltaInTx(');
   });
 
@@ -69,7 +93,9 @@ describe('balance lock order (Task 12 R-01)', () => {
   it('projection helper does not acquire its own lock when called with locks held', () => {
     const src = fs.readFileSync(projRepoPath, 'utf-8');
     expect(src).toContain('applyBalanceProjectionDeltasWithLocksHeldInTx');
-    const heldStart = src.indexOf('export async function applyBalanceProjectionDeltasWithLocksHeldInTx');
+    const heldStart = src.indexOf(
+      'export async function applyBalanceProjectionDeltasWithLocksHeldInTx',
+    );
     expect(heldStart).toBeGreaterThan(-1);
     // Find the next function after the held helper (aggregateDeltas) — limit to that function's range.
     const nextFn = src.indexOf('function aggregateDeltas', heldStart);
@@ -77,7 +103,9 @@ describe('balance lock order (Task 12 R-01)', () => {
     const heldSlice = src.slice(heldStart, heldEnd);
     expect(heldSlice).not.toContain('lockBalanceProjectionRows');
     // The legacy helper `applyBalanceProjectionDeltaInTx` (document→balances) has been removed — no production path should acquire document before balances.
-    expect(src).not.toContain('export async function applyBalanceProjectionDeltaInTx');
+    expect(src).not.toContain(
+      'export async function applyBalanceProjectionDeltaInTx',
+    );
     // `lockBalanceProjectionRows` is now only called from `accounting-documents.repository.ts` (finalize) before the document lock — never from this repository.
     expect(src).not.toContain('lockBalanceProjectionRows');
   });

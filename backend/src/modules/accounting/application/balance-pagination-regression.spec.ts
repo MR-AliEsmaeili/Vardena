@@ -10,7 +10,11 @@ const P2 = '01H0000000000000000000005';
 const P3 = '01H0000000000000000000006';
 const ACC = '01H0000000000000000000007';
 
-function proj(p: string, debit: string, credit: string): AccountBalanceProjection {
+function proj(
+  p: string,
+  debit: string,
+  credit: string,
+): AccountBalanceProjection {
   return {
     id: `id-${p}`,
     organizationId: ORG,
@@ -35,7 +39,16 @@ function proj(p: string, debit: string, credit: string): AccountBalanceProjectio
  * query), which keeps opening exact across page boundaries.
  */
 describe('balance pagination regression (Task 12 R-02)', () => {
-  const periodsByYear = new Map([[YEAR, [{ id: P1, sequence: 1 }, { id: P2, sequence: 2 }, { id: P3, sequence: 3 }]]]);
+  const periodsByYear = new Map([
+    [
+      YEAR,
+      [
+        { id: P1, sequence: 1 },
+        { id: P2, sequence: 2 },
+        { id: P3, sequence: 3 },
+      ],
+    ],
+  ]);
   const all = [proj(P1, '100', '0'), proj(P2, '50', '0'), proj(P3, '25', '0')];
 
   it('derive over full set gives correct opening for every period', () => {
@@ -87,14 +100,22 @@ describe('balance pagination regression (Task 12 R-02)', () => {
     const P1Y2 = '01H000000000000000000000A';
     const allCross = [
       proj(P1, '100', '0'),
-      { ...proj(P1Y2, '999', '0'), fiscalYearId: YEAR2, accountingPeriodId: P1Y2 } as AccountBalanceProjection,
+      {
+        ...proj(P1Y2, '999', '0'),
+        fiscalYearId: YEAR2,
+        accountingPeriodId: P1Y2,
+      } as AccountBalanceProjection,
     ];
     const byYear = new Map([
       [YEAR, [{ id: P1, sequence: 1 }]],
       [YEAR2, [{ id: P1Y2, sequence: 1 }]],
     ]);
     const derived = deriveBalances(allCross, byYear);
-    expect(derived.find((d) => d.fiscalYearId === YEAR)!.openingBalanceAmount).toBe('0');
-    expect(derived.find((d) => d.fiscalYearId === YEAR2)!.openingBalanceAmount).toBe('0');
+    expect(
+      derived.find((d) => d.fiscalYearId === YEAR)!.openingBalanceAmount,
+    ).toBe('0');
+    expect(
+      derived.find((d) => d.fiscalYearId === YEAR2)!.openingBalanceAmount,
+    ).toBe('0');
   });
 });

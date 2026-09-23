@@ -615,7 +615,8 @@ export class AccountingDocumentsRepository {
         requestHash: input.ledger.requestHash,
       });
       const ledgerCreates = toLedgerEntries(postingInput, generateId).map(
-        (entry) => toLedgerEntryCreate(entry, input.finalizedAt, input.finalizedBy),
+        (entry) =>
+          toLedgerEntryCreate(entry, input.finalizedAt, input.finalizedBy),
       );
       await insertLedgerEntries(tx, ledgerCreates);
       // Task 12 — balance projection maintenance, SAME transaction, AFTER the

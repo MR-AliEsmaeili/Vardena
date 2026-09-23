@@ -155,8 +155,7 @@ export function checkBalanceProjection(
 ): BalanceProjectionProblem[] {
   const problems: BalanceProjectionProblem[] = [];
   if (proj.id.trim() === '') problems.push('missing_id');
-  if (proj.organizationId.trim() === '')
-    problems.push('missing_organization');
+  if (proj.organizationId.trim() === '') problems.push('missing_organization');
   if (proj.financialAreaId.trim() === '')
     problems.push('missing_financial_area');
   if (proj.fiscalYearId.trim() === '') problems.push('missing_fiscal_year');
@@ -516,15 +515,15 @@ export function reconcileBalances(input: {
     accountId: string;
   }): string => balanceProjectionKey(r);
 
-  const ledgerByKey = new Map<string, (typeof input.ledgerAggregates)[number]>();
+  const ledgerByKey = new Map<
+    string,
+    (typeof input.ledgerAggregates)[number]
+  >();
   for (const r of input.ledgerAggregates) ledgerByKey.set(keyOf(r), r);
   const projByKey = new Map<string, (typeof input.projections)[number]>();
   for (const r of input.projections) projByKey.set(keyOf(r), r);
 
-  const allKeys = new Set<string>([
-    ...ledgerByKey.keys(),
-    ...projByKey.keys(),
-  ]);
+  const allKeys = new Set<string>([...ledgerByKey.keys(), ...projByKey.keys()]);
   const mismatches: BalanceReconciliationMismatch[] = [];
   for (const key of allKeys) {
     const l = ledgerByKey.get(key);

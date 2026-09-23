@@ -272,7 +272,6 @@ async function upsertDeltasWithLocks(
   now: Date,
   actorId: string | null,
 ): Promise<void> {
-
   for (const bucket of deltaByKey.values()) {
     const keyStr = balanceKey(bucket.key);
     const held = locked.get(keyStr);
@@ -318,8 +317,7 @@ async function upsertDeltasWithLocks(
 
     const newDebit = sumAmounts([currentDebit, bucket.debitDelta]);
     const newCredit = sumAmounts([currentCredit, bucket.creditDelta]);
-    const becameZero =
-      isZeroAmount(newDebit) && isZeroAmount(newCredit);
+    const becameZero = isZeroAmount(newDebit) && isZeroAmount(newCredit);
 
     if (becameZero) {
       // Remove the row when turnover becomes zero (AC-I-19c — absence = zero).
@@ -348,13 +346,14 @@ async function upsertDeltasWithLocks(
     // UPSERT the projection row (idempotent within the transaction).
     await tx.accountBalanceProjection.upsert({
       where: {
-        organizationId_financialAreaId_fiscalYearId_accountingPeriodId_accountId: {
-          organizationId: bucket.key.organizationId,
-          financialAreaId: bucket.key.financialAreaId,
-          fiscalYearId: bucket.key.fiscalYearId,
-          accountingPeriodId: bucket.key.accountingPeriodId,
-          accountId: bucket.key.accountId,
-        },
+        organizationId_financialAreaId_fiscalYearId_accountingPeriodId_accountId:
+          {
+            organizationId: bucket.key.organizationId,
+            financialAreaId: bucket.key.financialAreaId,
+            fiscalYearId: bucket.key.fiscalYearId,
+            accountingPeriodId: bucket.key.accountingPeriodId,
+            accountId: bucket.key.accountId,
+          },
       },
       create: {
         id: generateId(),
@@ -559,8 +558,7 @@ export async function readReconciliationMismatchesInTx(
     accountingPeriodId: r.accountingPeriodId,
     accountId: r.accountId,
     mismatchKind: r.mismatchKind,
-    ledgerDebit:
-      r.ledgerDebit === null ? null : toAmountString(r.ledgerDebit),
+    ledgerDebit: r.ledgerDebit === null ? null : toAmountString(r.ledgerDebit),
     ledgerCredit:
       r.ledgerCredit === null ? null : toAmountString(r.ledgerCredit),
     projDebit: r.projDebit === null ? null : toAmountString(r.projDebit),

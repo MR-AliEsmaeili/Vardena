@@ -14,9 +14,7 @@ import {
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
-import {
-  BALANCE_PERMISSIONS,
-} from '../domain/accounting-permissions.js';
+import { BALANCE_PERMISSIONS } from '../domain/accounting-permissions.js';
 import { deriveBalances } from '../domain/balance-projection.js';
 import { canonicalizeAmount } from '../domain/money.js';
 import { ACCOUNT_BALANCE_REBUILT_EVENT } from '../domain/accounting.events.js';
@@ -178,19 +176,23 @@ export class AccountingBalancesService {
     return this.listBalancesDeriveBeforePagination(query, skip, take);
   }
 
-
   private async listBalancesViaView(
     query: ListBalancesQuery,
     skip: number,
     take: number,
   ): Promise<PaginatedResult<BalanceDerivedDto> | null> {
     const client = await this.prisma.getClient<{
-      $queryRaw: <T>(strings: TemplateStringsArray, ...values: unknown[]) => Promise<T>;
+      $queryRaw: <T>(
+        strings: TemplateStringsArray,
+        ...values: unknown[]
+      ) => Promise<T>;
     }>();
 
     // Resolve sort → whitelisted SQL ORDER BY. Validate eagerly so a bad
     // sort answers 422 regardless of which fetch path wins.
-    const orderBy = query.sort ? resolveSort(query.sort, LIST_SORTABLE, []) : [];
+    const orderBy = query.sort
+      ? resolveSort(query.sort, LIST_SORTABLE, [])
+      : [];
     const orderBySql = this.buildViewOrderBySql(orderBy);
 
     type CountRow = { count: string | number | bigint };
@@ -247,11 +249,19 @@ export class AccountingBalancesService {
       accountingPeriodId: r.accountingPeriodId,
       periodSequence: Number(r.periodSequence),
       accountId: r.accountId,
-      periodDebitAmount: canonicalizeAmount(toAmountString(r.periodDebitAmount)),
-      periodCreditAmount: canonicalizeAmount(toAmountString(r.periodCreditAmount)),
+      periodDebitAmount: canonicalizeAmount(
+        toAmountString(r.periodDebitAmount),
+      ),
+      periodCreditAmount: canonicalizeAmount(
+        toAmountString(r.periodCreditAmount),
+      ),
       periodNetAmount: canonicalizeAmount(toAmountString(r.periodNetAmount)),
-      openingBalanceAmount: canonicalizeAmount(toAmountString(r.openingBalanceAmount)),
-      closingBalanceAmount: canonicalizeAmount(toAmountString(r.closingBalanceAmount)),
+      openingBalanceAmount: canonicalizeAmount(
+        toAmountString(r.openingBalanceAmount),
+      ),
+      closingBalanceAmount: canonicalizeAmount(
+        toAmountString(r.closingBalanceAmount),
+      ),
       createdAt: new Date(r.createdAt).toISOString(),
       updatedAt: new Date(r.updatedAt).toISOString(),
     }));
@@ -335,7 +345,9 @@ export class AccountingBalancesService {
     `) as unknown[];
   }
 
-  private buildViewOrderBySql(orderBy: Array<Record<string, 'asc' | 'desc'>>): string {
+  private buildViewOrderBySql(
+    orderBy: Array<Record<string, 'asc' | 'desc'>>,
+  ): string {
     if (orderBy.length === 0) {
       return '"financial_area_id" ASC, "fiscal_year_id" ASC, "period_sequence" ASC, "account_id" ASC';
     }
@@ -349,7 +361,10 @@ export class AccountingBalancesService {
     };
     const parts: string[] = [];
     for (const clause of orderBy) {
-      const [field, dir] = Object.entries(clause)[0] as [string, 'asc' | 'desc'];
+      const [field, dir] = Object.entries(clause)[0] as [
+        string,
+        'asc' | 'desc',
+      ];
       const col = colOf[field];
       if (col === undefined) continue;
       const d = dir === 'asc' ? 'ASC' : 'DESC';
@@ -358,7 +373,12 @@ export class AccountingBalancesService {
     if (parts.length === 0) {
       return '"financial_area_id" ASC, "fiscal_year_id" ASC, "period_sequence" ASC, "account_id" ASC';
     }
-    parts.push('"financial_area_id" ASC', '"fiscal_year_id" ASC', '"period_sequence" ASC', '"account_id" ASC');
+    parts.push(
+      '"financial_area_id" ASC',
+      '"fiscal_year_id" ASC',
+      '"period_sequence" ASC',
+      '"account_id" ASC',
+    );
     return parts.join(', ');
   }
 
@@ -374,7 +394,8 @@ export class AccountingBalancesService {
     // org-wide multi-account/year queries are not silently truncated (review
     // §5 risk). A warning is emitted if the result grows beyond 50000 rows,
     // which signals a caller should narrow its scope or rely on the view path.
-    const allItems: Awaited<ReturnType<typeof this.balances.list>>['items'] = [];
+    const allItems: Awaited<ReturnType<typeof this.balances.list>>['items'] =
+      [];
     const batchSize = 5000;
     let offset = 0;
     while (true) {
@@ -431,7 +452,9 @@ export class AccountingBalancesService {
 
     const derived = deriveBalances(projectionsForDerive, periodsByYear);
 
-    const orderBy = query.sort ? resolveSort(query.sort, LIST_SORTABLE, []) : [];
+    const orderBy = query.sort
+      ? resolveSort(query.sort, LIST_SORTABLE, [])
+      : [];
     let ordered = derived;
     if (orderBy.length > 0) ordered = sortDerived([...derived], orderBy);
 
@@ -450,7 +473,9 @@ export class AccountingBalancesService {
       const key = `${d.organizationId}|${d.financialAreaId}|${d.fiscalYearId}|${d.accountingPeriodId}|${d.accountId}`;
       const raw = byKey.get(key);
       return {
-        id: raw?.id ?? `${d.organizationId}|${d.accountingPeriodId}|${d.accountId}`,
+        id:
+          raw?.id ??
+          `${d.organizationId}|${d.accountingPeriodId}|${d.accountId}`,
         organizationId: d.organizationId,
         financialAreaId: d.financialAreaId,
         fiscalYearId: d.fiscalYearId,
@@ -470,7 +495,6 @@ export class AccountingBalancesService {
     return toPaginatedResult(dtos, total, query.page, query.pageSize);
   }
 
-
   // ---- get one account (scoped) -------------------------------------------
 
   async getAccountBalances(
@@ -488,7 +512,10 @@ export class AccountingBalancesService {
     });
 
     // Validate the addressed account belongs to the org (404 otherwise).
-    await this.assertAccountInOrganization(query.accountId, query.organizationId);
+    await this.assertAccountInOrganization(
+      query.accountId,
+      query.organizationId,
+    );
 
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 50;
@@ -554,7 +581,9 @@ export class AccountingBalancesService {
           r.accountId === d.accountId,
       );
       return {
-        id: raw?.id ?? `${d.organizationId}|${d.accountingPeriodId}|${d.accountId}`,
+        id:
+          raw?.id ??
+          `${d.organizationId}|${d.accountingPeriodId}|${d.accountId}`,
         organizationId: d.organizationId,
         financialAreaId: d.financialAreaId,
         fiscalYearId: d.fiscalYearId,
@@ -595,9 +624,8 @@ export class AccountingBalancesService {
 
     const allMismatches: ReconciliationItem[] = await client.$transaction(
       async (tx: any) => {
-        const { readReconciliationMismatchesInTx } = await import(
-          '../data/account-balance-projections.repository.js'
-        );
+        const { readReconciliationMismatchesInTx } =
+          await import('../data/account-balance-projections.repository.js');
         const rows = await readReconciliationMismatchesInTx(tx, {
           organizationId: query.organizationId,
           financialAreaId: query.financialAreaId,
@@ -637,7 +665,9 @@ export class AccountingBalancesService {
   // ---- rebuild (explicit, audited, atomic) --------------------------------
 
   async rebuildBalances(input: RebuildBalancesInput): Promise<RebuildResult> {
-    await this.authorization.requireAllPermissions([BALANCE_PERMISSIONS.REBUILD]);
+    await this.authorization.requireAllPermissions([
+      BALANCE_PERMISSIONS.REBUILD,
+    ]);
     this.organizations.assertOrganizationInScope(input.organizationId);
     await this.organizations.requireUsableOrganization(input.organizationId);
     await this.assertScopeKeysInOrganization(input);
@@ -708,15 +738,20 @@ export class AccountingBalancesService {
 
     if (input.financialAreaId !== undefined) {
       const area = await client.financialArea.findFirst({
-        where: { id: input.financialAreaId, organizationId: input.organizationId },
+        where: {
+          id: input.financialAreaId,
+          organizationId: input.organizationId,
+        },
       });
-      if (area === null) throw AppException.notFound('FinancialArea', input.financialAreaId);
+      if (area === null)
+        throw AppException.notFound('FinancialArea', input.financialAreaId);
     }
     if (input.fiscalYearId !== undefined) {
       const year = await client.fiscalYear.findFirst({
         where: { id: input.fiscalYearId, organizationId: input.organizationId },
       });
-      if (year === null) throw AppException.notFound('FiscalYear', input.fiscalYearId);
+      if (year === null)
+        throw AppException.notFound('FiscalYear', input.fiscalYearId);
       if (
         input.financialAreaId !== undefined &&
         year.financialAreaId !== input.financialAreaId
@@ -728,9 +763,16 @@ export class AccountingBalancesService {
     }
     if (input.accountingPeriodId !== undefined) {
       const period = await client.accountingPeriod.findFirst({
-        where: { id: input.accountingPeriodId, organizationId: input.organizationId },
+        where: {
+          id: input.accountingPeriodId,
+          organizationId: input.organizationId,
+        },
       });
-      if (period === null) throw AppException.notFound('AccountingPeriod', input.accountingPeriodId);
+      if (period === null)
+        throw AppException.notFound(
+          'AccountingPeriod',
+          input.accountingPeriodId,
+        );
       if (
         input.fiscalYearId !== undefined &&
         period.fiscalYearId !== input.fiscalYearId
@@ -741,7 +783,10 @@ export class AccountingBalancesService {
       }
     }
     if (input.accountId !== undefined) {
-      await this.assertAccountInOrganization(input.accountId, input.organizationId);
+      await this.assertAccountInOrganization(
+        input.accountId,
+        input.organizationId,
+      );
     }
   }
 
@@ -764,7 +809,11 @@ export class AccountingBalancesService {
   ): Promise<Map<string, readonly { id: string; sequence: number }[]>> {
     const client = await this.prisma.getClient<{
       accountingPeriod: {
-        findMany(args: any): Promise<Array<{ id: string; fiscalYearId: string; sequence: number }>>;
+        findMany(
+          args: any,
+        ): Promise<
+          Array<{ id: string; fiscalYearId: string; sequence: number }>
+        >;
       };
     }>();
 
@@ -777,7 +826,10 @@ export class AccountingBalancesService {
     const periods = await client.accountingPeriod.findMany({
       where: {
         organizationId,
-        fiscalYearId: fiscalYearIds.length === 1 ? fiscalYearIds[0] : { in: [...fiscalYearIds] },
+        fiscalYearId:
+          fiscalYearIds.length === 1
+            ? fiscalYearIds[0]
+            : { in: [...fiscalYearIds] },
       } as never,
       orderBy: [{ sequence: 'asc' }],
       skip: 0,
@@ -793,7 +845,8 @@ export class AccountingBalancesService {
       }
       arr.push({ id: p.id, sequence: p.sequence });
     }
-    for (const arr of byYear.values()) arr.sort((a, b) => a.sequence - b.sequence);
+    for (const arr of byYear.values())
+      arr.sort((a, b) => a.sequence - b.sequence);
     return byYear as Map<string, readonly { id: string; sequence: number }[]>;
   }
 }
@@ -805,7 +858,10 @@ function sortDerived(
   // Compose comparator for up to N orderBy entries (small N).
   return rows.sort((a, b) => {
     for (const clause of orderBy) {
-      const [field, dir] = Object.entries(clause)[0] as [string, 'asc' | 'desc'];
+      const [field, dir] = Object.entries(clause)[0] as [
+        string,
+        'asc' | 'desc',
+      ];
       let av: string | number = '';
       let bv: string | number = '';
       switch (field) {
