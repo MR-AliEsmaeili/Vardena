@@ -4,12 +4,15 @@ Branch: `arena/01a0cd89-vardena` · Baseline: `1ce8d78` (`Merge pull request #30
 Date: 2026-09-23 · Area: Accounting (module 3) — `domain/` + `data/` + `application/` seams + test fakes + docs
 Governance status: **READY FOR REVIEW — IN PROGRESS (self-review), NOT Accepted** (per `docs/accounting/task-index.md` §6/§7: acceptance needs human acceptance + push + open PR + PR checks and the required CI green on the head SHA). The branch was pushed and **PR #31** was opened
 > (`https://github.com/MR-AliEsmaeili/Vardena/pull/31`, head
-> `3e198d2e`, base `main`, `MERGEABLE`); the CI verdict on the head SHA is
-> whatever `gh pr checks 31` reports (required backend job
-> `lint → typecheck → format:check → unit → build → migrate deploy → live e2e`
-> on `postgres:16`) — **pending at the time of writing**, and it is the gate that
-> covers the live suites this sandbox could not run (§10 R1). Acceptance itself
-> still needs a human decision; nothing in this report claims it.
+> `5ad94f6`, base `main`, `MERGEABLE`), and the required CI job **passed on that
+> head**: run `35852213257`, job `backend`, `completed success`, every step green
+> including `Prisma generate`, `Unit tests`, `Build`, `Migrate test database`,
+> `Migration rehearsal (populated pre-Task-11 data)` and
+> **`E2E tests (incl. live-DB suites)`** on `postgres:16` (§5.4). That closes the
+> one gate this sandbox could not execute (§10 R1). Acceptance itself still needs a
+> human decision; nothing in this report claims it. (An earlier run
+> `35852180644` on head `3e198d2` was auto-cancelled when the docs-only follow-up
+> was pushed; no code changed between them.)
 Implementation commit: **`a0d90d3d7d22c45b11936439243bdee856c3e14a`** — `feat(accounting): wire the operational-freeze marker into finalization (Task 13, D4)`, 27 files, the only commit on top of the baseline `1ce8d78`. This report, the tests, the docs and both evidence scripts are in it; the follow-up commit `docs(task-13): record the implementation commit SHA` only amended this line (a commit cannot contain its own hash)
 
 ## 1. Task definition — what was asked
@@ -187,7 +190,7 @@ $ npx vitest run --config ./vitest.config.e2e.ts
       Tests  189 passed | 45 skipped (234)
 ```
 
-Task-relevant files: `posting.service.spec.ts` 25, `posting-readiness.spec.ts` 13, `data/accounting-configuration-usage.spec.ts` 12, `domain/accounting-configuration-usage.spec.ts` 10, `accounting-configurations.spec.ts` 11, `coding-structure-accounts.spec.ts` 32 — 103 passing. The 8 skipped e2e files are the `*-live.e2e-spec.ts` suites, which self-skip without `VARDENA_TEST_DATABASE_URL` (§10).
+Task-relevant files: `posting.service.spec.ts` 25, `posting-readiness.spec.ts` 13, `data/accounting-configuration-usage.spec.ts` 12, `domain/accounting-configuration-usage.spec.ts` 10, `accounting-configurations.spec.ts` 11, `coding-structure-accounts.spec.ts` 32 — 103 passing. The 8 skipped e2e files are the `*-live.e2e-spec.ts` suites, which self-skip without `VARDENA_TEST_DATABASE_URL` — they were executed instead by CI on the pushed head (§5.4).
 
 **Evidence label: VERIFIED-locally** (this sandbox, Node 22.22.3, `npm ci` install, in-memory fakes — no database involved). The e2e run is meaningful beyond the 503/readiness paths it was designed for: `test/accounting-documents.e2e-spec.ts` boots the real NestJS app with the `PrismaService`/`AccountingDocumentsRepository`/`AccountingConfigurationsRepository` providers **overridden by the in-memory fakes this task extended**, and drives the whole HTTP lifecycle (create → edit → issue → finalize) plus the refusals — so "finalize marks the pinned configuration", "no endpoint marks it" and "a rejected finalization rolls the mark back" are also exercised over HTTP (against the fakes, not against PostgreSQL).
 
@@ -218,6 +221,31 @@ Log: `docs/accounting/task-13-evidence/postgres-rehearsal.log`. To reproduce fro
 
 First-use instants reconstructed as `MIN(ledger_entries.posting_timestamp)` per configuration (the earliest of two vouchers, not the newest, not the document date), nothing left unmarked, re-run = 0 rows, and no existing timestamp moved. All inside one `ROLLBACK`ed transaction. **Evidence label: VERIFIED-on-PostgreSQL-18.4-in-sandbox** for the statement's correctness; it was **not** applied to any database and is not shipped as a migration.
 
+### 5.4 CI on the pushed head (post-handoff) — `completed success`
+
+```
+run 35852213257 · job "backend" · head 5ad94f6 · postgres:16 service container
+  Prisma validate · Prisma generate · Lint · Typecheck · Format check · Unit tests
+  · Build · Migrate test database · Migration rehearsal (populated pre-Task-11 data)
+  · E2E tests (incl. live-DB suites)            → all steps success
+```
+
+`npm run test:e2e` runs with `VARDENA_TEST_DATABASE_URL` set
+(`.github/workflows/ci.yml:120-122`), so the seven `*-live.e2e-spec.ts` suites
+executed against a real PostgreSQL 16 with a **generated** Prisma client —
+including `accounting-configuration-live.e2e-spec.ts` (its D4 assertion that
+account creation records no usage, and the configuration publish/edit race
+tests), `accounting-documents-live.e2e-spec.ts` and
+`ledger-entries-live.e2e-spec.ts` (the finalize transaction that now carries the
+marker, through the real `$queryRaw` plumbing).
+
+**Evidence label: VERIFIED-on-CI (GitHub Actions, `postgres:16`, head `5ad94f6`).**
+Reported from `gh run view 35852213257`, not inferred; step-level conclusions are
+what CI published, and the raw log was not re-parsed here. Two caveats: CI does
+**not** run this task's rehearsal (`test:operational-freeze-rehearsal` is
+manual — see §6), and a passing suite proves the properties those suites assert,
+not every property in §4.
+
 ## 6. Rejected / deferred approaches
 
 | Option | Why not |
@@ -232,6 +260,7 @@ First-use instants reconstructed as `MIN(ledger_entries.posting_timestamp)` per 
 | A data-only backfill migration | An unaudited business effect, fires on fresh databases, and reconstructs a first-use instant that history cannot guarantee (§2.8, §8) |
 | A new `AccountingConfiguration.OperationalUsage` event/registry | Zero consumers today; the marker is guard state, not an audit log (AG-07/AR-23) — deferred with the audit-trail task |
 | An endpoint + permission to mark/unmark usage | Turns the freeze into a self-inflicted DoS vector and creates a second writer of the column |
+| Add `test:operational-freeze-rehearsal` to the CI workflow | It would fit as one step after `Migrate test database` and would gate the statement-level proof; not done because editing the CI config is outside this task's authorized surface (the brief scoped permissions/DTO/OpenAPI/schema changes, not pipeline changes). One-line addition if you want it — the script is idempotent and cleans up after itself |
 | Routing the inline guards through `assertConfigurationMutable` (cleanup) | A drive-by refactor; AG-03. The guards already enforce the same predicate and are separately tested |
 | Persisting `OperationalUsage.reason` (`first_voucher`) | the task's scope rule forbids a new column (§1); the value is derivable from the ledger and has no consumer (recorded as a known limitation, §10-R2) |
 
@@ -279,7 +308,7 @@ RETURNING cfg."id" AS id, cfg."code" AS code, used."first_use" AS first_use;
 
 | # | Risk | Severity | Assessment |
 | --- | --- | --- | --- |
-| R1 | Prisma `*-live.e2e-spec.ts` suites (incl. `accounting-configuration-live.e2e-spec.ts` "D4 … NOT called on Account creation", which reads `updated_at`/`updated_by`/`status` as proxies for the marker) were **not executed here** | **HIGH for acceptance** | UNVERIFIED-here: `npx prisma generate` cannot run in this sandbox (engine download blocked), so `PrismaService`'s generated client throws and every app-boot-with-DB spec self-skips. CI runs them against `postgres:16` with `VARDENA_TEST_DATABASE_URL`. **This is the single most important item for the reviewer.** Mitigation available now: the same three properties are covered by unit suites + the real-PostgreSQL rehearsal. |
+| R1 | The Prisma `*-live.e2e-spec.ts` suites could not be executed in this sandbox — including `accounting-configuration-live.e2e-spec.ts` ("D4 … NOT called on Account creation", which reads `updated_at`/`updated_by`/`status` as proxies for the marker) | **CLOSED by CI** (§5.4) | `npx prisma generate` is network-blocked here, so every app-boot-with-DB spec self-skipped locally; the required CI job on head `5ad94f6` ran `Prisma generate` + the live e2e suites on `postgres:16` and reported success. The residual risk is what those suites do **not** assert (they were not extended for the marker, beyond keeping the D4 boundary test green), not whether they run. |
 | R2 | `OperationalUsage.reason` (`first_voucher`) is computed for the decision but **not persisted** | Low–medium | Accepted: the task's scope rule forbids the column (§1). Consequence: an auditor cannot tell *which* kind of operation first used a configuration from the row alone (the ledger answers it). If an audit trail for unmark/reattribute is ever needed, it arrives with the audit-trail task, not as a speculative column. |
 | R3 | Pre-existing databases have unmarked historical usage (§9) | Medium | Documented + repair statement provided; no silent auto-fix. Consider making §9 part of the release checklist for the first environment that already has `final` vouchers. |
 | R4 | Every finalization now takes row locks on configuration rows | Low | One `UPDATE` per touched configuration (usually **one**), inside the transaction that already holds the calendar locks; the chart's own configuration locks are equally short. Throughput impact is bounded; measured under a real workload only in CI. |
@@ -302,12 +331,13 @@ All from `/home/user/Vardena/backend`. Baseline `1ce8d78` was clean; every comma
 | `npx prisma generate` / `prisma validate` / `migrate dev` | **NOT AVAILABLE** in this sandbox — the engine download is network-blocked. `schema-engine` binary fetch fails; consequently all `*-live.e2e-spec.ts` suites cannot run here. Nothing under `prisma/` changed except the two new rehearsal scripts (plain `pg`, no codegen). |
 | `npm run test:operational-freeze-rehearsal` (= `rehearse.mjs` then `backfill-repair-probe.mjs`, needs `DATABASE_URL` at a migrated PostgreSQL) | **PASS** — 23/23 then 5/5; the rehearsal was run three times in a row with identical output, zero residue (verified by row counts; the repair probe rolls its own transaction back) |
 | `git status` on `backend/prisma/schema/`, `backend/prisma/migrations/` | clean — no schema or migration change |
+| CI (pushed head `5ad94f6`) | **PASS** — run `35852213257` / job `backend` `completed success`, all steps incl. `Prisma generate`, `E2E tests (incl. live-DB suites)` and the Task 11 `Migration rehearsal` (§5.4) |
 
 Sandbox-only artifacts deliberately **not** committed: the locally installed real PostgreSQL binaries (`node_modules/@embedded-postgres/*`), `pg`/`pglite` installed with `--no-save`, and the throwaway cluster at `127.0.0.1:55432`. `pg` is already a runtime dependency of the app, so the rehearsal scripts need no new package.
 
 ## 12. What is not proven here (be honest about it)
 
-1. **The live e2e suites** (R1) — including the pre-existing D4 assertion in `accounting-configuration-live.e2e-spec.ts` and every HTTP-level marker behavior against a real database through Prisma. UNVERIFIED-here; CI owns it.
+1. **The live e2e suites** — not executed **in this sandbox** (§10 R1); they were executed by the required CI job on the pushed head and passed (§5.4). What remains genuinely unproven is therefore narrower than it looked at handoff: no *new* live assertion pins the marker through HTTP + a real database (the pre-existing live D4 test only proves the negative half — account creation marks nothing). If you want the positive half gated at the DB level, the place for it is a follow-up in `accounting-documents-live.e2e-spec.ts`; the SQL-level rehearsal covers it today without a Prisma round-trip.
 2. **Concurrency under production conditions** — rehearsal §5 proves the row-lock guard with two sessions on one row; it does not measure contention at production scale, nor the 16-specific planner behavior, nor the interaction with the balance-projection locks under load (Task 12's own P1 follow-up is still open for the same reason).
 3. **The `marking` path through a real Prisma client** — `$queryRaw`'s handling of the `Date`/`null` bind parameters and the `RETURNING` row shape is asserted by source-shape tests and the fake, and the *SQL* is proven on a real server; the Prisma plumbing itself is only exercised by the live suites.
 4. **Multi-deployment/upgrade ordering** — the assumption that no other module writes `accounting.*` directly is enforced by convention/AR-07, not by a test.
@@ -334,7 +364,7 @@ Sandbox-only artifacts deliberately **not** committed: the locally installed rea
 4. `data/accounting-configurations.repository.ts` `markOperationallyUsed` — it is now org-scoped, first-use-wins and **still has no production caller**. If you would rather delete the service seam entirely (leaving only the data-layer function), say so; it was kept because Task 11 documented it as the tested seam.
 5. The size of the change (§15) and whether you want it split before review.
 6. `test/support/accounting-document-repositories.ts` — the `extraTables` parameter on `withRollback`: it exists so the fake's rollback realism matches production; a reviewer may prefer a dedicated store snapshot.
-7. The pre-existing D4 live test (`test/accounting-configuration-live.e2e-spec.ts`) is unchanged by design — it asserts marking does **not** happen on account creation; it needs a green CI run (R1).
+7. The pre-existing D4 live test (`test/accounting-configuration-live.e2e-spec.ts`) is unchanged by design — it asserts marking does **not** happen on account creation. It ran green in CI on the pushed head (§5.4); deciding whether to add a **positive** live assertion (finalize marks the pinned configuration, through the real Prisma path) is a reviewer call — the marker's SQL semantics are covered by `rehearse.mjs` and by the unit suites, not by a live HTTP round-trip.
 
 ## 15. AG-19 size note and split recommendation
 
