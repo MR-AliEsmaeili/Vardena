@@ -578,7 +578,6 @@ export class AccountingDocumentsService {
     }
   }
 
-
   /**
    * Reverse a Final voucher (Task 15): allocate a new serial, create a new
    * Final counter-document with debit/credit inverted, leave the original
@@ -636,10 +635,11 @@ export class AccountingDocumentsService {
       operationKey,
       actorId,
     });
-    const description = `Reversal of ${original.documentNumber ?? original.id}: ${reason}`.slice(
-      0,
-      500,
-    );
+    const description =
+      `Reversal of ${original.documentNumber ?? original.id}: ${reason}`.slice(
+        0,
+        500,
+      );
     try {
       const reversal = await this.repository.reverseChecked({
         originalDocumentId: original.id,

@@ -756,7 +756,6 @@ export class AccountingDocumentsRepository {
     });
   }
 
-
   /**
    * Reverse a Final voucher (Task 15, AC-D-22): create a NEW numbered Final
    * document whose lines invert debit/credit of the original. The original

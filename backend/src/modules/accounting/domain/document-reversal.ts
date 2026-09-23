@@ -26,9 +26,7 @@ export function isAccountingCorrectionKind(
 }
 
 export type ReversalEligibilityProblem =
-  | 'not_final'
-  | 'already_reversed'
-  | 'not_accounting_document';
+  'not_final' | 'already_reversed' | 'not_accounting_document';
 
 export function reversalEligibilityProblemMessage(
   problem: ReversalEligibilityProblem,
