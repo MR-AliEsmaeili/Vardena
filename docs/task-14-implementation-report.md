@@ -195,7 +195,7 @@ Test 9 must fail if the gate is moved back after the freeze path; otherwise it p
 
 The job executes, in order: `npm ci` (npm 11), `prisma validate`, **`prisma generate`**, lint, typecheck, format:check, **unit tests (1017)**, build, **`npm run prisma:deploy` against the `postgres:16` service container**, the Task 11 migration rehearsal, and **`npm run test:e2e` including every live-DB suite** — `VARDENA_TEST_DATABASE_URL` is job-level, so the new suite's `skipIf` does not fire there: its **13 tests really executed against PostgreSQL 16 in CI and passed**, which independently reproduces §7.1 outside this sandbox. The run's annotations are the 4 pre-existing lint warnings (0 errors) and Node-20 deprecation notices; there are no failures.
 
-This closes the two gates this sandbox cannot execute (§3, `L-1`): the real `prisma migrate deploy` and the CI-run live suites. The docs-only commit `a4a9a78` (this report + the task-index CI record) re-ran the same job: run **`35894028731`**, **`completed success`**.
+This closes the two gates this sandbox cannot execute (§3, `L-1`): the real `prisma migrate deploy` and the CI-run live suites. Every push to this branch re-runs the same required job, and every run has been green: **`31442cf`** (code) → run **`35893640670`**; **`a4a9a78`** (this report + the task-index CI record) → run **`35894028731`**; **`e5bea6a`** (run record) → run **`35894406021`**. All three are `completed success` on the `backend` job in ~3 minutes, so the live suite, the real `prisma migrate deploy` and the other gates are green on every head of this PR, including the head recorded in §11.
 
 ## 9. Known limitations and risks
 
@@ -226,7 +226,7 @@ Per the brief's prohibition list, none of the following was built, and no stub, 
 | Branch | `arena/01a0cf1f-vardena` (pushed to `origin`) |
 | Base commit | `2ea11609170f7fd52916068603b02955cae819a2` (`main`) |
 | Task 14 commit | `31442cf` — *"Task 14 — Accounting Period Close Foundation: in-transaction lifecycle gate"* |
-| Docs/evidence commit | `a4a9a78` — implementation report + CI record (required CI green, run `35894028731`) |
+| Docs/evidence commits | `a4a9a78` — implementation report + CI record (run `35894028731`); `e5bea6a` — run record (run `35894406021`); both green |
 | Pull request | **#32** → `main` |
 
 ## 12. Status
