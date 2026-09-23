@@ -23,7 +23,17 @@ the SHA line, `5ad94f6` PR/CI status, `64335c5` §5.4, `692ee0f` the task index,
 `7bc9d8c` and the one adding this sentence), with **no code, schema, migration or
 test line** changed in any of them. The list is necessarily one commit short of
 itself — a commit cannot record its own hash, and the PR head keeps advancing by such
-record-keeping commits, each gated by the same CI job.
+record-keeping commits, each gated by the same CI job
+
+**Remediation addendum (after review, same day).** The reviewer's second finding —
+no _positive_ live assertion that finalization marks the pinned configuration — was
+addressed by a **test-only** change: two live tests in
+`backend/test/accounting-documents-live.e2e-spec.ts`, documented in §5.5. No
+production, schema, migration, permission or DTO file moved, and no existing
+assertion was altered. Their status is **READY FOR CI / REVIEW**: this sandbox cannot
+execute a live suite at all (`prisma generate` is blocked, so the two tests collect
+and report `skipped`), which means CI on `postgres:16` is the first real execution —
+the run reference belongs in §5.4/§11 once published..
 
 ## 1. Task definition — what was asked
 
@@ -256,6 +266,99 @@ what CI published, and the raw log was not re-parsed here. Two caveats: CI does
 manual — see §6), and a passing suite proves the properties those suites assert,
 not every property in §4.
 
+### 5.5 Positive live PostgreSQL marker assertion
+
+Added after review, to close the one gap §12 used to leave open. **Test-only**: one
+file, `backend/test/accounting-documents-live.e2e-spec.ts`, +309 lines and **0
+deleted** — no existing assertion was touched, and no production, schema,
+migration, permission or DTO file changed.
+
+| Test (exact names)                                                               | What it proves                                                                                                                                     |
+| -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Task 13 D4: finalizing a real voucher marks the configuration its lines pinned` | A committed finalization through the real path writes `operationally_used_at`, and writes it for exactly the pinned configuration.                 |
+| `Task 13 D4: a finalization that rolls back leaves the configuration unused`     | A finalization aborted inside the transaction leaves the marker NULL and the row untouched, and the retry after the failure is what finally marks. |
+
+**The production path used, unshortened.** Both tests compose a draft voucher
+through `AccountingDocumentsRepository.createChecked`, number and issue it through
+`NumberingService` + `issueChecked` (so the state machine is the real one), and
+then call **`PostingService.postVoucher`** — the exact seam
+`AccountingDocumentsService.finalizeDocument` delegates to
+(`application/accounting-documents.service.ts:517-538`), which is what
+`POST /api/v1/accounting-documents/:id/finalize` reaches. Its step 4 opens the one
+atomic finalization transaction that carries the marker
+(`data/accounting-documents.repository.ts:532`). **No marker method is called by
+hand** — not `markOperationallyUsed`, not `markConfigurationsUsedInDb` — and the
+test opens no transaction, so removing the wiring in `finalizeChecked` turns the
+success test red. The HTTP layer itself is not driven here because the live suites
+deliberately own no session/RBAC fixture (that journey is the fake-backed
+`accounting-documents.e2e-spec.ts`); `postVoucher` is the highest production seam a
+live-database suite can reach without inventing one.
+
+**Success assertions** (test 1): `outcome.kind === 'posted'`,
+`outcome.document.phase === 'final'`, `outcome.result.ledgerEntries` has 2
+entries, and those entries are real rows
+(`ledgerEntry.count({ voucherId }) === 2`). The marker is then read **directly from
+PostgreSQL** with raw SQL — the column, not the DTO — and the test asserts
+`operationally_used_at` is a `Date` whose `getTime()` equals the row's own
+`finalized_at` (both come from the same `input.finalizedAt`, so a second, detached
+write could not reproduce it), that `updated_at` carries the same instant, and that
+`updated_by` is NULL (no principal exists in this suite). Isolation of the target
+is asserted with a decoy: a second `SUPERSEDED` configuration with its own postable,
+active account in the **same organization**, unreferenced by the voucher, which must
+stay NULL. Marking "the ACTIVE configuration" instead of the touched pin — the
+mistake OQ-64 existed to prevent — fails here; and the fixture's own ACTIVE
+configuration is deliberately _not_ the target, so the ordering of the earlier tests
+cannot let this pass vacuously.
+
+**Rollback assertions** (test 2): the failure is a real database constraint, not a
+stub or a clock. A hand-written `ledger_entries` row for line 1 is committed first,
+so the finalization's own materialization violates
+`uq_ledger_entries_voucher_line_id` (`23505`) _after_ the marker statement has
+already run inside the same transaction; `postVoucher` rethrows it (its
+`isUniqueViolation` branch finds no operation row to replay). The test then asserts
+nothing persisted: phase `temporary`, `state = 'temporary'` and
+`finalized_at IS NULL` read from the row itself, `ledgerEntry.count === 1` (only
+the hand-written row), `accountingPostingOperation.count === 0`, and — the part a
+plain NULL could not prove — `updated_at` still equals the value read **before** the
+attempt, i.e. the guarded `UPDATE` matched zero rows and the row was never touched.
+Finally the hand-written row is removed and a retry under a fresh key commits, which
+is what marks the configuration: the failed attempt left no state that could
+suppress a later legitimate mark.
+
+**Execution environment — and why this is not "verified locally".** The suite
+cannot run in this sandbox: `prisma generate` fails because the engine CDN
+(`binaries.prisma.sh`) is network-blocked here, and the checked-in
+`src/generated/prisma/client.ts` is a type-only stub whose constructor throws; the
+live suites need a generated client plus a migrated database and otherwise
+self-skip. So the tests are executed by CI: `npm run test:e2e` under
+`VARDENA_TEST_DATABASE_URL` on `postgres:16`, the step §5.4 already records for the
+earlier heads. Until CI reports this head, the change is **READY FOR CI / REVIEW**;
+the run reference is added to §5.4/§11 as soon as it is known.
+
+What _was_ executed here is the SQL these tests rest on, against a real PostgreSQL
+18.4 built by applying all 14 migrations to an empty cluster (a private throwaway
+sandbox cluster; `pg` + `@embedded-postgres`, nothing committed): every insert in
+the new helpers was run verbatim, the hand-written colliding `ledger_entries` INSERT
+was accepted by the schema and did fire `23505 Key (voucher_line_id)=(…) already
+exists`, `uq_ledger_entries_voucher_line_id` and the `operationally_used_at`
+`timestamptz(6)` column were confirmed present, the guarded `UPDATE … RETURNING`
+statement was extracted from `data/accounting-configuration-usage.ts` and shown to
+stamp the marker to the finalization instant with `updated_by` NULL, to touch 0 rows
+on a second use, to leave `updated_at` unchanged when its transaction rolls back,
+and to leave the decoy configuration NULL; the lines→accounts pin read resolved to
+the used configuration; a repeated `operation_key` was refused by its unique index
+(the replay branch that skips the marker); and row counts after cleanup showed zero
+residue. **Label: VERIFIED-on-PostgreSQL-18.4-in-sandbox for the SQL and the
+constraints; the vitest suite itself is VERIFIED-by-CI on `postgres:16`.** Neither
+is a production-concurrency claim — that stays rehearsal §5/§7's job.
+
+**Limitations this leaves.** (i) No live test drives the HTTP controller with real
+auth/RBAC for this property — the seam under test starts at `postVoucher`; (ii) the
+`23505` abort is the established convention for "a failure after the marker", not
+exhaustive failure injection (a `40P01` abort is proven only in rehearsal §7);
+(iii) the sandbox cluster is PostgreSQL 18.4 while CI is 16, and the marker
+statement uses no version-specific syntax.
+
 ## 6. Rejected / deferred approaches
 
 | Option                                                                                   | Why not                                                                                                                                                                                                                                                                                                                                                   |
@@ -330,24 +433,33 @@ RETURNING cfg."id" AS id, cfg."code" AS code, used."first_use" AS first_use;
 
 All from `/home/user/Vardena/backend`. Baseline `1ce8d78` was clean; every command below was run after the final edit and after `npm run format`.
 
-| Command                                                                                                                                        | Result                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm run format` (prettier write) → `npm run format:check`                                                                                     | `All matched files use Prettier code style!` — **PASS** (it reformatted my own spec/source files first)                                                                                                                                                                                                                                                                                                                                  |
-| `npm run lint` (oxlint + eslint)                                                                                                               | **PASS** — `Found 4 warnings and 0 errors.` All 4 are **pre-existing at the baseline** (`publishBoth` unused in `coding-structure-accounts.spec.ts:309`; the unused type imports `CodingStructureVersion` in `accounts.service.ts:48` and `AccountingConfigurationLevelCreate` in `accounting-configurations.repository.ts:24`; one `no-unsafe-optional-chaining` hint) — verified against `git show HEAD:…`. No new warning introduced. |
-| `npm run typecheck` (`tsc --noEmit`)                                                                                                           | **PASS** — no output                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `npx vitest run` (full unit config)                                                                                                            | **PASS** — 88 files, 1017 tests                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `npx vitest run --config ./vitest.config.e2e.ts`                                                                                               | **PASS** — 15 files / 189 tests passed, 8 files / 45 tests skipped (the live suites, by design)                                                                                                                                                                                                                                                                                                                                          |
-| `npm run build` (`nest build`)                                                                                                                 | **PASS** — compiles against the checked-in generated-client stub                                                                                                                                                                                                                                                                                                                                                                         |
-| `npx prisma generate` / `prisma validate` / `migrate dev`                                                                                      | **NOT AVAILABLE** in this sandbox — the engine download is network-blocked. `schema-engine` binary fetch fails; consequently all `*-live.e2e-spec.ts` suites cannot run here. Nothing under `prisma/` changed except the two new rehearsal scripts (plain `pg`, no codegen).                                                                                                                                                             |
-| `npm run test:operational-freeze-rehearsal` (= `rehearse.mjs` then `backfill-repair-probe.mjs`, needs `DATABASE_URL` at a migrated PostgreSQL) | **PASS** — 23/23 then 5/5; the rehearsal was run three times in a row with identical output, zero residue (verified by row counts; the repair probe rolls its own transaction back)                                                                                                                                                                                                                                                      |
-| `git status` on `backend/prisma/schema/`, `backend/prisma/migrations/`                                                                         | clean — no schema or migration change                                                                                                                                                                                                                                                                                                                                                                                                    |
-| CI (PR #31)                                                                                                                                    | **PASS** — run `35852213257` on head `5ad94f6` and run `35852746750` on head `692ee0f`, job `backend` `completed success`: all steps green incl. `Prisma generate`, `Unit tests`, `Build`, `Migrate test database`, `Migration rehearsal (populated pre-Task-11 data)` and `E2E tests (incl. live-DB suites)` on `postgres:16` (§5.4)                                                                                                    |
+| Command                                                                                                                                              | Result                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run format` (prettier write) → `npm run format:check`                                                                                           | `All matched files use Prettier code style!` — **PASS** (it reformatted my own spec/source files first)                                                                                                                                                                                                                                                                                                                                  |
+| `npm run lint` (oxlint + eslint)                                                                                                                     | **PASS** — `Found 4 warnings and 0 errors.` All 4 are **pre-existing at the baseline** (`publishBoth` unused in `coding-structure-accounts.spec.ts:309`; the unused type imports `CodingStructureVersion` in `accounts.service.ts:48` and `AccountingConfigurationLevelCreate` in `accounting-configurations.repository.ts:24`; one `no-unsafe-optional-chaining` hint) — verified against `git show HEAD:…`. No new warning introduced. |
+| `npm run typecheck` (`tsc --noEmit`)                                                                                                                 | **PASS** — no output                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `npx vitest run` (full unit config)                                                                                                                  | **PASS** — 88 files, 1017 tests                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `npx vitest run --config ./vitest.config.e2e.ts`                                                                                                     | **PASS** — 15 files / 189 tests passed, 8 files / 45 tests skipped (the live suites, by design)                                                                                                                                                                                                                                                                                                                                          |
+| `npm run build` (`nest build`)                                                                                                                       | **PASS** — compiles against the checked-in generated-client stub                                                                                                                                                                                                                                                                                                                                                                         |
+| `npx prisma generate` / `prisma validate` / `migrate dev`                                                                                            | **NOT AVAILABLE** in this sandbox — the engine download is network-blocked. `schema-engine` binary fetch fails; consequently all `*-live.e2e-spec.ts` suites cannot run here. Nothing under `prisma/` changed except the two new rehearsal scripts (plain `pg`, no codegen).                                                                                                                                                             |
+| `npm run test:operational-freeze-rehearsal` (= `rehearse.mjs` then `backfill-repair-probe.mjs`, needs `DATABASE_URL` at a migrated PostgreSQL)       | **PASS** — 23/23 then 5/5; the rehearsal was run three times in a row with identical output, zero residue (verified by row counts; the repair probe rolls its own transaction back)                                                                                                                                                                                                                                                      |
+| `git status` on `backend/prisma/schema/`, `backend/prisma/migrations/`                                                                               | clean — no schema or migration change                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `npm run test:e2e` (the live suites)                                                                                                                 | **NOT EXECUTABLE in this sandbox** — needs `prisma generate` + a migrated DB (§5.5). Locally the two new tests collect and report `skipped` (47 skipped, was 45), which is all this sandbox can show about them. CI runs them on `postgres:16`.                                                                                                                                                                                          |
+| sandbox-only SQL check for §5.5 (the new tests' INSERTs verbatim, the shipped marker statement, the `23505` collision, first-use-wins, zero residue) | **ALL CHECKS PASS** on a freshly migrated PostgreSQL 18.4 private cluster (the environment squats a non-functional proxy on port 55432, so a separate port was used). Not committed — the durable version of this evidence is the live suite itself.                                                                                                                                                                                     |
+| CI (PR #31)                                                                                                                                          | **PASS** — run `35852213257` on head `5ad94f6` and run `35852746750` on head `692ee0f`, job `backend` `completed success`: all steps green incl. `Prisma generate`, `Unit tests`, `Build`, `Migrate test database`, `Migration rehearsal (populated pre-Task-11 data)` and `E2E tests (incl. live-DB suites)` on `postgres:16` (§5.4)                                                                                                    |
 
 Sandbox-only artifacts deliberately **not** committed: the locally installed real PostgreSQL binaries (`node_modules/@embedded-postgres/*`), `pg`/`pglite` installed with `--no-save`, and the throwaway cluster at `127.0.0.1:55432`. `pg` is already a runtime dependency of the app, so the rehearsal scripts need no new package.
 
 ## 12. What is not proven here (be honest about it)
 
-1. **The live e2e suites** — not executed **in this sandbox** (§10 R1); they were executed by the required CI job on the pushed head and passed (§5.4). What remains genuinely unproven is therefore narrower than it looked at handoff: no _new_ live assertion pins the marker through HTTP + a real database (the pre-existing live D4 test only proves the negative half — account creation marks nothing). If you want the positive half gated at the DB level, the place for it is a follow-up in `accounting-documents-live.e2e-spec.ts`; the SQL-level rehearsal covers it today without a Prisma round-trip.
+1. **The live e2e suites** — not executed **in this sandbox** (§10 R1); they were
+   executed by the required CI job on the pushed head and passed (§5.4). The gap this
+   used to leave — no _positive_ live assertion pinning the marker to a real
+   finalization — is **closed by §5.5**: the two new live tests in
+   `accounting-documents-live.e2e-spec.ts` assert the mark, the decoy, the rollback and
+   the retry against PostgreSQL itself. What is still not proven live is the
+   HTTP/controller layer with a real auth/RBAC session (the live tests start at
+   `postVoucher`) and the deadlock-abort shape (rehearsal §7 only).
 2. **Concurrency under production conditions** — rehearsal §5 proves the row-lock guard with two sessions on one row; it does not measure contention at production scale, nor the 16-specific planner behavior, nor the interaction with the balance-projection locks under load (Task 12's own P1 follow-up is still open for the same reason).
 3. **The `marking` path through a real Prisma client** — `$queryRaw`'s handling of the `Date`/`null` bind parameters and the `RETURNING` row shape is asserted by source-shape tests and the fake, and the _SQL_ is proven on a real server; the Prisma plumbing itself is only exercised by the live suites.
 4. **Multi-deployment/upgrade ordering** — the assumption that no other module writes `accounting.*` directly is enforced by convention/AR-07, not by a test.
@@ -385,6 +497,7 @@ Measured against the baseline (`git diff --numstat` + the new files):
 | production `src/modules/accounting/**` (non-spec) | **+461 / −40** — 173 of those insertions are the new `data/accounting-configuration-usage.ts`; a large share of the rest is the rationale headers the module convention requires (AG-07/AG-16) |
 | shared test doubles (`test/support/`)             | +118 / −34                                                                                                                                                                                     |
 | unit specs                                        | +1042 / −27                                                                                                                                                                                    |
+| live e2e (remediation, §5.5)                      | +309 / −0 — one file, `backend/test/accounting-documents-live.e2e-spec.ts`; nothing removed, so no existing assertion was weakened                                                             |
 | docs                                              | +179 / −25 (+335 for this report)                                                                                                                                                              |
 | evidence scripts + logs                           | +1264 (scripts) + 68 (captured logs)                                                                                                                                                           |
 
