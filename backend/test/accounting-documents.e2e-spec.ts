@@ -1272,11 +1272,16 @@ describe('Accounting documents (e2e)', () => {
       .expect(403);
 
     const reverseKey = `reverse-${originalId}`;
+    expect(originalBefore.body.state).toBe('final');
     const reversed = await root
       .post(`/api/v1/accounting-documents/${originalId}/reverse`)
       .query({ organizationId: state.orgA })
-      .send({ operationKey: reverseKey, reason: 'Posted in error' })
-      .expect(200);
+      .send({ operationKey: reverseKey, reason: 'Posted in error' });
+    if (reversed.status !== 200) {
+      throw new Error(
+        `reverse HTTP ${reversed.status}: ${JSON.stringify(reversed.body)}`,
+      );
+    }
     expect(reversed.body.id).not.toBe(originalId);
     expect(reversed.body).toMatchObject({
       state: 'final',
