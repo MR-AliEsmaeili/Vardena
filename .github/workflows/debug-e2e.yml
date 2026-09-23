@@ -1,0 +1,69 @@
+name: debug-e2e
+on:
+  push:
+    branches: [arena/01a0ca12-vardena]
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: vardena_test
+          POSTGRES_USER: vardena
+          POSTGRES_PASSWORD: vardena_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vardena -d vardena_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+      VARDENA_TEST_DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm install -g npm@11
+      - run: npm ci --no-audit --no-fund
+        working-directory: backend
+      - run: npm run prisma:deploy
+        working-directory: backend
+      - name: Run E2E (capture)
+        working-directory: backend
+        run: |
+          set +e
+          npm run test:e2e 2>&1 | tee /tmp/e2e.log
+          EXIT=${PIPESTATUS[0]}
+          echo "EXIT:$EXIT" | tee -a /tmp/e2e.log
+          # also capture only failures
+          grep -A20 "FAIL\|Error" /tmp/e2e.log | head -n 200 | tee -a /tmp/e2e-short.log || true
+          exit $EXIT
+      - name: Post result as PR comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let out = '';
+            try { out = fs.readFileSync('/tmp/e2e.log', 'utf8'); } catch(e) { out = 'no log: ' + e.message; }
+            // also try short
+            try { const short = fs.readFileSync('/tmp/e2e-short.log','utf8'); out = short + '\n--- full ---\n' + out; } catch(e) {}
+            out = out.slice(0, 60000);
+            // truncate to last 500 lines for readability
+            const lines = out.split('\n');
+            if (lines.length > 500) out = lines.slice(-500).join('\n');
+            const body = `**debug-e2e** run \`${{ github.run_id }}\` \n\`\`\`\n${out}\n\`\`\``;
+            const prs = await github.rest.pulls.list({owner: context.repo.owner, repo: context.repo.repo, head: `${context.repo.owner}:arena/01a0ca12-vardena`, state: 'open'});
+            if (prs.data.length > 0) {
+              await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: prs.data[0].number, body});
+            }
