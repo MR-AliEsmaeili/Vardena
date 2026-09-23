@@ -225,6 +225,7 @@ describe('Accounting documents (e2e)', () => {
       'Accounting.Document.Edit',
       'Accounting.Document.Delete',
       'Accounting.Document.Finalize',
+      'Accounting.Document.Reverse',
     ]) {
       if (!allCodes.includes(code)) {
         throw new Error(
@@ -234,7 +235,6 @@ describe('Accounting documents (e2e)', () => {
     }
     for (const forbidden of [
       'Accounting.Document.Approve',
-      'Accounting.Document.Reverse',
       'Accounting.Document.Correct',
       'Accounting.Document.Replace',
       'Accounting.Document.Print',
@@ -1207,7 +1207,6 @@ describe('Accounting documents (e2e)', () => {
 
   it('exposes no correction, reversal, posting or reporting endpoint (scope audit)', async () => {
     for (const path of [
-      '/api/v1/accounting-documents/01J8ZQ9W7R6T5Y4U3I2O1P0ZZZ/reverse',
       '/api/v1/accounting-documents/01J8ZQ9W7R6T5Y4U3I2O1P0ZZZ/correct',
       '/api/v1/accounting-documents/01J8ZQ9W7R6T5Y4U3I2O1P0ZZZ/reopen',
       '/api/v1/accounting-documents/01J8ZQ9W7R6T5Y4U3I2O1P0ZZZ/post',
@@ -1226,6 +1225,142 @@ describe('Accounting documents (e2e)', () => {
       .get('/api/v1/accounting-documents/reports/x')
       .query({ organizationId: state.orgA })
       .expect(404);
+  });
+
+  it('reverses a finalized voucher: invert, original immutable except reversed_by, replay vs already-reversed (Task 15)', async () => {
+    const created = await composer
+      .post('/api/v1/accounting-documents')
+      .send(
+        draft({
+          description: 'To reverse',
+          lines: [
+            {
+              accountId: state.debitAccountA,
+              debitAmount: '80.25',
+              creditAmount: '0',
+            },
+            {
+              accountId: state.creditAccountA,
+              debitAmount: '0',
+              creditAmount: '80.25',
+            },
+          ],
+        }),
+      )
+      .expect(201);
+    const originalId = created.body.id as string;
+    await composer
+      .post(`/api/v1/accounting-documents/${originalId}/issue`)
+      .query({ organizationId: state.orgA })
+      .send({ operationKey: `issue-rev-${originalId}` })
+      .expect(200);
+    await finalizer
+      .post(`/api/v1/accounting-documents/${originalId}/finalize`)
+      .query({ organizationId: state.orgA })
+      .send({ operationKey: `finalize-rev-${originalId}` })
+      .expect(200);
+    const originalBefore = await root
+      .get(`/api/v1/accounting-documents/${originalId}`)
+      .query({ organizationId: state.orgA })
+      .expect(200);
+    const originalSnapshot = { ...originalBefore.body };
+
+    await composer
+      .post(`/api/v1/accounting-documents/${originalId}/reverse`)
+      .query({ organizationId: state.orgA })
+      .send({ operationKey: `rev-denied-${originalId}`, reason: 'No' })
+      .expect(403);
+
+    const reverseKey = `reverse-${originalId}`;
+    const reversed = await root
+      .post(`/api/v1/accounting-documents/${originalId}/reverse`)
+      .query({ organizationId: state.orgA })
+      .send({ operationKey: reverseKey, reason: 'Posted in error' })
+      .expect(200);
+    expect(reversed.body.id).not.toBe(originalId);
+    expect(reversed.body).toMatchObject({
+      state: 'final',
+      correctionKind: 'reversal',
+      correctionReason: 'Posted in error',
+      reversesDocumentId: originalId,
+      reversedByDocumentId: null,
+      documentDate: originalBefore.body.documentDate,
+    });
+    expect(reversed.body.documentNumber).not.toBe(
+      originalBefore.body.documentNumber,
+    );
+    const originalLines = originalBefore.body.lines as Array<{
+      lineNo: number;
+      accountId: string;
+      debitAmount: string;
+      creditAmount: string;
+    }>;
+    const reversalLines = reversed.body.lines as typeof originalLines;
+    expect(reversalLines).toHaveLength(originalLines.length);
+    for (const line of originalLines) {
+      const match = reversalLines.find((entry) => entry.lineNo === line.lineNo);
+      expect(match).toMatchObject({
+        accountId: line.accountId,
+        debitAmount: line.creditAmount,
+        creditAmount: line.debitAmount,
+      });
+    }
+    expect(
+      await vouchers.raw.ledgerEntries.findByVoucher(
+        state.orgA,
+        reversed.body.id as string,
+      ),
+    ).toHaveLength(originalLines.length);
+
+    const originalAfter = await root
+      .get(`/api/v1/accounting-documents/${originalId}`)
+      .query({ organizationId: state.orgA })
+      .expect(200);
+    expect(originalAfter.body.state).toBe('final');
+    expect(originalAfter.body.description).toBe(originalSnapshot.description);
+    expect(originalAfter.body.documentNumber).toBe(
+      originalSnapshot.documentNumber,
+    );
+    expect(originalAfter.body.lines).toEqual(originalSnapshot.lines);
+    expect(originalAfter.body.reversedByDocumentId).toBe(reversed.body.id);
+    expect(originalAfter.body.correctionKind).toBeNull();
+
+    const replay = await root
+      .post(`/api/v1/accounting-documents/${originalId}/reverse`)
+      .query({ organizationId: state.orgA })
+      .send({ operationKey: reverseKey, reason: 'Posted in error' })
+      .expect(200);
+    expect(replay.body.id).toBe(reversed.body.id);
+    expect(
+      vouchers.raw.state.documents.findMany(
+        (row) => row.reversesDocumentId === originalId,
+      ),
+    ).toHaveLength(1);
+
+    const hashConflict = await root
+      .post(`/api/v1/accounting-documents/${originalId}/reverse`)
+      .query({ organizationId: state.orgA })
+      .send({ operationKey: reverseKey, reason: 'Different reason' })
+      .expect(409);
+    expect(hashConflict.body.code).toBe('Conflict');
+
+    const already = await root
+      .post(`/api/v1/accounting-documents/${originalId}/reverse`)
+      .query({ organizationId: state.orgA })
+      .send({
+        operationKey: `reverse-other-${originalId}`,
+        reason: 'Posted in error',
+      })
+      .expect(422);
+    expect(already.body.code).toBe('BusinessRuleViolation');
+    expect(already.body.details).toMatchObject({
+      problem: 'already_reversed',
+    });
+    expect(
+      vouchers.raw.state.documents.findMany(
+        (row) => row.reversesDocumentId === originalId,
+      ),
+    ).toHaveLength(1);
   });
 
   // ---- posting readiness (Task 10.5) ---------------------------------------

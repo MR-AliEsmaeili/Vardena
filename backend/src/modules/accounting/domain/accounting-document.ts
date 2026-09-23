@@ -24,8 +24,9 @@
  * What is deliberately ABSENT (§15.4, AR-29 — no speculative behavior):
  * - no reopen (final → temporary): Accounting refuses it, corrections are
  *   counter-documents (AC-D-22 rule 5);
- * - no reversal/correction/replacement/adjustment mechanism (AC-D-22 — the
- *   correction task), and therefore no correction-kind/link columns;
+ * - Task 15 ships REVERSAL only (a new Final document with debit/credit
+ *   swapped, original immutable except `reversed_by`). Correction /
+ *   replacement / adjustment / opening / carry-forward stay out of scope;
  * - no approval state (`Accounting.Document.Approve` is not registered: the
  *   Workflow Foundation owns approvals and OQ-42 owns the policy);
  * - no posting/ledger/balance behavior (contract §19/§20).
@@ -54,6 +55,7 @@ import {
 import { formatDateOnly } from './date-range.js';
 import { canonicalizeAmount, sumAmounts } from './money.js';
 import type { AccountingDocumentLine } from './voucher-lines.js';
+import type { AccountingCorrectionKind } from './document-reversal.js';
 
 /** The one registered accounting document type of v1 (§12.1, AC-D-16). */
 export const ACCOUNTING_VOUCHER_DOCUMENT_TYPE = 'accounting_voucher';
@@ -354,6 +356,10 @@ export interface AccountingDocument {
   requestHash: string | null;
   finalizedAt: Date | null;
   finalizedBy: string | null;
+  correctionKind: AccountingCorrectionKind | null;
+  correctionReason: string | null;
+  reversesDocumentId: string | null;
+  reversedByDocumentId: string | null;
   correlationId: string | null;
   lines: AccountingDocumentLine[];
   createdAt: Date;
@@ -391,6 +397,10 @@ export interface AccountingDocumentDto {
   sourceOperation: string | null;
   finalizedAt: string | null;
   finalizedBy: string | null;
+  correctionKind: AccountingCorrectionKind | null;
+  correctionReason: string | null;
+  reversesDocumentId: string | null;
+  reversedByDocumentId: string | null;
   correlationId: string | null;
   lines: AccountingDocumentLineDto[];
   /** Derived totals — never client-supplied (§13.5). */
@@ -433,6 +443,10 @@ export function toAccountingDocumentDto(
     sourceOperation: document.source?.operation ?? null,
     finalizedAt: document.finalizedAt?.toISOString() ?? null,
     finalizedBy: document.finalizedBy,
+    correctionKind: document.correctionKind,
+    correctionReason: document.correctionReason,
+    reversesDocumentId: document.reversesDocumentId,
+    reversedByDocumentId: document.reversedByDocumentId,
     correlationId: document.correlationId,
     lines,
     totalDebit: sumAmounts(lines.map((line) => line.debitAmount)),

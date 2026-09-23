@@ -45,9 +45,10 @@ import { generateId } from '../../src/kernel/ids/ulid.js';
 // Prisma-style failures
 // ---------------------------------------------------------------------------
 
-export function uniqueViolation(): Error {
+export function uniqueViolation(target: readonly string[] = []): Error {
   return Object.assign(new Error('Unique constraint failed'), {
     code: 'P2002',
+    meta: { target: [...target] },
   });
 }
 

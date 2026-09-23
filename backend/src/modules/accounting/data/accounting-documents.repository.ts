@@ -26,6 +26,7 @@ import {
   AccountingDocumentPhaseConflictError,
   AccountingDocumentScopeRejectedError,
   AccountingDocumentStaleError,
+  AccountingDocumentAlreadyReversedError,
 } from './accounting-document-errors.js';
 import { insertOperationRow } from './accounting-posting-operations.repository.js';
 import { insertLedgerEntries } from './ledger-entries.repository.js';
@@ -39,11 +40,18 @@ import {
   lockFinancialAreaRow,
   lockFiscalYearRow,
 } from './accounting-locks.js';
+import {
+  CORRECTION_KIND_REVERSAL,
+  invertDocumentLines,
+  isAccountingCorrectionKind,
+} from '../domain/document-reversal.js';
+
 import type {
   LockedAccountingDocument,
   LockedAccountingPeriod,
   LockedFiscalYear,
 } from './accounting-locks.js';
+
 import type {
   AccountingDocumentLineCreate,
   AccountingDocumentLineRow,
@@ -212,6 +220,22 @@ export interface DeleteAccountingDocumentInput {
   organizationId: string;
 }
 
+/** Task 15 — reverse a Final voucher by creating a new Final counter-document. */
+export interface ReverseAccountingDocumentInput {
+  originalDocumentId: string;
+  organizationId: string;
+  reversalId: string;
+  documentNumber: string;
+  documentDate: Date;
+  description: string;
+  reason: string;
+  ledger: DocumentOperationRow;
+  finalizedAt: Date;
+  finalizedBy: string | null;
+  correlationId: string | null;
+  createdBy: string | null;
+}
+
 @Injectable()
 export class AccountingDocumentsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -336,6 +360,10 @@ export class AccountingDocumentsRepository {
           requestHash: input.requestHash,
           finalizedAt: null,
           finalizedBy: null,
+          correctionKind: null,
+          correctionReason: null,
+          reversesDocumentId: null,
+          reversedByDocumentId: null,
           correlationId: input.correlationId,
           createdAt: input.createdAt,
           updatedAt: input.createdAt,
@@ -725,6 +753,186 @@ export class AccountingDocumentsRepository {
         where: { id: input.id },
       });
       return toDomain(row, lines);
+    });
+  }
+
+
+  /**
+   * Reverse a Final voucher (Task 15, AC-D-22): create a NEW numbered Final
+   * document whose lines invert debit/credit of the original. The original
+   * stays Final; only `reversed_by_document_id` is written. Lock order matches
+   * finalization: calendar of the reversal date → freeze → accounts FOR SHARE
+   * → balances FOR UPDATE → ORIGINAL document FOR UPDATE (last). The reversal
+   * header is an INSERT, not a lock. Unique `reverses_document_id` is the
+   * cross-transaction backstop.
+   */
+  async reverseChecked(
+    input: ReverseAccountingDocumentInput,
+  ): Promise<AccountingDocument> {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
+      const originalHeader = await tx.accountingDocument.findUnique({
+        where: { id: input.originalDocumentId },
+      });
+      if (
+        originalHeader === null ||
+        originalHeader.organizationId !== input.organizationId
+      ) {
+        throw new AccountingDocumentMissingError();
+      }
+      const scope = await lockOpenScopeInTx(tx, {
+        organizationId: input.organizationId,
+        financialAreaId: originalHeader.financialAreaId,
+        documentDate: input.documentDate,
+      });
+      const lockedAccountIds = await accountIdsInTx(
+        tx,
+        input.originalDocumentId,
+      );
+      await markConfigurationsUsedByDocumentInTx(tx, {
+        organizationId: input.organizationId,
+        documentId: input.originalDocumentId,
+        accountIds: lockedAccountIds,
+        now: input.finalizedAt,
+        actorId: input.finalizedBy,
+      });
+      await lockAccountsForLinesInTx(
+        tx,
+        input.organizationId,
+        lockedAccountIds,
+      );
+      const projectionKeys = lockedAccountIds.map((accountId) => ({
+        organizationId: input.organizationId,
+        financialAreaId: originalHeader.financialAreaId,
+        fiscalYearId: scope.year.id,
+        accountingPeriodId: scope.period.id,
+        accountId,
+      }));
+      const lockedBalances = await lockBalanceProjectionRows(
+        tx,
+        projectionKeys,
+      );
+      const locked = await this.lockDocumentInTx(
+        tx,
+        input.originalDocumentId,
+        input.organizationId,
+      );
+      if (locked.state !== 'final') {
+        throw new AccountingDocumentPhaseConflictError(
+          toPhase(locked.state),
+          'final',
+        );
+      }
+      if (locked.reversedByDocumentId !== null) {
+        throw new AccountingDocumentAlreadyReversedError(locked.id);
+      }
+      const originalLines = await readLinesInTx(tx, input.originalDocumentId);
+      if (
+        !sameIds(
+          lockedAccountIds,
+          originalLines.map((line) => line.accountId),
+        )
+      ) {
+        throw new AccountingDocumentStaleError();
+      }
+      const inverted = invertDocumentLines(
+        originalLines.map((line) => ({
+          id: line.id,
+          documentId: line.documentId,
+          lineNo: line.lineNo,
+          accountId: line.accountId,
+          debitAmount: toAmountString(line.debitAmount),
+          creditAmount: toAmountString(line.creditAmount),
+          description: line.description,
+          sourceLineReference: line.sourceLineReference,
+        })),
+      );
+      assertLineComposition(inverted);
+      const reversalLines: AccountingDocumentLineWrite[] = inverted.map(
+        (line) => ({
+          id: generateId(),
+          lineNo: line.lineNo,
+          accountId: line.accountId,
+          debitAmount: line.debitAmount,
+          creditAmount: line.creditAmount,
+          description: line.description,
+          sourceLineReference: line.sourceLineReference,
+        }),
+      );
+      const row = await tx.accountingDocument.create({
+        data: {
+          id: input.reversalId,
+          organizationId: input.organizationId,
+          financialAreaId: originalHeader.financialAreaId,
+          fiscalYearId: scope.year.id,
+          accountingPeriodId: scope.period.id,
+          documentType: 'accounting_voucher',
+          documentNumber: input.documentNumber,
+          documentDate: input.documentDate,
+          description: input.description,
+          state: 'final',
+          origin: locked.origin,
+          branchId: locked.branchId,
+          sourceModule: originalHeader.sourceModule,
+          sourceEntityType: originalHeader.sourceEntityType,
+          sourceEntityId: originalHeader.sourceEntityId,
+          sourceOperation: originalHeader.sourceOperation,
+          idempotencyReference: input.ledger.operationKey,
+          requestHash: input.ledger.requestHash,
+          finalizedAt: input.finalizedAt,
+          finalizedBy: input.finalizedBy,
+          correctionKind: CORRECTION_KIND_REVERSAL,
+          correctionReason: input.reason,
+          reversesDocumentId: input.originalDocumentId,
+          reversedByDocumentId: null,
+          correlationId: input.correlationId,
+          createdAt: input.finalizedAt,
+          updatedAt: input.finalizedAt,
+          createdBy: input.createdBy,
+        },
+      });
+      const lineRows = await writeLinesInTx(tx, {
+        document: row,
+        lines: reversalLines,
+        actorId: input.createdBy,
+        now: input.finalizedAt,
+      });
+      await tx.accountingDocument.update({
+        where: { id: input.originalDocumentId },
+        data: {
+          reversedByDocumentId: input.reversalId,
+          updatedAt: input.finalizedAt,
+          updatedBy: input.finalizedBy,
+        },
+      });
+      const reversal = toDomain(row, lineRows);
+      const postingInput = toPostingInput({
+        document: reversal,
+        operationKey: input.ledger.operationKey,
+        requestHash: input.ledger.requestHash,
+      });
+      const ledgerCreates = toLedgerEntries(postingInput, generateId).map(
+        (entry) =>
+          toLedgerEntryCreate(entry, input.finalizedAt, input.finalizedBy),
+      );
+      await insertLedgerEntries(tx, ledgerCreates);
+      await applyBalanceProjectionDeltasWithLocksHeldInTx(
+        tx,
+        ledgerCreates.map((c) => ({
+          organizationId: c.organizationId,
+          financialAreaId: c.financialAreaId,
+          fiscalYearId: c.fiscalYearId,
+          accountingPeriodId: c.accountingPeriodId,
+          accountId: c.accountId,
+          debitAmount: c.debitAmount,
+          creditAmount: c.creditAmount,
+        })),
+        input.finalizedAt,
+        input.finalizedBy,
+        lockedBalances,
+      );
+      await insertOperationRow(tx, input.ledger);
+      return reversal;
     });
   }
 
@@ -1167,6 +1375,19 @@ function toDomain(
     requestHash: row.requestHash,
     finalizedAt: row.finalizedAt,
     finalizedBy: row.finalizedBy,
+    correctionKind:
+      row.correctionKind === null
+        ? null
+        : isAccountingCorrectionKind(row.correctionKind)
+          ? row.correctionKind
+          : (() => {
+              throw new Error(
+                `Stored accounting document "${row.id}" has an unknown correction kind "${row.correctionKind}".`,
+              );
+            })(),
+    correctionReason: row.correctionReason,
+    reversesDocumentId: row.reversesDocumentId,
+    reversedByDocumentId: row.reversedByDocumentId,
     correlationId: row.correlationId,
     lines: lineRows
       .map((line) => ({

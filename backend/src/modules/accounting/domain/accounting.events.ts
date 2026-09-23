@@ -289,6 +289,8 @@ export const ACCOUNTING_DOCUMENT_FINALIZED_EVENT =
   'AccountingDocument.Finalized' as const;
 export const ACCOUNTING_DOCUMENT_DELETED_EVENT =
   'AccountingDocument.Deleted' as const;
+export const ACCOUNTING_DOCUMENT_REVERSED_EVENT =
+  'AccountingDocument.Reversed' as const;
 
 export type AccountingDocumentCreatedEvent = ScopedEvent<
   typeof ACCOUNTING_DOCUMENT_CREATED_EVENT,
@@ -363,5 +365,6 @@ export const ACCOUNTING_EVENT_TYPES = [
   ACCOUNTING_DOCUMENT_UPDATED_EVENT,
   ACCOUNTING_DOCUMENT_FINALIZED_EVENT,
   ACCOUNTING_DOCUMENT_DELETED_EVENT,
+  ACCOUNTING_DOCUMENT_REVERSED_EVENT,
   ACCOUNT_BALANCE_REBUILT_EVENT,
 ] as const;

@@ -192,6 +192,40 @@ export class UpdateAccountingDocumentDto {
   lines?: AccountingDocumentLineInputDto[];
 }
 
+export class ReverseAccountingDocumentDto {
+  @ApiProperty({
+    maxLength: MAX_OPERATION_KEY_LENGTH,
+    description:
+      'Client idempotency key for this reversal (§16.4). A retry with the same key and intent replays the stored reversal document.',
+  })
+  @IsString()
+  @MinLength(1, { message: 'An operationKey is required.' })
+  @MaxLength(MAX_OPERATION_KEY_LENGTH)
+  operationKey!: string;
+
+  @ApiProperty({
+    maxLength: MAX_DESCRIPTION_LENGTH,
+    description: 'Mandatory reason for the reversal (AC-D-22).',
+  })
+  @IsString()
+  @MinLength(1, { message: 'A reason is required.' })
+  @MaxLength(MAX_DESCRIPTION_LENGTH)
+  reason!: string;
+
+  @ApiPropertyOptional({
+    example: '2026-04-05',
+    description:
+      'Business date of the reversal. Defaults to the original document date. Must resolve to an open period.',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(DATE_ONLY_PATTERN, {
+    message: 'documentDate must be a valid calendar date (YYYY-MM-DD).',
+  })
+  @MaxLength(10)
+  documentDate?: string;
+}
+
 export class DocumentTransitionDto {
   @ApiProperty({
     maxLength: MAX_OPERATION_KEY_LENGTH,
@@ -367,6 +401,18 @@ export class AccountingDocumentResponseDto {
     description: 'End-to-end request trace (§23).',
   })
   correlationId!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, enum: ['reversal'] })
+  correctionKind!: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
+  correctionReason!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, format: 'ulid' })
+  reversesDocumentId!: string | null;
+
+  @ApiPropertyOptional({ nullable: true, format: 'ulid' })
+  reversedByDocumentId!: string | null;
 
   @ApiProperty({ type: [AccountingDocumentLineResponseDto] })
   lines!: AccountingDocumentLineResponseDto[];

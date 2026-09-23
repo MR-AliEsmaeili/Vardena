@@ -89,6 +89,7 @@ export const ACCOUNTING_DOCUMENT_PERMISSIONS = {
   EDIT: 'Accounting.Document.Edit',
   DELETE: 'Accounting.Document.Delete',
   FINALIZE: 'Accounting.Document.Finalize',
+  REVERSE: 'Accounting.Document.Reverse',
 } as const;
 
 /**
@@ -242,6 +243,11 @@ export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] 
       code: ACCOUNTING_DOCUMENT_PERMISSIONS.FINALIZE,
       description:
         'Finalize a temporary accounting document, making it part of the books. Distinct from approval (the Workflow authority).',
+    },
+    {
+      code: ACCOUNTING_DOCUMENT_PERMISSIONS.REVERSE,
+      description:
+        'Reverse a finalized accounting document by posting a new finalized counter-document (debit/credit swapped). The original stays immutable.',
     },
     {
       code: BALANCE_PERMISSIONS.VIEW,

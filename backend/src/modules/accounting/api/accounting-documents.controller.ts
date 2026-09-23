@@ -37,6 +37,7 @@ import {
   CreateAccountingDocumentDto,
   DocumentTransitionDto,
   ListAccountingDocumentsQueryDto,
+  ReverseAccountingDocumentDto,
   UpdateAccountingDocumentDto,
 } from './dto/accounting-document.dto.js';
 
@@ -247,6 +248,38 @@ export class AccountingDocumentsController {
   ): Promise<AccountingDocumentResponseDto> {
     return this.documents.finalizeDocument(scope.organizationId, id, {
       operationKey: body.operationKey,
+    });
+  }
+
+  @Post(':id/reverse')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard, AuthorizationGuard)
+  @RequirePermission(ACCOUNTING_DOCUMENT_PERMISSIONS.REVERSE)
+  @ApiOperation({
+    summary:
+      'Reverse a finalized accounting document by posting a new finalized counter-document (debit/credit swapped). The original stays immutable.',
+  })
+  @ApiOkResponse({ type: AccountingDocumentResponseDto })
+  @ApiNotFoundResponse({ description: 'The document was not found in scope.' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'The document is not final, is already reversed, or the reversal date does not resolve to an open period.',
+  })
+  @ApiConflictResponse({
+    description:
+      'The operationKey was already used with a different intent, or a concurrent reverse won.',
+  })
+  async reverse(
+    @Param('id') id: string,
+    @Query() scope: AccountingScopeQueryDto,
+    @Body() body: ReverseAccountingDocumentDto,
+  ): Promise<AccountingDocumentResponseDto> {
+    return this.documents.reverseDocument(scope.organizationId, id, {
+      operationKey: body.operationKey,
+      reason: body.reason,
+      ...(body.documentDate === undefined
+        ? {}
+        : { documentDate: body.documentDate }),
     });
   }
 

@@ -20,6 +20,38 @@ export function isUniqueViolation(error: unknown): boolean {
   return hasCode(error, PRISMA_UNIQUE_VIOLATION);
 }
 
+/**
+ * Column names (or index name fragments) Prisma reports on a `P2002`.
+ * Used so a reversal unique-race is not confused with an operation-key or
+ * document-number unique-race.
+ */
+export function uniqueViolationTargets(error: unknown): string[] {
+  if (!isUniqueViolation(error)) return [];
+  const meta = (error as { meta?: { target?: unknown } }).meta;
+  const target = meta?.target;
+  if (typeof target === 'string') return [target];
+  if (Array.isArray(target)) {
+    return target.filter((value): value is string => typeof value === 'string');
+  }
+  return [];
+}
+
+export function uniqueViolationTouches(
+  error: unknown,
+  columns: readonly string[],
+): boolean {
+  const targets = uniqueViolationTargets(error).map((value) =>
+    value.toLowerCase().replace(/"/g, ''),
+  );
+  if (targets.length === 0) return false;
+  return columns.some((column) => {
+    const needle = column.toLowerCase();
+    return targets.some(
+      (target) => target === needle || target.includes(needle),
+    );
+  });
+}
+
 export function isForeignKeyViolation(error: unknown): boolean {
   return hasCode(error, PRISMA_FOREIGN_KEY_VIOLATION);
 }

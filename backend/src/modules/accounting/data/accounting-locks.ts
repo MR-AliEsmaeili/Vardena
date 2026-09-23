@@ -601,6 +601,10 @@ export interface LockedAccountingDocument {
   state: string;
   origin: string;
   branchId: string | null;
+  correctionKind: string | null;
+  correctionReason: string | null;
+  reversesDocumentId: string | null;
+  reversedByDocumentId: string | null;
 }
 
 /**
@@ -635,7 +639,11 @@ export async function lockAccountingDocumentRow(
            "description"          AS "description",
            "state"                AS "state",
            "origin"               AS "origin",
-           "branch_id"            AS "branchId"
+           "branch_id"            AS "branchId",
+           "correction_kind"      AS "correctionKind",
+           "correction_reason"    AS "correctionReason",
+           "reverses_document_id" AS "reversesDocumentId",
+           "reversed_by_document_id" AS "reversedByDocumentId"
       FROM "accounting"."accounting_documents"
      WHERE "id" = ${documentId}
      FOR UPDATE`;

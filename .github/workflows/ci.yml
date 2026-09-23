@@ -119,4 +119,16 @@ jobs:
 
       - name: E2E tests (incl. live-DB suites)
         working-directory: backend
-        run: npm run test:e2e
+        timeout-minutes: 10
+        run: timeout 540 npm run test:e2e
+
+      - name: Upload backend logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-ci-logs
+          if-no-files-found: ignore
+          path: |
+            backend/**/*.log
+            backend/test-results/**
+            /tmp/vardena-*.log

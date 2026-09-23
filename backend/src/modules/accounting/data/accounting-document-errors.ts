@@ -215,3 +215,20 @@ export class AccountingDocumentStaleError extends Error {
     this.name = 'AccountingDocumentStaleError';
   }
 }
+
+/**
+ * The original already has a reversal (unique `reversed_by_document_id` /
+ * `reverses_document_id`). Distinct from a phase conflict so the service can
+ * map it to 422 without implying the original is not `final`.
+ */
+export class AccountingDocumentAlreadyReversedError extends Error {
+  readonly originalDocumentId: string;
+
+  constructor(originalDocumentId: string) {
+    super(
+      `Accounting document \"${originalDocumentId}\" has already been reversed.`,
+    );
+    this.name = 'AccountingDocumentAlreadyReversedError';
+    this.originalDocumentId = originalDocumentId;
+  }
+}
