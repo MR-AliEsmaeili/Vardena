@@ -600,7 +600,7 @@ export class AccountingDocumentsService {
         { problem: 'not_final', state: original.phase },
       );
     }
-    if (original.reversedByDocumentId !== null) {
+    if (original.reversedByDocumentId) {
       throw AppException.businessRule(
         'The accounting document has already been reversed.',
         { problem: 'already_reversed' },

@@ -822,7 +822,7 @@ export class AccountingDocumentsRepository {
           'final',
         );
       }
-      if (locked.reversedByDocumentId !== null) {
+      if (locked.reversedByDocumentId) {
         throw new AccountingDocumentAlreadyReversedError(locked.id);
       }
       const originalLines = await readLinesInTx(tx, input.originalDocumentId);

@@ -1265,7 +1265,7 @@ describe('Accounting documents (e2e)', () => {
       .expect(200);
     const originalSnapshot = { ...originalBefore.body };
 
-    await composer
+    await viewer
       .post(`/api/v1/accounting-documents/${originalId}/reverse`)
       .query({ organizationId: state.orgA })
       .send({ operationKey: `rev-denied-${originalId}`, reason: 'No' })

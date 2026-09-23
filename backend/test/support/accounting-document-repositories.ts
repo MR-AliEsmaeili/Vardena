@@ -668,7 +668,7 @@ export class InMemoryAccountingDocumentsRepository {
         'final',
       );
     }
-    if (original.reversedByDocumentId !== null) {
+    if (original.reversedByDocumentId) {
       throw new AccountingDocumentAlreadyReversedError(original.id);
     }
     const scope = this.resolveOpenScope(
