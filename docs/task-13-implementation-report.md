@@ -2,7 +2,14 @@
 
 Branch: `arena/01a0cd89-vardena` · Baseline: `1ce8d78` (`Merge pull request #30 from MR-AliEsmaeili/arena/01a0ca12-vardena`, Task 12 head) — working tree clean at start
 Date: 2026-09-23 · Area: Accounting (module 3) — `domain/` + `data/` + `application/` seams + test fakes + docs
-Governance status: **READY FOR REVIEW — IN PROGRESS (self-review), NOT Accepted** (per `docs/accounting/task-index.md` §6/§7: acceptance needs human acceptance + push + open PR + PR checks and the required CI green on the head SHA). The branch was pushed and a pull request opened from this session; the CI result on the head SHA is reported in the PR/`gh pr checks`, **not** asserted here
+Governance status: **READY FOR REVIEW — IN PROGRESS (self-review), NOT Accepted** (per `docs/accounting/task-index.md` §6/§7: acceptance needs human acceptance + push + open PR + PR checks and the required CI green on the head SHA). The branch was pushed and **PR #31** was opened
+> (`https://github.com/MR-AliEsmaeili/Vardena/pull/31`, head
+> `3e198d2e`, base `main`, `MERGEABLE`); the CI verdict on the head SHA is
+> whatever `gh pr checks 31` reports (required backend job
+> `lint → typecheck → format:check → unit → build → migrate deploy → live e2e`
+> on `postgres:16`) — **pending at the time of writing**, and it is the gate that
+> covers the live suites this sandbox could not run (§10 R1). Acceptance itself
+> still needs a human decision; nothing in this report claims it.
 Implementation commit: **`a0d90d3d7d22c45b11936439243bdee856c3e14a`** — `feat(accounting): wire the operational-freeze marker into finalization (Task 13, D4)`, 27 files, the only commit on top of the baseline `1ce8d78`. This report, the tests, the docs and both evidence scripts are in it; the follow-up commit `docs(task-13): record the implementation commit SHA` only amended this line (a commit cannot contain its own hash)
 
 ## 1. Task definition — what was asked
@@ -349,6 +356,7 @@ Excluding the evidence scripts and logs, the reviewed surface is ~**1840 added l
 
 - Decision analysis implemented here: [`accounting/task-11-mark-operationally-used-decision-note.md`](./accounting/task-11-mark-operationally-used-decision-note.md) §3/§4/§5/§6 (banner + preserved text)
 - Governance: [`accounting/configuration.md`](./accounting/configuration.md) (Operational freeze — wired), [`accounting/lock-order-matrix.md`](./accounting/lock-order-matrix.md) (row `D4″`), [`accounting/task-index.md`](./accounting/task-index.md) §2 row 13, [`adr/0028-accounting-configuration-foundation.md`](./adr/0028-accounting-configuration-foundation.md) (addendum), [`open-questions.md`](./open-questions.md) (OQ-64 Resolved), `modules.md`
+- Review: PR **#31** `https://github.com/MR-AliEsmaeili/Vardena/pull/31` (head `3e198d2e`, pushed from `arena/01a0cd89-vardena`)
 - Evidence: [`accounting/task-13-evidence/postgres-rehearsal.log`](./accounting/task-13-evidence/postgres-rehearsal.log), [`accounting/task-13-evidence/postgres-backfill-repair-probe.log`](./accounting/task-13-evidence/postgres-backfill-repair-probe.log)
 - Related reports: `task-11-implementation-report.md` (D1–D7), `task-11-defect-resolution-report.md` (A–J), `task-12-remediation-report.md` (P1 real-PostgreSQL follow-up — still open, and deliberately not absorbed here)
 - Rules: AR-05 (framework-free domain), AR-11 (parameterized raw SQL, scoped), AR-12 (money as decimal strings), AR-23 (audit), AG-03 (scope), AG-06 (failure-path tests), AG-07 (docs in sync), AG-16 (citations), AG-19 (review size), AG-21 (handoff)
