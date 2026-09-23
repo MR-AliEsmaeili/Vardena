@@ -104,6 +104,11 @@ model Organization {
   // `accounting.ledger_entries.organization_id`.
   ledgerEntries LedgerEntry[]
 
+  // Back-relations for the balance projection (Task 12).
+  // Virtual side only — the real FK column stays
+  // `accounting.account_balance_projections.organization_id`.
+  accountBalanceProjections AccountBalanceProjection[]
+
   // The organization code is the tenant root's business key: unique
   // deployment-wide (there is no wider scope to be unique within).
   @@unique([code], map: "uq_organizations_code")
