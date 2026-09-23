@@ -1,0 +1,40 @@
+name: debug-prisma
+on:
+  push:
+    branches: [arena/01a0ca12-vardena]
+permissions:
+  contents: read
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm install -g npm@11
+      - run: npm ci --no-audit --no-fund
+        working-directory: backend
+      - name: Prisma validate (capture)
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://vardena:invalid@127.0.0.1:1/vardena_test
+        run: |
+          set +e
+          npm run prisma:validate 2>&1 | tee /tmp/prisma-validate.log
+          EXIT=${PIPESTATUS[0]}
+          echo "EXIT:$EXIT"
+          cat /tmp/prisma-validate.log
+          echo "--- schema snippet ---"
+          sed -n '870,880p' prisma/schema/accounting.prisma
+          echo "--- end ---"
+          exit $EXIT
+      - name: Show schema
+        if: always()
+        run: |
+          echo "=== accounting.prisma 870-885 ==="
+          sed -n '870,885p' backend/prisma/schema/accounting.prisma
+          echo "=== grep unique ==="
+          grep -n "uq_account_balance" backend/prisma/schema/accounting.prisma || true
