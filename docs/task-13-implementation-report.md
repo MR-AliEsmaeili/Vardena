@@ -30,10 +30,11 @@ no _positive_ live assertion that finalization marks the pinned configuration �
 addressed by a **test-only** change: two live tests in
 `backend/test/accounting-documents-live.e2e-spec.ts`, documented in §5.5. No
 production, schema, migration, permission or DTO file moved, and no existing
-assertion was altered. Their status is **READY FOR CI / REVIEW**: this sandbox cannot
-execute a live suite at all (`prisma generate` is blocked, so the two tests collect
-and report `skipped`), which means CI on `postgres:16` is the first real execution —
-the run reference belongs in §5.4/§11 once published..
+assertion was altered. Their status is **READY FOR REVIEW**, verified on CI: this
+sandbox cannot execute a live suite at all (`prisma generate` is blocked, so the two
+tests only collect and report `skipped` here), and CI is what ran them — head
+`23942af`, run `35866991009`, job `backend`, `completed success`, step
+`E2E tests (incl. live-DB suites)` green (§5.5). Acceptance remains a human decision.
 
 ## 1. Task definition — what was asked
 
@@ -332,8 +333,16 @@ cannot run in this sandbox: `prisma generate` fails because the engine CDN
 live suites need a generated client plus a migrated database and otherwise
 self-skip. So the tests are executed by CI: `npm run test:e2e` under
 `VARDENA_TEST_DATABASE_URL` on `postgres:16`, the step §5.4 already records for the
-earlier heads. Until CI reports this head, the change is **READY FOR CI / REVIEW**;
-the run reference is added to §5.4/§11 as soon as it is known.
+earlier heads. **This head has now been executed there:** run `35866991009` on
+`23942af`, `completed success`, step 16 `E2E tests (incl. live-DB suites)` green.
+Because `VARDENA_TEST_DATABASE_URL` is a job-level env
+(`.github/workflows/ci.yml:38-39,53,122`, service image `postgres:16`), the
+`describe.skipIf(DATABASE_URL === undefined)` guard in this file does not fire in CI,
+so both new tests really ran against PostgreSQL 16 and passed — a red assertion in
+either would have turned step 16 red. **Label: VERIFIED-on-CI (live PostgreSQL 16,
+head `23942af`).** The raw CI log is not retrievable from this sandbox (`gh run view
+--log` and the job-log endpoint both fail), so what is recorded here is the
+step-level conclusion plus the `skipIf` mechanism — stated, not implied.
 
 What _was_ executed here is the SQL these tests rest on, against a real PostgreSQL
 18.4 built by applying all 14 migrations to an empty cluster (a private throwaway
@@ -446,6 +455,7 @@ All from `/home/user/Vardena/backend`. Baseline `1ce8d78` was clean; every comma
 | `git status` on `backend/prisma/schema/`, `backend/prisma/migrations/`                                                                               | clean — no schema or migration change                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `npm run test:e2e` (the live suites)                                                                                                                 | **NOT EXECUTABLE in this sandbox** — needs `prisma generate` + a migrated DB (§5.5). Locally the two new tests collect and report `skipped` (47 skipped, was 45), which is all this sandbox can show about them. CI runs them on `postgres:16`.                                                                                                                                                                                          |
 | sandbox-only SQL check for §5.5 (the new tests' INSERTs verbatim, the shipped marker statement, the `23505` collision, first-use-wins, zero residue) | **ALL CHECKS PASS** on a freshly migrated PostgreSQL 18.4 private cluster (the environment squats a non-functional proxy on port 55432, so a separate port was used). Not committed — the durable version of this evidence is the live suite itself.                                                                                                                                                                                     |
+| CI (PR #31, run `35866991009` on head `23942af` — the §5.5 remediation)          | **PASS** — `completed success`, every step green; step 16 `E2E tests (incl. live-DB suites)` executed the two new live tests against `postgres:16` (the job-level `VARDENA_TEST_DATABASE_URL` disables this suite's `skipIf`), which is the first real execution of them                                                                                                                                          |
 | CI (PR #31)                                                                                                                                          | **PASS** — run `35852213257` on head `5ad94f6` and run `35852746750` on head `692ee0f`, job `backend` `completed success`: all steps green incl. `Prisma generate`, `Unit tests`, `Build`, `Migrate test database`, `Migration rehearsal (populated pre-Task-11 data)` and `E2E tests (incl. live-DB suites)` on `postgres:16` (§5.4)                                                                                                    |
 
 Sandbox-only artifacts deliberately **not** committed: the locally installed real PostgreSQL binaries (`node_modules/@embedded-postgres/*`), `pg`/`pglite` installed with `--no-save`, and the throwaway cluster at `127.0.0.1:55432`. `pg` is already a runtime dependency of the app, so the rehearsal scripts need no new package.
