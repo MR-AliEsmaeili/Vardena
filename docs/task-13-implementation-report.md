@@ -2,8 +2,8 @@
 
 Branch: `arena/01a0cd89-vardena` · Baseline: `1ce8d78` (`Merge pull request #30 from MR-AliEsmaeili/arena/01a0ca12-vardena`, Task 12 head) — working tree clean at start
 Date: 2026-09-23 · Area: Accounting (module 3) — `domain/` + `data/` + `application/` seams + test fakes + docs
-Governance status: **READY FOR REVIEW — IN PROGRESS (self-review), NOT Accepted** (per `docs/accounting/task-index.md` §6/§7: acceptance needs human acceptance + push + open PR + PR checks and required CI green on the head SHA; this report is committed on the branch and no push/PR was created from this sandbox)
-Implementation commit(s): the commit that contains this report (recorded by `git log -1 --format=%H` at commit time; the branch had exactly one baseline commit `1ce8d78` before it)
+Governance status: **READY FOR REVIEW — IN PROGRESS (self-review), NOT Accepted** (per `docs/accounting/task-index.md` §6/§7: acceptance needs human acceptance + push + open PR + PR checks and the required CI green on the head SHA). The branch was pushed and a pull request opened from this session; the CI result on the head SHA is reported in the PR/`gh pr checks`, **not** asserted here
+Implementation commit: **`a0d90d3d7d22c45b11936439243bdee856c3e14a`** — `feat(accounting): wire the operational-freeze marker into finalization (Task 13, D4)`, 27 files, the only commit on top of the baseline `1ce8d78`. This report, the tests, the docs and both evidence scripts are in it; the follow-up commit `docs(task-13): record the implementation commit SHA` only amended this line (a commit cannot contain its own hash)
 
 ## 1. Task definition — what was asked
 
