@@ -215,14 +215,15 @@ This is a bounded inventory of verified references, not a reconstructed complete
 | 14 | Period Close Foundation; `docs/task-14-implementation-report.md`, ADR-0032 | Gate/locked-row checks and live test suite present; #32 MERGED observed | Recorded READY FOR REVIEW — NOT ACCEPTED; final decision UNKNOWN; ADR Proposed | #32; change `31442cf`; merge `ce223fb25001a6feed3b4f428ac69c1f3af4a955` |
 | 15 | Accounting reversal foundation; `backend/prisma/migrations/20260923000000_accounting_document_reversal/migration.sql`, `accounting/domain/document-reversal.ts`, service/repository, reversal tests | Implementation present; baseline commit explicitly merges #33; GitHub confirms title/merge | UNKNOWN; no dedicated Task 15 brief/review/report found in docs; stale no-reversal comments persist | #33; baseline `79d69e1fa2450749302a24c2688869e9378643f0` |
 | 16 | Task 16 contract finalization; `docs/tasks/task-16/brief.md`, `decision-reconciliation.md` | **Contract formalized 2026-09-24; no production implementation** — Owner Direction Established; Accounting Foundations Existing | **Contract finalization: READY FOR REVIEW. Implementation authorization: BLOCKED — OWNER CONFIRMATION REQUIRED.** Not implemented, accepted or production-ready; one concrete document/amount authority gate remains | No implementation PR/branch/commit established |
+| 17 | Accounting Reporting Foundation; `docs/tasks/task-17/brief.md`, `prompt.md`; Accounting task index §2/§4 | **Task definition formalized 2026-09-24; no production implementation** — bounded Accounting-owned reporting inputs only | **Documentation task: READY FOR REVIEW. Implementation: FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS (OQ-25/OQ-43).** Not implemented, accepted or production-ready; Task 12 P1 remains separate and Task 14 is not treated as accepted | Documentation-only work on `arena/01a0d451-vardena`; implementation PR/commit NOT YET DOCUMENTED |
 
 Rows with shortened paths `accounting/...` refer to `backend/src/modules/accounting/...`. The Task 11 report notation above denotes the three real separately named files, not a literal brace-named file.
 
 ## 8. Current Task
 
-The current work is **Task 16 documentation / contract finalization only**. The Owner Direction is **ESTABLISHED**; the Accounting Foundations are **EXISTING**; the Task 16 Contract is **FORMALIZED** in `docs/tasks/task-16/brief.md` and `decision-reconciliation.md`. Contract finalization is **READY FOR REVIEW**. Implementation authorization is **BLOCKED — OWNER CONFIRMATION REQUIRED**; Production Implementation is **NOT AUTHORIZED**.
+The current work is **Task 17 documentation / task-definition only**. The Task 17 contract is **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS** in `docs/tasks/task-17/brief.md`; its documentation task is **READY FOR REVIEW** only. OQ-25 (chart/report layouts) and OQ-43 (Iranian statutory/legal reporting requirements) remain OPEN. Production implementation is **NOT AUTHORIZED**.
 
-Task 16 is not implemented, accepted or production-ready. `prompt.md` remains an implementation placeholder and `review.md` remains a future implementation-review record. A concrete supported document-type and amount-authority allow-list remains an explicit implementation gate so the task cannot become a generic settlement engine. No production code, schema, migration, endpoint, permission or business logic was changed here.
+Task 17 is not implemented, accepted, or production-ready. It introduces no production code, schema, migration, endpoint, permission, test, event, reporting platform, or frontend behavior. Task 12's P1 real-PostgreSQL concurrency verification remains a separate follow-up; Task 14 remains **READY FOR REVIEW — NOT ACCEPTED**. The Task 16 contract-finalization status in §7 remains unchanged.
 
 ## 9. Open Questions
 
@@ -237,9 +238,11 @@ The existing canonical product/domain registry is `docs/open-questions.md` (OQ-0
 | OQ-01 / OQ-22 | Confirm single-organization deployment vs eventual tenancy/branch accounting scope | `docs/open-questions.md`, ADR-0025 | Owner/product/architecture; do not infer membership from organizationId | OPEN in registry |
 | OQ-03 / OQ-47 / OQ-48 | Currency precision, FX rules and revaluation policy; numeric storage alone is not policy | `docs/open-questions.md`, `docs/decisions/product/OQ-47-exchange-rate-and-multicurrency-rules.md`, `OQ-48-revaluation-and-fx-gain-loss.md` in that directory | Product/accounting expert | OPEN in registry |
 | OQ-23 / OQ-27 | Period close/reopen authority and correction windows; existing open-scope/reopen mechanisms do not settle full policy | `docs/open-questions.md`, contract §7/§15, ADR-0032 | Owner/accounting expert | OPEN |
+| OQ-25 / OQ-43 | Chart/report-layout policy and Iranian statutory/legal reporting requirements gate Task 17 report layouts and business meaning | `docs/accounting/task-index.md` §4, `docs/tasks/task-17/brief.md`, contract §19 | Accountant + tax/legal expert + owner; record a resolution or approved bounded interim posture before implementation | OPEN in registry; Task 17 does not resolve either |
 | OQ-62 / OQ-63 | Compatibility of account coding/configuration pins and legacy fallback shape; affects validation/migration semantics | `docs/open-questions.md`, Task 11 report; default 2+3 fallback is recorded behavior, not a newly ratified decision | Product/architecture | OPEN |
 
 OQ-64 is **RESOLVED 2026-09-23** in the registry: freeze the distinct configurations actually referenced by finalized voucher accounts. Some older Task 12/index paragraphs still call it open; do not re-open it based on those stale references. Task 16 questions are newly recorded bootstrap questions only, not previously approved scope.
+Task 17 creates no new OQ and does not reclassify OQ-25, OQ-43, OQ-49, or any existing registry entry.
 
 ## 10. Risks and Gaps
 
@@ -257,6 +260,8 @@ OQ-64 is **RESOLVED 2026-09-23** in the registry: freeze the distinct configurat
 | BOOT-R-09 | Shallow checkout; historical CI/report assertions not rerun; branch required-check settings unknown | Inventory is not a complete historical or runtime audit | UNKNOWN beyond inspected evidence; retrieve further commit/check evidence for future reviews |
 
 **Task 16 contract finalization — 2026-09-24:** Owner directions were reconciled against the current Accounting/Document/RBAC/idempotency/transaction/concurrency repository mechanisms. `docs/tasks/task-16/brief.md` and `decision-reconciliation.md` formalize the bounded Settlement / Allocation foundation; `docs/accounting/task-index.md` now records the contract as defined. No production implementation, schema or migration is authorized by this work.
+
+**Task 17 documentation/task definition — 2026-09-24:** `docs/tasks/task-17/brief.md` and `prompt.md` formalize the bounded Accounting Reporting Foundation while keeping implementation blocked by OQ-25/OQ-43. The accepted Reporting architecture is preserved; no Report Builder/OQ-49 work, production implementation, schema, migration, endpoint, permission, test, event, reporting infrastructure, or frontend is authorized by this documentation work.
 
 ## 11. Maintenance Rules
 
