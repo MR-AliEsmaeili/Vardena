@@ -2,7 +2,9 @@
 
 ## Status
 
-**NOT YET PREPARED — IMPLEMENTATION NOT AUTHORIZED**
+**Contract finalization: READY FOR REVIEW**
+
+**Implementation authorization: BLOCKED — OWNER CONFIRMATION REQUIRED**
 
 The Task 16 domain contract is now formalized in [`brief.md`](./brief.md), and the
 Owner decisions are reconciled in

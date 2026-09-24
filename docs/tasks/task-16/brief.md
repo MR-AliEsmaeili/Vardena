@@ -7,7 +7,9 @@
 | Owner Direction | **ESTABLISHED** — the directions in the Task 16 contract-finalization request are binding and are not reopened here. |
 | Accounting Foundations | **EXISTING** — organization scope, typed document identity, Decimal handling, RBAC, idempotency, transactions, immutable ledger/correction patterns and PostgreSQL test conventions were verified in the repository. |
 | Task 16 Contract | **FORMALIZED** — this brief and [`decision-reconciliation.md`](./decision-reconciliation.md). |
-| Production Implementation | **NOT YET AUTHORIZED**. |
+| Contract finalization | **READY FOR REVIEW** — the documentation work is complete for review. |
+| Implementation authorization | **BLOCKED — OWNER CONFIRMATION REQUIRED** — the supported document/amount-authority boundary is unresolved. |
+| Production Implementation | **NOT AUTHORIZED**. |
 | Acceptance / production readiness | **NOT CLAIMED**. |
 
 This is a documentation-only domain contract. It authorizes no service, controller,
@@ -89,7 +91,6 @@ than a catch-all JSONB/EAV payload.
 - Endpoints use the existing Document Foundation logical identity shape:
   `(module, documentType, documentId[, lineId])`. Logical identity is not proof of
   existence or organization ownership; the owning module must resolve it.
-- Source and Target must be distinct endpoints. A self-allocation is rejected.
 - Task 16 must not invent AR/AP, Sales/Purchase, Treasury or other operational
   document types to populate the allow-list.
 - The current `documents.document_relations` `settle` kind is a generic whole-document
@@ -116,8 +117,8 @@ Source and Target must resolve to the **same Organization**. The implementation 
    deployment-scope mechanisms;
 2. resolve both endpoints through their owning public application services, including
    organization ownership;
-3. reject a missing, inactive/unsupported or cross-organization endpoint using the
-   existing scope/error posture; and
+3. reject a missing, unsupported or cross-organization endpoint using the existing
+   scope/error posture; and
 4. perform the same-scope assertion again inside the allocation transaction where
    endpoint rows/amount authorities are locked.
 
@@ -127,10 +128,10 @@ allocation may be persisted, and no cross-organization existence may be disclose
 
 ### 2.5 Currency compatibility and FX boundary
 
-Source and Target currency must be compatible. For Task 16, compatibility means the
-owning document contracts resolve to the same compatible currency identity; it does
-not mean that numeric amounts happen to have the same scale or that the Organization
-alone proves currency compatibility.
+Source and Target currency must be compatible. The supported document contracts must
+provide the compatibility authority; Task 16 does not invent a stricter currency-code
+predicate from the absence of current currency columns. Numeric scale or Organization
+alone never proves compatibility.
 
 Task 16 performs **no FX conversion**. It does not look up rates, apply rounding,
 revalue balances, calculate FX gain/loss, or add a conversion engine. If the
@@ -149,8 +150,11 @@ The implementation must explicitly reject:
 
 - a reversed document, including an original document whose reversal link is set;
 - a document in a supported voided/cancelled terminal state; and
-- any draft, temporary, inactive or otherwise non-allocatable state according to the
-  owning document contract.
+- any state that the supported document contract identifies as non-allocatable.
+
+Task 16 does not establish a default draft, temporary or inactive exclusion without
+repository evidence from the supported document contract. Those state-eligibility
+rules remain part of the unresolved document-type/amount-authority gate.
 
 The current Accounting contract deliberately has `draft | temporary | final` and no
 `void` state. Task 16 must not introduce a `void` state. For current Accounting
@@ -248,16 +252,17 @@ If correction is supported by the implementation slice, it is an explicit,
 permission-gated compensating/reversal operation:
 
 - it creates a new correction/reversal record linked to the original allocation;
-- it carries a mandatory reason and actor/correlation evidence using existing
-  Accounting correction conventions;
+- it carries the reason and actor/correlation evidence required by the supported
+  correction contract, reusing existing Accounting correction conventions;
 - it leaves the original allocation unchanged and readable;
 - its effect is included in the net availability calculation without rewriting the
   historical original; and
 - it has its own idempotency intent and conflict/replay behavior.
 
-A reversal is not a second ordinary allocation with swapped endpoints unless the
-owning contract explicitly models that as the compensating effect. No generic
-correction engine, workflow or rules language is introduced.
+The exact compensating effect and endpoint representation must follow the supported
+correction/amount authority; this contract does not invent those details. The
+original allocation remains immutable, and no generic correction engine, workflow or
+rules language is introduced.
 
 If reversal is not included in the first implementation vertical slice, normal
 allocation creation must not imply that correction exists. The contract still

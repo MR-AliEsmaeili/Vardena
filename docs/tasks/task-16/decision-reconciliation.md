@@ -149,8 +149,8 @@ Owner directions so that existing implementation is not overstated.
 | T16-06 | Partial allocation is supported. | The Document Foundation explicitly supports partial quantity-aware fulfilment, but its `settle` relation is not amount-aware and does not provide settlement remaining state. | `OWNER-DECIDED / NOT YET FORMALIZED` | One allocation may consume less than the currently allocatable amount; the unconsumed amount stays available. | Formalized in the brief; do not overload `DocumentRelation.quantity` or `fulfill` semantics without an approved contract. |
 | T16-07 | Multiple allocations against the same Source or Target are supported. | The generic relation model is append-oriented, but it has no allocation-specific cumulative state or concurrency guard. | `OWNER-DECIDED / NOT YET FORMALIZED` | Preserve each accepted allocation as a separate historical record and calculate the current remaining amount from the allocation-owned facts/contract. | Formalized in the brief; implementation must add no “one allocation per document” uniqueness rule. |
 | T16-08 | Conceptually maintain `allocatableAmount`, `allocatedAmount` and `remainingAmount`. | Accounting has exact Decimal money and rebuildable projections, but no settlement amount model. The existing projection is not a source of settlement truth. | `OWNER-DECIDED / NOT YET FORMALIZED` | The contract exposes these concepts without prescribing a new universal balance engine. `allocatableAmount` is the eligible amount made available by the supported document contract; `allocatedAmount` is the cumulative accepted amount for that endpoint; `remainingAmount` is the amount still available. Values must be exact Decimal and non-negative at acceptance. | Formalized in the brief; the implementation must document the source amount and whether a compensation increases availability rather than mutating history. |
-| T16-09 | Source → Target is directional. | Documents Foundation already models distinct source and target logical endpoints and rejects self-reference. | `REPOSITORY-CONFIRMED` | Preserve endpoint order in identity, reads, idempotency payloads and audit; reversing the endpoints is a different intent. | Formalized in the brief and reconciliation matrix; do not model allocation as an undirected pair. |
-| T16-10 | Source and Target currency must be compatible. | Currency/FX is explicitly deferred in Accounting, no current Accounting document currency column is present, and OQ-03 remains open. | `CONFLICT` | Enforce compatibility only from an existing repository-owned currency identity or an approved narrow contract; fail closed when currency cannot be resolved. Never infer compatibility from numeric storage or organization alone. | Keep this as a visible implementation gate in the brief. An implementation that adds currency fields, cross-module currency ownership, or a new conversion boundary requires an ADR and must not silently close OQ-03. |
+| T16-09 | Source → Target is directional. | Documents Foundation already models distinct source and target logical endpoints; ADR-0019 defines controlled source/target document relations. | `REPOSITORY-CONFIRMED` | Preserve endpoint order in identity, reads, idempotency payloads and audit; reversing the endpoints is a different intent. | Formalized in the brief and reconciliation matrix; do not model allocation as an undirected pair. |
+| T16-10 | Source and Target currency must be compatible. | Currency/FX is explicitly deferred in Accounting, no current Accounting document currency column is present, and OQ-03 remains open. | `CONFLICT` | Enforce compatibility using the supported document contract's authority; fail closed when compatibility cannot be resolved. Do not infer a stricter currency-code predicate from numeric storage or organization alone. | Keep this as a visible implementation gate in the brief. An implementation that adds currency fields, cross-module currency ownership, or a new conversion boundary requires an ADR and must not silently close OQ-03. |
 | T16-11 | FX conversion is outside Task 16. | Accounting §24.1 defers currency conversion, exchange-rate tables and revaluation; current schema has no FX model. | `REPOSITORY-CONFIRMED` | Compare compatible currencies only; no rates, rounding, gain/loss, revaluation, or conversion columns/engine. | Formalized in the brief's exclusions and currency contract. |
 | T16-12 | Allocation must be atomic. | Accounting AC-D-23 already requires one locked transaction for financial effects and idempotency evidence; repository methods use Prisma `$transaction`. | `REPOSITORY-CONFIRMED` | The allocation record, all affected allocation state, idempotency evidence and audit facts commit together or roll back together. | Formalized in the brief; implementation must reuse the existing application/data transaction pattern. |
 | T16-13 | Idempotency is required using `operationKey`. | `AccountingPostingOperation` and Document Foundation numbering already use caller keys, organization scope and canonical intent hashes. | `REPOSITORY-CONFIRMED` | Use the existing organization-scoped operation-key/hash pattern; do not create a second key namespace with different replay rules. | Formalized in the brief; implementation must identify the allocation operation kind and canonical payload. |
@@ -166,6 +166,45 @@ Owner directions so that existing implementation is not overstated.
 | T16-23 | Task 16 is a bounded Accounting Settlement / Allocation foundation. | ADR-0026 and the Accounting domain contract define a bounded Accounting context and reject universal engines. Task 16 was not previously in the authoritative task index. | `OWNER-DECIDED / NOT YET FORMALIZED` | Add only the allocation aggregate/use cases required for these invariants; no future-module framework, generic rule language or cross-module table access. | Formalized in the brief and task index; production implementation remains unauthorized. |
 | T16-GATE-01 | The implementation must identify the supported document-type allow-list and each owning amount/currency authority before production implementation. | No current repository contract names an allocatable document type or settlement amount; current Accounting vouchers expose debit/credit lines, not a settlement amount. | `REQUIRES OWNER CONFIRMATION` | Record the narrow allow-list and authority without reopening any established allocation rule; fail closed until it exists. | Remains an explicit gate in the brief and implementation handoff; no fake global OQ was created. |
 | T16-GATE-02 | An implementation that changes module boundaries, currency ownership, communication, lifecycle or deployment topology requires an ADR before or with implementation. | ADR README/AR-29 define these architecture gates; `docs/adr/` is canonical. | `REQUIRES ADR` | Do not introduce a parallel architecture silently. A bounded in-module allocation vertical slice does not require a new ADR by itself. | Formalized in the brief and this reconciliation; no ADR created by this documentation task. |
+
+### Inferred-rule review: self-allocation
+
+The repository contains a concrete **generic DocumentRelation** self-reference rule:
+`planRelation` returns `self_reference` in
+`backend/src/modules/documents/domain/document-relation.ts`, with unit coverage in
+`backend/src/modules/documents/domain/document-relation.spec.ts` and HTTP coverage in
+`backend/test/documents.e2e-spec.ts`. ADR-0019 supports that generic relation
+semantics.
+
+That evidence does **not** establish a Task 16 allocation invariant. The Task 16
+brief explicitly distinguishes a financial allocation from the generic
+`documents.document_relations` `settle`/`fulfill` mechanisms, and the repository has
+no allocation/settlement aggregate, schema constraint, amount authority or allocation
+test. The self-allocation sentence was therefore removed from the mandatory Task 16
+contract rather than promoted to an Owner decision.
+
+**Self-allocation classification:** removed as unsupported from the mandatory contract.
+If a later implementation proposes to reject self-allocation specifically for the
+financial allocation aggregate, it requires explicit Owner confirmation; the generic
+DocumentRelation rule must not be silently reused as proof.
+
+### Targeted review of other inferred rules
+
+- **Supported document types, amount source and currency source:** remain an explicit
+  `REQUIRES OWNER CONFIRMATION` implementation gate. No allow-list is invented.
+- **Currency compatibility:** the established Owner decision remains intact, but the
+  unsupported “same currency identity” predicate was removed. The supported document
+  contract must supply the compatibility authority; FX remains out of scope.
+- **Document states:** reversed and supported voided/cancelled documents remain
+  non-allocatable per Owner direction. A default draft/temporary/inactive exclusion
+  was removed because allocation eligibility for those states is not established by
+  the current repository contract.
+- **Correction semantics:** immutable history and compensating/reversal correction
+  remain intact. Exact reversal amount/endpoint representation is left to the
+  supported correction and amount authority rather than invented here.
+- **Locks, permissions, atomicity, idempotency, audit evidence and PostgreSQL
+  verification:** remain as repository-aligned implementation constraints and
+  established Owner directions; no new business rule was added.
 
 ### Scope exclusions
 
