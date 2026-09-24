@@ -889,10 +889,24 @@ export type LedgerEntryRow = {
   finalizedBy: string | null;
 } & AuditColumns;
 
+/**
+ * Scoped reads over the immutable ledger. `organizationId` is the tenant
+ * boundary every read leads with (AC-I-01); the remaining keys are the Task
+ * 17A movement filters and are always evaluated INSIDE that organization, so a
+ * foreign scope id can only ever match nothing — never another organization's
+ * row.
+ */
 export interface LedgerEntryWhere {
   organizationId?: string;
   voucherId?: string;
   voucherLineId?: string;
+  financialAreaId?: string;
+  fiscalYearId?: string;
+  accountingPeriodId?: string;
+  accountId?: string;
+  voucherNumber?: string;
+  /** Inclusive business-date bounds (`DATE` semantics, §12.3). */
+  documentDate?: { gte?: Date; lte?: Date };
 }
 
 export interface LedgerEntryCreate {
@@ -927,12 +941,19 @@ export interface LedgerEntryCreate {
 /**
  * Insert-only + scoped reads: there is deliberately no update and no delete
  * (AC-I-05/06 — corrections are future counter-documents with new entries).
+ *
+ * `count` exists for the Task 17A movement list: the page and its `total` must
+ * be answered over the SAME filtered predicate, so pagination never reports a
+ * total from a different scope.
  */
 export interface LedgerEntryDelegate {
   findMany(args: {
     where: LedgerEntryWhere;
     orderBy: OrderBy;
+    skip: number;
+    take: number;
   }): Promise<LedgerEntryRow[]>;
+  count(args: { where: LedgerEntryWhere }): Promise<number>;
   createMany(args: { data: LedgerEntryCreate[] }): Promise<{ count: number }>;
 }
 

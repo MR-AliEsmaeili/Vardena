@@ -22,7 +22,7 @@ published/consumed events, and extension points. Adding a module = new folder pe
 | RBAC          | v1 core                                                                                                                                                                                                                 | Roles, granular permissions, assignments                                                                                                                                                    | `rbac`          |
 | Audit         | v1 core                                                                                                                                                                                                                 | Append-only audit log of sensitive operations                                                                                                                                               | `audit`         |
 | Notifications | v1 core                                                                                                                                                                                                                 | In-app notifications driven by events                                                                                                                                                       | `notifications` |
-| Accounting    | foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11 — **Task 11 ACCEPTED 2026-09-22**; ADR-0026 Accepted); posting rules / corrections contract-only; **balances READY FOR REVIEW as Task 12 (ADR-0031 Proposed, not Accepted)** | Financial areas, fiscal years/periods, coding structure, accounting configurations, chart of accounts, accounting documents + lines, ledger entries, balance projection (READY FOR REVIEW), posting rules                          | `accounting`    |
+| Accounting    | foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11 — **Task 11 ACCEPTED 2026-09-22**; ADR-0026 Accepted); posting rules / corrections contract-only; **balances READY FOR REVIEW as Task 12 (ADR-0031 Proposed, not Accepted)**; **ledger movement read source READY FOR REVIEW as Task 17A (read-only, not accepted)** | Financial areas, fiscal years/periods, coding structure, accounting configurations, chart of accounts, accounting documents + lines, ledger entries (+ the read-only movement source), balance projection (READY FOR REVIEW), posting rules                          | `accounting`    |
 | Inventory     | v1 core                                                                                                                                                                                                                 | Items, warehouses, stock, receipts/issues/transfers/adjustments                                                                                                                             | `inventory`     |
 | Sales         | v1 core                                                                                                                                                                                                                 | Customers, quotes, sales orders, invoices, returns                                                                                                                                          | `sales`         |
 | Purchasing    | planned                                                                                                                                                                                                                 | Suppliers, purchase orders, supplier invoices                                                                                                                                               | `purchasing`    |
@@ -458,17 +458,49 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   delete of any configuration an account references — FK RESTRICT). Accounts expose the
   pinned `accountingConfigurationId`; neither pin is editable through the API
   (both are derived server-side).
+- **API (Task 17A):** `/api/v1/accounting/ledger-movements` — `GET` ONLY (one
+  method, no mutation route anywhere): the Accounting-owned, read-only source of
+  POSTED ledger movements, built for the future account-ledger / general-ledger /
+  subsidiary-ledger / account-movement inquiries and the balance-oriented reads
+  that precede a trial balance. One row per immutable `ledger_entries` row —
+  no join, no aggregation, no projection, no second truth, no new table and no
+  migration. Mandatory `organizationId` (deployment-pin asserted, then resolved
+  through `OrganizationsService.requireUsableOrganization`: 404 for a foreign or
+  unknown organization, never 403) plus optional `financialAreaId`,
+  `fiscalYearId`, `accountingPeriodId`, `accountId`, `voucherId`,
+  `voucherNumber`, `dateFrom`/`dateTo` (inclusive business-date bounds) and the
+  shared `page`/`pageSize`/`sort` conventions, with the sort allow-listed to
+  `documentDate`/`postingTimestamp` and always completed by stable tie-breakers
+  (serial, line ordinal, unique entry id). Amounts cross the wire as exact
+  decimal STRINGS. Deliberately absent — and not to be inferred later without
+  their own authority: a `status` filter (no such column exists; drafts and
+  temporary vouchers have NO ledger rows, so the source is posted-only by
+  construction), currency/FX, branch filters, account code/title or hierarchy
+  joins, groupings/subtotals, statement layouts, exports and any trial-balance
+  or book-configuration semantics (OQ-03/23/25/43). Permission:
+  `Accounting.LedgerMovement.View` (NEW, read-only; `Accounting.Balance.View`
+  governs the rebuildable projection and `Accounting.Document.View` the voucher
+  aggregate — neither means the ledger). Tests: `ledger-movements.service.spec.ts`
+  (authorization, scope, filters, order, exactness), `accounting-ledger-movements.e2e-spec.ts`
+  (HTTP: 401/403, posted-only, tenant isolation, filters, paging, validation, no
+  mutation route, deployment pin) and the live suite `ledger-movements-live.e2e-spec.ts`
+  (real PostgreSQL: posted-only, organization isolation, inclusive date bounds,
+  stable paging, `numeric(18,2)` exactness).
 - **API (still planned):** dimensions/items, document corrections
-  (reverse, correct, replace), ledger/balance inquiries through
-  Accounting-owned views consumed by Reporting (ADR-0009).
-- **Permissions (implemented, 31 codes):**
+  (reverse, correct, replace), the remaining ledger/trial-balance/movement report
+  shapes through Accounting-owned views consumed by the Reporting module
+  (ADR-0009), report layouts and exports. The posted movement SOURCE exists
+  (Task 17A, above); none of the report layouts or the Reporting module does.
+- **Permissions (implemented, 35 codes):**
   `Accounting.FinancialArea.{View,Create,Edit,Enable,Disable}`,
   `Accounting.FiscalYear.{View,Create,Edit,Close,Reopen,Seal,Unseal}`,
   `Accounting.AccountingPeriod.{View,Open,Close,Reopen,Seal}`,
   `Accounting.CodingStructure.{View,Configure}`,
   `Accounting.AccountingConfiguration.{View,Configure}`,
   `Accounting.Account.{View,Create,Edit,Enable,Disable}`,
-  `Accounting.Document.{View,Create,Edit,Delete,Finalize}` + `Accounting.Balance.{View,Rebuild}` (Task 12, READY FOR REVIEW) — enforced in the
+  `Accounting.Document.{View,Create,Edit,Delete,Finalize,Reverse}`,
+  `Accounting.Balance.{View,Rebuild}` (Task 12) and `Accounting.LedgerMovement.View`
+  (Task 17A) — enforced in the
   application services, not only by the route guards. Period creation is authorized
   by `Open` (the row is born `open`); there is no period `Create`/`Edit`. The
   coding structure has ONE write code (`Configure`: drafting, editing a draft and

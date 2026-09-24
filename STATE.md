@@ -216,14 +216,32 @@ This is a bounded inventory of verified references, not a reconstructed complete
 | 15 | Accounting reversal foundation; `backend/prisma/migrations/20260923000000_accounting_document_reversal/migration.sql`, `accounting/domain/document-reversal.ts`, service/repository, reversal tests | Implementation present; baseline commit explicitly merges #33; GitHub confirms title/merge | UNKNOWN; no dedicated Task 15 brief/review/report found in docs; stale no-reversal comments persist | #33; baseline `79d69e1fa2450749302a24c2688869e9378643f0` |
 | 16 | Task 16 contract finalization; `docs/tasks/task-16/brief.md`, `decision-reconciliation.md` | **Contract formalized 2026-09-24; no production implementation** — Owner Direction Established; Accounting Foundations Existing | **Contract finalization: READY FOR REVIEW. Implementation authorization: BLOCKED — OWNER CONFIRMATION REQUIRED.** Not implemented, accepted or production-ready; one concrete document/amount authority gate remains | No implementation PR/branch/commit established |
 | 17 | Accounting Reporting Foundation; `docs/tasks/task-17/brief.md`, `prompt.md`; Accounting task index §2/§4 | **Task definition formalized 2026-09-24; no production implementation** — bounded Accounting-owned reporting inputs only | **Documentation task: READY FOR REVIEW. Implementation: FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS (OQ-25/OQ-43).** Not implemented, accepted or production-ready; Task 12 P1 remains separate and Task 14 is not treated as accepted | Documentation-only work on `arena/01a0d451-vardena`; implementation PR/commit NOT YET DOCUMENTED |
+| 17A | Bounded first slice of Task 17 — Accounting Ledger Movement Read Source; `docs/tasks/task-17/task-17a-implementation-report.md` | Implementation present on `arena/01a0d4d0-vardena` (base `6bbd488`): `domain/ledger-movement.ts`, `LedgerMovementsService`, read-only `listMovements`, `GET /api/v1/accounting/ledger-movements`, `Accounting.LedgerMovement.View`; **no schema, migration, index, aggregation or report definition** | **READY FOR REVIEW — NOT ACCEPTED**; owner confirmation required on the OQ-25/OQ-43 interim posture and on the endpoint/permission deviation; Task 17 as a whole remains blocked | Branch only; PR NOT YET DOCUMENTED |
 
 Rows with shortened paths `accounting/...` refer to `backend/src/modules/accounting/...`. The Task 11 report notation above denotes the three real separately named files, not a literal brace-named file.
 
 ## 8. Current Task
 
-The current work is **Task 17 documentation / task-definition only**. The Task 17 contract is **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS** in `docs/tasks/task-17/brief.md`; its documentation task is **READY FOR REVIEW** only. OQ-25 (chart/report layouts) and OQ-43 (Iranian statutory/legal reporting requirements) remain OPEN. Production implementation is **NOT AUTHORIZED**.
+The current work is **Task 17A — Accounting Ledger Movement Read Source**: a bounded,
+non-statutory, ledger-native READ-ONLY slice of Task 17, implemented on
+`arena/01a0d4d0-vardena` (base `6bbd488`) under an explicit task instruction, and
+**READY FOR REVIEW — NOT ACCEPTED**. It adds the posted-ledger movement source
+(`domain/ledger-movement.ts`, `LedgerMovementsService`), a read-only `listMovements` on
+`LedgerEntriesRepository`, the versioned endpoint `GET /api/v1/accounting/ledger-movements`
+and the new read code `Accounting.LedgerMovement.View`. It adds **no** schema, migration,
+index, aggregation, report definition, layout, export, print, statement or second truth.
 
-Task 17 is not implemented, accepted, or production-ready. It introduces no production code, schema, migration, endpoint, permission, test, event, reporting platform, or frontend behavior. Task 12's P1 real-PostgreSQL concurrency verification remains a separate follow-up; Task 14 remains **READY FOR REVIEW — NOT ACCEPTED**. The Task 16 contract-finalization status in §7 remains unchanged.
+The Task 17 contract remains **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS**:
+OQ-25 (chart/report layouts) and OQ-43 (Iranian statutory/legal reporting requirements)
+remain OPEN, the shared Reporting Foundation is not implemented, and Task 17 is not
+implemented, accepted or production-ready. Task 17A does not clear those gates or close
+those Open Questions; its gate and deviation record is
+`docs/tasks/task-17/task-17a-implementation-report.md`, which lists the owner decisions
+still required (the OQ-25/OQ-43 interim posture covering this exact slice; the endpoint
+and permission deviation from `docs/tasks/task-17/next-step-recommendation.md`; whether
+`Accounting.LedgerMovement.View` is added to contract §22). Task 12's P1 real-PostgreSQL
+concurrency verification remains a separate follow-up; Task 14 remains **READY FOR
+REVIEW — NOT ACCEPTED**; the Task 16 contract-finalization status is unchanged.
 
 ## 9. Open Questions
 

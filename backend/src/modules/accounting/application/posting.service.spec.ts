@@ -1104,7 +1104,15 @@ describe('PostingService (Task 10.8 seam)', () => {
     const surface = Object.getOwnPropertyNames(
       LedgerEntriesRepository.prototype,
     );
-    expect(surface.sort()).toEqual(['client', 'constructor', 'findByVoucher']);
+    // Task 17A added the second READ (`listMovements`, the movement source).
+    // The surface is still reads only — the listing below is exhaustive on
+    // purpose: a new verb must be reviewed here, not slip in.
+    expect(surface.sort()).toEqual([
+      'client',
+      'constructor',
+      'findByVoucher',
+      'listMovements',
+    ]);
     expect(
       surface.filter((name) => /update|delete|remove|upsert|patch/i.test(name)),
     ).toEqual([]);

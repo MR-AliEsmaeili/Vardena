@@ -24,6 +24,13 @@ import type {
  * NEW entries (AC-D-22), and every read leads with the organization scope
  * (AC-I-01).
  *
+ * Task 17A adds the second reader: `listMovements` — the Accounting-owned,
+ * read-only movement source future reports (account ledger, general/
+ * subsidiary ledger, account movements, trial-balance inputs) consume. It adds
+ * NO write path, no projection, no second truth and no derived column: a
+ * movement IS a ledger entry, so the source cannot disagree with the ledger it
+ * reads. The reporting-shaped mapping lives in `domain/ledger-movement.ts`.
+ *
  * The entry identity is the row's own ULID (`id`), never reused and never
  * derived from a mutable business field. It is NOT
  * `accounting_posting_operations.id`: that ledger is idempotency/evidence
@@ -38,9 +45,29 @@ type Client = {
     findMany(args: {
       where: LedgerEntryWhere;
       orderBy: OrderBy;
+      skip?: number;
+      take?: number;
     }): Promise<LedgerEntryRow[]>;
+    count(args: { where: LedgerEntryWhere }): Promise<number>;
   };
 };
+
+/**
+ * The movement read source's filter set (Task 17A). Every field is optional
+ * EXCEPT the organization — the tenant predicate is not a filter a caller can
+ * omit (AC-I-01). Bounds are inclusive, date-only (`DATE` semantics, §12.3).
+ */
+export interface LedgerMovementFilter {
+  organizationId: string;
+  financialAreaId?: string | undefined;
+  fiscalYearId?: string | undefined;
+  accountingPeriodId?: string | undefined;
+  accountId?: string | undefined;
+  voucherId?: string | undefined;
+  voucherNumber?: string | undefined;
+  dateFrom?: Date | undefined;
+  dateTo?: Date | undefined;
+}
 
 @Injectable()
 export class LedgerEntriesRepository {
@@ -66,6 +93,81 @@ export class LedgerEntriesRepository {
     });
     return rows.map(toDomain);
   }
+
+  /**
+   * The Task 17A read source: one page of posted ledger movements plus the
+   * matching total, both computed over the SAME predicate.
+   *
+   * Three deliberate properties:
+   * - **Organization scope is structural.** `filter.organizationId` is
+   *   required by the type and is the first predicate of every statement, so
+   *   no call shape can read across organizations — a foreign area/year/
+   *   period/account/voucher id simply matches nothing.
+   * - **The order is the caller's resolved order.** The repository applies the
+   *   whitelisted `orderBy` it is given and never invents one; the service owns
+   *   the allow-list and appends the stable tie-breakers, so every page comes
+   *   from a total order.
+   * - **No relations are loaded.** The movement row is the ledger row itself
+   *   (no joins, hence no N+1 and no duplicated row from a join fan-out), and
+   *   the amounts are mapped to decimal STRINGS — never to JS numbers
+   *   (§13.1/§13.5, AC-I-07).
+   *
+   * The ledger is insert-only, so this is a pure read: it writes nothing, and
+   * the class exposes no update/delete for accounting to mutate through.
+   */
+  async listMovements(params: {
+    filter: LedgerMovementFilter;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<{ items: LedgerEntry[]; total: number }> {
+    const { ledgerEntry } = await this.client();
+    const where = toMovementWhere(params.filter);
+    const [rows, total] = await Promise.all([
+      ledgerEntry.findMany({
+        where,
+        orderBy: params.orderBy,
+        skip: params.skip,
+        take: params.take,
+      }),
+      ledgerEntry.count({ where }),
+    ]);
+    return { items: rows.map(toDomain), total };
+  }
+}
+
+/**
+ * Translate the movement filter into the stored predicate. Nothing is
+ * interpolated into SQL — these are Prisma `where` values, bound as
+ * parameters by the driver — and the organization predicate is unconditional.
+ */
+function toMovementWhere(filter: LedgerMovementFilter): LedgerEntryWhere {
+  const where: LedgerEntryWhere = { organizationId: filter.organizationId };
+  if (filter.financialAreaId !== undefined) {
+    where.financialAreaId = filter.financialAreaId;
+  }
+  if (filter.fiscalYearId !== undefined) {
+    where.fiscalYearId = filter.fiscalYearId;
+  }
+  if (filter.accountingPeriodId !== undefined) {
+    where.accountingPeriodId = filter.accountingPeriodId;
+  }
+  if (filter.accountId !== undefined) {
+    where.accountId = filter.accountId;
+  }
+  if (filter.voucherId !== undefined) {
+    where.voucherId = filter.voucherId;
+  }
+  if (filter.voucherNumber !== undefined) {
+    where.voucherNumber = filter.voucherNumber;
+  }
+  if (filter.dateFrom !== undefined || filter.dateTo !== undefined) {
+    const documentDate: { gte?: Date; lte?: Date } = {};
+    if (filter.dateFrom !== undefined) documentDate.gte = filter.dateFrom;
+    if (filter.dateTo !== undefined) documentDate.lte = filter.dateTo;
+    where.documentDate = documentDate;
+  }
+  return where;
 }
 
 /**
