@@ -594,6 +594,26 @@ export class AccountingDocumentsService {
       ACCOUNTING_DOCUMENT_PERMISSIONS.REVERSE,
     ]);
     const original = await this.mustFindInOrganization(organizationId, id);
+    const reason = assertDescription(input.reason);
+    const documentDate =
+      input.documentDate === undefined
+        ? original.documentDate
+        : parseDocumentDate(input.documentDate);
+    const operationKey = requireOperationKey(input.operationKey);
+    const requestHash = buildRequestHash('document_reverse', {
+      originalDocumentId: original.id,
+      documentDate: formatDateOnly(documentDate),
+      reason,
+    });
+    // Same-key replay must win over already_reversed: after the first reverse
+    // the original is linked, but a retried operationKey is not a new reverse.
+    const replay = await this.replayOrReject(
+      organizationId,
+      operationKey,
+      requestHash,
+      'document_reverse',
+    );
+    if (replay !== null) return replay;
     if (original.phase !== 'final') {
       throw AppException.businessRule(
         'Only a finalized accounting document can be reversed.',
@@ -606,24 +626,6 @@ export class AccountingDocumentsService {
         { problem: 'already_reversed' },
       );
     }
-    const reason = assertDescription(input.reason);
-    const documentDate =
-      input.documentDate === undefined
-        ? original.documentDate
-        : parseDocumentDate(input.documentDate);
-    const operationKey = requireOperationKey(input.operationKey);
-    const requestHash = buildRequestHash('document_reverse', {
-      originalDocumentId: original.id,
-      documentDate: formatDateOnly(documentDate),
-      reason,
-    });
-    const replay = await this.replayOrReject(
-      organizationId,
-      operationKey,
-      requestHash,
-      'document_reverse',
-    );
-    if (replay !== null) return replay;
 
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
@@ -710,10 +712,7 @@ export class AccountingDocumentsService {
           'document_reverse',
         );
         if (raced !== null) return raced;
-        throw AppException.businessRule(
-          'The accounting document has already been reversed.',
-          { problem: 'already_reversed' },
-        );
+        throw mapReverseUniqueViolation(error);
       }
       throw mapDocumentGuardError(error) ?? error;
     }
