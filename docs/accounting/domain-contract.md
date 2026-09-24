@@ -1603,6 +1603,7 @@ not exist (`docs/security.md` §3).
 | `Accounting.YearTransition` | `View, Execute` | closing/opening/period-transfer operations (§6.4) |
 | `Accounting.Balance` | `View, Rebuild` | projection reads and the audited rebuild (§19.3) |
 | `Accounting.LedgerMovement` | `View` | non-statutory ledger-native read source (Task 17A ACCEPTED; read-only access to immutable posted ledger entries) |
+| `Accounting.AccountStatement` | `View` | bounded account statement read (Task 17B; one account + one fiscal year + optional period, opening/running/closing derived from the immutable ledger per request; read-only, no mutation code exists — Owner decision D6 authorized this addition to the §22 vocabulary) |
 | `Accounting.SystemPosting` | `View, Retry` | inspection and manual retry of rejected/failed system postings (§16.6, §21) — only meaningful once OQ-39 is resolved |
 
 Reports use `Report.<id>.View` codes registered by the Reporting module
