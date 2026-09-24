@@ -332,7 +332,7 @@ GET /api/v1/accounting/ledger-movements
 6. **Field-set gaps by policy:** no currency (OQ-03 open), no account code/title or
    classification (OQ-25 open), no dimensions (OQ-41 open), no branch filter, no
    cross-period bucket/carry-forward semantics (OQ-11/OQ-23 open).
-7. **Live-PostgreSQL execution is CI-only in this environment** (see §14 item 8).
+7. **Local live-PostgreSQL execution is impossible in this sandbox** (no Postgres, no `prisma generate`); the live suite executed in CI instead (§13.3).
 
 ---
 
@@ -388,6 +388,14 @@ filters, deterministic paging (no gaps/duplicates, identical repeats), `numeric(
 round-trip exactness, scope/traceability snapshots, unknown organization → 404, invalid
 date/sort → 400. Cleanup removes every row it created, in FK order, in `afterAll`.
 
+**CI execution (evidence, not inherited):** PR **#39**, head `63f8548`, run
+**36048743757** — job `backend` **`completed success`**; the step
+`E2E tests (incl. live-DB suites)` (which runs with the job-level
+`VARDENA_TEST_DATABASE_URL` pointing at the `postgres:16` service) passed, so the 13
+tests of this suite executed there rather than being skipped. The same job also ran
+`Prisma validate`, `Prisma generate`, lint, typecheck, format, the full unit suite,
+build, `migrate deploy` and the Task 11 migration rehearsal green.
+
 ### 13.4 Commands actually executed (and what could not run)
 
 | Command (`backend/`) | Result |
@@ -396,7 +404,7 @@ date/sort → 400. Cleanup removes every row it created, in FK order, in `afterA
 | `npm run test:e2e` (`vitest run --config ./vitest.config.e2e.ts`) | **PASS** — 16 files passed, 10 skipped; 218 passed, 74 skipped |
 | `npx vitest run --config ./vitest.config.ts src/modules/accounting/domain/ledger-movement.spec.ts src/modules/accounting/application/ledger-movements.service.spec.ts` | **PASS** — 2 files, 19 tests |
 | `npx vitest run --config ./vitest.config.e2e.ts test/accounting-ledger-movements.e2e-spec.ts` | **PASS** — 1 file, 28 tests |
-| `npx vitest run --config ./vitest.config.e2e.ts test/ledger-movements-live.e2e-spec.ts` | **SKIPPED** — 13 tests skipped: no `VARDENA_TEST_DATABASE_URL` in this sandbox; runs in CI |
+| `npx vitest run --config ./vitest.config.e2e.ts test/ledger-movements-live.e2e-spec.ts` | **SKIPPED locally** — 13 tests skipped: no `VARDENA_TEST_DATABASE_URL` in this sandbox. **Executed and green in CI** (run `36048743757`, see §13.3) |
 | `npx tsc --noEmit` | **PASS** — no diagnostics |
 | `npm run format:check` | **PASS** — all files Prettier-clean |
 | `npm run lint` (`oxlint .`) | **PASS with 6 pre-existing warnings, 0 errors** — all six are in files this task does not touch (`coding-structure-accounts.spec.ts` ×2, `accounts.service.ts`, `accounting-document-errors.ts` ×2, `accounting-configurations.repository.ts`) |
@@ -430,7 +438,9 @@ migrations against **PGlite / PostgreSQL 17.5 (wasm32)** exposed over a TCP sock
 
 **This is rehearsal evidence, not live-PostgreSQL CI evidence**: WASM build, single
 session, warm cache, and absolute times are not comparable to a native server. The plan
-*shapes* and the index usage are the part worth reading.
+*shapes* and the index usage are the part worth reading. (The live movement suite itself
+has since executed green against real `postgres:16` in CI — §13.3; this rehearsal is
+kept because it is the only *query-plan* signal obtained for this slice.)
 
 | Query (org = tenant A, the service's default order) | Plan | Time |
 |---|---|---|
@@ -466,8 +476,8 @@ whose cost grows linearly with the tenant's ledger. No migration was added on th
    serials), and no prefix/range/numeric-coercion semantics are invented.
 7. The endpoint is a reporting *source*, not a user-facing report: no layout, totals,
    export, print or grouping.
-8. Live-PostgreSQL evidence is CI-only in this environment; the local signal is the
-   WASM rehearsal of §14 plus the in-memory HTTP suite.
+8. Live-PostgreSQL evidence comes from CI (run `36048743757`, §13.3), not from this
+   sandbox; the local signals are the WASM rehearsal of §14 and the in-memory HTTP suite.
 
 ---
 
