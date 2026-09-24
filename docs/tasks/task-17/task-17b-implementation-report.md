@@ -8,7 +8,7 @@
 | Slice | Task 17B Account Statement — the bounded, read-only **account statement** (one account + one fiscal year + optional period) and one narrow read endpoint over it |
 | Status | **READY FOR REVIEW** |
 | Branch | `arena/01a0d5a0-vardena` (base `main` @ `4b1489d952cb932727b4d95f8ef1e65163d67232`) |
-| Commit | `9ee46f7` — `feat(accounting): add account statement read surface` (implementation + tests); documentation commit follows it on the same branch |
+| Commit | `9ee46f7` — `feat(accounting): add account statement read surface` (implementation + tests); `8335556` — documentation; `c57a1a1` — live-fixture calendar fix (see §8) |
 | PR | [#43](https://github.com/MR-AliEsmaeili/Vardena/pull/43) |
 | Owner authority | `docs/tasks/task-17/task-17b-prompt.md` (saved before implementation) — Owner decisions **D1–D7**; gate P-10 authorizes the `Accounting.AccountStatement.View` vocabulary addition |
 | Contract references | `docs/accounting/domain-contract.md` §6/§7/§8/§13/§15/§19 (AC-D-30/31/34; AC-I-01/05/06/07/09/16/19), §22 (permission vocabulary), ADR-0031 §2/§4/§9, ADR-0009, ADR-0025, AR-05/AR-07/AR-21/AR-22/AR-25 |
@@ -172,10 +172,19 @@ periods incl. `updated_at` (live suite) before/after representative reads.
 | Build | `npm run build` | ✅ clean |
 | Prisma validate | `npx prisma validate` | ⚠️ **not runnable in this sandbox** — `PrismaConfigEnvError: Cannot resolve environment variable: DATABASE_URL` (binaries.prisma.sh blocked; same environment as 17A §13.4). The schema is **unchanged** by this task (zero migration/index edits), so no schema risk is introduced; CI must run it. |
 
-**CI evidence:** PR #43 carries the branch; required-check results are read from
-the PR after push (not asserted here). The live suite is designed for CI with
-Postgres (`VARDENA_TEST_DATABASE_URL`) and must be observed there before
-acceptance.
+**CI evidence:** PR #43, run **36073988599** (head `c57a1a1`), job `backend`
+**completed success** — `prisma validate` ✅, `prisma generate` ✅, lint ✅,
+typecheck/format ✅, unit ✅, build ✅, `migrate deploy` ✅ and
+**"E2E tests (incl. live-DB suites)" ✅** on `postgres:16` — i.e. the 11-test
+`account-statements-live.e2e-spec.ts` EXECUTED green against real PostgreSQL
+(reversal pair, `vw_account_balance_derived` reconciliation, misaligned
+sequence fixture, no-mutation incl. `account_balance_projections`). Honest
+history: the first CI pass (run `36073357644`) **failed** that step — a fixture
+bug in the live suite's `day()` helper (JS 0-based `Date.UTC` months vs 1-based
+call sites posted `2026-04-05`, resolving to no period
+`AccountingDocumentDateUnresolvableError`); fixed in `c57a1a1` (helper made
+1-based, matching every call site and label) and re-verified green. No
+production code changed in the fix.
 
 ## 9. Performance assessment (prompt §14 — measured before index consideration)
 
@@ -203,8 +212,11 @@ index task (stop condition: inspect + measure first).
   must consume.
 - **`REPEATABLE READ` on the window transaction** — asserted by code (option in
   `account-statements.repository.ts`); if a target database rejects the
-  isolation option, drop it and document — CI is the authority (gate R-6).
-- **`prisma validate`/live-PG evidence** — pending CI (sandbox limits above).
+  isolation option, drop it and document — CI green on `postgres:16` (run
+  `36073988599`) shows the option is accepted there.
+- **`prisma validate`/live-PG evidence in the sandbox** — sandbox-limited (§8);
+  both now have green CI evidence (run `36073988599`: `prisma validate` ✅ and
+  the live-PostgreSQL suite ✅).
 
 ## 11. Governance statements (explicit)
 
