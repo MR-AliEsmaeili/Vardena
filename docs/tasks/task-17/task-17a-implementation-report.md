@@ -1,15 +1,14 @@
-# Task 17A — Accounting Ledger Movement Read Source — Implementation Report
+# Task 17A — Accounting Ledger Movement Read Source — Implementation & Acceptance Report
 
-**Status: READY FOR REVIEW — NOT ACCEPTED.** This report requests review; it does not
-accept the task, does not close an Open Question and does not promote any ADR or task
-status. The only official outcomes are `ACCEPTED` and `CHANGES REQUIRED`.
+**Status: ACCEPTED (2026-09-25).** Merged into `main` via PR #39 (`130fab9`).
+The Repository Owner explicitly authorized and accepted the bounded implementation introduced by PR #39 as Task 17A.
 
 | | |
 |---|---|
 | Slice | Task 17A — the Accounting-owned, read-only **ledger movement source**, and one narrow read endpoint over it |
-| Branch / base | `arena/01a0d4d0-vardena`, base commit `6bbd488` on `main` |
-| Contract references | `docs/accounting/domain-contract.md` §12/§13/§15/§19 (AC-D-30, AC-D-31, AC-I-01/05/06/07/09/16/19/22), ADR-0009, ADR-0021 §4, ADR-0022 §3, ADR-0025, AR-07/AR-11/AR-21/AR-22/AR-24/AR-29 |
-| Reporting references | `docs/reporting-strategy.md` §1/§2/§3/§5, `docs/tasks/task-17/brief.md`, `docs/tasks/task-17/next-step-recommendation.md` |
+| Branch / base / merge | PR #39 merged into `main` (`130fab9`) |
+| Contract references | `docs/accounting/domain-contract.md` §12/§13/§15/§19/§22 (AC-D-30, AC-D-31, AC-D-34, AC-I-01/05/06/07/09/16/19/22), ADR-0009, ADR-0021 §4, ADR-0022 §3, ADR-0025, AR-07/AR-11/AR-21/AR-22/AR-24/AR-29 |
+| Reporting references | `docs/reporting-strategy.md` §1/§2/§3/§5, `docs/tasks/task-17/brief.md`, `docs/tasks/task-17/next-step-recommendation.md`, `docs/tasks/task-17/task-17a-acceptance-record.md` |
 | Not implemented here | Task 17 (the Accounting Reporting Foundation). It remains **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS (OQ-25, OQ-43)**. |
 
 ---
@@ -38,25 +37,15 @@ The Task 17A instruction authorized the implementation of the bounded ledger mov
 read source **including** a narrow Accounting-owned, permission-enforced endpoint with
 OpenAPI documentation.
 
-### 1.3 Resolution recorded here (the important sentence)
+### 1.3 Resolution & Acceptance Recorded Here
 
-This slice was implemented **under that instruction, not under a resolution of OQ-25 or
-OQ-43**. Concretely:
+The Owner explicitly authorized and accepted Task 17A as implemented in PR #39 (effective 2026-09-25):
 
-- **OQ-25 and OQ-43 remain OPEN**; no Open Question, ADR or task status was changed.
-- Task 17 is **not** implemented, not accepted and not complete: no reporting
-  definition, registry, layout, export, print, statement or aggregation exists here.
-- The deviation from `next-step-recommendation.md`'s *"no executable public endpoint …
-  or permissions installed merely as dormant scaffolding"* is **deliberate and listed in
-  §12** with the exact owner decision it needs. The endpoint is not dormant scaffolding:
-  it is permission-enforced, isolation-tested and read-only, and its only consumer
-  today is the test suite — but it is a surface the recommendation did not propose.
-- Nothing in this report may be read as "Task 17 approved", "OQs cleared", "Task 12 P1
-  absorbed", or "Task 13/14 accepted". Those statuses are untouched.
-
-**Owner confirmation required (smallest decision):** confirm that this bounded,
-non-statutory, ledger-native read source (and its endpoint + permission) is an approved
-interim posture for OQ-25/OQ-43, or direct its removal/replacement.
+- **Owner Authorization & Acceptance:** The bounded, read-only ledger movement source (`GET /api/v1/accounting/ledger-movements`) and its permission `Accounting.LedgerMovement.View` are accepted as the Task 17A implementation.
+- **OQ-25 and OQ-43 remain OPEN;** no Open Question, ADR, or complete Task 17 status was changed.
+- **Task 17 is NOT complete:** no reporting builder, registry, layout, export, print, statutory books, or aggregation platform exists here.
+- The deviation from `next-step-recommendation.md`'s "no executable public endpoint" recommendation and the addition of `Accounting.LedgerMovement.View` to `docs/accounting/domain-contract.md` §22 are formally accepted and documented.
+- Nothing in this report may be read as clearing OQ-25 or OQ-43, completing Task 17, or absorbing Task 12's P1 follow-up. Those statuses remain unchanged.
 
 ---
 
