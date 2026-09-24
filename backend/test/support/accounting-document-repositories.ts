@@ -75,7 +75,11 @@ import {
 import { resolveUsedConfigurationIds } from '../../src/modules/accounting/domain/accounting-configuration-freeze.js';
 import type { AccountingDocumentLinesRepository } from '../../src/modules/accounting/data/accounting-document-lines.repository.js';
 import type { AccountingPostingOperationsRepository } from '../../src/modules/accounting/data/accounting-posting-operations.repository.js';
-import type { LedgerEntriesRepository } from '../../src/modules/accounting/data/ledger-entries.repository.js';
+import type {
+  LedgerEntriesRepository,
+  LedgerMovementFilter,
+} from '../../src/modules/accounting/data/ledger-entries.repository.js';
+import type { OrderBy } from '../../src/modules/accounting/data/accounting-rows.js';
 import { InMemoryTable, type Row } from './master-data-repositories.js';
 import type { AccountingState } from './accounting-repositories.js';
 import type { StructureState } from './accounting-structure-repositories.js';
@@ -1064,6 +1068,105 @@ export class InMemoryLedgerEntriesRepository {
       .sort((left, right) => left.lineNo - right.lineNo)
       .map(toLedgerEntry);
   }
+
+  /**
+   * The Task 17A movement read source, mirrored from
+   * `LedgerEntriesRepository.listMovements`: same organization-first
+   * predicate, same caller-supplied order, same skip/take, and a total counted
+   * over the SAME filtered set (so a fake can never report a total the real
+   * statement would not).
+   */
+  async listMovements(params: {
+    filter: LedgerMovementFilter;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<{ items: LedgerEntry[]; total: number }> {
+    const matching = this.state.ledgerEntries
+      .findMany((candidate) => matchesMovementFilter(candidate, params.filter))
+      .sort((left, right) =>
+        compareLedgerRowsByOrder(left, right, params.orderBy),
+      );
+    return {
+      items: matching
+        .slice(params.skip, params.skip + params.take)
+        .map(toLedgerEntry),
+      total: matching.length,
+    };
+  }
+}
+
+/** The stored predicate of `LedgerEntriesRepository.listMovements`. */
+function matchesMovementFilter(
+  row: LedgerEntryRecord,
+  filter: LedgerMovementFilter,
+): boolean {
+  if (row.organizationId !== filter.organizationId) return false;
+  if (
+    filter.financialAreaId !== undefined &&
+    row.financialAreaId !== filter.financialAreaId
+  ) {
+    return false;
+  }
+  if (
+    filter.fiscalYearId !== undefined &&
+    row.fiscalYearId !== filter.fiscalYearId
+  ) {
+    return false;
+  }
+  if (
+    filter.accountingPeriodId !== undefined &&
+    row.accountingPeriodId !== filter.accountingPeriodId
+  ) {
+    return false;
+  }
+  if (filter.accountId !== undefined && row.accountId !== filter.accountId) {
+    return false;
+  }
+  if (filter.voucherId !== undefined && row.voucherId !== filter.voucherId) {
+    return false;
+  }
+  if (
+    filter.voucherNumber !== undefined &&
+    row.voucherNumber !== filter.voucherNumber
+  ) {
+    return false;
+  }
+  const day = row.documentDate.getTime();
+  if (filter.dateFrom !== undefined && day < filter.dateFrom.getTime()) {
+    return false;
+  }
+  if (filter.dateTo !== undefined && day > filter.dateTo.getTime()) {
+    return false;
+  }
+  return true;
+}
+
+/** Apply an `OrderBy` list the way PostgreSQL would (dates by instant). */
+function compareLedgerRowsByOrder(
+  left: LedgerEntryRecord,
+  right: LedgerEntryRecord,
+  orderBy: OrderBy,
+): number {
+  for (const clause of orderBy) {
+    const [field, direction] = Object.entries(clause)[0] as [
+      string,
+      'asc' | 'desc',
+    ];
+    const a = (left as unknown as Record<string, unknown>)[field];
+    const b = (right as unknown as Record<string, unknown>)[field];
+    const compared = compareMovementValues(a, b);
+    if (compared !== 0) return direction === 'asc' ? compared : -compared;
+  }
+  return 0;
+}
+
+function compareMovementValues(a: unknown, b: unknown): number {
+  if (a instanceof Date && b instanceof Date) {
+    return a.getTime() - b.getTime();
+  }
+  if (typeof a === 'number' && typeof b === 'number') return a - b;
+  return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
 }
 
 function toLedgerEntry(record: LedgerEntryRecord): LedgerEntry {

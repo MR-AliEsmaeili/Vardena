@@ -110,6 +110,38 @@ export const BALANCE_PERMISSIONS = {
   REBUILD: 'Accounting.Balance.Rebuild',
 } as const;
 
+/**
+ * Ledger movements — the read source over the immutable posted ledger
+ * (`accounting.ledger_entries`, Task 17A).
+ *
+ * ONE code, and it is a READ code: the movement source is the posted ledger
+ * itself, so it has no write action at all — corrections remain
+ * counter-documents with new entries (AC-D-22), and there is deliberately no
+ * `Rebuild`, `Delete` or `Post` code here, because no such operation exists on
+ * ledger entries (they are insert-only, AC-I-05/06).
+ *
+ * Why a NEW code instead of reusing an existing Accounting read code:
+ * - `Accounting.Balance.View` is the authority over the REBUILDABLE turnover
+ *   projection (`account_balance_projections`), a derived materialization
+ *   (AC-D-31). A ledger entry is the authority itself; granting the immutable
+ *   ledger under the projection's code would silently widen that code's
+ *   meaning rather than describe a new one.
+ * - `Accounting.Document.View` is the authority over the voucher aggregate
+ *   (header + lines, `draft → temporary → final`, §12/§15). The posted ledger
+ *   is a different fact with a different lifecycle: it exists only for
+ *   `final` documents and outlives every editable one.
+ *
+ * The vocabulary follows §22's `Accounting.<Entity>.<Action>` form with the
+ * reporting-facing entity name the read source carries. The contract §22 table
+ * does not list a ledger-entry row (the contract's reporting section owns the
+ * movement/ledger shapes, §19), so this task registers the ONE code its code
+ * enforces — no wildcard, no superuser, no implicit bypass (OQ-21), and no
+ * dormant codes.
+ */
+export const LEDGER_MOVEMENT_PERMISSIONS = {
+  VIEW: 'Accounting.LedgerMovement.View',
+} as const;
+
 export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] =
   [
     {
@@ -258,5 +290,10 @@ export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] 
       code: BALANCE_PERMISSIONS.REBUILD,
       description:
         'Rebuild balance projections from the ledger (explicit audited slice replacement; source of truth stays the ledger).',
+    },
+    {
+      code: LEDGER_MOVEMENT_PERMISSIONS.VIEW,
+      description:
+        'Read the posted ledger movements of an organization (immutable ledger entries; read-only, no mutation exists).',
     },
   ];

@@ -26,6 +26,7 @@ import { PostingReadinessService } from './application/posting-readiness.service
 import { PostingService } from './application/posting.service.js';
 import { AccountBalanceProjectionsRepository } from './data/account-balance-projections.repository.js';
 import { AccountingBalancesService } from './application/accounting-balances.service.js';
+import { LedgerMovementsService } from './application/ledger-movements.service.js';
 import { FinancialAreasController } from './api/financial-areas.controller.js';
 import { FiscalYearsController } from './api/fiscal-years.controller.js';
 import { AccountingPeriodsController } from './api/accounting-periods.controller.js';
@@ -34,6 +35,7 @@ import { AccountingConfigurationsController } from './api/accounting-configurati
 import { AccountsController } from './api/accounts.controller.js';
 import { AccountingDocumentsController } from './api/accounting-documents.controller.js';
 import { AccountingBalancesController } from './api/accounting-balances.controller.js';
+import { AccountingLedgerMovementsController } from './api/accounting-ledger-movements.controller.js';
 
 /**
  * Accounting module — foundation + chart structure (Task 10.2, Task 10.3;
@@ -108,6 +110,7 @@ import { AccountingBalancesController } from './api/accounting-balances.controll
     AccountsController,
     AccountingDocumentsController,
     AccountingBalancesController,
+    AccountingLedgerMovementsController,
   ],
   providers: [
     FinancialAreasRepository,
@@ -133,6 +136,12 @@ import { AccountingBalancesController } from './api/accounting-balances.controll
     AccountsService,
     AccountingDocumentsService,
     AccountingBalancesService,
+    // Task 17A: the read-only movement source over the immutable ledger
+    // (`listMovements` only). Provided (not exported): the future Reporting
+    // consumer of this source does not exist yet, and a cross-module consumer
+    // must arrive through the separately authorized Reporting task rather than
+    // silently binding another module to this service (AR-07).
+    LedgerMovementsService,
     AccountingPermissionRegistration,
     AccountingDocumentTypeRegistration,
     // Task 10.8: the posting orchestration seam — ONE entry point
