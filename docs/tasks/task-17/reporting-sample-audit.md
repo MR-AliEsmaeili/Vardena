@@ -1,0 +1,217 @@
+# Task 17 — Accounting reporting and sample audit
+
+## Status
+
+**READY FOR REVIEW — documentation audit, with a blocked sample-inspection component.**
+
+**IMPLEMENTATION NOT AUTHORIZED.** This is not acceptance, a completed workbook comparison, a legal opinion, or permission to implement. OQ-25 and OQ-43 remain OPEN. No owner confirmation was supplied by this investigation.
+
+- Inspection date: 2026-09-24 (UTC).
+- Repository/branch: `MR-AliEsmaeili/Vardena`, `arena/01a0d4af-vardena`.
+- Inspected commit: `09ab3daa9675e3ff29448c0788d79e428ff185ee`.
+- Read-only `git ls-remote origin refs/heads/main` returned that same hash. Thus the inspected checkout matched remote main at the time of the check; no branch switch was necessary.
+- The first audit began with a clean working tree. This free-only revision began with only the two requested audit documents untracked; HEAD and remote main are unchanged. Static source inspection is not runtime verification or proof of deployed migrations.
+- Evidence classes: **A** = directly observed workbook contents; **B** = repository evidence (Vardena for domain findings; explicitly cited upstream repositories/docs for tool findings); **C** = proposed design implication; **D** = unresolved/owner-confirmation requirement. There are **no class A workbook observations** in this revision.
+
+## Inspected files and access limitation
+
+The user identified these inputs, but neither was accessible:
+
+1. `نمونه استاندارد گزارش دفاتر الکترونیکی از گزارش عمومی.xlsx` (sample S1).
+2. `نمونه گزارش دفاتر الکترونیکی از بخش تجمیع اسناد (ماهانه ).xlsx` (sample S2).
+
+`find /home/user -name '*.xlsx' -o -name 'AGENTS.md'` returned no matches. A subsequent case-insensitive file search for `.xlsx`/`.xls` under `/mnt`, `/tmp`, `/home`, and `/opt` also returned no matches; permission errors were suppressed, so this is not proof that no inaccessible file exists. `git ls-files '*.xlsx' '*.xls'` returned no tracked workbooks. No attachment paths were supplied in this session. The owner was asked to attach both files.
+
+The names above are user-supplied identifiers, **not inspected artifacts**. No bytes, hashes, workbook dimensions, rendered pages, formulas, or values were available. In particular, the word “standard” in a filename does not establish legal authority, and “monthly” does not establish the actual aggregation algorithm.
+
+Repository inspection covered `STATE.md`, Task 17 brief/prompt, Accounting task index and domain contract, Reporting strategy, architecture/agent rules, related ADRs, current module/schema/migration surfaces and historical task evidence. Exact evidence anchors are below. Free/open-source tool findings below use upstream license text and documentation, not accounting or Iranian legal authority. Recommendations and technical-fit judgments are class C; remaining approval gates are class D. The Owner’s new free-only constraint supersedes the prior draft’s consideration of a commercial suite; this revision explicitly rejects it, without changing any merged architecture decision.
+
+## Observed structure per file
+
+### S1 — standard/general-report sample
+
+**NOT INSPECTED — file unavailable.** No claim can be made about worksheets, headers, column order, row count, cell types, date system, account codes, debit/credit, identifiers, aggregation, special documents, totals, merges, RTL, or print layout. Ordinary-report versus legally constrained output is **UNKNOWN**.
+
+### S2 — monthly document-aggregation sample
+
+**NOT INSPECTED — file unavailable.** All structural and behavioral fields are **UNKNOWN**, independently of S1. The filename is not evidence of Persian versus Gregorian months, source-document exclusions, balancing, or legal compliance. Ordinary-report versus legally constrained output is **UNKNOWN**.
+
+## Comparison matrix
+
+“Unknown” means unobserved, not absent or unsupported by the workbook.
+
+| Required observation | S1 | S2 | Comparison conclusion |
+| --- | --- | --- | --- |
+| Worksheet names/order, hidden sheets | Unknown | Unknown | Cannot compare |
+| Exact column names and physical order | Unknown | Unknown | No approved column contract |
+| Cell data types, formulas/cached values, styles | Unknown | Unknown | Cannot determine text versus numeric storage |
+| Dates: values, display format, calendar, workbook date epoch | Unknown | Unknown | Cannot infer Jalali or Gregorian |
+| Account codes: text/number, leading zeros, separators | Unknown | Unknown | Cannot infer level mapping |
+| Debit/credit: names, positions, sign, zero/blank semantics | Unknown | Unknown | Cannot reconcile amounts |
+| Document identifiers, serials, line IDs, source references | Unknown | Unknown | Cannot establish traceability |
+| Aggregation markers, group grain, date/number reassignment | Unknown | Unknown | Filename alone insufficient |
+| Opening-document behavior | Unknown | Unknown | No inclusion/exclusion rule established |
+| Closing-document behavior | Unknown | Unknown | No inclusion/exclusion rule established |
+| P&L closing behavior | Unknown | Unknown | Not equivalent to period status |
+| Correction/reversal behavior | Unknown | Unknown | Cannot infer suppression/netting policy |
+| Independent-document behavior | Unknown | Unknown | Cannot identify independent subset |
+| Totals/subtotals, formulas, summary rows, page totals | Unknown | Unknown | No totals comparison possible |
+| Merged cells/ranges | Unknown | Unknown | Cannot infer machine-import compatibility |
+| Title/header/footer, repeat rows, print area, page setup | Unknown | Unknown | Cannot compare printing structure |
+| Persian text, RTL sheet view, alignment, fonts, digit shapes | Unknown | Unknown | Filename language is not sheet direction |
+| Thousands separators, scale, rounding, negative formatting | Unknown | Unknown | No numerical display contract |
+| Ordinary output versus statutory profile | Unknown | Unknown | Neither is established as legal specification |
+| Actual differences between files | Unknown | Unknown | Not verifiable in this revision |
+
+On receipt, inspect **every worksheet**, including hidden ones, with a non-executing OOXML reader. Record SHA-256, sheet names/order, used ranges, literal Unicode headers with cell coordinates, raw cell types/values and displayed number formats, formulas separately from cached results, merged ranges, styles/reading order, workbook date epoch, print titles/areas, page setup and headers/footers. Render for visual comparison without executing macros, following external links, or recalculating untrusted formulas. Distinguish a missing example row from a business prohibition: a workbook without an opening entry cannot establish that opening entries are excluded. Reconcile visible and formula totals to rows where possible. Ask for source vouchers and aggregation settings to verify behavior that an output file alone cannot reveal.
+
+## Repository authorities
+
+All paths are repository-relative at the inspected commit. `AP` below means `backend/prisma/schema/accounting.prisma`; `AC` means `docs/accounting/domain-contract.md`. A “missing” authority is a bounded negative finding across current module/schema/migration inventory, not a claim that a filename search proves all possible behavior absent.
+
+| # | Requested authority | Finding and exact evidence | Reporting consequence |
+| --- | --- | --- | --- |
+| 1 | Ledger transaction data | **Implemented (B).** AP:784–858; `backend/src/modules/accounting/data/ledger-entries.repository.ts`, `findByVoucher` and `insertLedgerEntries`; ledger migration `20260916000000_accounting_ledger/migration.sql`:75–162. Unique voucher-line identity. | Use ledger rows, not operational documents or posting-operation rows, as reporting facts. |
+| 2 | Journal/document metadata | **Implemented (B).** AP:552–632, 784–833: stored scope, numeric serial text, business DATE, posting timestamp, line number/narration, origin/source, finalizer. | Ledger lacks header narration and correction links; scoped Accounting-local joins may supply them. Do not mislabel every header field an immutable ledger snapshot. |
+| 3 | Account hierarchy/codes | **Implemented but incomplete for statements (B).** AP:243–408, especially 334–366; `domain/account-code.ts`, `domain/coding-structure.ts`, `data/accounts.repository.ts` under Accounting. | One tree, configurable levels; canonical digits-only string code. Account nature is not financial-statement classification; no fixed general/subsidiary level numbers. Titles remain editable. |
+| 4 | Fiscal year/period | **Implemented (B).** AP:127–234; Accounting `domain/{fiscal-year,accounting-period,date-range}.ts`, `data/{fiscal-years,accounting-periods}.repository.ts`; AC:445–580. | Explicit date-only boundaries and period sequence. Stored period is not automatically a calendar month. |
+| 5 | Organization/financial area | **Implemented structural scope; grants missing (B).** AP:83–234, 784–791; `backend/prisma/schema/organization.prisma`, Organization; `application/accounting-balances.service.ts`:146–150, 723 onward; AC §4/§5.5; OQ-40. | Deployment/organization checks and foreign-key ownership checks exist. Area filtering is not user-to-area authorization. No implicit consolidation. |
+| 6 | Opening entries | **Conceptual mechanism, no dedicated implemented authority (B).** AC:499–520; AP:518–550 and 552–632; task index:168. | Ordinary manual vouchers can carry amounts but are not authoritative typed opening documents. Derived intra-year opening is a different concept. |
+| 7 | Closing entries | **Conceptual only (B).** Same AC §6.4 and AP header/type inventory; task index:168. | Closing/sealing a fiscal period/year does not create closing vouchers. No inference from narration. |
+| 8 | P&L closing entries | **Conceptual only (B).** AC:505–513; AP:44–50 explicitly defers `account_type`/`is_temporary` and control roles. | Need account classification and OQ-23 policy; no generated close-of-temporary-accounts authority. |
+| 9 | Correction entries | **Partial: reversal implemented (B).** AP:590–600; reversal migration `20260923000000_accounting_document_reversal/migration.sql`:1–39; `domain/document-reversal.ts`:1–74; `data/accounting-documents.repository.ts`:768–933. AC:1180–1212 defines broader future mechanisms. | Original and mirror remain final and both contribute ledger turnover. Difference correction/replacement mechanisms are not established by reversal fields. Legal presentation still needs approval. |
+| 10 | Daily/monthly aggregation | **No book aggregation authority (B).** AP:865–912 and balance migration only provide period/account turnover. AC:1455–1486; Reporting strategy §4. | Period totals cannot reconstruct day/month membership or independent documents. Generic GROUP BY is not an approved book policy. |
+| 11 | Independent documents | **No implemented designation/exclusion authority (B).** Complete AccountingDocument/Line/Ledger models at AP:552–698, 784–858; no book profile/membership model in schema. | “Manual”, “system”, reversal, and generic DocumentRelation are not independent-document flags. |
+| 12 | Currency identity | **Missing runtime identity (B).** AP:548–550, 779–782, 865–873; AC:1087–1091, 1637–1651; OQ-03. Organization schema has no base-currency identity. | Numeric(18,2) is not proof of IRR, toman, or a currency code. Do not label/convert legal output without a decision. |
+| 13 | Decimal/money | **Implemented (B).** AP:664–665, 804–805, 888–890; `domain/money.ts`:1–49. | Decimal strings/BigInt exact arithmetic; no binary floats, no epsilon or forced balancing; inputs over two decimal places rejected. Export precision needs explicit treatment. |
+| 14 | Report permissions | **Foundation only (B).** Accounting `domain/accounting-permissions.ts`:1–262 registers document/balance/configuration rights, not report-specific export rights; balances service checks rights and scope. ADR-0009:32–40 requires per-report permissions. | Existing Balance.View is not blanket authorization for all reports/exports. No report execution surface yet. |
+| 15 | Read models/projections | **Implemented limited basis (B).** AP:878–912; balance migration `20260922000000_accounting_balance_projection/migration.sql`:228–end defines `vw_account_balance_derived` and `vw_balance_reconciliation`; Accounting `data/account-balance-projections.repository.ts`. | Derived, rebuildable turnover by organization/area/year/period/account. Sparse rows; first active period starts with zero derived opening; no cross-year carry. Not a book aggregation projection. |
+| 16 | Export infrastructure | **Planned, not implemented (B).** `backend/src/app.module.ts`:1–33, module inventory, `backend/package.json` dependencies, schema inventory; `docs/reporting-strategy.md` §6 and `docs/modules.md` §Excel describe future behavior. | No Excel/CSV artifact pipeline to reuse today. ADR-0011 is an import mechanism decision, not an implemented exporter. |
+| 17 | Print/render infrastructure | **Accepted design only (B).** Same module/dependency inventory; ADR-0012:16–40, 49–52. | HTML/CSS → worker Chromium PDF with gated downloads is the accepted direction; no installed renderer, Print module or frontend. |
+| 18 | Audit of report generation | **Missing (B).** No Reporting/Audit modules or corresponding models. `backend/src/kernel/events/domain-event-bus.ts`:46–85 is in-memory; Accounting balances service:667–709 emits/logs after rebuild. AC:1614–1631 records requirements, not durable implementation. | Actor columns, logs and transient events do not establish durable report-run/artifact history. Need a separately authorized audit/artifact foundation. |
+| 19 | Electronic-books legal profile | **Missing and expert-gated (B).** AC:132–151, 1482–1486, 1806–1816; `docs/open-questions.md`:60 (OQ-43); Task 17 brief:195–218. No legal profile model/module in current inventory. | No authoritative versioned columns, order, validation, jurisdiction/effective date or filing acceptance contract. |
+
+## Missing authorities and model decisions
+
+These gaps are **not permission to create speculative tables**:
+
+- **Before a minimal ledger-source slice:** approve exact source columns and ordering, safe scope-consumption contract, permission boundary, ordinary/non-statutory posture, metadata timing (current titles versus historical snapshots) and money-unit labeling. Ledger-native fields do not require a new transaction model.
+- **Before hierarchy reports/statements:** settle approved level meanings, OQ-62/63 legacy pin mismatch implications, account classifications, temporary/permanent treatment, statement mapping/sign/subtotal policy and opening/closing inclusion. A code prefix or debit/credit nature cannot safely substitute for these authorities (AP:44–50, 334–366; OQ-25/OQ-62/OQ-63).
+- **Before book aggregation:** define versioned policy scope, independent-document authority, grouping grain, calendar/bucket boundaries, source membership/lineage, special-document treatment and repeatable run identity. Decide whether typed configuration belongs under the existing AccountingConfiguration version root; do not invent a competing generic configuration root (ADR-0028 §Final Decision and §Decision).
+- **Before legal output:** establish currency unit, official profile/version, all structural validation, source cutoff and amended-export rules, durable run/artifact provenance and retention. OQ-43 includes much more than selecting headers.
+- **Before production outputs:** separately authorize Reporting, Excel, Print, storage, durable audit and heavy-job facilities. `backend/src/worker.service.ts`:6–11 explicitly defers actual dispatch loops. A worker entrypoint is not a running export queue.
+
+## Confirmed facts (B) and repository discrepancies
+
+1. Task 17 is intentionally narrower than the requested A–D capability bundle. Brief §4 permits future Accounting sources; §7 retains owner gates; §8 excludes exports/print/platform/statutory work. Its prompt repeats explicit STOP conditions.
+2. Finalization atomically materializes ledger and balance deltas (`data/accounting-documents.repository.ts`:542–728). Reversal also creates ledger/projection rows (768–933). Comments calling finalization the sole writer are stale.
+3. AP:548–550 still says correction links are deferred, contradicted by actual fields 590–600 and the reversal migration. `.vardena/project-context.md` and parts of `docs/modules.md` still describe older no-balance/no-correction status. Static schema/code wins for implementation presence; none of this proves human acceptance.
+4. Task 12 is recorded **ACCEPTED WITH FOLLOW-UP** in task index §2/§4; ADR-0031 remains **Proposed**. Its independent P1 real-PostgreSQL concurrency verification stays separately tracked. Task 13 is **IN PROGRESS (self-review)**; Task 14 **READY FOR REVIEW — NOT ACCEPTED**, ADR-0032 **Proposed**. Task 15 implementation exists but `STATE.md` §7 records acceptance UNKNOWN. Task 16 settlement/allocation is not implemented/authorized and is not book aggregation.
+5. The event-bus introductory comment mentions persistence, but `publish` has no persistent write (lines 74–85). Do not promote “audited rebuild” wording to proof of durable audit storage.
+6. Reporting strategy §3 describes timestamp inputs generally; Accounting has business DATE plus a separate posting timestamptz. Preserve this distinction instead of timezone-shifting business dates to fit generic infrastructure.
+
+## Inferred implications (C)
+
+- Book Configuration and Aggregation should be a **separately scoped Accounting-owned foundation**, with Reporting consuming its deterministic read models. It is not a new bounded-context service, second ledger, or a formatting option. Calendar bucketing for an approved output must not overwrite/re-resolve stored fiscal membership.
+- Aggregated rows can remain derived read models without posting additional vouchers. Posting synthetic aggregate vouchers alongside source vouchers would duplicate economic activity.
+- Existing period/account projections are useful reconciliation controls but lack source-line detail needed for monthly/daily mixed independent output. Start from the immutable ledger for those features.
+- Output mechanics should remain separate from business rules; ordinary configurable output must not modify a fixed statutory profile. Sample visual similarity could never establish legal compliance.
+
+## Unresolved questions (D)
+
+1. Attach both workbooks and identify their producer/version, generating options, source-document set, whether they were accepted by a filing system, and whether either is an official template. Obtain the actual current authoritative specification, not only a successful-looking spreadsheet.
+2. Accountant: approve the exact ordinary report/source scope under OQ-25 and OQ-43, or keep implementation blocked. A narrow interim approval need not close either broad OQ.
+3. What defines an independent document, at voucher or line level, who sets it, when can it change, and how is its classification reproduced after a run?
+4. What is the aggregation grain: account identity or specified hierarchy level; daily/Jalali/Gregorian month; date and sequence of synthetic output rows; intersection with non-month fiscal periods? Are descriptions retained or synthesized?
+5. How are opening, closing, P&L closing, reversal, difference correction and adjustment rows classified and included? Are source documents missing these types rejected or merely unsupported? Do not infer classifications from narration.
+6. What money unit and precision apply? How should current versus historical account names be represented? Which taxpayer class, fiscal interval and legal profile version apply?
+7. Who approves report access, area restrictions, generation/download audit, artifacts, retention, late postings and amended runs?
+
+## Risks
+
+| Risk | Required mitigation |
+| --- | --- |
+| Missing samples disguised as completed analysis | Keep per-file findings UNKNOWN; re-audit before claiming sample compatibility |
+| Statutory rules invented from labels/appearance | Current authoritative specification plus explicit accountant/tax/legal sign-off |
+| Double counting source and aggregate/independent rows | Disjoint source membership, exact conservation and lineage tests |
+| Periods assumed to be Persian/Gregorian months | Separate approved bucket calendar from immutable fiscal scope |
+| Reversed originals silently excluded | Preserve both posted sides; only approved presentation may net without losing turnover/lineage |
+| Code/title/amount corruption in spreadsheets | String codes, explicit date formatting, exact decimal conversion policy; test spreadsheet precision limits |
+| Changing reports after backdated postings/configuration edits | Reproducible source set and policy/profile versions; cutoff timestamp alone may not identify a committed snapshot |
+| Transient logs treated as statutory audit | Durable, permission-gated generation/artifact evidence with owner-approved retention |
+| Prior task status promoted through this audit | Preserve review states, separately track Task 12 P1, no self-acceptance |
+
+## Free/open-source tool findings
+
+### Evidence and Owner constraint
+
+**Owner constraint (governing instruction, not an inferred license conclusion):** Stimulsoft Reports.JS is **REJECTED**, as are paid reporting suites, subscriptions, cloud-only reporting services, paid runtime licenses and commercially restricted “community” editions. No Stimulsoft integration or procurement path is recommended. No dependency was installed or added.
+
+**B — verification method:** Read upstream license files and README/API documentation on 2026-09-24. GitHub repository metadata and latest-release API responses supplied dated maintenance signals, not a security certification. Direct raw-file downloads failed with TLS errors; license text was successfully retrieved through the public repository contents/license API instead. No package tarball, dependency tree, renderer, spreadsheet library or browser was installed/executed. SheetJS official CE license/install pages were also checked. No free trial is treated as free software.
+
+**B — Vardena licensing baseline:** `backend/package.json`:6–9 declares `private: true`, `license: "UNLICENSED"`; tracked LICENSE/COPYING search returned no project license file. This is not an open-source license for Vardena. The reviewed MIT/Apache licenses permit inclusion in proprietary commercial products with their obligations, but final Vardena distribution terms, exact artifacts, transitive dependencies, browser binaries and fonts must be reviewed before selection (**D**). Do not claim complete distribution compatibility from a top-level package license.
+
+**C — rating meanings:** ACCEPTABLE = suitable mechanism at the architectural level, not authorization to add code; CONDITIONAL = permissive core license verified but technical, maintenance or distribution gate remains; REJECTED = prohibited or wrong for the proposed role. Any artifact whose license cannot be established must be **LICENSE UNCLEAR — OWNER REVIEW REQUIRED**, and must not be selected. Attribution/notice obligations of the expressly preferred MIT/Apache/BSD licenses are not paid runtime restrictions; they still must be fulfilled.
+
+### Comparison table
+
+License/capability statements are **B (upstream)** with evidence T1–T12 below; suitability/risks/recommendations are **C**; unverified items are **D**. “No” in paid runtime means no paid runtime, subscription, compulsory cloud service or usage quota is required by the reviewed open-source core license, not a promise about unrelated extensions or hosted services. All proposals remain unselected.
+
+| Tool/library | Purpose | License | Commercial-use compatibility | Paid runtime requirement | XLSX / CSV / PDF / Print capability | RTL/Persian suitability | Server-side suitability | Main risks | Recommendation |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ExcelJS (T1) | Styled workbook serialization | MIT | Permitted with notices; final dependency audit pending | No for OSS core | XLSX + CSV; sheet print settings, not a PDF/print engine | Documented `rightToLeft`, reading order, font names, alignment; actual Persian glyph display depends on spreadsheet viewer/font | Node; browser subset, streaming XLSX is Node-oriented | Older release/activity; large-file memory, style/streaming parity, ZIP inputs, numeric precision; no guaranteed embedded Persian font | **CONDITIONAL** — first styled-XLSX candidate only if maintenance/security gates pass |
+| SheetJS Community Edition only (T2) | Spreadsheet data interchange | Apache-2.0 | Explicitly permits proprietary/commercial distribution with notices/attribution | No for CE; Pro is separate and excluded | XLSX + CSV; no general PDF/print engine | Unicode data; CE fidelity for RTL/styles/print setup requires artifact tests; no assumed font embedding | Node + browser; ESM setup needs attention | CE/Pro feature boundary; old npm endpoint; authoritative distribution moved; styled output is not proven | **CONDITIONAL** — data-oriented fallback/inspection candidate, not a styled-report replacement without proof |
+| Papa Parse (T3) | Exact ordered CSV serialization | MIT | Permitted with notices | No | CSV only; `unparse`, explicit fields/columns, quoting; no XLSX/PDF/Print | Unicode text; CSV has no direction/font/number-format metadata | Node + browser | `unparse` returns a string: parse-stream support is not proof of streaming export; formula injection, memory and dialect | **CONDITIONAL** — preferred bounded CSV candidate |
+| pdf-lib (T4) | PDF creation/editing/merging | MIT | Permitted with notices; custom-font helper separately audited | No | PDF primitives; no XLSX/CSV, HTML pagination or print dialog | Custom fonts supported; embedding alone does not establish correct Persian shaping/bidi | Node + browser | Stale release, layout/pagination burden, fontkit dependency, complex-script output unproven | **CONDITIONAL** for a demonstrated narrow PDF manipulation need; not selected for report rendering |
+| PDFKit (T5) | Programmatic PDF layout | MIT | Permitted with notices and font/dependency review | No | PDF; tables/text/pages; no XLSX/CSV/browser print dialog | Font embedding/subsetting documented; Persian bidi/mixed-script layout needs proof | Node streaming; browser bundle possible | Manual pagination and page sums, shaping/line-break tests, duplicates accepted HTML/CSS renderer if added casually | **CONDITIONAL** — alternative only with an approved reason; not preferred canonical path |
+| Puppeteer + self-hosted Chromium (T6/T11) | HTML/CSS → PDF in worker | Apache-2.0 for library; Chromium BSD-style core plus third-party notices/licenses | Library permits commercial use; exact browser distribution review required | No for OSS library; no hosted browser needed | PDF/Print via browser; no XLSX/CSV; header/footer/page-number options | Browser bidi/font shaping is a strong fit; local Persian font and PDF embedding/text extraction tests required | Node worker; not a React/browser-runtime library | Browser security updates, memory/CPU, sandbox, SSRF/local-file access, binary redistribution | **CONDITIONAL** — preferred Print implementation candidate under ADR-0012 |
+| Playwright + self-hosted Chromium (T7/T11) | Browser testing or alternate HTML → PDF driver | Apache-2.0; browser licenses separate | Library permits commercial use; bundle review required | No for OSS library | Chromium PDF/Print; not XLSX/CSV; multi-engine test support does not imply identical PDF support | Same Chromium/font proof required | Node worker/test runner; React tested via browser | Large browser download, resource/isolation burden, avoid installing two production browser drivers | **CONDITIONAL** — choose instead of Puppeteer if justified, or separately scoped testing use |
+| jsPDF (T8) | Browser-oriented generated PDF | MIT | Permitted with notices; plugins separate | No | PDF; HTML/plugin paths have extra dependencies; not XLSX/CSV or a guaranteed print-layout engine | Custom TTF required beyond standard fonts; Arabic/bidi capabilities need Persian regression tests | Browser and Node builds | Manual pagination, font/plugin limits, HTML fidelity, filesystem policy in Node | **CONDITIONAL** for a narrow need; not preferred for canonical accounting Print |
+| react-to-print (T9) | Print a React DOM subtree | MIT | Permitted with notices | No | Browser print dialog; PDF only via browser save or separate renderer; no XLSX/CSV | Inherits browser CSS/bidi; font loading option exists | Client React only, not NestJS PDF generation | WebView/browser inconsistencies; cannot control OS dialog settings or guarantee a saved PDF | **CONDITIONAL** — optional convenience, not required architecture |
+| CSS print media + native browser printing (T9/T11) | Light browser printing | Web platform technique; selected browser distribution has its own licenses | No reporting-library license needed; deployment browser terms still apply | No reporting runtime fee | Print/browser save-to-PDF where available; no XLSX/CSV | CSS `direction`, bidi isolation and local fonts; validate supported browsers | Client native; server requires browser driver | Browser/user paper settings vary; no page-sum API or consistent artifact history | **ACCEPTABLE** for noncanonical light printing per ADR-0012 |
+| Vazirmatn font, optional (T10) | Locally hosted Persian glyphs | SIL OFL-1.1 | Commercial embedding/bundling permitted under OFL conditions; preserve notices, no standalone font sale, observe modification/name rules | No | Font resource, not any output engine | Specifically Persian/Arabic; test selected static font subset and PDF extraction | Browser/worker; workbook font availability is separate | Font version/glyph coverage; exact variant and bundled assets must be reviewed | **CONDITIONAL** — candidate only, not an approved font choice |
+| Stimulsoft Reports.JS; paid suites/subscriptions/cloud-only reporting; commercial-runtime tools | Prohibited alternatives | Not selected or licensed | Irrelevant: Owner prohibition applies | Prohibited regardless of trial/marketing | Capabilities do not override prohibition | Not evaluated for adoption | No integration planned | Cost/license restrictions, vendor coupling | **REJECTED** |
+
+### Maintenance findings and release gates
+
+**B (upstream snapshot, 2026-09-24):** All ten named GitHub project repositories queried reported `archived: false`. The following latest-release API responses and `pushed_at` signals were observed; push activity can include metadata and does not prove maintainer responsiveness or security fixes.
+
+| Project | Release signal observed | Last push signal | C/D assessment |
+| --- | --- | --- | --- |
+| ExcelJS | v4.4.0, 2023-10-19 | 2025-01-21 | Significant freshness concern; unacceptable to call maintenance cleared without supported-version/advisory review |
+| SheetJS CE | GitHub latest-release endpoint returned 404; official installation docs identify 0.20.3 | GitHub mirror 2024-04-18 | Mirror is not current release authority; official distribution/repository must be checked before selection |
+| Papa Parse | 5.7.0, 2026-08-24 | 2026-09-15 | Recent activity; still require exact-version and advisory checks |
+| pdf-lib | v1.17.1, 2021-11-06 | 2024-07-17 | High maintenance concern; defer unless essential and supportable |
+| PDFKit | v0.20.2, 2026-08-30 | 2026-09-24 | Recent activity, not compatibility proof |
+| Puppeteer | API “latest” returned `browsers-v3.2.3`, 2026-09-23, a monorepo subpackage release | 2026-09-24 | Active; this is **not** a pinned Puppeteer runtime version |
+| Playwright | v1.63.0, 2026-09-04 | 2026-09-24 | Active; browser/Node support must match the chosen release |
+| jsPDF | v4.2.1, 2026-03-17 | 2026-09-23 | Active; plugins require independent evaluation |
+| react-to-print | v3.3.0, 2026-02-23 | 2026-09-14 | Recent activity; React/browser matrix still untested |
+| Vazirmatn | v33.003, 2022-06-22 | 2023-06-14 | Stable font data differs from executable-library freshness, but subset/license/glyph review remains |
+
+**C:** No single evaluated free library covers workbook serialization, safe CSV, accounting semantics, legal validation and reliable paginated Persian Print. A small composed stack is preferable to building OOXML/PDF internals or importing a report suite. **D:** No candidate is selected until exact versions, all bundled/transitive licenses, advisory status, supported Node/ESM/React versions and representative sample tests pass. No vulnerability scanner or package audit was run, so “no known vulnerabilities” is not claimed. If the styled-XLSX candidate fails these gates, defer that adapter or research another permissive alternative; do not fall back to paid software.
+
+### Upstream evidence references
+
+These are research evidence, not install instructions. License files were read through repository APIs; documentation was retrieved read-only. URLs are mutable and must be revalidated and pinned to versions before adoption.
+
+- **T1:** [ExcelJS license](https://github.com/exceljs/exceljs/blob/master/LICENSE), [README](https://github.com/exceljs/exceljs/blob/master/README.md): worksheet views, alignment/reading order, `numFmt`, fonts, `pageSetup`, `printTitlesRow`, header/footer and browser/streaming sections.
+- **T2:** [SheetJS CE license](https://docs.sheetjs.com/docs/miscellany/license/), [repository license](https://github.com/SheetJS/sheetjs/blob/github/LICENSE), [CE overview](https://docs.sheetjs.com/docs/), [Node installation/distribution](https://docs.sheetjs.com/docs/getting-started/installation/nodejs/). CE explicitly permits proprietary commercial use; Pro is separately licensed and **excluded**. Official docs say the npm `xlsx` endpoint is outdated (0.18.5) and identify the SheetJS CDN as authoritative. Do not follow any upstream suggestion to suppress security warnings without independent investigation.
+- **T3:** [Papa Parse license](https://github.com/mholt/PapaParse/blob/master/LICENSE), [README](https://github.com/mholt/PapaParse/blob/master/README.md), [CSV documentation](https://www.papaparse.com/docs): `unparse`, explicit fields/columns, quoting and `escapeFormulae`.
+- **T4:** [pdf-lib license](https://github.com/Hopding/pdf-lib/blob/master/LICENSE.md), [README](https://github.com/Hopding/pdf-lib/blob/master/README.md): runtimes, custom fonts and fontkit.
+- **T5:** [PDFKit license](https://github.com/foliojs/pdfkit/blob/master/LICENSE), [README](https://github.com/foliojs/pdfkit/blob/master/README.md): Node/browser, embedded fonts and fontkit.
+- **T6:** [Puppeteer license](https://github.com/puppeteer/puppeteer/blob/main/LICENSE), [PDF options](https://pptr.dev/api/puppeteer.pdfoptions): margins, orientation, dimensions, headers/footers, page numbers, CSS size and waiting for fonts.
+- **T7:** [Playwright license](https://github.com/microsoft/playwright/blob/main/LICENSE), [Page API source — Page.pdf](https://github.com/microsoft/playwright/blob/main/docs/src/api/class-page.md): A3/A4/A5 and other sizes, margins, template limitations, print CSS. Node API is not a browser-client PDF library.
+- **T8:** [jsPDF license](https://github.com/parallax/jsPDF/blob/master/LICENSE), [README](https://github.com/parallax/jsPDF/blob/master/README.md): Node builds, custom TTF, HTML optional dependencies and filesystem restrictions.
+- **T9:** [react-to-print license](https://github.com/MatthewHerbst/react-to-print/blob/master/LICENSE), [README](https://github.com/MatthewHerbst/react-to-print/blob/master/README.md): fonts, WebView limitations, no control of native dialog settings, not a standalone PDF exporter.
+- **T10:** [Vazirmatn OFL](https://github.com/rastikerdar/vazirmatn/blob/master/OFL.txt), [README](https://github.com/rastikerdar/vazirmatn/blob/master/README.md). No external CDN font loading is proposed for deployment.
+- **T11:** [Chromium core license](https://github.com/chromium/chromium/blob/main/LICENSE): BSD-style redistribution terms; does **not** clear every third-party component in a browser binary. Exact distribution not selected; incomplete binary terms would be **LICENSE UNCLEAR — OWNER REVIEW REQUIRED**.
+- **T12:** Maintenance metadata was retrieved from `https://api.github.com/repos/{owner}/{repo}` and `/releases/latest` for the ten project repositories linked in T1–T10. The timestamps above are observed API values, not live health guarantees.
+
+## Evidence references and checks
+
+Primary governing evidence: `STATE.md` §§1, 6–10; `.vardena/architecture-rules.md` AR-07/08/11/12/13/21/23/29/30/31; `.vardena/agent-rules.md` AG-03/07/09/15/17/19; `docs/tasks/task-17/brief.md` §§3–9 and `prompt.md` preflight/STOP conditions; `docs/accounting/task-index.md` §§2–8; `docs/accounting/domain-contract.md` §§6.4, 13, 15.4, 19, 23–28; `docs/reporting-strategy.md` §§1–9.
+
+Related ADR evidence: ADR-0008/0009 (one DB/views), ADR-0010 (DB-backed jobs), ADR-0011 (Excel imports), ADR-0012 (Print), ADR-0013 (preferences), ADR-0023:42–49 (logical document relations, not financial allocation), ADR-0025 (deployment scope), ADR-0026 (Accounting boundary), ADR-0028 (versioned Accounting configuration), ADR-0031 (projection) and ADR-0032 (period enforcement). Relevant historical reports: `docs/task-10.4-implementation-report.md`, `docs/task-10.7-implementation-report.md`, `docs/task-10.8-implementation-report.md`, Task 11 implementation/defect-resolution records, `docs/task-12-remediation-report.md` §§7, 10–17, `docs/task-13-implementation-report.md` §§5, 9, 12 and `docs/task-14-implementation-report.md`. Historical test claims were not rerun here.
+
+Executed across this audit and its free-only revision: working-tree/branch/HEAD inspection, remote-main hash comparison (unchanged), repeated tracked/filesystem workbook searches, static source/schema/migration/dependency searches, upstream license/README/API/release research, documentation path/structure/scope checks and whitespace checks (including untracked new-file content). Workbook parsing/rendering was **NOT RUN (inputs unavailable)**. Backend lint/typecheck/build/unit/live-PostgreSQL tests and Prisma validation were **NOT RUN (documentation-only; no runtime correctness claim)**. No production implementation, schema edit, migration, dependency installation/addition, test creation, OQ closure or acceptance-state change was performed. No paid tool was added or recommended.
