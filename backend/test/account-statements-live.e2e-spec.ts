@@ -343,8 +343,9 @@ describe.skipIf(DATABASE_URL === undefined)(
       });
     };
 
+    /** `day(2026, 1, 15)` = 2026-01-15 — month is 1-based here (unlike `Date.UTC`). */
     const day = (year: number, month: number, date: number): Date =>
-      new Date(Date.UTC(year, month, date));
+      new Date(Date.UTC(year, month - 1, date));
 
     const posted = {
       /** Book A, 2026 cash rows in statement order (see the math test). */
@@ -907,6 +908,23 @@ describe.skipIf(DATABASE_URL === undefined)(
         data: { status: 'sealed' },
       });
 
+      const readPeriodRows = async () =>
+        (await db.$queryRaw`
+        SELECT id, status, updated_at
+        FROM "accounting"."accounting_periods"
+        WHERE id IN (${bookA.period1}, ${bookA.period2}, ${bookA.period5})
+        ORDER BY sequence`) as Array<{
+          id: string;
+          status: string;
+          updated_at: Date | string;
+        }>;
+      const before = await readPeriodRows();
+      expect(before.map((row) => row.status)).toEqual([
+        'closed',
+        'open',
+        'sealed',
+      ]);
+
       const first = await statementA({ accountingPeriodId: bookA.period1 });
       const middle = await statementA({ accountingPeriodId: bookA.period2 });
       const last = await statementA({ accountingPeriodId: bookA.period5 });
@@ -916,21 +934,8 @@ describe.skipIf(DATABASE_URL === undefined)(
       // The SEALED period's rows are fully readable (decision D5).
       expect(last.movements.total).toBe(3);
 
-      // Reading changed nothing: status AND updated_at are untouched.
-      const rows = (await db.$queryRaw`
-        SELECT id, status, updated_at
-        FROM "accounting"."accounting_periods"
-        WHERE id IN (${bookA.period1}, ${bookA.period2}, ${bookA.period5})
-        ORDER BY sequence`) as Array<{
-        id: string;
-        status: string;
-        updated_at: Date | string;
-      }>;
-      expect(rows.map((row) => row.status)).toEqual([
-        'closed',
-        'open',
-        'sealed',
-      ]);
+      // Reading changed nothing: status AND updated_at are byte-identical.
+      expect(await readPeriodRows()).toEqual(before);
       const reRead = await statementA({ accountingPeriodId: bookA.period5 });
       expect(reRead.scope.accountingPeriod?.status).toBe('sealed');
     });
