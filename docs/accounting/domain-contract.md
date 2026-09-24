@@ -1602,6 +1602,7 @@ not exist (`docs/security.md` §3).
 | `Accounting.PostingRule` | `View, Configure` | mapping configuration (§20.2); content expert-gated |
 | `Accounting.YearTransition` | `View, Execute` | closing/opening/period-transfer operations (§6.4) |
 | `Accounting.Balance` | `View, Rebuild` | projection reads and the audited rebuild (§19.3) |
+| `Accounting.LedgerMovement` | `View` | non-statutory ledger-native read source (Task 17A ACCEPTED; read-only access to immutable posted ledger entries) |
 | `Accounting.SystemPosting` | `View, Retry` | inspection and manual retry of rejected/failed system postings (§16.6, §21) — only meaningful once OQ-39 is resolved |
 
 Reports use `Report.<id>.View` codes registered by the Reporting module
