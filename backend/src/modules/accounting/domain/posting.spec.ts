@@ -62,6 +62,10 @@ function finalDocument(
     requestHash: null,
     finalizedAt: FINALIZED_AT,
     finalizedBy: '01ACTOR000000000000000000A',
+    correctionKind: null,
+    correctionReason: null,
+    reversesDocumentId: null,
+    reversedByDocumentId: null,
     correlationId: '01CORRELATIONAAAAAAAAAAAAAA01',
     lines: [
       {

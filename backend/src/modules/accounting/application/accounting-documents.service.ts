@@ -15,7 +15,10 @@ import {
   toPaginatedResult,
   type PaginatedResult,
 } from '../../../kernel/pagination/paginated-result.js';
-import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
+import {
+  isUniqueViolation,
+  uniqueViolationTouches,
+} from '../../../kernel/prisma/prisma-errors.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { BranchesService } from '../../organization/application/branches.service.js';
@@ -35,6 +38,7 @@ import {
   AccountingDocumentPhaseConflictError,
   AccountingDocumentScopeRejectedError,
   AccountingDocumentStaleError,
+  AccountingDocumentAlreadyReversedError,
 } from '../data/accounting-document-errors.js';
 import {
   ACCOUNTING_VOUCHER_DOCUMENT_TYPE,
@@ -77,8 +81,11 @@ import { ACCOUNTING_DOCUMENT_PERMISSIONS } from '../domain/accounting-permission
 import {
   ACCOUNTING_DOCUMENT_CREATED_EVENT,
   ACCOUNTING_DOCUMENT_DELETED_EVENT,
+  ACCOUNTING_DOCUMENT_FINALIZED_EVENT,
+  ACCOUNTING_DOCUMENT_REVERSED_EVENT,
   ACCOUNTING_DOCUMENT_UPDATED_EVENT,
 } from '../domain/accounting.events.js';
+import { publishEvent } from './accounting-support.js';
 
 const SORTABLE_FIELDS: Record<string, string> = {
   documentDate: 'documentDate',
@@ -571,6 +578,146 @@ export class AccountingDocumentsService {
     }
   }
 
+  /**
+   * Reverse a Final voucher (Task 15): allocate a new serial, create a new
+   * Final counter-document with debit/credit inverted, leave the original
+   * immutable except `reversed_by`. Idempotent on `document_reverse`.
+   * There is no invented reversal-window policy: the reversal date must
+   * resolve to an OPEN period (fail closed, same as composition).
+   */
+  async reverseDocument(
+    organizationId: string,
+    id: string,
+    input: ReverseDocumentInput,
+  ): Promise<AccountingDocumentDto> {
+    await this.authorization.requireAllPermissions([
+      ACCOUNTING_DOCUMENT_PERMISSIONS.REVERSE,
+    ]);
+    const original = await this.mustFindInOrganization(organizationId, id);
+    const reason = assertDescription(input.reason);
+    const documentDate =
+      input.documentDate === undefined
+        ? original.documentDate
+        : parseDocumentDate(input.documentDate);
+    const operationKey = requireOperationKey(input.operationKey);
+    const requestHash = buildRequestHash('document_reverse', {
+      originalDocumentId: original.id,
+      documentDate: formatDateOnly(documentDate),
+      reason,
+    });
+    // Same-key replay must win over already_reversed: after the first reverse
+    // the original is linked, but a retried operationKey is not a new reverse.
+    const replay = await this.replayOrReject(
+      organizationId,
+      operationKey,
+      requestHash,
+      'document_reverse',
+    );
+    if (replay !== null) return replay;
+    if (original.phase !== 'final') {
+      throw AppException.businessRule(
+        'Only a finalized accounting document can be reversed.',
+        { problem: 'not_final', state: original.phase },
+      );
+    }
+    if (original.reversedByDocumentId) {
+      throw AppException.businessRule(
+        'The accounting document has already been reversed.',
+        { problem: 'already_reversed' },
+      );
+    }
+
+    const now = new Date();
+    const actorId = getPrincipal()?.userId ?? null;
+    const reversalId = generateId();
+    const documentNumber = await this.allocateNumber({
+      organizationId,
+      financialAreaId: original.financialAreaId,
+      documentId: reversalId,
+      operationKey,
+      actorId,
+    });
+    const description =
+      `Reversal of ${original.documentNumber ?? original.id}: ${reason}`.slice(
+        0,
+        500,
+      );
+    try {
+      const reversal = await this.repository.reverseChecked({
+        originalDocumentId: original.id,
+        organizationId,
+        reversalId,
+        documentNumber,
+        documentDate,
+        description,
+        reason,
+        ledger: documentOperationRow({
+          organizationId,
+          operationKey,
+          operation: 'document_reverse',
+          requestHash,
+          documentId: reversalId,
+          actorId,
+          now,
+        }),
+        finalizedAt: now,
+        finalizedBy: actorId,
+        correlationId: getCorrelationId() ?? null,
+        createdBy: actorId,
+      });
+      await publishDocumentEvent(
+        this.events,
+        ACCOUNTING_DOCUMENT_CREATED_EVENT,
+        reversal,
+      );
+      await publishDocumentEvent(
+        this.events,
+        ACCOUNTING_DOCUMENT_FINALIZED_EVENT,
+        reversal,
+      );
+      await publishEvent(this.events, {
+        type: ACCOUNTING_DOCUMENT_REVERSED_EVENT,
+        aggregateType: 'AccountingDocument',
+        aggregateId: reversal.id,
+        payload: {
+          id: reversal.id,
+          organizationId: reversal.organizationId,
+          financialAreaId: reversal.financialAreaId,
+          fiscalYearId: reversal.fiscalYearId,
+          accountingPeriodId: reversal.accountingPeriodId,
+          documentType: reversal.documentType,
+          documentNumber: reversal.documentNumber,
+          state: reversal.phase,
+          origin: reversal.origin,
+          originalDocumentId: original.id,
+          reason,
+        },
+      });
+      this.logger.log(
+        'Accounting document reversed',
+        {
+          originalDocumentId: original.id,
+          reversalDocumentId: reversal.id,
+          organizationId,
+        },
+        AccountingDocumentsService.name,
+      );
+      return toAccountingDocumentDto(reversal);
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        const raced = await this.replayOrReject(
+          organizationId,
+          operationKey,
+          requestHash,
+          'document_reverse',
+        );
+        if (raced !== null) return raced;
+        throw mapReverseUniqueViolation(error);
+      }
+      throw mapDocumentGuardError(error) ?? error;
+    }
+  }
+
   // ---- internals -----------------------------------------------------------
 
   /**
@@ -672,7 +819,7 @@ export class AccountingDocumentsService {
     organizationId: string,
     operationKey: string,
     requestHash: string,
-    operation: 'document_create' | 'document_finalize',
+    operation: 'document_create' | 'document_finalize' | 'document_reverse',
   ): Promise<AccountingDocumentDto | null> {
     const existing = await this.operations.findByKey(
       organizationId,
@@ -774,6 +921,13 @@ export interface UpdateAccountingDocumentInput {
 export interface TransitionDocumentInput {
   /** Required: issuance/finalization is an effect-creating operation (§16.4). */
   operationKey: string;
+}
+
+export interface ReverseDocumentInput {
+  operationKey: string;
+  reason: string;
+  /** Optional business date of the reversal; defaults to the original date. */
+  documentDate?: string | undefined;
 }
 
 /** Assign server-owned line ids; `lineNo` was assigned by `normalizeLines`. */
@@ -883,5 +1037,45 @@ export function mapDocumentGuardError(error: unknown): AppException | null {
       `The accounting document origin evidence is invalid (${error.problem}).`,
     );
   }
+  if (error instanceof AccountingDocumentAlreadyReversedError) {
+    return AppException.businessRule(error.message, {
+      problem: 'already_reversed',
+      originalDocumentId: error.originalDocumentId,
+    });
+  }
   return null;
+}
+
+/**
+ * After a reverse unique-race, the ledger replay already missed. Classify by
+ * Prisma `meta.target` so an operation-key or document-number unique is not
+ * reported as already-reversed.
+ */
+export function mapReverseUniqueViolation(error: unknown): AppException {
+  if (
+    uniqueViolationTouches(error, [
+      'reversesDocumentId',
+      'reverses_document_id',
+      'reversedByDocumentId',
+      'reversed_by_document_id',
+    ])
+  ) {
+    return AppException.businessRule(
+      'The accounting document has already been reversed.',
+      { problem: 'already_reversed' },
+    );
+  }
+  if (uniqueViolationTouches(error, ['documentNumber', 'document_number'])) {
+    return AppException.conflict(
+      'The allocated document number already exists in this financial area.',
+    );
+  }
+  if (uniqueViolationTouches(error, ['operationKey', 'operation_key'])) {
+    return AppException.conflict(
+      'The operationKey was already used. An idempotency key identifies one intent: use a new key for a new operation.',
+    );
+  }
+  return AppException.conflict(
+    'A uniqueness constraint was violated while reversing the accounting document.',
+  );
 }

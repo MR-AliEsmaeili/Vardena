@@ -61,6 +61,10 @@ function finalVoucher(
     requestHash: null,
     finalizedAt: new Date('2026-04-05T08:00:00Z'),
     finalizedBy: '01ACTOR000000000000000000A',
+    correctionKind: null,
+    correctionReason: null,
+    reversesDocumentId: null,
+    reversedByDocumentId: null,
     correlationId: null,
     lines: [
       {

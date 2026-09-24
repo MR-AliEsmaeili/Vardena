@@ -880,6 +880,128 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).toBe(1);
     }, 60_000);
 
+    it('lets exactly one concurrent reverse of the same original commit (Task 15)', async () => {
+      const created = await documents.createChecked(
+        draftInput({ description: 'Live reverse race' }),
+      );
+      const serial = (
+        await numbering.allocateNumber({
+          organizationId,
+          documentType: 'accounting_voucher',
+          scopeKey: financialAreaId.toLowerCase(),
+          allocationKey: `live-rev-src-${created.id}`,
+          referenceModule: 'accounting',
+          referenceDocumentType: 'accounting_voucher',
+          referenceDocumentId: created.id,
+        })
+      ).number;
+      await documents.issueChecked({
+        id: created.id,
+        organizationId,
+        documentNumber: serial,
+        updatedAt: new Date(),
+        updatedBy: null,
+      });
+      await documents.finalizeChecked({
+        id: created.id,
+        organizationId,
+        ledger: {
+          id: generateId(),
+          organizationId,
+          operationKey: `live-rev-final-${created.id}`,
+          operation: 'document_finalize',
+          requestHash: TEST_REQUEST_HASH,
+          result: { documentId: created.id },
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          createdBy: null,
+        },
+        finalizedAt: new Date(),
+        finalizedBy: null,
+      });
+
+      const attempt = async (label: 'a' | 'b'): Promise<string> => {
+        const reversalId = generateId();
+        const documentNumber = (
+          await numbering.allocateNumber({
+            organizationId,
+            documentType: 'accounting_voucher',
+            scopeKey: financialAreaId.toLowerCase(),
+            allocationKey: `live-rev-${label}-${created.id}`,
+            referenceModule: 'accounting',
+            referenceDocumentType: 'accounting_voucher',
+            referenceDocumentId: reversalId,
+          })
+        ).number;
+        await documents.reverseChecked({
+          originalDocumentId: created.id,
+          organizationId,
+          reversalId,
+          documentNumber,
+          documentDate: new Date(Date.UTC(2026, 3, 5)),
+          description: `Reversal ${label}`,
+          reason: `race-${label}`,
+          ledger: {
+            id: generateId(),
+            organizationId,
+            operationKey: `live-rev-op-${label}-${created.id}`,
+            operation: 'document_reverse',
+            requestHash: TEST_REQUEST_HASH,
+            result: { documentId: reversalId },
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            createdBy: null,
+          },
+          finalizedAt: new Date(),
+          finalizedBy: null,
+          correlationId: null,
+          createdBy: null,
+        });
+        return reversalId;
+      };
+
+      const results = await Promise.allSettled([attempt('a'), attempt('b')]);
+      const winners = results.filter((result) => result.status === 'fulfilled');
+      const losers = results.filter((result) => result.status === 'rejected');
+      expect(winners).toHaveLength(1);
+      expect(losers).toHaveLength(1);
+      const loser = losers[0];
+      expect(loser?.status).toBe('rejected');
+      if (loser?.status === 'rejected') {
+        const error = loser.reason as { code?: string; name?: string };
+        expect(
+          error.code === 'P2002' ||
+            String(error.name ?? error).includes('AlreadyReversed'),
+        ).toBe(true);
+      }
+
+      const db = await client();
+      const reversals = await db.accountingDocument.findMany({
+        where: { reversesDocumentId: created.id },
+      });
+      expect(reversals).toHaveLength(1);
+      const winnerId = reversals[0]?.['id'] as string;
+      expect(
+        await db.ledgerEntry.count({ where: { voucherId: winnerId } }),
+      ).toBe(2);
+      const original = await documents.findById(created.id);
+      expect(original?.reversedByDocumentId).toBe(winnerId);
+      expect(original?.phase).toBe('final');
+      const orphanIds = [results[0], results[1]]
+        .filter(
+          (result): result is PromiseFulfilledResult<string> =>
+            result.status === 'fulfilled',
+        )
+        .map((result) => result.value)
+        .filter((id) => id !== winnerId);
+      expect(orphanIds).toHaveLength(0);
+      expect(
+        await db.accountingDocument.count({
+          where: { reversesDocumentId: created.id },
+        }),
+      ).toBe(1);
+    }, 60_000);
+
     it('Task 13 D4: a finalization that rolls back leaves the configuration unused', async () => {
       const db = await client();
       const configurationId = await seedMarkerConfiguration('MRK-ROLLBACK');

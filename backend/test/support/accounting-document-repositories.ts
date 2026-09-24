@@ -57,6 +57,7 @@ import {
   AccountingDocumentMissingError,
   AccountingDocumentPhaseConflictError,
   AccountingDocumentScopeRejectedError,
+  AccountingDocumentAlreadyReversedError,
 } from '../../src/modules/accounting/data/accounting-document-errors.js';
 import type {
   AccountingDocumentsRepository,
@@ -65,7 +66,12 @@ import type {
   FinalizeAccountingDocumentInput,
   IssueAccountingDocumentInput,
   UpdateAccountingDocumentInput,
+  ReverseAccountingDocumentInput,
 } from '../../src/modules/accounting/data/accounting-documents.repository.js';
+import {
+  CORRECTION_KIND_REVERSAL,
+  invertDocumentLines,
+} from '../../src/modules/accounting/domain/document-reversal.js';
 import { resolveUsedConfigurationIds } from '../../src/modules/accounting/domain/accounting-configuration-freeze.js';
 import type { AccountingDocumentLinesRepository } from '../../src/modules/accounting/data/accounting-document-lines.repository.js';
 import type { AccountingPostingOperationsRepository } from '../../src/modules/accounting/data/accounting-posting-operations.repository.js';
@@ -98,6 +104,10 @@ export interface AccountingDocumentRecord extends Row {
   requestHash: string | null;
   finalizedAt: Date | null;
   finalizedBy: string | null;
+  correctionKind: string | null;
+  correctionReason: string | null;
+  reversesDocumentId: string | null;
+  reversedByDocumentId: string | null;
   correlationId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -177,6 +187,8 @@ export function createAccountingDocumentState(): AccountingDocumentState {
       // The database's backstops, mirrored so the services' unique-violation
       // fallbacks are exercised for real (ADR-0023 §3, contract §18/§16.4).
       ['organizationId', 'financialAreaId', 'documentNumber'],
+      ['reversesDocumentId'],
+      ['reversedByDocumentId'],
     ]),
     lines: new InMemoryTable<AccountingDocumentLineRecord>([
       ['documentId', 'lineNo'],
@@ -434,6 +446,10 @@ export class InMemoryAccountingDocumentsRepository {
         requestHash: input.requestHash,
         finalizedAt: null,
         finalizedBy: null,
+        correctionKind: null,
+        correctionReason: null,
+        reversesDocumentId: null,
+        reversedByDocumentId: null,
         correlationId: input.correlationId,
         createdAt: now,
         updatedAt: now,
@@ -637,6 +653,120 @@ export class InMemoryAccountingDocumentsRepository {
     }
     this.state.documents.delete(input.id);
     return discarded;
+  }
+
+  async reverseChecked(
+    input: ReverseAccountingDocumentInput,
+  ): Promise<AccountingDocument> {
+    const original = this.requireDocument(
+      input.originalDocumentId,
+      input.organizationId,
+    );
+    if (original.state !== 'final') {
+      throw new AccountingDocumentPhaseConflictError(
+        toPhase(original.state),
+        'final',
+      );
+    }
+    if (original.reversedByDocumentId) {
+      throw new AccountingDocumentAlreadyReversedError(original.id);
+    }
+    const scope = this.resolveOpenScope(
+      input.organizationId,
+      original.financialAreaId,
+      input.documentDate,
+    );
+    const storedLines = this.state.lines.findMany(
+      (candidate) => candidate.documentId === original.id,
+    );
+    this.assertUsableAccounts(
+      input.organizationId,
+      storedLines.map((line) => line.accountId),
+    );
+    const inverted = invertDocumentLines(
+      storedLines.map((line) => ({
+        id: line.id,
+        documentId: line.documentId,
+        lineNo: line.lineNo,
+        accountId: line.accountId,
+        debitAmount: line.debitAmount,
+        creditAmount: line.creditAmount,
+        description: line.description,
+        sourceLineReference: line.sourceLineReference,
+      })),
+    );
+    assertComposition(inverted);
+    const now = input.finalizedAt;
+    const row = withRollback(
+      this.state,
+      () => {
+        const inserted = this.state.documents.insert({
+          id: input.reversalId,
+          organizationId: input.organizationId,
+          financialAreaId: original.financialAreaId,
+          fiscalYearId: scope.yearId,
+          accountingPeriodId: scope.periodId,
+          documentType: 'accounting_voucher',
+          documentNumber: input.documentNumber,
+          documentDate: input.documentDate,
+          description: input.description,
+          state: 'final',
+          origin: original.origin,
+          branchId: original.branchId,
+          sourceModule: original.sourceModule,
+          sourceEntityType: original.sourceEntityType,
+          sourceEntityId: original.sourceEntityId,
+          sourceOperation: original.sourceOperation,
+          idempotencyReference: input.ledger.operationKey,
+          requestHash: input.ledger.requestHash,
+          finalizedAt: now,
+          finalizedBy: input.finalizedBy,
+          correctionKind: CORRECTION_KIND_REVERSAL,
+          correctionReason: input.reason,
+          reversesDocumentId: original.id,
+          reversedByDocumentId: null,
+          correlationId: input.correlationId,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: input.createdBy,
+          updatedBy: input.createdBy,
+        });
+        this.writeLines(
+          inserted,
+          inverted.map((line) => ({
+            id: generateId(),
+            lineNo: line.lineNo,
+            accountId: line.accountId,
+            debitAmount: line.debitAmount,
+            creditAmount: line.creditAmount,
+            description: line.description,
+            sourceLineReference: line.sourceLineReference,
+          })),
+          input.createdBy,
+          now,
+        );
+        this.state.documents.patch(original.id, {
+          reversedByDocumentId: inserted.id,
+          updatedAt: now,
+          updatedBy: input.finalizedBy,
+        });
+        this.writeLedgerEntries(
+          inserted,
+          input.ledger.operationKey,
+          input.ledger.requestHash,
+        );
+        markConfigurationsUsedInMemory(this.structure, {
+          organizationId: input.organizationId,
+          accountIds: [...new Set(storedLines.map((l) => l.accountId))].sort(),
+          now,
+          actorId: input.finalizedBy,
+        });
+        this.state.operations.insert(input.ledger as AccountingOperationRecord);
+        return inserted;
+      },
+      [this.structure.accountingConfigurations],
+    );
+    return this.toDomain(row);
   }
 
   // ---- internals ---------------------------------------------------------
@@ -862,6 +992,10 @@ export class InMemoryAccountingDocumentsRepository {
       requestHash: row.requestHash,
       finalizedAt: row.finalizedAt,
       finalizedBy: row.finalizedBy,
+      correctionKind: (row.correctionKind as 'reversal' | null) ?? null,
+      correctionReason: row.correctionReason,
+      reversesDocumentId: row.reversesDocumentId,
+      reversedByDocumentId: row.reversedByDocumentId,
       correlationId: row.correlationId,
       lines,
       createdAt: row.createdAt,

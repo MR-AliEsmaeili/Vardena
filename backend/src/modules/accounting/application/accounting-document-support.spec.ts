@@ -11,8 +11,13 @@ import {
   AccountingDocumentPhaseConflictError,
   AccountingDocumentScopeRejectedError,
   AccountingDocumentStaleError,
+  AccountingDocumentAlreadyReversedError,
 } from '../data/accounting-document-errors.js';
-import { mapDocumentGuardError } from './accounting-documents.service.js';
+import {
+  mapDocumentGuardError,
+  mapReverseUniqueViolation,
+} from './accounting-documents.service.js';
+import { uniqueViolation } from '../../../../test/support/in-memory-repositories.js';
 import {
   assertDescription,
   assertVoucherComposition,
@@ -289,6 +294,40 @@ describe('guard-error mapping (§25, AC-I-01/16)', () => {
     ).toBe(400);
     expect(mapDocumentGuardError(new Error('boom'))).toBeNull();
     expect(mapDocumentGuardError('not even an error')).toBeNull();
+  });
+
+  it('maps already-reversed to 422', () => {
+    const mapped = mapDocumentGuardError(
+      new AccountingDocumentAlreadyReversedError('doc-1'),
+    );
+    expect(mapped?.getStatus()).toBe(422);
+    expect(mapped?.details).toMatchObject({ problem: 'already_reversed' });
+  });
+
+  it('maps reverse unique races by constraint target, not as a blanket already-reversed', () => {
+    const already = mapReverseUniqueViolation(
+      uniqueViolation(['reversesDocumentId']),
+    );
+    expect(already.getStatus()).toBe(422);
+    expect(already.details).toMatchObject({ problem: 'already_reversed' });
+
+    const number = mapReverseUniqueViolation(
+      uniqueViolation(['organizationId', 'financialAreaId', 'documentNumber']),
+    );
+    expect(number.getStatus()).toBe(409);
+    expect(number.message).toMatch(/document number/);
+
+    const operation = mapReverseUniqueViolation(
+      uniqueViolation(['organizationId', 'operationKey']),
+    );
+    expect(operation.getStatus()).toBe(409);
+    expect(operation.message).toMatch(/operationKey/);
+
+    const unrelated = mapReverseUniqueViolation(
+      uniqueViolation(['voucherLineId']),
+    );
+    expect(unrelated.getStatus()).toBe(409);
+    expect(unrelated.message).toMatch(/uniqueness constraint/);
   });
 
   it('always produces an AppException the global filter can render', () => {

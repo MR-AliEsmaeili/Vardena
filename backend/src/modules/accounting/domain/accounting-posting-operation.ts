@@ -36,6 +36,8 @@ export const ACCOUNTING_POSTING_OPERATIONS = [
   'document_create',
   /** Makes the voucher part of the books (§15.5). */
   'document_finalize',
+  /** Task 15 — reverse a Final voucher by posting a counter-document. */
+  'document_reverse',
 ] as const;
 
 export type AccountingPostingOperationKind =

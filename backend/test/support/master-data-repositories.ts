@@ -156,7 +156,7 @@ export class InMemoryTable<TRow extends Row> {
         const other = existing as unknown as Record<string, unknown>;
         return columns.every((column) => other[column] === record[column]);
       });
-      if (clash !== null) throw uniqueViolation();
+      if (clash !== null) throw uniqueViolation(columns);
     }
   }
 }

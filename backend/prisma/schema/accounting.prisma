@@ -587,6 +587,17 @@ model AccountingDocument {
   /// Finalization evidence (§15.5, §23).
   finalizedAt        DateTime? @map("finalized_at") @db.Timestamptz(6)
   finalizedBy        String?   @map("finalized_by")
+  /// Task 15 — typed reversal (AC-D-22). Kind is `reversal` on the NEW
+  /// document; the original stays `final` and is never rewritten except for
+  /// `reversed_by_document_id`. Reason is mandatory on a reversal.
+  correctionKind     String?  @map("correction_kind")
+  correctionReason   String?  @map("correction_reason") @db.VarChar(500)
+  /// The original this voucher reverses. UNIQUE: at most one reversal document
+  /// per original. NULL for ordinary vouchers (PostgreSQL UNIQUE treats NULLs
+  /// as distinct).
+  reversesDocumentId String?  @unique(map: "uq_accounting_documents_reverses_document_id") @map("reverses_document_id")
+  /// The reversal of this voucher. UNIQUE: at most one successful reverse.
+  reversedByDocumentId String? @unique(map: "uq_accounting_documents_reversed_by_document_id") @map("reversed_by_document_id")
   /// End-to-end traceability (docs/architecture.md §9): the request that
   /// created the document.
   correlationId      String?  @map("correlation_id") @db.VarChar(64)
@@ -600,6 +611,10 @@ model AccountingDocument {
   fiscalYear       FiscalYear       @relation(fields: [fiscalYearId], references: [id], onDelete: Restrict)
   accountingPeriod AccountingPeriod @relation(fields: [accountingPeriodId], references: [id], onDelete: Restrict)
   branch           Branch?          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  reversesDocument AccountingDocument? @relation("AccountingDocumentReverses", fields: [reversesDocumentId], references: [id], onDelete: Restrict)
+  reversedByThis   AccountingDocument? @relation("AccountingDocumentReverses")
+  reversedByDocument AccountingDocument? @relation("AccountingDocumentReversedBy", fields: [reversedByDocumentId], references: [id], onDelete: Restrict)
+  reversesThis     AccountingDocument? @relation("AccountingDocumentReversedBy")
   lines            AccountingDocumentLine[]
 
   /// The immutable ledger entries materialized from this voucher's lines at

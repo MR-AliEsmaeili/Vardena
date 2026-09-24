@@ -577,6 +577,10 @@ export type AccountingDocumentRow = {
   requestHash: string | null;
   finalizedAt: Date | null;
   finalizedBy: string | null;
+  correctionKind: string | null;
+  correctionReason: string | null;
+  reversesDocumentId: string | null;
+  reversedByDocumentId: string | null;
   correlationId: string | null;
 } & AuditColumns;
 
@@ -620,6 +624,10 @@ export interface AccountingDocumentCreate {
   requestHash: string | null;
   finalizedAt: Date | null;
   finalizedBy: string | null;
+  correctionKind: string | null;
+  correctionReason: string | null;
+  reversesDocumentId: string | null;
+  reversedByDocumentId: string | null;
   correlationId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -637,6 +645,7 @@ export interface AccountingDocumentUpdate {
   branchId?: string | null | undefined;
   finalizedAt?: Date | null | undefined;
   finalizedBy?: string | null | undefined;
+  reversedByDocumentId?: string | null | undefined;
   idempotencyReference?: string | null | undefined;
   requestHash?: string | null | undefined;
   updatedAt: Date;

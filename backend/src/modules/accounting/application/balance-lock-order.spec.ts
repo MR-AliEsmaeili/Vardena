@@ -63,6 +63,21 @@ describe('balance lock order (Task 12 R-01)', () => {
     expect(posAccounts).toBeLessThan(posBalances);
   });
 
+  it('reverseChecked locks projection rows BEFORE the original document', () => {
+    const src = fs.readFileSync(repoPath, 'utf-8');
+    const start = src.indexOf('async reverseChecked');
+    expect(start).toBeGreaterThan(-1);
+    const slice = src.slice(start, src.indexOf('// ---- internals', start));
+    const posBalances = slice.indexOf('lockBalanceProjectionRows(');
+    const posDocument = slice.indexOf('lockDocumentInTx(');
+    const posAccounts = slice.indexOf('lockAccountsForLinesInTx(');
+    expect(posBalances).toBeGreaterThan(-1);
+    expect(posDocument).toBeGreaterThan(-1);
+    expect(posAccounts).toBeGreaterThan(-1);
+    expect(posAccounts).toBeLessThan(posBalances);
+    expect(posBalances).toBeLessThan(posDocument);
+  });
+
   it('finalizeChecked uses the with-locks-held helper (no second balances→document inversion)', () => {
     const src = fs.readFileSync(repoPath, 'utf-8');
     expect(src).toContain('applyBalanceProjectionDeltasWithLocksHeldInTx');

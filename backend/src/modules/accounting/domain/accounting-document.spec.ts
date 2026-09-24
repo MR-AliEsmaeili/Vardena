@@ -199,6 +199,10 @@ describe('accounting document DTO (§13.5, AR-24)', () => {
     requestHash: null,
     finalizedAt: null,
     finalizedBy: null,
+    correctionKind: null,
+    correctionReason: null,
+    reversesDocumentId: null,
+    reversedByDocumentId: null,
     correlationId: null,
     lines: [
       {
@@ -254,5 +258,19 @@ describe('accounting document DTO (§13.5, AR-24)', () => {
     expect(dto.updatedBy).toBeUndefined();
     expect(Object.keys(dto)).not.toContain('createdBy');
     expect(Object.keys(dto)).not.toContain('updatedBy');
+  });
+
+  it('carries reversal linkage on the DTO', () => {
+    const dto = toAccountingDocumentDto({
+      ...document,
+      correctionKind: 'reversal',
+      correctionReason: 'Posted in error',
+      reversesDocumentId: '01J8ZQ9W7R6T5Y4U3I2O1P0ORG',
+      reversedByDocumentId: null,
+    });
+    expect(dto.correctionKind).toBe('reversal');
+    expect(dto.correctionReason).toBe('Posted in error');
+    expect(dto.reversesDocumentId).toBe('01J8ZQ9W7R6T5Y4U3I2O1P0ORG');
+    expect(dto.reversedByDocumentId).toBeNull();
   });
 });
