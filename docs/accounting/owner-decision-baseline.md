@@ -2,8 +2,10 @@
 
 Status: **Authoritative Owner-decision register** · Date: 2026-09-25 · Type:
 governance / consolidation (documentation only) · Task 17C status:
-**READY FOR REVIEW — NOT ACCEPTED** (no self-acceptance; only the Owner/Reviewer
-records `ACCEPTED`)
+**ACCEPTED (2026-09-25)** — documentation-only governance acceptance recorded by
+the Task 17C Acceptance Sync (no self-acceptance; the acceptance was recorded per
+the Owner's explicit Acceptance-Sync authorization — acceptance record:
+[`docs/tasks/task-17/task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md))
 
 | | |
 |---|---|
@@ -364,3 +366,19 @@ Question, which stays OPEN in [`docs/open-questions.md`](../open-questions.md).
   status or task status was changed**: OQ-25/OQ-43 remain **OPEN**, every ADR stays
   **Proposed**, Task 17 stays blocked and Task 17C stays **READY FOR REVIEW — NOT
   ACCEPTED** until the separate Acceptance Sync.
+- 2026-09-25 — **Task 17C ACCEPTED (documentation-only governance acceptance — the
+  separate Acceptance Sync).** Per the Owner's explicit Acceptance-Sync authorization,
+  Task 17C is recorded **ACCEPTED (2026-09-25)** and the status header of this register
+  was updated accordingly (acceptance record:
+  [`docs/tasks/task-17/task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md)).
+  The accepted decision set is preserved **exactly as recorded**: **Q1–Q22, invariants
+  I-1…I-3, discrepancies D-1…D-13 (D-8 RESOLVED by the PR #44 merge in `2892189`) and
+  open items O-1…O-12 — nothing in this register was reinterpreted, expanded, closed or
+  altered**. **OQ-25 and OQ-43 remain OPEN** — acceptance of Task 17C resolves neither.
+  **ADR-0033…0037 remain Proposed** — under the repository ADR convention, task
+  acceptance does not promote an ADR (no self-acceptance); each ADR remains pending its
+  separate adoption/implementation gate, and the ADR subjects remain future/controlled
+  concepts, not implemented production capabilities. Task 17 remains **FORMALIZED /
+  IMPLEMENTATION BLOCKED BY OPEN QUESTIONS** and **NOT complete**. No production code,
+  schema, migration, test, API, permission or dependency was touched by the
+  synchronization.
