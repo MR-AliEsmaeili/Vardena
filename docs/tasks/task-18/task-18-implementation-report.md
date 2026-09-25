@@ -40,9 +40,50 @@ purchasing, multi-currency, or cross-year behavior.
 | Scope support | `application/accounting-report-support.ts` resolves the organization deployment pin/usability, one financial area, one fiscal year, optional same-year period, explicit same-year date bounds, account identity/hierarchy existence, page bounds and allow-listed primary sorting. |
 | Authorization | Independent `Accounting.GeneralLedger.View` and `Accounting.TrialBalance.View` definitions/registration, in addition to the accepted `Accounting.AccountStatement.View`; route guards and service checks are both present. |
 | Wiring | `accounting.module.ts` registers the shared query repository, three report services and two new controllers. |
-| Tests | Focused General Ledger, Trial Balance, Trial Balance exact-money, shared raw-query read-only/mapping checks, Account Statement hierarchy addition, and existing Task 17B regression coverage. |
+| Tests | Focused General Ledger, Trial Balance, exact-money Ledger-to-output reconciliation, shared raw-query read-only/mapping checks, Account Statement hierarchy addition, and existing Task 17B regression coverage. |
 
-## 3. Contract and calculation semantics
+## 3. D5 resolution: Ledger authority and Task 12 projection role
+
+Repository evidence supports the ledger-native interpretation of D5; no
+production-code change is required.
+
+- `docs/adr/0031-balance-projection.md` explicitly says that
+  `accounting.ledger_entries` is the **sole source of truth**. It defines
+  `accounting.account_balance_projections` as a materialized, rebuildable,
+  reporting-only projection.
+- `backend/src/modules/accounting/domain/balance-projection.ts` stores only
+  period debit/credit turnover. `opening`, `periodNet` and `closing` are
+  derived by `deriveBalances`/`vw_account_balance_derived`; they are not a
+  second stored monetary truth.
+- `AccountBalanceProjectionsRepository.rebuildScoped` re-derives the slice
+  from ledger aggregates, and `readReconciliationMismatchesInTx` compares the
+  projection with a ledger aggregate through `vw_balance_reconciliation`.
+  `AccountingBalancesService` describes the projection as rebuildable and not
+  authoritative. This is a performance/read model with an explicit repair and
+  reconciliation path, not an authority boundary.
+- Consequently, using the Task 12 projection as the Task 18 runtime source
+  would add stale-data risk and a second calculation dependency without
+  improving authority. It could also accidentally inherit projection absence
+  semantics (zero-turnover rows are not persisted) and projection view
+  boundaries. Task 18 instead reads the immutable ledger facts directly,
+  applies the same exact Decimal equations, and remains independently
+  reconcilable against the ledger source.
+
+The focused `backend/src/modules/accounting/domain/trial-balance.spec.ts`
+test now names this contract explicitly: exact authoritative ledger opening and
+turnover aggregates produce `opening`, `periodNet` and `closing`, and
+`opening + periodNet = closing`. The existing live
+`backend/test/account-statements-live.e2e-spec.ts` also reconciles the
+ledger-native Account Statement opening against `vw_account_balance_derived`
+when the PostgreSQL-gated suite runs. No new projection, persistence or
+financial calculation engine was introduced.
+
+**D5 resolution:** Ledger = authoritative financial source. Task 12 projection
+= derived/rebuildable read optimization, not an independent financial source of
+truth. Task 18 remains Ledger-native and reconciliable by exact debit/credit
+facts; no second monetary truth exists.
+
+## 4. Contract and calculation semantics
 
 ### Scope, status and isolation
 
@@ -100,7 +141,7 @@ run in one `REPEATABLE READ` transaction with a five-second Prisma interactive
 transaction timeout. No write delegate, mutation route, lock-for-update or
 report persistence exists.
 
-## 4. General Ledger field authority
+## 5. General Ledger field authority
 
 The authoritative `backend/prisma/schema/accounting.prisma` was inspected
 before finalizing the joins:
@@ -118,7 +159,7 @@ No unavailable document type or generic reference was fabricated. The public
 is nullable. The report exposes IDs needed for future source drill-down but
 performs no mutation or cross-context lookup.
 
-## 5. Validation evidence
+## 6. Validation evidence
 
 Executed in this checkout:
 
@@ -133,14 +174,19 @@ Executed in this checkout:
   `/api/docs-json`; all three required paths were present as `GET` operations
   with General Ledger and Trial Balance schemas present;
 - `git diff --check` — passed after the final source/documentation edits;
-- required GitHub Actions CI run **36132923613** (`backend`) — **passed**,
-  including Prisma validate/generate, lint, typecheck, format check, unit
-  tests, build, migration deployment, migration rehearsal and the complete
-  E2E suite against PostgreSQL 16 (including existing live-DB suites). The
-  first PR run `36132173749` correctly caught an accidental Task 17B contract
-  regression: `dateFrom` had become accepted by Account Statements; follow-up
-  commit `9b784f0` removed that filter while retaining date bounds on the new
-  General Ledger and Trial Balance surfaces.
+- required GitHub Actions CI run **36133360887** (`CI` → `backend`) —
+  **completed successfully**. GitHub metadata verifies `event=pull_request`,
+  `headSha=5971bedf551a023d3a7936767345f0d70fac477a`, and a completed
+  successful `backend` job. PR **#46** was open with the same head SHA when
+  this run was verified, so the run belongs to the PR's implementation head
+  (`5971bed`) before this surgical Review-Fix. Its recorded successful steps
+  include Prisma validate/generate, lint, typecheck, format check, unit tests,
+  build, migration deployment, migration rehearsal and the complete E2E suite
+  including live-DB suites. The earlier PR run
+  `36132173749` correctly caught an accidental Task 17B contract regression:
+  `dateFrom` had become accepted by Account Statements; follow-up commit
+  `9b784f0` removed that filter while retaining date bounds on the new General
+  Ledger and Trial Balance surfaces.
 
 Prisma validation was attempted with a valid-shaped local `DATABASE_URL`, but
 Prisma 7 could not download its schema engine because the sandbox network
@@ -150,7 +196,21 @@ dedicated Task 18 raw-report fixture was not available in the local sandbox
 checks passed, while PostgreSQL execution of the new report SQL remains a
 review item even though the repository's required CI/live-DB battery passed.
 
-## 6. Limitations and deferred review items
+## 7. Review-Fix manifest
+
+- **Production code changed for this Review-Fix:** No. The only implementation
+  change is the focused test assertion in
+  `backend/src/modules/accounting/domain/trial-balance.spec.ts`; it exercises
+  the existing Ledger-native mapping and exact-money derivation.
+- **Documentation changed:** this report, plus the minimal Task 18 status
+  synchronization in `STATE.md` and `docs/accounting/task-index.md`.
+- **Reviewed implementation commit:** `5971bedf551a023d3a7936767345f0d70fac477a`.
+  The subsequent Review-Fix commit is the commit carrying this manifest and is
+  identified in the final handoff; no history was rewritten.
+- **No new financial truth:** no projection, schema, migration, API,
+  calculation engine, dependency or persistence was added.
+
+## 8. Limitations and deferred review items
 
 1. The report query repository uses reviewed, static SQL/CTE branches and
    bound values. The raw SQL should be executed in the repository's PostgreSQL
