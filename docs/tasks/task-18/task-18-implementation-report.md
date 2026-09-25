@@ -1,6 +1,14 @@
-# Task 18 — Accounting Reporting Read Foundation — Implementation Report
+# Task 18 — Accounting Reporting Read Foundation — Implementation & Acceptance Report
 
-**Status: READY FOR REVIEW — NOT ACCEPTED (2026-09-25).**
+**Status: ACCEPTED (2026-09-25).** Merged into `main` via PR #46
+(`e774a1c37c921ba83e4e9c23729fde6205cedb76`; reviewed implementation head
+`5971bedf551a023d3a7936767345f0d70fac477a`; review-fix commits
+`418234666375e1fb6776dd8b1186b1be5cafe735` and
+`0d9cf760330ea37b4fded0ddb675731db72c1d25`). The Repository Owner/Reviewer
+reviewed PR #46 before merge and accepted the bounded implementation under the
+approved Owner Decisions D1–D20; the final review-fix addressed the D5
+source-of-truth/reconciliation point. Acceptance record:
+[`task-18-acceptance-record.md`](./task-18-acceptance-record.md).
 
 This is the focused implementation report for Task 18 on
 `arena/01a0d841-vardena`. It records the implementation and the evidence
@@ -193,8 +201,10 @@ Prisma 7 could not download its schema engine because the sandbox network
 disconnected from `binaries.prisma.sh`; no schema or migration was changed. A
 dedicated Task 18 raw-report fixture was not available in the local sandbox
 (Docker/PostgreSQL tools are absent); the shared repository's static fake-client
-checks passed, while PostgreSQL execution of the new report SQL remains a
-review item even though the repository's required CI/live-DB battery passed.
+checks passed, and PostgreSQL execution of the new report SQL was subsequently
+covered by the required CI/live-DB battery on the reviewed implementation head
+`5971bed` — run `36133360887`, `backend` `completed success`, E2E step incl. the
+live-DB suites on `postgres:16` (§6 CI evidence, §9).
 
 ## 7. Review-Fix manifest
 
@@ -205,9 +215,11 @@ review item even though the repository's required CI/live-DB battery passed.
 - **Documentation changed:** this report, plus the minimal Task 18 status
   synchronization in `STATE.md` and `docs/accounting/task-index.md`.
 - **Reviewed implementation commit:** `5971bedf551a023d3a7936767345f0d70fac477a`.
-- **Focused Review-Fix commit:** `418234666375e1fb6776dd8b1186b1be5cafe735`,
-  containing the test/documentation/status synchronization described here; no
-  history was rewritten.
+- **Focused Review-Fix commits:**
+  `418234666375e1fb6776dd8b1186b1be5cafe735` — the test-only Ledger → Trial
+  Balance reconciliation assertion (the D5 review-fix point) — and
+  `0d9cf760330ea37b4fded0ddb675731db72c1d25` — the review-fix
+  documentation/status handoff. No history was rewritten.
 - **No new financial truth:** no projection, schema, migration, API,
   calculation engine, dependency or persistence was added.
 
@@ -225,4 +237,44 @@ review item even though the repository's required CI/live-DB battery passed.
 4. Task 18 does not implement exports, Legal Books, statutory layouts, report
    builder behavior, classification, or any other bounded context.
 
-**Governance status: READY FOR REVIEW — NOT ACCEPTED.**
+These limitations are retained as recorded; the acceptance (§9) does not close
+them.
+
+## 9. Acceptance record (2026-09-25)
+
+Task 18 — Accounting Reporting Read Foundation is **ACCEPTED (2026-09-25)**.
+
+- **PR #46** (`feat(accounting): add reporting read foundation`) was reviewed by
+  the Repository Owner/Reviewer **before merge** and is **MERGED** into `main`
+  in merge commit `e774a1c37c921ba83e4e9c23729fde6205cedb76`; implementation =
+  MERGED, Task governance status = ACCEPTED (two distinct facts).
+- **Reviewed implementation head:** `5971bedf551a023d3a7936767345f0d70fac477a`.
+- **Review-fix commits:** `418234666375e1fb6776dd8b1186b1be5cafe735` (test-only
+  D5 Ledger → Trial Balance reconciliation assertion) and
+  `0d9cf760330ea37b4fded0ddb675731db72c1d25` (documentation/status handoff).
+- The implementation was built against the approved **Owner Decisions D1–D20**;
+  their meaning is preserved unchanged.
+- **D5** is accepted Ledger-native: `accounting.ledger_entries` is the
+  authoritative financial source; the Task 12 projection remains a materialized,
+  turnover-only, derived and rebuildable read optimization; Task 18 does not
+  introduce a second monetary source of truth and does not depend on the
+  projection at runtime for financial truth.
+- **Validation evidence recorded:** focused D5 reconciliation **2 passed**;
+  accounting unit suite **43 files / 538 tests passed**; full backend unit suite
+  **97 files / 1,100 tests passed**; typecheck, build, format and
+  `git diff --check` passed; lint **0 errors / 6 pre-existing unrelated
+  warnings** (not Task 18 failures); required CI run **36133360887** on PR #46
+  (head `5971bed`) `backend` **completed success** including Prisma validation,
+  lint, typecheck, format, unit tests, build, migration rehearsal and live
+  PostgreSQL E2E. CI predates the review-fix commits, which were
+  documentation/test-only with no production change.
+- **Scope, OQ and cross-task boundaries are unchanged by the acceptance:**
+  OQ-25 and OQ-43 remain OPEN; Task 17 overall remains BLOCKED and is not
+  complete; Task 17A/17B acceptances stand; Task 17C remains READY FOR REVIEW —
+  NOT ACCEPTED; no ADR status is promoted and no new ADR was created; exports,
+  Legal Books, Report Builder, UI Account Overview, settlement/allocation, AR/AP,
+  treasury, sales/purchase, cross-year carry and configurable reporting
+  dimensions remain unimplemented and unclosed — see the acceptance record §1
+  and §7.
+
+**Governance status: ACCEPTED (2026-09-25).**
