@@ -132,14 +132,23 @@ Executed in this checkout:
 - Swagger/OpenAPI boot probe with `SWAGGER_ENABLED=true` — HTTP 200 for
   `/api/docs-json`; all three required paths were present as `GET` operations
   with General Ledger and Trial Balance schemas present;
-- `git diff --check` — passed after the final source/documentation edits.
+- `git diff --check` — passed after the final source/documentation edits;
+- required GitHub Actions CI run **36132923613** (`backend`) — **passed**,
+  including Prisma validate/generate, lint, typecheck, format check, unit
+  tests, build, migration deployment, migration rehearsal and the complete
+  E2E suite against PostgreSQL 16 (including existing live-DB suites). The
+  first PR run `36132173749` correctly caught an accidental Task 17B contract
+  regression: `dateFrom` had become accepted by Account Statements; follow-up
+  commit `9b784f0` removed that filter while retaining date bounds on the new
+  General Ledger and Trial Balance surfaces.
 
 Prisma validation was attempted with a valid-shaped local `DATABASE_URL`, but
 Prisma 7 could not download its schema engine because the sandbox network
 disconnected from `binaries.prisma.sh`; no schema or migration was changed. A
-real PostgreSQL execution of the new raw report queries was not available in
-this sandbox (Docker/PostgreSQL tools are absent), so the live SQL path remains
-a review/CI verification item.
+dedicated Task 18 raw-report fixture was not available in the local sandbox
+(Docker/PostgreSQL tools are absent); the shared repository's static fake-client
+checks passed, while PostgreSQL execution of the new report SQL remains a
+review item even though the repository's required CI/live-DB battery passed.
 
 ## 6. Limitations and deferred review items
 
