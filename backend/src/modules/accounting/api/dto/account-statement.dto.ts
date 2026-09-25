@@ -1,8 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
-import { DATE_ONLY_PATTERN } from '../../domain/date-range.js';
 import type {
   AccountStatementEntry,
   AccountStatementTotals,
@@ -88,26 +87,6 @@ export class AccountStatementQueryDto extends PageQueryDto {
   @IsString()
   @MaxLength(200)
   accountName?: string;
-
-  @ApiPropertyOptional({
-    example: '2026-03-21',
-    description:
-      'Optional inclusive Document Date lower bound within the year.',
-  })
-  @IsOptional()
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN)
-  dateFrom?: string;
-
-  @ApiPropertyOptional({
-    example: '2027-03-20',
-    description:
-      'Optional inclusive Document Date upper bound within the year.',
-  })
-  @IsOptional()
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN)
-  dateTo?: string;
 }
 
 /**

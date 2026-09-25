@@ -114,7 +114,6 @@ interface CapturedFactsCall {
   params: {
     window: Record<string, unknown>;
     priorPeriodIds: readonly string[];
-    openingBefore?: Date;
   };
   skip: number;
   take: number;
@@ -295,32 +294,6 @@ describe('AccountStatementsService', () => {
       service.getAccountStatement({ ...BASE_QUERY, sort: 'documentDate:desc' }),
     ).rejects.toMatchObject({ status: 400 });
     expect(repository.readStatementLedgerFacts).not.toHaveBeenCalled();
-  });
-
-  it('applies an explicit Document Date window and opens at dateFrom', async () => {
-    const { service, factsCalls } = makeService({
-      facts: { priorPeriodDebit: '10.25', priorPeriodCredit: '0.25' },
-    });
-    const statement = await service.getAccountStatement({
-      ...BASE_QUERY,
-      dateFrom: '2026-04-01',
-      dateTo: '2026-04-30',
-    });
-    const call = factsCalls()[0];
-    expect(call?.params.window).toMatchObject({
-      organizationId: ORG,
-      financialAreaId: AREA,
-      fiscalYearId: YEAR,
-      accountId: ACCOUNT,
-      documentDate: {
-        gte: new Date('2026-04-01T00:00:00.000Z'),
-        lte: new Date('2026-04-30T00:00:00.000Z'),
-      },
-    });
-    expect(call?.params.openingBefore).toEqual(
-      new Date('2026-04-01T00:00:00.000Z'),
-    );
-    expect(statement.totals.openingBalanceAmount).toBe('10');
   });
 
   it('treats the hierarchy filter as a narrowing identity filter, not a roll-up', async () => {

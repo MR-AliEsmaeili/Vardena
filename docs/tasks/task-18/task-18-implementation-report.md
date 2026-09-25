@@ -34,13 +34,13 @@ purchasing, multi-currency, or cross-year behavior.
 | Area | Implementation |
 |---|---|
 | Shared read/query boundary | `backend/src/modules/accounting/data/accounting-read-query.repository.ts`; preserves Task 17B scope/statement reads and adds bounded raw General Ledger and Trial Balance reads. `AccountStatementsRepository` remains a compatibility adapter so Task 17B imports and read-only prototype tests remain stable. |
-| Account Statement | Existing `AccountStatementsService`/controller extended with explicit hierarchy, account-code/name and inclusive Document Date filters. Explicit `dateFrom` opens at the date boundary; period-only reads retain the accepted same-year lower-sequence opening. |
+| Account Statement | Existing `AccountStatementsService`/controller consumes the shared read/query boundary and retains the accepted Task 17B period-only semantics; Task 18 adds only bounded hierarchy and account-code/name narrowing filters, without changing the fixed order or opening basis. |
 | General Ledger | `domain/general-ledger.ts`, DTO, service and controller. Rows retain Accounting document type, document/voucher identity and number, own immutable ledger-entry identity, voucher-line identity, account identity/labels, exact debit/credit/net, description, source snapshots and existing source-line reference. |
 | Trial Balance | `domain/trial-balance.ts`, DTO, service and controller. POSTING leaves are rolled to themselves and each AGGREGATION ancestor in the shared SQL CTE; AGGREGATION totals use descendant POSTING activity only. |
 | Scope support | `application/accounting-report-support.ts` resolves the organization deployment pin/usability, one financial area, one fiscal year, optional same-year period, explicit same-year date bounds, account identity/hierarchy existence, page bounds and allow-listed primary sorting. |
 | Authorization | Independent `Accounting.GeneralLedger.View` and `Accounting.TrialBalance.View` definitions/registration, in addition to the accepted `Accounting.AccountStatement.View`; route guards and service checks are both present. |
 | Wiring | `accounting.module.ts` registers the shared query repository, three report services and two new controllers. |
-| Tests | Focused General Ledger, Trial Balance, Trial Balance exact-money, Account Statement date/hierarchy additions, and existing Task 17B regression coverage. |
+| Tests | Focused General Ledger, Trial Balance, Trial Balance exact-money, shared raw-query read-only/mapping checks, Account Statement hierarchy addition, and existing Task 17B regression coverage. |
 
 ## 3. Contract and calculation semantics
 
@@ -58,11 +58,13 @@ OPEN, CLOSED and SEALED years/periods are readable: report SQL does not add a
 status exclusion and contains no lifecycle mutation. A period-only report uses
 the stored `accounting_period_id`; it does not recompute a period from a date.
 
-An omitted date range uses fiscal-year/period stored scope. A supplied
-`dateFrom` and/or `dateTo` is inclusive and must remain within the requested
-fiscal year. Account Statement and Trial Balance opening calculations use the
-explicit lower date boundary when supplied; period-only openings use lower
-period sequence rows of the same fiscal year. No prior-year rows are consulted.
+Account Statement retains its accepted period-only contract: stored fiscal
+year/period identity and lower same-year period sequence determine opening;
+its fixed movement order remains unchanged. General Ledger and Trial Balance
+accept an optional inclusive `dateFrom` and/or `dateTo`, each constrained to
+the requested fiscal year. Trial Balance uses the explicit lower date for
+opening; period-only Trial Balance openings use lower same-year period sequence
+rows. No report path consults prior-year rows.
 
 ### Decimal exactness and hierarchy
 
@@ -90,7 +92,7 @@ SQL identifiers. Server-defined tie-breakers make the result deterministic:
   include account name/id and the derived opening, debit, credit, period-net and
   closing measures.
 - Account Statement keeps its fixed legal-book order because running balances
-  depend on it and rejects client sort.
+  depend on it, retains the accepted period-only scope and rejects client sort.
 
 The shared page size retains the existing maximum of 500, and report pages are
 rejected when they address beyond the hard 50,000-row window. Raw report reads
@@ -122,7 +124,7 @@ Executed in this checkout:
 
 - `npm ci --ignore-scripts` — completed;
 - focused report/regression tests — passed;
-- full backend unit suite: **97 test files, 1,101 tests passed**;
+- full backend unit suite: **97 test files, 1,100 tests passed**;
 - `npm run typecheck` — passed;
 - `npm run build` — passed;
 - `npm run format:check` and the changed Accounting-file Prettier check — passed;
