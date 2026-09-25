@@ -217,28 +217,43 @@ This is a bounded inventory of verified references, not a reconstructed complete
 | 16 | Task 16 contract finalization; `docs/tasks/task-16/brief.md`, `decision-reconciliation.md` | **Contract formalized 2026-09-24; no production implementation** — Owner Direction Established; Accounting Foundations Existing | **Contract finalization: READY FOR REVIEW. Implementation authorization: BLOCKED — OWNER CONFIRMATION REQUIRED.** Not implemented, accepted or production-ready; one concrete document/amount authority gate remains | No implementation PR/branch/commit established |
 | 17 | Accounting Reporting Foundation; `docs/tasks/task-17/brief.md`, `prompt.md`; Accounting task index §2/§4 | **Task definition formalized 2026-09-24; no production implementation** — bounded Accounting-owned reporting inputs only | **Documentation task: READY FOR REVIEW. Implementation: FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS (OQ-25/OQ-43).** Not implemented, accepted or production-ready; Task 12 P1 remains separate and Task 14 is not treated as accepted | Documentation-only work on `arena/01a0d451-vardena`; implementation PR/commit NOT YET DOCUMENTED |
 | 17A | Bounded first slice of Task 17 — Accounting Ledger Movement Read Source; `docs/tasks/task-17/task-17a-implementation-report.md`, `docs/tasks/task-17/task-17a-acceptance-record.md` | Implementation present on `main` (PR #39 merged in `130fab9`): `domain/ledger-movement.ts`, `LedgerMovementsService`, read-only `listMovements`, `GET /api/v1/accounting/ledger-movements`, `Accounting.LedgerMovement.View`; **no schema, migration, index, aggregation or report definition** | **ACCEPTED (2026-09-25)** by explicit Owner Decision. Scope: Accounting-owned read-only ledger movement source over `accounting.ledger_entries`, `GET /api/v1/accounting/ledger-movements`, `Accounting.LedgerMovement.View`, org isolation, bounded pagination, allow-listed sorting, exact Decimal strings. **Does NOT close OQ-25/OQ-43 or complete Task 17** | PR **#39** merged in `130fab9`; CI run `36048743757` green |
+| 17B | Bounded second slice of Task 17 — Account Statement read surface; `docs/tasks/task-17/task-17b-{prompt,implementation-report}.md` (Owner decisions D1–D7) | Implementation on `arena/01a0d5a0-vardena` (PR **#43**): `domain/account-statement.ts`, `AccountStatementsService`, read-only `AccountStatementsRepository`, `GET /api/v1/accounting/account-statements`, `Accounting.AccountStatement.View` (36th code); **no schema, migration, index, aggregation platform or report definition** | **READY FOR REVIEW — NOT ACCEPTED.** Scope: bounded read-only account statement (one account + one fiscal year + optional period; debit-positive net; intra-year sequence-based opening, no carry-forward; fixed statement order; OPEN/CLOSED/SEALED readable; org-first 404/422 scope matrix). **Does NOT close OQ-25/OQ-43 or complete Task 17** | PR **#43**; implementation commit `9ee46f7` |
 
 Rows with shortened paths `accounting/...` refer to `backend/src/modules/accounting/...`. The Task 11 report notation above denotes the three real separately named files, not a literal brace-named file.
 
 ## 8. Current Task
 
-The current state is **Task 17A ACCEPTED (2026-09-25)**: the bounded, non-statutory, ledger-native READ-ONLY slice of Task 17 introduced by PR #39 (merged in commit `130fab9`) has been explicitly authorized and accepted by the Repository Owner.
+The current state is **Task 17B READY FOR REVIEW — NOT ACCEPTED (2026-09-25)**:
+the bounded, read-only **account statement** slice of Task 17 (Owner decisions
+D1–D7 in `docs/tasks/task-17/task-17b-prompt.md`) is implemented on
+`arena/01a0d5a0-vardena` (PR **#43**, implementation commit `9ee46f7`) and
+awaits the Owner/Reviewer verdict. Task 17A remains **ACCEPTED (2026-09-25)**
+(PR #39, `130fab9`).
 
-It provides:
-- The posted-ledger movement source over `accounting.ledger_entries` (`domain/ledger-movement.ts`, `LedgerMovementsService`);
-- A read-only `listMovements` method on `LedgerEntriesRepository`;
-- One narrow versioned REST endpoint `GET /api/v1/accounting/ledger-movements`;
-- Organization isolation enforced via deployment-pin and `requireUsableOrganization` (404 on foreign/unknown tenant);
-- The new read permission `Accounting.LedgerMovement.View` (documented in contract §22 and registered in permission registry);
-- Allow-listed deterministic sorting (`documentDate`, `postingTimestamp` with tie-breakers: `voucher_number`, `line_no`, `id`);
-- Bounded pagination (`DEFAULT_PAGE = 1`, `DEFAULT_PAGE_SIZE = 100`, `MAX_PAGE_SIZE = 500`);
-- Exact Decimal string serialization (`numeric(18,2)` formatted as decimal strings).
+Task 17B provides:
+- The canonical account-movement calculation over the immutable
+  `accounting.ledger_entries` (`domain/account-statement.ts`,
+  `AccountStatementsService`, read-only `AccountStatementsRepository`):
+  opening, debit/credit/net movement rows with running balances, closing;
+- One narrow versioned REST endpoint `GET /api/v1/accounting/account-statements`
+  (one account + one fiscal year + optional accounting period; no write route);
+- The new read permission `Accounting.AccountStatement.View` (36th code;
+  contract §22 row added under gate P-10; enforced guard + service);
+- Debit-positive exact Decimal strings (`net = debit − credit`,
+  `closing = opening + net`), intra-fiscal-year SEQUENCE-based opening with NO
+  prior-year carry-forward (ADR-0031 §4/§9), fixed statement order
+  (`documentDate, voucherNumber, lineNo, id`), window-wide totals
+  (page-independent), running balance continuous across pages;
+- Organization isolation via deployment pin + `requireUsableOrganization` +
+  organization-first scope keys (foreign/unknown → 404, scope contradictions →
+  422); OPEN/CLOSED/SEALED periods readable and never mutated (D5).
 
 **Explicit Exclusions & Governance Boundaries:**
 - **OQ-25** (chart / report layouts) remains **OPEN**.
 - **OQ-43** (Iranian statutory / legal reporting) remains **OPEN**.
 - **Task 17** remains **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS**. Task 17 is **NOT complete**.
-- Generic Reporting Foundation, Report Builder, Excel/CSV/PDF/Print export engines, Iranian Electronic Books (`دفاتر قانونی`), Trial Balance, Income Statement, Balance Sheet, and report aggregation platforms remain **UNIMPLEMENTED**.
+- Task 17B is **READY FOR REVIEW — NOT ACCEPTED**; only the Owner/Reviewer can record `ACCEPTED`.
+- Generic Reporting Foundation, Report Builder, Excel/CSV/PDF/Print export engines, Iranian Electronic Books (`دفاتر قانونی`), Trial Balance, Income Statement, Balance Sheet, Cash Flow, Treasury reporting, multi-account/cross-year statements and account-nature presentation remain **UNIMPLEMENTED** (D1–D3/D7).
 - Task 12's P1 real-PostgreSQL concurrency verification remains a separate follow-up; Task 14 remains **READY FOR REVIEW — NOT ACCEPTED**; Task 16 status is unchanged.
 
 ## 9. Open Questions
@@ -278,6 +293,8 @@ Task 17 creates no new OQ and does not reclassify OQ-25, OQ-43, OQ-49, or any ex
 **Task 16 contract finalization — 2026-09-24:** Owner directions were reconciled against the current Accounting/Document/RBAC/idempotency/transaction/concurrency repository mechanisms. `docs/tasks/task-16/brief.md` and `decision-reconciliation.md` formalize the bounded Settlement / Allocation foundation; `docs/accounting/task-index.md` now records the contract as defined. No production implementation, schema or migration is authorized by this work.
 
 **Task 17 documentation/task definition — 2026-09-24:** `docs/tasks/task-17/brief.md` and `prompt.md` formalize the bounded Accounting Reporting Foundation while keeping implementation blocked by OQ-25/OQ-43. The accepted Reporting architecture is preserved; no Report Builder/OQ-49 work, production implementation, schema, migration, endpoint, permission, test, event, reporting infrastructure, or frontend is authorized by this documentation work.
+
+**Task 17B Account Statement slice — 2026-09-25:** under Owner decisions D1–D7 (`docs/tasks/task-17/task-17b-prompt.md`, saved before implementation), the bounded read-only account statement was implemented on `arena/01a0d5a0-vardena` (PR **#43**, implementation commit `9ee46f7`): `GET /api/v1/accounting/account-statements`, `Accounting.AccountStatement.View` (36th code, contract §22 row under gate P-10), exact debit-positive Decimal semantics, intra-year sequence-based opening (no carry-forward), org-first 404/422 scope matrix, no schema/migration/index change. Unit 1086 passed; e2e 246 passed + 85 live-PG skipped (CI-only); `prisma validate` not runnable in the sandbox (no `DATABASE_URL`; schema unchanged). Status **READY FOR REVIEW — NOT ACCEPTED**; OQ-25/OQ-43 and Task 17's blocked status unchanged (`docs/tasks/task-17/task-17b-implementation-report.md`).
 
 ## 11. Maintenance Rules
 

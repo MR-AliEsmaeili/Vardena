@@ -36,6 +36,9 @@ import { AccountsController } from './api/accounts.controller.js';
 import { AccountingDocumentsController } from './api/accounting-documents.controller.js';
 import { AccountingBalancesController } from './api/accounting-balances.controller.js';
 import { AccountingLedgerMovementsController } from './api/accounting-ledger-movements.controller.js';
+import { AccountStatementsController } from './api/account-statements.controller.js';
+import { AccountStatementsService } from './application/account-statements.service.js';
+import { AccountStatementsRepository } from './data/account-statements.repository.js';
 
 /**
  * Accounting module — foundation + chart structure (Task 10.2, Task 10.3;
@@ -111,6 +114,8 @@ import { AccountingLedgerMovementsController } from './api/accounting-ledger-mov
     AccountingDocumentsController,
     AccountingBalancesController,
     AccountingLedgerMovementsController,
+    // Task 17B: the bounded account statement — one GET, read-only.
+    AccountStatementsController,
   ],
   providers: [
     FinancialAreasRepository,
@@ -142,6 +147,15 @@ import { AccountingLedgerMovementsController } from './api/accounting-ledger-mov
     // must arrive through the separately authorized Reporting task rather than
     // silently binding another module to this service (AR-07).
     LedgerMovementsService,
+    // Task 17B: the account statement — the canonical account-movement
+    // calculation (`getAccountStatement` only) over the same immutable
+    // ledger. Read-only (no write verb exists), computed per request, never
+    // persisted. Provided (not exported): report DELIVERY or other
+    // cross-module consumption is gated by OQ-26 and must arrive through the
+    // separately authorized Reporting task (platform boundary), never by
+    // silently binding another module to this service (AR-07).
+    AccountStatementsService,
+    AccountStatementsRepository,
     AccountingPermissionRegistration,
     AccountingDocumentTypeRegistration,
     // Task 10.8: the posting orchestration seam — ONE entry point

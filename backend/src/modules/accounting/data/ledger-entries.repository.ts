@@ -91,7 +91,7 @@ export class LedgerEntriesRepository {
       where: { organizationId, voucherId },
       orderBy: [{ lineNo: 'asc' }],
     });
-    return rows.map(toDomain);
+    return rows.map(toLedgerEntryFromRow);
   }
 
   /**
@@ -132,7 +132,7 @@ export class LedgerEntriesRepository {
       }),
       ledgerEntry.count({ where }),
     ]);
-    return { items: rows.map(toDomain), total };
+    return { items: rows.map(toLedgerEntryFromRow), total };
   }
 }
 
@@ -196,7 +196,13 @@ export async function insertLedgerEntries(
   }
 }
 
-function toDomain(row: LedgerEntryRow): LedgerEntry {
+/**
+ * Map one stored ledger row to the immutable domain entry. Exported for the
+ * Task 17B statement reads (`data/account-statements.repository.ts`), which
+ * re-project the same rows — one mapping, never two (Task 17A review §13.4's
+ * "unify the copies" rule).
+ */
+export function toLedgerEntryFromRow(row: LedgerEntryRow): LedgerEntry {
   if (!isAccountingDocumentOrigin(row.origin)) {
     throw new Error(
       `Stored ledger entry "${row.id}" has an unknown origin "${row.origin}".`,
@@ -213,8 +219,8 @@ function toDomain(row: LedgerEntryRow): LedgerEntry {
     voucherLineId: row.voucherLineId,
     lineNo: row.lineNo,
     accountId: row.accountId,
-    debitAmount: canonicalizeAmount(toAmountString(row.debitAmount)),
-    creditAmount: canonicalizeAmount(toAmountString(row.creditAmount)),
+    debitAmount: canonicalizeAmount(storedAmountToString(row.debitAmount)),
+    creditAmount: canonicalizeAmount(storedAmountToString(row.creditAmount)),
     description: row.description,
     documentDate: row.documentDate,
     postingTimestamp: row.postingTimestamp,
@@ -246,8 +252,11 @@ function toDomain(row: LedgerEntryRow): LedgerEntry {
  * rather than stringified, because `String(0.1 + 0.2)` is float loss wearing
  * a decimal costume. A malformed string still fails downstream in
  * `canonicalizeAmount`, so no silent value can reach the domain.
+ *
+ * Exported for the Task 17B statement aggregates (`_sum` results are stored
+ * `numeric(18,2)` values with the same mapping rules).
  */
-function toAmountString(value: unknown): string {
+export function storedAmountToString(value: unknown): string {
   if (typeof value === 'string') return value;
   if (
     typeof value === 'object' &&

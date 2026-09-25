@@ -170,6 +170,32 @@ export function amountsEqual(left: string, right: string): boolean {
 }
 
 /**
+ * Exact negation of a well-formed amount (`12.5` → `-12.5`; `0`/`-0` → `0`).
+ *
+ * Entered amounts remain non-negative (§13.2 — the side comes from the
+ * column); DERIVED measures are explicitly signed (a statement's net of a
+ * credit-only entry is negative under the debit-positive convention). The
+ * negation is exact mantissa arithmetic — never `-Number(value)`.
+ */
+export function negateAmount(value: string): string {
+  const parsed = parseDecimal(value);
+  if (parsed === null) {
+    throw new Error(`Cannot negate malformed amount "${value}".`);
+  }
+  return renderDecimal(-parsed.mantissa, parsed.scale);
+}
+
+/**
+ * Exact difference of two well-formed amounts (left − right), canonical
+ * result. Signed operands are accepted — `subtractAmounts('0', '1250.5')` is
+ * `-1250.5` — because every consumer so far is a derived measure (statement
+ * net = debit − credit, running balances), not an entered amount.
+ */
+export function subtractAmounts(left: string, right: string): string {
+  return sumAmounts([left, negateAmount(right)]);
+}
+
+/**
  * Exact sum of amounts, canonical result. An empty list sums to `'0'` — the
  * neutral value the balance check compares against.
  */

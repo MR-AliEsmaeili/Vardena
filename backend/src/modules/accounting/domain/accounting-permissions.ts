@@ -142,6 +142,31 @@ export const LEDGER_MOVEMENT_PERMISSIONS = {
   VIEW: 'Accounting.LedgerMovement.View',
 } as const;
 
+/**
+ * Account statement — the bounded, read-only account-movement inquiry
+ * (Task 17B Account Statement slice; Owner decision D6).
+ *
+ * ONE READ code, deliberately independent of both existing reader codes
+ * (decision D6: "Use an independent backend-enforced permission … Do not
+ * reuse an unrelated permission merely for convenience"):
+ *
+ * - `Accounting.LedgerMovement.View` governs the raw movement ROW source;
+ *   the statement ADDS derived balance semantics (opening, running, closing)
+ *   over a fixed one-account/one-year window. One authority per resource —
+ *   a movement-lister is not automatically a statement reader.
+ * - `Accounting.Balance.View` governs the rebuildable turnover projection,
+ *   which the statement does not read at runtime (the ledger is its source).
+ *
+ * Reusing either would silently widen an approved code's meaning; the §22
+ * vocabulary is extended with `Accounting.AccountStatement | View` instead
+ * (authorized by decision D6 + gate P-10). Read-only: there is no `Execute`,
+ * `Export` or mutation action on the statement — it is computed per request
+ * and never persisted. No wildcard, no superuser, no implicit bypass (OQ-21).
+ */
+export const ACCOUNT_STATEMENT_PERMISSIONS = {
+  VIEW: 'Accounting.AccountStatement.View',
+} as const;
+
 export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] =
   [
     {
@@ -295,5 +320,10 @@ export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] 
       code: LEDGER_MOVEMENT_PERMISSIONS.VIEW,
       description:
         'Read the posted ledger movements of an organization (immutable ledger entries; read-only, no mutation exists).',
+    },
+    {
+      code: ACCOUNT_STATEMENT_PERMISSIONS.VIEW,
+      description:
+        'Read the account statement of one account within one fiscal year (opening, movements, running balance, closing; read-only, computed per request from the immutable ledger).',
     },
   ];

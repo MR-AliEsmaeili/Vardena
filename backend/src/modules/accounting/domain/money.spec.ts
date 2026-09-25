@@ -7,6 +7,8 @@ import {
   isZeroAmount,
   MONEY_INPUT_PATTERN,
   moneyProblemMessage,
+  negateAmount,
+  subtractAmounts,
   sumAmounts,
   validateEnteredAmount,
 } from './money.js';
@@ -84,5 +86,29 @@ describe('accounting money (contract §13)', () => {
     // VALUES even when their spellings differ, and `'0.3' !== '0.30000000004'`.
     expect(amountsEqual(sumAmounts(['0.1', '0.2']), '0.3')).toBe(true);
     expect(amountsEqual(String(0.1 + 0.2), '0.3')).toBe(false);
+  });
+
+  it('negates exactly and never renders a negative zero', () => {
+    expect(negateAmount('12.5')).toBe('-12.5');
+    expect(negateAmount('-12.5')).toBe('12.5');
+    expect(negateAmount('0')).toBe('0');
+    expect(negateAmount('0.00')).toBe('0');
+    expect(negateAmount('-0')).toBe('0');
+    expect(negateAmount('9999999999999999.99')).toBe('-9999999999999999.99');
+    expect(() => negateAmount('abc')).toThrow();
+  });
+
+  it('subtracts exactly — derived measures never touch a binary float', () => {
+    // The statement's net = debit − credit shape, including the 0.3 − 0.1
+    // case a float renders as 0.19999999999999998, and the signed result a
+    // credit-only entry produces under the debit-positive convention.
+    expect(subtractAmounts('0.3', '0.1')).toBe('0.2');
+    expect(subtractAmounts('1250.5', '250.5')).toBe('1000');
+    expect(subtractAmounts('0', '1250.5')).toBe('-1250.5');
+    expect(subtractAmounts('100', '0')).toBe('100');
+    expect(subtractAmounts('0', '0.00')).toBe('0');
+    expect(subtractAmounts('-5', '12.5')).toBe('-17.5');
+    // Round-trip identity: (a − b) + b === a, exactly.
+    expect(sumAmounts([subtractAmounts('0.3', '0.1'), '0.1'])).toBe('0.3');
   });
 });
