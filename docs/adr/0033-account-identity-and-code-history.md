@@ -1,6 +1,6 @@
 # ADR-0033: Account Identity and Account Code History — `Account.id` Is Permanent, `code` Is a Business Identifier
 
-- **Status:** Proposed (Owner decisions Q3/Q8/Q18/Q21 + Invariant 1, recorded 2026-09-25 by Task 17C — documentation only; **not Accepted**, no self-acceptance)
+- **Status:** Proposed — **Task 17C is accepted, but this ADR remains Proposed pending its separate adoption/implementation gate** (2026-09-25; Owner decisions Q3/Q8/Q18/Q21 + Invariant 1, recorded 2026-09-25 by Task 17C — documentation only; **not Accepted**, no self-acceptance; acceptance record: [`task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md) §ADR status handling)
 - **Date:** 2026-09-25
 - **Implements:** nothing — no code, schema, migration, endpoint, permission, seed or test is added or authorized here.
 - **Owner source:** [`task-17c-prompt.md`](../tasks/task-17/task-17c-prompt.md) §5 (Invariant 1), Q3/Q8/Q18/Q21. Canonical register of Q1–Q22, I-1…I-3 and the implementation discrepancies (D-1…D-13): [`owner-decision-baseline.md`](../accounting/owner-decision-baseline.md) — referenced here, never restated.
