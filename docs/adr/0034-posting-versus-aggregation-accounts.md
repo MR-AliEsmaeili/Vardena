@@ -1,6 +1,6 @@
 # ADR-0034: Posting Account XOR Aggregation Account — One Semantic Role per Account Node
 
-- **Status:** Proposed — **Task 17C is accepted, but this ADR remains Proposed pending its separate adoption/implementation gate** (2026-09-25; Owner decision Q5 + Invariant 2, recorded 2026-09-25 by Task 17C — documentation only; **not Accepted**, no self-acceptance; acceptance record: [`task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md) §ADR status)
+- **Status:** Proposed — **Task 17C is accepted, but this ADR remains Proposed pending its separate adoption/implementation gate** (2026-09-25; Owner decision Q5 + Invariant 2, recorded 2026-09-25 by Task 17C — documentation only; **not Accepted**, no self-acceptance; acceptance record: [`task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md) §ADR status handling)
 - **Date:** 2026-09-25
 - **Implements:** nothing — no code, schema, migration, endpoint, permission, validation rule or report is added or changed, and no current rule is relaxed.
 - **Owner source:** [`task-17c-prompt.md`](../tasks/task-17/task-17c-prompt.md) §6 (Invariant 2), Q5. Canonical register of Q1–Q22, I-1…I-3 and the implementation discrepancies (incl. **D-1**, the conflict in §6 below): [`owner-decision-baseline.md`](../accounting/owner-decision-baseline.md) — referenced here, never restated.

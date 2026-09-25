@@ -2,11 +2,10 @@
 
 Status: **Authoritative Owner-decision register** · Date: 2026-09-25 · Type:
 governance / consolidation (documentation only) · Task 17C status:
-**ACCEPTED (2026-09-25)** — documentation-only governance acceptance; acceptance
-record [`task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md)
-(§10 version record). The acceptance registers the decisions exactly as recorded here:
-it changes no decision, invariant, discrepancy or open item, closes neither **OQ-25**
-nor **OQ-43**, promotes no ADR status, and authorizes no implementation.
+**ACCEPTED (2026-09-25)** — documentation-only governance acceptance recorded by
+the Task 17C Acceptance Sync (no self-acceptance; the acceptance was recorded per
+the Owner's explicit Acceptance-Sync authorization — acceptance record:
+[`docs/tasks/task-17/task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md))
 
 | | |
 |---|---|
@@ -292,10 +291,7 @@ Question, which stays OPEN in [`docs/open-questions.md`](../open-questions.md).
   Legal Books, control roles, dimensions, Account Overview or a base chart.
 - No Open Question closed, reclassified or reopened: **OQ-25 and OQ-43 remain OPEN**
   (annotated only), as do OQ-02/03/23/27/36/41/45/49/52/53/62/63 and every other row.
-- No ADR status promoted and no task status changed by the consolidation itself
-  (**acceptance update, 2026-09-25:** the separately authorized acceptance sync later
-  recorded Task 17C **ACCEPTED** — §10 — while promoting no ADR, closing no OQ and
-  authorizing no implementation): ADR-0031/0032 stay **Proposed**;
+- No ADR status promoted and no task status changed: ADR-0031/0032 stay **Proposed**;
   the five new ADRs are **Proposed**; Task 17A stays **ACCEPTED (2026-09-25)**; Task
   17B stays exactly as recorded on `main` — since the PR #44 merge (`2892189`) that
   is **ACCEPTED (2026-09-25)**, bounded to the D1–D7 slice of PR #43 — and Task 17C
@@ -370,15 +366,19 @@ Question, which stays OPEN in [`docs/open-questions.md`](../open-questions.md).
   status or task status was changed**: OQ-25/OQ-43 remain **OPEN**, every ADR stays
   **Proposed**, Task 17 stays blocked and Task 17C stays **READY FOR REVIEW — NOT
   ACCEPTED** until the separate Acceptance Sync.
-- 2026-09-25 — **Task 17C acceptance sync (documentation/governance only).** Task 17C is
-  recorded **ACCEPTED (2026-09-25)** in
-  [`task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md),
-  `STATE.md`, `docs/accounting/task-index.md` and this header. The acceptance registers
-  **Q1–Q22, I-1…I-3, D-1…D-13 and O-1…O-12 exactly as recorded** — nothing was
-  reinterpreted, expanded or repaired. **OQ-25 and OQ-43 remain OPEN** (the acceptance
-  resolves neither); **ADR-0033…0037 remain Proposed** — Task 17C acceptance is not an
-  ADR adoption/implementation gate (`docs/adr/README.md`; `STATE.md` §3 "Proposed records
-  remain Proposed even where code exists"); Task 17 overall remains **BLOCKED** and NOT
-  complete. Documentation only: no production code, schema, migration, API, permission,
-  dependency, UI or test change. Acceptance sync on `arena/01a0da76-vardena` (base
-  `7f8e3e8`, the merge of PR #48) via PR **#50** (head `c030f09`; acceptance commit `1c62923`).
+- 2026-09-25 — **Task 17C ACCEPTED (documentation-only governance acceptance — the
+  separate Acceptance Sync).** Per the Owner's explicit Acceptance-Sync authorization,
+  Task 17C is recorded **ACCEPTED (2026-09-25)** and the status header of this register
+  was updated accordingly (acceptance record:
+  [`docs/tasks/task-17/task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md)).
+  The accepted decision set is preserved **exactly as recorded**: **Q1–Q22, invariants
+  I-1…I-3, discrepancies D-1…D-13 (D-8 RESOLVED by the PR #44 merge in `2892189`) and
+  open items O-1…O-12 — nothing in this register was reinterpreted, expanded, closed or
+  altered**. **OQ-25 and OQ-43 remain OPEN** — acceptance of Task 17C resolves neither.
+  **ADR-0033…0037 remain Proposed** — under the repository ADR convention, task
+  acceptance does not promote an ADR (no self-acceptance); each ADR remains pending its
+  separate adoption/implementation gate, and the ADR subjects remain future/controlled
+  concepts, not implemented production capabilities. Task 17 remains **FORMALIZED /
+  IMPLEMENTATION BLOCKED BY OPEN QUESTIONS** and **NOT complete**. No production code,
+  schema, migration, test, API, permission or dependency was touched by the
+  synchronization.

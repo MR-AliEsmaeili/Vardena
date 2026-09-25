@@ -1,6 +1,6 @@
 # ADR-0035: Accounting Code Structure Migration — a Controlled, Licensed, Audited Service That Never Rewrites Economic Ledger History
 
-- **Status:** Proposed — **Task 17C is accepted, but this ADR remains Proposed pending its separate adoption/implementation gate** (2026-09-25; Owner decisions Q3/Q8/Q19/Q20 + Invariant 3, recorded 2026-09-25 by Task 17C — documentation only; **not Accepted**, no self-acceptance; acceptance record: [`task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md) §ADR status)
+- **Status:** Proposed — **Task 17C is accepted, but this ADR remains Proposed pending its separate adoption/implementation gate** (2026-09-25; Owner decisions Q3/Q8/Q19/Q20 + Invariant 3, recorded 2026-09-25 by Task 17C — documentation only; **not Accepted**, no self-acceptance; acceptance record: [`task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md) §ADR status handling)
 - **Date:** 2026-09-25
 - **Implements:** nothing. The Accounting Code Structure Migration Service does **not** exist here and is **not** created, scaffolded, stubbed or authorized as an implementation task by this ADR.
 - **Owner source:** [`task-17c-prompt.md`](../tasks/task-17/task-17c-prompt.md) §7 (Invariant 3), Q3/Q8, Q19 (Decision D), Q20 (Decision D). Canonical register of Q1–Q22, I-1…I-3 and the implementation discrepancies (incl. **D-7** licensing, **D-9** level-count precision): [`owner-decision-baseline.md`](../accounting/owner-decision-baseline.md) — referenced here, never restated.

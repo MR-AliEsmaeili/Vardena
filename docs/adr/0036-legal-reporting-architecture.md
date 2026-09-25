@@ -1,6 +1,6 @@
 # ADR-0036: Legal Reporting Architecture — Accounting Core → Legal Adapter / Legal Profile (Iran first, jurisdictions later)
 
-- **Status:** Proposed — **Task 17C is accepted, but this ADR remains Proposed pending its separate adoption/implementation gate** (2026-09-25; Owner decisions Q9/Q10/Q11/Q22, recorded 2026-09-25 by Task 17C — documentation only; **not Accepted**, no self-acceptance; acceptance record: [`task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md) §ADR status)
+- **Status:** Proposed — **Task 17C is accepted, but this ADR remains Proposed pending its separate adoption/implementation gate** (2026-09-25; Owner decisions Q9/Q10/Q11/Q22, recorded 2026-09-25 by Task 17C — documentation only; **not Accepted**, no self-acceptance; acceptance record: [`task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md) §ADR status handling)
 - **Date:** 2026-09-25
 - **Implements:** nothing. No Legal Book, legal profile, statutory layout, export, print, e-ledger or filing capability is created, scaffolded or authorized, and no statutory format is authorized merely by this ADR.
 - **Owner source:** [`task-17c-prompt.md`](../tasks/task-17/task-17c-prompt.md) Q9/Q10/Q11, Q14 (Decision D), Q22 (Decision B), §8. Canonical register of Q1–Q22, I-1…I-3 and the implementation discrepancies (incl. **D-6**, **D-13**): [`owner-decision-baseline.md`](../accounting/owner-decision-baseline.md) — referenced here, never restated.
