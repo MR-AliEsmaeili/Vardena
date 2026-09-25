@@ -205,8 +205,9 @@ review item even though the repository's required CI/live-DB battery passed.
 - **Documentation changed:** this report, plus the minimal Task 18 status
   synchronization in `STATE.md` and `docs/accounting/task-index.md`.
 - **Reviewed implementation commit:** `5971bedf551a023d3a7936767345f0d70fac477a`.
-  The subsequent Review-Fix commit is the commit carrying this manifest and is
-  identified in the final handoff; no history was rewritten.
+- **Focused Review-Fix commit:** `418234666375e1fb6776dd8b1186b1be5cafe735`,
+  containing the test/documentation/status synchronization described here; no
+  history was rewritten.
 - **No new financial truth:** no projection, schema, migration, API,
   calculation engine, dependency or persistence was added.
 
