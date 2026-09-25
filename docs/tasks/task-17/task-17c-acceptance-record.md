@@ -9,6 +9,7 @@
 **Governance-review correction PR:** #48 (`docs(accounting): correct Task 17C factual drift found by governance review`) — Merged into `main` in `7f8e3e8ce65bd22acdaaec94f9362797d2bfb5c9` (the acceptance-sync baseline)
 **Acceptance authority:** Repository Owner / Reviewer (`MR-AliEsmaeili`) — the authority that records `ACCEPTED` under `STATE.md` §6 and that authorized this acceptance sync
 **Acceptance record:** this file (`docs/tasks/task-17/task-17c-acceptance-record.md`)
+**Acceptance-sync PR:** **#50** (`docs(accounting): accept Task 17C after governance review`) — documentation-only, head `1c62923605161c0f9177b9278b18c8dd01cc5869`, on `arena/01a0da76-vardena` (base `7f8e3e8`, the merge of PR #48)
 **Record type:** documentation/governance only — this record authors no production, schema, migration, API, permission, dependency, UI or test change
 
 ---
@@ -391,4 +392,7 @@ a production defect:
   ADR remains Proposed pending its separate adoption/implementation gate". **No
   decision, invariant, discrepancy or open item was altered; OQ-25/OQ-43 remain OPEN;
   Task 17 remains BLOCKED and NOT complete; no production code, schema, migration, API,
-  permission, dependency, UI or test was touched.**
+  permission, dependency, UI or test was touched.** Acceptance-sync PR: **#50**, head
+  `1c62923605161c0f9177b9278b18c8dd01cc5869`, documentation-only (9 `.md` files), opened
+  against `main` @ `7f8e3e8`; final acceptance/merge remains an owner/repository
+  governance step.
