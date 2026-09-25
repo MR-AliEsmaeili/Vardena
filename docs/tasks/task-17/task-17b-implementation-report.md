@@ -1,15 +1,21 @@
-# Task 17B — Account Statement Read Surface — Implementation Report
+# Task 17B — Account Statement Read Surface — Implementation & Acceptance Report
 
-**Status: READY FOR REVIEW — NOT ACCEPTED.** Only the Owner/Reviewer may record
-`ACCEPTED`; nothing in this report self-accepts.
+**Status: ACCEPTED (2026-09-25).** Merged into `main` via PR #43
+(`b10e007eef92e453284b44df204a1ebe782c3b8c`; merged head
+`1ec996e9f78cb8e0b6e51a5ea786e12e6c5d2157`). The Repository Owner/Reviewer reviewed
+PR #43 before merge and accepted the bounded implementation under Owner decisions
+D1–D7. Acceptance record:
+[`task-17b-acceptance-record.md`](./task-17b-acceptance-record.md). This report
+does not close an Open Question, promote an ADR or complete Task 17.
 
 | | |
 |---|---|
 | Slice | Task 17B Account Statement — the bounded, read-only **account statement** (one account + one fiscal year + optional period) and one narrow read endpoint over it |
-| Status | **READY FOR REVIEW** |
-| Branch | `arena/01a0d5a0-vardena` (base `main` @ `4b1489d952cb932727b4d95f8ef1e65163d67232`) |
-| Commit | `9ee46f7` — `feat(accounting): add account statement read surface` (implementation + tests); `8335556` — documentation; `c57a1a1` — live-fixture calendar fix (see §8) |
-| PR | [#43](https://github.com/MR-AliEsmaeili/Vardena/pull/43) |
+| Status | **ACCEPTED (2026-09-25)** — by the Repository Owner/Reviewer; **Task 17 overall remains NOT COMPLETE (FORMALIZED / IMPLEMENTATION BLOCKED BY OQ-25, OQ-43)** |
+| Branch / base / merge | `arena/01a0d5a0-vardena` (base `main` @ `4b1489d952cb932727b4d95f8ef1e65163d67232`) — PR #43 **MERGED** into `main` in `b10e007` |
+| Commit | `9ee46f7` — `feat(accounting): add account statement read surface` (implementation + tests); `8335556` — documentation; `c57a1a1` — live-fixture calendar fix (see §8); `1ec996e` — CI-evidence documentation (**merged head**) |
+| PR | [#43](https://github.com/MR-AliEsmaeili/Vardena/pull/43) — **MERGED 2026-09-25T07:00:33Z**; required CI **green** on the merged head (run `36074225037`, job `backend` `completed success`) |
+| Acceptance | **2026-09-25** by the Repository **Owner/Reviewer** (`MR-AliEsmaeili`), who reviewed PR #43 before merge — see [`task-17b-acceptance-record.md`](./task-17b-acceptance-record.md) |
 | Owner authority | `docs/tasks/task-17/task-17b-prompt.md` (saved before implementation) — Owner decisions **D1–D7**; gate P-10 authorizes the `Accounting.AccountStatement.View` vocabulary addition |
 | Contract references | `docs/accounting/domain-contract.md` §6/§7/§8/§13/§15/§19 (AC-D-30/31/34; AC-I-01/05/06/07/09/16/19), §22 (permission vocabulary), ADR-0031 §2/§4/§9, ADR-0009, ADR-0025, AR-05/AR-07/AR-21/AR-22/AR-25 |
 | Not implemented here | Task 17 (Accounting Reporting Foundation) remains **FORMALIZED / IMPLEMENTATION BLOCKED (OQ-25, OQ-43)**; no Reporting module, Report Builder, exports, statutory books, Trial Balance/Income/Balance Sheet/Cash Flow, Treasury reporting |
@@ -220,7 +226,11 @@ index task (stop condition: inspect + measure first).
 
 ## 11. Governance statements (explicit)
 
-- **Task 17B status: READY FOR REVIEW — NOT ACCEPTED.** No self-acceptance.
+- **Task 17B status: ACCEPTED (2026-09-25)** by the Repository Owner/Reviewer, who
+  reviewed PR #43 before merge; PR #43 is **MERGED** into `main` (`b10e007`, merged
+  head `1ec996e`). The acceptance is recorded separately in
+  `docs/tasks/task-17/task-17b-acceptance-record.md` — nothing in this report
+  self-accepted it, and the accepted scope is exactly the D1–D7 slice above.
 - **OQ-25 and OQ-43 remain OPEN.** This slice resolves, reclassifies or
   supersedes neither. The statement carries no report layout, grouping,
   classification or statutory column set.
@@ -242,10 +252,23 @@ index task (stop condition: inspect + measure first).
 - **No schema/migration/index change, no Redis, no reporting DB, no
   cross-module dependency** was introduced.
 
-## 12. Review request
+## 12. Acceptance record (outcome of the review request)
 
-Please review PR #43 (`arena/01a0d5a0-vardena`, implementation commit
-`9ee46f7`) against `docs/tasks/task-17/task-17b-prompt.md` (D1–D7) and the gate
-checklist. Awaiting Owner/Reviewer verdict; the correct outcome on acceptance is
-an Owner decision recorded separately — this report remains **READY FOR REVIEW**
-until then.
+PR #43 (`arena/01a0d5a0-vardena`, implementation commit `9ee46f7`, merged head
+`1ec996e`) was reviewed by the Repository Owner/Reviewer against
+`docs/tasks/task-17/task-17b-prompt.md` (Owner decisions D1–D7) and the
+`task-17b-implementation-gate.md` checklist **before merge**.
+
+**VERDICT: ACCEPTED (2026-09-25).** PR #43 is merged into `main` in `b10e007`;
+required CI was green on the merged head (run `36074225037`, job `backend`
+`completed success`, including `prisma validate`/`generate`, lint, typecheck,
+format check, unit tests, build, `migrate deploy`, the Task 11 migration
+rehearsal and **E2E tests incl. the live-DB suites on `postgres:16`**). No
+blocker remained. The formal Owner/Reviewer acceptance — accepted scope, explicit
+exclusions, the D1–D7 verification table and the CI evidence — is recorded in
+`docs/tasks/task-17/task-17b-acceptance-record.md`.
+
+The acceptance is bounded: **Task 17 overall is NOT complete** and remains
+**FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS**; **OQ-25 and OQ-43
+remain OPEN**; no future Task 17 slice is accepted or authorized by it; the
+deferred/known limitations in §10 remain open by design.

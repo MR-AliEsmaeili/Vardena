@@ -10,7 +10,7 @@ records `ACCEPTED`)
 | Owner source | [`docs/tasks/task-17/task-17c-prompt.md`](../tasks/task-17/task-17c-prompt.md) — the received Task 17C prompt, saved verbatim before any file change |
 | ADRs created by this consolidation | [ADR-0033](../adr/0033-account-identity-and-code-history.md) (identity + code history) · [ADR-0034](../adr/0034-posting-versus-aggregation-accounts.md) (POSTING XOR AGGREGATION) · [ADR-0035](../adr/0035-account-code-structure-migration.md) (code structure migration) · [ADR-0036](../adr/0036-legal-reporting-architecture.md) (legal reporting architecture) · [ADR-0037](../adr/0037-accounting-configuration-boundary.md) (configuration boundary) — all **Proposed**, none Accepted by this task |
 | Registry synchronization | [`docs/open-questions.md`](../open-questions.md): OQ-25 and OQ-43 annotated (both remain **OPEN**); [`STATE.md`](../../STATE.md) §3/§7/§9/§10; [`docs/accounting/task-index.md`](./task-index.md) §2/§4/§5/§9; [`docs/accounting/domain-contract.md`](./domain-contract.md) §31 addendum (pointer only) |
-| Production effect | **NONE.** No code, API, DTO, schema, Prisma, migration, seed, permission, report, UI, dependency, refactor or behaviour change. Task 17B's implementation is untouched. |
+| Production effect | **NONE.** No code, API, DTO, schema, Prisma, migration, seed, permission, report, UI, dependency, refactor or behaviour change. Task 17B's implementation **and** its **ACCEPTED** status (PR #43 merged in `b10e007`; acceptance recorded by PR #44, merged in `2892189`) are untouched. |
 | Binding contract | Unchanged: [`domain-contract.md`](./domain-contract.md) + [ADR-0026](../adr/0026-accounting-bounded-context.md). Where an Owner decision refines a contract decision, §5 records it and names the ADR that must be accepted plus the task that must implement it — nothing is silently reinterpreted. |
 
 > **Purpose.** Make the Owner-approved Accounting decisions Q1–Q22 and the three
@@ -20,8 +20,10 @@ records `ACCEPTED`)
 > (AG-17: record, don't assume).
 >
 > **Boundary.** This register decides nothing new. It transcribes Owner decisions,
-> reconciles each one against current `main` (`b10e007`, merge of PR #43), and lists
-> the discrepancies (§5) and the implementation-level questions that stay open (§6).
+> reconciles each one against `main` as it stood at the reconciliation baseline
+> (`b10e007`, merge of PR #43) — re-verified after this branch was synchronized with
+> `main` @ `2892189`, the merge of **PR #44** (see §1 and §10) — and lists the
+> discrepancies (§5) and the implementation-level questions that stay open (§6).
 > It closes **no** Open Question, promotes **no** ADR or task status, and makes **no**
 > legal, tax or statutory claim.
 
@@ -45,12 +47,14 @@ Evidence paths are relative to the repository root; `accounting/...` means
 
 ## 1. Repository baseline verified for this consolidation
 
-Inspected on `main` @ `b10e007` before any edit (AG-01 reading order):
+Inspected on `main` @ `b10e007` before any edit (AG-01 reading order), and
+re-inspected on `main` @ `2892189` (the merge of PR #44) during the branch
+synchronization recorded in §10:
 `STATE.md` · `docs/open-questions.md` · `docs/accounting/domain-contract.md` ·
 `docs/accounting/task-index.md` · `docs/accounting/configuration.md` ·
 `docs/reporting-strategy.md` · `docs/tasks/task-17/*` (brief, prompt, 17A report +
 acceptance record, 17B investigation/brief/prompt/gate/decision pack/implementation
-report) · `docs/adr/README.md` + ADR-0003/0009/0026/0028/0030/0031/0032 ·
+report/acceptance record) · `docs/adr/README.md` + ADR-0003/0009/0026/0028/0030/0031/0032 ·
 `.vardena/agent-rules.md` · `.vardena/architecture-rules.md` ·
 `docs/architecture/domain/configurability-architecture.md` · `docs/modules.md`
 (Accounting) · and the Accounting implementation, read-only, to keep this document
@@ -60,6 +64,16 @@ from contradicting it: `backend/prisma/schema/accounting.prisma`,
 + `accounting/data/accounting-configuration-usage.ts`,
 `accounting/application/{accounts,account-statements,ledger-movements,accounting-balances,accounting-documents}.service.ts`,
 `accounting/api/*`, `accounting/domain/accounting-permissions.ts` (36 codes).
+
+**Synchronization note (2026-09-25).** PR #44 (Task 17B acceptance) changed
+**documentation only**: `STATE.md`, `docs/accounting/task-index.md`,
+`docs/modules.md`, `docs/tasks/task-17/task-17b-implementation-report.md` and the
+new `docs/tasks/task-17/task-17b-acceptance-record.md`. `git diff --name-only
+b10e007…2892189` contains no `backend/`, Prisma, migration, test, permission,
+workflow or dependency path, so **every repository fact in this section — and
+therefore every discrepancy (D-1…D-13) and open implementation item (O-1…O-12)
+below — is unchanged by that merge**. Only the governance statements about Task
+17B's *status* (§5 D-8, §7, §8, §10) needed updating to the post-merge facts.
 
 Facts this register relies on:
 
@@ -219,7 +233,7 @@ them was resolved by invention; none changes shipped behaviour.
 | **D-5** | **GAP (new commitment)** | Q2: Vardena provides a standard/base Accounting structure the organization configures. | Contract §1.2 non-goal 1: the contract does **not** define account codes, titles, a chart template or control-role content. No seed script (`backend/prisma/` has `migrations`, `rehearsal`, `schema` only), no template artifact, no `control_role` column. | ADR-0037 §3 records that a base structure **exists as a commitment** and must ship as versioned configuration data/template — while its **content stays EXPERT-GATED (OQ-25)** and nothing is invented here (AR-31). | An accountant-approved base structure + control-role vocabulary, delivered as reviewable data with its own task, ADR-0037 §3 constraints, and adoption rules that never mutate an existing chart (re-coding is ADR-0035 territory). |
 | **D-6** | **GAP / PARTIAL** | Q11: Persian primary language; configurable base monetary unit incl. Rial and Toman; optional Rial→Toman display conversion. | Persian-capable titles exist (C4/§8.3). Localization display is **OQ-02** (assumption: Gregorian/en). Money is `numeric(18,2)`; **no currency column** on `ledger_entries` or the projection (ADR-0031 §3; contract §13.6/§24.1 seam dormant, OQ-03/OQ-47/OQ-48); no unit/scale configuration exists. | ADR-0036 §4 records the decision, keeps conversion **presentation-only** (one stored amount, one stored unit) and leaves mechanism/precision to OQ-03 and display to OQ-02. **No legal/statutory currency claim is made.** | OQ-03/OQ-02 answers (unit set, scale/precision, Jalali calendar, digit rendering) before any unit-configuration or conversion work; statutory currency/language presentation belongs to the Legal Profile (ADR-0036). |
 | **D-7** | **GAP (dependency)** | Q19: the migration service is a **licensed** capability with a Recovery/Backup Point stage. | No license foundation in code: ADR-0030 is **Proposed**, enforcement OFF, no `license` schema/module in `backend/`; OQ-45 (expiry behaviour) unresolved. Backup/restore: no committed RPO/RTO (OQ-52), controlled-restore principle only (OQ-53). | ADR-0035 §3 records that the license gate **exists as a decision** but **cannot be implemented** before ADR-0030/OQ-45 resolve, and that restore/backup must never be license-blocked. | Resolve ADR-0030/OQ-45 (licensing) and OQ-52/OQ-53 (backup/restore) before the migration service task; the service also needs ADR-0033 §3 (code history) and OQ-62/OQ-63 (pin divergence) handled in preflight. |
-| **D-8** | **GOVERNANCE (status)** | Prompt §13: "Task 17B remains accepted as previously established." | Current `main` (`b10e007`) records Task 17B as **READY FOR REVIEW — NOT ACCEPTED** (`task-index.md` header/§2/§4, `STATE.md` §7/§8/§10, `docs/modules.md` Accounting line, `task-17b-implementation-report.md` banner). The acceptance is recorded in **PR #44** (`arena/01a0d76b-vardena`), which is **OPEN — not merged**. `STATE.md` §1: unmerged branches and PR descriptions are not official history; §6: only the Owner/Reviewer records `ACCEPTED`. | This consolidation **does not promote** Task 17B's status anywhere and does not restate it as accepted; where a status had to be referenced, it is referenced as recorded on `main` with a pointer to PR #44. Nothing else about Task 17B is touched (prompt §11: "changing Task 17B implementation" is prohibited). | The Owner merges PR #44 (or supersedes it). Because both PRs edit `STATE.md` §7/§8/§10 and `task-index.md` header/§2/§4/§9, a textual merge conflict is likely; it is recoverable and flagged here rather than pre-resolved by rewriting the other branch's status text. |
+| **D-8** | **GOVERNANCE (status) — RESOLVED 2026-09-25 by the PR #44 merge** | Prompt §13: "Task 17B remains accepted as previously established." | At the reconciliation baseline `main` (`b10e007`) recorded Task 17B as **READY FOR REVIEW — NOT ACCEPTED** (`task-index.md` header/§2/§4, `STATE.md` §7/§8/§10, `docs/modules.md` Accounting line, `task-17b-implementation-report.md` banner), with the acceptance sitting in **PR #44** (`arena/01a0d76b-vardena`), then **OPEN — not merged**; `STATE.md` §1 (unmerged branches and PR descriptions are not official history) and §6 (only the Owner/Reviewer records `ACCEPTED`) therefore forbade restating it as accepted. **Now resolved:** PR #44 was **MERGED into `main` in `2892189`** (2026-09-25T09:35:22Z), so `main` records Task 17B as **ACCEPTED (2026-09-25)** by the Repository Owner/Reviewer — PR #43 reviewed before merge and merged in `b10e007` (merged head `1ec996e`, implementation `9ee46f7`, CI run `36074225037` green) — with `docs/tasks/task-17/task-17b-acceptance-record.md` as the formal record. That acceptance is **bounded**: it closes no Open Question (**OQ-25/OQ-43 remain OPEN**), does not complete Task 17, promotes no ADR and authorizes **no** future Task 17 slice, Task 17C included. | Task 17C promoted nothing while the discrepancy was open and promotes nothing now: the synchronization merge preserves `main`'s Task 17B **ACCEPTED** text **verbatim** (`STATE.md` §7/§8/§10, `task-index.md` header/§2/§4/§9, `docs/modules.md`) while keeping Task 17C itself **READY FOR REVIEW — NOT ACCEPTED**. Nothing else about Task 17B is touched (prompt §11: "changing Task 17B implementation" is prohibited). | Nothing further — the Owner merged PR #44, which is what this row recommended. The predicted textual conflict between PR #44 and PR #45 did materialize (`STATE.md` §7; `task-index.md` header/§2/§9) and was resolved conservatively on `arena/01a0d7c4-vardena` by merging `main` @ `2892189` into the branch — no rebase, no force-push (AG-04) — keeping both sides' valid content (`STATE.md` §10 BOOT-R-12; `task-index.md` §9 synchronization row). |
 | **D-9** | **PRECISION (no conflict)** | Q20: changing the number of levels is not a current capability; no feature/migration/UI for it. | Contract §9.1: `max_depth` is configuration; §9.4: changing depth after accounts exist does **not** rewrite accounts — it applies to newly created accounts, existing accounts stay pinned. | ADR-0035 §8 records the exclusion **and** the precision: creating a new version with a different `max_depth` for **new** accounts is ordinary configuration (unchanged), while migrating **existing** accounts to a different level count is excluded and unauthorized. | Nothing now. A future level-count capability needs its own Owner decision + ADR (Q20: the architecture must not unnecessarily prevent that analysis — version pinning + code history keep it possible). |
 | **D-10** | **GAP (partial implementation)** | Q12/Q13: Final/posted documents follow immutable correction/reversal semantics. | Only `reversal` is implemented (`ACCOUNTING_CORRECTION_KINDS = ['reversal']`, Task 15); contract §15.4's `correction`, `replacement` and `adjustment` mechanisms are contract-only. Correction windows/period dating remain OQ-27; `reopen` is refused for accounting documents (§15.4 rule 5). | Recorded as CONFIRMED for the immutability/deletion half (AC-I-05/06/15, `deletablePhases`), with the unimplemented mechanisms and OQ-27 policy listed in §6. | A corrections task (per `task-index.md` §7) for correction/replacement/adjustment + OQ-27 windows; no change to Final-document immutability. |
 | **D-11** | **GAP (partial implementation)** | Q15: Account Statement "should support drill-down to underlying source documents". | The statement returns `voucherId`, `voucherLineId`, `voucherNumber`, `lineNo` and the `source*` document snapshot per row (Task 17B report §3), so the drill-down **keys** exist; no drill-down resource/endpoint or navigation contract exists. | Recorded as OWNER DECIDED with drill-down **data** confirmed and the surface itself listed as an open implementation detail (§6 O-7). | A future presentation/reporting task may add navigation using the existing ids — read-only, permission-gated, no second calculation (Q15/Q16). |
@@ -260,8 +274,10 @@ Question, which stays OPEN in [`docs/open-questions.md`](../open-questions.md).
   (annotated only), as do OQ-02/03/23/27/36/41/45/49/52/53/62/63 and every other row.
 - No ADR status promoted and no task status changed: ADR-0031/0032 stay **Proposed**;
   the five new ADRs are **Proposed**; Task 17A stays **ACCEPTED (2026-09-25)**; Task
-  17B stays exactly as recorded on `main` (**READY FOR REVIEW — NOT ACCEPTED**, with
-  its acceptance pending in open PR #44 — §5 D-8); Task 17 stays **FORMALIZED /
+  17B stays exactly as recorded on `main` — since the PR #44 merge (`2892189`) that
+  is **ACCEPTED (2026-09-25)**, bounded to the D1–D7 slice of PR #43 — and Task 17C
+  neither restates, weakens, extends nor relies on that acceptance to authorize any
+  future slice (§5 D-8, resolved); Task 17 stays **FORMALIZED /
   IMPLEMENTATION BLOCKED BY OPEN QUESTIONS** and is **not complete**; Tasks 12 (P1
   follow-up), 13, 14 and 16 are untouched.
 - No legal, tax, statutory or compliance claim of any kind (Q22 closing clause;
@@ -280,13 +296,16 @@ Question, which stays OPEN in [`docs/open-questions.md`](../open-questions.md).
 | `docs/accounting/domain-contract.md` | **§31 addendum** (pointer only): Owner decisions recorded, which sections they refine, and the statement that no contract decision, status or behaviour is changed by this task. |
 | `docs/open-questions.md` | **OQ-25** and **OQ-43** annotated with a Task 17C note separating OWNER DECIDED / IMPLEMENTATION DETAIL OPEN / LEGAL VALIDATION REQUIRED. Both stay in the Open table. |
 | `docs/accounting/task-index.md` | §2 row for Task 17C; §4 candidate rows for the newly named capabilities (code structure migration, code history/historical resolution, POSTING/AGGREGATION role, base structure + control roles, dimensions/floating detail note, Legal Profile); §5 OQ-25/OQ-43 rows annotated; §9 dated history row. |
-| `STATE.md` | §3 ADR inventory rows 0033–0037; §7 Task History row 17C; §8 Task 17C paragraph (existing Task 17B text left as recorded on `main`); §9 OQ-25/OQ-43 row annotated; §10 dated consolidation paragraph. |
+| `STATE.md` | §3 ADR inventory rows 0033–0037; §7 Task History row 17C (row 17B is `main`'s **ACCEPTED** text from PR #44, preserved verbatim); §8 Task 17C paragraph (`main`'s Task 17B ACCEPTED paragraph untouched); §9 OQ-25/OQ-43 row annotated; §10 dated consolidation paragraph, BOOT-R-11 and BOOT-R-12 (**RESOLVED** by the PR #44 merge). |
 
 ## 9. Verification performed (documentation-only)
 
 | Check | Command / method | Result |
 |---|---|---|
 | Whitespace errors | `git diff --check` (staged + unstaged, against base `b10e007`) | clean |
+| **Synchronization merge** (after the PR #44 merge) | `git merge --no-ff origin/main` (`2892189`) into `arena/01a0d7c4-vardena`; conflicts in `STATE.md` §7 and `docs/accounting/task-index.md` header/§2/§9 resolved hunk-by-hunk — never a global `ours`/`theirs` | resolved; no conflict marker remains; `git diff --check` clean |
+| `main`'s governance text preserved | the Task 17B **ACCEPTED** lines of `2892189:STATE.md` §7 and of `2892189:docs/accounting/task-index.md` (header, §2 row, §9 acceptance row) compared byte-for-byte with the merged files | byte-identical — Task 17B does not regress to READY FOR REVIEW |
+| No production change between baselines | `git diff --name-only b10e007…2892189` | 5 documentation files only (`STATE.md`, `docs/accounting/task-index.md`, `docs/modules.md`, `docs/tasks/task-17/task-17b-implementation-report.md`, `docs/tasks/task-17/task-17b-acceptance-record.md`) |
 | Diff scope | `git diff --name-only b10e007…HEAD` | only `.md` files under `docs/` and `STATE.md` |
 | No production/schema/test/dependency change | path audit of the diff for `backend/`, `prisma/`, `*.ts`, `*.sql`, `package*.json`, `.github/`, `docker-compose.yml`, `.env.example`, `frontend/` | zero matches |
 | Referenced paths exist | every backticked repository path and relative link in the new/edited files tested on the filesystem | all present |
@@ -300,3 +319,18 @@ Question, which stays OPEN in [`docs/open-questions.md`](../open-questions.md).
 - 2026-09-25 — Created by **Task 17C — Accounting Decision Consolidation**
   (DOCUMENTATION ONLY) on `arena/01a0d7c4-vardena` (base `b10e007`, merge of PR #43).
   Status **READY FOR REVIEW — NOT ACCEPTED**; no self-acceptance.
+- 2026-09-25 — **Synchronized with `main` after the PR #44 merge** (`2892189`; Task 17B
+  **ACCEPTED (2026-09-25)**): `main` was merged into the PR #45 branch — no rebase, no
+  force-push (AG-04). Conflicts (`STATE.md` §7; `docs/accounting/task-index.md`
+  header/§2/§9) were resolved to keep **both** sides' valid content: `main`'s Task 17B
+  acceptance verbatim **and** the complete Task 17C register. Stale "17B READY FOR
+  REVIEW / PR #44 open" statements were updated to the post-merge facts — §1
+  synchronization note, §5 **D-8 RESOLVED**, §7 status bullet, §8 `STATE.md` row, §9
+  synchronization checks, plus one clarifying clause in ADR-0036's Context (Task 17B
+  recorded as ACCEPTED, with neither read surface presented as a legal one).
+  **Q1–Q22, invariants I-1…I-3, D-1…D-13 and O-1…O-12 are unchanged**;
+  **OQ-25 and OQ-43 remain OPEN** (an Owner decision is not an implemented capability);
+  no ADR or task status was promoted; no production code, schema, migration, test, API,
+  permission or dependency was touched. Task 17C remains **READY FOR REVIEW — NOT
+  ACCEPTED**; Task 17 remains **FORMALIZED / IMPLEMENTATION BLOCKED** and **NOT
+  complete**.

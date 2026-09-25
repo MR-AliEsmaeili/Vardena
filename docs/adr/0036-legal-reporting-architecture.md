@@ -33,7 +33,9 @@ way (Q22, Decision B) and the sequencing (Q9: legal books after Accounting Core)
 No legal profile model, module or table exists today
 ([`reporting-sample-audit.md`](../tasks/task-17/reporting-sample-audit.md) item 19),
 and no statutory report is implemented — the only Accounting read surfaces are the
-ledger movement source (Task 17A, ACCEPTED) and the account statement (Task 17B).
+ledger movement source (Task 17A, ACCEPTED) and the account statement (Task 17B,
+ACCEPTED 2026-09-25 — `docs/tasks/task-17/task-17b-acceptance-record.md`). Neither is
+a legal or statutory surface.
 
 ## Decision
 
