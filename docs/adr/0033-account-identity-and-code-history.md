@@ -12,7 +12,7 @@ The Owner decided that `Account.id` is the permanent accounting identity and `Ac
 
 ## Decision
 
-1. **`Account.id` (ULID) is the permanent Accounting identity (Invariant 1).** Document lines, ledger rows, balance/projection keys, opening logic, correction links, dimension assignments and every internal economic reference resolve by id, never by code — existing behaviour recorded as normative.
+1. **`Account.id` (ULID) is the permanent Accounting identity (Invariant 1).** Document lines, ledger rows, balance/projection keys, opening logic and correction links resolve by id, never by code — existing behaviour recorded as normative; **dimension assignments are not implemented** (ADR-0037 §7) and must resolve the same way once they exist.
 2. **`Account.code` is a business/display identifier** — unique per organization, digits-only, composed from the configured coding structure (§9.2/§9.3). It is never a semantic source: the tree comes from `parent_id`, the code prefix is only its proof (§8.5), and no classification may be inferred from a code range.
 3. **A code is a time-scoped fact.** The model must retain every code an account has carried with its validity, so `Account.id → {historical code(s), current code}` is reconstructable at any reporting date. *Not implemented* — an additive schema task with its own migration (AR-10/AR-29).
 4. **Historical resolution rule (Q18, Decision D).** A report over a historical context (fiscal year, accounting period, `document_date`) displays by default the code valid in that context, and may also expose the current code and the historical → current mapping (`report date → Account.id → historical code → report`). A current-code rendering is an explicit alternative view, never a silent rewrite of the historical one.

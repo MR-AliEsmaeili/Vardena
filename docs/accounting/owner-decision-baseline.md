@@ -63,7 +63,8 @@ from contradicting it: `backend/prisma/schema/accounting.prisma`,
 `accounting/data/{accounts,ledger-entries,account-balance-projections,account-statements}.repository.ts`
 + `accounting/data/accounting-configuration-usage.ts`,
 `accounting/application/{accounts,account-statements,ledger-movements,accounting-balances,accounting-documents}.service.ts`,
-`accounting/api/*`, `accounting/domain/accounting-permissions.ts` (36 codes).
+`accounting/api/*`, `accounting/domain/accounting-permissions.ts` (36 codes **at this
+baseline**; **38 after Task 18** — see the post-baseline drift note below).
 
 **Synchronization note (2026-09-25).** PR #44 (Task 17B acceptance) changed
 **documentation only**: `STATE.md`, `docs/accounting/task-index.md`,
@@ -74,6 +75,22 @@ workflow or dependency path, so **every repository fact in this section — and
 therefore every discrepancy (D-1…D-13) and open implementation item (O-1…O-12)
 below — is unchanged by that merge**. Only the governance statements about Task
 17B's *status* (§5 D-8, §7, §8, §10) needed updating to the post-merge facts.
+
+**Post-baseline drift note (2026-09-25, recorded by the Task 17C governance review after
+PR #47).** Task 18 — Accounting Reporting Read Foundation — was reviewed before merge,
+merged (PR **#46** → `e774a1c`) and then **ACCEPTED (2026-09-25)** (PR **#47** →
+`40a3e0a`), i.e. **after** this register's baseline. Inside the Accounting module it adds
+a shared read/query repository, **extends the account-statement surface** and adds the
+explicit read-only **General Ledger** and **Trial Balance** APIs, plus the independent
+`Accounting.GeneralLedger.View` / `Accounting.TrialBalance.View` permissions — and no
+schema, migration, Reporting module, export, statutory layout or legal book
+(`docs/tasks/task-18/task-18-acceptance-record.md` §7/§8). Three statements below were
+true at the baseline and are corrected in place: the §1 permission-code count, the
+**Q10** row and the **D-13** row — the **General Ledger** read surface now exists, while
+the **Journal Book** (`دفتر روزنامه`), every statutory/legal book and any Legal Profile do
+not. Q10's Owner decision, D-13's legal gap and every other reconciliation, discrepancy
+and open item are unchanged; **OQ-25/OQ-43 remain OPEN**, Task 17 remains **FORMALIZED /
+IMPLEMENTATION BLOCKED**, and Task 18 authorizes no Task 17 slice and promotes no ADR.
 
 Facts this register relies on:
 
@@ -105,7 +122,7 @@ Facts this register relies on:
 | **Q7** | A configurable general dimension model (cost center, project, branch, …); **never** a giant EAV or giant JSONB structure; account↔dimension relationship may be `required` / `optional` / `forbidden` per configuration. | OWNER DECIDED · CONFIRMED (mechanism) · **GAP** (implementation) | Exactly the decided shape: configured count under a code cap, typed item tables, per-(account, dimension) `requirement`, typed line-assignment child table, no EAV/JSONB (AC-D-11…AC-D-14, AC-I-18, `configurability-architecture.md` §5.2). Not implemented; defaults/count/binding stay OQ-41. | ADR-0037 §7; contract §10.1–§10.6 |
 | **Q8** | Vardena provides default code lengths; at initial setup the organization chooses each level's digit length; changing code length **after transactions exist** only through the controlled licensed migration mechanism. | OWNER DECIDED · CONFIRMED (first half) · **GAP** (second half) | `digit_length` per level is configuration (ADR-0028 §1, contract §9.1); a new version never reinterprets pinned accounts (§9.4). The migration service does not exist (ADR-0035 authorizes nothing). | ADR-0035 §1/§2; ADR-0033 §6; contract §9.4 |
 | **Q9** | Legal books are implemented **after** Accounting Core; Iranian statutory requirements must not become hardcoded dependencies of the Core. | OWNER DECIDED · CONFIRMED BY REPOSITORY | Contract §2.3 records C1–C7 as *reported* inputs only; "Nothing in C1–C7 is implemented, asserted as law, or encoded as a constant." No statutory code exists. | ADR-0036 §2; contract §2.3, §19.4 |
-| **Q10** | Journal Book and General Ledger are **independent reports**; they must not be collapsed into one report because they share underlying data. | OWNER DECIDED · CONFIRMED (separation) · **GAP** (neither implemented) | Contract §19.1 lists the journal (`دفتر روزنامه`) and the general ledger (`دفتر کل`) as distinct future reports over the same immutable lines (C1); `reporting-strategy.md` §1/§5: definitions compose, engines are never duplicated. No report definition exists yet. | ADR-0036 §3 |
+| **Q10** | Journal Book and General Ledger are **independent reports**; they must not be collapsed into one report because they share underlying data. | OWNER DECIDED · CONFIRMED (separation) · **GAP** (Journal Book not implemented; a General Ledger read surface exists since Task 18) | Contract §19.1 lists the journal (`دفتر روزنامه`) and the general ledger (`دفتر کل`) as distinct future reports over the same immutable lines (C1); `reporting-strategy.md` §1/§5: definitions compose, engines are never duplicated. At this baseline no report definition existed; since **Task 18 (ACCEPTED 2026-09-25, PR #46 merged in `e774a1c`)** an accounting-owned **General Ledger** read surface exists (`GET /api/v1/accounting/general-ledger`) — not a legal book and with no statutory layout — while the **Journal Book** stays unimplemented (see the drift note in §1). | ADR-0036 §3 |
 | **Q11** | Primary system language: **Persian**. Base monetary unit configurable, including **Rial** and **Toman**; Rial input may be displayed with Toman conversion; legal reporting handled separately through the Legal Profile/Adapter. | OWNER DECIDED · PARTLY CONFIRMED · **DISCREPANCY D-6** | Persian-capable typed titles are first-class (C4, §8.3). Display localization is **OQ-02** (assumption today: Gregorian/en display). Money is `numeric(18,2)` with **no currency column** on ledger/projection (§13.6/§24.1 dormant seam, OQ-03) — so a configurable base unit (and Rial↔Toman scale) has no storage representation yet; conversion must stay presentation-only. | ADR-0036 §4; §5 D-6; OQ-02/OQ-03 remain OPEN |
 | **Q12** | Two correction behaviours by lifecycle: internal/non-final documents may support controlled deletion/recreation under permissions and lifecycle rules; Final/posted documents follow immutable correction/reversal semantics. **Not** permission to physically delete Final/Posted history. | OWNER DECIDED · CONFIRMED BY REPOSITORY | Exactly the shipped model: `deletablePhases = [draft, temporary]` with `Accounting.Document.Delete`, Final never editable/deletable (AC-I-05/06), corrections are counter-documents (AC-D-22, AC-I-15). Only `reversal` is implemented; correction/replacement/adjustment are contract-only. Windows stay OQ-27. | No new ADR needed — already binding: contract §15.1–§15.4 (AC-D-20/21/22, AC-I-05/06/15) + ADR-0026 §4; open parts in §5 D-10 and §6 O-10 |
 | **Q13** | **Decision C.** Final/legal documents must not be physically deleted; correction/reversal must preserve historical auditability (`draft/non-final → controlled edit/delete/recreate`; `final/posted → immutable → correction/reversal`); exact lifecycle stays subject to the existing domain contract. | OWNER DECIDED · CONFIRMED BY REPOSITORY | AC-I-06 + `planDelete` refuse Final; the numbering allocation row survives a discarded voucher (auditable gap, ADR-0023 §3); reversal (Task 15) creates a new Final counter-document and never suppresses originals. OQ-54 (non-accounting finalized documents) and OQ-27 (windows) remain OPEN — Q13 does not close them. | contract §15.3/§15.4; ADR-0035 §4 (history preserved) |
@@ -238,7 +255,7 @@ them was resolved by invention; none changes shipped behaviour.
 | **D-10** | **GAP (partial implementation)** | Q12/Q13: Final/posted documents follow immutable correction/reversal semantics. | Only `reversal` is implemented (`ACCOUNTING_CORRECTION_KINDS = ['reversal']`, Task 15); contract §15.4's `correction`, `replacement` and `adjustment` mechanisms are contract-only. Correction windows/period dating remain OQ-27; `reopen` is refused for accounting documents (§15.4 rule 5). | Recorded as CONFIRMED for the immutability/deletion half (AC-I-05/06/15, `deletablePhases`), with the unimplemented mechanisms and OQ-27 policy listed in §6. | A corrections task (per `task-index.md` §7) for correction/replacement/adjustment + OQ-27 windows; no change to Final-document immutability. |
 | **D-11** | **GAP (partial implementation)** | Q15: Account Statement "should support drill-down to underlying source documents". | The statement returns `voucherId`, `voucherLineId`, `voucherNumber`, `lineNo` and the `source*` document snapshot per row (Task 17B report §3), so the drill-down **keys** exist; no drill-down resource/endpoint or navigation contract exists. | Recorded as OWNER DECIDED with drill-down **data** confirmed and the surface itself listed as an open implementation detail (§6 O-7). | A future presentation/reporting task may add navigation using the existing ids — read-only, permission-gated, no second calculation (Q15/Q16). |
 | **D-12** | **GAP** | Q6/Q7: tree + floating detail accounts and a configurable dimension model must be supported. | Contract-only (AC-D-11…AC-D-15); no `accounting_detail_dimensions` / `_groups` / `_items` / line-assignment table exists; OQ-41 open (count, per-dimension defaults, master-data binding, item governance, area applicability). | ADR-0037 §6/§7 confirms the decided mechanism and the EAV/JSONB prohibition; `task-index.md` §4 keeps them as candidates blocked by OQ-41. | A dimensions task after OQ-41 answers, with AC-I-18 validation, typed assignment table, GROUP BY reporting (§10.7) and denial-path tests. |
-| **D-13** | **GAP** | Q10/Q22: independent Journal Book and General Ledger reports; Iran Legal Profile. | No report definitions, no Reporting module (`task-17b-owner-decision-pack.md` E-25), no legal-profile model/module (`reporting-sample-audit.md` item 19). Task 17 remains FORMALIZED / IMPLEMENTATION BLOCKED (OQ-25/OQ-43). | ADR-0036 §1/§3 fixes the architecture and the independence rule; **no** statutory layout, column set or legal fact is invented (OQ-43, LEGAL VALIDATION REQUIRED). | Legal Profile + legal books tasks after OQ-43 validation with authoritative current sources, through `task-index.md` §7 and ADR-0009/`reporting-strategy.md`. |
+| **D-13** | **GAP** | Q10/Q22: independent Journal Book and General Ledger reports; Iran Legal Profile. | No **statutory/legal** report definition, no Reporting module (`task-17b-owner-decision-pack.md` E-25), no legal-profile model/module (`reporting-sample-audit.md` item 19); the **Journal Book** is unimplemented. Since **Task 18 (ACCEPTED 2026-09-25, PR #46 merged in `e774a1c`)** accounting-owned **General Ledger / Trial Balance** read surfaces exist — explicitly **not** legal books (`docs/tasks/task-18/task-18-acceptance-record.md` §7). Task 17 remains FORMALIZED / IMPLEMENTATION BLOCKED (OQ-25/OQ-43). | ADR-0036 §1/§3 fixes the architecture and the independence rule; **no** statutory layout, column set or legal fact is invented (OQ-43, LEGAL VALIDATION REQUIRED). | Legal Profile + legal books tasks after OQ-43 validation with authoritative current sources, through `task-index.md` §7 and ADR-0009/`reporting-strategy.md`. |
 
 ---
 
@@ -334,3 +351,16 @@ Question, which stays OPEN in [`docs/open-questions.md`](../open-questions.md).
   permission or dependency was touched. Task 17C remains **READY FOR REVIEW — NOT
   ACCEPTED**; Task 17 remains **FORMALIZED / IMPLEMENTATION BLOCKED** and **NOT
   complete**.
+- 2026-09-25 — **Task 17C governance review (documentation correction only).** Reviewed
+  against `main` @ `40a3e0a` (PR #47). Three baseline statements had been overtaken by the
+  separately authorized and accepted **Task 18** read foundation and were corrected in
+  place — the §1 permission-code count (**36 → 38**), the **Q10** row and the **D-13** row
+  (a General Ledger read surface exists; the Journal Book, the legal books and the Legal
+  Profile do not); the matching read-surface clause in ADR-0036's Context was aligned, one
+  imprecise clause in ADR-0033 §1 that listed the non-existent `dimension assignments`
+  among the repository's existing id-resolving references was tightened, and the
+  `task-index.md` §4 candidate row was qualified. **No Owner decision (Q1–Q22), invariant
+  (I-1…I-3), discrepancy classification (D-1…D-13), open item (O-1…O-12), ADR status, OQ
+  status or task status was changed**: OQ-25/OQ-43 remain **OPEN**, every ADR stays
+  **Proposed**, Task 17 stays blocked and Task 17C stays **READY FOR REVIEW — NOT
+  ACCEPTED** until the separate Acceptance Sync.
