@@ -1904,3 +1904,51 @@ shape of §5, §6, §7 (plus §4 scoping) and no posting/closing automation.
 3. `.vardena/project-context.md` still says "Documentation-only. No application code
    exists yet", which has been untrue since the backend foundation. Out of Task 10.1
    scope; flagged for a separate docs-sync task.
+
+---
+
+## 31. Owner Decision Consolidation Addendum (Task 17C, 2026-09-25 — pointer only)
+
+**This section changes no decision, no status and no behaviour.** It exists so that a
+future reader of this contract cannot miss that the Repository Owner took a set of
+Accounting decisions on 2026-09-25 that refine parts of it, and so that nobody
+re-derives those answers from scratch (AG-17: record, don't assume).
+
+- **Authoritative record:** [`docs/accounting/owner-decision-baseline.md`](./owner-decision-baseline.md)
+  — Owner decisions **Q1–Q22** plus the three mandatory invariants (**I-1** Account
+  identity, **I-2** POSTING XOR AGGREGATION, **I-3** code migration never rewrites
+  economic ledger history), each reconciled against current `main`, with every
+  discrepancy and every remaining implementation-level question listed.
+- **Received Owner prompt (source of the decisions):**
+  [`docs/tasks/task-17/task-17c-prompt.md`](../tasks/task-17/task-17c-prompt.md).
+- **ADRs created (all Proposed — none Accepted by that documentation task):**
+  [ADR-0033](../adr/0033-account-identity-and-code-history.md) identity + code
+  history · [ADR-0034](../adr/0034-posting-versus-aggregation-accounts.md) posting vs
+  aggregation · [ADR-0035](../adr/0035-account-code-structure-migration.md) code
+  structure migration · [ADR-0036](../adr/0036-legal-reporting-architecture.md) legal
+  reporting architecture · [ADR-0037](../adr/0037-accounting-configuration-boundary.md)
+  configuration boundary.
+
+Contract sections those ADRs **refine** (the contract text below is untouched; per §0 a
+DECIDED row changes only through a superseding ADR, and per `docs/accounting/task-index.md`
+§7 an implementation needs its own defined task):
+
+| Contract section | Owner decision | Effect |
+|---|---|---|
+| §8.3 `code` "immutable once created", §8.4 rule 4, §9.5 | Q3 | A code change **before first use** becomes permitted-in-principle (the repository is stricter today: no code-edit path exists). After use, only ADR-0035's controlled migration. Baseline discrepancy **D-2**. |
+| §8.5 rollup, §14 rule 2 (AC-D-19), §25 AC-I-09 (postable ⇒ leaf) | Q5 + I-2 | The Owner model is POSTING XOR AGGREGATION with a configurable posting level. Today's leaf rule is a **stricter, sufficient** implementation and **stays in force**; relaxing it requires superseding AC-D-19/AC-I-09 and amending §8.5 (separated own-vs-descendant measures). Baseline discrepancy **D-1** — recorded, not resolved. |
+| §8.6 (AC-D-08) freeze-over-delete | Q21 | Deletion becomes permitted-in-principle for an account with **no** historical accounting usage and no blocking reference; used accounts are deactivated, never deleted; a zero balance is **not** proof of no usage. The repository implements the stricter half only. Baseline discrepancy **D-4**. |
+| §8.7 control roles (AC-D-09), §1.2 non-goal 1 | Q2 + Q4 | Vardena ships a **base Accounting structure** and **standardized control roles**; only roles consumed by active operations are mandatory; organizations map their own accounts. Content stays EXPERT-GATED (OQ-25) and nothing exists in code. Baseline discrepancy **D-5**. |
+| §9.4 "any migration of existing accounts is an explicit, permission-gated, audited operation (OQ-25)" | Q8 + Q19 + I-3 | That operation is now named and shaped: the **Accounting Code Structure Migration Service** (controlled, licensed, preflight → impact → dry run → plan → approval → license → backup point → migration → reconciliation → audit). Level-count changes are **excluded** (Q20). Not implemented; ADR-0030/OQ-45 licensing is a prerequisite. |
+| §8.3/§9.2 code as one value per account | Q18 + I-1 | `Account.id` is the permanent identity; a code is a **time-scoped** business identifier with history, and historical reports resolve the code valid in the reported context. Needs an additive schema task. Baseline discrepancy **D-3**. |
+| §12.3 two dates, §19.2 rule 3 stored-column filters | Q14 | Confirmed and elevated to an explicit reporting rule: `document_date` = financial-reporting axis, `posting_timestamp` = audit/event-timing axis; Fiscal Year, Accounting Period, Document Date and Posting Timestamp stay four distinct concepts. |
+| §19.1 report inventory, §19.4 | Q10 + Q15 + Q16 | The journal (`دفتر روزنامه`) and the general ledger (`دفتر کل`) are **independent** report definitions over one read source; **Account Statement** is the unified account performance/turnover concept (Task 17B's surface); **Account Overview** («مرور حساب») is a presentation over the same read source and calculations — never a second engine. |
+| §2.3 Class C, §19.4 "no statutory layout hardcoded before OQ-43 validation" | Q9 + Q11 + Q22 | Architecture decided: `Accounting Core → Legal Adapter / Legal Profile → {Iran, future}` (ADR-0036). Persian is the primary language; the base monetary unit is configurable (Rial/Toman) with conversion as presentation only. **No legal fact is decided or claimed** — OQ-43 stays OPEN. |
+| §10/§11 dimensions and floating detail (AC-D-11…AC-D-15) | Q6 + Q7 | Confirmed: tree-based **and** floating details, a configurable typed dimension model with per-(account, dimension) `required`/`optional`/`forbidden`, never EAV/JSONB. Still unimplemented; OQ-41 stays OPEN. |
+| §15 lifecycle/corrections (AC-D-20/21/22, AC-I-05/06/15) | Q12 + Q13 | Confirmed: non-final documents may be edited/discarded under permissions; Final/Posted documents are immutable and corrected only by counter-documents; Final/legal history is never physically deleted. OQ-27 (windows) and OQ-54 (non-accounting documents) stay OPEN; only `reversal` is implemented today. |
+| §25 invariants, §22 permissions, §4 organization scope | Q17 | Configurability principle: high configurability, never unrestricted — configuration may not violate the AC-I invariants, authorization, auditability, tenant isolation or data integrity (ADR-0037 §8). |
+
+**Open Questions are unaffected in status:** OQ-25 and OQ-43 remain **OPEN** in
+[`docs/open-questions.md`](../open-questions.md) (annotated with what is now Owner
+Decided versus what stays an implementation detail or requires legal validation), as do
+OQ-02/03/23/27/36/41/45/49/52/53/62/63.
