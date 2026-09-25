@@ -80,8 +80,8 @@ below — is unchanged by that merge**. Only the governance statements about Tas
 PR #47).** Task 18 — Accounting Reporting Read Foundation — was reviewed before merge,
 merged (PR **#46** → `e774a1c`) and then **ACCEPTED (2026-09-25)** (PR **#47** →
 `40a3e0a`), i.e. **after** this register's baseline. Inside the Accounting module it adds
-a shared read/query repository and three explicit read-only APIs
-(`account-statements`, `general-ledger`, `trial-balance`) plus the independent
+a shared read/query repository, **extends the account-statement surface** and adds the
+explicit read-only **General Ledger** and **Trial Balance** APIs, plus the independent
 `Accounting.GeneralLedger.View` / `Accounting.TrialBalance.View` permissions — and no
 schema, migration, Reporting module, export, statutory layout or legal book
 (`docs/tasks/task-18/task-18-acceptance-record.md` §7/§8). Three statements below were
