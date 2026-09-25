@@ -381,4 +381,4 @@ Question, which stays OPEN in [`docs/open-questions.md`](../open-questions.md).
   remain Proposed even where code exists"); Task 17 overall remains **BLOCKED** and NOT
   complete. Documentation only: no production code, schema, migration, API, permission,
   dependency, UI or test change. Acceptance sync on `arena/01a0da76-vardena` (base
-  `7f8e3e8`, the merge of PR #48) via PR **#50** (head `1c62923`).
+  `7f8e3e8`, the merge of PR #48) via PR **#50** (head `c030f09`; acceptance commit `1c62923`).
