@@ -167,6 +167,16 @@ export const ACCOUNT_STATEMENT_PERMISSIONS = {
   VIEW: 'Accounting.AccountStatement.View',
 } as const;
 
+/** Task 18 — independent General Ledger read permission. */
+export const GENERAL_LEDGER_PERMISSIONS = {
+  VIEW: 'Accounting.GeneralLedger.View',
+} as const;
+
+/** Task 18 — independent Trial Balance read permission. */
+export const TRIAL_BALANCE_PERMISSIONS = {
+  VIEW: 'Accounting.TrialBalance.View',
+} as const;
+
 export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] =
   [
     {
@@ -325,5 +335,15 @@ export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] 
       code: ACCOUNT_STATEMENT_PERMISSIONS.VIEW,
       description:
         'Read the account statement of one account within one fiscal year (opening, movements, running balance, closing; read-only, computed per request from the immutable ledger).',
+    },
+    {
+      code: GENERAL_LEDGER_PERMISSIONS.VIEW,
+      description:
+        'Read the bounded General Ledger from immutable Accounting ledger entries.',
+    },
+    {
+      code: TRIAL_BALANCE_PERMISSIONS.VIEW,
+      description:
+        'Read the bounded Trial Balance with POSTING/AGGREGATION hierarchy roll-up.',
     },
   ];

@@ -296,6 +296,17 @@ describe('AccountStatementsService', () => {
     expect(repository.readStatementLedgerFacts).not.toHaveBeenCalled();
   });
 
+  it('treats the hierarchy filter as a narrowing identity filter, not a roll-up', async () => {
+    const { service, repository } = makeService();
+    await expect(
+      service.getAccountStatement({
+        ...BASE_QUERY,
+        accountHierarchyId: ACCOUNT,
+      }),
+    ).resolves.toBeDefined();
+    expect(repository.readStatementLedgerFacts).toHaveBeenCalledTimes(1);
+  });
+
   // ---- scope-key error matrix (AC-I-16 / the implementation gate) ---------
 
   it('answers 404 for an unknown/foreign account (never 403 — existence must not leak)', async () => {

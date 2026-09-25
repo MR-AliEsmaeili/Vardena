@@ -56,7 +56,7 @@ import { sumAmounts } from '../domain/money.js';
  * SEMANTICS (prompt §8–§11; ADR-0031 §2/§4/§9)
  *
  * - Opening is intra-fiscal-year and SEQUENCE-based: `0` for a whole-year
- *   statement or the first period (the accepted Task 12 behavior — no
+ *   statement or the first period (the accepted Task 17B behavior — no
  *   prior-year carry-forward, decision D2), and Σ(debit − credit) of the
  *   lower-`sequence` periods of the SAME year otherwise. Opening vouchers
  *   posted inside the year appear as ordinary movement rows.
@@ -74,13 +74,12 @@ import { sumAmounts } from '../domain/money.js';
  * FILTER SURFACE (prompt §12)
  *
  * Exactly the decided scope keys: `organizationId`, `accountId`,
- * `fiscalYearId`, optional `accountingPeriodId`, optional `financialAreaId`
- * (must equal the year's area), plus the shared `page`/`pageSize`. There is
- * NO client sort (the running balance defines the order), NO date window (it
- * would need an opening-at-date basis decision D2 does not authorize), NO
- * voucher/serial/status/text filters and NO generic filter engine — anything
- * undeclared is rejected 400 by the global whitelist validation, and an
- * explicitly-sent `sort` is rejected here.
+ * `fiscalYearId`, optional `accountingPeriodId`, optional `financialAreaId`,
+ * and the optional hierarchy/code/name filters added by Task 18, plus the
+ * shared `page`/`pageSize`. There is NO client sort (the running balance
+ * defines the order), NO date/voucher/serial/status filters and NO generic
+ * filter engine — anything undeclared is rejected 400 by the global whitelist
+ * validation, and an explicitly-sent `sort` is rejected here.
  */
 @Injectable()
 export class AccountStatementsService {
@@ -141,6 +140,59 @@ export class AccountStatementsService {
       query.organizationId,
       query.fiscalYearId,
     );
+
+    if (query.accountCode !== undefined && account.code !== query.accountCode) {
+      throw AppException.businessRule(
+        'The account code filter does not match the selected account.',
+      );
+    }
+    if (
+      query.accountName !== undefined &&
+      !account.title
+        .toLocaleLowerCase()
+        .includes(query.accountName.toLocaleLowerCase())
+    ) {
+      throw AppException.businessRule(
+        'The account name filter does not match the selected account.',
+      );
+    }
+    if (query.accountHierarchyId !== undefined) {
+      const hierarchy = await this.statements.findAccount(
+        query.organizationId,
+        query.accountHierarchyId,
+      );
+      if (hierarchy === null) {
+        throw AppException.notFound('Account', query.accountHierarchyId);
+      }
+      // Account Statement still has exactly one permanent Account.id. The
+      // hierarchy filter therefore narrows that identity; it never turns the
+      // statement into a descendant roll-up report.
+      let cursor = account;
+      const visited = new Set<string>();
+      while (cursor.id !== hierarchy.id) {
+        if (visited.has(cursor.id) || cursor.parentId === undefined) {
+          throw AppException.businessRule(
+            'The selected account is outside the requested account hierarchy.',
+          );
+        }
+        visited.add(cursor.id);
+        if (cursor.parentId === null) {
+          throw AppException.businessRule(
+            'The selected account is outside the requested account hierarchy.',
+          );
+        }
+        const parent = await this.statements.findAccount(
+          query.organizationId,
+          cursor.parentId,
+        );
+        if (parent === null) {
+          throw AppException.businessRule(
+            'The selected account is outside the requested account hierarchy.',
+          );
+        }
+        cursor = parent;
+      }
+    }
 
     // One financial area per request (decision D4): the year's own area. An
     // optional client `financialAreaId` must exist in the organization (404
@@ -218,9 +270,7 @@ export class AccountStatementsService {
       take,
     );
 
-    // Opening: `0` for the whole-year window (the fiscal-year boundary IS the
-    // window start — decision D2), else the exact debit − credit of the
-    // prior-SEQUENCE periods. No prior-year closing enters this arithmetic.
+    // Opening is the accepted Task 17B same-year period sequence basis.
     const openingBalanceAmount =
       activePeriod === null
         ? '0'
@@ -317,6 +367,10 @@ export interface GetAccountStatementQuery {
   accountingPeriodId?: string | undefined;
   /** Optional: must equal the fiscal year's financial area (decision D4). */
   financialAreaId?: string | undefined;
+  /** Optional hierarchy/code/name display filters. */
+  accountHierarchyId?: string | undefined;
+  accountCode?: string | undefined;
+  accountName?: string | undefined;
   page: number;
   pageSize: number;
   /** Never accepted — the statement order is fixed (prompt §11). */

@@ -7,10 +7,10 @@ import { ACCOUNTING_PERMISSION_DEFINITIONS } from '../domain/accounting-permissi
  * registry at startup (AR-22, ADR-0006) — the same mechanism the
  * Organization module uses (`OrganizationPermissionRegistration`).
  *
- * Only the Task 10.2 codes are registered (financial areas, fiscal years,
- * accounting periods). The remaining contract §22 vocabulary arrives with
- * the tasks that enforce it — a code nobody enforces must not exist
- * (`docs/security.md` §3).
+ * The registry contains only Accounting codes enforced by implemented
+ * surfaces, including the read-only Task 17/18 report permissions. Future
+ * contract vocabulary arrives with the tasks that enforce it — a code nobody
+ * enforces must not exist (`docs/security.md` §3).
  */
 @Injectable()
 export class AccountingPermissionRegistration implements OnModuleInit {
