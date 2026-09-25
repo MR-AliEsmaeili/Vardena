@@ -1,6 +1,6 @@
 # ADR-0037: Accounting Configuration Boundary — Vardena Base Structure + Standard Control Roles + Organization Configuration, Bounded by Invariants
 
-- **Status:** Proposed (Owner decisions Q1/Q2/Q4/Q6/Q7/Q17, recorded 2026-09-25 by Task 17C — documentation only; **not Accepted**, no self-acceptance)
+- **Status:** Proposed — **Task 17C is accepted, but this ADR remains Proposed pending its separate adoption/implementation gate** (2026-09-25; Owner decisions Q1/Q2/Q4/Q6/Q7/Q17, recorded 2026-09-25 by Task 17C — documentation only; **not Accepted**, no self-acceptance; acceptance record: [`task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md) §ADR status)
 - **Date:** 2026-09-25
 - **Implements:** nothing — no base/template chart, control-role table, dimension table, configuration endpoint, permission, seed or migration is added, and the configuration foundation is not implemented by this ADR.
 - **Owner source:** [`task-17c-prompt.md`](../tasks/task-17/task-17c-prompt.md) Q1/Q2/Q4/Q6/Q7, Q17 (Decision D). Canonical register of Q1–Q22, I-1…I-3 and the implementation discrepancies (incl. **D-5**, **D-12**): [`owner-decision-baseline.md`](../accounting/owner-decision-baseline.md) — referenced here, never restated.
