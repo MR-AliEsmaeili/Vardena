@@ -42,7 +42,7 @@ In the following table, module paths are relative to `backend/src/modules/`; mod
 | `inventory/` | Item/unit/warehouse master data; movements, balances, reservations and transfers | `inventory/balances`, `inventory/movements`, `inventory/reservations`, `inventory/transfers`, `inventory/item-groups`, `inventory/items`, `inventory/unit-conversions`, `inventory/units`, `inventory/warehouses` | Unit, UnitConversion, ItemUnitConversion, ItemGroup, Item, Warehouse, InventoryMovement, InventoryBalance, InventoryReservation, InventoryOperation | backend/test/inventory-core.e2e-spec.ts |
 | `documents/` | Document type configuration, numbering allocation and typed relations | `documents/relations`, `documents/types`, `documents/numbering-series` | DocumentTypeConfig, NumberingSeries, NumberingAllocation, DocumentRelation | backend/test/documents-live.e2e-spec.ts |
 | `workflow/` | Versioned definitions, states/transitions, instances, approvals and automation bindings | `workflow`, `workflow/definitions`, `workflow/instances` (nested routes in each controller) | WorkflowDefinition, WorkflowVersion, WorkflowState, WorkflowTransition, WorkflowInstance, WorkflowTransitionHistory, WorkflowApproval, WorkflowAutomationBinding | backend/test/workflow-live.e2e-spec.ts |
-| `accounting/` | Fiscal scope, accounts/configurations, vouchers, posting/ledger, balance projection and reversal | `accounting/balances`, `accounting-configurations`, `accounting-documents`, `accounting-periods`, `accounts`, `coding-structures`, `financial-areas`, `fiscal-years` | FinancialArea, FiscalYear, AccountingPeriod, CodingStructureVersion, CodingStructureLevel, Account, AccountingConfiguration, AccountingConfigurationLevel, AccountingDocument, AccountingDocumentLine, AccountingPostingOperation, LedgerEntry, AccountBalanceProjection | domain/money.spec.ts; domain/document-reversal.spec.ts; backend/test/accounting-documents-live.e2e-spec.ts; backend/test/accounting-period-lifecycle-live.e2e-spec.ts |
+| `accounting/` | Fiscal scope, accounts/configurations, vouchers, posting/ledger, balance projection/reversal and bounded read-only reporting | `accounting/balances`, `accounting-configurations`, `accounting-documents`, `accounting-periods`, `accounts`, `coding-structures`, `financial-areas`, `fiscal-years`, `accounting/account-statements`, `accounting/general-ledger`, `accounting/trial-balance` | FinancialArea, FiscalYear, AccountingPeriod, CodingStructureVersion, CodingStructureLevel, Account, AccountingConfiguration, AccountingConfigurationLevel, AccountingDocument, AccountingDocumentLine, AccountingPostingOperation, LedgerEntry, AccountBalanceProjection | domain/money.spec.ts; domain/document-reversal.spec.ts; accounting report service/domain specs; backend/test/accounting-documents-live.e2e-spec.ts; backend/test/accounting-period-lifecycle-live.e2e-spec.ts |
 
 ### Database inventory
 
@@ -224,48 +224,68 @@ This is a bounded inventory of verified references, not a reconstructed complete
 | 17A | Bounded first slice of Task 17 — Accounting Ledger Movement Read Source; `docs/tasks/task-17/task-17a-implementation-report.md`, `docs/tasks/task-17/task-17a-acceptance-record.md` | Implementation present on `main` (PR #39 merged in `130fab9`): `domain/ledger-movement.ts`, `LedgerMovementsService`, read-only `listMovements`, `GET /api/v1/accounting/ledger-movements`, `Accounting.LedgerMovement.View`; **no schema, migration, index, aggregation or report definition** | **ACCEPTED (2026-09-25)** by explicit Owner Decision. Scope: Accounting-owned read-only ledger movement source over `accounting.ledger_entries`, `GET /api/v1/accounting/ledger-movements`, `Accounting.LedgerMovement.View`, org isolation, bounded pagination, allow-listed sorting, exact Decimal strings. **Does NOT close OQ-25/OQ-43 or complete Task 17** | PR **#39** merged in `130fab9`; CI run `36048743757` green |
 | 17B | Bounded second slice of Task 17 — Account Statement read surface; `docs/tasks/task-17/task-17b-{prompt,implementation-report,acceptance-record}.md` (Owner decisions D1–D7) | Implementation present on `main` (PR #43 merged in `b10e007`): `domain/account-statement.ts`, `AccountStatementsService`, read-only `AccountStatementsRepository`, `GET /api/v1/accounting/account-statements`, `Accounting.AccountStatement.View` (36th code); **no schema, migration, index, aggregation platform or report definition** | **ACCEPTED (2026-09-25)** by explicit Owner/Reviewer Decision (PR #43 reviewed before merge). Scope: bounded read-only account statement (one account + one fiscal year + optional period; debit-positive net; intra-year sequence-based opening, no carry-forward; Debit/Credit/Net only — no classification or account nature; fixed statement order; OPEN/CLOSED/SEALED readable and never mutated; org-first 404/422 scope matrix; no new per-user financial-area authorization). **Does NOT close OQ-25/OQ-43 or complete Task 17** | PR **#43** merged in `b10e007` (merged head `1ec996e`; implementation commit `9ee46f7`); CI run `36074225037` green incl. the live-PostgreSQL suite |
 | 17C | Accounting Decision Consolidation (documentation only); `docs/accounting/owner-decision-baseline.md`, `docs/tasks/task-17/task-17c-prompt.md`, ADR-0033…0037, `docs/accounting/domain-contract.md` §31 | **No production implementation** — documentation consolidation on `arena/01a0d7c4-vardena` (base `b10e007`, merge of PR #43; **synchronized with `main` @ `2892189`, the merge of PR #44**): Owner decisions Q1–Q22 + invariants I-1…I-3 recorded, reconciled against `main`, 13 discrepancies and 12 open implementation details registered; five ADRs created **Proposed**; OQ-25/OQ-43 annotated (still OPEN); `docs/adr/README.md`, contract §31, task index §2/§4/§5/§9 and `STATE.md` §3/§7/§8/§9/§10 synchronized | **READY FOR REVIEW — NOT ACCEPTED.** No code, API, DTO, schema, Prisma, migration, seed, permission, report, UI, dependency or behaviour change; Task 17B's implementation untouched; no ADR/task status promoted; Task 17 remains **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS** and is **NOT complete**; no legal/statutory claim. Task 17B's status is preserved exactly as **PR #44** established it on `main` — **ACCEPTED (2026-09-25)** (PR #43 merged in `b10e007`, merged head `1ec996e`; `docs/tasks/task-17/task-17b-acceptance-record.md`) — and that acceptance authorizes **no** future Task 17 slice, including 17C; the recorded discrepancy **D-8** is RESOLVED by the PR #44 merge (`2892189`), not by any status promotion here | Documentation-only work on `arena/01a0d7c4-vardena`; no implementation PR/commit |
+| 18 | Accounting Reporting Read Foundation; `docs/tasks/task-18/task-18-implementation-report.md` | Task 18 Owner Decisions D1–D20 implemented on `arena/01a0d841-vardena`: shared `AccountingReadQueryRepository`; read-only Account Statement extension, General Ledger and Trial Balance controllers/services/DTOs; independent report permissions; no schema/migration/report persistence | **READY FOR REVIEW — NOT ACCEPTED (2026-09-25)**. Static code, focused tests, full unit suite, typecheck, build, formatting, lint and Swagger route/schema probe executed as recorded in the report. Prisma engine download/network prevented local validation/generation and no PostgreSQL/Docker tooling was available for live raw-SQL execution; those are not claimed. OQ-25/OQ-43 remain OPEN; Task 17 remains FORMALIZED / IMPLEMENTATION BLOCKED and NOT complete | No PR/commit yet; this branch is the implementation/review handoff |
 
 Rows with shortened paths `accounting/...` refer to `backend/src/modules/accounting/...`. The Task 11 report notation above denotes the three real separately named files, not a literal brace-named file.
 
 ## 8. Current Task
 
-The current state is **Task 17B ACCEPTED (2026-09-25)**: the bounded, read-only
-**account statement** slice of Task 17 (Owner decisions D1–D7 in
-`docs/tasks/task-17/task-17b-prompt.md`) introduced by PR **#43** — reviewed by
-the Owner/Reviewer before merge and **MERGED** into `main` in `b10e007` (merged
-head `1ec996e`, implementation commit `9ee46f7`) — has been explicitly
-authorized and accepted by the Repository Owner/Reviewer. Acceptance record:
-`docs/tasks/task-17/task-17b-acceptance-record.md`. Task 17A remains
-**ACCEPTED (2026-09-25)** (PR #39, `130fab9`).
+The current state is **Task 18 — Accounting Reporting Read Foundation:
+READY FOR REVIEW — NOT ACCEPTED (2026-09-25)** on the fixed branch
+`arena/01a0d841-vardena`. This is an implementation/review handoff, not an
+owner acceptance and not an `ACCEPTED` status.
 
-Task 17B provides:
-- The canonical account-movement calculation over the immutable
-  `accounting.ledger_entries` (`domain/account-statement.ts`,
-  `AccountStatementsService`, read-only `AccountStatementsRepository`):
-  opening, debit/credit/net movement rows with running balances, closing;
-- One narrow versioned REST endpoint `GET /api/v1/accounting/account-statements`
-  (one account + one fiscal year + optional accounting period; no write route);
-- The new read permission `Accounting.AccountStatement.View` (36th code;
-  contract §22 row added under gate P-10; enforced guard + service);
-- Debit-positive exact Decimal strings (`net = debit − credit`,
-  `closing = opening + net`), intra-fiscal-year SEQUENCE-based opening with NO
-  prior-year carry-forward (ADR-0031 §4/§9), fixed statement order
-  (`documentDate, voucherNumber, lineNo, id`), window-wide totals
-  (page-independent), running balance continuous across pages;
-- Organization isolation via deployment pin + `requireUsableOrganization` +
-  organization-first scope keys (foreign/unknown → 404, scope contradictions →
-  422); OPEN/CLOSED/SEALED periods readable and never mutated (D5).
+The Task 18 Owner Decisions D1–D20 are binding for this exact bounded slice,
+even though older Task 17 records describe the broader Reporting Foundation as
+blocked by OQ-25/OQ-43. Delivered:
 
-**Explicit Exclusions & Governance Boundaries:**
-- **OQ-25** (chart / report layouts) remains **OPEN**.
-- **OQ-43** (Iranian statutory / legal reporting) remains **OPEN**.
-- **Task 17** remains **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS**. Task 17 is **NOT complete**.
-- **Task 17B is ACCEPTED (2026-09-25)** by the Repository Owner/Reviewer, bounded to the D1–D7 slice delivered by PR #43. The acceptance authorizes **no** future Task 17 slice (no Task 17C, no Reporting implementation) and changes no Account Statement semantics.
-- **Task 17B's acceptance changed no production code, schema, migration, index, permission, API behavior or test** — it is a documentation/governance synchronization of an already-merged, already-authorized implementation.
-- Generic Reporting Foundation, Report Builder, Excel/CSV/PDF/Print export engines, Iranian Electronic Books (`دفاتر قانونی`), Trial Balance, Income Statement, Balance Sheet, Cash Flow, Treasury reporting, multi-account/cross-year statements and account-nature presentation remain **UNIMPLEMENTED** (D1–D3/D7).
-- Task 12's P1 real-PostgreSQL concurrency verification remains a separate follow-up; Task 14 remains **READY FOR REVIEW — NOT ACCEPTED**; Task 16 status is unchanged.
+- Shared Accounting-owned `AccountingReadQueryRepository` over immutable
+  `accounting.ledger_entries` plus Accounting-owned document/account/calendar
+  rows. The Task 17B repository name remains as a compatibility adapter, so
+  accepted statement behavior and its injection seam are not redesigned.
+- `GET /api/v1/accounting/account-statements` with the bounded Task 17B
+  statement semantics preserved and explicit hierarchy/account-code/name/date
+  filters added within one account, organization, area and fiscal year.
+- `GET /api/v1/accounting/general-ledger` with immutable ledger/voucher-line
+  identities, authoritative document type/source references, exact debit,
+  credit and net strings, and only fields available from Accounting models.
+- `GET /api/v1/accounting/trial-balance` with exact opening/debit/credit/net/
+  closing strings and POSTING-to-AGGREGATION ancestor roll-up without
+  parent/child double counting.
+- Independent `Accounting.GeneralLedger.View` and
+  `Accounting.TrialBalance.View` permissions, existing organization pin/
+  authorization conventions, readable OPEN/CLOSED/SEALED periods, same-year
+  period/date scope, bounded page size and 50,000-row hard bound, deterministic
+  allow-listed sorting, five-second interactive read timeout and source
+  references for future drill-down.
 
-**Task 17C — Accounting Decision Consolidation: READY FOR REVIEW — NOT ACCEPTED (2026-09-25, documentation only)** on `arena/01a0d7c4-vardena` (base `b10e007`; synchronized with `main` @ `2892189`, the merge of PR #44). The Owner-approved Accounting decisions **Q1–Q22** and the three mandatory invariants (**I-1** `Account.id` is the permanent identity and `code` a time-scoped business identifier; **I-2** an account node is POSTING **XOR** AGGREGATION; **I-3** a code migration never rewrites economic ledger history) are now consolidated in `docs/accounting/owner-decision-baseline.md` (authoritative register: decision text, repository reconciliation, 13 discrepancies, 12 open implementation details, verification log), with the received prompt saved verbatim at `docs/tasks/task-17/task-17c-prompt.md` and five **Proposed** ADRs — 0033 identity & code history, 0034 posting vs aggregation, 0035 code structure migration, 0036 legal reporting architecture, 0037 configuration boundary. `docs/accounting/domain-contract.md` gained only the non-normative **§31 pointer addendum**; **OQ-25 and OQ-43 remain OPEN** (annotated to separate OWNER DECIDED / IMPLEMENTATION DETAIL OPEN / LEGAL VALIDATION REQUIRED). Task 17C changes **no** production code, API, DTO, schema, Prisma model, migration, seed, permission, report, UI, dependency or behaviour, promotes **no** ADR or task status, closes **no** Open Question, implements **no** Code Migration Service, Classification, Trial Balance, Legal Book, control role, dimension or Account Overview, and makes **no** legal or statutory claim. Task 17B's recorded status on `main` is preserved exactly as **PR #44** (merged in `2892189`) established it: **ACCEPTED (2026-09-25)** by the Repository Owner/Reviewer, bounded to the D1–D7 slice of PR #43 (merged in `b10e007`, merged head `1ec996e`), recorded in `docs/tasks/task-17/task-17b-acceptance-record.md`. Task 17C neither promotes, restates, weakens nor extends that acceptance, and the acceptance itself authorizes **no** future Task 17 slice — including Task 17C. Discrepancy **D-8** is therefore RESOLVED by the PR #44 merge; nothing in Task 17C applied it.
+Explicit exclusions and governance boundaries:
+
+- **OQ-25 and OQ-43 remain OPEN.** Task 18 does not resolve chart/report
+  classification or statutory/legal reporting questions.
+- **Task 17 remains FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS and
+  is NOT complete.** Task 17A remains ACCEPTED and Task 17B remains ACCEPTED
+  only for its previously accepted D1–D7 slice; Task 17C remains READY FOR
+  REVIEW — NOT ACCEPTED. Task 18 does not promote, amend or redesign those
+  accepted slices.
+- No generic Reporting module, Report Builder, `/api/v1/reports`, universal
+  report table, EAV/JSONB reporting schema, XLSX/CSV/PDF/Print export, Legal
+  Books, statutory layout, financial statements, treasury/cash/bank reporting,
+  classification, management dimensions, settlement/allocation, AR/AP,
+  sales/purchasing or cross-year carry-forward was added.
+- No ledger, voucher, account, period, financial area or document mutation is
+  exposed. No schema, migration, index, view or report persistence was added.
+- Task 12's P1 PostgreSQL concurrency follow-up, Task 13's review status, Task
+  14's READY FOR REVIEW status and Task 16's authorization gate remain
+  separate and unchanged.
+
+Evidence is recorded in `docs/tasks/task-18/task-18-implementation-report.md`.
+The full backend unit suite, focused report tests, typecheck, build, formatting,
+lint and Swagger route/schema probe were run in this checkout. Prisma engine
+network failure prevented local Prisma validation/generation, and no
+PostgreSQL/Docker tooling was available for live raw-SQL execution; these are
+explicitly not claimed as passed. `git diff --check`, complete status/diff
+review, commit, push and PR creation remain final handoff gates.
 
 ## 9. Open Questions
 
@@ -310,6 +330,10 @@ Task 17 creates no new OQ and does not reclassify OQ-25, OQ-43, OQ-49, or any ex
 **Task 17B Account Statement slice — 2026-09-25:** under Owner decisions D1–D7 (`docs/tasks/task-17/task-17b-prompt.md`, saved before implementation), the bounded read-only account statement was implemented on `arena/01a0d5a0-vardena` (PR **#43**, implementation commit `9ee46f7`): `GET /api/v1/accounting/account-statements`, `Accounting.AccountStatement.View` (36th code, contract §22 row under gate P-10), exact debit-positive Decimal semantics, intra-year sequence-based opening (no carry-forward), org-first 404/422 scope matrix, no schema/migration/index change. Unit 1086 passed; e2e 246 passed + 85 live-PG skipped (CI-only); `prisma validate` not runnable in the sandbox (no `DATABASE_URL`; schema unchanged). Status **ACCEPTED (2026-09-25)** — PR **#43** was reviewed by the Owner/Reviewer before merge and is **MERGED** into `main` in `b10e007` (merged head `1ec996e`), with required CI green on that head (run `36074225037`, job `backend` `completed success`, including `prisma validate`/`generate`, lint, typecheck, format, unit, build, `migrate deploy` and E2E incl. the live-DB suites on `postgres:16` where the 11-test `account-statements-live.e2e-spec.ts` executed green); no blocker remained. The acceptance is bounded to the D1–D7 slice: OQ-25/OQ-43 and Task 17's blocked status unchanged, Task 17 **NOT complete** (`docs/tasks/task-17/task-17b-implementation-report.md`, `docs/tasks/task-17/task-17b-acceptance-record.md`).
 
 **Task 17C Accounting Decision Consolidation — 2026-09-25 (documentation only):** the Owner-approved Accounting decisions **Q1–Q22** and invariants **I-1…I-3** were consolidated as the authoritative baseline for future Accounting work on `arena/01a0d7c4-vardena` (base `b10e007`, merge of PR #43): `docs/accounting/owner-decision-baseline.md` (register + repository reconciliation + 13 discrepancies + 12 open implementation details + verification log), `docs/tasks/task-17/task-17c-prompt.md` (received prompt, verbatim), **ADR-0033/0034/0035/0036/0037 created as Proposed**, `docs/adr/README.md` index rows, `docs/accounting/domain-contract.md` **§31 pointer addendum**, `docs/open-questions.md` **OQ-25/OQ-43 annotated and still OPEN**, `docs/accounting/task-index.md` §2/§4/§5/§9 and `STATE.md` §3/§7/§8/§9/§10. Validation: `git diff --check` clean; documentation-only path audit (no `backend/`, `prisma/`, `*.ts`, `*.sql`, `package*.json`, `.github/`, `docker-compose.yml`, `.env.example` change); referenced-path and AC-/ADR-/OQ-/AR-/AG- id existence checks; markdown table integrity; no ADR or task status promoted; no legal claim. Status **READY FOR REVIEW — NOT ACCEPTED**. **Synchronization 2026-09-25:** after **PR #44** merged into `main` in `2892189` (Task 17B **ACCEPTED**), `main` was merged into `arena/01a0d7c4-vardena`; the resulting conflicts in `STATE.md` §7 and `docs/accounting/task-index.md` header/§2/§9 were resolved by preserving `main`'s Task 17B acceptance text verbatim **and** all Task 17C rows, and the stale "17B READY FOR REVIEW / PR #44 open" references in the 17C records (incl. `docs/accounting/owner-decision-baseline.md` §1/§5 D-8/§7/§8/§10) were replaced with the merged facts. Still documentation only: no production code, schema, migration, test, API, permission or dependency changed by the synchronization.
+
+**Task 18 Accounting Reporting Read Foundation — 2026-09-25:** the Task 18 Owner Decisions D1–D20 are treated as binding for this separately authorized, bounded implementation slice even though older Task 17 records describe the broader Reporting Foundation as blocked by OQ-25/OQ-43. The branch adds one shared Accounting-owned read/query boundary over immutable `accounting.ledger_entries` and three explicit read-only GET APIs: `account-statements`, `general-ledger` and `trial-balance`. It adds independent General Ledger and Trial Balance permissions, organization/financial-area/fiscal-year isolation using existing deployment-pin and authorization conventions, same-year period/date semantics, readable OPEN/CLOSED/SEALED scope, exact Decimal/string calculations, POSTING/AGGREGATION roll-up without parent/child double counting, bounded pages and hard row limit, deterministic allow-listed sorting, transaction timeout and source references. Account Statement behavior remains backward-compatible through the shared repository adapter. Authoritative Accounting models were checked for General Ledger document type and source reference fields; unavailable fields were not fabricated. No generic Reporting module, Report Builder, report persistence, EAV/JSONB schema, migration, export/print/statutory layout, cross-context calculation or other bounded-context work was added. **Governance status: READY FOR REVIEW — NOT ACCEPTED.**
+
+Evidence report: `docs/tasks/task-18/task-18-implementation-report.md`; focused report tests and the full backend unit suite, typecheck, build, formatting and Swagger route/schema probe were executed in this checkout. `npm run lint` was executed with zero errors and six pre-existing warnings in unrelated files. `git diff --check` and final status/diff review remain release gates until the commit. Prisma engine download/network failure prevented local Prisma validation/generation, and no PostgreSQL/Docker tooling was available for live raw-SQL execution; those are explicitly not claimed as passed. OQ-25/OQ-43 remain OPEN, Task 17 remains FORMALIZED / IMPLEMENTATION BLOCKED and NOT complete, and no acceptance is claimed.
 
 ## 11. Maintenance Rules
 

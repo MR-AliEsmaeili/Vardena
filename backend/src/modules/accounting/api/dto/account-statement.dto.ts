@@ -1,7 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional } from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
+import { DATE_ONLY_PATTERN } from '../../domain/date-range.js';
 import type {
   AccountStatementEntry,
   AccountStatementTotals,
@@ -14,12 +15,11 @@ import type {
  * QUERY — the decided filter surface (prompt §12), NOTHING else. Exactly the
  * scope keys (`organizationId`, `accountId`, `fiscalYearId`, optional
  * `accountingPeriodId`, optional `financialAreaId`) plus the shared paging
- * parameters. There is no client sort (the statement order is fixed), no
- * date window (decision D2 fixes the opening to the fiscal-year/period
- * boundary), no voucher/serial/status/text filters and no generic filter
- * engine. The global whitelist validation (`forbidNonWhitelisted`, set up in
- * `main.ts`) rejects ANY other query parameter with 400 — the parameter
- * profile the implementation gate locks (§14).
+ * parameters and the explicit hierarchy/code/name/date filters below. There
+ * is no client sort (the statement order is fixed), no voucher/serial/status/
+ * text filters beyond the account-name filter and no generic filter engine.
+ * The global whitelist validation (`forbidNonWhitelisted`, set up in
+ * `main.ts`) rejects ANY other query parameter with 400.
  *
  * RESPONSE — the declared statement envelope (prompt §8): header/scope echo,
  * movement rows, totals and the three disclosure constants. Amount fields
@@ -63,6 +63,51 @@ export class AccountStatementQueryDto extends PageQueryDto {
   @IsOptional()
   @IsUlid()
   financialAreaId?: string;
+
+  @ApiPropertyOptional({
+    format: 'ulid',
+    description:
+      'Optional hierarchy-root filter. The selected statement account remains the permanent identity.',
+  })
+  @IsOptional()
+  @IsUlid()
+  accountHierarchyId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Optional exact current account-code filter.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  accountCode?: string;
+
+  @ApiPropertyOptional({
+    description: 'Optional account-name contains filter.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  accountName?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-03-21',
+    description:
+      'Optional inclusive Document Date lower bound within the year.',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(DATE_ONLY_PATTERN)
+  dateFrom?: string;
+
+  @ApiPropertyOptional({
+    example: '2027-03-20',
+    description:
+      'Optional inclusive Document Date upper bound within the year.',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(DATE_ONLY_PATTERN)
+  dateTo?: string;
 }
 
 /**

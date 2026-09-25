@@ -39,6 +39,11 @@ import { AccountingLedgerMovementsController } from './api/accounting-ledger-mov
 import { AccountStatementsController } from './api/account-statements.controller.js';
 import { AccountStatementsService } from './application/account-statements.service.js';
 import { AccountStatementsRepository } from './data/account-statements.repository.js';
+import { AccountingReadQueryRepository } from './data/accounting-read-query.repository.js';
+import { GeneralLedgerService } from './application/general-ledger.service.js';
+import { TrialBalanceService } from './application/trial-balance.service.js';
+import { GeneralLedgerController } from './api/general-ledger.controller.js';
+import { TrialBalanceController } from './api/trial-balance.controller.js';
 
 /**
  * Accounting module — foundation + chart structure (Task 10.2, Task 10.3;
@@ -116,6 +121,9 @@ import { AccountStatementsRepository } from './data/account-statements.repositor
     AccountingLedgerMovementsController,
     // Task 17B: the bounded account statement — one GET, read-only.
     AccountStatementsController,
+    // Task 18: explicit report APIs; each has its own permission.
+    GeneralLedgerController,
+    TrialBalanceController,
   ],
   providers: [
     FinancialAreasRepository,
@@ -156,6 +164,11 @@ import { AccountStatementsRepository } from './data/account-statements.repositor
     // silently binding another module to this service (AR-07).
     AccountStatementsService,
     AccountStatementsRepository,
+    // Task 18: one shared Accounting Read/Query Layer consumed by all three
+    // report application services. It is Accounting-owned and read-only.
+    AccountingReadQueryRepository,
+    GeneralLedgerService,
+    TrialBalanceService,
     AccountingPermissionRegistration,
     AccountingDocumentTypeRegistration,
     // Task 10.8: the posting orchestration seam — ONE entry point

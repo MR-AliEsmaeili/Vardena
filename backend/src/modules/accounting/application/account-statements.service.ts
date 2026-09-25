@@ -21,6 +21,7 @@ import {
   type AccountStatementDto,
 } from '../domain/account-statement.js';
 import { sumAmounts } from '../domain/money.js';
+import { parseOptionalDocumentDate } from './accounting-document-support.js';
 
 /**
  * Account Statement — the bounded, read-only account-movement inquiry
@@ -55,11 +56,11 @@ import { sumAmounts } from '../domain/money.js';
  *
  * SEMANTICS (prompt §8–§11; ADR-0031 §2/§4/§9)
  *
- * - Opening is intra-fiscal-year and SEQUENCE-based: `0` for a whole-year
- *   statement or the first period (the accepted Task 12 behavior — no
- *   prior-year carry-forward, decision D2), and Σ(debit − credit) of the
- *   lower-`sequence` periods of the SAME year otherwise. Opening vouchers
- *   posted inside the year appear as ordinary movement rows.
+ * - Opening is intra-fiscal-year: period-only statements use SEQUENCE-based
+ *   lower periods of the SAME year (`0` for a whole-year statement or the
+ *   first period; no prior-year carry-forward), while an explicit `dateFrom`
+ *   uses Document Date rows before that boundary. Opening vouchers posted
+ *   inside the selected window appear as ordinary movement rows.
  * - Movement rows follow the fixed legal-book order
  *   (`documentDate, voucherNumber, lineNo, id`) with the running balance
  *   `opening + Σ net` across the WHOLE window (a page's first row continues
@@ -74,13 +75,12 @@ import { sumAmounts } from '../domain/money.js';
  * FILTER SURFACE (prompt §12)
  *
  * Exactly the decided scope keys: `organizationId`, `accountId`,
- * `fiscalYearId`, optional `accountingPeriodId`, optional `financialAreaId`
- * (must equal the year's area), plus the shared `page`/`pageSize`. There is
- * NO client sort (the running balance defines the order), NO date window (it
- * would need an opening-at-date basis decision D2 does not authorize), NO
- * voucher/serial/status/text filters and NO generic filter engine — anything
- * undeclared is rejected 400 by the global whitelist validation, and an
- * explicitly-sent `sort` is rejected here.
+ * `fiscalYearId`, optional `accountingPeriodId`, optional `financialAreaId`,
+ * optional hierarchy/code/name filters and an inclusive Document Date range,
+ * plus the shared `page`/`pageSize`. There is NO client sort (the running
+ * balance defines the order), NO voucher/serial/status filters and NO generic
+ * filter engine — anything undeclared is rejected 400 by the global whitelist
+ * validation, and an explicitly-sent `sort` is rejected here.
  */
 @Injectable()
 export class AccountStatementsService {
@@ -142,6 +142,75 @@ export class AccountStatementsService {
       query.fiscalYearId,
     );
 
+    const dateFrom = parseOptionalDocumentDate(query.dateFrom, 'dateFrom');
+    const dateTo = parseOptionalDocumentDate(query.dateTo, 'dateTo');
+    if (dateFrom !== undefined && dateTo !== undefined && dateFrom > dateTo) {
+      throw AppException.badRequest('dateFrom must not be after dateTo.');
+    }
+    const reportStart = dateFrom ?? year.startDate;
+    const reportEnd = dateTo ?? year.endDate;
+    if (
+      reportStart.getTime() < year.startDate.getTime() ||
+      reportEnd.getTime() > year.endDate.getTime()
+    ) {
+      throw AppException.businessRule(
+        'The reporting date range must remain inside the requested fiscal year.',
+      );
+    }
+
+    if (query.accountCode !== undefined && account.code !== query.accountCode) {
+      throw AppException.businessRule(
+        'The account code filter does not match the selected account.',
+      );
+    }
+    if (
+      query.accountName !== undefined &&
+      !account.title
+        .toLocaleLowerCase()
+        .includes(query.accountName.toLocaleLowerCase())
+    ) {
+      throw AppException.businessRule(
+        'The account name filter does not match the selected account.',
+      );
+    }
+    if (query.accountHierarchyId !== undefined) {
+      const hierarchy = await this.statements.findAccount(
+        query.organizationId,
+        query.accountHierarchyId,
+      );
+      if (hierarchy === null) {
+        throw AppException.notFound('Account', query.accountHierarchyId);
+      }
+      // Account Statement still has exactly one permanent Account.id. The
+      // hierarchy filter therefore narrows that identity; it never turns the
+      // statement into a descendant roll-up report.
+      let cursor = account;
+      const visited = new Set<string>();
+      while (cursor.id !== hierarchy.id) {
+        if (visited.has(cursor.id) || cursor.parentId === undefined) {
+          throw AppException.businessRule(
+            'The selected account is outside the requested account hierarchy.',
+          );
+        }
+        visited.add(cursor.id);
+        if (cursor.parentId === null) {
+          throw AppException.businessRule(
+            'The selected account is outside the requested account hierarchy.',
+          );
+        }
+        const parent = await this.statements.findAccount(
+          query.organizationId,
+          cursor.parentId,
+        );
+        if (parent === null) {
+          throw AppException.businessRule(
+            'The selected account is outside the requested account hierarchy.',
+          );
+        }
+        cursor = parent;
+      }
+    }
+
     // One financial area per request (decision D4): the year's own area. An
     // optional client `financialAreaId` must exist in the organization (404
     // otherwise) and equal the year's area (422 on mismatch) — a foreign
@@ -200,6 +269,14 @@ export class AccountStatementsService {
             .filter((row) => row.sequence < activePeriod.sequence)
             .map((row) => row.id);
 
+    const documentDate =
+      dateFrom === undefined && dateTo === undefined
+        ? undefined
+        : {
+            ...(dateFrom === undefined ? {} : { gte: dateFrom }),
+            ...(dateTo === undefined ? {} : { lte: dateTo }),
+          };
+
     const { skip, take } = toOffset(query.page, query.pageSize);
     const facts = await this.statements.readStatementLedgerFacts(
       {
@@ -208,23 +285,27 @@ export class AccountStatementsService {
           financialAreaId: year.financialAreaId,
           fiscalYearId: year.id,
           accountId: account.id,
+          ...(documentDate === undefined ? {} : { documentDate }),
           ...(activePeriod === null
             ? {}
             : { accountingPeriodId: activePeriod.id }),
         },
         priorPeriodIds,
+        ...(dateFrom === undefined ? {} : { openingBefore: dateFrom }),
       },
       skip,
       take,
     );
 
-    // Opening: `0` for the whole-year window (the fiscal-year boundary IS the
-    // window start — decision D2), else the exact debit − credit of the
-    // prior-SEQUENCE periods. No prior-year closing enters this arithmetic.
+    // An explicit date range uses Document Date as the primary financial axis.
+    // The accepted Task 17B period-only contract remains sequence based when
+    // no dateFrom is supplied; both paths remain inside this fiscal year.
     const openingBalanceAmount =
-      activePeriod === null
-        ? '0'
-        : netAmountOf(facts.priorPeriodDebit, facts.priorPeriodCredit);
+      dateFrom !== undefined
+        ? netAmountOf(facts.priorPeriodDebit, facts.priorPeriodCredit)
+        : activePeriod === null
+          ? '0'
+          : netAmountOf(facts.priorPeriodDebit, facts.priorPeriodCredit);
 
     // The running balance continues across pages: base = opening + Σ net of
     // every window row before this page (same predicate, same snapshot).
@@ -317,6 +398,13 @@ export interface GetAccountStatementQuery {
   accountingPeriodId?: string | undefined;
   /** Optional: must equal the fiscal year's financial area (decision D4). */
   financialAreaId?: string | undefined;
+  /** Optional hierarchy/code/name display filters. */
+  accountHierarchyId?: string | undefined;
+  accountCode?: string | undefined;
+  accountName?: string | undefined;
+  /** Optional inclusive Document Date range within the fiscal year. */
+  dateFrom?: string | undefined;
+  dateTo?: string | undefined;
   page: number;
   pageSize: number;
   /** Never accepted — the statement order is fixed (prompt §11). */
