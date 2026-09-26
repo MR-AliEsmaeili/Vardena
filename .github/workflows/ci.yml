@@ -10,7 +10,8 @@
 #
 # Backend pipeline order mirrors backend/README.md "Tests" / "quality gates":
 #   prisma validate -> generate -> lint -> typecheck -> format:check
-#   -> unit -> build -> migrate deploy -> e2e (with VARDENA_TEST_DATABASE_URL)
+#   -> unit -> build -> migrate deploy -> system-admin bootstrap -> e2e
+#      (with VARDENA_TEST_DATABASE_URL)
 #
 # Notes:
 # - npm is upgraded to v11 first: npm 10's resolver crashes on this
@@ -110,6 +111,12 @@ jobs:
         env:
           DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
         run: npm run prisma:deploy
+
+      - name: Bootstrap system administrator
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+        run: npm run bootstrap:system-admin
 
       # The populated pre-Task-11 backfill cannot be observed on a database that
       # was migrated from empty, so this step proves it the only way possible:

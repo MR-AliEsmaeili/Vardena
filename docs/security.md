@@ -112,9 +112,31 @@ codes) and refetches on RBAC change events.
 
 **Role administration:** roles are created, renamed and given/removed
 permissions and users through the RBAC endpoints; there is **no role deletion**
-and no `Rbac.Role.Delete` permission in v1 (OQ-20). System roles (if any are
-seeded) and the role set itself are a **business decision — OQ-14**; do not
-invent them. The first administrator's bootstrap procedure is OQ-19.
+and no `Rbac.Role.Delete` permission in v1 (OQ-20). The one approved built-in
+role is `System Administrator`, created by the post-migration installation
+bootstrap and reconciled to every permission in the current code registry. It
+uses ordinary `roles`, `role_permissions`, and `user_roles` rows: role names
+have no runtime semantics, and there is no wildcard or administrator bypass.
+The occupational role set (Accountant, Warehouse, Auditor, and so on) and
+separation policy remain the business decision in OQ-14.
+
+**First-administrator bootstrap (OQ-19 procedure resolved):** after migrations,
+`npm run bootstrap:system-admin` creates the real Users-domain account `مدیر`
+with the specified initial credential, hashing the password through the existing
+Argon2id `PasswordService`, then assigns `System Administrator`. The command is
+idempotent: it creates no duplicate user/role/assignment, adds newly registered
+permissions on later deployment runs, and never resets an existing user's
+password or lifecycle state. Docker Compose runs it in the `migrate` service;
+CI runs the same built command against PostgreSQL. There is no bootstrap HTTP
+endpoint. OQ-19 remains open only for last-administrator/self-lockout safety.
+The bootstrap does not invent or hardcode an organization. On a fresh database
+the administrator may create the initial organization and then grant their own
+ordinary membership through the existing empty-organization first-grant rule;
+until that membership exists, ODR-3 still returns 404 from organization-scoped
+paths despite the full RBAC role. The schema has no forced-password-change state
+or login contract; the initial credential must therefore be changed immediately
+after first login through the existing password-reset operation, which revokes
+sessions.
 
 **Organization membership boundary (ODR-3, Task 19):** organization-scoped
 access is principal-bound. A module permission alone NEVER crosses

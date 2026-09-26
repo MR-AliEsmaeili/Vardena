@@ -27,7 +27,8 @@ services:
       retries: 10
       start_period: 5s
 
-  # Run database migrations once before either application process starts.
+  # Run migrations and the idempotent real-user/RBAC bootstrap before either
+  # application process starts.
   migrate:
     build:
       context: ./backend
@@ -39,7 +40,14 @@ services:
       NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "15000"
       NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "120000"
       NPM_CONFIG_FETCH_TIMEOUT: "900000"
-    command: ["npx", "prisma", "migrate", "deploy"]
+    # Installation is migration-safe and repeatable: schema first, then the
+    # real Users + RBAC bootstrap records (no auth/authorization bypass).
+    command:
+      [
+        "sh",
+        "-c",
+        "npx prisma migrate deploy && npm run bootstrap:system-admin",
+      ]
     depends_on:
       postgres:
         condition: service_healthy

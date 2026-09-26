@@ -30,6 +30,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
+    "bootstrap:system-admin": "node --enable-source-maps dist/bootstrap-system-administrator.js",
     "prisma:format": "prisma format",
     "prisma:validate": "prisma validate"
   },

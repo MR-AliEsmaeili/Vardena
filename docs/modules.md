@@ -94,8 +94,10 @@ rules; it defines the _mechanism_, vertical modules provide the _content_
 - **Owns:** `identity.sessions` (opaque tokens, hashed at rest, expiry, last
   activity, device/IP metadata). Password hashes live on `users.users` (owned by
   Users); Identity reads them via the Users module's public service.
-- **API (high-level):** login, logout, current session, list/revoke sessions
-  (self + admin), password change (own), forced password reset (admin-initiated).
+- **API (implemented):** login, logout and current session. The Users API owns
+  the implemented administrator password-reset operation; self-service password
+  change, forced-change-on-first-login state, and session list/revoke endpoints
+  are not implemented.
 - **Publishes:** `UserSession.Created`, `UserSession.Revoked`, `Login.Failed`.
 - **Not responsible for:** user records/profiles (Users), role/permission checks
   (RBAC), audit storage (Audit — it emits events that Audit consumes).
@@ -123,6 +125,10 @@ Disable|ResetPassword`. There is no delete permission because there is no
 - **Not responsible for:** login/session mechanics (Identity), permissions (RBAC).
 - **Responses:** safe DTOs only (id, username, isActive, createdAt, updatedAt) —
   the password hash never leaves the module (AR-24).
+- **Installation bootstrap:** the post-migration command creates `مدیر` through
+  this module's normal user model and Argon2id `PasswordService`; plaintext is
+  never stored or returned. An existing account is not password-reset on a
+  later bootstrap run.
 
 ## Organization (implemented — structure & party master data)
 
@@ -227,8 +233,14 @@ Remove`. No `Rbac.Role.Delete` (OQ-20).
   unauthenticated, 403 when authorized-but-not-permitted (ADR-0016).
 - **Publishes:** `Role.Created`, `Role.Updated`, `RolePermission.Assigned`,
   `RolePermission.Removed`, `UserRole.Assigned`, `UserRole.Removed`.
-- **Seed roles are a business decision (OQ-14)** — do not invent them; the first
-  administrator's bootstrap procedure is OQ-19.
+- **Installation bootstrap:** the approved `System Administrator` role is the
+  single built-in role exception to OQ-14. The post-migration bootstrap assigns
+  it every code in the current permission registry and connects the real
+  Users-domain account through `rbac.user_roles`. Re-runs add missing/newly
+  registered grants without duplicates. The role has no runtime special case,
+  wildcard, inheritance, or organization bypass. Occupational role baselines
+  remain open in OQ-14; OQ-19 remains open only for self/last-administrator
+  lockout safety.
 - **Not responsible for:** deciding _where_ checks happen (that's every module's
   application layer, AR-21) or audit of denials (Audit module).
 

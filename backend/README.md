@@ -77,6 +77,20 @@ npm run start:prod         # node dist/main.js
 npm run start:worker       # node dist/worker.js
 ```
 
+For a non-Compose installation, run the bootstrap command from the same built
+release immediately after migrations:
+
+```bash
+npm run build
+npm run prisma:deploy
+npm run bootstrap:system-admin
+```
+
+The bootstrap is deterministic and idempotent. It creates the real Users/RBAC
+records for the initial `System Administrator`, reconciles that role to every
+currently registered permission, and never resets an existing password. It has
+no HTTP endpoint and performs no runtime authorization bypass.
+
 The API boots **without** a database (liveness is DB-free; `/ready` reports DB
 state). The worker **fails fast** when the database is unreachable — a worker
 without the database cannot do its future jobs.
@@ -142,10 +156,20 @@ docker-compose up
 ```
 
 The newer `docker compose up` spelling is equivalent. Compose builds the
-backend images, waits for PostgreSQL, applies `prisma migrate deploy`, and then
-starts `api` and `worker`. The API is available at `http://localhost:3000`;
-`/api/v1/health/live` is the liveness probe and `/api/docs` is the local
-Swagger UI.
+backend images, waits for PostgreSQL, applies `prisma migrate deploy`, runs the
+idempotent System Administrator bootstrap, and then starts `api` and `worker`.
+The API is available at `http://localhost:3000`; `/api/v1/health/live` is the
+liveness probe and `/api/docs` is the local Swagger UI.
+
+Initial login: username `مدیر`, password `1`. This deliberately weak installation
+credential is hashed with the existing Argon2id mechanism before storage and is
+never printed by the bootstrap command. Change it immediately after first login
+with `POST /api/v1/users/{id}/password-reset`; all sessions are then revoked.
+Forced password change is not implemented, so this operational step is required.
+On a fresh database no organization is invented: create the initial organization,
+then use the existing first-member grant to assign `مدیر` a normal organization
+membership. Organization-scoped routes continue to enforce ODR-3 before that
+membership exists.
 
 Inside the images, installs run with npm 11 (`node:22-slim` bundles npm 10,
 whose resolver crashes on this dependency graph) plus generous fetch
@@ -267,10 +291,11 @@ test/                # e2e specs + support (harness, validation probe)
 - RBAC evaluation reads the assignment tables on every request (no permission
   cache — ADR-0016). Immediate revocation over one indexed join; caching is a
   documented revisit point with its invalidation contract.
-- User/RBAC endpoints exist and are guarded (`AuthGuard`, `AuthorizationGuard`,
-  `@RequirePermission`), but **no seeded users or roles** are created (OQ-14);
-  the first administrator must be created out-of-band by the operator
-  (OQ-19 tracks the procedure). See `docs/security.md` §3.
+- The bootstrap account is not protected from self-disable, self-role-removal,
+  or last-administrator lockout; those safety rules remain open in OQ-19. There
+  is also no forced-password-change field/contract, so the operator must change
+  the initial credential immediately after login. Occupational role baselines
+  remain open in OQ-14; only `System Administrator` is provisioned.
 - Prisma CLI operations and the live-DB paths were not runnable in this
   sandbox (no Postgres, no network to `binaries.prisma.sh`); CI must be the
   first to prove the `prisma/schema/` + `prisma/migrations/` sibling layout

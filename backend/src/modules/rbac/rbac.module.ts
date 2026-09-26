@@ -11,6 +11,7 @@ import { PermissionsService } from './application/permissions.service.js';
 import { RbacPermissionRegistration } from './application/rbac-permission-registration.js';
 import { RolesService } from './application/roles.service.js';
 import { UserRolesService } from './application/user-roles.service.js';
+import { SystemAdministratorRbacService } from './application/system-administrator-rbac.service.js';
 import { PermissionsController } from './api/permissions.controller.js';
 import { RolesController } from './api/roles.controller.js';
 
@@ -47,7 +48,13 @@ import { RolesController } from './api/roles.controller.js';
     UserRolesService,
     PermissionSyncService,
     RbacPermissionRegistration,
+    SystemAdministratorRbacService,
   ],
-  exports: [AuthorizationService, PermissionRegistry, AuthorizationGuard],
+  exports: [
+    AuthorizationService,
+    PermissionRegistry,
+    AuthorizationGuard,
+    SystemAdministratorRbacService,
+  ],
 })
 export class RbacModule {}
