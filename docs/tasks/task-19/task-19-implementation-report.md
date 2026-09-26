@@ -1,7 +1,6 @@
 # Task 19 — Chart Configuration Coherence, Accounting-owned Chart Tree, Principal-bound Organization Authorization — Implementation Report
 
-Status: **READY FOR REVIEW — NOT ACCEPTED** (the implementation agent never
-self-accepts; acceptance is the Owner/Reviewer's explicit act)
+Status: **ACCEPTED (2026-09-26)** under Owner-authorized Acceptance Sync after final repository review. The implementation agent did not self-accept; the formal record is `task-19-acceptance-record.md`.
 Date: 2026-09-26 · PR **#54** (`arena/01a0dd0a-vardena` → `main`) ·
 **Amended 2026-09-26 by the post-merge ODR-3 membership-administration
 correction — see §6** (branch `arena/01a0dd6c-vardena`, base `f153251`) ·
@@ -182,20 +181,22 @@ suite or gate was weakened, skipped or ignored at any point.
   Live-DB / CI Migration / CI Concurrency gates — an execution-environment
   decision, not reduced coverage).
 
-## 5. Status (as of PR #54)
+## 5. Historical status at PR #54
 
-**Task 19 implementation: READY FOR REVIEW — NOT ACCEPTED.** This report
-and PR #54 are the review basis. Task 19 status is never self-accepted.
-See §6 for the post-merge corrective change to ODR-3, which supersedes the
-membership-administration semantics described above.
+**At the PR #54 review stage, Task 19 implementation was READY FOR REVIEW — NOT
+ACCEPTED.** This historical status was the review basis for PR #54; it was not a
+self-acceptance. See §6 for the post-merge corrective change to ODR-3, which
+superseded the membership-administration semantics described above. The final
+Owner-authorized acceptance is recorded in §7 and in
+`task-19-acceptance-record.md`.
 
 ---
 
 ## 6. Post-merge correction — ODR-3 membership administration boundary (2026-09-26)
 
-Status: **READY FOR REVIEW — NOT ACCEPTED** · corrective change only ·
-PR **#55** (`arena/01a0dd6c-vardena` → `main`), commit `86273b8`, required CI
-**green** (run `36238862315`) ·
+Historical status at PR #55 submission: **READY FOR REVIEW — NOT ACCEPTED** ·
+corrective change only · PR **#55** (`arena/01a0dd6c-vardena` → `main`), commit
+`86273b8`, required CI **green** (run `36238862315`) ·
 base: merge commit `f153251` (PR #54) · Task 19 is **not** reimplemented, and
 ODR-1 and ODR-2 are **not** touched (no functional change to
 `planPinCoherence`, `AccountPinsIncoherentError`, configuration pin coherence,
@@ -323,5 +324,85 @@ locally unless explicitly authorized.**
   deactivation, no effective dating (**OQ-01/OQ-22 remain OPEN**).
 - **OQ-25, OQ-43, OQ-62, OQ-63 remain OPEN**; ADR-0033…0037 remain
   **Proposed**; no ADR promoted by this correction.
-- Task 19 stays **READY FOR REVIEW — NOT ACCEPTED**; this correction does not
-  and cannot accept it.
+- **Historical pre-acceptance status at PR #55 submission:** Task 19 was
+  **READY FOR REVIEW — NOT ACCEPTED**; the correction itself did not self-accept
+  the task. Final acceptance is recorded in §7 and in the separate acceptance
+  record.
+
+## 7. Final acceptance synchronization — 2026-09-26
+
+**Task 19 — Accounting Chart / Configuration Foundation: ACCEPTED.** This final
+status is recorded under **Owner-authorized Acceptance Sync after final repository
+review**. The implementation agent did not self-accept. The canonical acceptance
+record is `docs/tasks/task-19/task-19-acceptance-record.md`.
+
+The accepted implementation contains exactly the three slices already described in
+this report:
+
+- **ODR-1 — Explicit Configuration Coherence:** `coding_structure_version_id` and
+  `accounting_configuration_id` are checked for the defined code shape at the
+  relevant write boundaries and re-checked at the repository/transaction boundary;
+  divergent pins are rejected without a silent winner or fallback; existing
+  divergent rows are not repaired; historical ledger identity remains based on
+  `account_id` and immutable account-code semantics remain unchanged.
+- **ODR-2 — Accounting-owned Chart Tree:** Accounting owns the Account master and
+  read surface through `GET /api/v1/accounting/chart-tree` and
+  `GET /api/v1/accounting/chart-tree/:id`; the surface is organization-scoped,
+  deterministically ordered and bounded, retains inactive accounts, uses existing
+  Account relationships for hierarchy, and introduces no balances, turnover,
+  Reporting module, `/api/v1/reports`, or legal/statutory report.
+- **ODR-3 — Principal-bound Organization Authorization:** the accepted invariant is
+  `Principal → Authorized Organization Membership / Context → Requested Organization
+  → Module Permission → Resource Access`; organization access is membership-bound,
+  `assertOrganizationInScope` is the principal-bound chokepoint, arbitrary
+  caller-supplied organization ids cannot bypass membership, and the approved 404
+  isolation posture is preserved. Membership administration is included in this
+  boundary after PR #55, with only the bounded first-grant bootstrap exception for
+  an empty organization; list and revoke never receive that exception.
+
+### Final evidence and correction
+
+PR **#54** implemented the three slices but initially left membership administration
+outside the principal membership boundary, permitting permission-only
+cross-organization membership administration. PR **#55** corrected that ODR-3 defect
+before final acceptance; ODR-1 and ODR-2 were unchanged. PR #55 is merged in `main`
+in `6a69bc6c17bf0dfb69a15adc3e3203ae6098d871` after PR #54's merge commit
+`f15325184023ff0c7e9d34727834da19f4350eda`.
+
+The final authoritative CI evidence is run **`36238862315`**, result **SUCCESS**,
+with the `backend` job completed successfully. The configured gates passed,
+including Prisma validate/generate, lint, typecheck, format check, unit tests, build,
+migrate deploy, migration rehearsal, E2E and live PostgreSQL suites. No required gate
+was skipped or continued-on-error; the conditional failure-artifact step was skipped
+only because the job succeeded.
+
+The recorded local fast evidence for PR #55 is: format:check PASS; lint PASS with
+0 errors; typecheck PASS; unit tests PASS (**101 files / 1148 tests**); and build
+PASS. Local Prisma validate/generate were blocked by the sandbox Prisma engine
+download restriction and were delegated to CI; this report does not claim they
+passed locally. Heavy E2E, live PostgreSQL, migration rehearsal and concurrency
+execution were delegated to CI under `docs/testing/test-execution-policy.md`; no
+heavy E2E/live-DB test was executed locally.
+
+### Final governance boundaries
+
+**OQ-25, OQ-43, OQ-62, OQ-63, OQ-01 and OQ-22 remain OPEN.** OQ-19 also remains
+OPEN where it is referenced for out-of-band first-administrator/bootstrap
+provisioning. ADR-0033, ADR-0034, ADR-0035, ADR-0036 and ADR-0037 remain
+**Proposed**; no ADR is promoted by Task 19 acceptance.
+
+Task 17 remains **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS** and is not
+complete. Task 17A and Task 17B remain **ACCEPTED**; Task 17C remains exactly
+**ACCEPTED (2026-09-25)** as recorded in the repository; Task 18 remains
+**ACCEPTED**.
+
+Task 19 does not implement or resolve Reporting, Report Builder, Journal Book,
+statutory/legal books, Legal Profile, XLSX/CSV/PDF/Print, Account Overview UI,
+Treasury, AR/AP, Sales/Purchase, Settlement, code-length or level-count migration,
+the ADR-0035 migration service, control roles, a base/template chart, account code
+history, non-leaf POSTING, dimensions, floating details, OQ-25, OQ-43, OQ-62/OQ-63,
+full membership roles/deactivation/effective dating, or OQ-01/OQ-22. No scope is
+expanded retrospectively.
+
+The Acceptance Sync submission remains **READY FOR REVIEW**; the Owner/Reviewer
+performs the final review of the Acceptance Sync PR.
