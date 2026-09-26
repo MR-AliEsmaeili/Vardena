@@ -124,63 +124,71 @@ describe('Deployment organization pin (e2e)', () => {
         .useValue(core.operations);
 
     // ---- Phase 1: un-pinned seed app --------------------------------------
+    // The seed app is owned by this hook: close it in `finally` so a failing
+    // seed step can never orphan it (the E2E hang class fixed in PR #14 —
+    // see docs/testing/e2e-hang-root-cause.md).
     const seeded = await createTestApp({ override: withRepositories });
     const seedApp = seeded.app;
-    const users = seedApp.get(UsersService);
-    const roles = seedApp.get(RolesService);
-    const userRoles = seedApp.get(UserRolesService);
-    const allCodes = seedApp
-      .get(PermissionRegistry)
-      .all()
-      .map((definition) => definition.code);
-    const rootUser = await users.createUser({
-      username: ROOT.username,
-      password: ROOT.password,
-    });
-    const rootRole = await roles.createRole({
-      name: 'Pin Root',
-      description: 'Bootstrap administrator (test fixture)',
-      permissionCodes: allCodes,
-    });
-    await userRoles.assignRoleToUser(rootRole.id, rootUser.id);
+    try {
+      const users = seedApp.get(UsersService);
+      const roles = seedApp.get(RolesService);
+      const userRoles = seedApp.get(UserRolesService);
+      const allCodes = seedApp
+        .get(PermissionRegistry)
+        .all()
+        .map((definition) => definition.code);
+      const rootUser = await users.createUser({
+        username: ROOT.username,
+        password: ROOT.password,
+      });
+      const rootRole = await roles.createRole({
+        name: 'Pin Root',
+        description: 'Bootstrap administrator (test fixture)',
+        permissionCodes: allCodes,
+      });
+      await userRoles.assignRoleToUser(rootRole.id, rootUser.id);
 
-    const organizations = seedApp.get(OrganizationsService);
-    orgId = (
-      await organizations.createOrganization({ code: 'PIN', name: 'Pinned Co' })
-    ).id;
-    otherOrgId = (
-      await organizations.createOrganization({
-        code: 'OTHER',
-        name: 'Other Co',
-      })
-    ).id;
+      const organizations = seedApp.get(OrganizationsService);
+      orgId = (
+        await organizations.createOrganization({
+          code: 'PIN',
+          name: 'Pinned Co',
+        })
+      ).id;
+      otherOrgId = (
+        await organizations.createOrganization({
+          code: 'OTHER',
+          name: 'Other Co',
+        })
+      ).id;
 
-    const branches = seedApp.get(BranchesService);
-    branchId = (
-      await branches.createBranch({
-        organizationId: orgId,
-        code: 'MAIN',
-        name: 'Main branch',
-      })
-    ).id;
-    foreignBranchId = (
-      await branches.createBranch({
-        organizationId: otherOrgId,
-        code: 'MAIN',
-        name: 'Foreign main branch',
-      })
-    ).id;
+      const branches = seedApp.get(BranchesService);
+      branchId = (
+        await branches.createBranch({
+          organizationId: orgId,
+          code: 'MAIN',
+          name: 'Main branch',
+        })
+      ).id;
+      foreignBranchId = (
+        await branches.createBranch({
+          organizationId: otherOrgId,
+          code: 'MAIN',
+          name: 'Foreign main branch',
+        })
+      ).id;
 
-    const units = seedApp.get(UnitsService);
-    unitId = (
-      await units.createUnit({
-        organizationId: orgId,
-        code: 'PCS',
-        name: 'Piece',
-      })
-    ).id;
-
-    await seedApp.close();
+      const units = seedApp.get(UnitsService);
+      unitId = (
+        await units.createUnit({
+          organizationId: orgId,
+          code: 'PCS',
+          name: 'Piece',
+        })
+      ).id;
+    } finally {
+      await seedApp.close();
+    }
 
     // ---- Phase 2: pinned app over the same tables -------------------------
     const pinned = await createTestApp({
