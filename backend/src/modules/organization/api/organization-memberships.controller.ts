@@ -49,9 +49,13 @@ const PaginatedMembershipDto = paginatedResponseOf(
  * `@DeploymentOrganizationRoot()` so the deployment pin guard (ADR-0025)
  * confines these routes exactly like every other organization-root route.
  *
- * Granting does not require the grantor to already be a member: the Grant
- * permission is the administration authority (the first membership of an
- * organization must be grantable — see the application service).
+ * Authorization is organization-bound (ODR-3): the permission is checked by
+ * the route guard AND re-checked in the application service, which also
+ * requires the acting principal to be a member of the target organization.
+ * The one exception is the bootstrap grant of the FIRST member of an
+ * organization whose membership set is empty — see the application service.
+ * A non-member gets 404, never 403: the API does not reveal that an
+ * organization exists.
  */
 @ApiTags('organization-memberships')
 @ApiUnauthorizedResponse({ description: 'Not authenticated.' })
@@ -72,7 +76,10 @@ export class OrganizationMembershipsController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedMembershipDto) }] },
   })
-  @ApiNotFoundResponse({ description: 'Organization does not exist.' })
+  @ApiNotFoundResponse({
+    description:
+      'Organization does not exist, or the caller is not a member of it.',
+  })
   @DeploymentOrganizationRoot()
   async list(
     @Param('id') id: string,
@@ -93,7 +100,8 @@ export class OrganizationMembershipsController {
   @ApiOperation({ summary: 'Grant a user access to an organization.' })
   @ApiNoContentResponse({ description: 'Membership granted.' })
   @ApiNotFoundResponse({
-    description: 'Organization or user does not exist.',
+    description:
+      'Organization or user does not exist, or the caller is not a member of an organization that already has members.',
   })
   @ApiConflictResponse({ description: 'User is already a member.' })
   @ApiBadRequestResponse({ description: 'Validation failed.' })
@@ -112,7 +120,8 @@ export class OrganizationMembershipsController {
   @ApiOperation({ summary: "Revoke a user's access to an organization." })
   @ApiNoContentResponse({ description: 'Membership revoked.' })
   @ApiNotFoundResponse({
-    description: 'Organization does not exist, or the user is not a member.',
+    description:
+      'Organization does not exist, the caller is not a member of it, or the target user is not a member.',
   })
   @DeploymentOrganizationRoot()
   async revoke(

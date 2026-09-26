@@ -568,6 +568,14 @@ export class InMemoryOrganizationMembershipsRepository {
     return this.rows.get(this.key(userId, organizationId)) ?? null;
   }
 
+  /** The bootstrap predicate: does this organization have ANY member? */
+  async hasAnyMember(organizationId: string): Promise<boolean> {
+    for (const row of this.rows.values()) {
+      if (row.organizationId === organizationId) return true;
+    }
+    return false;
+  }
+
   async listForOrganization(params: {
     organizationId: string;
     skip: number;

@@ -34,13 +34,19 @@ import { createTestApp } from './support/test-app.js';
  * exactly that check against the in-memory users store, so the HTTP contract
  * under test is the real one.
  *
- * What this proves over the unit specs: the bootstrap rule (the FIRST grant
- * needs no grantor membership — the permission is the authority, otherwise a
- * fresh deployment could never authorize anyone), the grant/revoke lifecycle
- * over HTTP (204 / 409 duplicate / 404 unknown user or org / 404 revoking a
- * non-member), permission enforcement per operation (403), and the ODR-3
- * boundary itself: a principal reads an organization ONLY while a membership
- * row exists — permission alone never crosses organizations.
+ * What this proves over the unit specs (ODR-3, post-merge correction):
+ * membership administration is ORGANIZATION-BOUND over real HTTP — a
+ * principal holding `Organization.Membership.{View,Grant,Revoke}` may
+ * administer only an organization it is itself a member of, and a non-member
+ * gets 404 (never 403, never 200: no existence leak). The single exception is
+ * the BOOTSTRAP grant: the first member of an organization whose membership
+ * set is empty may be granted by a non-member holding
+ * `Organization.Membership.Grant`; the exception closes as soon as one member
+ * exists and re-opens only if the set becomes empty again. Also covered: the
+ * grant/revoke lifecycle (204 / 409 duplicate / 404 unknown user or org / 404
+ * revoking a non-member), per-operation permission enforcement (403), and the
+ * data-path boundary itself (a principal reads an organization ONLY while a
+ * membership row exists).
  */
 describe('Organization membership administration (e2e)', () => {
   let app: INestApplication;
@@ -53,15 +59,18 @@ describe('Organization membership administration (e2e)', () => {
   const ADMIN = { username: 'admin', password: 'admin-secret' };
   const MEMBER = { username: 'member', password: 'member-secret' };
   const PLAIN = { username: 'plain', password: 'plain-secret' };
+  const OUTSIDER = { username: 'outsider', password: 'outsider-secret' };
 
   let admin: ReturnType<typeof request.agent>;
   let member: ReturnType<typeof request.agent>;
   let plain: ReturnType<typeof request.agent>;
+  let outsider: ReturnType<typeof request.agent>;
 
   const state = {
     adminId: '',
     memberId: '',
     plainId: '',
+    outsiderId: '',
     orgId: '',
     otherOrgId: '',
   };
@@ -88,6 +97,8 @@ describe('Organization membership administration (e2e)', () => {
     const membershipsWithUserFk = {
       findMembership: (userId: string, organizationId: string) =>
         raw.findMembership(userId, organizationId),
+      hasAnyMember: (organizationId: string) =>
+        raw.hasAnyMember(organizationId),
       listForOrganization: (params: {
         organizationId: string;
         skip: number;
@@ -150,8 +161,8 @@ describe('Organization membership administration (e2e)', () => {
       }
     }
 
-    // ADMIN holds everything — and is deliberately a member of NOTHING: the
-    // first grant must not require a grantor membership (bootstrap rule).
+    // ADMIN holds everything — and starts a member of NOTHING, so the
+    // bootstrap grant of the first member is exercised for real.
     const adminUser = await users.createUser({
       username: ADMIN.username,
       password: ADMIN.password,
@@ -185,12 +196,33 @@ describe('Organization membership administration (e2e)', () => {
     });
     state.plainId = plainUser.id;
 
+    // OUTSIDER holds every membership-administration permission and is
+    // deliberately never made a member of anything: it is the standing proof
+    // that permission alone is not authority over an organization.
+    const outsiderUser = await users.createUser({
+      username: OUTSIDER.username,
+      password: OUTSIDER.password,
+    });
+    state.outsiderId = outsiderUser.id;
+    const outsiderRole = await roles.createRole({
+      name: 'MembershipAdminNoMembership',
+      description: 'Membership verbs without any membership (test fixture)',
+      permissionCodes: [
+        'Organization.Membership.View',
+        'Organization.Membership.Grant',
+        'Organization.Membership.Revoke',
+      ],
+    });
+    await userRoles.assignRoleToUser(outsiderRole.id, outsiderUser.id);
+
     admin = request.agent(app.getHttpServer());
     member = request.agent(app.getHttpServer());
     plain = request.agent(app.getHttpServer());
+    outsider = request.agent(app.getHttpServer());
     await admin.post('/api/v1/auth/login').send(ADMIN).expect(200);
     await member.post('/api/v1/auth/login').send(MEMBER).expect(200);
     await plain.post('/api/v1/auth/login').send(PLAIN).expect(200);
+    await outsider.post('/api/v1/auth/login').send(OUTSIDER).expect(200);
 
     // Two organizations exist; nobody is a member of either yet.
     const org = await admin
@@ -236,28 +268,77 @@ describe('Organization membership administration (e2e)', () => {
     expect(revoke.body.code).toBe('PermissionDenied');
   });
 
-  it('bootstrap: the FIRST grant needs no grantor membership — the permission is the authority', async () => {
-    // ADMIN is a member of NOTHING. The very first membership of the very
-    // first organization must still be grantable, or a fresh deployment
-    // could never authorize anyone (the deadlock ODR-3 explicitly avoids).
+  it('bootstrap: the first grant is allowed ONLY because the target organization has zero members', async () => {
+    // ADMIN is a member of NOTHING, and the organization has no member at
+    // all — the one case in which `Organization.Membership.Grant` alone is
+    // authority (otherwise a fresh organization could never be populated).
+    // ADMIN bootstraps ITSELF as the first member.
+    await admin
+      .post(`/api/v1/organizations/${state.orgId}/members`)
+      .send({ userId: state.adminId })
+      .expect(204);
+  });
+
+  it('a NON-MEMBER with Organization.Membership.Grant cannot grant once the organization already has a member (404)', async () => {
+    // The bootstrap exception closed the moment the first member existed;
+    // it is not a standing bypass. OUTSIDER holds every membership verb and
+    // is a member of nothing.
+    const res = await outsider
+      .post(`/api/v1/organizations/${state.orgId}/members`)
+      .send({ userId: state.memberId })
+      .expect(404);
+    expect(res.body.code).toBe('EntityNotFound');
+    // Indistinguishable from an unknown organization: no existence leak.
+    const unknown = await outsider
+      .post('/api/v1/organizations/01AAAAAAAAAAAAAAAAAAAAAAAA/members')
+      .send({ userId: state.memberId })
+      .expect(404);
+    expect(unknown.body.code).toBe(res.body.code);
+  });
+
+  it('a NON-MEMBER cannot list the members of an organization (404 isolation)', async () => {
+    const res = await outsider
+      .get(`/api/v1/organizations/${state.orgId}/members`)
+      .expect(404);
+    expect(res.body.code).toBe('EntityNotFound');
+    const unknown = await outsider
+      .get('/api/v1/organizations/01AAAAAAAAAAAAAAAAAAAAAAAA/members')
+      .expect(404);
+    expect(unknown.body.code).toBe(res.body.code);
+  });
+
+  it('a NON-MEMBER cannot revoke a membership (404 isolation)', async () => {
+    const res = await outsider
+      .delete(`/api/v1/organizations/${state.orgId}/members/${state.adminId}`)
+      .expect(404);
+    expect(res.body.code).toBe('EntityNotFound');
+  });
+
+  it('a MEMBER holding Grant may grant another user (the normal path)', async () => {
     await admin
       .post(`/api/v1/organizations/${state.orgId}/members`)
       .send({ userId: state.memberId })
       .expect(204);
   });
 
-  it('lists the granted member (paged, membership-administration view)', async () => {
+  it('lists the members for a MEMBER holding View (paged, grant order)', async () => {
     const res = await admin
       .get(`/api/v1/organizations/${state.orgId}/members`)
       .expect(200);
-    expect(res.body.total).toBe(1);
-    expect(res.body.items).toHaveLength(1);
-    expect(res.body.items[0]).toMatchObject({
+    expect(res.body.total).toBe(2);
+    expect(
+      (res.body.items as Array<{ userId: string }>).map((row) => row.userId),
+    ).toEqual([state.adminId, state.memberId]);
+    expect(res.body.items[1]).toMatchObject({
       userId: state.memberId,
       organizationId: state.orgId,
     });
     // The API never exposes audit actor ids (AR-24).
-    expect(res.body.items[0]).not.toHaveProperty('createdBy');
+    expect(res.body.items[1]).not.toHaveProperty('createdBy');
+    // The refused non-member calls above changed nothing.
+    expect(
+      (res.body.items as Array<{ userId: string }>).map((row) => row.userId),
+    ).not.toContain(state.outsiderId);
   });
 
   it('refuses a duplicate grant with 409', async () => {
@@ -301,7 +382,7 @@ describe('Organization membership administration (e2e)', () => {
     expect(unknown.body.code).toBe('EntityNotFound');
   });
 
-  it('revokes the membership (204); the member loses access immediately', async () => {
+  it('a MEMBER holding Revoke revokes another member (204); access is lost immediately', async () => {
     await admin
       .delete(`/api/v1/organizations/${state.orgId}/members/${state.memberId}`)
       .expect(204);
@@ -312,11 +393,12 @@ describe('Organization membership administration (e2e)', () => {
       .expect(404);
     expect(denied.body.code).toBe('EntityNotFound');
 
-    // The list is empty again.
+    // Only the grantor's own bootstrap membership is left.
     const list = await admin
       .get(`/api/v1/organizations/${state.orgId}/members`)
       .expect(200);
-    expect(list.body.total).toBe(0);
+    expect(list.body.total).toBe(1);
+    expect(list.body.items[0]).toMatchObject({ userId: state.adminId });
   });
 
   it('refuses to revoke a membership that does not exist (404)', async () => {
@@ -326,16 +408,96 @@ describe('Organization membership administration (e2e)', () => {
     expect(res.body.code).toBe('EntityNotFound');
   });
 
-  it('a second organization stays isolated throughout (no wildcard access)', async () => {
-    // ADMIN grants MEMBER into orgId only; otherOrgId must stay untouched.
+  it('a second organization is administered independently (no wildcard access)', async () => {
+    // otherOrgId is still empty, so ADMIN may bootstrap it — and ONLY it:
+    // being a member of orgId grants nothing over otherOrgId, and vice versa.
     await admin
-      .post(`/api/v1/organizations/${state.orgId}/members`)
-      .send({ userId: state.memberId })
+      .post(`/api/v1/organizations/${state.otherOrgId}/members`)
+      .send({ userId: state.adminId })
       .expect(204);
     const otherList = await admin
       .get(`/api/v1/organizations/${state.otherOrgId}/members`)
       .expect(200);
-    expect(otherList.body.total).toBe(0);
+    expect(otherList.body.total).toBe(1);
+
+    // MEMBER (no membership anywhere now) still sees nothing.
     await member.get(`/api/v1/organizations/${state.otherOrgId}`).expect(404);
+
+    // OUTSIDER holds every membership verb and is a member of neither
+    // organization: both are 404 for it, although both exist and it just
+    // bootstrapped nothing.
+    await outsider
+      .get(`/api/v1/organizations/${state.otherOrgId}/members`)
+      .expect(404);
+    await outsider
+      .post(`/api/v1/organizations/${state.otherOrgId}/members`)
+      .send({ userId: state.memberId })
+      .expect(404);
+  });
+
+  it('the LAST member may revoke themselves; the organization re-enters bootstrap', async () => {
+    // ADMIN is the only member of otherOrgId and revokes itself.
+    await admin
+      .delete(
+        `/api/v1/organizations/${state.otherOrgId}/members/${state.adminId}`,
+      )
+      .expect(204);
+
+    // The membership set is empty → the bootstrap exception applies again,
+    // so a non-member holding Grant may create the first member once more.
+    await outsider
+      .post(`/api/v1/organizations/${state.otherOrgId}/members`)
+      .send({ userId: state.memberId })
+      .expect(204);
+
+    // …and it closes again at once: OUTSIDER is still not a member.
+    const second = await outsider
+      .post(`/api/v1/organizations/${state.otherOrgId}/members`)
+      .send({ userId: state.plainId })
+      .expect(404);
+    expect(second.body.code).toBe('EntityNotFound');
+    const list = await outsider
+      .get(`/api/v1/organizations/${state.otherOrgId}/members`)
+      .expect(404);
+    expect(list.body.code).toBe('EntityNotFound');
+  });
+
+  it('cross-organization: a member of one organization cannot administer the other', async () => {
+    // MEMBER is now a member of otherOrgId only. Give it the membership
+    // verbs and prove they stop at its own organization boundary.
+    const crossRole = await roles.createRole({
+      name: 'MembershipAdminMemberOfOther',
+      description: 'Membership verbs held by a member of otherOrg (fixture)',
+      permissionCodes: [
+        'Organization.Membership.View',
+        'Organization.Membership.Grant',
+        'Organization.Membership.Revoke',
+      ],
+    });
+    await userRoles.assignRoleToUser(crossRole.id, state.memberId);
+
+    // Its own organization: allowed.
+    const own = await member
+      .get(`/api/v1/organizations/${state.otherOrgId}/members`)
+      .expect(200);
+    expect(own.body.total).toBe(1);
+
+    // The other organization (which has members): 404 for every verb.
+    await member
+      .get(`/api/v1/organizations/${state.orgId}/members`)
+      .expect(404);
+    await member
+      .post(`/api/v1/organizations/${state.orgId}/members`)
+      .send({ userId: state.plainId })
+      .expect(404);
+    await member
+      .delete(`/api/v1/organizations/${state.orgId}/members/${state.adminId}`)
+      .expect(404);
+
+    // And the foreign organization's membership set is untouched.
+    const untouched = await admin
+      .get(`/api/v1/organizations/${state.orgId}/members`)
+      .expect(200);
+    expect(untouched.body.total).toBe(1);
   });
 });

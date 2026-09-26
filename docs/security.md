@@ -125,8 +125,28 @@ indistinguishable from an unknown organization id (the approved isolation
 posture — no existence leak via 403). Memberships are granted and revoked
 through `GET/POST/DELETE /api/v1/organizations/:id/members` under
 `Organization.Membership.{View,Grant,Revoke}`; presence IS the authorization
-(no per-org roles, no wildcard); the first grant needs no grantor membership
-(the permission is the authority — bootstrap cannot deadlock). The full
+(no per-org roles, no wildcard).
+
+**Membership ADMINISTRATION is organization-bound too** (ODR-3, corrected
+post-merge — the first Task 19 implementation bound only the data paths and
+deliberately exempted the grantor, which was a cross-organization
+authorization bypass on the administration surface). The rule now:
+
+| Target organization | Required of the acting principal |
+|---|---|
+| **has ≥ 1 member** | authenticated **+** member of that organization **+** the operation's permission (`Membership.View` to list, `Membership.Grant` to grant, `Membership.Revoke` to revoke) |
+| **has 0 members** (bootstrap) | authenticated **+** `Organization.Membership.Grant` — may create the **FIRST** membership only; list and revoke stay membership-bound |
+
+The bootstrap exception is the only case in which a permission alone is
+authority over an organization, it is confined to the first `POST
+/organizations/:id/members` of an organization whose membership set is empty
+(an existence probe, `OrganizationMembershipsRepository.hasAnyMember`), and it
+closes as soon as one member exists. If the last member revokes themselves the
+set becomes empty again and the organization re-enters bootstrap — accepted,
+and still not a standing bypass, because every non-first operation re-checks
+the acting principal's membership. Order per request: authentication →
+permission → deployment pin → membership → business operation; a non-member
+always receives **404**, never 403 and never "exists but forbidden". The full
 membership model (per-organization roles, deactivation, effective dating)
 remains OQ-01/OQ-22.
 

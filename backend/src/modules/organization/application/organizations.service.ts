@@ -347,11 +347,11 @@ export class OrganizationsService {
   /**
    * Deployment organization pin (ADR-0025) — the pin half of the scope
    * assertion, on its own. Public for the membership ADMINISTRATION path
-   * (`OrganizationMembershipsService`), which validates the target
-   * organization's existence and pin but deliberately NOT the grantor's
-   * membership: requiring membership there would make the FIRST membership of
-   * any organization impossible to grant (bootstrap deadlock), and the
-   * `Organization.Membership.Grant` permission is the authority instead.
+   * (`OrganizationMembershipsService`), which applies the pin first and then
+   * decides whether the acting principal's membership is required: it always
+   * is, except for the one bootstrap case (granting the FIRST member of an
+   * organization whose membership set is empty), where there is no membership
+   * to hold yet.
    */
   assertDeploymentOrganizationPin(id: string): void {
     const pin = this.config.deploymentOrganizationId;
@@ -361,13 +361,19 @@ export class OrganizationsService {
   }
 
   /**
-   * The membership administration resolver (ODR-3 bootstrap path): the
-   * organization must exist, be inside the deployment pin and be usable — but
-   * the CALLER's membership is deliberately not required, so the first
-   * membership of an organization can be granted. Everything else about the
+   * The membership administration ORGANIZATION resolver: the organization
+   * must exist, be inside the deployment pin and be usable. It carries no
+   * principal binding of its own — the caller
+   * (`OrganizationMembershipsService`) performs the ODR-3 membership
+   * assertion around it, because only the caller knows whether the operation
+   * is the bootstrap grant of the first member. Everything else about the
    * posture matches `requireUsableOrganization` (404 for unknown/foreign ids,
    * 422 for a disabled organization, which may not anchor new records —
    * master-data-strategy.md §7.4).
+   *
+   * Not a general-purpose entry point: organization-scoped DATA paths must
+   * keep using `requireUsableOrganization` / `assertOrganizationInScope`,
+   * which are principal-bound unconditionally.
    */
   async requireAdministrableOrganization(id: string): Promise<Organization> {
     this.assertDeploymentOrganizationPin(id);
