@@ -238,15 +238,16 @@ The eight questions of §7 of the brief, answered from code:
 | 7 | Application-level, database-level, or both? | **Application-level, by design.** The migration header states why: exclusion constraints, recursive CHECKs and triggers are invisible to Prisma and would be **dropped by the next generated migration**, silently losing the invariant. The unique indexes are backstops for *identity* races (code uniqueness, one ACTIVE version per organization), not for the tree invariants. |
 | 8 | What tests prove the invariant? | `domain/account-placement.spec.ts`: "refuses a child under a postable parent (double-count guard)", "refuses making an account with children postable", "allows making a leaf postable and allows removing postability", "keeps a leaf non-postable when the organization wants a placeholder", "takes the default from the level definition, not from a level name". `application/coding-structure-accounts.spec.ts`: "enforces the postable ⇄ leaf invariant on both write paths". Live PostgreSQL: `backend/test/account-structure-live.e2e-spec.ts` — "serialises a postability flip against the first child create". |
 
-### 5.1 The recorded conflict (D-1) is real and unresolved
+### 5.1 The recorded D-1 conflict — subsequently resolved by Task 20
 
-Owner decision **Q5** says configuration *may* allow posting at another level; contract
-§14 rule 2 (AC-D-19) and invariant AC-I-09 make `postable ⇒ leaf` structural. ADR-0034 §6
-records the conflict, keeps today's rule in force, and requires — before any relaxation —
-an accepted ADR amendment superseding AC-D-19/AC-I-09, an amendment to §8.5's
-undifferentiated roll-up, an explicit stored role attribute, **separated own-vs-descendant
-measures**, explicit transition rules, report disclosure and denial-path tests. **None of
-that exists.** So:
+At this investigation's baseline, Owner decision **Q5** said configuration *may* allow
+posting at another level while contract §14 rule 2 (AC-D-19) and invariant AC-I-09 made
+`postable ⇒ leaf` structural. **Task 20 OD-20-5 subsequently resolved D-1** by selecting
+that leaf-only rule: `POSTING = leaf-only` and `AGGREGATION = reporting/read-time roll-up`.
+ADR-0034 now records the authoritative decision. A future non-leaf-posting exception
+would require a new explicit decision that reopens/supersedes the rule, together with
+ADR/read-model redesign, explicit transition rules, report disclosure, and denial-path
+tests. **None of that exception work exists or is authorized.** Therefore:
 
 - `POSTING`/`AGGREGATION` as a *stored, configurable role*: **NOT IMPLEMENTED / NOT
   AUTHORIZED**.
