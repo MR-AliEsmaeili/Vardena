@@ -233,14 +233,17 @@ Remove`. No `Rbac.Role.Delete` (OQ-20).
   unauthenticated, 403 when authorized-but-not-permitted (ADR-0016).
 - **Publishes:** `Role.Created`, `Role.Updated`, `RolePermission.Assigned`,
   `RolePermission.Removed`, `UserRole.Assigned`, `UserRole.Removed`.
-- **Installation bootstrap:** the approved `System Administrator` role is the
-  single built-in role exception to OQ-14. The post-migration bootstrap assigns
-  it every code in the current permission registry and connects the real
-  Users-domain account through `rbac.user_roles`. Re-runs add missing/newly
-  registered grants without duplicates. The role has no runtime special case,
-  wildcard, inheritance, or organization bypass. Occupational role baselines
-  remain open in OQ-14; OQ-19 remains open only for self/last-administrator
-  lockout safety.
+- **Installation bootstrap:** PR #64's in-review implementation provisions one
+  installation role named `System Administrator`. The post-migration bootstrap
+  assigns it every code in the current permission registry and connects the
+  real Users-domain account through `rbac.user_roles`. Re-runs add
+  missing/newly registered grants without duplicates. The role has no runtime
+  special case, wildcard, inheritance, or organization bypass. This is an
+  implementation fact, not an Owner Decision or a built-in occupational-role
+  policy. OQ-14 remains OPEN for occupational roles, their permission
+  baselines, auditor/administrator separation, and future role baselines.
+  PR #64 implements the provisioning procedure, while OQ-19 remains OPEN for
+  self-disable, self-role-removal, and last-administrator lockout protection.
 - **Not responsible for:** deciding _where_ checks happen (that's every module's
   application layer, AR-21) or audit of denials (Audit module).
 

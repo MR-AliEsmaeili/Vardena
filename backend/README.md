@@ -292,10 +292,12 @@ test/                # e2e specs + support (harness, validation probe)
   cache — ADR-0016). Immediate revocation over one indexed join; caching is a
   documented revisit point with its invalidation contract.
 - The bootstrap account is not protected from self-disable, self-role-removal,
-  or last-administrator lockout; those safety rules remain open in OQ-19. There
+  or last-administrator lockout; those safety rules remain OPEN in OQ-19. There
   is also no forced-password-change field/contract, so the operator must change
-  the initial credential immediately after login. Occupational role baselines
-  remain open in OQ-14; only `System Administrator` is provisioned.
+  the initial credential immediately after login. PR #64 provisions only the
+  installation role `System Administrator`; that implementation fact is not an
+  Owner Decision or occupational-role policy. OQ-14 remains OPEN for
+  occupational roles and future role permission baselines.
 - Prisma CLI operations and the live-DB paths were not runnable in this
   sandbox (no Postgres, no network to `binaries.prisma.sh`); CI must be the
   first to prove the `prisma/schema/` + `prisma/migrations/` sibling layout

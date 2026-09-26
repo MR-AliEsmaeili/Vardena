@@ -23,11 +23,13 @@ The repository already supplied every required architectural mechanism:
 - post-migration Docker initialization and live-PostgreSQL CI.
 
 There was no seed/bootstrap script, forced-password-change field/contract, or
-bootstrap Organization concept. No new architecture decision was required:
-this implementation extends the existing system-context bootstrap posture and
-post-migration initialization. It does not invent an organization. A fresh
-administrator creates the initial organization and uses the already accepted
-first-member grant to obtain an ordinary membership.
+bootstrap Organization concept. The implementation extends the existing
+system-context bootstrap posture and post-migration initialization without
+changing runtime authorization architecture. This report records implementation
+behavior only: it does not establish the bootstrap role as a product-level role
+policy, create an Owner Decision, or resolve OQ-14/OQ-19. It does not invent an
+organization. A fresh administrator creates the initial organization and uses
+the already accepted first-member grant to obtain an ordinary membership.
 
 ## Implementation
 
@@ -79,8 +81,8 @@ Security verification: Argon2id hash verified; plaintext excluded from DB/API/er
 Local tests: targeted 5/5; full backend unit 1,153/1,153; typecheck, lint (0 errors), format and build PASS
 CI tests: PASS — run 36269856402; backend and frontend jobs green, including Prisma validate/generate, migration, built bootstrap command, migration rehearsal, and full E2E/live PostgreSQL
 
-Known limitations: no forced-password-change infrastructure; operator must immediately use the existing password-reset API. OQ-19 self-disable/self-role-removal/last-admin lockout safety remains open. A deployment pin whose organization does not yet exist still requires the existing out-of-band organization provisioning posture of ADR-0025.
-Open decisions: occupational role baselines/auditor separation remain OQ-14; remaining OQ-19 safety policy remains open. No bootstrap Organization decision was invented.
+Known limitations: no forced-password-change infrastructure; operator must immediately use the existing password-reset API. OQ-19 self-disable/self-role-removal/last-admin lockout safety remains OPEN. A deployment pin whose organization does not yet exist still requires the existing out-of-band organization provisioning posture of ADR-0025.
+Open decisions: OQ-14 remains OPEN for occupational roles, Accountant/Warehouse/Sales/Auditor baselines, auditor/administrator separation, and future role permission baselines. OQ-19 remains OPEN for administrator safety. The implemented role and provisioning procedure are implementation facts, not Owner Decisions; no bootstrap Organization decision was invented.
 
 Status:
 READY FOR REVIEW
