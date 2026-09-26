@@ -71,7 +71,14 @@ authorization, and API. The frontend talks only to the Vardena API.
   opt-in via `VARDENA_TEST_DATABASE_URL`; two migration rehearsals exist
   (`npm run test:migration-rehearsal` — Task 11 backfill;
   `npm run test:operational-freeze-rehearsal` — Task 13).
-- **The frontend has not started**; `frontend/` is still the target layout.
+- **The frontend exists as one vertical slice** (Task 22, READY FOR REVIEW —
+  not accepted): `frontend/` is a React + Vite SPA with login/session, the RTL
+  application shell, organization context, permission-aware navigation and the
+  read-only Accounting surfaces (chart tree, account statement, general ledger,
+  trial balance). No other screen exists — no create/edit UI, no Inventory,
+  Workflow, RBAC admin or Treasury UI. Setup and conventions:
+  `frontend/README.md`. Its CI job (`frontend` in `.github/workflows/ci.yml`)
+  runs install → lint → typecheck → format:check → tests → build.
 - **Governance:** `STATE.md` is the consolidated project memory (task history,
   review status, risks); the authoritative accounting task sequence is
   `docs/accounting/task-index.md`; per-task evidence lives in `docs/tasks/` and
@@ -133,7 +140,12 @@ backend/
   prisma/schema/     ← schema-per-module Prisma sources (base + 8 modules)
   prisma/migrations/ ← 16 applied migrations
   prisma/rehearsal/  ← Task 11 / 12 / 13 migration & freeze rehearsal fixtures
-frontend/            ← (target, not started) React SPA
+frontend/            ← React SPA (Task 22 slice; see frontend/README.md)
+  src/app/           ← providers, router, route guards, app shell
+  src/api/           ← single Axios instance, error envelope, generated OpenAPI types
+  src/features/      ← auth, permissions, organization, accounting (read surfaces)
+  src/ui/            ← shadcn/ui-style primitives + reusable patterns
+  src/lib/           ← i18n dictionary, formatters, Day.js, helpers
 docker-compose.yml   ← API + worker + PostgreSQL
 ```
 

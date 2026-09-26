@@ -140,11 +140,16 @@ semantics of an existing field requires an ADR).
 ## 6. Target Repository Layout
 
 > **Implementation status (verified 2026-09-26 —
-> `repository-documentation-audit.md`):** the backend below **exists**
+> `repository-documentation-audit.md`; frontend line updated by Task 22):** the
+> backend below **exists**
 > (`backend/src/kernel`, `backend/src/modules/{health,identity,users,rbac,organization,inventory,documents,workflow,accounting}`,
 > `prisma/schema/` with 8 module files and `prisma/migrations/` with 16
-> migrations). The `frontend/` tree, the `backend/src/kernel/outbox/` port and
-> the `modules/{audit,notifications,sales,purchasing,reporting,excel,print,customization,integration,sync,jobs}`
+> migrations). The `frontend/` tree **now exists** with `src/{app,api,features,ui,lib}`
+> as drawn below (Task 22 — auth, organization context and the Accounting read
+> surfaces; `features/` holds `auth/ permissions/ organization/ accounting/`
+> only, plus a `styles/` and a `test/` folder). The
+> `backend/src/kernel/outbox/` port and the
+> `modules/{audit,notifications,sales,purchasing,reporting,excel,print,customization,integration,sync,jobs}`
 > folders below are **target layout, not present**. Module folders currently
 > use `api/ application/ domain/ data/`; the optional `events/ reports/
 > imports/ documents/` folders of §4 are not in use (domain event schemas live
@@ -178,18 +183,28 @@ Vardena/
 │   │   ├── schema/            # one .prisma file per module (AR-09)
 │   │   └── migrations/
 │   └── docker/                # Dockerfiles (api, worker)
-├── frontend/
+├── frontend/                  # React SPA (setup & conventions: frontend/README.md)
 │   └── src/
-│       ├── app/               # router, layouts, providers
+│       ├── app/               # router, layouts, providers, route guards
 │       ├── api/               # single Axios instance + per-module API functions
+│       │   └── generated/     #   openapi-typescript output (ADR-0014)
 │       ├── features/          # one feature slice per module (mirror backend)
-│       ├── ui/                # shadcn/ui primitives
-│       └── lib/               # utils, Day.js setup, formatters, i18n dict
+│       ├── ui/                # shadcn/ui primitives + reusable patterns
+│       ├── lib/               # utils, Day.js setup, formatters, i18n dict
+│       ├── styles/            # Tailwind entry
+│       └── test/              # test setup, render helpers, fixtures
 ├── docker-compose.yml         # postgres + api + worker (+ volumes)
 └── README.md
 ```
 
 ## 7. Frontend Architecture (summary)
+
+> **Implementation status:** the conventions below are implemented by the
+> Task 22 slice (login/session, RTL app shell, organization context,
+> permission-aware navigation, Accounting read surfaces). Everything else —
+> other feature slices, grid-state persistence via the customization module,
+> the localization decision (OQ-02) — is still target state. Setup, scripts and
+> the file layout are documented in [`frontend/README.md`](../frontend/README.md).
 
 - **Feature slices mirror backend modules** (`features/inventory`, `features/sales`,
   ...) — the same mental model on both sides (AR-27).
