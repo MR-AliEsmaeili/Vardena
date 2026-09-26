@@ -1,12 +1,17 @@
 # Vardena — Module Catalog
 
 Status: Accepted (foundation) · Updated: 2026-09-26 (implementation-state
-corrections only — `repository-documentation-audit.md`)
+corrections only — `repository-documentation-audit.md`; ADR-0017–0020 note
+scoped per PR #61 review)
 
 > **Domain foundation:** the domain model, configurability and workflow architecture
 > are specified in [`architecture/domain/`](./architecture/domain/README.md)
 > (blueprint + glossary + master-data/document/workflow/inventory/accounting docs).
-> Proposed ADRs 0017–0020 are pending acceptance; nothing there is implemented yet.
+> Proposed ADRs 0017–0020 are pending acceptance, and no capability that
+> depends on them has been implemented. This says nothing about the rest of
+> the repository: the modules marked implemented in the map below (and the
+> frontend slice of Task 22) exist under accepted ADRs and are unaffected by
+> the status of 0017–0020.
 
 This is the normative module catalog. Each entry defines: purpose, responsibilities
 (including what the module is **not** responsible for), owned data (schema),

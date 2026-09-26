@@ -1,6 +1,14 @@
-# Vardena backend CI: quality gates + unit tests + build + e2e (incl. live-DB suites).
+# Vardena CI: two independent jobs.
 #
-# Pipeline order mirrors backend/README.md "Tests" / "quality gates":
+# `backend`  — quality gates + unit tests + build + e2e (incl. live-DB suites).
+# `frontend` — quality gates + component/logic tests + production build.
+#
+# The frontend job deliberately does NOT duplicate the backend's live-DB
+# integration coverage: it never starts Postgres and never boots the API.
+# Frontend verification is hermetic (the `src/api/*` modules are stubbed in
+# tests), so the two jobs run in parallel and stay independently meaningful.
+#
+# Backend pipeline order mirrors backend/README.md "Tests" / "quality gates":
 #   prisma validate -> generate -> lint -> typecheck -> format:check
 #   -> unit -> build -> migrate deploy -> e2e (with VARDENA_TEST_DATABASE_URL)
 #
@@ -132,3 +140,45 @@ jobs:
             backend/**/*.log
             backend/test-results/**
             /tmp/vardena-*.log
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Upgrade npm to v11
+        run: npm install -g npm@11
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Typecheck
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Format check
+        working-directory: frontend
+        run: npm run format:check
+
+      - name: Tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build

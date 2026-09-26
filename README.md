@@ -1,12 +1,20 @@
 # Vardena
 
 A modern **modular ERP** system: NestJS + TypeScript + PostgreSQL (Prisma)
-backend; React + TypeScript (Vite, Tailwind, shadcn/ui) frontend is the fixed
-target stack (ADR-0002) and has **not started**. Extensible by design — new ERP
-modules are added without architectural change. On-premise today, cloud-ready.
+backend; React + TypeScript (Vite, Tailwind, shadcn/ui) frontend on the fixed
+stack of ADR-0002, whose **first vertical slice is implemented**. Extensible by
+design — new ERP modules are added without architectural change. On-premise
+today, cloud-ready.
 
-> **Status: backend implemented, frontend not started** (verified 2026-09-26 —
-> `docs/repository-documentation-audit.md`). `backend/` is a NestJS modular
+> **Status: backend implemented, frontend at its first vertical slice**
+> (backend verified 2026-09-26 — `docs/repository-documentation-audit.md`;
+> frontend added by Task 22, **READY FOR REVIEW — not accepted**).
+> `frontend/` is a React + Vite SPA covering login/session, the RTL
+> application shell, organization context, permission-aware navigation and the
+> read-only Accounting surfaces (chart tree, account statement, general ledger,
+> trial balance) against the real API — see
+> [frontend/README.md](frontend/README.md). No other UI exists yet.
+> `backend/` is a NestJS modular
 > monolith with the kernel (config, validation, errors, logging, correlation,
 > Prisma, rate limiting) plus nine registered modules — `health` and the eight
 > domain modules **identity, users, rbac, organization, inventory, documents,
@@ -53,6 +61,7 @@ production deployment.
 | Asking "what is actually built and what was accepted?" | [STATE.md](STATE.md) (project memory, task history, review status) + [docs/repository-documentation-audit.md](docs/repository-documentation-audit.md) |
 | Reviewing the system design | [docs/architecture.md](docs/architecture.md) |
 | Working on a domain | [docs/modules.md](docs/modules.md) + the matching `docs/*.md` |
+| Working on the UI | [frontend/README.md](frontend/README.md) + [docs/architecture.md](docs/architecture.md) §7 |
 | Changing the architecture | [docs/adr/](docs/adr/) (process in `adr/README.md` — an ADR is required) |
 | Asking about behavior that isn't specified | [docs/open-questions.md](docs/open-questions.md) (register an OQ — never invent business rules) |
 
@@ -73,4 +82,5 @@ production deployment.
 - [docs/adr/](docs/adr/) — architecture decision records
 - [.vardena/](.vardena/) — agent context, architecture rules, development rules
 - [backend/README.md](backend/README.md) — backend setup, workflows, conventions
+- [frontend/README.md](frontend/README.md) — frontend setup, scripts, layout and conventions
 - [docker-compose.yml](docker-compose.yml) — local stack (PostgreSQL + API + worker)
