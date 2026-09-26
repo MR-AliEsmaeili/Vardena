@@ -6,7 +6,8 @@ documentation / governance synchronization only (no production change)
 | | |
 |---|---|
 | Branch | `arena/01a0dea5-vardena` |
-| Inspection baseline | `d46bb4e859b44582f7c83051d581cb93b2139fed` (merge of PR #59 on `main`; local clone is shallow — only this commit is present locally) |
+| Inspection baseline | `d46bb4e859b44582f7c83051d581cb93b2139fed` (merge of PR #59 on `main`; the local clone is shallow) |
+| Rebased onto | `1dca53a` (merge of PR #60 — **Task 21**, documentation only), merged into this branch after the audit was written. **Re-verified: Task 21 changed no file under `backend/`** (`git diff --stat d46bb4e origin/main -- backend` is empty), so every code fact in §B and every status in §C stands unchanged. Task 21 — *Base Chart Governance & OQ-25 Resolution* — is **READY FOR REVIEW — NOT ACCEPTED**, design/governance documentation only; it narrows but does **not** close OQ-25, promotes no ADR and reopens neither Task 19 nor Task 20. This audit neither accepts nor reinterprets it. |
 | Scope decision carried by this task | **Treasury / خزانه‌داری is OUT OF MVP — deferred to a future phase** (§E) |
 | Source of truth | current repository code, schema and migrations (§11 of the task brief) |
 | Production code changed | **NO** (§I) |
@@ -32,7 +33,7 @@ documentation / governance synchronization only (no production change)
 - `docs/accounting/`: `task-index.md`, `domain-contract.md`, `configuration.md`,
   `lock-order-matrix.md`, `owner-decision-baseline.md`, decision notes
 - `docs/adr/` (all 37 present records, status lines transcribed — §C.16)
-- `docs/tasks/task-16` … `docs/tasks/task-20` (briefs, gates, reports, acceptance records)
+- `docs/tasks/task-16` … `docs/tasks/task-21` (briefs, gates, reports, acceptance records; `task-21/` arrived on `main` during this task and was reviewed for code impact — there is none)
 - `docs/task-6/9/10.4/10.5/10.7/10.8/11/12/13/14-*.md` implementation reports
 - `docs/product/` (MVP scope proposal, roadmap, product-business decision baseline)
 - `docs/testing/test-execution-policy.md`
@@ -289,6 +290,7 @@ one unambiguous place; that statement is now added.
 | Same header: “Task 14: READY FOR REVIEW — NOT ACCEPTED — PR **#32** **open**” | PR #32 is **merged** (`ce223fb…`, `STATE.md` §7) | **STALE FACT, correct governance status** → merge fact corrected; **status stays READY FOR REVIEW — NOT ACCEPTED** |
 | Accounting task index has **no Task 15 row** | Reversal is implemented and merged (PR #33; `STATE.md` §7 row 15) and is an Accounting capability | **MISSING** → factual row added, with review status recorded as **UNKNOWN / no acceptance record found** (no acceptance invented) |
 | Tasks 17A/17B/17C/18/19/20 statuses | Cross-checked against `STATE.md` §7, the acceptance records in `docs/tasks/`, and code | **MATCH** |
+| Task 21 (Base Chart Governance & OQ-25 Resolution), merged on `main` in `1dca53a` after this audit's baseline | Documentation only — no `backend/` file changed; recorded **READY FOR REVIEW — NOT ACCEPTED**; OQ-25 narrowed but still **OPEN** | **MATCH** — no code fact in this report is affected; not accepted or reinterpreted here |
 | ADR-0017/0018/0019/0020/0021 still **Proposed** while implemented (Inventory ledger, workflow, documents, org scope/master data) | ADR files + shipped code | **CODE AHEAD OF GOVERNANCE** → reported only (§D-3); **no ADR status changed** |
 | ADR-0031 (balance projection) and ADR-0032 (period close) **Proposed** while implemented | ADR files + shipped code | **CODE AHEAD OF GOVERNANCE** → reported only (§D-4) |
 | ADR-0033…0037 **Proposed**; Task 17C/20 accepted without promoting them | ADR headers say exactly this | **MATCH** |

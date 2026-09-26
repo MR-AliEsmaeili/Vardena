@@ -123,7 +123,7 @@ docs/
   architecture/domain/ ← domain blueprint, glossary, per-domain analyses
   product/           ← MVP scope proposal, roadmap, product decision baseline
   decisions/product/ ← per-OQ product decision records
-  tasks/task-16…20/  ← briefs, gates, implementation reports, acceptance records
+  tasks/task-16…21/  ← briefs, gates, implementation reports, acceptance records
   testing/           ← test-execution policy, e2e notes
   task-*.md          ← earlier per-task implementation reports (A–J format)
 backend/
