@@ -116,6 +116,20 @@ and no `Rbac.Role.Delete` permission in v1 (OQ-20). System roles (if any are
 seeded) and the role set itself are a **business decision — OQ-14**; do not
 invent them. The first administrator's bootstrap procedure is OQ-19.
 
+**Organization membership boundary (ODR-3, Task 19):** organization-scoped
+access is principal-bound. A module permission alone NEVER crosses
+organizations: every organization-scoped read and write passes through
+`OrganizationsService.assertOrganizationInScope` (deployment pin → principal
+→ membership), so a caller without a membership row gets **404**,
+indistinguishable from an unknown organization id (the approved isolation
+posture — no existence leak via 403). Memberships are granted and revoked
+through `GET/POST/DELETE /api/v1/organizations/:id/members` under
+`Organization.Membership.{View,Grant,Revoke}`; presence IS the authorization
+(no per-org roles, no wildcard); the first grant needs no grantor membership
+(the permission is the authority — bootstrap cannot deadlock). The full
+membership model (per-organization roles, deactivation, effective dating)
+remains OQ-01/OQ-22.
+
 **Denial logging:** authorization denials are logged with actor, required codes,
 route and correlation id (and are emitted as domain events where a module owns
 the action) for security review; the Audit module consumes them when it lands —
