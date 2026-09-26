@@ -1,6 +1,7 @@
 # Vardena — Module Catalog
 
-Status: Accepted (foundation) · Updated: 2026-09-11
+Status: Accepted (foundation) · Updated: 2026-09-26 (implementation-state
+corrections only — `repository-documentation-audit.md`)
 
 > **Domain foundation:** the domain model, configurability and workflow architecture
 > are specified in [`architecture/domain/`](./architecture/domain/README.md)
@@ -14,25 +15,46 @@ published/consumed events, and extension points. Adding a module = new folder pe
 
 ## Module Map
 
+> **How to read the `Status` column (clarified 2026-09-26).** “**v1 core**”
+> means *in the intended v1 scope* — it does **not** mean implemented. Verified
+> against the code at `d46bb4e`, exactly nine modules exist in
+> `backend/src/modules/`: `health` plus **Identity, Users, RBAC, Organization,
+> Inventory, Documents, Workflow, Accounting**. Every other entry in this
+> catalog (**Audit, Notifications, Sales, Purchasing, Reporting, Excel, Print,
+> Customization, Integration, Sync, Jobs**) has **no module, no schema and no
+> table** — those sections are specification, not description. An entry
+> existing here is never an authorization to implement it: see
+> `.vardena/agent-rules.md` AG-09/AG-15 and the task governance in `STATE.md`.
+>
+> **Treasury (خزانه‌داری) is deferred and out of the current MVP scope.**
+> Cash (صندوق), bank (بانک), payment (پرداخت), receipt (دریافت), cheque (چک)
+> and settlement (تسویه) capabilities are future-phase; they must not be
+> implemented implicitly by Accounting or any other existing module. Treasury
+> mentions elsewhere in this file and in the accounting contract are
+> future-consumer context only.
+
 | Module        | Status                                                                                                                                                                                                                  | One-line purpose                                                                                                                                                                            | Owned schema(s) |
 | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------- |
-| Identity      | v1 core                                                                                                                                                                                                                 | Authentication: login, sessions, password handling                                                                                                                                          | `identity`      |
-| Users         | v1 core                                                                                                                                                                                                                 | User records, profiles, enable/disable                                                                                                                                                      | `users`         |
-| Organization  | structure + party master implemented (Task 6); configuration half pending                                                                                                                                               | Organization structure (branches, departments, employees), party master, cross-module configuration (fiscal calendar → Accounting per ADR-0026, numbering → Documents, workflow → Workflow) | `organization`  |
-| RBAC          | v1 core                                                                                                                                                                                                                 | Roles, granular permissions, assignments                                                                                                                                                    | `rbac`          |
-| Audit         | v1 core                                                                                                                                                                                                                 | Append-only audit log of sensitive operations                                                                                                                                               | `audit`         |
-| Notifications | v1 core                                                                                                                                                                                                                 | In-app notifications driven by events                                                                                                                                                       | `notifications` |
-| Accounting    | foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11 — **Task 11 ACCEPTED 2026-09-22**; ADR-0026 Accepted); posting rules / corrections contract-only; **balances READY FOR REVIEW as Task 12 (ADR-0031 Proposed, not Accepted)**; **ledger movement read source ACCEPTED as Task 17A (2026-09-25, PR #39); account statement read surface ACCEPTED as Task 17B (2026-09-25, PR #43 merged in `b10e007`); reporting read foundation — Account Statement / General Ledger / Trial Balance — ACCEPTED as Task 18 (2026-09-25, PR #46 merged in `e774a1c`)** | Financial areas, fiscal years/periods, coding structure, accounting configurations, chart of accounts, accounting documents + lines, ledger entries (+ the read-only movement source and account statement), balance projection (READY FOR REVIEW), posting rules                          | `accounting`    |
-| Inventory     | v1 core                                                                                                                                                                                                                 | Items, warehouses, stock, receipts/issues/transfers/adjustments                                                                                                                             | `inventory`     |
-| Sales         | v1 core                                                                                                                                                                                                                 | Customers, quotes, sales orders, invoices, returns                                                                                                                                          | `sales`         |
-| Purchasing    | planned                                                                                                                                                                                                                 | Suppliers, purchase orders, supplier invoices                                                                                                                                               | `purchasing`    |
-| Reporting     | v1 core                                                                                                                                                                                                                 | Report registry, query pipeline, dashboards                                                                                                                                                 | (none in v1)    |
-| Excel         | v1 core                                                                                                                                                                                                                 | Import engine (validated workflow) + export engine                                                                                                                                          | `excel`         |
-| Print         | v1 core                                                                                                                                                                                                                 | Document templates, rendering, PDF jobs                                                                                                                                                     | `print`         |
-| Customization | v1 core                                                                                                                                                                                                                 | User preferences (UI, dashboards, filters, print, report)                                                                                                                                   | `customization` |
-| Integration   | v1 core                                                                                                                                                                                                                 | External system adapters + credentials + sync state                                                                                                                                         | `integration`   |
-| Sync          | v1 core                                                                                                                                                                                                                 | Outbox + dispatch policies, retry, dead-letter, admin controls                                                                                                                              | `sync`          |
-| Jobs          | v1 core                                                                                                                                                                                                                 | DB-backed job queue + scheduler                                                                                                                                                             | `jobs`          |
+| Identity      | v1 core — **implemented**                                                                                                                                                                                                                 | Authentication: login, sessions, password handling                                                                                                                                          | `identity`      |
+| Users         | v1 core — **implemented**                                                                                                                                                                                                                 | User records, profiles, enable/disable                                                                                                                                                      | `users`         |
+| Organization  | **implemented**: structure + party master (Task 6) **+ principal→organization memberships and the `assertOrganizationInScope` chokepoint (Task 19, ODR-3)**; configuration half (tax definitions, custom fields) still pending                                                                                                                                               | Organization structure (branches, departments, employees), party master, cross-module configuration (fiscal calendar → Accounting per ADR-0026, numbering → Documents, workflow → Workflow) | `organization`  |
+| RBAC          | v1 core — **implemented**                                                                                                                                                                                                                 | Roles, granular permissions, assignments                                                                                                                                                    | `rbac`          |
+| Audit         | v1 core — **not implemented**                                                                                                                                                                                                                 | Append-only audit log of sensitive operations                                                                                                                                               | `audit`         |
+| Notifications | v1 core — **not implemented**                                                                                                                                                                                                                 | In-app notifications driven by events                                                                                                                                                       | `notifications` |
+| Accounting    | **implemented** — foundation + chart + configuration + documents + posting/ledger (Tasks 10.2–10.8, 11 ACCEPTED 2026-09-22; ADR-0026 Accepted), operational freeze (Task 13), period-close enforcement (Task 14, ADR-0032 *Proposed*), balance projection (Task 12 **ACCEPTED WITH FOLLOW-UP 2026-09-23**, ADR-0031 *Proposed*, P1 concurrency verification still open), document reversal (merged, recorded as Task 15 in `STATE.md` §7 — **no acceptance record found**), ledger-movement source (17A ACCEPTED), account statements (17B ACCEPTED), General Ledger + Trial Balance + shared read-query layer (Task 18 ACCEPTED), Chart Tree read surface + configuration pin coherence (Task 19 ACCEPTED, ODR-1/ODR-2). **Still absent:** posting rules/mapping, control roles, detail dimensions, base chart templates, cross-year carry-forward, statutory books, exports | Financial areas, fiscal years/periods, coding structures, accounting configurations, chart of accounts (+ read-only chart tree), accounting documents + lines, immutable ledger entries, posting orchestration, document reversal, balance projection, and the read-only account-statement / general-ledger / trial-balance surfaces | `accounting`    |
+| Inventory     | v1 core — **implemented** (master data Task 6 + core movement ledger/balances/reservations/transfers Tasks 9.5/9.6, ADR-0022 Accepted)                                                                                                                                                                                                                 | Items, warehouses, stock, receipts/issues/transfers/adjustments                                                                                                                             | `inventory`     |
+| Documents     | **implemented** (Task 8, ADR-0023 Accepted)                                                                                                                                                                              | Document type configuration, numbering series + allocation ledger, typed relations between logical documents                                                                                | `documents`     |
+| Workflow      | **implemented** (Task 9, ADR-0024 Accepted)                                                                                                                                                                             | Versioned workflow definitions/states/transitions, instances bound to logical entities, single-level approvals, automation bindings                                                          | `workflow`      |
+| Sales         | v1 core — **not implemented**                                                                                                                                                                                                                 | Customers, quotes, sales orders, invoices, returns                                                                                                                                          | `sales`         |
+| Purchasing    | planned — **not implemented**                                                                                                                                                                                                                 | Suppliers, purchase orders, supplier invoices                                                                                                                                               | `purchasing`    |
+| Reporting     | v1 core — **not implemented**                                                                                                                                                                                                                 | Report registry, query pipeline, dashboards                                                                                                                                                 | (none in v1)    |
+| Excel         | v1 core — **not implemented**                                                                                                                                                                                                                 | Import engine (validated workflow) + export engine                                                                                                                                          | `excel`         |
+| Print         | v1 core — **not implemented**                                                                                                                                                                                                                 | Document templates, rendering, PDF jobs                                                                                                                                                     | `print`         |
+| Customization | v1 core — **not implemented**                                                                                                                                                                                                                 | User preferences (UI, dashboards, filters, print, report)                                                                                                                                   | `customization` |
+| Integration   | v1 core — **not implemented**                                                                                                                                                                                                                 | External system adapters + credentials + sync state                                                                                                                                         | `integration`   |
+| Sync          | v1 core — **not implemented**                                                                                                                                                                                                                 | Outbox + dispatch policies, retry, dead-letter, admin controls                                                                                                                              | `sync`          |
+| Jobs          | v1 core — **not implemented** (kernel has a `JobsRegistry` stub only)                                                                                                                                                                                                                 | DB-backed job queue + scheduler                                                                                                                                                             | `jobs`          |
+| **Treasury**  | **DEFERRED — NOT MVP — NOT IMPLEMENTED**                                                                                                                                                                                | Cash/bank/payment/receipt/cheque/settlement (خزانه‌داری). Future phase only: no module, schema, migration, API or permission exists, and no other module may implement it implicitly         | (none)          |
 
 **Purchasing** is marked _planned_ because the product requirements imply it
 (purchase → inventory receipt → accounting journal entry) but do not place it in
@@ -60,7 +82,7 @@ rules; it defines the _mechanism_, vertical modules provide the _content_
 
 ---
 
-## Identity (v1 core)
+## Identity (v1 core — implemented)
 
 - **Purpose:** authentication mechanics — credential verification, session
   lifecycle, password policy application.
@@ -75,7 +97,7 @@ rules; it defines the _mechanism_, vertical modules provide the _content_
 - **Security rules:** see `docs/security.md` §Authentication (argon2id, lockout,
   session lifetimes).
 
-## Users (v1 core)
+## Users (v1 core — implemented)
 
 - **Owns:** `users.users` (username (unique), password hash, active flag, audit
   columns, `deleted_at` reserved for soft delete). Profile/email/display-name
@@ -120,8 +142,24 @@ Disable|ResetPassword`. There is no delete permission because there is no
   `POST :id/enable`, `POST :id/disable`. **No DELETE**: master data is deactivated, not
   deleted (OQ-36).
 - **Permissions:** `Organization.{Organization,Branch,Department,Employee,Party}` ×
-  `{View,Create,Edit,Enable,Disable}` (25 codes), enforced in the application services,
-  not only by the route guards.
+  `{View,Create,Edit,Enable,Disable}` (25 codes) **plus
+  `Organization.Membership.{View,Grant,Revoke}` (Task 19, ODR-3) — 28 codes in
+  total**, enforced in the application services, not only by the route guards.
+- **Membership & organization authorization (Task 19, ODR-3 — implemented,
+  documented here 2026-09-26):** `organization.organization_memberships`
+  (composite PK `(user_id, organization_id)`, user CASCADE, organization
+  RESTRICT, no backfill — presence *is* the authorization; migration
+  `20260926000000_organization_membership`). Administration:
+  `GET/POST/DELETE /api/v1/organizations/:id/members`. The chokepoint
+  `OrganizationsService.assertOrganizationInScope` (deployment pin → principal
+  → membership; a non-member gets **404**, indistinguishable from unknown) is
+  awaited by every organization-scoped service across accounting, inventory,
+  documents and organization. Membership administration itself requires the
+  acting principal's membership **plus** the granular permission; the only
+  exception is the bootstrap grant of the **first** member of an organization
+  whose membership set is empty (PR #55 correction — list and revoke have no
+  exception). **OQ-01 (product tenancy) stays OPEN**: this is the security
+  invariant, not the multi-organization product decision.
 - **Purpose:** own what is _organization-wide_: the organization structure (branches,
   departments, employees as minimal reference data), the **fiscal calendar** (years and
   periods), and **cross-module configuration** (numbering series, tax definitions,
@@ -152,7 +190,7 @@ Disable|ResetPassword`. There is no delete permission because there is no
   (RBAC), commercial relationship data such as price lists and credit enforcement
   (Sales/Purchasing), and any operational document or ledger.
 
-## RBAC (v1 core)
+## RBAC (v1 core — implemented)
 
 - **Owns:** `rbac.permissions` (mirror of the code registry), `rbac.roles`,
   `rbac.role_permissions`, `rbac.user_roles`.
@@ -189,7 +227,7 @@ Remove`. No `Rbac.Role.Delete` (OQ-20).
 - **Not responsible for:** deciding _where_ checks happen (that's every module's
   application layer, AR-21) or audit of denials (Audit module).
 
-## Audit (v1 core)
+## Audit (v1 core — **NOT IMPLEMENTED**: specification only, no module/schema/table exists)
 
 - **Owns:** `audit.audit_logs` — append-only: (id, actor id/type, action, module,
   entity type/id, before/after JSONB snapshots, correlation id, IP, user agent,
@@ -202,7 +240,52 @@ Remove`. No `Rbac.Role.Delete` (OQ-20).
 - **Write path:** modules emit audit data through the kernel audit port inside
   their business transaction; Audit persists it. Retention/archival = OQ-17.
 
-## Accounting (v1 core — **foundation + chart + configuration + documents + ledger implemented (Tasks 10.2, 10.3, 10.4, 10.7, 10.8, 11 — Task 11 ACCEPTED 2026-09-22)**; posting rules / corrections still contract-only; **balances READY FOR REVIEW as Task 12 (not Accepted)**)
+## Accounting (v1 core — **implemented through Task 19**)
+
+> **Status correction (2026-09-26, `repository-documentation-audit.md`).** The
+> narrative below was written incrementally and stopped at Task 18; several of
+> its "not implemented" statements are no longer true. Verified against the
+> code at `d46bb4e`, Accounting **additionally** contains:
+>
+> - **Balance projection (Task 12)** — `accounting.account_balance_projections`,
+>   derived views, transactional maintenance and the audited rebuild
+>   (`GET /api/v1/accounting/balances`, `/reconciliation`, `/:accountId`,
+>   `POST /rebuild`). Governance: **ACCEPTED WITH FOLLOW-UP 2026-09-23**
+>   (ADR-0031 *Proposed*; the P1 real-PostgreSQL concurrency verification is
+>   still an open follow-up) — **not** "READY FOR REVIEW" as older text says.
+> - **Period-close enforcement inside finalization (Task 14)** — a
+>   `closed`/`sealed` period/year refuses finalization before any write
+>   (ADR-0032 *Proposed*; the task is recorded READY FOR REVIEW — NOT ACCEPTED
+>   although the PR is merged).
+> - **Document reversal** — `POST /api/v1/accounting-documents/:id/reverse`
+>   with `Accounting.Document.Reverse`, `domain/document-reversal.ts` and
+>   migration `20260923000000_accounting_document_reversal`: the original stays
+>   immutable and a finalized counter-document is posted. (Merged work recorded
+>   as Task 15 in `STATE.md` §7; **no acceptance record exists** for it.)
+> - **Read layer** — ledger movements (Task 17A), account statements (17B),
+>   **General Ledger** (`GET /api/v1/accounting/general-ledger`) and **Trial
+>   Balance** (`GET /api/v1/accounting/trial-balance`) over one shared
+>   `AccountingReadQueryRepository` (Task 18, ACCEPTED 2026-09-25).
+> - **Chart Tree read surface (Task 19, ODR-2)** —
+>   `GET /api/v1/accounting/chart-tree` and `/:id`, Accounting-owned,
+>   organization-scoped, read-only, `isPostable` authoritative. This supersedes
+>   the older "no tree endpoint" statement in the Task 10.3 API paragraph.
+> - **Explicit configuration coherence (Task 19, ODR-1)** — `planPinCoherence`
+>   rejects an account whose `coding_structure_version_id` and
+>   `accounting_configuration_id` describe different code shapes (level count /
+>   per-level digit length), checked pre-flight and again inside the locked
+>   transaction. Existing divergent rows are **not** repaired (OQ-62/OQ-63 stay
+>   OPEN). This supersedes "validate **only** against the account's own
+>   configuration/version pair" below.
+> - **Permissions: 38 registered codes**, not 36 — the list further down omits
+>   `Accounting.GeneralLedger.View` and `Accounting.TrialBalance.View`.
+>
+> Still genuinely absent in code: posting rules / automatic account mapping,
+> control roles, detail dimensions, base chart templates, cross-year opening
+> carry-forward, statutory/legal books, exports, print, a Reporting module, and
+> any source-module (Inventory/Sales/**Treasury**) posting trigger.
+> **Treasury is deferred and out of MVP** — Accounting must not implement cash,
+> bank, payment, receipt, cheque or settlement behavior implicitly.
 
 - **Status:** Task 10.2 implemented the **bookkeeping scope** — financial areas,
   fiscal years, accounting periods (contract §4/§5/§6/§7, AC-D-01…AC-D-05,
@@ -431,8 +514,7 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   `/api/v1/accounts` — `GET` list (mandatory `organizationId`; `parentId`,
   `level`, `isActive`, `isPostable`, `codingStructureVersionId`, `search`),
   `GET :id`, `POST`, `PATCH :id` (title, nature, postability, re-parent),
-  `POST :id/enable`, `POST :id/disable`. No DELETE, no tree endpoint (the
-  chart-of-accounts/tree reads are reporting projections, contract §19.1), no
+  `POST :id/enable`, `POST :id/disable`. No DELETE, no
   per-level routes, and no code-editing route: `level` and
   `codingStructureVersionId` are derived by the server, `code` is immutable.
 - **API (Task 10.4):** `/api/v1/accounting-documents` — `GET` list (mandatory
@@ -446,8 +528,11 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   materializes the ledger entries inside it; since Task 10.8 the route is the
   HTTP shell of `PostingService`, and there is still no `POST :id/post`),
   `DELETE :id` (discard
-  pre-final only; `final` is never deletable). No correction, reversal,
-  reopen, approval or reporting route.
+  pre-final only; `final` is never deletable), and `POST :id/reverse`
+  (posts a finalized counter-document under `Accounting.Document.Reverse`;
+  the original stays immutable — merged reversal work, see the status
+  correction at the top of this section). No correction/replacement, reopen
+  or approval route.
 - **API (Task 11):** `/api/v1/accounting-configurations` — `GET` list
   (mandatory `organizationId`; `code`/`status`/`search`, pagination, sorting),
   `GET /active` (the organization's ACTIVE configuration with its levels),
@@ -523,13 +608,15 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   and `account-statements-live.e2e-spec.ts` (real PostgreSQL: reversal pair
   nets zero, reconciliation against `vw_account_balance_derived`, misaligned
   sequence-vs-calendar fixture, no-mutation incl. `account_balance_projections`).
-- **API (still planned):** dimensions/items, document corrections
-  (reverse, correct, replace), the remaining ledger/trial-balance/movement report
-  shapes through Accounting-owned views consumed by the Reporting module
-  (ADR-0009), report layouts and exports. The posted movement SOURCE exists
-  (Task 17A, above) and the account statement calculation exists (Task 17B,
-  above); none of the report layouts or the Reporting module does.
-- **Permissions (implemented, 36 codes):**
+- **API (still planned — corrected 2026-09-26):** dimensions/items, document
+  *correction* and *replacement* (reversal itself is implemented — see the
+  status correction at the top of this section), statutory/legal book layouts,
+  report layouts, exports and any generic Reporting module surface (ADR-0009).
+  The posted movement SOURCE (Task 17A), the account statement calculation
+  (Task 17B), the General Ledger and Trial Balance read surfaces (Task 18) and
+  the Chart Tree read surface (Task 19) **exist**; no report layout, export or
+  Reporting module does.
+- **Permissions (implemented, 38 codes — verified 2026-09-26):**
   `Accounting.FinancialArea.{View,Create,Edit,Enable,Disable}`,
   `Accounting.FiscalYear.{View,Create,Edit,Close,Reopen,Seal,Unseal}`,
   `Accounting.AccountingPeriod.{View,Open,Close,Reopen,Seal}`,
@@ -538,8 +625,9 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   `Accounting.Account.{View,Create,Edit,Enable,Disable}`,
   `Accounting.Document.{View,Create,Edit,Delete,Finalize,Reverse}`,
   `Accounting.Balance.{View,Rebuild}` (Task 12), `Accounting.LedgerMovement.View`
-  (Task 17A) and `Accounting.AccountStatement.View`
-  (Task 17B) — enforced in the
+  (Task 17A), `Accounting.AccountStatement.View` (Task 17B) and
+  `Accounting.GeneralLedger.View` / `Accounting.TrialBalance.View` (Task 18) —
+  enforced in the
   application services, not only by the route guards. Period creation is authorized
   by `Open` (the row is born `open`); there is no period `Create`/`Edit`. The
   coding structure has ONE write code (`Configure`: drafting, editing a draft and
@@ -548,13 +636,13 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   vocabulary is granular (no wildcard, no `Accounting.Journal.Create`-style
   catch-all, `Finalize` ≠ `Approve` — OQ-21, OQ-14) and arrives with the tasks
   that enforce it.
-- **Publishes (implemented, Tasks 10.2 + 10.3 + 10.4; Task 12 READY FOR REVIEW):**
+- **Publishes (implemented, Tasks 10.2 + 10.3 + 10.4 + 12):**
   `FinancialArea.{Created,Updated,Enabled,Disabled}`,
   `FiscalYear.{Created,Closed,Reopened,Sealed,Unsealed}`,
   `AccountingPeriod.{Opened,Closed,Reopened,Sealed}`,
   `Account.{Created,Updated,Enabled,Disabled}`,
   `AccountingDocument.{Created,Updated,Finalized,Deleted}`,
-  `AccountBalance.Rebuilt` (Task 12, audited slice rebuild, payload `{organizationId, financialAreaId?, fiscalYearId?, deleted, inserted, reason, rebuiltBy, rebuiltAt}` — ledger stays truth) — payload is
+  `AccountBalance.Rebuilt` (Task 12 — ACCEPTED WITH FOLLOW-UP, audited slice rebuild, payload `{organizationId, financialAreaId?, fiscalYearId?, deleted, inserted, reason, rebuiltBy, rebuiltAt}` — ledger stays truth) — payload is
   `{id, organizationId, …scope, code|sequence}`, plus `fromStatus`/`toStatus`/`reason`
   on transitions, plus `correlationId`/`occurredAt`; the `Account.*` payload adds
   `level` and `codingStructureVersionId`. There is deliberately **no
@@ -595,19 +683,36 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   mechanics (Workflow — ADR-0024), audit storage (Audit — AR-23), organization
   structure or party master data (Organization).
 
-## Inventory (v1 core)
+## Inventory (v1 core — implemented)
 
-- **Status:** the **master-data half is implemented** (Task 6): schema `inventory` —
+- **Status (corrected 2026-09-26 — `repository-documentation-audit.md`):**
+  **both halves are implemented.** Master data (Task 6): schema `inventory` —
   `units`, `unit_conversions`, `item_unit_conversions`, `item_groups`, `items`,
-  `warehouses`. The transactional half below (movements, balances, reservations,
-  valuation) is **not implemented** and waits on ADR-0017.
+  `warehouses`. **Core transactional half (Tasks 9.5 + 9.6, ADR-0022
+  Accepted; migration `20260911020000_inventory_core`):**
+  `inventory_movements` (append-only, eight typed movement kinds),
+  `inventory_balances` (materialized inside the posting transaction),
+  `inventory_reservations` (`active`/`released`) and `inventory_operations`
+  (idempotency ledger). API: `/api/v1/inventory/{movements,balances,
+  reservations,transfers}` — including `POST /movements/:id/reverse`,
+  `POST /balances/reconcile`, `POST /balances/rebuild`,
+  `POST /reservations/:id/release` and atomic two-leg transfers. Events:
+  `InventoryMovement.Posted`, `InventoryTransfer.Posted`,
+  `InventoryReservation.{Created,Released}`. Core permissions (10):
+  `Inventory.Movement.{View,Create,Reverse}`, `Inventory.Balance.View`,
+  `Inventory.Reservation.{View,Create,Release}`, `Inventory.Transfer.Create`,
+  `Inventory.Reconciliation.{View,Execute}`.
+  **Valuation/costing is still not implemented** (cost method is OQ-11), and
+  ADR-0017 (ledger as source of truth) remains *Proposed* even though
+  ADR-0022, which implements the ledger, is Accepted.
 - **API (implemented):** `/api/v1/inventory/{items,item-groups,units,unit-conversions,warehouses}`.
   Unit conversions are the exception: **no PATCH and no enable/disable**, because
   effective-dated configuration is never edited in place — a change is a new version
   (`GET .../unit-conversions/resolve` answers "which version applies at instant X").
 - **Permissions:** `Inventory.{Item,ItemGroup,Unit,Warehouse}` ×
   `{View,Create,Edit,Enable,Disable}` (20) plus `Inventory.UnitConversion.{View,Create}`
-  (2) — 22 codes, enforced in the application services.
+  (2) — 22 master-data codes, **plus the 10 core codes listed under Status =
+  32 registered codes in total**, enforced in the application services.
 - **Owns:** items (with units of measure), warehouses, locations, stock balances,
   stock movements (receipt, issue, transfer, adjustment) — movements are
   immutable; balances are derived/materialized from movements.
@@ -625,7 +730,77 @@ Archived` etc.).
 - **Not responsible for:** accounting effects (subscribes nothing about
   accounting; ADR-0005), purchasing (future Purchasing module), pricing.
 
-## Sales (v1 core)
+## Documents (implemented — Task 8, ADR-0023 Accepted)
+
+> Added to this catalog on 2026-09-26: the module was implemented but had no
+> catalog entry (`repository-documentation-audit.md`). The binding decision
+> record stays [ADR-0023](./adr/0023-document-foundation-implementation.md);
+> this entry describes only what the code does.
+
+- **Purpose:** the cross-module *document foundation* — which logical document
+  types exist, how their numbers are allocated, and how documents relate to one
+  another. It owns the mechanism; the business meaning of a document stays with
+  the owning module (AR-08).
+- **Owns:** schema `documents` — `document_type_configs` (per-organization
+  configuration of code-registered document types), `numbering_series`,
+  `numbering_allocations` (which serial went to which logical document) and
+  `document_relations` (typed links between logical documents). Document types
+  are **registered in code**, never free-text rows.
+- **API (implemented):** `/api/v1/documents/types` (`GET`, `GET /:code`,
+  `PUT /:code/configuration`), `/api/v1/documents/numbering-series` (`GET`,
+  `POST`, `GET /:id`, `PATCH /:id`, `GET /:id/allocations`),
+  `/api/v1/documents/relations` (`GET`, `GET /:id`, `POST`, `DELETE /:id`).
+- **Permissions (9):** `Document.DocumentType.{View,Configure}`,
+  `Document.NumberingSeries.{View,Create,Edit}`, `Document.Numbering.View`,
+  `Document.Relation.{View,Create,Delete}`.
+- **Event schemas declared:** `DocumentType.Configured`,
+  `DocumentNumber.Allocated`, `Document.{Created,StateChanged,Finalized,Deleted}`,
+  `DocumentRelation.{Created,Removed}`.
+- **Consumed by:** Accounting — voucher serials are allocated through this
+  foundation with `scope_key` = financial area (contract §18). A fiscal-year
+  component or per-year reset would be a new Foundation strategy, never a
+  module-side counter (OQ-12).
+- **Not responsible for:** any document's business rules, states or amounts
+  (the owning module), workflow transitions (Workflow), ledger effects
+  (Accounting).
+
+## Workflow (implemented — Task 9, ADR-0024 Accepted)
+
+> Added to this catalog on 2026-09-26 for the same reason as Documents. The
+> binding decision record stays [ADR-0024](./adr/0024-workflow-foundation.md).
+
+- **Purpose:** bounded, **versioned** workflow configuration — states,
+  transitions, instances, single-level approvals and automation bindings — with
+  no general-purpose workflow engine and no stored executable code.
+- **Owns:** schema `workflow` — `workflow_definitions`, `workflow_versions`
+  (`draft → active → superseded`), `workflow_states`, `workflow_transitions`,
+  `workflow_instances` (bound to a logical entity by
+  `(entity_module, entity_type, entity_id)`, pinning the version),
+  `workflow_transition_history` (append-only, 1-based sequence per instance),
+  `workflow_approvals` (single level, staleness-pinned) and
+  `workflow_automation_bindings` (actions are code-registered, never stored code).
+  There are **no foreign keys from `workflow` into a business schema** —
+  bindings are logical references (ADR-0024 §2).
+- **API (implemented, under `/api/v1/workflow`):** `/definitions` (+ `/:id`),
+  `/definitions/:definitionId/versions`, `/versions/:id` (+ `/publish`),
+  `/versions/:versionId/states` and `/states/:id`,
+  `/versions/:versionId/transitions` and `/transitions/:id`, `/instances`
+  (+ `/:id`, `/:id/available-transitions`, `/:id/transitions`, `/:id/history`),
+  `/instances/:instanceId/approvals`, `/approvals/:approvalId/decide`,
+  `/transitions/:transitionId/automations` and `/automations/:id`. There is
+  deliberately no `PATCH /versions/:id` (versions are immutable — a behavior
+  change ships as a new version) and history is append-only.
+- **Permissions (10):** `Workflow.Definition.{View,Create,Edit}`,
+  `Workflow.Version.{View,Create,Edit,Publish}`,
+  `Workflow.Instance.{View,Bind,Execute}`.
+- **Event schemas declared:** `WorkflowVersion.Published`,
+  `WorkflowInstance.Bound`, `WorkflowTransition.Completed`,
+  `WorkflowApproval.Decided`.
+- **Not responsible for:** the business meaning of a state (the owning module),
+  posting or finalization authority (Accounting keeps `Finalize` ≠ `Approve`),
+  or approval *policy* — whether any document requires approval is OQ-13.
+
+## Sales (v1 core — **NOT IMPLEMENTED**: specification only, no module/schema/table exists)
 
 - **Owns:** customers*, quotes, sales orders, invoices, returns.
   \* Party (customer/supplier) _master data_ moves to the **Organization** module
@@ -645,7 +820,7 @@ Archived` etc.).
   to Inventory's public API when the business requires it — workflow detail OQ-15),
   accounting (event-driven), tax calculation specifics (OQ-05/13).
 
-## Purchasing (planned)
+## Purchasing (planned — **NOT IMPLEMENTED**)
 
 - **Purpose (when scoped):** suppliers (same party-master note as Sales — pending
   ADR-0020), purchase orders, supplier invoices; purchase → inventory receipt flow.
@@ -653,7 +828,7 @@ Archived` etc.).
   receipt events are consumed by Inventory/Accounting exactly like inventory's
   own events. Scope decision: OQ-16.
 
-## Reporting (v1 core)
+## Reporting (v1 core — **NOT IMPLEMENTED**: specification only, no module/schema/table exists)
 
 - **Owns:** the report **registry** (code-defined report definitions) and the
   query pipeline (filters, grouping, sorting, pagination, limits). No tables in
@@ -668,7 +843,7 @@ Archived` etc.).
   engine.
 - **Publishes:** `Report.Generated` (async heavy reports → Jobs + Notifications).
 
-## Excel (v1 core)
+## Excel (v1 core — **NOT IMPLEMENTED**: specification only, no module/schema/table exists)
 
 - **Import engine — the mandated workflow (ADR-0011):**
   `Upload → Parse → Validate → Preview → User confirmation → Transaction →
@@ -685,7 +860,7 @@ Persist → Result summary`, with row-level status/errors. Sessions and rows
 - **Publishes:** `ImportSession.Completed`, `ImportSession.Failed`
   → Notifications.
 
-## Print (v1 core)
+## Print (v1 core — **NOT IMPLEMENTED**: specification only, no module/schema/table exists)
 
 - **Owns:** document-type registry, versioned HTML/CSS templates (with
   organization-scope and user-preference overrides), render jobs, generated file
@@ -700,7 +875,7 @@ Persist → Result summary`, with row-level status/errors. Sessions and rows
 - **Publishes:** `PrintJob.Completed/Failed` → Notifications.
 - **Not responsible for:** document business data (owned by source modules).
 
-## Customization (v1 core)
+## Customization (v1 core — **NOT IMPLEMENTED**: specification only, no module/schema/table exists)
 
 - **Owns:** `customization.user_preferences` — (user, category, key) → JSONB
   value, validated against a **code registry** of allowed keys + JSON schemas
@@ -713,7 +888,7 @@ Persist → Result summary`, with row-level status/errors. Sessions and rows
   changes business behavior is a business rule and belongs in the business
   module (and likely an OQ).
 
-## Integration (v1 core)
+## Integration (v1 core — **NOT IMPLEMENTED**: specification only, no module/schema/table exists)
 
 - **Owns:** concrete **adapters** for external systems (FaraPayam-style legacy
   ERP, Iranian Taxpayer System, payment services, …), per-adapter credentials
@@ -728,7 +903,7 @@ meta)`, idempotency support, retryable-vs-permanent error taxonomy, health.
   outbox rows + Sync policies), mapping ownership (mapping configuration belongs
   here as _data_, business semantics belong to the owning module).
 
-## Sync (v1 core)
+## Sync (v1 core — **NOT IMPLEMENTED**: specification only, no module/schema/table exists)
 
 - **Owns:** `sync.outbox_events` (the Outbox — DDL and field rationale in
   `docs/database-strategy.md` §Outbox), dispatch policies (retry/backoff/
@@ -742,7 +917,7 @@ meta)`, idempotency support, retryable-vs-permanent error taxonomy, health.
   public APIs; tracked in `sync.sync_state`.
 - **Publishes:** `OutboxItem.DeadLettered` → Audit + Notifications.
 
-## Jobs (v1 core)
+## Jobs (v1 core — **NOT IMPLEMENTED**: specification only, no module/schema/table exists)
 
 - **Owns:** `jobs.job_runs` — DB-backed queue (ADR-0010): (id, name, type,
   payload, status, scheduled_at, locked_by/at, attempts, max_attempts, error,
@@ -754,7 +929,7 @@ meta)`, idempotency support, retryable-vs-permanent error taxonomy, health.
 - **API:** job list/detail/retry/cancel (admin permission), run history.
 - **Publishes:** `Job.Failed` (after final attempt) → Notifications.
 
-## Notifications (v1 core)
+## Notifications (v1 core — **NOT IMPLEMENTED**: specification only, no module/schema/table exists)
 
 - **Owns:** `notifications.items` (in-app: user, type, title, body, link, status
   new/read/dismissed, created_at). Channel abstraction (email/SMS) is a later
@@ -769,6 +944,16 @@ meta)`, idempotency support, retryable-vs-permanent error taxonomy, health.
 ---
 
 ## Event Catalog (initial v1 set)
+
+> **Implementation status (verified 2026-09-26).** The "Consumed by" column is
+> the **target** wiring. Today the kernel bus is in-process and in-memory only
+> (no `core.domain_events`, no outbox table, no worker dispatch loop), and
+> **no module subscribes to another module's events** — in particular
+> **Accounting consumes no Inventory or Sales event and creates no automatic
+> journal entry**. Durable delivery semantics for system-generated posting are
+> **OQ-39 (OPEN)**; an event consumer must not be added on the strength of this
+> table alone. Rows naming Sales, Excel, Print, Sync/Integration or Jobs refer
+> to modules that do not exist.
 
 > Naming: `Entity.PastTenseVerb` (PascalCase). This is the **initial** catalog;
 > it grows with implementation. Event schemas are versioned; changing an existing

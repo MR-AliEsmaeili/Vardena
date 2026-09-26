@@ -139,8 +139,16 @@ semantics of an existing field requires an ADR).
 
 ## 6. Target Repository Layout
 
-> The repository currently contains **documentation only**. This is the target
-> layout for the first implementation phase.
+> **Implementation status (verified 2026-09-26 —
+> `repository-documentation-audit.md`):** the backend below **exists**
+> (`backend/src/kernel`, `backend/src/modules/{health,identity,users,rbac,organization,inventory,documents,workflow,accounting}`,
+> `prisma/schema/` with 8 module files and `prisma/migrations/` with 16
+> migrations). The `frontend/` tree, the `backend/src/kernel/outbox/` port and
+> the `modules/{audit,notifications,sales,purchasing,reporting,excel,print,customization,integration,sync,jobs}`
+> folders below are **target layout, not present**. Module folders currently
+> use `api/ application/ domain/ data/`; the optional `events/ reports/
+> imports/ documents/` folders of §4 are not in use (domain event schemas live
+> in `domain/*.events.ts`).
 
 ```
 Vardena/
@@ -202,6 +210,16 @@ Vardena/
   decision can be made in one place.
 
 ## 8. Event Model (overview)
+
+> **Implementation status (verified 2026-09-26).** The table below is the
+> **target** event model. Today only the in-process bus exists
+> (`backend/src/kernel/events/domain-event-bus.ts`): events are emitted
+> synchronously and are **not persisted** — there is no `core` schema, no
+> `core.domain_events`, no `sync.outbox_events` and no `jobs.job_runs` table,
+> and the worker (`backend/src/worker.service.ts`) runs no dispatch loop. No
+> module currently subscribes to another module's events (in particular,
+> Accounting does **not** consume Inventory events; durable delivery semantics
+> are OQ-39). Do not treat the rows below as available infrastructure.
 
 | Kind | Transport (v1) | Durability | Use |
 |---|---|---|---|

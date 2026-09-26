@@ -1,14 +1,25 @@
 # Vardena
 
 A modern **modular ERP** system: NestJS + TypeScript + PostgreSQL (Prisma)
-backend, React + TypeScript (Vite, Tailwind, shadcn/ui) frontend. Extensible by
-design — new ERP modules are added without architectural change. On-premise
-today, cloud-ready.
+backend; React + TypeScript (Vite, Tailwind, shadcn/ui) frontend is the fixed
+target stack (ADR-0002) and has **not started**. Extensible by design — new ERP
+modules are added without architectural change. On-premise today, cloud-ready.
 
-> **Status: architecture + backend foundation.** `backend/` holds the NestJS API +
-> worker foundation (config, validation, errors, logging, health, Prisma,
-> Docker). No business modules exist yet — the docs below remain the contract
-> for all future implementation work (human or AI).
+> **Status: backend implemented, frontend not started** (verified 2026-09-26 —
+> `docs/repository-documentation-audit.md`). `backend/` is a NestJS modular
+> monolith with the kernel (config, validation, errors, logging, correlation,
+> Prisma, rate limiting) plus nine registered modules — `health` and the eight
+> domain modules **identity, users, rbac, organization, inventory, documents,
+> workflow, accounting** — over 8 PostgreSQL schemas and 16 migrations.
+> **Accounting** is the most advanced domain (fiscal calendar, chart of
+> accounts, configurations, vouchers, posting/ledger, balance projection,
+> reversal, and read-only account-statement / general-ledger / trial-balance /
+> chart-tree surfaces). **Not implemented:** Audit, Notifications, Sales,
+> Purchasing, Reporting, Excel, Print, Customization, Integration, Sync, Jobs —
+> and **Treasury, which is deferred and out of MVP scope**. The docs below stay
+> the contract for all future implementation work (human or AI); implementation
+> existing in `main` does **not** mean the related task or ADR was accepted —
+> see `STATE.md`.
 
 ## Run with Docker
 
@@ -39,6 +50,7 @@ production deployment.
 | If you are… | Read |
 |---|---|
 | An AI coding agent / new contributor | [.vardena/project-context.md](.vardena/project-context.md) (onboarding, mandatory order) |
+| Asking "what is actually built and what was accepted?" | [STATE.md](STATE.md) (project memory, task history, review status) + [docs/repository-documentation-audit.md](docs/repository-documentation-audit.md) |
 | Reviewing the system design | [docs/architecture.md](docs/architecture.md) |
 | Working on a domain | [docs/modules.md](docs/modules.md) + the matching `docs/*.md` |
 | Changing the architecture | [docs/adr/](docs/adr/) (process in `adr/README.md` — an ADR is required) |
@@ -52,7 +64,11 @@ production deployment.
 - [docs/integrations.md](docs/integrations.md) — external systems, adapter layer, synchronization
 - [docs/database-strategy.md](docs/database-strategy.md) — schemas, conventions, migrations, outbox DDL
 - [docs/reporting-strategy.md](docs/reporting-strategy.md) — reporting engine, views, export, performance
-- [docs/accounting/domain-contract.md](docs/accounting/domain-contract.md) — **Accounting Domain Contract** (Task 10.1): bounded context, financial area, fiscal year/period, chart of accounts & coding structure, detail dimensions, accounting documents, posting & integration boundaries, invariants, gates — contract only, nothing implemented
+- [docs/accounting/domain-contract.md](docs/accounting/domain-contract.md) — **Accounting Domain Contract** (Task 10.1): bounded context, financial area, fiscal year/period, chart of accounts & coding structure, detail dimensions, accounting documents, posting & integration boundaries, invariants, gates. The contract is binding; its foundation, document, posting/ledger and read layers are now **implemented** (see `docs/accounting/task-index.md` for what exists and what is still a candidate)
+- [docs/accounting/task-index.md](docs/accounting/task-index.md) — authoritative accounting task sequence, capability status and OQ gates
+- [docs/tasks/](docs/tasks/) — per-task briefs, implementation gates, reports and acceptance records
+- [docs/repository-documentation-audit.md](docs/repository-documentation-audit.md) — documentation ↔ code consistency audit (2026-09-26), incl. the Treasury scope boundary
+- [STATE.md](STATE.md) — consolidated project state: repository/module inventory, task history, review status, risks
 - [docs/open-questions.md](docs/open-questions.md) — registered open questions
 - [docs/adr/](docs/adr/) — architecture decision records
 - [.vardena/](.vardena/) — agent context, architecture rules, development rules

@@ -1,11 +1,27 @@
 # Vardena — Accounting Domain Contract
 
-Status: **Proposed** (domain contract — nothing is implemented) · Date: 2026-09-14 ·
+Status: **Proposed** (as produced by Task 10.1) · Date: 2026-09-14 ·
 Produced by Task 10.1
+
+> **Implementation-status correction (2026-09-26 —
+> [`../repository-documentation-audit.md`](../repository-documentation-audit.md)).**
+> The original header and the boxed note below said "nothing is implemented"
+> and called ADR-0026 *Proposed*. Both statements are factually out of date:
+> **[ADR-0026](../adr/0026-accounting-bounded-context.md) was Accepted on
+> 2026-09-14**, and the contract's foundation (financial areas, fiscal years,
+> periods), coding structure + chart of accounts, accounting configurations,
+> the voucher aggregate, posting readiness/orchestration, the immutable ledger,
+> the balance projection, document reversal and the read surfaces (ledger
+> movements, account statements, General Ledger, Trial Balance, Chart Tree) are
+> **implemented in `backend/src/modules/accounting/`**. Which capability exists,
+> under which task and with which acceptance status, is recorded in
+> [`task-index.md`](./task-index.md) and `STATE.md` — implementation is **not**
+> acceptance. The contract text below is unchanged and remains binding; its
+> DECIDED / EXPERT-GATED / DEFERRED markers and every open OQ keep their meaning.
 
 | | |
 |---|---|
-| Companion decision | [ADR-0026 — Accounting bounded context](../adr/0026-accounting-bounded-context.md) (Proposed) |
+| Companion decision | [ADR-0026 — Accounting bounded context](../adr/0026-accounting-bounded-context.md) (**Accepted 2026-09-14**; this table said "Proposed" — corrected 2026-09-26) |
 | Refines | [`architecture/domain/accounting-domain-analysis.md`](../architecture/domain/accounting-domain-analysis.md) (options/analysis record — still valid), blueprint §9, D-03/D-11/D-12/D-19 |
 | Binds | every future Accounting schema, migration, service, API, report and integration |
 | Must not contradict | ADR-0021/0022/0023/0024/0025, AR-07/08/12/13/14/15/16/21/22, `docs/security.md`, `docs/database-strategy.md` |
