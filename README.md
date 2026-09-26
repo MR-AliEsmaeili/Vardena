@@ -8,7 +8,7 @@ today, cloud-ready.
 
 > **Status: backend implemented, frontend at its first vertical slice**
 > (backend verified 2026-09-26 — `docs/repository-documentation-audit.md`;
-> frontend added by Task 22, **READY FOR REVIEW — not accepted**).
+> frontend Task 22 **ACCEPTED 2026-09-26**).
 > `frontend/` is a React + Vite SPA covering login/session, the RTL
 > application shell, organization context, permission-aware navigation and the
 > read-only Accounting surfaces (chart tree, account statement, general ledger,

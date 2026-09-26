@@ -79,8 +79,7 @@ authorization, and API. The frontend talks only to the Vardena API.
   opt-in via `VARDENA_TEST_DATABASE_URL`; two migration rehearsals exist
   (`npm run test:migration-rehearsal` — Task 11 backfill;
   `npm run test:operational-freeze-rehearsal` — Task 13).
-- **The frontend exists as one vertical slice** (Task 22, READY FOR REVIEW —
-  not accepted): `frontend/` is a React + Vite SPA with login/session, the RTL
+- **The frontend exists as one accepted vertical slice** (Task 22, **ACCEPTED 2026-09-26**): `frontend/` is a React + Vite SPA with login/session, the RTL
   application shell, organization context, permission-aware navigation and the
   read-only Accounting surfaces (chart tree, account statement, general ledger,
   trial balance). No other screen exists — no create/edit UI, no Inventory,
