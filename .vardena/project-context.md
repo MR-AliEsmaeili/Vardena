@@ -27,31 +27,69 @@ authorization, and API. The frontend talks only to the Vardena API.
 
 ## Current Repository State
 
-- **The backend is implemented** (Tasks 1–11). `backend/` is a NestJS modular
-  monolith: `backend/src/kernel` (config, errors, ids, logging, pagination,
-  Prisma service, request context) plus nine modules under `backend/src/modules`
-  — `health` and the eight domain modules
+*Verified against the repository at `d46bb4e` (2026-09-26) by
+`docs/repository-documentation-audit.md`. Task/acceptance state is recorded in
+`STATE.md` and `docs/accounting/task-index.md` — implementation existing in
+`main` is **not** the same as a task or ADR being accepted.*
+
+- **The backend is implemented.** `backend/` is a NestJS modular monolith:
+  `backend/src/kernel` (config, correlation, errors, HTTP pipeline, ids, jobs
+  registry, logging, pagination, Prisma service, rate limiting) plus nine
+  modules under `backend/src/modules` — `health` and the eight domain modules
   `{users,identity,rbac,organization,inventory,documents,workflow,accounting}`
-  (the order `app.module.ts` registers them); Prisma schemas in
-  `backend/prisma/schema/` (schema-per-module) and 13 migrations in
-  `backend/prisma/migrations/`.
-- **Accounting (Tasks 10.x + 11)** is the most advanced module: financial
-  areas / fiscal years / periods, coding structures + chart of accounts,
-  accounting configurations (Task 11, D1–D7), vouchers + lines, posting
-  readiness, the posting/ledger contract, immutable `ledger_entries`,
-  `PostingService` orchestration — and nothing past the ledger (no posting
-  rules, dimensions, balances, corrections or reports).
-- **Tests:** unit specs live beside the code (`backend/src/**/*.spec.ts`);
-  e2e specs in `backend/test/**/*.e2e-spec.ts`. Live-database suites are opt-in
-  via `VARDENA_TEST_DATABASE_URL`; the migration rehearsal
-  (`npm run test:migration-rehearsal`) proves the Task 11 backfill against
-  populated pre-Task-11 data on a disposable PostgreSQL.
+  (the order `app.module.ts` registers them); 43 controllers under `/api/v1`;
+  Prisma schemas in `backend/prisma/schema/` (schema-per-module, 8 database
+  schemas, 47 models) and **16 migrations** in `backend/prisma/migrations/`;
+  **131 registered permission codes** (Accounting 38, Inventory 32,
+  Organization 28, Workflow 10, Documents 9, RBAC 8, Users 6).
+- **Accounting** is the most advanced module: financial areas / fiscal years /
+  periods, coding structures + chart of accounts, accounting configurations
+  (Task 11, D1–D7) with the operational freeze wired at finalization (Task 13),
+  vouchers + lines, posting readiness, the posting/ledger contract, immutable
+  `ledger_entries`, `PostingService` orchestration, period-close enforcement
+  inside finalization (Task 14, ADR-0032 *Proposed*), the balance projection +
+  derived views + audited rebuild (Task 12, ADR-0031 *Proposed*), document
+  reversal as a counter-document (`POST /accounting-documents/:id/reverse`),
+  the read layer — ledger movements (17A), account statements (17B), General
+  Ledger and Trial Balance over one shared read-query repository (Task 18) —
+  and the Accounting-owned Chart Tree read surface plus explicit configuration
+  pin coherence (Task 19, ODR-1/ODR-2).
+  Still **not** implemented: posting rules / automatic mapping, control roles,
+  detail dimensions, base chart templates, cross-year opening carry-forward,
+  statutory/legal books, exports and any source-module posting trigger.
+- **Inventory** has both halves: master data (Task 6) **and** the core movement
+  ledger, balances, reservations and transfers (Tasks 9.5/9.6, ADR-0022).
+  **Documents** (ADR-0023) and **Workflow** (ADR-0024) are implemented modules.
+  **Organization** additionally owns principal→organization memberships and the
+  `assertOrganizationInScope` chokepoint (Task 19, ODR-3).
+- **Not implemented at all:** Audit, Notifications, Sales, Purchasing,
+  Reporting, Excel, Print, Customization, Integration, Sync and Jobs modules;
+  the worker has no dispatch loop; the domain-event bus is in-memory only (no
+  `core.domain_events`, no outbox table, no jobs table).
+- **Tests:** unit specs live beside the code (101 `backend/src/**/*.spec.ts`);
+  31 e2e specs in `backend/test/**/*.e2e-spec.ts`. Live-database suites are
+  opt-in via `VARDENA_TEST_DATABASE_URL`; two migration rehearsals exist
+  (`npm run test:migration-rehearsal` — Task 11 backfill;
+  `npm run test:operational-freeze-rehearsal` — Task 13).
 - **The frontend has not started**; `frontend/` is still the target layout.
-- **Governance:** the authoritative accounting task sequence is
-  `docs/accounting/task-index.md`; the current task's evidence is
-  `docs/task-11-implementation-report.md`. Any ambiguity about business
-  behavior: see `docs/open-questions.md` (OQ-01…OQ-64). **Do not invent
-  business rules** (numbering, tax, ledger behavior, approval flows, policies).
+- **Governance:** `STATE.md` is the consolidated project memory (task history,
+  review status, risks); the authoritative accounting task sequence is
+  `docs/accounting/task-index.md`; per-task evidence lives in `docs/tasks/` and
+  `docs/task-*.md`. Any ambiguity about business behavior: see
+  `docs/open-questions.md` (OQ-01…OQ-64). **Do not invent business rules**
+  (numbering, tax, ledger behavior, approval flows, policies).
+
+## Scope Boundary — Treasury (خزانه‌داری) is deferred
+
+**Treasury is NOT part of the current MVP implementation scope.** Treasury
+capabilities — cash (صندوق), bank (بانک), payment (پرداخت), receipt (دریافت),
+cheque (چک) and settlement (تسویه) workflows and financial instruments — are
+future-phase capabilities. **No Treasury module, schema, migration, API or
+permission exists in this repository**, and none may be implemented implicitly
+by Accounting or by any other existing module. Existing Treasury references in
+the accounting contract, ADRs and product documents are future/deferred
+architectural context, not an authorization to build. Any future Treasury work
+requires its own explicitly authorized task and Owner Decision.
 
 ## Technology (fixed — see ADR-0002)
 
@@ -70,6 +108,7 @@ No additional major technologies without an ADR (`AG-12`, `AR-30`).
 
 ```
 .vardena/            ← agent context & rules (this folder)
+STATE.md             ← consolidated project memory: task history, review status, risks
 docs/
   architecture.md    ← system architecture, module anatomy, event model
   modules.md         ← module catalog: responsibilities, boundaries, events
@@ -78,16 +117,23 @@ docs/
   database-strategy.md ← schema-per-module, conventions, migrations, raw SQL policy
   reporting-strategy.md ← reporting architecture, raw SQL policy, export/print
   open-questions.md  ← registered open architectural/business questions (OQ-xx)
+  repository-documentation-audit.md ← doc↔code consistency audit (2026-09-26)
   adr/               ← architecture decision records (ADR-xxxx)
   accounting/        ← accounting contract, task index, configuration, decision notes
-  task-11-implementation-report.md ← latest task evidence (A–J format)
+  architecture/domain/ ← domain blueprint, glossary, per-domain analyses
+  product/           ← MVP scope proposal, roadmap, product decision baseline
+  decisions/product/ ← per-OQ product decision records
+  tasks/task-16…20/  ← briefs, gates, implementation reports, acceptance records
+  testing/           ← test-execution policy, e2e notes
+  task-*.md          ← earlier per-task implementation reports (A–J format)
 backend/
   src/kernel/        ← cross-cutting kernel (config, errors, ids, logging, Prisma)
   src/modules/       ← health + the eight domain modules (domain/application/data/api)
   test/              ← e2e specs + support harness (live suites opt-in)
-  prisma/schema/     ← schema-per-module Prisma sources
-  prisma/migrations/ ← 13 applied migrations + the Task 11 rehearsal fixture
-frontend/            ← (target) React SPA
+  prisma/schema/     ← schema-per-module Prisma sources (base + 8 modules)
+  prisma/migrations/ ← 16 applied migrations
+  prisma/rehearsal/  ← Task 11 / 12 / 13 migration & freeze rehearsal fixtures
+frontend/            ← (target, not started) React SPA
 docker-compose.yml   ← API + worker + PostgreSQL
 ```
 

@@ -6,9 +6,14 @@ and daily workflows; the architecture contract lives in `docs/` + `.vardena/`
 (start at `../.vardena/project-context.md`) and the foundation decisions in
 `../docs/adr/0015-backend-foundation-conventions.md`.
 
-> **Scope:** foundation + Identity (auth), Users and RBAC modules. Accounting,
-> Inventory, Sales, … do not exist yet — do not invent them here, see
-> `docs/modules.md`.
+> **Scope (verified 2026-09-26):** kernel foundation plus nine registered
+> modules — `health` and the eight domain modules **identity, users, rbac,
+> organization, inventory, documents, workflow, accounting** — over 8
+> PostgreSQL schemas and 16 migrations. **Not implemented here:** Audit,
+> Notifications, Sales, Purchasing, Reporting, Excel, Print, Customization,
+> Integration, Sync, Jobs — and **Treasury (deferred, out of MVP)**. Do not
+> invent them; see `../docs/modules.md` and
+> `../docs/repository-documentation-audit.md`.
 
 ## Requirements
 
@@ -89,9 +94,9 @@ npm run typecheck && npm run lint && npm run format:check   # quality gates
   `vitest.config.e2e.ts`), so the readiness/503 path is deterministic without
   Docker. It also covers correlation ids, validation envelopes, 404s, 429s,
   and the OpenAPI output.
-- `test/db.e2e-spec.ts` is the **live-database** suite: skipped unless
-  `VARDENA_TEST_DATABASE_URL` is set (CI with Postgres). It needs a generated
-  client and a migrated database.
+- `test/db.e2e-spec.ts` and every `test/*-live.e2e-spec.ts` suite are the
+  **live-database** suites: skipped unless `VARDENA_TEST_DATABASE_URL` is set
+  (CI with Postgres). They need a generated client and a migrated database.
 - Always build e2e apps via `test/support/test-app.ts` (`createTestApp`) — it
   applies the production HTTP pipeline, so tests can't drift from prod.
 - `test/support/validation-probe.ts` is a test-only controller for the global
@@ -117,8 +122,15 @@ Workflow for future agents (AR-10, `docs/database-strategy.md`):
 4. Production/Docker runs `prisma migrate deploy` before app start
    (the compose `migrate` service does exactly this).
 
-Current state: `prisma/schema/base.prisma` (datasource + generator only) and
-one migration creating the kernel-owned `core` schema. No tables yet.
+Current state (verified 2026-09-26): `prisma/schema/` holds `base.prisma`
+(datasource + generator) plus one file per module — `identity`, `users`,
+`rbac`, `organization`, `inventory`, `documents`, `workflow`, `accounting` —
+with 47 models across those **8 database schemas** (there is no `core`
+schema). `prisma/migrations/` contains **16 applied migrations**
+(`20260910000000_init` … `20260926000000_organization_membership`), and
+`prisma/rehearsal/` holds the Task 11/12/13 migration and freeze rehearsal
+fixtures driven by `npm run test:migration-rehearsal` and
+`npm run test:operational-freeze-rehearsal`.
 
 ## Docker
 
@@ -228,9 +240,20 @@ src/
                      # Users.User.* permission codes
     rbac/            # roles, permission registry (+ DB mirror), assignments,
                      # AuthorizationService/AuthorizationGuard (ADR-0006/0016)
+    organization/    # organizations, branches, departments, employees, parties,
+                     # principal→organization memberships + scope chokepoint
+    inventory/       # item/unit/warehouse master data + movement ledger,
+                     # balances, reservations, transfers (ADR-0022)
+    documents/       # document types, numbering series/allocations, relations
+                     # (ADR-0023)
+    workflow/        # versioned definitions/states/transitions, instances,
+                     # approvals, automation bindings (ADR-0024)
+    accounting/      # fiscal calendar, chart + configurations, vouchers,
+                     # posting/ledger, balances, reversal, read surfaces
 prisma/
-  schema/base.prisma # datasource + generator (per-module files added later)
+  schema/            # base.prisma (datasource + generator) + one file per module
   migrations/        # the ONLY schema-change mechanism (AR-10)
+  rehearsal/         # migration / operational-freeze rehearsal fixtures
 test/                # e2e specs + support (harness, validation probe)
 ```
 
