@@ -542,3 +542,10 @@ as a whole, and do not reopen Task 19.
 **Task 19 integrity:** ODR-1 Explicit Configuration Coherence, ODR-2 Accounting-owned
 Chart Tree and ODR-3 Principal-bound Organization Authorization are not reopened,
 rewritten, weakened or replaced by Task 20.
+
+**Formal acceptance synchronization (2026-09-26):** **Task 20 is ACCEPTED** as
+documentation-only decision-resolution work under the Owner-authorized Formal
+Acceptance Sync. This status records, but does not alter, OD-20-1…OD-20-6. No
+production capability was implemented; OQ-25/OQ-41 remain OPEN where applicable,
+unrelated Open Questions remain OPEN, and ADR-0033…0037 remain Proposed. See
+[`task-20-acceptance-record.md`](../tasks/task-20/task-20-acceptance-record.md).

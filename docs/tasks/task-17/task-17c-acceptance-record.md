@@ -186,15 +186,17 @@ capabilities anywhere in this record:
   recorded.
 * **Implementation status:** **not implemented.** Today's stricter rule —
   `postable ⇒ leaf` (contract §14 rule 2 / AC-D-19, AC-I-09) plus §8.5 rollup — stays in
-  force; a non-leaf POSTING node is not representable today. The recorded conflict
-  **D-1** is **not resolved** by this acceptance.
-* **Unresolved questions:** OQ-25 (per-level posting-eligibility policy content);
-  O-3 (exact validation rules for a non-leaf POSTING node if D-1 is ever relaxed).
-* **Future implementation requirements:** an accepted ADR amendment superseding
-  AC-D-19/AC-I-09 and amending §8.5 first, then a defined task providing the explicit
-  role attribute, separated own-vs-descendant measures, the ADR-0034 §5 validation rules,
-  report disclosure and denial-path tests. Until then “post at a higher level” is not a
-  supported configuration.
+  force; a non-leaf POSTING node is not representable today. This Task 17C
+  acceptance did not decide D-1. **Subsequently, Task 20 OD-20-5 resolved D-1** as
+  `POSTING = leaf-only` and `AGGREGATION = reporting/read-time roll-up`; see
+  `docs/accounting/owner-decision-baseline.md` §12 and ADR-0034.
+* **Open content:** OQ-25 still owns per-level posting-eligibility policy content;
+  a future non-leaf-posting exception would require a new explicit decision that
+  reopens/supersedes the leaf-only rule.
+* **Future implementation requirements:** none for a non-leaf POSTING model under the
+  accepted Task 20 rule. Any future exception requires an explicit superseding decision,
+  ADR/read-model redesign, report disclosure, and denial-path tests; until then “post at
+  a higher level” is not a supported configuration.
 * **Status: Proposed.** Task 17C is accepted, but this ADR remains Proposed pending its
   separate adoption/implementation gate.
 

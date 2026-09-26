@@ -34,11 +34,13 @@
 - `docs/tasks/task-19/accounting-chart-configuration-investigation.md`
 - `docs/tasks/task-20/accounting-chart-semantics-investigation.md` (Domains A–E; the primary predecessor)
 - `docs/tasks/task-20/task-20-implementation-gate.md` (READY FOR REVIEW — NOT ACCEPTED; OD-20-1…OD-20-6 DECIDED)
-  - *Note:* the brief referenced a `task-20-acceptance-record.md`; **no such file
-    exists** at the baseline. Task 20 is recorded as **READY FOR REVIEW — NOT
-    ACCEPTED**, and its Owner decisions are canonical in
-    `owner-decision-baseline.md` §12. Task 21 treats OD-20-1…OD-20-6 as the
-    authoritative, DECIDED predecessor decisions regardless of the missing file.
+  - *Note:* the brief referenced a `task-20-acceptance-record.md`. At Task 21's
+    branch-point (`10797e1`) that file did not yet exist and Task 20 was recorded
+    as READY FOR REVIEW — NOT ACCEPTED. It has since merged from `main` (PR #59,
+    `docs/tasks/task-20/task-20-acceptance-record.md`), so **Task 20 is now
+    ACCEPTED** under Owner-authorized Formal Acceptance Sync. Either way, Task 21
+    treats OD-20-1…OD-20-6 (canonical in `owner-decision-baseline.md` §12) as the
+    authoritative, DECIDED predecessor decisions.
 
 ### 1.3 ADRs
 
