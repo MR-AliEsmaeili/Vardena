@@ -2,7 +2,7 @@
 
 - **Document type:** governance baseline — **DESIGN / GOVERNANCE ONLY (DOCUMENTATION ONLY)**
 - **Date:** 2026-09-26
-- **Task status:** **READY FOR REVIEW — NOT ACCEPTED** (the Agent does not self-accept)
+- **Task status:** **ACCEPTED (2026-09-26)** (the Agent does not self-accept)
 - **Branch:** `arena/01a0de9b-vardena`
 - **Baseline:** `main` @ `10797e1400fda6329ca481877f9bbf9eff850fcd`
 - **Companions:** [`task-21-brief.md`](./task-21-brief.md) · [`task-21-investigation.md`](./task-21-investigation.md)
