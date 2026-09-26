@@ -5,7 +5,8 @@ Status: **READY FOR REVIEW — IMPLEMENTATION COMPLETE** · **NOT ACCEPTED**
 Owner's decision — `.vardena/agent-rules.md` AG-06/AG-16, `STATE.md` §6).
 
 Date: 2026-09-26 · Branch `arena/01a0ded9-vardena` · Base `71f430c`
-(merge of PR #61 on `main`).
+(merge of PR #61 on `main`) · PR **#62** · head `772bdbb` · CI run
+**36263120844** (`frontend` PASS, `backend` PASS).
 
 Governing rules: ADR-0002 (fixed stack) · ADR-0007 (session auth) ·
 ADR-0014 (OpenAPI is the contract) · ADR-0021/ADR-0025 (organization scope,
@@ -115,6 +116,14 @@ changed and no decision was invented.**
 Backend live-database E2E was **not** run locally (no Docker/PostgreSQL in the
 environment, and the suites are opt-in via `VARDENA_TEST_DATABASE_URL`); that
 coverage belongs to the unchanged `backend` CI job.
+
+**CI on the PR head (`772bdbb`, PR #62): run `36263120844` — `frontend` job
+PASS (58s) and `backend` job PASS (3m27s, including Prisma validate/generate,
+lint, typecheck, format, unit tests, build, migration rehearsal and the
+live-PostgreSQL E2E suites).** An earlier run of the same PR failed only on
+`frontend` → `Format check` (Prettier had not been run over
+`frontend/README.md`); the fix is commit `772bdbb` and no source behavior was
+involved.
 
 ### What the tests cover
 
