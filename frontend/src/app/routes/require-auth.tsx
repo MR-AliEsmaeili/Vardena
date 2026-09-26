@@ -1,4 +1,4 @@
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Link, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useSession } from '@/features/auth/use-session';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
@@ -27,7 +27,7 @@ export function RequireAuth() {
       <main className="mx-auto max-w-lg space-y-4 p-6">
         <ApiErrorAlert error={error} />
         <Button asChild variant="outline">
-          <a href="/login">{t.auth.submit}</a>
+          <Link to="/login">{t.auth.loginTitle}</Link>
         </Button>
       </main>
     );
