@@ -3,16 +3,17 @@
 - **Document type:** investigation + architecture review — **DOCUMENTATION ONLY**
 - **Date:** 2026-09-26
 - **Status:** **READY FOR REVIEW — NOT ACCEPTED** (the Agent does not self-accept)
-- **Branch:** `arena/01a0ddc4-vardena`
-- **Baseline inspected:** `main` @ `3deb5a5d32641fa78438b9a96d9ca45f3558e707` (merge of PR #56), i.e. the repository state **after** Task 19 acceptance
+- **Branch:** `arena/01a0de02-vardena`
+- **Baseline inspected:** `main` @ `1efa3f386e40d7ee1bc0a8f55f11120cd971ddaf` (merge of PR #57), i.e. the repository state after the original Task 20 investigation and before this decision-resolution update
 - **Companion:** [`task-20-implementation-gate.md`](./task-20-implementation-gate.md)
 
 > **Boundary.** This task implements nothing. No TypeScript, Prisma schema,
 > migration, endpoint, DTO, permission, authorization rule, index, dependency,
 > frontend or existing test was changed. It closes **no** Open Question, promotes
 > **no** ADR, reopens **no** accepted task and reinterprets **no** Owner decision.
-> Where the repository is ambiguous it is recorded; where it contradicts itself it
-> is escalated; where an Owner decision is missing it is proposed.
+> Where the repository is ambiguous it is recorded; where Task 20 found missing
+> Owner decisions, this update records the Owner-provided resolutions without
+> implementing production behavior.
 
 **Evidence labels used throughout** (following `STATE.md` §1): *verified
 implementation* = inspected static code/schema at the baseline above, not runtime
@@ -23,56 +24,43 @@ inference* = explicitly labelled reasoning that is not itself repository evidenc
 
 ## 1. Executive Summary
 
-Task 20 investigated the five requested domains (Base Accounting Structure,
+Task 20 first investigated the requested domains (Base Accounting Structure,
 Control Roles, POSTING vs AGGREGATION, Account Code History, Detail / Floating
-Detail / Dimensions) against `main` after Task 19.
+Detail / Dimensions) and escalated six Owner Decisions. The Owner has now
+resolved those decisions explicitly. This document therefore records the same
+repository evidence **plus** the decision-resolution outcome.
 
-**Headline findings:**
+**Decision-resolution outcome:**
 
-1. **The mechanism layer is real; the content layer is empty.** Configurable
-   levels, digit lengths, level kinds, per-level posting defaults, version
-   pinning, the account tree, the ODR-1 coherence guard and the ODR-2 Chart Tree
-   read surface are all *verified implementation*. The **Vardena base chart
-   content, the control-role catalog, account code history and the dimension
-   model do not exist in code at all** — zero tables, zero columns, zero
-   services, zero seeds.
-2. **Every one of the five domains is currently gated by an Owner/expert content
-   decision that the repository explicitly refuses to invent** — OQ-25 (base
-   chart content, control-role list and mandatory set, per-level posting policy,
-   code-reuse and deactivation policy) and OQ-41 (dimensions). Both remain
-   **OPEN** after Task 19 (`docs/tasks/task-19/task-19-acceptance-record.md` §6).
-3. **The POSTING/AGGREGATION conflict recorded as D-1 survives Task 19
-   unchanged and is now materialized in a shipped read model.** The Trial Balance
-   / General Ledger roll-up CTE
-   (`backend/src/modules/accounting/data/accounting-read-query.repository.ts`
-   `account_rollup` → `trial_rows`) maps every posting account to itself **and**
-   to every ancestor and then `SUM`s that mapping into one row per reported
-   account. Today this is safe **only because** `postable ⇒ leaf` makes a
-   non-leaf POSTING node unrepresentable. Relaxing that rule without ADR-0034 §4's
-   separated own-vs-descendant measures would silently double count — a defect,
-   not a configuration option.
-4. **Account Code History currently has no producer.** `accounts.code` is
-   immutable from creation, there is no pre-use edit path and no migration
-   service, so a history store built today would hold exactly one row per account
-   forever. Building the store before its producer would be speculative schema
-   (AR-29).
-5. **Nothing found contradicts the three accepted Task 19 decisions (ODR-1,
-   ODR-2, ODR-3).** No finding in this investigation requires changing them. Two
-   findings are recorded as *TASK-19 DEPENDENCY* (not defects, not reopenings):
-   a future base chart must deliver a **coherent pin pair** or ODR-1 will
-   correctly reject it, and any future base-chart adoption or role-mapping
-   surface must pass through the ODR-3 membership chokepoint.
-6. **One documentation-level shape ambiguity is escalated** (T20-C-1): the
-   contract describes the control role both as a nullable `control_role` **column
-   on the account** (§8.3) and as an **effective-dated mapping configuration
-   object** (§8.7 / ADR-0037 §4). Both cannot be the same artifact. This is not
-   resolved here.
+1. **OD-20-1 — Base Chart:** resolved as a versioned Accounting-owned
+   database/product template asset adopted explicitly into an organization;
+   adoption creates organization-owned `Account` identities; template identities
+   never become ledger references. Content remains accountant/domain-approved and
+   is not invented here.
+2. **OD-20-2 — Control Roles:** resolved as **consumer-first**; Vardena does not
+   create a speculative broad catalog before a concrete approved consumer needs a
+   role.
+3. **OD-20-3 — Control Role Artifact Shape:** resolved as an independent
+   effective-dated mapping. `Account.control_role` is explicitly rejected as the
+   primary architecture.
+4. **OD-20-4 — Account Code History:** resolved as `Account.id` permanent
+   identity and `Account.code` business-facing address; controlled pre-use code
+   correction is permitted, after accounting use code is immutable, and history is
+   designed with a real producer.
+5. **OD-20-5 — POSTING vs AGGREGATION:** resolved as
+   `POSTING = leaf-only` and `AGGREGATION = reporting/read-time roll-up`. The
+   existing Task 18 Trial Balance / General Ledger roll-up model is valid under
+   this invariant. D-1 is resolved; non-leaf posting is not authorized.
+6. **OD-20-6 — Dimensions:** resolved as transaction-line-level analytical
+   assignments with aggregation through the Accounting/read layer when a concrete
+   reporting consumer requires it; no ledger-entry dimension identity, generic
+   JSONB or speculative projection.
 
-**Gate outcome:** **BLOCKED — OWNER DECISION REQUIRED** (see §15 and the gate
-document). Six Owner decisions are proposed in §13; five bounded future slices in
-§14.
+**Gate outcome:** **READY FOR REVIEW — NOT ACCEPTED** (see §13 and the gate
+document). This remains documentation-only. No production code, schema, migration,
+API, DTO, permission, service, repository, frontend, seed or test changed. Task 19
+ODR-1/ODR-2/ODR-3 are not reopened or modified.
 
----
 
 ## 2. Repository Baseline
 
@@ -352,13 +340,10 @@ would be invention (AG-09).
 organization accounts; only active-operation-needed roles mandatory".** Derived
 strictly from ADR-0037 §4/§5, contract §8.7 and AR-29:
 
-1. **Consumer-first ordering.** Because a role becomes mandatory only when a
-   shipped operation consumes it, and because AR-29 forbids speculative columns
-   before a consuming operation exists, the repository's own rules imply the first
-   role set should arrive **with** its first consumer (a posting rule, a
-   year-transition document, or a control report) rather than as a standalone
-   catalog. *This is the ordering question put to the Owner as **OD-20-2**; the
-   inference is labelled, not asserted as a decision.*
+1. **Consumer-first ordering.** OD-20-2 makes the repository inference an Owner
+   decision: the first role set arrives with its first concrete approved consumer
+   (a posting rule, reconciliation/reporting consumer, settlement flow, etc.), not
+   as a standalone speculative catalog.
 2. **Two artifacts, not one.** A *role* (code-defined vocabulary) and a *mapping*
    (organization data: role → account, effective-dated, audited) are different
    artifacts with different lifecycles and different change-control (code change
@@ -367,34 +352,34 @@ strictly from ADR-0037 §4/§5, contract §8.7 and AR-29:
    belongs to the **consuming operation's readiness/validation path**, not to
    account administration — otherwise creating a chart would fail for roles no
    shipped operation uses.
-4. **Mapping targets must be postable.** *Agent inference:* a role used by an
-   automated posting rule must resolve to an account a line may reference, and
+4. **Mapping targets must match the consumer.** *Agent inference:* a role used by
+   an automated posting rule must resolve to an account a line may reference, and
    contract §14 rule 1 restricts lines to postable, active accounts. Whether a
-   role may map to an AGGREGATION node for reporting-only purposes is undecided
-   and belongs to **OD-20-3/OD-20-4**.
+   reporting-only role may target an aggregation node remains a future consumer
+   design/content question under OQ-25; OD-20-3 decides the mapping artifact shape,
+   not every target policy.
 5. **Immutability interaction.** `is_postable` and structure are immutable after
    use (§8.4 rule 4); remapping a role after postings exist changes *future*
    behaviour only and must never rewrite history — effective dating (§8.7 "D-21")
    is the recorded mechanism for that.
 
-**B6 — where should role mapping live?** Candidates derived from repository
-architecture only:
+**B6 — where role mapping lives.** Candidate analysis from the original
+investigation, with OD-20-3 now resolving the choice:
 
 | Candidate | Repository support | Tension |
 |---|---|---|
-| **Nullable `accounts.control_role` column** | Contract §8.3 lists `control_role` as a conceptual *account attribute* ("nullable, closed code-defined list") | Cannot express effective dating or a one-role-many-accounts / one-account-many-roles relationship; AR-29 blocks adding it before a consumer |
-| **Separate effective-dated mapping relation** | Contract §8.7 + ADR-0037 §4: "a role mapping is configuration data with its own permission, audit trail and effective dating" | No table exists; ownership (accounting configuration version vs standalone) undecided |
+| **Nullable `accounts.control_role` column** | Historical contract §8.3 wording listed `control_role` as a conceptual account attribute | **Rejected by OD-20-3** as the final architecture; cannot express effective dating or reassignment, and AR-29 blocks speculative schema before a consumer |
+| **Separate effective-dated mapping relation** | Contract §8.7 + ADR-0037 §4: "a role mapping is configuration data with its own permission, audit trail and effective dating" | **Chosen by OD-20-3**; no table exists and implementation is deferred until a consumer-driven task |
 | **Attribute of the accounting configuration version** | ADR-0028 versioning + operational freeze already model organization configuration | Freeze semantics would make remapping after first use impossible without a new version — may or may not be desired |
 | **Another bounded model (e.g. owned by the consuming operation)** | AR-29 consumer-first posture | No consumer exists yet |
 
-**Escalated ambiguity — T20-C-1 (CONTRADICTION, documentation level).** Contract
-§8.3 describes `control_role` as a **nullable column on the account**, while
-§8.7 and ADR-0037 §4 describe a role mapping as **effective-dated configuration
-data with its own permission and audit trail**. A single nullable column cannot
-carry effective dating or an audit trail, so the two descriptions cannot both be
-literally implemented by the same artifact. This is **not resolved here**; it is
-put to the Owner as **OD-20-4** and will require either an ADR-0037 amendment or
-a contract precision before implementation.
+**Resolved ambiguity — T20-C-1 (documentation level).** Contract §8.3 previously
+described `control_role` as a nullable account attribute, while §8.7 and
+ADR-0037 §4 described an effective-dated configuration mapping. **OD-20-3 resolves
+this conflict:** the future authoritative artifact is an independent
+effective-dated Account↔Control Role assignment. `Account.control_role` is not
+the chosen final architecture. Implementation remains deferred until a real
+consumer requires a role.
 
 ### 5.3 Cross-module dependencies
 
@@ -414,11 +399,13 @@ a contract precision before implementation.
 
 ```text
 OWNER-DECIDED / NOT IMPLEMENTED : role vocabulary is code-defined (ADR-0037 §4);
-                                  mapping is effective-dated configuration (§8.7);
-                                  mandatory-ness is demand-driven (ADR-0037 §5)
-OPEN QUESTION                   : the role catalog itself, the mandatory set,
-                                  and whether a role may target a non-postable node (OQ-25)
-CONTRADICTION                   : T20-C-1 — §8.3 column vs §8.7 effective-dated mapping
+                                  sequencing is consumer-first (OD-20-2);
+                                  mapping is independent effective-dated configuration
+                                  (OD-20-3); mandatory-ness is demand-driven
+OPEN QUESTION                   : the concrete role catalog, mandatory set and
+                                  consumer-specific target policies (OQ-25)
+RESOLVED                        : T20-C-1 — §8.3 column vs §8.7 mapping resolved
+                                  in favor of the effective-dated mapping
 ADR-PROPOSED                    : ADR-0037 (§4/§5) — Proposed, not Accepted
 ```
 
@@ -428,7 +415,7 @@ ADR-PROPOSED                    : ADR-0037 (§4/§5) — Proposed, not Accepted
 |---|---|
 | Adopting the §8.7 example list as the catalog | Ships an unvalidated accounting opinion; contract explicitly calls them placeholders (AG-09 violation) |
 | Building the role table before a consumer | AR-29 speculative-schema violation; a role set with no consumer cannot be validated and cannot be "mandatory when consumed" |
-| Resolving T20-C-1 silently by picking a shape | AG-17 violation; would pre-empt an ADR-0037 amendment |
+| Implementing `Account.control_role` despite OD-20-3 | Violates the resolved architecture; loses effective dating and audit semantics |
 | Letting an integration hard-code account codes while roles are pending | Exactly the failure mode D-12/§8.7 exists to prevent; recorded as a review rule for any future integration task |
 
 ---
@@ -471,103 +458,45 @@ in the read model: `accounting/data/accounting-read-query.repository.ts` emits
 rule than I-2 itself requires (`owner-decision-baseline.md` §3 I-2 repository
 status; ADR-0034 §6).
 
-### 6.3 Future Owner decision
+### 6.3 Owner decision resolution
 
-**C3 — what does the Owner decision actually say about posting at a
-higher/non-leaf level?** Q5 (`owner-decision-baseline.md` §2) says: the last
-configured level is postable **by default**; **configuration may allow posting at
-another level**; posting must preserve integrity and must not create parent/child
-double counting; and it must be reconciled with Invariant 2.
+**OD-20-5 resolves D-1.** Vardena keeps the existing accounting invariant:
 
-ADR-0034 (Proposed) §3 permits a non-leaf POSTING node **only together with** §4
-(separated own vs descendant measures) and §5 (explicit validation rules), and §6
-states plainly: the conflict with AC-D-19 rule 2 / AC-I-09 is **recorded, not
-resolved**; today's rule **stays in force**; enabling non-leaf posting requires
-**superseding** contract §14 rule 2 and AC-I-09 and **amending** §8.5, via an
-accepted ADR amendment plus its own implementation task.
+```text
+POSTING = leaf-only
+AGGREGATION = reporting/read-time roll-up
+```
 
-**Therefore the Owner decision authorizes a *model*, not an implementation.**
-Task 20 confirms discrepancy **D-1** is unchanged after Task 19 and neither
-relaxes nor strengthens `postable ⇒ leaf`.
+Non-leaf accounts such as `کل` and `گروه` are aggregation/reporting nodes and are
+not direct posting targets. Accounting movements are recorded at the lowest
+posting leaf level. Parent-level values shown by Trial Balance / General Ledger /
+future reports are derived upward from descendants.
+
+Critical consequence: the same movement MUST NOT be independently posted to
+`معین`, `گروه` and `کل`. That would duplicate accounting amounts. A report may show
+the derived aggregate at multiple hierarchy levels, but those rows are views over
+the same underlying leaf postings.
 
 ### 6.4 Reporting implications
 
-**C4 — what would change if non-leaf posting were eventually supported.**
-*Verified implementation evidence, followed by consequences:*
+The Task 18 roll-up is a recursive mapping from posting accounts to themselves and
+ancestors, followed by `SUM` grouped by the reported account. Under OD-20-5 this
+model is valid because `posting_accounts` are leaf accounts. The parent rows are
+derived aggregation rows, not additional source movements.
 
-The Task 18 roll-up is a recursive mapping, not a filtered sum
-(`accounting/data/accounting-read-query.repository.ts`, TB query and its twin
-count query):
-
-```sql
-posting_accounts AS (SELECT "id" FROM scoped_accounts WHERE "is_postable" = true),
-account_rollup AS (
-  SELECT p."id" AS posting_account_id, p."id" AS report_account_id FROM posting_accounts p
-  UNION ALL
-  SELECT ar.posting_account_id, parent."id"
-    FROM account_rollup ar JOIN scoped_accounts current_node ON …
-    JOIN scoped_accounts parent ON parent."id" = current_node."parent_id"
-),
-trial_rows AS (SELECT ar.report_account_id …, SUM(activity.*) … GROUP BY ar.report_account_id, …)
-```
-
-Each posting account contributes to **itself and to every ancestor**, and every
-`report_account_id` becomes **one row with one undifferentiated set of measures**.
-
-| Affected area | Consequence of relaxing `postable ⇒ leaf` without ADR-0034 §4 |
-|---|---|
-| Parent/child hierarchy | A node would be simultaneously a posting destination and the parent of posting destinations — the exact shape I-2 forbids |
-| **Trial Balance** | A non-leaf POSTING node appears once as `posting_account_id = report_account_id` (its own postings) **and** receives all descendants' activity through the recursive branch; the `SUM … GROUP BY report_account_id` merges them into a single row labelled `POSTING`. **Own postings and descendant rollup become indistinguishable — double counting against any consumer that also reads the children's rows.** |
-| **General Ledger** | The same `posting_accounts` / `account_rollup` construction is used, so the same merge occurs on the GL surface |
-| **Account Statement** | `AccountStatementsService` refuses non-postable accounts and reads that account's **own** ledger rows only (service lines 130–135). A non-leaf POSTING node would therefore report **own-only** on the statement while the Trial Balance reports **own + descendants** for the same account — two different numbers for one account across two accepted surfaces, with no disclosure |
-| Aggregation semantics | Contract §8.5's "a non-postable account's movement is the rollup of its descendants" becomes incomplete: it defines no measure for a *postable* account that also has descendants |
-| Posting validation | `planPostabilityChange` and the `parent_postable` placement rule would both need a replacement rule set (ADR-0034 §5: which transitions, when, and what happens to descendants) |
-| Balance projection | The projection key is `(organization, area, year, period, account)` (ADR-0031; `accounting/domain/balance-projection.ts`) and stores per-account own activity; it does not encode own-vs-descendant, so a rollup consumer of the projection inherits the same ambiguity |
-| Reporting read models | Every rollup surface would have to declare its inclusion rule ("own", "descendants", or "own + descendants, declared") per ADR-0034 §4/§7 |
-
-**C5 — can non-leaf posting be introduced without violating POSTING XOR
-AGGREGATION?** *Yes in principle, and only under ADR-0034's own conditions.*
-I-2 forbids a node being *simultaneously* an aggregation of its children **and**
-an independent posting destination whose postings fold into that same
-aggregation. If the read model keeps **own postings** and **descendant rollup**
-separately addressable and every total declares which it is (ADR-0034 §4), the
-node has one semantic role at a time in each reported measure and I-2 is not
-violated. Without that separation, relaxation violates I-2 immediately.
-
-**C6 — minimum architecture required before such a feature could ever be
-implemented** (recorded, not authorized; from ADR-0034 §4/§5/§6 + the code
-evidence above):
-
-1. An **accepted ADR amendment** superseding contract §14 rule 2 (AC-D-19) and
-   AC-I-09 and amending §8.5 — ADR-0034 is only **Proposed**.
-2. An **explicit stored role attribute** (or a documented mapping from
-   `is_postable`) so the role is not inferred from the presence of children.
-3. **Separated own-vs-descendant measures** in every rollup read model — at
-   minimum the TB and GL CTEs above, plus a decision for the Account Statement's
-   own-only semantics and for the balance projection.
-4. **Explicit validation rules**: which role transitions are allowed and when
-   (before/after first use, §8.4 rule 4), and what happens to descendants when a
-   parent becomes POSTING.
-5. **Report disclosure** of the inclusion rule on every affected surface.
-6. **Denial-path tests** (AG-06/AG-13) for every refused transition, plus
-   regression tests proving no double counting.
-7. A **policy answer** for which levels a business may post to (OQ-25, O-3).
-
-**Contradiction status.** No *code-level* contradiction exists: the implementation
-is internally consistent and strictly stronger than I-2. The contradiction is
-documentation-level and already registered as **D-1** (Q5 "may allow posting at
-another level" vs AC-D-19/AC-I-09). Task 20 confirms it is unchanged and
-escalates it as **OD-20-5**.
+No own-vs-descendant balance measures are required for Task 20, because non-leaf
+POSTING is not supported. If a future approved business requirement needs
+non-leaf posting, it must become a new explicit architecture decision and reopen
+ADR-0034/contract/read-model semantics through a future task.
 
 ### 6.5 Risks
 
-| Risk | Consequence |
-|---|---|
-| Relaxing `postable ⇒ leaf` as "just a validation change" | Silent double counting in two accepted read surfaces (TB, GL) and a silent own-vs-rollup divergence with the Account Statement |
-| Treating Q5 as authorization | ADR-0034 §6 explicitly keeps AC-D-19/AC-I-09 in force; acting on Q5 alone would bypass the ADR lifecycle |
-| Adding a role column "for later" | AR-29 speculative schema; also risks two sources of truth with `is_postable` |
+| Risk | Consequence | Task 20 resolution |
+|---|---|---|
+| Posting the same movement to leaf and parent levels | Duplicate accounting amounts | Forbidden by OD-20-5 |
+| Treating parent report totals as additional organization activity | Overstated totals | Parent values are derived roll-up views only |
+| Relaxing `postable ⇒ leaf` as a small validation change | Breaks accepted read semantics | Requires a new explicit future architecture decision; not authorized here |
 
----
 
 ## 7. Account Code History (Domain D)
 
@@ -660,9 +589,9 @@ unresolved dependencies: ADR-0033 §3 (code history), ADR-0030/OQ-45 (licensing 
 no `license` schema/module exists, enforcement OFF), OQ-52/OQ-53, OQ-62/OQ-63,
 and the Audit module.
 
-**Net:** ADR-0035 depends on code history, and code history's only durable
-producer is ADR-0035. The Owner must break the ordering explicitly →
-**OD-20-4** (§13).
+**Net:** OD-20-4 breaks the ordering explicitly: do not ship a speculative
+history-only table; design the history mechanism with a real producer (pre-use
+code edit and/or ADR-0035 migration service).
 
 ### 7.5 Risks
 
@@ -753,7 +682,7 @@ what the contract already states.
 
 | Surface | Repository-stated consequence |
 |---|---|
-| **Ledger entries** | The domain seam already exists (`dimensionAssignments`), currently always empty. Whether assignments are **persisted on the ledger row** or only on the document line is **not decided anywhere**: contract §10.6 specifies the *document-line* child table `accounting_document_line_details`; no ledger-side table is specified. *This is a real open data-model question* → **OD-20-6** |
+| **Ledger entries** | The domain seam already exists (`dimensionAssignments`), currently always empty. **OD-20-6 resolves the initial boundary:** dimensions are transaction-line-level analytical assignments and are not `LedgerEntry` identity; no ledger-side dimension columns or generic payload are the primary architecture. |
 | **Posting** | Validation at composition **and again at finalization** (§10.6 rules 1–5): only attached dimensions assignable, every `required` present, no `forbidden` present, ≤ 1 item per dimension per line, item active and area-applicable (AC-I-18) |
 | **Reporting** | `GROUP BY` over the typed assignment table joined to lines/documents (§10.7) — detail ledger, dimension trial balance, counterparty statement, project cost report |
 | **Trial Balance** | Account-keyed today. A "dimension trial balance" is named in §10.7 as a *future report*, and Task 18's TB has no dimension axis. Extending it is a new surface decision, not an automatic consequence |
@@ -771,12 +700,12 @@ what the contract already states.
 
 ### 8.6 Open dimension decisions (E6)
 
-OQ-41 (count; per-dimension requirement defaults; which dimensions must bind to
-master data; who may define dimensions and items; item sharing across accounts of
-different nature; per-area item scoping) · OQ-22 / OQ-55 (branch/department as
-accounting dimensions) · and the **ledger-vs-line persistence question and
-projection-key question** identified in §8.4, which no existing OQ states
-explicitly → carried into **OD-20-6**.
+OQ-41 remains open for count; per-dimension requirement defaults; which dimensions
+must bind to master data; who may define dimensions and items; item sharing across
+accounts of different nature; and per-area item scoping. OQ-22 / OQ-55 still govern
+branch/department-as-accounting-dimension questions. OD-20-6 resolves only the
+initial persistence/aggregation boundary: line-level analytical assignments and
+read-layer aggregation, with no speculative ledger widening or projection.
 
 ---
 
@@ -786,7 +715,7 @@ explicitly → carried into **OD-20-6**.
 |---|---|---|
 | **Identity** — `Account.id` is permanent identity | **HOLDS — IMPLEMENTED** | `LedgerEntry.accountId`, `AccountingDocumentLine.accountId`, `AccountBalanceProjection` key, opening logic; no historical row stores a code |
 | **Historical code** — `code` is a business/display identifier with historical semantics | **PARTIAL** | "Business/display identifier, not identity" **holds**; "historical semantics" is **not implemented** (D-3). Vacuously satisfied today because a code can never change |
-| **Posting** — POSTING XOR AGGREGATION | **HOLDS — by a stricter rule** | `postable ⇒ leaf` enforced on both write paths and re-checked in the locked transaction; TB/GL materialize the role explicitly. D-1 (Q5 vs AC-D-19) remains a recorded documentation conflict |
+| **Posting** — POSTING / AGGREGATION | **HOLDS — OD-20-5 RESOLVED** | `postable ⇒ leaf` enforced on both write paths and re-checked in the locked transaction; TB/GL materialize the role explicitly. OD-20-5 makes this the authoritative product rule: POSTING = leaf-only, AGGREGATION = reporting/read-time roll-up. |
 | **Configuration** — coding structure and accounting configuration must remain coherent | **HOLDS for new writes; PARTIAL overall** | ODR-1 `planPinCoherence` (level count + per-level digit length) applied at root create, child create and move, re-applied in the locked transaction. Pre-existing divergent rows are **not** repaired; **OQ-62/OQ-63 remain OPEN** |
 | **Organization isolation** — permission ≠ organization membership; Principal-bound authorization intact | **HOLDS** | `organization_memberships` + `assertOrganizationInScope` chokepoint; 404 isolation preserved; membership administration bound after PR #55, with only the bounded first-grant bootstrap exception. Nothing in Task 20 touches it; OQ-01/OQ-22/OQ-19 remain OPEN |
 | **Ledger** — ledger history is never rewritten by chart configuration changes | **HOLDS** | Ledger repository is insert-only; accounts pin their configuration version and a new version never reinterprets them (§9.4); `operationally_used_at` freezes a used configuration (Task 13); no code is stored on any historical row |
@@ -796,507 +725,86 @@ explicitly → carried into **OD-20-6**.
 
 ## 10. OQ Impact
 
-Only OQs actually relevant to Task 20 are listed. **No OQ is closed, narrowed or
-reclassified by this task.**
+Task 20 resolves the six Owner Decisions, but it does **not** close the broader
+Open Questions that still own content/governance.
 
-| OQ | Current repository status | Why it matters to Task 20 | Can Task 20 proceed without closing it? | Required Owner decision |
-|---|---|---|---|---|
-| **OQ-25** | **OPEN** (annotated by Task 17C; unchanged by Task 19) | Gates base-chart content, the control-role list and mandatory set, per-level posting policy, deactivation guards and code-reuse policy — i.e. Domains A, B, C and D content | **Yes — the investigation proceeds; implementation cannot** | Yes — see OD-20-1, OD-20-2, OD-20-3, OD-20-5 |
-| **OQ-41** | **OPEN** | Gates the entire dimension model (count, requirement defaults, binding, governance, area applicability) — Domain E | Yes for investigation; no for implementation | Yes — see OD-20-6 (bounded scope question only; content stays with OQ-41) |
-| **OQ-36** | **OPEN** | Code reuse after deactivation and whether deletion is ever allowed — interacts with code history (baseline O-1) and Q21/D-4 | Yes | Folded into OD-20-4 as a dependency |
-| **OQ-62** | **OPEN** (explicitly kept open by ODR-1) | Pre-existing divergent pins are unrepaired; a base-chart adoption or a migration preflight must handle them | Yes | No new decision proposed by Task 20 — the existing OQ owns it |
-| **OQ-63** | **OPEN** | LEGACY fallback shape; same preflight concern | Yes | No new decision proposed |
-| **OQ-01** | **OPEN** | Tenancy product question; ODR-3 decided the security invariant, not the product model | Yes — Task 20 introduces no tenancy change | No |
-| **OQ-22** | **OPEN** | Branch as scope vs accounting dimension — directly relevant to Domain E's boundary | Yes | No new decision proposed; feeds OD-20-6 as a dependency |
-| **OQ-19** | **OPEN** | Referenced by Task 19 for out-of-band bootstrap provisioning; relevant only because any future administration surface inherits the ODR-3 posture | Yes | No |
-| **OQ-43** | **OPEN** (LEGAL VALIDATION REQUIRED) | Legal profiles consume control roles (ADR-0037 §4) and the code-resolution seam (ADR-0036 §5); otherwise out of Task 20 scope | Yes | No |
-| **OQ-45 / OQ-52 / OQ-53** | **OPEN** | Reach Task 20 only through ADR-0035's licensing and Recovery/Backup-Point stages, i.e. as prerequisites of the code-migration producer for Domain D | Yes | No — recorded as dependencies of Future Slice C/E |
-
-**OQ-52/OQ-53 relevance verdict:** relevant **indirectly only** (via ADR-0035
-§3), not as direct Task 20 blockers. **OQ-62/OQ-63 relevance verdict:** relevant
-to Domains A and D as preflight/adoption dependencies.
+| OQ | Previous status | New status | Reason |
+|---|---|---|---|
+| **OQ-25** | OPEN | **OPEN — narrowed by OD-20-1…OD-20-5** | Mechanism/sequencing/shape resolved for Base Chart, control roles, code history trigger and posting/aggregation. Content remains open: Base Chart accounts/codes/titles/natures/postability, concrete role catalog and mandatory set, per-level leaf posting defaults, code reuse/history validity details, deletion guards and statutory layouts. |
+| **OQ-41** | OPEN | **OPEN — narrowed by OD-20-6** | Initial dimension persistence/aggregation boundary resolved. Dimension count, requirement defaults, master-data binding, item governance and area applicability remain open. |
+| **OQ-36** | OPEN | OPEN | Code reuse/deletion policy still affects future code history and unused-account deletion. |
+| **OQ-62/OQ-63** | OPEN | OPEN | Base Chart adoption/migration preflight must still respect pin-divergence and LEGACY fallback questions. |
+| **OQ-01/OQ-22/OQ-19/OQ-43/OQ-45/OQ-52/OQ-53** | OPEN | OPEN | Referenced dependencies remain unchanged. Task 20 does not alter tenancy, bootstrap, legal, licensing or backup/restore questions. |
 
 ---
 
 ## 11. ADR Impact
 
-**No ADR status is changed, promoted or self-accepted by this task.** All five
-Accounting ADRs created by Task 17C remain **Proposed**, consistent with the
-repository's recorded convention (`docs/tasks/task-19/task-19-acceptance-record.md`
-§6: "Task acceptance is separate from ADR acceptance").
+No ADR is promoted to Accepted by Task 20. The affected Proposed ADRs are amended
+to record the Owner decisions and remain pending their separate adoption/implementation
+gates.
 
-| ADR | Status | Implementation alignment | Dependencies | Adoption required before implementation? | Amendment required? |
-|---|---|---|---|---|---|
-| **ADR-0033** — Account identity & code history | **Proposed** | §1/§2/§5 **aligned and implemented**; §3/§4 **not implemented**; §6/§7 repository is **stricter** | ADR-0035 (the producer), OQ-25/OQ-36 (reuse), the read surfaces that would resolve as-at | **Yes** — a code-history schema task must not precede ADR resolution | **Not identified.** One item is *undecided inside* the ADR (whether a pre-use edit enters history, §3) — that is an Owner decision (OD-20-4), which may then need an ADR addendum |
-| **ADR-0034** — POSTING XOR AGGREGATION | **Proposed** | §1/§2/§6 **aligned** (the shipped rule is stricter); §3/§4/§5 **not implemented** | Contract §14 rule 2 (AC-D-19), AC-I-09, §8.5; OQ-25 (policy content) | **Yes**, and more: ADR-0034 §6 itself requires an **accepted ADR amendment superseding AC-D-19/AC-I-09 and amending §8.5** before non-leaf posting may exist | **Yes, if and only if** the Owner chooses to enable non-leaf posting (OD-20-5). If the Owner keeps `postable ⇒ leaf`, ADR-0034 needs no amendment — only a recorded decision that §3 stays dormant |
-| **ADR-0035** — Code structure migration | **Proposed** | Nothing implemented; Invariant I-3 already structurally protected | ADR-0033 §3, ADR-0030/OQ-45, OQ-52/OQ-53, OQ-62/OQ-63, Audit module | **Yes** | **Not identified** |
-| **ADR-0037** — Configuration boundary | **Proposed** | §1/§2/§8 **mechanism implemented**; §3 (base structure) **not implemented**; §4/§5 (control roles) **not implemented**; §6/§7 (detail/dimensions) **not implemented** | OQ-25 (base content, roles), OQ-41 (dimensions), OQ-22/OQ-55 | **Yes** for any of §3–§7 | **Likely yes for §4** — the T20-C-1 shape ambiguity between contract §8.3 (`control_role` column) and §8.7/ADR-0037 §4 (effective-dated mapping) must be settled by an amendment or a contract precision (OD-20-3) |
-| ADR-0036 — Legal reporting architecture | Proposed | Out of Task 20 scope except as a consumer of roles and the code seam | OQ-43 | n/a here | n/a here |
+| ADR | Previous status | New status | Reason |
+|---|---|---|---|
+| **ADR-0033** — Account identity & code history | Proposed | **Proposed — amended** | Records OD-20-4: pre-use code correction permitted, post-use code immutable, history producer-bound and not speculative. |
+| **ADR-0034** — POSTING vs AGGREGATION | Proposed | **Proposed — amended** | Records OD-20-5 and resolves D-1 as leaf-only posting/read-time aggregation. |
+| **ADR-0035** — Code structure migration | Proposed | **Proposed — amended** | Records OD-20-4's producer-first constraint for code history dependency. |
+| **ADR-0037** — Configuration boundary | Proposed | **Proposed — amended** | Records OD-20-1, OD-20-2, OD-20-3 and OD-20-6. |
 
----
-
-## 12. Implementation / Decision Drift Matrix
-
-Classification vocabulary (exactly one per row): `IMPLEMENTED`,
-`IMPLEMENTED-PARTIAL`, `OWNER-DECIDED / NOT IMPLEMENTED`, `ADR-PROPOSED`,
-`OPEN QUESTION`, `CONTRADICTION`, `UNKNOWN`.
-
-| # | Area | Owner Decision | ADR | Current Implementation | Drift | Risk | Required Action |
-|---|---|---|---|---|---|---|---|
-| 1 | Configurable level count / titles / digit lengths / level kind | Q1 | ADR-0037 §1 | `coding_structure_versions/_levels` + `accounting_configuration_levels`, caps 8 / 32 | **IMPLEMENTED** | Low | None |
-| 2 | One-table chart, adjacency + level, code-prefix proof | AC-D-06/07 (contract) | — | `accounts` with `parent_id` + `level`; placement + code validation | **IMPLEMENTED** | Low | None |
-| 3 | Version pinning; a new version never reinterprets existing accounts | Q8 | ADR-0028, ADR-0035 §9 | Both pins NOT NULL; §9.4 behaviour | **IMPLEMENTED** | Low | None |
-| 4 | Dual-pin explicit coherence | ODR-1 | ADR-0037 (noted) | `planPinCoherence` at 3 write boundaries + locked re-check | **IMPLEMENTED-PARTIAL** (new writes only; existing divergence unrepaired) | Medium | None in Task 20; repair stays **OQ-62/OQ-63** |
-| 5 | Accounting-owned Chart Tree read surface | ODR-2 | ADR-0009 (consumption) | `GET /chart-tree`, `/chart-tree/:id` | **IMPLEMENTED** | Low | None |
-| 6 | Principal-bound organization authorization | ODR-3 | — | `organization_memberships` + `assertOrganizationInScope` | **IMPLEMENTED** | Low | None; future surfaces must reuse it (T20-T19-DEP-2) |
-| 7 | **Vardena base/standard chart** | Q2 | ADR-0037 §3 (**Proposed**) | **Nothing** — no seed, no template, no adoption path | **OWNER-DECIDED / NOT IMPLEMENTED** (baseline D-5) | High | **OD-20-1**; content stays OQ-25 |
-| 8 | Base chart **content** (codes, Persian titles, level shape) | — | — | none | **OPEN QUESTION** (OQ-25) | High | Expert/Owner decision; never invented by an agent |
-| 9 | **Control role vocabulary** (code-defined) | Q4 | ADR-0037 §4 (**Proposed**) | **No column, no table, no service** | **OWNER-DECIDED / NOT IMPLEMENTED** | High | **OD-20-2** (sequencing) |
-| 10 | Control role **catalog + mandatory set** | — | — | none | **OPEN QUESTION** (OQ-25) | High | Expert/Owner decision |
-| 11 | Control role **mapping artifact shape** | Q4 (mechanism) | ADR-0037 §4 vs contract §8.3 | none | **CONTRADICTION** (T20-C-1: column vs effective-dated mapping) | Medium | **OD-20-3**; likely ADR-0037 amendment or contract precision |
-| 12 | Role-driven automated posting (Inventory etc.) | Q4 (roles referenced by posting rules) | contract §20.4 gate | none | **OPEN QUESTION** (OQ-24/OQ-25/OQ-30/OQ-39) | Medium | Out of Task 20 scope; recorded as the likely first consumer |
-| 13 | `postable ⇒ leaf` (POSTING XOR AGGREGATION today) | I-2 | ADR-0034 §1/§6 | Enforced both directions + locked re-check; role surfaced in TB/GL | **IMPLEMENTED** (stricter than I-2 requires) | Low | Do not modify |
-| 14 | Non-leaf POSTING ("post at another level") | Q5 | ADR-0034 §3/§4/§5 (**Proposed**) | Unrepresentable | **CONTRADICTION** (baseline **D-1**, unchanged) | High | **OD-20-5**; if enabled, an accepted ADR amendment superseding AC-D-19/AC-I-09 + amending §8.5 first |
-| 15 | Own-vs-descendant separated measures in rollups | Q5 / I-2 via ADR-0034 §4 | ADR-0034 §4 (**Proposed**) | Not present — TB/GL sum own + descendants into one row per reported account | **OWNER-DECIDED / NOT IMPLEMENTED** | High (only if #14 is ever relaxed) | Prerequisite of #14 |
-| 16 | `Account.id` permanent identity | I-1 | ADR-0033 §1 | id-based references everywhere | **IMPLEMENTED** | Low | None |
-| 17 | `code` immutable from creation | (repository stricter than Q3) | ADR-0033 §6 | No code on the update path | **IMPLEMENTED-PARTIAL** vs Q3 (baseline **D-2**, repository stricter) | Low | None unless OD-20-4 authorizes a pre-use edit |
-| 18 | **Account code history + as-at resolution** | Q18 / I-1 | ADR-0033 §3/§4 (**Proposed**) | **No model, no migration, no resolution** | **OWNER-DECIDED / NOT IMPLEMENTED** (baseline D-3) | High | **OD-20-4** |
-| 19 | Code structure migration service | Q19 / I-3 | ADR-0035 (**Proposed**) | Nothing; I-3 structurally protected | **OWNER-DECIDED / NOT IMPLEMENTED** (baseline D-7) | High | Blocked by ADR-0030/OQ-45, OQ-52/OQ-53, ADR-0033 §3 |
-| 20 | Deletion of provably unused accounts | Q21 | ADR-0033 §7 | Freeze-over-delete for **all** accounts | **IMPLEMENTED-PARTIAL** vs Q21 (baseline **D-4**, repository stricter) | Low | Out of Task 20 scope; needs its own task + OQ-36 |
-| 21 | Tree detail + floating detail both supported | Q6 | ADR-0037 §6 (**Proposed**) | Contract-only | **OWNER-DECIDED / NOT IMPLEMENTED** (baseline D-12) | Medium | **OD-20-6** (scope), OQ-41 (content) |
-| 22 | Configurable typed dimension model, never EAV/JSONB | Q7 | ADR-0037 §7 (**Proposed**) | No tables; ledger seam always `[]`; no EAV, no JSONB (verified absence) | **OWNER-DECIDED / NOT IMPLEMENTED** | Medium | **OD-20-6** (scope), OQ-41 (content) |
-| 23 | Dimension persistence: document line vs ledger row; projection key | — | contract §10.6 specifies the line table only | Line table absent; projection key excludes dimensions by construction | **OPEN QUESTION** (not stated by any existing OQ) | Medium | Raised as part of **OD-20-6** |
-| 24 | Branch as accounting dimension | — | contract §12.4, §11.3 | Branch = Organization master data + document-header scope | **OPEN QUESTION** (OQ-22/OQ-55) | Low | No new decision proposed |
-| 25 | Reporting consumes Accounting truth; no second Account master | ODR-2 / Q15 / Q16 | ADR-0009 | TB/GL/statement/chart-tree all read Accounting models | **IMPLEMENTED** | Low | None |
-
-No row is classified `UNKNOWN`: every question raised by the brief resolved to a
-documented category from repository evidence.
+ADR-0036 is not substantively changed by Task 20.
 
 ---
 
-## 13. Proposed Owner Decisions
+## 12. Resolved Owner Decisions
 
-Only decisions genuinely required by the findings above. Nothing already settled
-is re-litigated, and no content that is expert-gated under OQ-25/OQ-41 is
-pre-empted — where the answer is accounting content, the decision asked for is
-**who decides and in what form**, not the content itself.
-
----
-
-### OD-20-1 — Vardena Base Chart: delivery form, adoption semantics and content authority
-
-**Question:** In what artifact form is the Vardena base Accounting structure
-delivered, what exactly happens when an organization adopts it, and who supplies
-its content?
-
-**Why it matters:** Q2 commits Vardena to providing a base structure; ADR-0037 §3
-constrains its *form* but explicitly leaves its *content* expert-gated. Nothing
-exists in code. Without this decision no base-chart task can be scoped, and any
-agent attempting one would have to invent accounting content (AG-09/AR-31).
-
-**Repository evidence:** `owner-decision-baseline.md` Q2 + D-5; ADR-0037 §3;
-contract §1.2 non-goal 1; `backend/prisma/` contains no seed script and no
-template artifact; ODR-1 `planPinCoherence`; ADR-0028 operational freeze.
-
-**Options:**
-- **A — Versioned template data owned by Vardena at deployment level** (template
-  version + levels + nodes tables), adopted into an organization by an explicit,
-  permission-gated, audited, ODR-3-bound operation that creates ordinary
-  `accounts` rows and a coherent pin pair. Never touches an existing chart.
-- **B — A reviewable, versioned file artifact** (e.g. a documented, checksummed
-  data file under `docs/` or `backend/prisma/`), imported by the same explicit
-  operation; no template tables in the database.
-- **C — Defer the base chart entirely** until a consuming need exists
-  (Inventory→Accounting integration or the first customer onboarding), keeping
-  Q2 as a recorded commitment with no delivery date.
-
-**Recommended option:** **A**, with content deferred to a separate
-accountant-approved deliverable.
-
-**Reason:** ADR-0037 §3 requires "versioned configuration data or a template
-artifact", explicitly forbids a silent seed and forbids hard-coded rows in domain
-logic. Option A matches the repository's existing versioned-configuration pattern
-(ADR-0028) and keeps adoption auditable and organization-scoped, which ODR-1 and
-ODR-3 both require. Option B is acceptable but has no existing import/review
-machinery; Option C is safe but leaves Q2 unfulfilled indefinitely.
-
-**Impact:** New Accounting-owned tables (template + adoption record), one
-adoption operation with a new granular permission and denial-path tests, and a
-decision on whether `accounts` carries template provenance (AR-29 forbids the
-column until a consumer exists). No change to existing accounts, no migration of
-existing charts, no ledger effect.
-
-**Dependencies:** OQ-25 (content) · ADR-0037 adoption · ODR-1 coherent pin pair
-(T20-T19-DEP-1) · ODR-3 chokepoint (T20-T19-DEP-2) · ADR-0028 freeze semantics ·
-ADR-0035 for any later re-coding.
+| Decision | Original question | Owner decision | Resulting architectural consequence | Implementation status |
+|---|---|---|---|---|
+| **OD-20-1** | What is the Base Chart artifact and adoption model? | Versioned Base Accounting Chart template stored as an Accounting-owned database/product asset, adopted explicitly into an organization. | Template identities never become ledger references; adoption creates organization-owned Account identities and must satisfy ODR-1/ODR-3. Content not invented by agents. | Deferred: no template tables/migrations/adoption service/API/seed/content. |
+| **OD-20-2** | Should control roles be catalog-first or consumer-first? | Consumer-first; no speculative broad catalog. | Each role must be justified by a concrete approved consumer. | Deferred: no table/enum/catalog/migration/API/service. |
+| **OD-20-3** | Column or mapping for role association? | Independent effective-dated Account↔Control Role mapping. | `Account.control_role` is rejected as the primary architecture; future design must support history, reassignment, auditability and identity preservation. | Deferred until a real consumer requires roles. |
+| **OD-20-4** | How do code changes and history work? | `Account.id` identity; `Account.code` business address; pre-use correction permitted; after accounting use immutable; history with real producer. | No speculative history table; future producer makes transitions auditable/reconstructable. | Deferred: no code-edit producer/history schema/report change. |
+| **OD-20-5** | Leaf-only or non-leaf posting? | **POSTING = leaf-only; AGGREGATION = reporting/read-time roll-up.** | D-1 resolved; existing read model valid; no parent duplicate postings, no own-vs-descendant workaround. | No implementation required; future exception needs new decision. |
+| **OD-20-6** | Where do dimensions live initially? | Transaction-line-level analytical assignments; read-layer aggregation for concrete reporting consumers. | Dimensions are not LedgerEntry identity; no arbitrary ledger columns, generic JSONB or speculative projection. | Deferred: no dimension tables/API/UI/reports/projections. |
 
 ---
 
-### OD-20-2 — Control Role foundation sequencing: consumer-first or foundation-first
+## 13. Final Decision Gate
 
-**Question:** Should the first control roles be introduced **together with their
-first consuming operation**, or as a standalone role foundation ahead of any
-consumer?
+**Verdict: READY FOR REVIEW — NOT ACCEPTED.**
 
-**Why it matters:** ADR-0037 §5 makes mandatory-ness demand-driven ("a role
-becomes required when a shipped operation consumes it"), and AR-29 forbids
-speculative schema before a consumer exists. Those two rules together imply an
-ordering that has never been decided explicitly, and the answer determines
-whether a "Control Role Foundation" task may exist at all.
-
-**Repository evidence:** ADR-0037 §4/§5; contract §8.7 (AC-D-09) and its explicit
-"placeholders, not a decision"; `prisma/schema/accounting.prisma` header
-("deferred with the posting task that consumes them"); task-index §4 rows for
-control roles and posting rules; contract §20.4 activation gate.
-
-**Options:**
-- **A — Consumer-first.** No role table until the first consuming operation
-  (most likely Inventory→Accounting posting rules) is authorized; roles ship
-  inside that task, limited to the roles that operation consumes.
-- **B — Foundation-first.** Ship the role vocabulary + mapping artifact now with
-  an expert-approved catalog, mandatory-ness enforced later by consumers.
-- **C — Hybrid.** Ship the *mapping mechanism* now with an **empty** code-defined
-  catalog, so organizations can map nothing until a role is added by a code change.
-
-**Recommended option:** **A**.
-
-**Reason:** It is the only option consistent with both ADR-0037 §5 and AR-29 as
-written, and it avoids shipping a catalog that OQ-25 has not validated. Option B
-requires the expert catalog first (OQ-25) and risks an unvalidated accounting
-opinion; Option C ships machinery with no behaviour and no test subject.
-
-**Impact:** Under A, there is **no Control Role task** until a posting-rule /
-integration task is authorized; §14's Future Slice B becomes conditional. Under B
-or C, an expert-approved catalog must precede implementation.
-
-**Dependencies:** OQ-25 (catalog, mandatory set) · OQ-24/OQ-30/OQ-39 (integration)
-· OD-20-3 (mapping shape) · ADR-0037 adoption.
-
----
-
-### OD-20-3 — Control Role mapping artifact shape (resolves contradiction T20-C-1)
-
-**Question:** Is a control role an **attribute of the account** (contract §8.3's
-nullable `control_role` column) or a **separate effective-dated, audited mapping
-object** (contract §8.7 / ADR-0037 §4)?
-
-**Why it matters:** The two repository statements cannot both describe the same
-artifact: a nullable column cannot carry effective dating or its own audit trail.
-Whichever is chosen determines the schema, the permission set, the audit surface
-and whether one account may hold several roles over time.
-
-**Repository evidence:** contract §8.3 (attribute table row: "`control_role` |
-nullable, closed code-defined list | §8.7 (D-12)") vs contract §8.7 ("a role
-mapping is configuration data with its own permission, audit trail and effective
-dating") and ADR-0037 §4 (same wording); `prisma/schema/accounting.prisma` header
-defers `control_role` as a *column*.
-
-**Options:**
-- **A — Effective-dated mapping relation** (role, account, valid-from/valid-to,
-  audit, permission-gated), with contract §8.3's column row corrected to a
-  pointer.
-- **B — Nullable column on `accounts`**, with contract §8.7's effective dating
-  reduced to audit-log history and ADR-0037 §4 amended.
-- **C — Mapping owned by the accounting configuration version** (roles resolved
-  per configuration version, frozen with it).
-
-**Recommended option:** **A**.
-
-**Reason:** §8.7 and ADR-0037 §4 are the more specific and more recent statements
-and are the ones the Owner decision Q4 refers to; a relation also supports
-remapping after use without rewriting account rows, which the immutability rules
-(§8.4 rule 4) make attractive. Option C couples role changes to configuration
-versioning and the operational freeze, which would make remapping impossible
-after first use — likely undesirable, but it is the Owner's call.
-
-**Impact:** Either a new mapping table (A/C) or a new account column (B), plus
-the contract/ADR text correction; no ledger effect either way. A also requires
-deciding whether a role may target a non-postable node.
-
-**Dependencies:** OD-20-2 (sequencing) · OQ-25 (catalog) · ADR-0037 amendment or
-contract precision · contract §8.3/§8.7 alignment.
-
----
-
-### OD-20-4 — Account Code History: activation trigger and pre-use edit semantics
-
-**Question:** Does Account Code History ship **before** any producer of a code
-change exists, and does a *pre-use* code edit (if ever authorized) write a history
-row?
-
-**Why it matters:** There is a circular dependency in the repository: ADR-0035
-(migration service) requires code history (ADR-0033 §3), while code history's
-only durable producer after first use is that same migration service. Meanwhile
-`accounts.code` is immutable from creation, so a history store built today would
-hold exactly one row per account forever — speculative schema under AR-29.
-ADR-0033 §3 also leaves the pre-use question explicitly undecided.
-
-**Repository evidence:** ADR-0033 §3/§4/§6 and its Consequences ("whether a
-superseded code may be re-issued is **not decided here**"); ADR-0035 §1/§3/§4;
-baseline D-2, D-3, D-7, O-1; OQ-25/OQ-36 OPEN; `accounting/domain/account.ts`
-("NO code field on the update path"); the Task 18 read SQL rendering `a."code"`
-and sorting by it.
-
-**Options:**
-- **A — Producer-first.** No code-history table until either the pre-use code
-  edit or the migration service is authorized; history ships inside that task.
-- **B — Store-first.** Ship the history table + as-at resolution seam now,
-  back-filled with each account's single current code, so later producers are
-  purely additive.
-- **C — Pre-use edit first, then history.** Authorize a bounded pre-use code edit
-  (reference check: no document line, no ledger entry; validated against the
-  pinned versions; permission-gated; audited) and let it be the first producer,
-  with an explicit answer on whether it writes history.
-
-**Recommended option:** **A**, with **C** as the preferred first producer when the
-Owner wants to unblock the chain.
-
-**Reason:** A honours AR-29 and avoids an untestable store. C is the smallest
-real producer and is already recorded as a permitted relaxation (Q3, ADR-0033 §6),
-whereas the migration service is blocked by licensing (ADR-0030/OQ-45) and
-backup/restore (OQ-52/OQ-53) that are outside Accounting's control. B is the only
-option that ships history with nothing to record.
-
-**Impact:** Under A/C: one additive migration when the producer lands, an as-at
-resolution seam, and an explicit decision on which read surfaces resolve as-at
-(changing TB/GL/statement rendering or ordering is a public behaviour change to
-accepted surfaces). Under any option, the **code-reuse** question (OQ-25/OQ-36,
-baseline O-1) and the interaction with `uq_accounts_organization_id_code` must be
-answered before the schema is fixed.
-
-**Dependencies:** ADR-0033 adoption · ADR-0035 (and its ADR-0030/OQ-45,
-OQ-52/OQ-53 blockers) · OQ-25/OQ-36 · OQ-62/OQ-63 (migration preflight) · Task
-17B/18 read-surface behaviour.
-
----
-
-### OD-20-5 — Non-leaf posting: keep `postable ⇒ leaf`, or open the ADR-0034 amendment path
-
-**Question:** Does Vardena keep `postable ⇒ leaf` as a permanent product rule, or
-does it open the ADR-0034 §3/§4/§5 path toward configurable non-leaf posting?
-
-**Why it matters:** D-1 is an unresolved normative conflict between Q5 ("posting
-at another level") and contract §14 rule 2 / AC-I-09. It has now persisted across
-Task 17C, Task 18 and Task 19. The shipped Trial Balance and General Ledger
-roll-up would merge a non-leaf POSTING node's own postings with its descendants'
-into a single undifferentiated row, and the Account Statement would report
-own-only for the same account — so relaxation without ADR-0034 §4 is a
-double-counting defect, not a configuration option. Leaving the conflict open
-also leaves every future chart task ambiguous.
-
-**Repository evidence:** `owner-decision-baseline.md` Q5 + I-2 + D-1; ADR-0034
-§3/§4/§5/§6; contract §14 rule 2, §8.5, AC-I-09;
-`accounting/domain/account.ts` (`planPostabilityChange`, `parent_postable`);
-`accounting/data/accounting-read-query.repository.ts` (`account_rollup` /
-`trial_rows`); `accounting/application/account-statements.service.ts` lines
-130–135.
-
-**Options:**
-- **A — Keep `postable ⇒ leaf` permanently.** Record ADR-0034 §3 as a dormant
-  model; D-1 is resolved by declaring the stricter rule the product rule.
-- **B — Open the amendment path.** Authorize a future ADR amendment superseding
-  AC-D-19 rule 2 / AC-I-09 and amending §8.5, with ADR-0034 §4's separated
-  own-vs-descendant measures as a hard prerequisite, and a separate implementation
-  task afterwards.
-- **C — Leave D-1 open.** Status quo; every future chart/report task must keep
-  re-reading the conflict.
-
-**Recommended option:** **A** for now, with **B** reachable later by an explicit
-new Owner decision.
-
-**Reason:** No repository source identifies a concrete business need for non-leaf
-posting; the strict rule already satisfies I-2; and the cost of relaxation is a
-change to two accepted read surfaces plus a new measure model. Choosing A costs
-nothing and removes a standing ambiguity; B can be re-opened whenever a real need
-appears. C is the only option that preserves the current risk.
-
-**Impact:** Option A: documentation only (a recorded decision; D-1 reclassified by
-the Owner, not by an agent). Option B: an ADR amendment, an explicit role
-attribute, separated measures in TB/GL (and a decision for the statement and the
-balance projection), report disclosure, new validation rules and denial-path
-tests.
-
-**Dependencies:** ADR-0034 status · contract §14/§8.5/AC-I-09 · OQ-25 (per-level
-posting policy, baseline O-3) · Task 18 read surfaces.
-
----
-
-### OD-20-6 — Dimension foundation boundary: first-slice scope and dimension-level aggregation
-
-**Question:** If and when a dimension foundation is authorized, (a) does the first
-slice include floating-detail items, line assignment and posting validation
-together, and (b) are dimension assignments persisted on the **document line
-only** or also on the **ledger entry**, and is dimension-level aggregation
-**ledger-native** or a **new projection key**?
-
-**Why it matters:** Contract §10.6 specifies only the *document-line* child table,
-while `accounting/domain/ledger-entry.ts` carries an optional
-`dimensionAssignments` seam on the **ledger** contract and
-`accounting/domain/balance-projection.ts` excludes dimensions from the projection
-key by construction. No repository source states which side is authoritative for
-dimension reporting. OQ-41 asks about dimension *content and governance*, not
-about this persistence/aggregation boundary — so the question is genuinely
-unowned.
-
-**Repository evidence:** contract §10.1–§10.7, §11.1–§11.4 (AC-D-11…AC-D-15,
-AC-I-18); ADR-0037 §6/§7; `accounting/domain/ledger-entry.ts` "Deferred dimension
-seam (OQ-41)"; `accounting/data/ledger-entries.repository.ts` lines 240–242;
-`accounting/domain/balance-projection.ts` lines 15 and 243; Task 18 D5
-(`accounting.ledger_entries` authoritative, the projection derived and
-rebuildable); OQ-41, OQ-22/OQ-55 OPEN.
-
-**Options:**
-- **A — Line-only persistence, ledger-native aggregation.** Assignments live on
-  document lines (contract §10.6); dimension reports aggregate from lines joined
-  to ledger entries; the projection stays dimension-free.
-- **B — Ledger-side persistence.** Assignments are also materialized on (or
-  alongside) ledger entries so ledger reads need no document join; the domain seam
-  becomes real.
-- **C — Line persistence plus a separate dimension projection** with its own
-  rebuild semantics under ADR-0031.
-
-**Recommended option:** **A** as the first slice, leaving B/C as later
-performance decisions.
-
-**Reason:** A is the only option the contract already specifies (§10.6), it
-matches Task 18's accepted "ledger is authoritative, projections are derived"
-posture (D5), and it avoids a second monetary/analytical truth. B duplicates
-line data onto immutable ledger rows and must be justified by a measured need; C
-adds a projection whose rebuild semantics and reconciliation gates (AC-I-19) are
-significant work.
-
-**Impact:** Scope of the first dimension task; whether `ledger_entries` gains a
-dimension child table; whether the balance projection key changes. No effect on
-existing behaviour until a dimension task is authorized.
-
-**Dependencies:** **OQ-41** (count, requirement defaults, binding, item
-governance, area applicability — content) · OQ-22/OQ-55 (branch/department) ·
-ADR-0037 §6/§7 adoption · ADR-0031 (if a projection is added) · Task 18 D5
-posture.
-
----
-
-## 14. Future Implementation Slices
-
-Proposed boundaries only. **None is authorized by this document**, and each still
-requires `docs/accounting/task-index.md` §7 admission (objective, scope,
-non-goals, dependencies, blocking OQs, required ADRs, acceptance criteria, index
-entry). The set is deliberately *not* assumed to be five tasks: Slice B is
-conditional on OD-20-2, and Slice E may never exist.
-
-### Future Slice A — Base Chart Structure
-
-| Field | Content |
-|---|---|
-| **Purpose** | Deliver the Q2 base structure as versioned template data plus an explicit, audited, organization-scoped adoption operation |
-| **Dependencies** | **OD-20-1**; OQ-25 (content, expert-approved); ADR-0037 adoption; ODR-1 coherent pin pair; ODR-3 chokepoint; ADR-0028 freeze semantics |
-| **Inputs** | An accountant-approved template (codes, Persian titles, level shape, natures, postability) supplied as reviewable data |
-| **Outputs** | Template tables (or artifact), an adoption operation + granular permission, an adoption audit record |
-| **Data ownership** | Template = Vardena/deployment-level; adopted accounts = the organization's, inside Accounting |
-| **Migration impact** | Additive migration for template/adoption tables; **no migration of existing charts** (re-coding is ADR-0035) |
-| **Security impact** | New write surface: must reuse `assertOrganizationInScope`; must not create a wildcard or bootstrap-style exception |
-| **Reporting impact** | None directly — adopted accounts appear in the existing Chart Tree, TB and GL surfaces |
-| **Open decisions** | Template content (OQ-25); provenance column yes/no (AR-29); adoption into an already-posting organization |
-| **Risk** | High if content is invented; low if content arrives as an expert-approved artifact |
-
-### Future Slice B — Control Role Foundation *(conditional on OD-20-2)*
-
-| Field | Content |
-|---|---|
-| **Purpose** | Introduce the code-defined role vocabulary and the organization role→account mapping |
-| **Dependencies** | **OD-20-2** (sequencing), **OD-20-3** (artifact shape, resolving T20-C-1); OQ-25 (catalog + mandatory set); ADR-0037 adoption/amendment; a consuming operation if OD-20-2 = A |
-| **Inputs** | Expert-approved role catalog; the consuming operation's requirements |
-| **Outputs** | Role vocabulary in code; mapping artifact; permissions; mandatory-role validation inside the consuming operation |
-| **Data ownership** | Vocabulary = Vardena (code); mappings = organization configuration inside Accounting |
-| **Migration impact** | Additive (mapping table or account column) |
-| **Security impact** | New configuration write surface; granular permission + denial-path tests; ODR-3 bound |
-| **Reporting impact** | None initially; later statutory profiles consume roles (ADR-0036/ADR-0037 §4) |
-| **Open decisions** | Catalog; mandatory set; whether a role may target a non-postable node; effective-dating semantics |
-| **Risk** | High if the §8.7 placeholder list is adopted as the catalog |
-
-### Future Slice C — Account Code History
-
-| Field | Content |
-|---|---|
-| **Purpose** | Make `Account.id → {historical codes, current code}` reconstructable and give reports an as-at resolution seam |
-| **Dependencies** | **OD-20-4**; ADR-0033 adoption; a producer (pre-use edit or ADR-0035 migration service); OQ-25/OQ-36 (code reuse, baseline O-1) |
-| **Inputs** | Validity-granularity decision; code-reuse decision; the list of read surfaces that resolve as-at |
-| **Outputs** | History relation + additive migration; resolution function; explicit read-surface behaviour |
-| **Data ownership** | Accounting |
-| **Migration impact** | Additive; must not alter `ledger_entries`, document lines or projections (Invariant I-3) |
-| **Security impact** | Read-only expansion; existing permissions likely sufficient |
-| **Reporting impact** | **Material** — as-at codes change TB/GL/statement rendering and TB ordering; requires an explicit decision, not a silent switch |
-| **Open decisions** | Validity granularity; reuse; interaction with `uq_accounts_organization_id_code`; default rendering per surface |
-| **Risk** | High if shipped without a producer (speculative schema) or if read behaviour changes silently |
-
-### Future Slice D — Detail / Dimension Foundation
-
-| Field | Content |
-|---|---|
-| **Purpose** | Implement the Q6/Q7 typed dimension model (dimensions, groups, items incl. floating details, per-(account, dimension) requirement, line assignment, posting validation) |
-| **Dependencies** | **OD-20-6**; **OQ-41**; OQ-22/OQ-55; ADR-0037 §6/§7 adoption; AC-I-18 |
-| **Inputs** | OQ-41 answers (count, defaults, binding, governance, area applicability) |
-| **Outputs** | Typed dimension/group/item tables, line-assignment child table, composition + finalization validation, `GROUP BY` reporting foundation |
-| **Data ownership** | Accounting owns dimensions and items; master-data bindings are logical only and transfer no ownership (§10.5/§11.3) |
-| **Migration impact** | Several additive tables; **no EAV, no JSONB** (ADR-0037 §7) |
-| **Security impact** | New configuration + assignment surfaces; granular permissions + denial-path tests; ODR-3 bound |
-| **Reporting impact** | New dimension reports; TB/statement stay account-keyed unless separately decided; projection key unchanged under OD-20-6 option A |
-| **Open decisions** | Everything in OQ-41; ledger-vs-line persistence and aggregation basis (OD-20-6) |
-| **Risk** | Medium-high — the largest schema surface of the five |
-
-### Future Slice E — Future Posting Semantics *(only if OD-20-5 = B)*
-
-| Field | Content |
-|---|---|
-| **Purpose** | Enable configurable non-leaf POSTING without double counting |
-| **Dependencies** | **OD-20-5 = B**; an **accepted** ADR amendment superseding AC-D-19 rule 2 / AC-I-09 and amending contract §8.5; ADR-0034 §4/§5; OQ-25 (per-level policy) |
-| **Inputs** | The amended contract text; the declared inclusion rule per report |
-| **Outputs** | Explicit role attribute (or documented mapping); separated own-vs-descendant measures in TB/GL; statement + projection decisions; new validation rules; report disclosure; denial-path and no-double-count regression tests |
-| **Data ownership** | Accounting |
-| **Migration impact** | Possibly a role column; read-model rewrite is the bulk of the work |
-| **Security impact** | None new |
-| **Reporting impact** | **Highest of all slices** — changes the meaning of every rollup surface |
-| **Open decisions** | Which levels may post (OQ-25); transition rules; descendant handling |
-| **Risk** | Highest; must never be attempted as "just a validation change" |
-
----
-
-## 15. Final Decision Gate
-
-**Verdict: BLOCKED — OWNER DECISION REQUIRED.**
-
-Measured against the twelve READY criteria:
+Measured against the READY criteria after decision resolution:
 
 | # | Criterion | Met? | Note |
 |---|---|---|---|
-| 1 | Scope bounded | Partially | Each domain can be bounded, but none has a decided scope |
-| 2 | Required Owner decisions already exist | **No** | Six decisions are missing (OD-20-1…OD-20-6) |
-| 3 | No unresolved architecture contradiction | **No** | D-1 (non-leaf posting) and T20-C-1 (role artifact shape) are unresolved |
-| 4 | Required ADRs appropriately resolved | **No** | ADR-0033/0034/0035/0037 all **Proposed**; ADR-0034 additionally requires an amendment before its §3 may be used |
-| 5 | No silent change to Task 19 | Yes | Two forward dependencies recorded; no change requested |
-| 6 | No unresolved security/tenant boundary | Yes | ODR-3 chokepoint exists and would be reused |
-| 7 | Data ownership clear | Partially | Clear for dimensions/code history; **unclear** for base-chart templates and role mappings |
-| 8 | Migration strategy understood | Partially | Additive-only is clear; base-chart adoption and code-history back-fill are undecided |
-| 9 | Historical accounting integrity protected | Yes | Ledger insert-only, id-keyed, version-pinned; no proposed slice rewrites history |
-| 10 | Testing strategy defined | Partially | The repository's policy is defined (`docs/testing/test-execution-policy.md`); per-slice test design awaits scope |
-| 11 | Cross-module ownership explicit | Partially | Accounting ownership is clear; the first control-role **consumer** is undecided |
-| 12 | No dangerous invariant left implicit | **No** | The own-vs-descendant measure semantics behind D-1 remain implicit until OD-20-5 |
+| 1 | Scope bounded | Yes | Documentation/decision resolution only. |
+| 2 | Required Owner decisions exist | Yes | OD-20-1…OD-20-6 recorded as DECIDED. |
+| 3 | No unresolved architecture contradiction | Yes | D-1 resolved by OD-20-5; T20-C-1 resolved by OD-20-3. |
+| 4 | Required ADRs updated consistently | Yes for review | ADR-0033/0034/0035/0037 amended, still Proposed. |
+| 5 | No silent change to Task 19 | Yes | ODR-1/ODR-2/ODR-3 unchanged. |
+| 6 | No unresolved security/tenant boundary introduced | Yes | Future surfaces reuse ODR-3. |
+| 7 | Data ownership clear | Yes | Template/adopted-account/role/dimension boundaries documented. |
+| 8 | Migration strategy understood | Yes for this task | No migration now; future additive/producer/consumer-driven. |
+| 9 | Historical accounting integrity protected | Yes | No ledger change; id and leaf-only invariants preserved. |
+| 10 | Testing strategy defined | Yes | Static documentation checks only. |
+| 11 | Cross-module ownership explicit | Yes | Control roles/dimensions are consumer-driven. |
+| 12 | No dangerous invariant left implicit | Yes | Leaf-only posting and mapping/dimension boundaries explicit. |
 
-The strongest applicable blocker is the absence of Owner decisions: the ADR work
-in criterion 4 cannot even be scoped until OD-20-1…OD-20-6 are answered.
-Blockers are itemized in [`task-20-implementation-gate.md`](./task-20-implementation-gate.md).
+The gate document records the same result: **READY FOR REVIEW**. The Owner performs
+acceptance separately.
 
 ---
 
-## 16. Known Limitations
+## 14. Known Limitations
 
-1. **Static inspection only.** All implementation claims are read-only code and
-   schema inspection at `main` @ `3deb5a5`. No runtime behaviour was exercised.
-2. **No tests executed.** Per the brief's §20 and
+1. **Static inspection only.** Implementation claims are read-only code and
+   schema inspection from the original Task 20 investigation, updated with
+   documentation-only decision resolution at `main` @ `1efa3f386e40d7ee1bc0a8f55f11120cd971ddaf`.
+   No runtime behaviour was exercised.
+2. **No heavy tests executed.** Per the brief and
    `docs/testing/test-execution-policy.md`, this documentation-only task ran only
-   `git diff --check` and static documentation/reference validation. **No unit,
-   E2E, live-PostgreSQL, migration-rehearsal or CI-equivalent run is claimed**,
-   and no existing test was modified.
+   lightweight static validation (`git diff --check` and documentation/reference
+   checks). **No unit, E2E, live-PostgreSQL, migration-rehearsal or CI-equivalent
+   run is claimed**, and no existing test was modified.
 3. **Two SQL surfaces read, not profiled.** The double-counting analysis in §6.4
    is derived from reading the TB/GL CTEs; it was not demonstrated by execution
    (and cannot be, because `postable ⇒ leaf` makes the shape unrepresentable
@@ -1306,11 +814,10 @@ Blockers are itemized in [`task-20-implementation-gate.md`](./task-20-implementa
    local ancestry.
 5. **No legal claim.** Nothing here validates any Iranian statutory requirement;
    OQ-43 remains OPEN and untouched.
-6. **Content deliberately absent.** No base-chart account, no control role, no
-   dimension and no code-history schema is proposed as content. Where the brief
-   listed examples (Receivable/Payable/Cash/Bank/Inventory/Sales/Expense; Cost
-   Center/Project/Branch), the repository classifies them as placeholders or
-   uses — they are treated as such and approved by nothing here.
-7. **Agent inference is labelled, not authoritative.** Every inference in §4.6,
-   §5.2 item 1 and item 4, §7.3 (chart-tree as-at remark) and §8 is marked and may
-   be overruled by the Owner.
+6. **Content deliberately absent.** No base-chart account, no concrete control
+   role, no dimension catalog and no code-history schema is approved as content.
+   The Owner decisions approve mechanisms/boundaries only; future content requires
+   explicit accounting/domain approval.
+7. **Agent inference is labelled, not authoritative.** The authoritative Task 20
+   outcomes are OD-20-1…OD-20-6 as recorded in §12 and in
+   `docs/accounting/owner-decision-baseline.md` §12.

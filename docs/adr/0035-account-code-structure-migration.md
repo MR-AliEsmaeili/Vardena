@@ -1,9 +1,9 @@
 # ADR-0035: Accounting Code Structure Migration — a Controlled, Licensed, Audited Service That Never Rewrites Economic Ledger History
 
-- **Status:** Proposed — **Task 17C is accepted, but this ADR remains Proposed pending its separate adoption/implementation gate** (2026-09-25; Owner decisions Q3/Q8/Q19/Q20 + Invariant 3, recorded 2026-09-25 by Task 17C — documentation only; **not Accepted**, no self-acceptance; acceptance record: [`task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md) §ADR status handling)
-- **Date:** 2026-09-25
+- **Status:** Proposed — **Task 17C is accepted, but this ADR remains Proposed pending its separate adoption/implementation gate**. **Task 20 OD-20-4 clarifies that the required code-history mechanism is producer-bound; Task 20 does not self-accept this ADR** (2026-09-26).
+- **Date:** 2026-09-25; amended 2026-09-26 by Task 20 decision resolution (documentation only).
 - **Implements:** nothing. The Accounting Code Structure Migration Service does **not** exist here and is **not** created, scaffolded, stubbed or authorized as an implementation task by this ADR.
-- **Owner source:** [`task-17c-prompt.md`](../tasks/task-17/task-17c-prompt.md) §7 (Invariant 3), Q3/Q8, Q19 (Decision D), Q20 (Decision D). Canonical register of Q1–Q22, I-1…I-3 and the implementation discrepancies (incl. **D-7** licensing, **D-9** level-count precision): [`owner-decision-baseline.md`](../accounting/owner-decision-baseline.md) — referenced here, never restated.
+- **Owner source:** [`task-17c-prompt.md`](../tasks/task-17/task-17c-prompt.md) §7 (Invariant 3), Q3/Q8, Q19 (Decision D), Q20 (Decision D), and **Task 20 OD-20-4**. Canonical register of Q1–Q22, I-1…I-3, OD-20-4 and the implementation discrepancies (incl. **D-7** licensing, **D-9** level-count precision): [`owner-decision-baseline.md`](../accounting/owner-decision-baseline.md) — referenced here, never restated.
 - **Builds on:** [ADR-0033](./0033-account-identity-and-code-history.md), ADR-0026/0028/0031; contract §9.4/§9.5, §8.4 rule 4, §23, AC-I-11/14/15/19; OQ-25, OQ-45, OQ-52/OQ-53, OQ-62/OQ-63.
 
 ## Context
@@ -32,7 +32,7 @@ Contract §9.4 already decides that changing digit lengths or depth after accoun
 
 ## Current implementation boundary / non-goals
 
-**Not implemented, not scaffolded, not authorized.** The service needs its own task through [`task-index.md`](../accounting/task-index.md) §7 before any agent may build it, with these dependencies recorded now: ADR-0033 §3 (code history), ADR-0030/OQ-45 (licensing — unresolved), OQ-52/OQ-53 (backup/restore), OQ-62/OQ-63 (pin divergence), the Audit module. Contract §9.4's shipped behaviour is unchanged — a new version applies to newly created accounts while existing accounts stay pinned, and `PATCH /accounts/:id` still publishes "The code is immutable". Level-count migration stays out of scope (§8).
+**Not implemented, not scaffolded, not authorized.** The service needs its own task through [`task-index.md`](../accounting/task-index.md) §7 before any agent may build it, with these dependencies recorded now: ADR-0033 §3 (code history), ADR-0030/OQ-45 (licensing — unresolved), OQ-52/OQ-53 (backup/restore), OQ-62/OQ-63 (pin divergence), the Audit module. **Task 20 OD-20-4 forbids satisfying the history dependency by shipping a speculative history-only table before a real producer exists**; the history mechanism is designed with the pre-use edit producer and/or this migration service. Contract §9.4's shipped behaviour is unchanged — a new version applies to newly created accounts while existing accounts stay pinned, and `PATCH /accounts/:id` still publishes "The code is immutable". Level-count migration stays out of scope (§8).
 
 ## Consequences
 

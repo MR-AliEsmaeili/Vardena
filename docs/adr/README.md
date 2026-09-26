@@ -92,7 +92,7 @@ Keep ADRs **short** (≤ ~60 lines). If it needs more, it belongs in `docs/`.
 | [0031](./0031-balance-projection.md) | Accounting balance projection — rebuildable turnover-only materialization | Proposed |
 | [0032](./0032-accounting-period-close-enforcement.md) | Accounting period close — in-transaction enforcement, gate placement and the reopen exception | Proposed |
 | [0033](./0033-account-identity-and-code-history.md) | Account identity and account code history — `Account.id` is permanent, `code` is a business identifier | Proposed |
-| [0034](./0034-posting-versus-aggregation-accounts.md) | Posting Account XOR Aggregation Account — one semantic role per account node | Proposed |
+| [0034](./0034-posting-versus-aggregation-accounts.md) | Posting accounts are leaf accounts; aggregation is read-time roll-up | Proposed |
 | [0035](./0035-account-code-structure-migration.md) | Accounting code structure migration — controlled, licensed, audited; never rewrites economic ledger history | Proposed |
 | [0036](./0036-legal-reporting-architecture.md) | Legal reporting architecture — Accounting Core → Legal Adapter / Legal Profile | Proposed |
-| [0037](./0037-accounting-configuration-boundary.md) | Accounting configuration boundary — base structure, standard control roles, configurability bounded by invariants | Proposed (Task 19 ODR-1: Owner decision exists; implementation adoption remains pending) |
+| [0037](./0037-accounting-configuration-boundary.md) | Accounting configuration boundary — Base Chart, consumer-first control roles, and line-level dimensions | Proposed (Task 20 OD-20-1…OD-20-3/OD-20-6 recorded; implementation deferred) |
