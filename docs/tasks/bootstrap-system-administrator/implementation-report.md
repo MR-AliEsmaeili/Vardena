@@ -57,7 +57,8 @@ There is no bootstrap API route.
 ```text
 Task: Bootstrap System Administrator
 Branch: arena/01a0df57-vardena
-Commit: recorded in the final handoff
+Commit: 96e6b622c33db57e9289e6caf8b2cbb0a35af2c0 (implementation head)
+Pull request: #64 — https://github.com/MR-AliEsmaeili/Vardena/pull/64
 
 Bootstrap username: مدیر
 Bootstrap password: 1 (initial installation credential; never emitted by CI/bootstrap logs)
@@ -76,7 +77,7 @@ Idempotency verification: unit tests plus repeated live-DB reconciliation assert
 Security verification: Argon2id hash verified; plaintext excluded from DB/API/error; no endpoint, wildcard, role-name runtime check, permission bypass, or organization bypass
 
 Local tests: targeted 5/5; full backend unit 1,153/1,153; typecheck, lint (0 errors), format and build PASS
-CI tests: pending branch CI (Prisma validate/generate, migrate, bootstrap command, E2E/live PostgreSQL)
+CI tests: PASS — run 36269856402; backend and frontend jobs green, including Prisma validate/generate, migration, built bootstrap command, migration rehearsal, and full E2E/live PostgreSQL
 
 Known limitations: no forced-password-change infrastructure; operator must immediately use the existing password-reset API. OQ-19 self-disable/self-role-removal/last-admin lockout safety remains open. A deployment pin whose organization does not yet exist still requires the existing out-of-band organization provisioning posture of ADR-0025.
 Open decisions: occupational role baselines/auditor separation remain OQ-14; remaining OQ-19 safety policy remains open. No bootstrap Organization decision was invented.
@@ -95,12 +96,20 @@ READY FOR REVIEW
 | Lint | Local FAST-LOCAL | PASS — 0 errors; 6 pre-existing unrelated warnings |
 | Format check | Local FAST-LOCAL | PASS |
 | Build | Local FAST-LOCAL | PASS |
-| Prisma validate/generate | Local FAST-LOCAL or CI | Delegated to CI — local schema-engine download failed because the sandbox could not establish TLS to `binaries.prisma.sh`; no schema changed |
-| Bootstrap command against PostgreSQL | CI-LIVE-DB | Pending CI |
-| Full E2E including live bootstrap suite | CI-HEAVY / CI-LIVE-DB | Pending CI |
+| Prisma validate/generate | CI | PASS — run `36269856402` (local schema-engine download had failed because the sandbox could not establish TLS to `binaries.prisma.sh`; no schema changed) |
+| Database migration and populated migration rehearsal | CI-LIVE-DB | PASS — run `36269856402` |
+| Built bootstrap command against PostgreSQL | CI-LIVE-DB | PASS — run `36269856402` |
+| Full E2E including live bootstrap suite | CI-HEAVY / CI-LIVE-DB | PASS — run `36269856402` |
+| Frontend lint/typecheck/format/tests/build | CI | PASS — run `36269856402` |
 
 No heavy E2E/live-DB test was executed locally. CI is the authoritative
 execution environment for those suites under `docs/testing/test-execution-policy.md`.
+The final implementation-head run is
+<https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36269856402>. An earlier
+run exposed two acceptance-test assertion defects (ordering a permission set and
+selecting an Inventory list route that does not itself apply the ODR-3
+chokepoint); both test assertions were corrected without changing production
+authorization, and the final run passed.
 
 ## Acceptance boundary
 

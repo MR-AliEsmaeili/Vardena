@@ -47,7 +47,9 @@ authorization, and API. The frontend talks only to the Vardena API.
   account `مدیر` and the ordinary `System Administrator` role with all 131
   currently registered permissions. Docker Compose and CI invoke the same
   idempotent command; it creates no endpoint, wildcard, or organization bypass.
-  No organization is invented: ODR-3 membership remains required.
+  No organization is invented: ODR-3 membership remains required. This change
+  is **READY FOR REVIEW — NOT ACCEPTED** in PR #64; implementation-head CI run
+  `36269856402` passed backend (including live PostgreSQL) and frontend jobs.
 - **Accounting** is the most advanced module: financial areas / fiscal years /
   periods, coding structures + chart of accounts, accounting configurations
   (Task 11, D1–D7) with the operational freeze wired at finalization (Task 13),
