@@ -194,6 +194,8 @@ membership-administration semantics described above.
 ## 6. Post-merge correction — ODR-3 membership administration boundary (2026-09-26)
 
 Status: **READY FOR REVIEW — NOT ACCEPTED** · corrective change only ·
+PR **#55** (`arena/01a0dd6c-vardena` → `main`), commit `86273b8`, required CI
+**green** (run `36238862315`) ·
 base: merge commit `f153251` (PR #54) · Task 19 is **not** reimplemented, and
 ODR-1 and ODR-2 are **not** touched (no functional change to
 `planPinCoherence`, `AccountPinsIncoherentError`, configuration pin coherence,
@@ -303,6 +305,12 @@ No assertion was weakened, skipped or made conditional anywhere.
 **DELEGATED TO CI:** E2E (hermetic + live PostgreSQL), `migrate deploy`,
 migration rehearsals, concurrency. **No heavy E2E/live-DB test was executed
 locally unless explicitly authorized.**
+
+**CI (PR #55, job `backend`):**
+
+| Run | Commit | Result |
+|---|---|---|
+| `36238862315` | `86273b8` | ✅ **success on the first run** — Prisma validate, Prisma generate, Lint, Typecheck, Format check, Unit tests, Build, Migrate test database (`migrate deploy`), Migration rehearsal, E2E tests incl. the live-PostgreSQL suites — every step `success`, none skipped or continued-on-error |
 
 ### 6.6 Limitations
 
