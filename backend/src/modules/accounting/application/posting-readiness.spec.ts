@@ -91,6 +91,7 @@ function buildFixture(): Fixture {
   // organization_id stored on each row, exactly like the real queries.
   const organizations = new OrganizationsService(
     masterStores.organizations,
+    masterStores.memberships,
     new AuthorizationService(rbacStores.userRoles, loggerStub()),
     loggerStub(),
     bus,

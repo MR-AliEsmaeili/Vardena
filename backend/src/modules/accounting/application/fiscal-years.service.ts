@@ -581,7 +581,7 @@ export class FiscalYearsService {
     organizationId: string,
     id: string,
   ): Promise<FiscalYear> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const year = await this.repository.findById(id);
     if (year === null || year.organizationId !== organizationId) {
       throw AppException.notFound('FiscalYear', id);

@@ -93,7 +93,7 @@ export class LedgerMovementsService {
     await this.authorization.requireAllPermissions([
       LEDGER_MOVEMENT_PERMISSIONS.VIEW,
     ]);
-    this.organizations.assertOrganizationInScope(query.organizationId);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     await this.organizations.requireUsableOrganization(query.organizationId);
 
     const { skip, take } = toOffset(query.page, query.pageSize);

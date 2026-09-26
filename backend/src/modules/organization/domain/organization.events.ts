@@ -141,6 +141,33 @@ export type EmployeeDisabledEvent = ScopedEvent<
   'Employee'
 >;
 
+// ---- Organization membership (Task 19, ODR-3) ------------------------------
+
+export const ORGANIZATION_MEMBERSHIP_GRANTED_EVENT =
+  'OrganizationMembership.Granted' as const;
+export const ORGANIZATION_MEMBERSHIP_REVOKED_EVENT =
+  'OrganizationMembership.Revoked' as const;
+
+/**
+ * Membership payloads carry identifiers only: a membership is an
+ * authorization fact, and there is no business code or personal data to copy.
+ */
+export interface MembershipEventPayload {
+  userId: string;
+  organizationId: string;
+}
+
+export type OrganizationMembershipGrantedEvent = ScopedEvent<
+  typeof ORGANIZATION_MEMBERSHIP_GRANTED_EVENT,
+  'OrganizationMembership',
+  MembershipEventPayload
+>;
+export type OrganizationMembershipRevokedEvent = ScopedEvent<
+  typeof ORGANIZATION_MEMBERSHIP_REVOKED_EVENT,
+  'OrganizationMembership',
+  MembershipEventPayload
+>;
+
 // ---- Party -----------------------------------------------------------------
 
 export const PARTY_CREATED_EVENT = 'Party.Created' as const;
@@ -187,4 +214,6 @@ export const ORGANIZATION_EVENT_TYPES = [
   PARTY_UPDATED_EVENT,
   PARTY_ENABLED_EVENT,
   PARTY_DISABLED_EVENT,
+  ORGANIZATION_MEMBERSHIP_GRANTED_EVENT,
+  ORGANIZATION_MEMBERSHIP_REVOKED_EVENT,
 ] as const;

@@ -10,7 +10,10 @@ import {
 import { generateId } from '../../../kernel/ids/ulid.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
-import { getPrincipal } from '../../../kernel/correlation/request-context.js';
+import {
+  getPrincipal,
+  getRequestContext,
+} from '../../../kernel/correlation/request-context.js';
 import {
   toOffset,
   toPaginatedResult,
@@ -18,6 +21,7 @@ import {
 } from '../../../kernel/pagination/paginated-result.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsRepository } from '../data/organizations.repository.js';
+import { OrganizationMembershipsRepository } from '../data/organization-memberships.repository.js';
 import type { Organization, OrganizationDto } from '../domain/organization.js';
 import { toOrganizationDto } from '../domain/organization.js';
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
@@ -87,6 +91,16 @@ export interface UpdateOrganizationInput {
 export class OrganizationsService {
   constructor(
     private readonly repository: OrganizationsRepository,
+    /**
+     * The principal → organization binding (Task 19, ODR-3). Injected here —
+     * in the module that owns organizational scope — because this service is
+     * the cross-module reference-resolution entry point (AR-07): every
+     * organization-scoped path in every module resolves its organization
+     * through `requireUsableOrganization` / `assertOrganizationInScope`, so
+     * binding the principal there confines them all without each module
+     * reimplementing the check.
+     */
+    private readonly memberships: OrganizationMembershipsRepository,
     private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
@@ -255,7 +269,15 @@ export class OrganizationsService {
    * Cross-module reference resolution (AR-07). Returns the organization when it
    * exists and may be used as the owner of a record.
    *
-   * @throws `EntityNotFound` when no such organization exists.
+   * ODR-3 (Task 19): the caller must also be a MEMBER of the organization
+   * whenever a principal is in flight — `assertOrganizationInScope` enforces
+   * that binding here. System context (no HTTP request) keeps the established
+   * trusted-caller posture (bootstrap, worker, tests calling services
+   * directly); it is not reachable from HTTP.
+   *
+   * @throws `EntityNotFound` when no such organization exists, or when the
+   *   caller is not a member (a foreign organization is indistinguishable
+   *   from a missing one — AC-I-16, no IDOR).
    * @throws `BusinessRuleViolation` when it is disabled and the caller is
    *   creating/reassigning rather than reading an existing link.
    */
@@ -263,7 +285,7 @@ export class OrganizationsService {
     id: string,
     options: { allowInactive?: boolean } = {},
   ): Promise<Organization> {
-    this.assertOrganizationInScope(id);
+    await this.assertOrganizationInScope(id);
     const organization = await this.repository.findById(id);
     if (organization === null) throw AppException.notFound('Organization', id);
     assertUsable('Organization', organization.isActive, {
@@ -273,21 +295,88 @@ export class OrganizationsService {
   }
 
   /**
-   * Deployment organization pin (ADR-0025). Every organization-scoped write
-   * and every scoped by-id resolver calls this before touching data, so a
-   * direct service caller is bounded to the same organization as the HTTP
-   * surface. A mismatch answers `EntityNotFound` (not 403): the API never
-   * confirms that an out-of-scope id exists (ADR-0021 §4).
+   * Organization scope assertion (ADR-0025 + ODR-3): the deployment pin, then
+   * the principal → organization binding. This is the single chokepoint every
+   * organization-scoped read and write passes through — the services of every
+   * module call it (directly or via `requireUsableOrganization` /
+   * `mustFindInOrganization` resolvers), so a direct service caller is bounded
+   * exactly like an HTTP caller.
    *
-   * No-op when no pin is configured: structural scoping (ADR-0021) remains
-   * the only guarantee and multi-organization isolation stays a product
-   * decision (OQ-01/OQ-22).
+   * 1. **Deployment pin (ADR-0025):** a mismatch answers `EntityNotFound`
+   *    (not 403) — the API never confirms that an out-of-scope id exists.
+   *    No-op when no pin is configured.
+   * 2. **Principal binding (ODR-3, Task 19):** when a request context with an
+   *    authenticated principal is in flight, the principal must hold a
+   *    membership of the organization; otherwise `EntityNotFound` again — a
+   *    permission holder must not learn that another organization exists by
+   *    probing its ids, and "no membership" must be indistinguishable from
+   *    "no organization". The check reads `organization_memberships` on every
+   *    call with no cache (the same immediate-revocation posture as RBAC
+   *    permission evaluation, docs/security.md §3).
+   *
+   * Contexts:
+   * - **system context** (no request context — bootstrap, worker, direct
+   *   service use in tests): no principal check. This mirrors
+   *   `AuthorizationService.requireAllPermissions`: authorization is the
+   *   caller's concern, and it is not reachable from HTTP.
+   * - **request context without a principal**: 401, mirroring the
+   *   authorization service (an anonymous caller is an authentication
+   *   failure, not a scope failure).
    */
-  assertOrganizationInScope(id: string): void {
+  async assertOrganizationInScope(id: string): Promise<void> {
+    this.assertDeploymentOrganizationPin(id);
+    const context = getRequestContext();
+    if (context === undefined) {
+      // System/internal context (no HTTP request in flight): trusted caller,
+      // the established posture (see `AuthorizationService.requireAllPermissions`).
+      return;
+    }
+    const principal = getPrincipal();
+    if (principal === undefined) {
+      throw AppException.unauthorized('Authentication is required.');
+    }
+    const membership = await this.memberships.findMembership(
+      principal.userId,
+      id,
+    );
+    if (membership === null) {
+      throw AppException.notFound('Organization', id);
+    }
+  }
+
+  /**
+   * Deployment organization pin (ADR-0025) — the pin half of the scope
+   * assertion, on its own. Public for the membership ADMINISTRATION path
+   * (`OrganizationMembershipsService`), which validates the target
+   * organization's existence and pin but deliberately NOT the grantor's
+   * membership: requiring membership there would make the FIRST membership of
+   * any organization impossible to grant (bootstrap deadlock), and the
+   * `Organization.Membership.Grant` permission is the authority instead.
+   */
+  assertDeploymentOrganizationPin(id: string): void {
     const pin = this.config.deploymentOrganizationId;
     if (pin !== null && id !== pin) {
       throw AppException.notFound('Organization', id);
     }
+  }
+
+  /**
+   * The membership administration resolver (ODR-3 bootstrap path): the
+   * organization must exist, be inside the deployment pin and be usable — but
+   * the CALLER's membership is deliberately not required, so the first
+   * membership of an organization can be granted. Everything else about the
+   * posture matches `requireUsableOrganization` (404 for unknown/foreign ids,
+   * 422 for a disabled organization, which may not anchor new records —
+   * master-data-strategy.md §7.4).
+   */
+  async requireAdministrableOrganization(id: string): Promise<Organization> {
+    this.assertDeploymentOrganizationPin(id);
+    const organization = await this.repository.findById(id);
+    if (organization === null) throw AppException.notFound('Organization', id);
+    assertUsable('Organization', organization.isActive, {
+      allowInactive: false,
+    });
+    return organization;
   }
 
   // ---- internals ----------------------------------------------------------
@@ -344,7 +433,7 @@ export class OrganizationsService {
   }
 
   private async mustFind(id: string): Promise<Organization> {
-    this.assertOrganizationInScope(id);
+    await this.assertOrganizationInScope(id);
     const organization = await this.repository.findById(id);
     if (organization === null) throw AppException.notFound('Organization', id);
     return organization;

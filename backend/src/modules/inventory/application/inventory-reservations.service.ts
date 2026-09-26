@@ -144,7 +144,7 @@ export class InventoryReservationsService {
     await this.authorization.requireAllPermissions([
       RESERVATION_PERMISSIONS.VIEW,
     ]);
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const reservation = await this.reservations.findById(id);
     if (reservation === null || reservation.organizationId !== organizationId) {
       throw AppException.notFound('Reservation', id);
@@ -316,7 +316,7 @@ export class InventoryReservationsService {
     await this.authorization.requireAllPermissions([
       RESERVATION_PERMISSIONS.RELEASE,
     ]);
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const operationKey = requireOperationKey(input.operationKey);
     const current = await this.reservations.findById(id);
     if (current === null || current.organizationId !== organizationId) {

@@ -143,7 +143,7 @@ export class AccountingConfigurationsService {
     await this.authorization.requireAllPermissions([
       ACCOUNTING_CONFIGURATION_PERMISSIONS.VIEW,
     ]);
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const active =
       await this.repository.findActiveForOrganization(organizationId);
     if (active === null) {
@@ -425,7 +425,7 @@ export class AccountingConfigurationsService {
     organizationId: string,
     id: string,
   ): Promise<any> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const config = await this.repository.findById(id);
     if (config === null || config.organizationId !== organizationId) {
       throw AppException.notFound('AccountingConfiguration', id);

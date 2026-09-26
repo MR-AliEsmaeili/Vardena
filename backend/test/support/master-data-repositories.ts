@@ -41,6 +41,8 @@ import type { UnitConversion } from '../../src/modules/inventory/domain/unit-con
 import type { Warehouse } from '../../src/modules/inventory/domain/warehouse.js';
 import type { HierarchyEdge } from '../../src/modules/organization/domain/hierarchy.js';
 import type { OrganizationsRepository } from '../../src/modules/organization/data/organizations.repository.js';
+import type { OrganizationMembershipsRepository } from '../../src/modules/organization/data/organization-memberships.repository.js';
+import type { OrganizationMembershipRow } from '../../src/modules/organization/data/organization-memberships.repository.js';
 import type { BranchesRepository } from '../../src/modules/organization/data/branches.repository.js';
 import type { DepartmentsRepository } from '../../src/modules/organization/data/departments.repository.js';
 import type { EmployeesRepository } from '../../src/modules/organization/data/employees.repository.js';
@@ -542,12 +544,91 @@ function matchesConversionFilters(
 }
 
 // ---------------------------------------------------------------------------
+// Organization memberships (Task 19, ODR-3)
+// ---------------------------------------------------------------------------
+
+/**
+ * In-memory stand-in for `OrganizationMembershipsRepository`. The composite
+ * (userId, organizationId) key throws the same `P2002` the real table's
+ * primary key would, so the service's duplicate-grant mapping is exercised
+ * for real. FK violations are NOT simulated: the service's user-existence
+ * mapping is covered by the real-database suites.
+ */
+export class InMemoryOrganizationMembershipsRepository {
+  private readonly rows = new Map<string, OrganizationMembershipRow>();
+
+  private key(userId: string, organizationId: string): string {
+    return `${userId}:${organizationId}`;
+  }
+
+  async findMembership(
+    userId: string,
+    organizationId: string,
+  ): Promise<OrganizationMembershipRow | null> {
+    return this.rows.get(this.key(userId, organizationId)) ?? null;
+  }
+
+  async listForOrganization(params: {
+    organizationId: string;
+    skip: number;
+    take: number;
+  }): Promise<{ items: OrganizationMembershipRow[]; total: number }> {
+    const items = [...this.rows.values()]
+      .filter((row) => row.organizationId === params.organizationId)
+      .sort(
+        (a, b) =>
+          a.createdAt.getTime() - b.createdAt.getTime() ||
+          (a.userId < b.userId ? -1 : 1),
+      );
+    return {
+      items: items.slice(params.skip, params.skip + params.take),
+      total: items.length,
+    };
+  }
+
+  async create(input: {
+    userId: string;
+    organizationId: string;
+    now: Date;
+    createdBy: string | null;
+  }): Promise<OrganizationMembershipRow> {
+    const key = this.key(input.userId, input.organizationId);
+    if (this.rows.has(key)) {
+      throw uniqueViolation(['user_id', 'organization_id']);
+    }
+    const row: OrganizationMembershipRow = {
+      userId: input.userId,
+      organizationId: input.organizationId,
+      createdAt: input.now,
+      createdBy: input.createdBy,
+    };
+    this.rows.set(key, row);
+    return { ...row };
+  }
+
+  async remove(userId: string, organizationId: string): Promise<boolean> {
+    return this.rows.delete(this.key(userId, organizationId));
+  }
+
+  /** Test-only direct seed (the API path is exercised elsewhere). */
+  seed(userId: string, organizationId: string, now = new Date()): void {
+    this.rows.set(this.key(userId, organizationId), {
+      userId,
+      organizationId,
+      createdAt: now,
+      createdBy: null,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Store bundle
 // ---------------------------------------------------------------------------
 
 export interface MasterDataStores {
   /** Handles typed as the real repositories — safe for `overrideProvider`. */
   organizations: OrganizationsRepository;
+  memberships: OrganizationMembershipsRepository;
   branches: BranchesRepository;
   departments: DepartmentsRepository;
   employees: EmployeesRepository;
@@ -560,6 +641,7 @@ export interface MasterDataStores {
   /** Concrete stores for assertions and direct manipulation. */
   raw: {
     organizations: InMemoryOrganizationsRepository;
+    memberships: InMemoryOrganizationMembershipsRepository;
     branches: InMemoryBranchesRepository;
     departments: InMemoryDepartmentsRepository;
     employees: InMemoryEmployeesRepository;
@@ -579,6 +661,7 @@ export interface MasterDataStores {
  */
 export function createMasterDataStores(): MasterDataStores {
   const organizations = new InMemoryOrganizationsRepository();
+  const memberships = new InMemoryOrganizationMembershipsRepository();
   const branches = new InMemoryBranchesRepository();
   const departments = new InMemoryDepartmentsRepository();
   const employees = new InMemoryEmployeesRepository();
@@ -590,6 +673,7 @@ export function createMasterDataStores(): MasterDataStores {
   const warehouses = new InMemoryWarehousesRepository();
   return {
     organizations: organizations as unknown as OrganizationsRepository,
+    memberships: memberships as unknown as OrganizationMembershipsRepository,
     branches: branches as unknown as BranchesRepository,
     departments: departments as unknown as DepartmentsRepository,
     employees: employees as unknown as EmployeesRepository,
@@ -601,6 +685,7 @@ export function createMasterDataStores(): MasterDataStores {
     warehouses: warehouses as unknown as WarehousesRepository,
     raw: {
       organizations,
+      memberships,
       branches,
       departments,
       employees,

@@ -513,6 +513,10 @@ describe.skipIf(DATABASE_URL === undefined)(
         versionId,
         maxDepth: levels.length,
         levels,
+        // ODR-1 (Task 19): the boundary snapshot carries the coding half of
+        // the pair too; CODING_LEVELS and the ACTIVE configuration's levels
+        // describe the same shape in this fixture, so coherence holds.
+        codingLevels: CODING_LEVELS,
       });
 
       let failure: unknown = null;

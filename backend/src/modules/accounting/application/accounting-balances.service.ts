@@ -143,7 +143,7 @@ export class AccountingBalancesService {
     query: ListBalancesQuery,
   ): Promise<PaginatedResult<BalanceDerivedDto>> {
     await this.authorization.requireAllPermissions([BALANCE_PERMISSIONS.VIEW]);
-    this.organizations.assertOrganizationInScope(query.organizationId);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     await this.organizations.requireUsableOrganization(query.organizationId);
 
     // Validate optional scope keys belong to the org (404 otherwise).
@@ -501,7 +501,7 @@ export class AccountingBalancesService {
     query: GetAccountBalanceQuery,
   ): Promise<PaginatedResult<BalanceDerivedDto>> {
     await this.authorization.requireAllPermissions([BALANCE_PERMISSIONS.VIEW]);
-    this.organizations.assertOrganizationInScope(query.organizationId);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     await this.organizations.requireUsableOrganization(query.organizationId);
     await this.assertScopeKeysInOrganization({
       organizationId: query.organizationId,
@@ -609,7 +609,7 @@ export class AccountingBalancesService {
     query: ReconciliationQuery,
   ): Promise<PaginatedResult<ReconciliationItem>> {
     await this.authorization.requireAllPermissions([BALANCE_PERMISSIONS.VIEW]);
-    this.organizations.assertOrganizationInScope(query.organizationId);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     await this.organizations.requireUsableOrganization(query.organizationId);
     await this.assertScopeKeysInOrganization(query);
 
@@ -668,7 +668,7 @@ export class AccountingBalancesService {
     await this.authorization.requireAllPermissions([
       BALANCE_PERMISSIONS.REBUILD,
     ]);
-    this.organizations.assertOrganizationInScope(input.organizationId);
+    await this.organizations.assertOrganizationInScope(input.organizationId);
     await this.organizations.requireUsableOrganization(input.organizationId);
     await this.assertScopeKeysInOrganization(input);
 

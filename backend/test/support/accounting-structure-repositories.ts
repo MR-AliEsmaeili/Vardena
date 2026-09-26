@@ -22,12 +22,14 @@ import {
   planAccountEdit,
   planAccountMovePin,
   planAccountPlacement,
+  planPinCoherence,
   planPostabilityChange,
   planRootAccountPin,
 } from '../../src/modules/accounting/domain/account.js';
 import { collectDescendantIds } from '../../src/modules/accounting/domain/hierarchy.js';
 import {
   AccountImmutableAfterUseError,
+  AccountPinsIncoherentError,
   AccountPlacementRejectedError,
   AccountPostabilityRejectedError,
   AccountingConfigurationNotActiveError,
@@ -957,6 +959,18 @@ export class InMemoryAccountsRepository {
         throw new AccountPlacementRejectedError('version_mismatch');
       }
     }
+    // ODR-1 (Task 19): same write-boundary decision as the real repository's
+    // locked transaction — the pinned pair must describe one code shape.
+    const coherenceProblem = planPinCoherence({
+      codingLevels: input.structure.codingLevels,
+      configurationLevels: input.structure.levels.map((level) => ({
+        levelIndex: level.levelIndex,
+        digitLength: level.digitLength,
+      })),
+    });
+    if (coherenceProblem !== null) {
+      throw new AccountPinsIncoherentError(coherenceProblem);
+    }
     const plan = planAccountPlacement({
       id: '',
       organizationId: input.organizationId,
@@ -1066,6 +1080,19 @@ export class InMemoryAccountsRepository {
       });
       if (pinProblem !== null) {
         throw new AccountPlacementRejectedError('version_mismatch');
+      }
+      // ODR-1 (Task 19): same write-boundary decision as the real repository's
+      // locked transaction — a move re-validates the pinned pair, so that pair
+      // must describe one code shape.
+      const coherenceProblem = planPinCoherence({
+        codingLevels: input.structure.codingLevels,
+        configurationLevels: input.structure.levels.map((level) => ({
+          levelIndex: level.levelIndex,
+          digitLength: level.digitLength,
+        })),
+      });
+      if (coherenceProblem !== null) {
+        throw new AccountPinsIncoherentError(coherenceProblem);
       }
       const edges = this.state.accounts
         .findMany((row) => row.organizationId === node.organizationId)

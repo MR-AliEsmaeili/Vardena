@@ -11,6 +11,7 @@ import {
   planAccountEdit,
   planAccountMovePin,
   planAccountPlacement,
+  planPinCoherence,
   planPostabilityChange,
   planRootAccountPin,
 } from '../domain/account.js';
@@ -19,6 +20,7 @@ import { collectDescendantIds } from '../domain/hierarchy.js';
 import type { CodingStructureLevel } from '../domain/coding-structure.js';
 import {
   AccountImmutableAfterUseError,
+  AccountPinsIncoherentError,
   AccountPlacementRejectedError,
   AccountPostabilityRejectedError,
   AccountingConfigurationNotActiveError,
@@ -123,6 +125,15 @@ export interface AccountStructureSnapshot {
     CodingStructureLevel,
     'levelIndex' | 'digitLength' | 'defaultIsPostable'
   >[];
+  /**
+   * The coding-structure version's OWN level set (level count + digit
+   * lengths), carried so the ODR-1 (Task 19) coherence decision table can be
+   * re-applied inside the locked transaction from the same snapshot the
+   * service validated — the established two-call-site pattern
+   * (`planPinCoherence`). The published roots are immutable, so the snapshot
+   * cannot drift from the locked rows between resolution and commit.
+   */
+  codingLevels: readonly { levelIndex: number; digitLength: number }[];
 }
 
 @Injectable()
@@ -286,6 +297,11 @@ export class AccountsRepository {
         }
       }
 
+      // ODR-1 (Task 19): the Explicit Coherence Rule, re-applied inside the
+      // locked transaction from the same snapshot the service validated — one
+      // decision table (`planPinCoherence`), two call sites.
+      assertSnapshotCoherence(input.structure);
+
       const plan = planAccountPlacement({
         id: '',
         organizationId: input.organizationId,
@@ -447,6 +463,9 @@ export class AccountsRepository {
         if (pinProblem !== null) {
           throw new AccountPlacementRejectedError('version_mismatch');
         }
+        // ODR-1 (Task 19): the pinned pair a move re-validates must be
+        // coherent — same rule, same table, under the lock.
+        assertSnapshotCoherence(input.structure);
         const plan = planAccountPlacement({
           id: node.id,
           organizationId: node.organizationId,
@@ -534,6 +553,27 @@ export class AccountsRepository {
 }
 
 // ---- Internal helpers ----
+
+/**
+ * ODR-1 (Task 19): apply `planPinCoherence` to a placement snapshot inside
+ * the guarded transaction. The snapshot carries BOTH level sets (the
+ * accounting configuration's levels and the coding structure's digit
+ * lengths), and the locked root rows (or the immutable published rows a child
+ * pin references) cannot disagree with it, so this is the authoritative
+ * in-transaction re-check of the service's pre-flight.
+ */
+function assertSnapshotCoherence(snapshot: AccountStructureSnapshot): void {
+  const problem = planPinCoherence({
+    codingLevels: snapshot.codingLevels,
+    configurationLevels: snapshot.levels.map((level) => ({
+      levelIndex: level.levelIndex,
+      digitLength: level.digitLength,
+    })),
+  });
+  if (problem !== null) {
+    throw new AccountPinsIncoherentError(problem);
+  }
+}
 
 async function edgesOf(
   tx: AccountingTxClient,

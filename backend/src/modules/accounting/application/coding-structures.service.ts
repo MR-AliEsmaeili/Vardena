@@ -170,7 +170,7 @@ export class CodingStructuresService {
     await this.authorization.requireAllPermissions([
       CODING_STRUCTURE_PERMISSIONS.VIEW,
     ]);
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const active =
       await this.repository.findActiveForOrganization(organizationId);
     if (active === null) {
@@ -391,7 +391,7 @@ export class CodingStructuresService {
     organizationId: string,
     id: string,
   ): Promise<CodingStructureVersion> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const version = await this.repository.findById(id);
     if (version === null || version.organizationId !== organizationId) {
       throw AppException.notFound('CodingStructureVersion', id);

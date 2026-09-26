@@ -42,8 +42,10 @@ import { AccountStatementsRepository } from './data/account-statements.repositor
 import { AccountingReadQueryRepository } from './data/accounting-read-query.repository.js';
 import { GeneralLedgerService } from './application/general-ledger.service.js';
 import { TrialBalanceService } from './application/trial-balance.service.js';
+import { ChartTreeService } from './application/chart-tree.service.js';
 import { GeneralLedgerController } from './api/general-ledger.controller.js';
 import { TrialBalanceController } from './api/trial-balance.controller.js';
+import { ChartTreeController } from './api/chart-tree.controller.js';
 
 /**
  * Accounting module — foundation + chart structure (Task 10.2, Task 10.3;
@@ -124,6 +126,8 @@ import { TrialBalanceController } from './api/trial-balance.controller.js';
     // Task 18: explicit report APIs; each has its own permission.
     GeneralLedgerController,
     TrialBalanceController,
+    // Task 19 (ODR-2): the Accounting-owned, read-only Chart Tree surface.
+    ChartTreeController,
   ],
   providers: [
     FinancialAreasRepository,
@@ -169,6 +173,10 @@ import { TrialBalanceController } from './api/trial-balance.controller.js';
     AccountingReadQueryRepository,
     GeneralLedgerService,
     TrialBalanceService,
+    // Task 19 (ODR-2): the read-only chart tree projection over the account
+    // master — same repository as the administration surface, no second
+    // Account master, no figures (Task 18 owns those).
+    ChartTreeService,
     AccountingPermissionRegistration,
     AccountingDocumentTypeRegistration,
     // Task 10.8: the posting orchestration seam — ONE entry point

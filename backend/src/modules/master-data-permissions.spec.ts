@@ -24,8 +24,10 @@ const ALL = [
 ];
 
 describe('master-data permission vocabulary', () => {
-  it('contains the 25 Organization codes', () => {
-    expect(ORGANIZATION_PERMISSION_DEFINITIONS).toHaveLength(25);
+  it('contains the 28 Organization codes', () => {
+    // Task 6's 25 lifecycle codes (5 entities × 5 actions) + Task 19's three
+    // membership administration codes (View/Grant/Revoke, ODR-3).
+    expect(ORGANIZATION_PERMISSION_DEFINITIONS).toHaveLength(28);
   });
 
   it('contains the 22 Inventory codes', () => {
@@ -64,10 +66,20 @@ describe('master-data permission vocabulary', () => {
     }
   });
 
-  it('contains no Delete action: Task 6 has no deletion', () => {
+  it('contains no Delete action: no master-data deletion exists', () => {
     const actions = ALL.map(({ code }) => code.split('.')[2]);
+    // Grant/Revoke (Task 19, ODR-3) are membership administration actions,
+    // not record deletion; master-data lifecycle remains `is_active` (OQ-36).
     expect(new Set(actions)).toEqual(
-      new Set(['View', 'Create', 'Edit', 'Enable', 'Disable']),
+      new Set([
+        'View',
+        'Create',
+        'Edit',
+        'Enable',
+        'Disable',
+        'Grant',
+        'Revoke',
+      ]),
     );
   });
 

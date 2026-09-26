@@ -304,7 +304,7 @@ export class BranchesService {
     organizationId: string,
     id: string,
   ): Promise<Branch> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const branch = await this.repository.findById(id);
     if (branch === null || branch.organizationId !== organizationId) {
       throw AppException.notFound('Branch', id);

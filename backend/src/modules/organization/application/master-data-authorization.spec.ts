@@ -103,6 +103,7 @@ async function buildFixture(): Promise<Fixture> {
 
   const organizations = new OrganizationsService(
     masterStores.organizations,
+    masterStores.memberships,
     authorization,
     loggerStub(),
     bus,

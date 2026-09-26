@@ -302,7 +302,7 @@ export class UnitsService {
     organizationId: string,
     id: string,
   ): Promise<Unit> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const unit = await this.repository.findById(id);
     if (unit === null || unit.organizationId !== organizationId) {
       throw AppException.notFound('Unit', id);

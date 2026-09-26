@@ -380,7 +380,7 @@ export class PartiesService {
     organizationId: string,
     id: string,
   ): Promise<Party> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const party = await this.repository.findById(id);
     if (party === null || party.organizationId !== organizationId) {
       throw AppException.notFound('Party', id);

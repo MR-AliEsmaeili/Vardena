@@ -503,7 +503,7 @@ export class ItemsService {
     organizationId: string,
     id: string,
   ): Promise<Item> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const item = await this.repository.findById(id);
     if (item === null || item.organizationId !== organizationId) {
       throw AppException.notFound('Item', id);

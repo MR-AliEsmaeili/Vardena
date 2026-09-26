@@ -52,6 +52,7 @@ async function buildFixture(): Promise<Fixture> {
 
   const organizations = new OrganizationsService(
     stores.organizations,
+    stores.memberships,
     authorization,
     loggerStub(),
     bus,

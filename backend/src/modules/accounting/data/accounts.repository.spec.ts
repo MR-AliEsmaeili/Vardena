@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import type { AccountStructureSnapshot } from './accounts.repository.js';
 import { AccountsRepository } from './accounts.repository.js';
-import { AccountPlacementRejectedError } from './accounting-structure-errors.js';
+import {
+  AccountPinsIncoherentError,
+  AccountPlacementRejectedError,
+} from './accounting-structure-errors.js';
 
 /**
  * Repository-level contract spec for `AccountsRepository`'s PIN refusals — the
@@ -17,6 +20,9 @@ import { AccountPlacementRejectedError } from './accounting-structure-errors.js'
  *   account is ALREADY pinned to (Task 11 remediation, item 1) — a snapshot
  *   naming another configuration's or version's level set is refused, so
  *   validation can never read a foreign level shape.
+ * - ODR-1 (Task 19): a snapshot whose two pinned roots do not describe the
+ *   SAME code shape (level count + per-level digit length) is refused — the
+ *   transaction never silently validates against one half of the pair.
  *
  * Why this spec exists: the final verification pass showed (mutation M8) that
  * removing the move refusal from THIS class left every other test green — the
@@ -153,6 +159,12 @@ function snapshot(
     versionId: VERSION_ACTIVE,
     maxDepth: LEVELS.length,
     levels: LEVELS,
+    // ODR-1 (Task 19): the snapshot carries the coding half of the pinned
+    // pair; the default mirrors `levels` so the pair is coherent.
+    codingLevels: LEVELS.map((level) => ({
+      levelIndex: level.levelIndex,
+      digitLength: level.digitLength,
+    })),
     ...overrides,
   };
 }
@@ -216,6 +228,76 @@ describe('AccountsRepository — root pin (D1 + §9.4) at the write boundary', (
     await expect(
       repository.createChecked(rootCreate(snapshot())),
     ).rejects.toBeInstanceOf(Error);
+    expect(calls.creates).toHaveLength(0);
+  });
+
+  it('ODR-1: refuses a snapshot whose pinned roots describe different code shapes, and writes nothing', async () => {
+    // Both roots are ACTIVE, so the D1/§9.4 checks pass; the pair itself is
+    // incoherent (coding says 2 + 2, configuration says 2 + 3).
+    const { repository, calls } = repositoryWith({
+      lockedVersions: {
+        [VERSION_ACTIVE]: {
+          id: VERSION_ACTIVE,
+          organizationId: ORG,
+          status: 'active',
+        },
+      },
+      lockedConfigurations: {
+        [CONFIG_ACTIVE]: {
+          id: CONFIG_ACTIVE,
+          organizationId: ORG,
+          status: 'ACTIVE',
+        },
+      },
+    });
+
+    await expect(
+      repository.createChecked(
+        rootCreate(
+          snapshot({
+            codingLevels: [
+              { levelIndex: 1, digitLength: 2 },
+              { levelIndex: 2, digitLength: 2 },
+            ],
+          }),
+        ),
+      ),
+    ).rejects.toBeInstanceOf(AccountPinsIncoherentError);
+    expect(calls.creates).toHaveLength(0);
+  });
+
+  it('ODR-1: the same refusal fires on the CHILD path before placement', async () => {
+    const parent = accountRow({
+      id: 'acc-parent',
+      code: '20',
+      level: 1,
+      parentId: null,
+    });
+    const { repository, calls } = repositoryWith({
+      lockedAccounts: { 'acc-parent': parent },
+      children: [],
+      hierarchy: [],
+    });
+
+    await expect(
+      repository.createChecked({
+        id: 'acc-new',
+        organizationId: ORG,
+        code: '20101',
+        title: 'Receivables — EU',
+        parentId: 'acc-parent',
+        accountNature: 'debit',
+        isPostable: true,
+        structure: snapshot({
+          codingLevels: [
+            { levelIndex: 1, digitLength: 3 },
+            { levelIndex: 2, digitLength: 3 },
+          ],
+        }),
+        now: new Date('2026-01-02T00:00:00Z'),
+        actorId: null,
+      }),
+    ).rejects.toBeInstanceOf(AccountPinsIncoherentError);
     expect(calls.creates).toHaveLength(0);
   });
 
@@ -322,5 +404,23 @@ describe('AccountsRepository — move validation uses ONLY the account’s own p
     expect(calls.updates).toHaveLength(1);
     expect(calls.updates[0]?.['parentId']).toBeNull();
     expect(updated.id).toBe('acc-1');
+  });
+
+  it('ODR-1: refuses a move whose snapshot pair describes different code shapes, and writes nothing', async () => {
+    const { repository, calls } = repositoryWith(movingAccount());
+
+    await expect(
+      repository.updateChecked(
+        move(
+          snapshot({
+            codingLevels: [
+              { levelIndex: 1, digitLength: 3 },
+              { levelIndex: 2, digitLength: 3 },
+            ],
+          }),
+        ),
+      ),
+    ).rejects.toBeInstanceOf(AccountPinsIncoherentError);
+    expect(calls.updates).toHaveLength(0);
   });
 });

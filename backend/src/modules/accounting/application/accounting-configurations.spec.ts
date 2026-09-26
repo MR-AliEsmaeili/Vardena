@@ -97,6 +97,7 @@ async function buildFixture(
   );
   const organizations = new OrganizationsService(
     masterStores.organizations,
+    masterStores.memberships,
     authorization,
     loggerStub(),
     bus,
@@ -196,6 +197,11 @@ describe('AccountingConfigurationsService — Task 11 foundation', () => {
         }),
       )
     ).id;
+    // ODR-3 (Task 19): organization scope is principal-bound; ACTOR is a
+    // legitimate member of both organizations so the behaviour under test
+    // surfaces exactly as before. The membership boundary has its own specs.
+    fixture.master.raw.memberships.seed(ACTOR, orgA);
+    fixture.master.raw.memberships.seed(ACTOR, orgB);
     await fixture.grant(
       ACTOR,
       Object.values(ACCOUNTING_CONFIGURATION_PERMISSIONS),
@@ -414,6 +420,7 @@ describe('AccountingConfigurationsService — Task 11 foundation', () => {
 
   it('separates View from Configure', async () => {
     const viewer = '01VIEWER000000000000000000';
+    fixture.master.raw.memberships.seed(viewer, orgA);
     await fixture.grant(viewer, [ACCOUNTING_CONFIGURATION_PERMISSIONS.VIEW]);
     const id = await publishConfiguration(fixture, orgA);
 

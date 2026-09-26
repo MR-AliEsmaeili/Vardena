@@ -22,6 +22,7 @@ import {
 } from '../data/accounts.repository.js';
 import {
   AccountImmutableAfterUseError,
+  AccountPinsIncoherentError,
   AccountPlacementRejectedError,
   AccountPostabilityRejectedError,
   AccountingConfigurationNotActiveError,
@@ -39,8 +40,10 @@ import {
   accountPlacementProblemMessage,
   defaultIsPostableForLevel,
   isAccountNature,
+  pinCoherenceProblemMessage,
   planAccountEdit,
   planAccountPlacement,
+  planPinCoherence,
   toAccountDto,
 } from '../domain/account.js';
 import type { AccountImmutableField } from '../domain/account.js';
@@ -212,6 +215,7 @@ export class AccountsService {
     const parentId = input.parentId ?? null;
     let parent: AccountPlacementParent | null = null;
     let structure: { maxDepth: number; levels: any[] };
+    let codingLevels: { levelIndex: number; digitLength: number }[];
     let accountingConfigurationId: string;
     let codingStructureVersionId: string;
 
@@ -236,6 +240,27 @@ export class AccountsService {
             input.organizationId,
             parentAccount.accountingConfigurationId,
           );
+        // ODR-1 (Task 19): the child's pins are the parent's pins, so BOTH
+        // level sets of that pair are resolved and the Explicit Coherence
+        // Rule is applied before any code-shape validation happens — a
+        // divergent pair is refused, never silently validated against one
+        // side (the accounting configuration's levels).
+        const parentVersion =
+          await this.structures.requireVersionInOrganization(
+            input.organizationId,
+            parentAccount.codingStructureVersionId,
+          );
+        codingLevels = parentVersion.levels.map((level: any) => ({
+          levelIndex: level.levelIndex,
+          digitLength: level.digitLength,
+        }));
+        this.assertPinCoherence(
+          codingLevels,
+          (parentConfig.levels as any[]).map((level) => ({
+            levelIndex: level.levelIndex,
+            digitLength: level.digitLength,
+          })),
+        );
         structure = {
           maxDepth: parentConfig.levels.length,
           levels: parentConfig.levels,
@@ -262,6 +287,19 @@ export class AccountsService {
         );
         accountingConfigurationId = activeConfig.id;
         codingStructureVersionId = activeCoding.id;
+        // ODR-1 (Task 19): a new root pins BOTH roots, so BOTH level sets are
+        // resolved and must describe the same code shape — no silent winner.
+        codingLevels = activeCoding.levels.map((level) => ({
+          levelIndex: level.levelIndex,
+          digitLength: level.digitLength,
+        }));
+        this.assertPinCoherence(
+          codingLevels,
+          (activeConfig.levels as any[]).map((level) => ({
+            levelIndex: level.levelIndex,
+            digitLength: level.digitLength,
+          })),
+        );
         structure = {
           maxDepth: activeConfig.levels.length,
           levels: activeConfig.levels,
@@ -316,6 +354,7 @@ export class AccountsService {
           structure as any,
           accountingConfigurationId,
           codingStructureVersionId,
+          codingLevels,
         ),
         now,
         actorId,
@@ -386,6 +425,11 @@ export class AccountsService {
       accountingConfigurationId: string;
       codingStructureVersionId: string;
     } | null = null;
+    // ODR-1 (Task 19): the coding-structure half of the pinned pair's level
+    // set, resolved so the Explicit Coherence Rule can be applied to the pair
+    // a move re-validates.
+    let codingLevelsForMove:
+      { levelIndex: number; digitLength: number }[] | null = null;
 
     try {
       if (
@@ -426,6 +470,24 @@ export class AccountsService {
             current.organizationId,
             pinned.accountingConfigurationId,
           );
+        // ODR-1 (Task 19): the pinned pair must be coherent — a move under a
+        // divergent pair is refused rather than validated against one side.
+        const pinnedVersion =
+          await this.structures.requireVersionInOrganization(
+            current.organizationId,
+            pinned.codingStructureVersionId,
+          );
+        codingLevelsForMove = pinnedVersion.levels.map((level) => ({
+          levelIndex: level.levelIndex,
+          digitLength: level.digitLength,
+        }));
+        this.assertPinCoherence(
+          codingLevelsForMove,
+          (pinnedConfig.levels as any[]).map((level) => ({
+            levelIndex: level.levelIndex,
+            digitLength: level.digitLength,
+          })),
+        );
         structureForMove = {
           maxDepth: pinnedConfig.levels.length,
           levels: pinnedConfig.levels,
@@ -449,6 +511,23 @@ export class AccountsService {
             current.organizationId,
             pinned.accountingConfigurationId,
           );
+        // ODR-1 (Task 19): same rule on the to-root move — the account's own
+        // pinned pair must be coherent before it is re-validated.
+        const ownVersion = await this.structures.requireVersionInOrganization(
+          current.organizationId,
+          pinned.codingStructureVersionId,
+        );
+        codingLevelsForMove = ownVersion.levels.map((level) => ({
+          levelIndex: level.levelIndex,
+          digitLength: level.digitLength,
+        }));
+        this.assertPinCoherence(
+          codingLevelsForMove,
+          (ownConfig.levels as any[]).map((level) => ({
+            levelIndex: level.levelIndex,
+            digitLength: level.digitLength,
+          })),
+        );
         structureForMove = {
           maxDepth: ownConfig.levels.length,
           levels: ownConfig.levels,
@@ -512,6 +591,7 @@ export class AccountsService {
                 structureForMove as any,
                 pinned.accountingConfigurationId,
                 pinned.codingStructureVersionId,
+                codingLevelsForMove ?? [],
               ),
         now: new Date(),
         actorId: getPrincipal()?.userId ?? null,
@@ -606,6 +686,29 @@ export class AccountsService {
     }
   }
 
+  /**
+   * ODR-1 (Task 19) pre-flight: apply the Explicit Coherence Rule to the two
+   * level sets of the pair an account write establishes or re-validates. The
+   * repository re-applies the same decision table inside its locked
+   * transaction (one table, two call sites — fast feedback here, authority
+   * there).
+   */
+  private assertPinCoherence(
+    codingLevels: readonly { levelIndex: number; digitLength: number }[],
+    configurationLevels: readonly {
+      levelIndex: number;
+      digitLength: number;
+    }[],
+  ): void {
+    const problem = planPinCoherence({
+      codingLevels,
+      configurationLevels,
+    });
+    if (problem !== null) {
+      throw new AccountPinsIncoherentError(problem);
+    }
+  }
+
   /** Pre-flight placement check with the repository's own decision table. */
   private assertPlacement(input: {
     id: string;
@@ -688,7 +791,7 @@ export class AccountsService {
     organizationId: string,
     id: string,
   ): Promise<Account> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const account = await this.repository.findById(id);
     if (account === null || account.organizationId !== organizationId) {
       throw AppException.notFound('Account', id);
@@ -703,12 +806,14 @@ function snapshot(
   structure: { maxDepth: number; levels: any[] },
   accountingConfigurationId: string,
   codingStructureVersionId: string,
+  codingLevels: { levelIndex: number; digitLength: number }[],
 ): AccountStructureSnapshot {
   return {
     accountingConfigurationId,
     versionId: codingStructureVersionId,
     maxDepth: structure.maxDepth,
     levels: structure.levels,
+    codingLevels,
   };
 }
 
@@ -765,6 +870,14 @@ function mapAccountGuardError(error: unknown): AppException | null {
         ', ',
       )} can no longer change. Create a new account and disable this one instead.`,
       { refused: error.fields },
+    );
+  }
+  if (error instanceof AccountPinsIncoherentError) {
+    // ODR-1 (Task 19): the write is refused — no pin is silently picked as
+    // the code-shape winner.
+    return AppException.businessRule(
+      pinCoherenceProblemMessage(error.problem),
+      { rule: error.problem },
     );
   }
   if (error instanceof CodingStructureVersionNotActiveError) {

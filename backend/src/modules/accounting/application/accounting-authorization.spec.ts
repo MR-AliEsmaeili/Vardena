@@ -92,6 +92,8 @@ interface Fixture {
   bus: DomainEventBus;
   events: DomainEvent[];
   grant: (userId: string, codes: readonly string[]) => Promise<void>;
+  /** ODR-3 (Task 19): seed a principal → organization membership. */
+  member: (userId: string, organizationId: string) => void;
 }
 
 async function buildFixture(): Promise<Fixture> {
@@ -136,6 +138,7 @@ async function buildFixture(): Promise<Fixture> {
 
   const organizations = new OrganizationsService(
     masterStores.organizations,
+    masterStores.memberships,
     authorization,
     loggerStub(),
     bus,
@@ -217,6 +220,9 @@ async function buildFixture(): Promise<Fixture> {
     bus,
     events,
     grant,
+    member: (userId: string, organizationId: string) => {
+      masterStores.raw.memberships.seed(userId, organizationId);
+    },
   };
 }
 
@@ -232,6 +238,24 @@ function asActor<R>(userId: string, fn: () => Promise<R>): Promise<R> {
   );
 }
 
+/**
+ * Create an organization in system context and make both fixture actors
+ * members of it (ODR-3, Task 19): organization scope is principal-bound, so
+ * the actor-driven calls below resolve organizations they are members of.
+ */
+async function createMemberOrg(
+  fixture: Fixture,
+  code: string,
+  name: string,
+): Promise<string> {
+  const org = await asSystem(() =>
+    fixture.organizations.createOrganization({ code, name }),
+  );
+  fixture.member(ACTOR, org.id);
+  fixture.member(ACTOR_B, org.id);
+  return org.id;
+}
+
 describe('FinancialAreasService', () => {
   let fixture: Fixture;
   let orgA: string;
@@ -239,14 +263,8 @@ describe('FinancialAreasService', () => {
 
   beforeEach(async () => {
     fixture = await buildFixture();
-    const a = await asSystem(() =>
-      fixture.organizations.createOrganization({ code: 'ORGA', name: 'Org A' }),
-    );
-    const b = await asSystem(() =>
-      fixture.organizations.createOrganization({ code: 'ORGB', name: 'Org B' }),
-    );
-    orgA = a.id;
-    orgB = b.id;
+    orgA = await createMemberOrg(fixture, 'ORGA', 'Org A');
+    orgB = await createMemberOrg(fixture, 'ORGB', 'Org B');
   });
 
   it('creates a financial area and publishes FinancialArea.Created', async () => {
@@ -577,14 +595,8 @@ describe('FiscalYearsService', () => {
 
   beforeEach(async () => {
     fixture = await buildFixture();
-    const a = await asSystem(() =>
-      fixture.organizations.createOrganization({ code: 'ORGA', name: 'Org A' }),
-    );
-    const b = await asSystem(() =>
-      fixture.organizations.createOrganization({ code: 'ORGB', name: 'Org B' }),
-    );
-    orgA = a.id;
-    orgB = b.id;
+    orgA = await createMemberOrg(fixture, 'ORGA', 'Org A');
+    orgB = await createMemberOrg(fixture, 'ORGB', 'Org B');
     await fixture.grant(ACTOR, [
       ...ALL_FINANCIAL_AREA_CODES,
       ...ALL_FISCAL_YEAR_CODES,
@@ -1133,13 +1145,8 @@ describe('AccountingPeriodsService', () => {
 
   beforeEach(async () => {
     fixture = await buildFixture();
-    const a = await asSystem(() =>
-      fixture.organizations.createOrganization({ code: 'ORGA', name: 'Org A' }),
-    );
-    await asSystem(() =>
-      fixture.organizations.createOrganization({ code: 'ORGB', name: 'Org B' }),
-    );
-    orgA = a.id;
+    orgA = await createMemberOrg(fixture, 'ORGA', 'Org A');
+    await createMemberOrg(fixture, 'ORGB', 'Org B');
     await fixture.grant(ACTOR, [
       ...ALL_FINANCIAL_AREA_CODES,
       ...ALL_FISCAL_YEAR_CODES,
@@ -1453,10 +1460,7 @@ describe('stale-state mapping', () => {
 
   beforeEach(async () => {
     fixture = await buildFixture();
-    const a = await asSystem(() =>
-      fixture.organizations.createOrganization({ code: 'ORGA', name: 'Org A' }),
-    );
-    orgA = a.id;
+    orgA = await createMemberOrg(fixture, 'ORGA', 'Org A');
     await fixture.grant(ACTOR, [
       ...ALL_FINANCIAL_AREA_CODES,
       ...ALL_FISCAL_YEAR_CODES,

@@ -64,6 +64,29 @@ const DEPARTMENT = lifecycle('Department', 'department');
 const EMPLOYEE = lifecycle('Employee', 'employee');
 const PARTY = lifecycle('Party', 'party');
 
+/**
+ * Organization membership administration (Task 19, ODR-3).
+ *
+ * The actions follow the Grant/Revoke vocabulary the contract itself uses for
+ * access grants (§5.5's `Accounting.FinancialAreaAccess.{View,Grant,Revoke}`
+ * pattern) rather than Create/Delete: granting a membership is an
+ * authorization act, not record creation. `View` reads an organization's
+ * member list.
+ *
+ * Granting deliberately does NOT require the GRANTOR to already be a member
+ * of the target organization — that would make the first membership of any
+ * organization impossible to grant (bootstrap deadlock). The permission is
+ * the authority, exactly as `Rbac.UserRole.Assign` is: an administrator who
+ * can grant access can by definition also grant it to themselves, which is
+ * what administration means in this permission model (no wildcards, no
+ * superuser, no implicit bypass — OQ-21).
+ */
+const MEMBERSHIP = {
+  VIEW: 'Organization.Membership.View',
+  GRANT: 'Organization.Membership.Grant',
+  REVOKE: 'Organization.Membership.Revoke',
+} as const;
+
 export const ORGANIZATION_PERMISSIONS = {
   VIEW: ORGANIZATION.VIEW,
   CREATE: ORGANIZATION.CREATE,
@@ -104,6 +127,13 @@ export const PARTY_PERMISSIONS = {
   DISABLE: PARTY.DISABLE,
 } as const;
 
+/** Task 19 (ODR-3): membership administration codes. */
+export const MEMBERSHIP_PERMISSIONS = {
+  VIEW: MEMBERSHIP.VIEW,
+  GRANT: MEMBERSHIP.GRANT,
+  REVOKE: MEMBERSHIP.REVOKE,
+} as const;
+
 export const ORGANIZATION_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] =
   [
     ...ORGANIZATION.definitions,
@@ -111,4 +141,18 @@ export const ORGANIZATION_PERMISSION_DEFINITIONS: readonly PermissionDefinition[
     ...DEPARTMENT.definitions,
     ...EMPLOYEE.definitions,
     ...PARTY.definitions,
+    {
+      code: MEMBERSHIP.VIEW,
+      description:
+        "View an organization's members (principal → organization memberships).",
+    },
+    {
+      code: MEMBERSHIP.GRANT,
+      description:
+        'Grant a user access to an organization (ODR-3 membership administration).',
+    },
+    {
+      code: MEMBERSHIP.REVOKE,
+      description: "Revoke a user's access to an organization.",
+    },
   ];

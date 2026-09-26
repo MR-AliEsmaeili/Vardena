@@ -393,7 +393,7 @@ export class DepartmentsService {
     organizationId: string,
     id: string,
   ): Promise<Department> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const department = await this.repository.findById(id);
     if (department === null || department.organizationId !== organizationId) {
       throw AppException.notFound('Department', id);
