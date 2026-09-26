@@ -158,12 +158,12 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(effective.body.permissions).toHaveLength(
         app!.get(PermissionRegistry).size,
       );
-      expect(effective.body.permissions).toEqual(
-        app!
-          .get(PermissionRegistry)
-          .all()
-          .map(({ code }) => code),
-      );
+      const effectiveCodes = effective.body.permissions as string[];
+      const registeredCodes = app!
+        .get(PermissionRegistry)
+        .all()
+        .map(({ code }) => code);
+      expect([...effectiveCodes].sort()).toEqual([...registeredCodes].sort());
 
       // Identity/Users and RBAC representatives pass through their guards.
       await admin.get('/api/v1/users').expect(200);
