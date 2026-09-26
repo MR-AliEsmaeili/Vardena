@@ -894,6 +894,10 @@ describe('Organization + Inventory master data (e2e)', () => {
       .post('/api/v1/organizations')
       .send({ code: 'SCRATCH', name: 'Scratch Co' })
       .expect(201);
+    // ODR-3 (Task 19): root is a legitimate member — the assertion below
+    // must reach the DISABLED-organization usability rule (422), not a
+    // scope refusal.
+    master.raw.memberships.seed(state.rootId, scratch.body.id as string);
     await root
       .post(`/api/v1/organizations/${scratch.body.id}/disable`)
       .expect(200);

@@ -174,7 +174,7 @@ describe('Organization membership administration (e2e)', () => {
     const memberRole = await roles.createRole({
       name: 'OrgReader',
       description: 'Organization reads only (test fixture)',
-      permissionCodes: ['Organization.View'],
+      permissionCodes: ['Organization.Organization.View'],
     });
     await userRoles.assignRoleToUser(memberRole.id, memberUser.id);
 

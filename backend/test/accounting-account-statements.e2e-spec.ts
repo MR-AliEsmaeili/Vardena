@@ -1160,6 +1160,8 @@ describe('Accounting account statements (e2e)', () => {
           .useValue(stores.userRoles)
           .overrideProvider(OrganizationsRepository)
           .useValue(master.organizations)
+          .overrideProvider(OrganizationMembershipsRepository)
+          .useValue(master.memberships)
           .overrideProvider(BranchesRepository)
           .useValue(master.branches)
           .overrideProvider(FinancialAreasRepository)
