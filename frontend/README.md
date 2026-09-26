@@ -29,23 +29,23 @@ relative URL and the session cookie works without CORS. Start the backend
 first (`cd ../backend && npm run start:dev`, or `docker-compose up` from the
 repository root).
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `VITE_API_BASE_URL` | `/api/v1` | Base URL the SPA calls. Relative by design — never hard-code a host. |
-| `VITE_DEV_API_PROXY_TARGET` | `http://localhost:3000` | Dev-server proxy target for `/api` (dev only). |
+| Variable                    | Default                 | Meaning                                                              |
+| --------------------------- | ----------------------- | -------------------------------------------------------------------- |
+| `VITE_API_BASE_URL`         | `/api/v1`               | Base URL the SPA calls. Relative by design — never hard-code a host. |
+| `VITE_DEV_API_PROXY_TARGET` | `http://localhost:3000` | Dev-server proxy target for `/api` (dev only).                       |
 
 ## Scripts
 
-| Script | What it does |
-|---|---|
-| `npm run dev` | Vite dev server with the `/api` proxy |
-| `npm run build` | `tsc --noEmit` then the production bundle in `dist/` |
-| `npm run preview` | Serve the built bundle locally |
-| `npm run lint` | oxlint (config in `.oxlintrc.json`) |
-| `npm run typecheck` | TypeScript, strict (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) |
-| `npm run format` / `format:check` | Prettier |
-| `npm test` / `test:watch` | Vitest + Testing Library (jsdom) |
-| `npm run api:types` | Regenerate `src/api/generated/vardena-api.d.ts` from the OpenAPI document |
+| Script                            | What it does                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------------- |
+| `npm run dev`                     | Vite dev server with the `/api` proxy                                         |
+| `npm run build`                   | `tsc --noEmit` then the production bundle in `dist/`                          |
+| `npm run preview`                 | Serve the built bundle locally                                                |
+| `npm run lint`                    | oxlint (config in `.oxlintrc.json`)                                           |
+| `npm run typecheck`               | TypeScript, strict (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) |
+| `npm run format` / `format:check` | Prettier                                                                      |
+| `npm test` / `test:watch`         | Vitest + Testing Library (jsdom)                                              |
+| `npm run api:types`               | Regenerate `src/api/generated/vardena-api.d.ts` from the OpenAPI document     |
 
 Regenerating the API types (the API must be running, or point the variable at
 an exported document):
