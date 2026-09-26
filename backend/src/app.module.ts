@@ -10,6 +10,7 @@ import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { DocumentsModule } from './modules/documents/documents.module.js';
 import { WorkflowModule } from './modules/workflow/workflow.module.js';
 import { AccountingModule } from './modules/accounting/accounting.module.js';
+import { SystemAdministratorBootstrapService } from './bootstrap/system-administrator-bootstrap.service.js';
 
 /**
  * API root module. Business modules register here (docs/architecture.md §6),
@@ -29,5 +30,9 @@ import { AccountingModule } from './modules/accounting/accounting.module.js';
     WorkflowModule,
     AccountingModule,
   ],
+  // Installation orchestration only. The API has no bootstrap endpoint and
+  // never invokes this provider from a request; the explicit post-migration
+  // command resolves it from the same application graph.
+  providers: [SystemAdministratorBootstrapService],
 })
 export class AppModule {}

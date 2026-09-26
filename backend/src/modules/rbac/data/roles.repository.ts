@@ -269,6 +269,140 @@ export class RolesRepository {
     });
     return row !== null;
   }
+
+  /**
+   * Idempotently materialize the installation's System Administrator role.
+   *
+   * This is a system-context data operation, not an authorization shortcut:
+   * it creates ordinary `RolePermission` and `UserRole` rows, and runtime
+   * requests continue through the normal RBAC evaluator. The role, every
+   * currently registered permission assignment, and the user assignment are
+   * reconciled in one transaction so a successful bootstrap is never partial.
+   */
+  async ensureRoleWithPermissionsForUser(input: {
+    roleId: string;
+    roleName: string;
+    description: string;
+    permissionIds: readonly string[];
+    userId: string;
+    now: Date;
+  }): Promise<{
+    role: Role;
+    permissionCount: number;
+    roleCreated: boolean;
+    userRoleCreated: boolean;
+  }> {
+    const client = await this.prisma.getClient<{
+      role: {
+        findUnique: (args: {
+          where: { name: string };
+        }) => Promise<PrismaRoleRecord | null>;
+        upsert: (args: {
+          where: { name: string };
+          create: {
+            id: string;
+            name: string;
+            description: string;
+            createdAt: Date;
+            updatedAt: Date;
+            createdBy: null;
+          };
+          update: { name: string };
+        }) => Promise<PrismaRoleRecord>;
+      };
+      rolePermission: {
+        createMany: (args: {
+          data: Array<{
+            roleId: string;
+            permissionId: string;
+            createdAt: Date;
+            createdBy: null;
+          }>;
+          skipDuplicates: true;
+        }) => Promise<{ count: number }>;
+        count: (args: {
+          where: { roleId: string; permissionId: { in: string[] } };
+        }) => Promise<number>;
+      };
+      userRole: {
+        createMany: (args: {
+          data: Array<{
+            userId: string;
+            roleId: string;
+            createdAt: Date;
+            createdBy: null;
+          }>;
+          skipDuplicates: true;
+        }) => Promise<{ count: number }>;
+      };
+      $transaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>;
+    }>();
+
+    return client.$transaction(async (tx) => {
+      const scoped = tx as {
+        role: typeof client.role;
+        rolePermission: typeof client.rolePermission;
+        userRole: typeof client.userRole;
+      };
+      const existing = await scoped.role.findUnique({
+        where: { name: input.roleName },
+      });
+      const role = await scoped.role.upsert({
+        where: { name: input.roleName },
+        create: {
+          id: input.roleId,
+          name: input.roleName,
+          description: input.description,
+          createdAt: input.now,
+          updatedAt: input.now,
+          createdBy: null,
+        },
+        // Preserve administrator edits to the role description and audit
+        // columns. Assigning the same natural key is state-idempotent while
+        // still giving Prisma a non-empty update payload.
+        update: { name: input.roleName },
+      });
+
+      if (input.permissionIds.length > 0) {
+        await scoped.rolePermission.createMany({
+          data: input.permissionIds.map((permissionId) => ({
+            roleId: role.id,
+            permissionId,
+            createdAt: input.now,
+            createdBy: null,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      const userRole = await scoped.userRole.createMany({
+        data: [
+          {
+            userId: input.userId,
+            roleId: role.id,
+            createdAt: input.now,
+            createdBy: null,
+          },
+        ],
+        skipDuplicates: true,
+      });
+      const permissionCount =
+        input.permissionIds.length === 0
+          ? 0
+          : await scoped.rolePermission.count({
+              where: {
+                roleId: role.id,
+                permissionId: { in: [...input.permissionIds] },
+              },
+            });
+
+      return {
+        role: toDomain(role),
+        permissionCount,
+        roleCreated: existing === null,
+        userRoleCreated: userRole.count === 1,
+      };
+    });
+  }
 }
 
 // ---- Internal helpers ----

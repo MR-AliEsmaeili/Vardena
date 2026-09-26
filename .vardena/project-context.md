@@ -42,6 +42,14 @@ authorization, and API. The frontend talks only to the Vardena API.
   schemas, 47 models) and **16 migrations** in `backend/prisma/migrations/`;
   **131 registered permission codes** (Accounting 38, Inventory 32,
   Organization 28, Workflow 10, Documents 9, RBAC 8, Users 6).
+- **Installation bootstrap:** the post-migration
+  `npm run bootstrap:system-admin` command provisions the real Users/RBAC
+  account `مدیر` and the ordinary `System Administrator` role with all 131
+  currently registered permissions. Docker Compose and CI invoke the same
+  idempotent command; it creates no endpoint, wildcard, or organization bypass.
+  No organization is invented: ODR-3 membership remains required. This change
+  is **READY FOR REVIEW — NOT ACCEPTED** in PR #64; implementation-head CI run
+  `36269856402` passed backend (including live PostgreSQL) and frontend jobs.
 - **Accounting** is the most advanced module: financial areas / fiscal years /
   periods, coding structures + chart of accounts, accounting configurations
   (Task 11, D1–D7) with the operational freeze wired at finalization (Task 13),

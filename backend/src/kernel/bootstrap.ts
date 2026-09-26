@@ -1,11 +1,12 @@
 /**
- * Entrypoint guard shared by the API (`main.ts`) and the worker (`worker.ts`).
- * Bootstrap failures happen before DI exists, so they are logged as a single
+ * Entrypoint guard shared by the API (`main.ts`), worker (`worker.ts`), and
+ * post-migration installation bootstrap. Failures happen before DI exists, so
+ * they are logged as a single
  * JSON fatal line on stderr (no secrets: config errors name keys, never
  * values; driver errors are driver-formatted and contain no credentials).
  */
 export async function runEntrypoint(
-  name: 'api' | 'worker',
+  name: 'api' | 'worker' | 'system-bootstrap',
   fn: () => Promise<void>,
 ): Promise<void> {
   try {

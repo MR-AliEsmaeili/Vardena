@@ -39,12 +39,19 @@ docker-compose up
 ```
 
 The command also works with the newer `docker compose` syntax. It builds the
-backend images, starts PostgreSQL, applies the Prisma migrations, and then
-starts the API and worker. No `.env` file is required for local use; the
-compose file supplies development defaults. The API is available at
-<http://localhost:3000>, the liveness probe is at
-<http://localhost:3000/api/v1/health/live>, and Swagger is enabled at
-<http://localhost:3000/api/docs>.
+backend images, starts PostgreSQL, applies the Prisma migrations, provisions
+the idempotent real Users/RBAC `System Administrator`, and then starts the API
+and worker. No `.env` file is required for local use; the compose file supplies
+development defaults. The API is available at <http://localhost:3000>, the
+liveness probe is at <http://localhost:3000/api/v1/health/live>, and Swagger is
+enabled at <http://localhost:3000/api/docs>.
+
+Initial login is `مدیر` / `1`. The password is stored only as an Argon2id hash;
+change it immediately through the existing password-reset API because forced
+password change is not implemented. The bootstrap creates no organization and
+no scope bypass: after creating the initial organization, grant `مدیر` its
+ordinary first membership before using organization-scoped capabilities. See
+[backend/README.md](backend/README.md) for the exact procedure and limitations.
 
 To stop the stack, press `Ctrl+C`. To remove the containers and the local
 PostgreSQL volume as well, run `docker-compose down -v`. Copy `.env.example`
