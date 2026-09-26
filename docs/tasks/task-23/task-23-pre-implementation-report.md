@@ -4,6 +4,7 @@
 - **Date:** 2026-09-26
 - **Task status:** **NOT ADMITTED / NOT IMPLEMENTED — stopped at the §19 / §22 boundary**
 - **Branch:** `arena/01a0df43-vardena` · **Baseline:** `main` @ `b0d9337` (merge of PR #62)
+- **Task 21 status re-baselined:** 2026-09-27 against current `main` — Task 21 is **ACCEPTED (2026-09-26)**; documentation-consistency correction only (see §0.1). No plan, scope, decision request or classification in §1–§7 was changed by that correction.
 - **Produced against:** [`task-23-draft-brief.md`](./task-23-draft-brief.md) (the received draft, verbatim)
 - **Canonical predecessors:** `docs/accounting/owner-decision-baseline.md` §11 (ODR-1…ODR-3) and §12 (OD-20-1…OD-20-6); `docs/tasks/task-21/task-21-governance-baseline.md`; `docs/accounting/domain-contract.md`; ADR-0021/0025/0026/0028/0031/0033/0034/0035/0036/0037.
 
@@ -17,7 +18,8 @@
 ```text
 Status:                 NOT IMPLEMENTED — STOPPED AT THE §19 / §22 BOUNDARY
 Admission:              NOT ADMITTED (docs/accounting/task-index.md §7 items 7 & 8 unmet)
-Primary dependency:     Task 21 — NOT ACCEPTED (repository fact, see §0.1)
+Primary dependency:     Task 21 — ACCEPTED (2026-09-26); governance/documentation
+                        acceptance only, it does NOT authorize implementation (§0.1)
 Production changes:     NONE
 Schema / migration:     NONE created
 ADR promotion:          NONE
@@ -29,21 +31,26 @@ Self-acceptance:        NOT PERFORMED
 
 ## 0. Pre-flight admission findings (why implementation did not start)
 
-### 0.1 Task 21 is not accepted — the stated dependency is unsatisfied
+### 0.1 Task 21 is accepted — the dependency is satisfied, but it does not authorize implementation
+
+*Status corrected 2026-09-27 against current `main`. The original run of this report (baseline `b0d9337`) recorded Task 21 as “READY FOR REVIEW — NOT ACCEPTED”; that state has been superseded by the Owner acceptance recorded on `main`.*
 
 | Source | Recorded status |
 |---|---|
-| `docs/accounting/task-index.md` header + §2 row 21 | **“READY FOR REVIEW — NOT ACCEPTED (2026-09-26)”** |
-| `docs/tasks/task-21/task-21-governance-baseline.md` §17 | **“READY FOR REVIEW — NOT ACCEPTED”** |
-| `docs/open-questions.md` OQ-25 | *“Task 21 note … SUBSTANTIALLY NARROWED, row stays OPEN (READY FOR REVIEW — NOT ACCEPTED)”* |
-| `docs/tasks/task-21/` directory | `task-21-brief.md`, `task-21-investigation.md`, `task-21-governance-baseline.md` — **no acceptance record** (contrast `docs/tasks/task-20/task-20-acceptance-record.md`, `docs/tasks/task-19/task-19-acceptance-record.md`) |
-| `STATE.md` §8 | the current accepted work item is **Task 20**; Task 21 has no §7 row and no §8 mention |
+| `docs/tasks/task-21/task-21-acceptance-record.md` | **ACCEPTED (2026-09-26)** — Repository Owner, after final repository review **PASS**; *“Scope: Governance/design documentation only”* |
+| `docs/accounting/task-index.md` status header | **“Task 21: ACCEPTED (2026-09-26)”** — design/governance documentation only; **OQ-25 substantially narrowed but stays OPEN**; OQ-41/OQ-43 not closed; no ADR promoted |
+| `STATE.md` §7 row 21 + §8 | **ACCEPTED (2026-09-26)**; Task 21 is the current accepted work item; *“no implementation is authorized by this acceptance alone”* |
+| `docs/open-questions.md` OQ-25 | *“Task 21 note (2026-09-26) — **ACCEPTED GOVERNANCE BASELINE**; OQ-25 remains OPEN and substantially narrowed”* |
+| `docs/tasks/task-21/task-21-governance-baseline.md` header | **“Task status: ACCEPTED (2026-09-26)”** |
+| Acceptance boundaries (acceptance record) | Base Chart content **values not approved**; **no** control-role catalog/mandatory set approved; **OQ-25/OQ-36/OQ-41/OQ-43 remain OPEN**; ADR-0033…0037 remain **Proposed**; Task 19/Task 20 unchanged; *“no production implementation … is authorized by this acceptance alone”* |
 
-The draft declares `Depends on: … Accepted Task 21` and §22 `Primary dependency: Accepted Task 21 governance baseline`. Task 21 §14.1 states its own gate:
+The draft declares `Depends on: … Accepted Task 21` and §22 `Primary dependency: Accepted Task 21 governance baseline`. That dependency is now **satisfied**. Task 21 §14.1 nevertheless states a two-limb gate:
 
 > *“Only after this governance baseline is accepted **and** the required content is explicitly approved by the Owner/accountant, and only through a task admitted to `docs/accounting/task-index.md` §7.”*
 
-Both preconditions are currently false.
+The **first limb is satisfied**; the **second limb is not** — Base Chart content remains unapproved (OQ-25 OPEN) — and the admission limb is covered by §0.2. Task 21's acceptance therefore ratifies the governance baseline that bounds Task 23; it is **not** an authorization to implement Task 23.
+
+**Observation only (not corrected by this report — registry files are out of its scope):** four locations on `main` still carry pre-acceptance wording for Task 21 — `docs/accounting/task-index.md` §2 row 21, its §5 candidate-table row and its §9 history row, and `docs/tasks/task-21/task-21-governance-baseline.md` §17. The acceptance record, `STATE.md`, the `task-index.md` status header and the OQ-25 note are treated as authoritative.
 
 ### 0.2 Task 23 is not admitted
 
@@ -54,7 +61,7 @@ Both preconditions are currently false.
 | 1. Objective defined | ✅ (draft §1) |
 | 2. Domain scope defined | ✅ (draft §3) |
 | 3. Non-goals defined | ✅ (draft §21) |
-| 4. Dependencies identified | ✅ (draft §2) — one of them unsatisfied (§0.1) |
+| 4. Dependencies identified | ✅ (draft §2) — the Task 21 dependency is now **satisfied**; content approval and implementation authorization remain outstanding (§0.1) |
 | 5. Blocking Open Questions identified | ✅ (OQ-25/36/41/43) |
 | 6. Required ADR / domain decisions exist where necessary | ❌ — D-R-1, D-R-2 (§7 of this report) |
 | 7. Acceptance Criteria defined | ❌ — the draft has an *acceptance gate* (§20) but no acceptance criteria |
@@ -62,7 +69,7 @@ Both preconditions are currently false.
 
 ### 0.3 Consequence
 
-Per the draft's own §18/§19 and §22, the correct agent action is this report. Sections 1–6 are the plan that becomes executable once the Owner resolves §0.1/§0.2 and the decision requests in §7.
+Per the draft's own §18/§19 and §22, the correct agent action is this report. Sections 1–6 are the plan that becomes executable once the Owner closes the gates still outstanding in §0.1 (content approval + implementation authorization) and §0.2 (admission), and resolves the decision requests in §7.
 
 ---
 
@@ -294,8 +301,8 @@ Seven decision requests. **None may be resolved by the Agent** (draft §7/§11/�
 |---|---|---|---|
 | **D-R-1** | **Where does a product-global Accounting table live?** Every existing `accounting` model carries `organization_id` NOT NULL as the tenant/security boundary (AC-D-01/AC-I-01), yet the Base Chart template is by definition not organization data (OD-20-1; Task 21 §2a excludes organization ids). Four non-tenant tables in the `accounting` schema is a new cross-module data pattern → **AR-29 requires an ADR first (or in the same PR)**. Sub-questions: `accounting` schema or a new product/catalog schema? How does it interact with the ADR-0025 single-organization deployment pin (is the “product” template per-deployment data in a pinned deployment)? | ARCHITECTURE / PLATFORM — ADR-gated | §3 entirely |
 | **D-R-2** | **Who may author, approve and publish a template version?** Task 21 §8 classifies this as **OWNER DECISION (pending)** and states *“An agent may not approve content.”* Additionally the repository has **no authorization model for a non-organization-scoped write surface**: every Accounting service passes `assertOrganizationInScope`; there is no platform/product-admin scope, no wildcard, no superuser (OQ-21); and system context is explicitly *“not reachable from HTTP”* (`organizations.service.ts`). A `POST …/publish` endpoint has no principal model today. | SECURITY / OWNER DECISION (pending) | draft §3.2 lifecycle writes and the §14 template-management API (read + adoption unaffected) |
-| **D-R-3** | **May a content-less foundation be built at all?** Task 21 §14.1 permits implementation only after acceptance **and** explicit Owner/accountant approval of “the required content”; content is OQ-25-DEFERRED. Task 23 would therefore ship a mechanism with **no publishable production template**, exercisable only with the “minimal technical fixtures clearly identified as test data” of draft §10. | OWNER DECISION / ACCOUNTING DOMAIN | the value of the whole slice |
-| **D-R-4** | **Where does mandatoriness live after adoption?** Task 21 §5 mandatory semantics are **ACCOUNTING DOMAIN DECISION (proposed)** — not accepted. Rule 1 (must exist at adoption) is enforceable in the adoption transaction; rules 2–3 (cannot delete, cannot deactivate while mandatory) are post-adoption guards on the existing `Account` disable path and require the adopted row to know it is mandatory. The only two mechanisms are (a) an `accounts.is_mandatory` column — a new column whose governing rule is merely *proposed* (AR-29 speculative-column risk), or (b) account-level template provenance — explicitly **OPEN** (Task 21 §4.2/§8). | ACCOUNTING DOMAIN / ARCHITECTURE | draft §3.1's mandatory marker beyond the template side; enforcement of Task 21 §5 rules 2–3 |
+| **D-R-3** | **May a content-less foundation be built at all?** Task 21 §14.1 permits implementation only after acceptance **and** explicit Owner/accountant approval of “the required content”; the acceptance limb is satisfied (§0.1) while content stays OQ-25-DEFERRED. Task 23 would therefore ship a mechanism with **no publishable production template**, exercisable only with the “minimal technical fixtures clearly identified as test data” of draft §10. | OWNER DECISION / ACCOUNTING DOMAIN | the value of the whole slice |
+| **D-R-4** | **Where does mandatoriness live after adoption?** Task 21 §5's mandatory **semantics** are ratified by the Task 21 acceptance (§0.1), while the mandatory **list** stays unapproved content (OQ-25) and their post-adoption **representation** was left undecided. Rule 1 (must exist at adoption) is enforceable in the adoption transaction; rules 2–3 (cannot delete, cannot deactivate while mandatory) are post-adoption guards on the existing `Account` disable path and require the adopted row to know it is mandatory. The only two mechanisms are (a) an `accounts.is_mandatory` column — a new column whose *representation* Task 21 did not decide (AR-29 speculative-column risk), or (b) account-level template provenance — explicitly **OPEN** (Task 21 §4.2/§8). | ACCOUNTING DOMAIN / ARCHITECTURE | draft §3.1's mandatory marker beyond the template side; enforcement of Task 21 §5 rules 2–3 |
 | **D-R-5** | **Adoption into a non-empty chart, and re-adoption.** Task 21 governs neither; `uq_accounts_organization_id_code` guarantees a collision and merge/upsert semantics would be an invented rule. The fail-closed interim assumption I-4 (refuse if any account exists; `uq(organization_id)` on the adoption record) is conservative and aligned with *“never a seed that silently creates accounts in an existing organization”* (Task 20 investigation; ADR-0037 §3) — but it forecloses “adopt a second template” and “upgrade to a newer version” without a further decision. | ACCOUNTING DOMAIN | the adoption precondition set; any future upgrade path |
 | **D-R-6** | **OQ-36 prerequisites that Task 21 itself declares due *before* implementation.** Task 21 §10 states verbatim *“Prerequisites Task 21 needs from OQ-36 **before Base Chart implementation**”* — (1) code-reuse policy for superseded codes and its interaction with `uq_accounts_organization_id_code`; (2) deletion eligibility for *unused adopted* accounts; (3) coexistence of a future code-history producer with the never-reuse rule. OQ-36 is OPEN and draft §6 forbids deciding it. The Owner must resolve them **or explicitly waive them for this bounded slice** (defensible: the minimal slice exposes no deletion, no code change and no reuse path). | DEFERRED (OQ-36) — governance gate | formal start of implementation |
 | **D-R-7** | **Partial adoption is not implemented; confirm the boundary.** Per draft §4 and I-2 the implementation stops at full-version adoption with both invariants enforced. Draft §4 requires this boundary to be reported — it is hereby reported; the Owner should confirm that “no subset-selection API” is the accepted reading rather than a gap. | OPEN QUESTION (Task 21 §4.3) | scope confirmation only |
@@ -309,7 +316,7 @@ Seven decision requests. **None may be resolved by the Agent** (draft §7/§11/�
 - **No production implementation was performed.** No TypeScript, Prisma schema, migration, SQL, seed, API, DTO, permission, production test or frontend file was created or modified by this report; the only files added are the two documents in `docs/tasks/task-23/`.
 - **No registry was modified.** `docs/accounting/task-index.md`, `docs/open-questions.md`, `docs/accounting/owner-decision-baseline.md`, `STATE.md` and every ADR are untouched — **no admission is implied or performed.**
 - **Task 19 (ODR-1…ODR-3) and Task 20 (OD-20-1…OD-20-6) were not reopened or reinterpreted**; both remain ACCEPTED (2026-09-26) and unchanged.
-- **Task 21 was not accepted, modified or self-accepted**; it remains READY FOR REVIEW — NOT ACCEPTED.
+- **Task 21 was not accepted, re-accepted, modified or self-accepted by this report**; its status is reported as recorded in the repository — **ACCEPTED (2026-09-26)**, governance/documentation acceptance only, which does **not** authorize Task 23 implementation (§0.1).
 - **OQ-25, OQ-36, OQ-41 and OQ-43 remain OPEN.**
 - **No ADR was promoted** — ADR-0033…0037 remain Proposed.
 - **No accounting content was invented:** no account code, Persian title, account nature, mandatory-account list or control-role catalog appears in this report.
@@ -317,7 +324,7 @@ Seven decision requests. **None may be resolved by the Agent** (draft §7/§11/�
 
 ## 9. What is required to proceed past this boundary
 
-1. Owner acceptance of Task 21 (or an explicit instruction that Task 23 may proceed on the unaccepted baseline).
+1. ~~Owner acceptance of Task 21~~ — **satisfied: Task 21 is ACCEPTED (2026-09-26)**. What remains from Task 21 §14.1 is its second limb: explicit Owner/accountant approval of the required Base Chart content, plus an explicit authorization to implement Task 23 (the acceptance grants none).
 2. Admission of Task 23 into `docs/accounting/task-index.md` §2 with Acceptance Criteria (§7 items 7–8).
 3. Decisions on **D-R-1 … D-R-6**. D-R-1 and D-R-2 are the two that make the template store unbuildable today; adoption mechanics alone could proceed against a template store whose rows are provisioned out-of-band, if the Owner prefers that sequencing.
 4. Optionally, authorization to draft the ADR that D-R-1 requires (as **Proposed**, unpromoted).
