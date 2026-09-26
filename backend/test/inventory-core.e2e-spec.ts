@@ -12,6 +12,7 @@ import { PermissionRegistry } from '../src/modules/rbac/application/permission-r
 import { RolesService } from '../src/modules/rbac/application/roles.service.js';
 import { UserRolesService } from '../src/modules/rbac/application/user-roles.service.js';
 import { OrganizationsRepository } from '../src/modules/organization/data/organizations.repository.js';
+import { OrganizationMembershipsRepository } from '../src/modules/organization/data/organization-memberships.repository.js';
 import { BranchesRepository } from '../src/modules/organization/data/branches.repository.js';
 import { DepartmentsRepository } from '../src/modules/organization/data/departments.repository.js';
 import { EmployeesRepository } from '../src/modules/organization/data/employees.repository.js';
@@ -95,6 +96,8 @@ describe('Inventory Core posting (e2e)', () => {
           .useValue(stores.userRoles)
           .overrideProvider(OrganizationsRepository)
           .useValue(master.organizations)
+          .overrideProvider(OrganizationMembershipsRepository)
+          .useValue(master.memberships)
           .overrideProvider(BranchesRepository)
           .useValue(master.branches)
           .overrideProvider(DepartmentsRepository)
@@ -159,6 +162,10 @@ describe('Inventory Core posting (e2e)', () => {
       .send({ code: 'CORE-OTHER', name: 'Other Co' })
       .expect(201);
     state.otherOrgId = otherOrg.body.id as string;
+    // ODR-3 (Task 19): the sole persona is a legitimate member of both
+    // organizations (the cross-org assertions are data-scoped).
+    master.raw.memberships.seed(rootUser.id, state.orgId);
+    master.raw.memberships.seed(rootUser.id, state.otherOrgId);
 
     const branch = await root
       .post('/api/v1/branches')

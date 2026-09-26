@@ -12,6 +12,7 @@ import { PermissionRegistry } from '../src/modules/rbac/application/permission-r
 import { RolesService } from '../src/modules/rbac/application/roles.service.js';
 import { UserRolesService } from '../src/modules/rbac/application/user-roles.service.js';
 import { OrganizationsRepository } from '../src/modules/organization/data/organizations.repository.js';
+import { OrganizationMembershipsRepository } from '../src/modules/organization/data/organization-memberships.repository.js';
 import { BranchesRepository } from '../src/modules/organization/data/branches.repository.js';
 import { DepartmentsRepository } from '../src/modules/organization/data/departments.repository.js';
 import { EmployeesRepository } from '../src/modules/organization/data/employees.repository.js';
@@ -117,6 +118,8 @@ describe('Organization + Inventory master data (e2e)', () => {
           .useValue(stores.userRoles)
           .overrideProvider(OrganizationsRepository)
           .useValue(master.organizations)
+          .overrideProvider(OrganizationMembershipsRepository)
+          .useValue(master.memberships)
           .overrideProvider(BranchesRepository)
           .useValue(master.branches)
           .overrideProvider(DepartmentsRepository)
@@ -260,6 +263,11 @@ describe('Organization + Inventory master data (e2e)', () => {
     expect(res.body).not.toHaveProperty('createdBy');
     expect(res.body.id).toMatch(/^[0-9A-Z]{26}$/);
     state.orgId = res.body.id as string;
+
+    // ODR-3 (Task 19): both personas are legitimate members (the cross-org
+    // assertions later are data-scoped, not membership-scoped).
+    master.raw.memberships.seed(state.rootId, state.orgId);
+    master.raw.memberships.seed(state.limitedId, state.orgId);
   });
 
   it('requires the distinct Enable/Disable permissions, not just View', async () => {
@@ -339,6 +347,9 @@ describe('Organization + Inventory master data (e2e)', () => {
       .send({ code: 'OTHER', name: 'Other Co' })
       .expect(201);
     state.otherOrgId = otherOrg.body.id as string;
+
+    master.raw.memberships.seed(state.rootId, state.otherOrgId);
+    master.raw.memberships.seed(state.limitedId, state.otherOrgId);
     const otherBranch = await root
       .post('/api/v1/branches')
       .send({

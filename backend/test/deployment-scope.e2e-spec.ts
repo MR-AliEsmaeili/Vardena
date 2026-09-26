@@ -14,6 +14,7 @@ import { PermissionRegistry } from '../src/modules/rbac/application/permission-r
 import { RolesService } from '../src/modules/rbac/application/roles.service.js';
 import { UserRolesService } from '../src/modules/rbac/application/user-roles.service.js';
 import { OrganizationsRepository } from '../src/modules/organization/data/organizations.repository.js';
+import { OrganizationMembershipsRepository } from '../src/modules/organization/data/organization-memberships.repository.js';
 import { BranchesRepository } from '../src/modules/organization/data/branches.repository.js';
 import { DepartmentsRepository } from '../src/modules/organization/data/departments.repository.js';
 import { EmployeesRepository } from '../src/modules/organization/data/employees.repository.js';
@@ -96,6 +97,8 @@ describe('Deployment organization pin (e2e)', () => {
         .useValue(stores.userRoles)
         .overrideProvider(OrganizationsRepository)
         .useValue(master.organizations)
+        .overrideProvider(OrganizationMembershipsRepository)
+        .useValue(master.memberships)
         .overrideProvider(BranchesRepository)
         .useValue(master.branches)
         .overrideProvider(DepartmentsRepository)
@@ -161,6 +164,13 @@ describe('Deployment organization pin (e2e)', () => {
           name: 'Other Co',
         })
       ).id;
+
+      // ODR-3 (Task 19): root is a legitimate member of both organizations.
+      // The deployment pin still confines every pinned-app call to `orgId`
+      // (the pin is checked before the membership), and the foreign-org
+      // assertions below are pin/data-scoped — never membership-scoped.
+      master.raw.memberships.seed(rootUser.id, orgId);
+      master.raw.memberships.seed(rootUser.id, otherOrgId);
 
       const branches = seedApp.get(BranchesService);
       branchId = (
