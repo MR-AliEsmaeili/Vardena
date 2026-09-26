@@ -601,7 +601,9 @@ with these properties:
 - level *titles* are organization configuration (a customer may call level 3
   something else);
 - the **semantic** hooks the system needs (postability, temporary/permanent
-  classification, control role) are attributes of an account, not of a level name.
+  classification and future consumer-driven control-role assignments) are tied to
+  accounts, not to a level name. Control-role association itself is not a column on
+  `accounts`; Task 20 OD-20-3 chooses an independent effective-dated mapping.
 
 ### 8.2 One table, adjacency + level (rejected: four tables)
 
@@ -621,7 +623,7 @@ authority (same posture as materialized inventory balances, ADR-0017/0022 §1).
 | Attribute | Type/list | Notes |
 |---|---|---|
 | `organization_id` | scope | ADR-0021 |
-| `code` | digits-only text | canonical, unique per organization (§9.2); **immutable** once created (§8.6) |
+| `code` | digits-only text | canonical, unique per organization (§9.2); business-facing accounting address. Controlled pre-use correction is permitted by OD-20-4; after accounting use it is immutable. The current implementation is stricter until a producer exists. |
 | `title` (+ optional second-language title) | text | Persian is first-class (Class C4); display localization OQ-02 |
 | `level` | int | 1..max depth of the coding structure version |
 | `parent_id` | self-FK | null for roots; child code must extend parent code (§9.3) |
@@ -630,15 +632,15 @@ authority (same posture as materialized inventory balances, ADR-0017/0022 §1).
 | `is_temporary` | derived from `account_type` by a code-defined function | temporary accounts are closed at year end (§6.4); the mapping is expert-gated |
 | `is_postable` | boolean | §14 |
 | `is_active` | boolean | lifecycle; accounts are never deleted (§8.6) |
-| `control_role` | nullable, closed code-defined list | §8.7 (D-12) |
+| `control_role_assignments` | future independent effective-dated relation | §8.7; **not** a nullable `Account.control_role` column (OD-20-3) |
 | `coding_structure_version_id` | pinned | §9.4 (D-21) |
 | `financial_area_applicability` | relation rows (all-areas default) | §5.4 |
 | audit columns | AR-12 | |
 
-Reserved (DEFERRED, seams only — **no columns in the first migration**): per-account
-currency constraint (§24.1), per-account dimension defaults, per-account required
-field policy, reconciliation-account role for subledgers (Class A) — each arrives with
-its own task and, where architectural, its own ADR.
+Reserved (DEFERRED, seams only — **no speculative columns in the current schema**):
+per-account currency constraint (§24.1), per-account dimension defaults, per-account
+required field policy and any reconciliation/control-role requirement introduced by a
+real consumer — each arrives with its own task and, where architectural, its own ADR.
 
 ### 8.4 Hierarchy validity (DECIDED invariants)
 
@@ -646,21 +648,36 @@ its own task and, where architectural, its own ADR.
 2. A child's code must **start with** its parent's code and be longer by exactly the
    level's configured digit length (§9.3).
 3. A parent must not be moved under its own descendant (cycle rejection).
-4. Changing `parent_id`, `level`, `code`, `account_nature` or `account_type` of an
+4. Changing `parent_id`, `level`, `account_nature` or `account_type` of an
    account that has been referenced by any document line is **refused** — create a
    new account and deactivate the old one (`accounting-domain-analysis.md` §2,
-   blueprint §12 "Renaming", AR-13). Titles may change; codes and structure may not.
+   blueprint §12 "Renaming", AR-13). A controlled `code` correction is permitted
+   only before first accounting use (OD-20-4); after use the code is refused on
+   ordinary update paths and changes only through ADR-0035's controlled migration.
+   Titles may change; used codes and structure may not.
 5. Root accounts are exactly the level-1 accounts; every account has exactly one path
    to a root.
 
 ### 8.5 Reporting behaviour (DECIDED)
 
-- A non-postable account's movement/balance is the **rollup** of its descendants
-  (never posted directly, §14) — so `کل` and `گروه` reports are aggregations of the
-  same lines that feed `معین`/`تفصیلی` reports. One fact, one owner (AR-08).
-- Reports read the account tree for structure and the document lines (or the balance
-  projection) for numbers; they never re-derive the tree from codes alone — the code
-  prefix makes it possible, but the FK is the authority (§9.3 note).
+Task 20 OD-20-5 resolves the POSTING/AGGREGATION question explicitly:
+
+```text
+POSTING = leaf-only
+AGGREGATION = reporting/read-time roll-up
+```
+
+- A non-postable/non-leaf account's movement/balance is the **rollup** of its
+  descendants (never posted directly, §14) — so `کل` and `گروه` reports are
+  aggregations of the same underlying leaf lines that feed `معین`/`تفصیلی` reports.
+  One fact, one owner (AR-08).
+- The same movement MUST NOT be independently posted to a leaf and its parents.
+  Parent rows may display derived totals, but those totals are not additional
+  accounting activity to be added again.
+- Reports read the account tree for structure and the document lines (or a
+  rebuildable balance projection) for numbers; they never re-derive the tree from
+  codes alone — the code prefix makes it possible, but the FK is the authority (§9.3
+  note).
 
 ### 8.6 Freeze, never delete
 
@@ -672,22 +689,38 @@ referring to the account and remain fully readable. Whether an additional guard
 refuses deactivation while the account has a non-zero balance or activity in an open
 year is chart-governance policy → recorded in **OQ-25**.
 
-### 8.7 Control roles (D-12 hybrid chart)
+### 8.7 Control roles (D-12 hybrid chart; refined by OD-20-2/OD-20-3)
 
-**DECIDED mechanism (`AC-D-09`), EXPERT-GATED content (OQ-25).** Posting rules and
-statutory report layouts reference **code-defined control roles** (e.g. `receivable`,
-`payable`, `inventory`, `cogs`, `revenue`, `tax_payable`, `cash`, `bank`,
-`opening_equity`, `retained_earnings`, `closing_clearing`) that an organization maps
-onto its own accounts **once**. Consequences:
+**DECIDED mechanism (`AC-D-09`), consumer-first vocabulary, EXPERT-GATED content
+(OQ-25).** Posting rules, reconciliation/reporting consumers and statutory/legal
+profiles may reference **code-defined control roles**, but Task 20 makes the sequencing
+explicit: Vardena MUST NOT create a speculative generic catalog. A role is introduced
+only when a concrete approved consumer requires that semantic role, and that consumer
+justifies the role's existence and meaning. Consequences:
 
 - automated posting never depends on a customer-specific code (D-12);
 - the role vocabulary is code (adding a role is a code change, like a document type or
-  a permission — ADR-0023 §2 pattern);
-- a role mapping is configuration data with its own permission, audit trail and
-  effective dating (D-21);
-- **the role list itself and which roles are mandatory are expert-gated** — the
-  examples above are placeholders from `accounting-domain-analysis.md` §2, not a
-  decision.
+  a permission — ADR-0023 §2 pattern), but no role is added without a real consumer;
+- the authoritative account↔role association is an **independent effective-dated
+  mapping** with its own permission, audit trail and validity period, conceptually:
+
+  ```text
+  Account
+     |
+     +---- AccountControlRoleAssignment
+               |
+               +-- account_id
+               +-- control_role_id
+               +-- effective_from
+               +-- effective_to
+               +-- audit metadata
+  ```
+
+- the final architecture is **not** a nullable `Account.control_role` column as the
+  primary artifact;
+- **the role list itself and which roles are mandatory remain expert-gated** under
+  OQ-25 and arrive with the consuming operation; no empty control-role catalog is
+  created merely because the architecture can support one.
 
 ---
 
@@ -759,7 +792,7 @@ possible configuration among many.
 
 | Question (Task 10.1 §11) | Contract answer |
 |---|---|
-| May account codes change after use? | **No** for any account referenced by a document line (§8.4 rule 4). Titles change; codes do not. |
+| May account codes change? | **Before first accounting use:** permitted only through a future controlled code-change producer, with validation/audit/history designed in that task (OD-20-4). **After accounting use:** no ordinary change; only ADR-0035's controlled migration service. Titles change; used codes do not. |
 | May codes be reused? | **No** (§8.6, OQ-36 posture). |
 | Reserved ranges? | Supported as configuration (§9.1); a reserved range may only be used for its reserved purpose, enforced in the domain layer. The purpose vocabulary is code-defined. |
 | Historical integrity | Guaranteed by immutability + version pinning + freeze-over-delete; no rewrite path exists. |
@@ -838,10 +871,12 @@ e.g. `organization/party`, `organization/branch`, `organization/employee`,
 Whether specific dimensions *must* be bound (e.g. "counterparty detail must reference
 a party") is EXPERT-GATED with OQ-41.
 
-### 10.6 Line-level assignment (DECIDED — the shape that matters most)
+### 10.6 Line-level assignment (DECIDED — the shape that matters most; refined by OD-20-6)
 
-**`AC-D-14`.** A document line's dimension assignments live in a **typed child
-table**:
+**`AC-D-14`.** Dimensions are initially modeled as transaction/document-line-level
+analytical assignments. They are **not** `LedgerEntry` identity, do not add arbitrary
+dimension columns to `ledger_entries`, and are never stored as a generic JSONB/EAV
+payload. A document line's dimension assignments live in a **typed child table**:
 
 ```
 accounting_document_line_details
@@ -874,9 +909,12 @@ Validation at composition and again at finalization (DECIDED):
 
 ### 10.7 Reporting by dimension
 
-Dimension reports are `GROUP BY` over the child table joined to lines/documents
-(detail ledger, dimension trial balance, counterparty statement, project cost report).
-Because assignments are typed and indexed, no pivot/EAV extraction is needed (§19).
+Dimension reports are `GROUP BY` over the typed line-assignment table joined to
+Accounting read sources (lines/documents/ledger facts as appropriate for the concrete
+consumer: detail ledger, dimension trial balance, counterparty statement, project cost
+report). Because assignments are typed and indexed, no pivot/EAV extraction is needed
+(§19). A separate dimension projection is not introduced unless a future approved
+reporting consumer justifies it.
 
 ---
 
@@ -1094,7 +1132,7 @@ multi-currency additive rather than transformative (§24.1).
 
 ## 14. Account posting eligibility
 
-**DECIDED (`AC-D-19`).**
+**DECIDED (`AC-D-19`, reaffirmed by Task 20 OD-20-5).**
 
 1. `is_postable` is an **account attribute**, validated — not inferred from a level
    name. A document line may reference only a postable, active, area-applicable
@@ -1935,16 +1973,16 @@ DECIDED row changes only through a superseding ADR, and per `docs/accounting/tas
 
 | Contract section | Owner decision | Effect |
 |---|---|---|
-| §8.3 `code` "immutable once created", §8.4 rule 4, §9.5 | Q3 | A code change **before first use** becomes permitted-in-principle (the repository is stricter today: no code-edit path exists). After use, only ADR-0035's controlled migration. Baseline discrepancy **D-2**. |
-| §8.5 rollup, §14 rule 2 (AC-D-19), §25 AC-I-09 (postable ⇒ leaf) | Q5 + I-2 | The Owner model is POSTING XOR AGGREGATION with a configurable posting level. Today's leaf rule is a **stricter, sufficient** implementation and **stays in force**; relaxing it requires superseding AC-D-19/AC-I-09 and amending §8.5 (separated own-vs-descendant measures). Baseline discrepancy **D-1** — recorded, not resolved. |
+| §8.3 `code` "immutable once created", §8.4 rule 4, §9.5 | Q3 + OD-20-4 | A code change **before first accounting use** is permitted-in-principle through a future controlled producer (the repository is stricter today: no code-edit path exists). After use, ordinary code change is forbidden; only ADR-0035's controlled migration can change representation/history. Baseline discrepancy **D-2** remains implementation-only. |
+| §8.5 rollup, §14 rule 2 (AC-D-19), §25 AC-I-09 (postable ⇒ leaf) | Q5 + I-2 + OD-20-5 | **D-1 resolved:** `POSTING = leaf-only`; `AGGREGATION = reporting/read-time roll-up`. The existing leaf rule is the product rule, not merely a temporary stricter implementation. Non-leaf posting, own-vs-descendant measures and double-counting workarounds are not authorized; a future exception requires a new explicit architecture decision. |
 | §8.6 (AC-D-08) freeze-over-delete | Q21 | Deletion becomes permitted-in-principle for an account with **no** historical accounting usage and no blocking reference; used accounts are deactivated, never deleted; a zero balance is **not** proof of no usage. The repository implements the stricter half only. Baseline discrepancy **D-4**. |
-| §8.7 control roles (AC-D-09), §1.2 non-goal 1 | Q2 + Q4 | Vardena ships a **base Accounting structure** and **standardized control roles**; only roles consumed by active operations are mandatory; organizations map their own accounts. Content stays EXPERT-GATED (OQ-25) and nothing exists in code. Baseline discrepancy **D-5**. |
+| §8.7 control roles (AC-D-09), §1.2 non-goal 1 | Q2 + Q4 + OD-20-1…OD-20-3 | Vardena's Base Chart is a versioned Accounting-owned product/database template adopted explicitly into an organization, creating organization-owned Account identities; its content stays EXPERT-GATED (OQ-25). Control roles are consumer-first, not a speculative catalog, and the account↔role artifact is an independent effective-dated mapping — not `Account.control_role`. Nothing exists in code. Baseline discrepancy **D-5** remains implementation-only. |
 | §9.4 "any migration of existing accounts is an explicit, permission-gated, audited operation (OQ-25)" | Q8 + Q19 + I-3 | That operation is now named and shaped: the **Accounting Code Structure Migration Service** (controlled, licensed, preflight → impact → dry run → plan → approval → license → backup point → migration → reconciliation → audit). Level-count changes are **excluded** (Q20). Not implemented; ADR-0030/OQ-45 licensing is a prerequisite. |
 | §8.3/§9.2 code as one value per account | Q18 + I-1 | `Account.id` is the permanent identity; a code is a **time-scoped** business identifier with history, and historical reports resolve the code valid in the reported context. Needs an additive schema task. Baseline discrepancy **D-3**. |
 | §12.3 two dates, §19.2 rule 3 stored-column filters | Q14 | Confirmed and elevated to an explicit reporting rule: `document_date` = financial-reporting axis, `posting_timestamp` = audit/event-timing axis; Fiscal Year, Accounting Period, Document Date and Posting Timestamp stay four distinct concepts. |
 | §19.1 report inventory, §19.4 | Q10 + Q15 + Q16 | The journal (`دفتر روزنامه`) and the general ledger (`دفتر کل`) are **independent** report definitions over one read source; **Account Statement** is the unified account performance/turnover concept (Task 17B's surface); **Account Overview** («مرور حساب») is a presentation over the same read source and calculations — never a second engine. |
 | §2.3 Class C, §19.4 "no statutory layout hardcoded before OQ-43 validation" | Q9 + Q11 + Q22 | Architecture decided: `Accounting Core → Legal Adapter / Legal Profile → {Iran, future}` (ADR-0036). Persian is the primary language; the base monetary unit is configurable (Rial/Toman) with conversion as presentation only. **No legal fact is decided or claimed** — OQ-43 stays OPEN. |
-| §10/§11 dimensions and floating detail (AC-D-11…AC-D-15) | Q6 + Q7 | Confirmed: tree-based **and** floating details, a configurable typed dimension model with per-(account, dimension) `required`/`optional`/`forbidden`, never EAV/JSONB. Still unimplemented; OQ-41 stays OPEN. |
+| §10/§11 dimensions and floating detail (AC-D-11…AC-D-15) | Q6 + Q7 + OD-20-6 | Confirmed and refined: tree-based **and** floating details, a configurable typed dimension model with per-(account, dimension) `required`/`optional`/`forbidden`, never EAV/JSONB. Initial dimension assignments are transaction-line-level analytical assignments; aggregation is through Accounting/read logic when a concrete reporting consumer requires it. No ledger-column widening or speculative projection. Still unimplemented; OQ-41 stays OPEN for content/governance. |
 | §15 lifecycle/corrections (AC-D-20/21/22, AC-I-05/06/15) | Q12 + Q13 | Confirmed: non-final documents may be edited/discarded under permissions; Final/Posted documents are immutable and corrected only by counter-documents; Final/legal history is never physically deleted. OQ-27 (windows) and OQ-54 (non-accounting documents) stay OPEN; only `reversal` is implemented today. |
 | §25 invariants, §22 permissions, §4 organization scope | Q17 | Configurability principle: high configurability, never unrestricted — configuration may not violate the AC-I invariants, authorization, auditability, tenant isolation or data integrity (ADR-0037 §8). |
 
@@ -1952,3 +1990,25 @@ DECIDED row changes only through a superseding ADR, and per `docs/accounting/tas
 [`docs/open-questions.md`](../open-questions.md) (annotated with what is now Owner
 Decided versus what stays an implementation detail or requires legal validation), as do
 OQ-02/03/23/27/36/41/45/49/52/53/62/63.
+
+---
+
+## 32. Task 20 Owner Decision Resolution Addendum (2026-09-26 — documentation only)
+
+Task 20 resolved the six Owner Decisions originally proposed by the Task 20
+investigation. This addendum records the resolution boundary; it does not authorize
+production implementation and does not reopen Task 19.
+
+| Decision | Original question | Owner decision | Architectural consequence | Implementation status |
+|---|---|---|---|---|
+| OD-20-1 | What is the Base Chart artifact and adoption model? | Versioned Base Accounting Chart template, Accounting-owned as a database/product asset; explicit adoption into an organization creates organization-owned `Account` identities. Template identities never become ledger references. | Future adoption must create coherent ODR-1 pin pairs and pass ODR-3 authorization. Actual account content is not invented by agents and requires explicit accounting approval. | Deferred; no template tables, seed data, adoption service or API. |
+| OD-20-2 | Should control roles be catalog-first or consumer-first? | Consumer-first. Do not create a speculative generic catalog. | A control role is introduced only with a concrete approved consumer that justifies the role and semantics. | Deferred; no role table/enum/seed/API/service. |
+| OD-20-3 | Is role association a column or mapping? | Independent effective-dated Account↔Control Role assignment. | `Account.control_role` is rejected as the primary architecture; future mapping must support history, reassignment, auditability and identity preservation. | Deferred until a real consumer requires roles. |
+| OD-20-4 | How do Account identity, code edits and code history interact? | `Account.id` is permanent identity; `Account.code` is the business-facing address. Controlled pre-use code correction is permitted; after accounting use code is immutable. | History is designed with the code-change producer so permitted transitions are auditable/reconstructable; no producer means no speculative history table. | Deferred; no code-change operation or history schema. |
+| OD-20-5 | Is posting allowed on non-leaf nodes? | **POSTING = leaf-only**; **AGGREGATION = reporting/read-time roll-up**. | D-1 is resolved. Existing ADR-0034/read models remain valid; no non-leaf posting, no duplicate parent postings, no own-vs-descendant workaround. | No implementation required. Future non-leaf posting would need a new explicit decision. |
+| OD-20-6 | Where do dimensions live initially? | Transaction-line-level analytical assignments with aggregation through the Accounting/read layer for concrete reporting consumers. | Dimensions are not `LedgerEntry` identity; no arbitrary ledger dimension columns, no generic JSONB, no speculative projection. | Deferred; no dimensions schema/API/UI/report endpoint/projection. |
+
+Task 19 integrity is unchanged: ODR-1, ODR-2 and ODR-3 remain exactly as accepted.
+Future Base Chart adoption/configuration must produce a coherent
+`coding_structure_version` + `accounting_configuration` pair, and future Base Chart,
+Control Role and Dimension surfaces must reuse the ODR-3 membership chokepoint.
