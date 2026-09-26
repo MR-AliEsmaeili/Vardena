@@ -74,6 +74,23 @@ export class OrganizationMembershipsRepository {
     });
   }
 
+  /**
+   * THE BOOTSTRAP predicate (ODR-3 post-merge correction): does this
+   * organization have ANY member at all?
+   *
+   * An existence probe, not a listing: a single `LIMIT 1` lookup served by
+   * `idx_organization_memberships_organization_id`, so the cost does not grow
+   * with the member count and no member row is ever loaded into the
+   * application for an authorization decision.
+   */
+  async hasAnyMember(organizationId: string): Promise<boolean> {
+    const client = await this.prisma.getClient<Client>();
+    const first = await client.organizationMembership.findFirst({
+      where: { organizationId },
+    });
+    return first !== null;
+  }
+
   /** Members of one organization, created-ascending (the grant audit order). */
   async listForOrganization(params: {
     organizationId: string;

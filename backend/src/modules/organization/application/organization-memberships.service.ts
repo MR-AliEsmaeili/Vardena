@@ -45,14 +45,30 @@ import { OrganizationsService } from './organizations.service.js';
  *   module's tables (AR-07);
  * - a duplicate grant is a 409 (the composite primary key is the authority).
  *
- * Deliberately NOT required of the grantor: membership of the target
- * organization. Requiring it would deadlock the first grant of every
- * organization (nobody would be able to bootstrap access), and the
- * `Organization.Membership.Grant` permission is the administration authority —
- * the same standing `Rbac.UserRole.Assign` has. This is administration, not
- * data access: ODR-3 binds the *organization-scoped data paths* (every
- * resolver that goes through `assertOrganizationInScope`), and a membership
- * grant is not one of them.
+ * **Membership administration is organization-bound (ODR-3).** Holding a
+ * `Organization.Membership.*` permission is NOT by itself authority over an
+ * arbitrary `organizationId`: permission alone must never cross an
+ * organization boundary, on the administration surface exactly as on the data
+ * surface. Every operation therefore also asserts the acting principal's own
+ * membership of the target organization through the module's existing
+ * chokepoint (`OrganizationsService.assertOrganizationInScope`).
+ *
+ * **The single exception — bootstrap of the first member.** When the target
+ * organization has NO member at all (`hasAnyMember === false`), a principal
+ * holding `Organization.Membership.Grant` may create the FIRST membership
+ * without being a member itself; otherwise no organization could ever be
+ * populated (the deadlock ODR-3 must avoid). The exception is deliberately
+ * narrow:
+ * - it applies to `grantMembership` only — never to list, never to revoke;
+ * - it ends the moment the organization has one member (the second grant is
+ *   already membership-bound);
+ * - it is re-entered only if the organization's membership set becomes empty
+ *   again (e.g. the last member revoked themselves), which is an accepted
+ *   state, not a standing bypass.
+ *
+ * Failure semantics are the established isolation posture: a principal who is
+ * not a member gets **404**, indistinguishable from an unknown organization id
+ * — the API never reveals "this organization exists but you are not a member".
  */
 @Injectable()
 export class OrganizationMembershipsService {
@@ -72,10 +88,12 @@ export class OrganizationMembershipsService {
     await this.authorization.requireAllPermissions([
       MEMBERSHIP_PERMISSIONS.VIEW,
     ]);
-    // Administration resolution (existence + pin + usability). The listing
-    // itself is not membership-bound: it is the administration view of the
-    // binding, governed by the View permission.
-    await this.organizations.requireAdministrableOrganization(organizationId);
+    // Membership-bound (ODR-3): reading who belongs to an organization is
+    // itself organization-scoped information. No bootstrap exception — there
+    // is nothing to bootstrap by reading.
+    await this.authorizeMembershipAdministration(organizationId, {
+      allowBootstrap: false,
+    });
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.memberships.listForOrganization({
       organizationId,
@@ -95,7 +113,11 @@ export class OrganizationMembershipsService {
     await this.authorization.requireAllPermissions([
       MEMBERSHIP_PERMISSIONS.GRANT,
     ]);
-    await this.organizations.requireAdministrableOrganization(organizationId);
+    // Membership-bound, except for the first member of an empty organization
+    // (the one bootstrap exception — see the class docs).
+    await this.authorizeMembershipAdministration(organizationId, {
+      allowBootstrap: true,
+    });
 
     const now = new Date();
     try {
@@ -140,7 +162,12 @@ export class OrganizationMembershipsService {
     await this.authorization.requireAllPermissions([
       MEMBERSHIP_PERMISSIONS.REVOKE,
     ]);
-    await this.organizations.requireAdministrableOrganization(organizationId);
+    // Membership-bound, always — revoking is never a bootstrap operation, and
+    // the target being somebody else does not relax the acting principal's
+    // own binding.
+    await this.authorizeMembershipAdministration(organizationId, {
+      allowBootstrap: false,
+    });
 
     const removed = await this.memberships.remove(userId, organizationId);
     if (!removed) {
@@ -161,6 +188,43 @@ export class OrganizationMembershipsService {
       { userId, organizationId },
       OrganizationMembershipsService.name,
     );
+  }
+
+  // ---- internals ----------------------------------------------------------
+
+  /**
+   * THE ODR-3 membership-administration boundary. Ordering (docs/security.md
+   * §3):
+   *
+   * 1. **Deployment scope** (ADR-0025) — an out-of-pin id answers 404 before
+   *    anything touches the database.
+   * 2. **Membership authorization** — `assertOrganizationInScope` binds the
+   *    acting principal to the target organization (404 when there is no
+   *    membership row, indistinguishable from an unknown organization).
+   *    Skipped ONLY on the bootstrap path: `allowBootstrap` AND the target
+   *    organization currently has zero members.
+   * 3. **Organization resolution** — `requireAdministrableOrganization`:
+   *    exists (404 otherwise, including for the bootstrap path, so an unknown
+   *    id keeps the same posture) and is usable (a disabled organization
+   *    answers 422 and may not anchor new records).
+   *
+   * System context (no HTTP request in flight — bootstrap scripts, workers,
+   * services called directly) keeps the established trusted-caller posture:
+   * `assertOrganizationInScope` and `requireAllPermissions` both no-op there,
+   * and it is not reachable from HTTP.
+   */
+  private async authorizeMembershipAdministration(
+    organizationId: string,
+    options: { allowBootstrap: boolean },
+  ): Promise<void> {
+    this.organizations.assertDeploymentOrganizationPin(organizationId);
+    const bootstrapping =
+      options.allowBootstrap &&
+      !(await this.memberships.hasAnyMember(organizationId));
+    if (!bootstrapping) {
+      await this.organizations.assertOrganizationInScope(organizationId);
+    }
+    await this.organizations.requireAdministrableOrganization(organizationId);
   }
 }
 
