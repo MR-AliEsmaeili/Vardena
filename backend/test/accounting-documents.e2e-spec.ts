@@ -14,6 +14,7 @@ import { PermissionRegistry } from '../src/modules/rbac/application/permission-r
 import { RolesService } from '../src/modules/rbac/application/roles.service.js';
 import { UserRolesService } from '../src/modules/rbac/application/user-roles.service.js';
 import { OrganizationsRepository } from '../src/modules/organization/data/organizations.repository.js';
+import { OrganizationMembershipsRepository } from '../src/modules/organization/data/organization-memberships.repository.js';
 import { BranchesRepository } from '../src/modules/organization/data/branches.repository.js';
 import { FinancialAreasRepository } from '../src/modules/accounting/data/financial-areas.repository.js';
 import { FiscalYearsRepository } from '../src/modules/accounting/data/fiscal-years.repository.js';
@@ -177,6 +178,8 @@ describe('Accounting documents (e2e)', () => {
           .useValue(stores.userRoles)
           .overrideProvider(OrganizationsRepository)
           .useValue(master.organizations)
+          .overrideProvider(OrganizationMembershipsRepository)
+          .useValue(master.memberships)
           .overrideProvider(BranchesRepository)
           .useValue(master.branches)
           .overrideProvider(FinancialAreasRepository)
@@ -322,6 +325,16 @@ describe('Accounting documents (e2e)', () => {
         .send({ code: 'VCHRB', name: 'Voucher Org B' })
         .expect(201)
     ).body.id as string;
+    // ODR-3 (Task 19): every persona below is a legitimate member of both
+    // organizations (the cross-org assertions are data-scoped).
+    master.raw.memberships.seed(rootUser.id, state.orgA);
+    master.raw.memberships.seed(rootUser.id, state.orgB);
+    master.raw.memberships.seed(viewerUser.id, state.orgA);
+    master.raw.memberships.seed(viewerUser.id, state.orgB);
+    master.raw.memberships.seed(composerUser.id, state.orgA);
+    master.raw.memberships.seed(composerUser.id, state.orgB);
+    master.raw.memberships.seed(finalizerUser.id, state.orgA);
+    master.raw.memberships.seed(finalizerUser.id, state.orgB);
 
     state.areaA = (
       await root

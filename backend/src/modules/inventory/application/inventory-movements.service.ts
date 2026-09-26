@@ -154,7 +154,7 @@ export class InventoryMovementsService {
     id: string,
   ): Promise<InventoryMovementDto> {
     await this.authorization.requireAllPermissions([MOVEMENT_PERMISSIONS.VIEW]);
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const movement = await this.movements.findById(id);
     if (movement === null || movement.organizationId !== organizationId) {
       throw AppException.notFound('Movement', id);
@@ -353,7 +353,7 @@ export class InventoryMovementsService {
     await this.authorization.requireAllPermissions([
       MOVEMENT_PERMISSIONS.REVERSE,
     ]);
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const operationKey = requireOperationKey(input.operationKey);
     const original = await this.movements.findById(id);
     if (original === null || original.organizationId !== organizationId) {

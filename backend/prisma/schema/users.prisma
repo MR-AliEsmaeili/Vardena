@@ -23,6 +23,13 @@ model User {
   sessions  Session[]
   userRoles UserRole[]
 
+  // Back-relation for the principal → organization binding (Task 19, ODR-3).
+  // The membership rows live in the Organization module's schema
+  // (`organization.organization_memberships`) and carry the foreign key; this
+  // is the virtual side Prisma requires. Same cross-schema pattern as
+  // `userRoles` → `rbac.user_roles`.
+  organizationMemberships OrganizationMembership[]
+
   @@unique([username], map: "uq_users_username")
   @@index([deletedAt], map: "idx_users_deleted_at")
   @@map("users")

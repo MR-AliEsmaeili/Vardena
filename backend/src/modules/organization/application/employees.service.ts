@@ -380,7 +380,7 @@ export class EmployeesService {
     organizationId: string,
     id: string,
   ): Promise<Employee> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const employee = await this.repository.findById(id);
     if (employee === null || employee.organizationId !== organizationId) {
       throw AppException.notFound('Employee', id);

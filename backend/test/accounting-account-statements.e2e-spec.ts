@@ -14,6 +14,7 @@ import { PermissionRegistry } from '../src/modules/rbac/application/permission-r
 import { RolesService } from '../src/modules/rbac/application/roles.service.js';
 import { UserRolesService } from '../src/modules/rbac/application/user-roles.service.js';
 import { OrganizationsRepository } from '../src/modules/organization/data/organizations.repository.js';
+import { OrganizationMembershipsRepository } from '../src/modules/organization/data/organization-memberships.repository.js';
 import { BranchesRepository } from '../src/modules/organization/data/branches.repository.js';
 import { FinancialAreasRepository } from '../src/modules/accounting/data/financial-areas.repository.js';
 import { FiscalYearsRepository } from '../src/modules/accounting/data/fiscal-years.repository.js';
@@ -176,6 +177,8 @@ describe('Accounting account statements (e2e)', () => {
           .useValue(stores.userRoles)
           .overrideProvider(OrganizationsRepository)
           .useValue(master.organizations)
+          .overrideProvider(OrganizationMembershipsRepository)
+          .useValue(master.memberships)
           .overrideProvider(BranchesRepository)
           .useValue(master.branches)
           .overrideProvider(FinancialAreasRepository)
@@ -305,6 +308,23 @@ describe('Accounting account statements (e2e)', () => {
         .send({ code: 'AST-OFF', name: 'Statement org disabled' })
         .expect(201)
     ).body.id as string;
+
+    // ODR-3 (Task 19): every persona below is a legitimate member of all
+    // three organizations — the orgDisabled usability assertions must reach
+    // the usability rule (422), not a scope refusal, and the cross-org
+    // assertions are data-scoped.
+    master.raw.memberships.seed(rootUser.id, state.orgA);
+    master.raw.memberships.seed(rootUser.id, state.orgB);
+    master.raw.memberships.seed(rootUser.id, state.orgDisabled);
+    master.raw.memberships.seed(readerUser.id, state.orgA);
+    master.raw.memberships.seed(readerUser.id, state.orgB);
+    master.raw.memberships.seed(readerUser.id, state.orgDisabled);
+    master.raw.memberships.seed(moverUser.id, state.orgA);
+    master.raw.memberships.seed(moverUser.id, state.orgB);
+    master.raw.memberships.seed(moverUser.id, state.orgDisabled);
+    master.raw.memberships.seed(operatorUser.id, state.orgA);
+    master.raw.memberships.seed(operatorUser.id, state.orgB);
+    master.raw.memberships.seed(operatorUser.id, state.orgDisabled);
 
     state.areaA = (
       await root
@@ -1140,6 +1160,8 @@ describe('Accounting account statements (e2e)', () => {
           .useValue(stores.userRoles)
           .overrideProvider(OrganizationsRepository)
           .useValue(master.organizations)
+          .overrideProvider(OrganizationMembershipsRepository)
+          .useValue(master.memberships)
           .overrideProvider(BranchesRepository)
           .useValue(master.branches)
           .overrideProvider(FinancialAreasRepository)

@@ -396,6 +396,82 @@ export function planAccountMovePin(input: {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Configuration pin coherence (ODR-1, Task 19)
+// ---------------------------------------------------------------------------
+
+/**
+ * Why the two pinned configuration roots cannot be used together for one
+ * account write. The comparison is over the CODE-SHAPE projection only —
+ * level count and per-level digit lengths — because that is the one
+ * configuration relationship both roots actually define for accounts.
+ * Titles, level kinds and postability defaults stay owned by whichever root
+ * the write already reads them from (the accounting configuration), so they
+ * are deliberately NOT part of coherence.
+ */
+export type PinCoherenceProblem =
+  'coding_level_count_mismatch' | 'coding_digit_length_mismatch';
+
+/**
+ * ODR-1 — the Explicit Coherence Rule. Every account pins BOTH configuration
+ * roots (`coding_structure_version_id` and `accounting_configuration_id`),
+ * and code-shape validation reads the ACCOUNTING CONFIGURATION's levels while
+ * the coding structure's digit lengths were historically not consulted at
+ * all. This rule closes that gap the only way that introduces no second
+ * source of truth: an account write whose two pinned roots do not describe
+ * the SAME code shape is REJECTED — neither pin is silently picked as the
+ * winner.
+ *
+ * The defined configuration relationship is derived from the repository, not
+ * invented: both roots store `levelIndex` + `digitLength`, and an account's
+ * canonical code is the concatenation of the level digit lengths
+ * (`domain/account-code.ts`). Two roots are coherent for an account write
+ * exactly when they agree on the number of levels and on every level's digit
+ * length.
+ *
+ * Applied on every write path that establishes or re-validates an account's
+ * pins (root create, child create, move) — in the service for fast feedback
+ * and re-applied inside the repository's locked transaction from the same
+ * snapshot (the established two-call-site decision-table pattern). Reads are
+ * never blocked: existing divergent rows stay readable, and their repair is
+ * OQ-62/OQ-63, which this rule does not resolve and does not silently
+ * perform.
+ */
+export function planPinCoherence(input: {
+  codingLevels: readonly { levelIndex: number; digitLength: number }[];
+  configurationLevels: readonly { levelIndex: number; digitLength: number }[];
+}): PinCoherenceProblem | null {
+  if (input.codingLevels.length !== input.configurationLevels.length) {
+    return 'coding_level_count_mismatch';
+  }
+  const codingByIndex = new Map(
+    input.codingLevels.map((level) => [level.levelIndex, level.digitLength]),
+  );
+  for (const level of input.configurationLevels) {
+    const codingDigitLength = codingByIndex.get(level.levelIndex);
+    if (codingDigitLength === undefined) {
+      // Same count but different indices — still a level-set mismatch.
+      return 'coding_level_count_mismatch';
+    }
+    if (codingDigitLength !== level.digitLength) {
+      return 'coding_digit_length_mismatch';
+    }
+  }
+  return null;
+}
+
+/** Human-readable message per coherence problem (AR-24). */
+export function pinCoherenceProblemMessage(
+  problem: PinCoherenceProblem,
+): string {
+  switch (problem) {
+    case 'coding_level_count_mismatch':
+      return 'The pinned coding structure and accounting configuration define different numbers of levels. Publish a coherent pair before creating or moving accounts.';
+    case 'coding_digit_length_mismatch':
+      return 'The pinned coding structure and accounting configuration define different digit lengths for the same level. Publish a coherent pair before creating or moving accounts.';
+  }
+}
+
 /** Human-readable message per problem (AR-24). */
 export function accountPlacementProblemMessage(
   problem: AccountPlacementProblem,

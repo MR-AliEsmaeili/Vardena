@@ -1,4 +1,5 @@
 import type { AccountPlacementProblem } from '../domain/account.js';
+import type { PinCoherenceProblem } from '../domain/account.js';
 import type { CodingStructureProblem } from '../domain/coding-structure.js';
 
 /**
@@ -100,6 +101,25 @@ export class AccountImmutableAfterUseError extends Error {
     );
     this.name = 'AccountImmutableAfterUseError';
     this.fields = fields;
+  }
+}
+
+/**
+ * ODR-1 (Task 19): the account's two pinned configuration roots do not
+ * describe the same code shape, so the write is refused instead of silently
+ * validating against one of them. Thrown inside the guarded transactions and
+ * by the service pre-flight; both use the same domain decision table
+ * (`planPinCoherence`).
+ */
+export class AccountPinsIncoherentError extends Error {
+  readonly problem: PinCoherenceProblem;
+
+  constructor(problem: PinCoherenceProblem) {
+    super(
+      `The account's pinned configuration roots are not coherent (${problem}).`,
+    );
+    this.name = 'AccountPinsIncoherentError';
+    this.problem = problem;
   }
 }
 

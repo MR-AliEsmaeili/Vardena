@@ -382,7 +382,7 @@ export class ItemGroupsService {
     organizationId: string,
     id: string,
   ): Promise<ItemGroup> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const group = await this.repository.findById(id);
     if (group === null || group.organizationId !== organizationId) {
       throw AppException.notFound('ItemGroup', id);

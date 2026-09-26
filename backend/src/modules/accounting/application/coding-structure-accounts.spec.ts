@@ -115,6 +115,8 @@ interface Fixture {
   master: ReturnType<typeof createMasterDataStores>;
   events: DomainEvent[];
   grant: (userId: string, codes: readonly string[]) => Promise<void>;
+  /** ODR-3 (Task 19): seed a principal → organization membership. */
+  member: (userId: string, organizationId: string) => void;
 }
 
 async function buildFixture(
@@ -150,6 +152,7 @@ async function buildFixture(
   );
   const organizations = new OrganizationsService(
     masterStores.organizations,
+    masterStores.memberships,
     authorization,
     loggerStub(),
     bus,
@@ -224,6 +227,9 @@ async function buildFixture(
     master: masterStores,
     events,
     grant,
+    member: (userId: string, organizationId: string) => {
+      masterStores.raw.memberships.seed(userId, organizationId);
+    },
   };
 }
 
@@ -410,6 +416,11 @@ describe('CodingStructuresService', () => {
         }),
       )
     ).id;
+    // ODR-3 (Task 19): organization scope is principal-bound; ACTOR is a
+    // legitimate member of both organizations so the behaviour under test
+    // surfaces exactly as before. The membership boundary has its own specs.
+    fixture.member(ACTOR, orgA);
+    fixture.member(ACTOR, orgB);
     await fixture.grant(ACTOR, [
       ...Object.values(CODING_STRUCTURE_PERMISSIONS),
       ...Object.values(ACCOUNT_PERMISSIONS),
@@ -831,6 +842,11 @@ describe('AccountsService', () => {
         }),
       )
     ).id;
+    // ODR-3 (Task 19): organization scope is principal-bound; ACTOR is a
+    // legitimate member of both organizations so the behaviour under test
+    // surfaces exactly as before. The membership boundary has its own specs.
+    fixture.member(ACTOR, orgA);
+    fixture.member(ACTOR, orgB);
     await fixture.grant(ACTOR, [
       ...Object.values(CODING_STRUCTURE_PERMISSIONS),
       ...Object.values(ACCOUNT_PERMISSIONS),
@@ -1096,6 +1112,7 @@ describe('AccountsService', () => {
         }),
       )
     ).id;
+    freshFixture.member(ACTOR, orgB2);
     await freshFixture.grant(ACTOR, [
       ...Object.values(CODING_STRUCTURE_PERMISSIONS),
       ...Object.values(ACCOUNT_PERMISSIONS),
@@ -1402,6 +1419,7 @@ describe('AccountsService', () => {
 
   it('enforces one permission per operation (the service check, not the route)', async () => {
     const viewOnly = '01VIEWONLY00000000000000000';
+    fixture.member(viewOnly, orgA);
     await fixture.grant(viewOnly, [ACCOUNT_PERMISSIONS.VIEW]);
     expect(
       await failure(
@@ -1425,6 +1443,7 @@ describe('AccountsService', () => {
 
     // `Create` is not `Edit`; `Edit` is not `Enable`/`Disable`.
     const creator = '01CREATOR0000000000000000A';
+    fixture.member(creator, orgA);
     await fixture.grant(creator, [ACCOUNT_PERMISSIONS.CREATE]);
     expect(
       await asActor(creator, () =>
@@ -1473,6 +1492,9 @@ describe('AccountsService', () => {
     await asSystem(() =>
       fixture.organizations.disableOrganization(disabledOrg.id),
     );
+    // A member of a DISABLED organization still gets the usability 422 — the
+    // membership gate must not mask it with a 404 (ODR-3 preserves posture).
+    fixture.member(ACTOR, disabledOrg.id);
     expect(
       await accountFailures(fixture).create(disabledOrg.id, '02'),
     ).toMatchObject({ code: 'BusinessRuleViolation' });
@@ -1594,6 +1616,7 @@ describe('deployment organization pin over the Task 10.3 surface (ADR-0025)', ()
       ...Object.values(CODING_STRUCTURE_PERMISSIONS),
       ...Object.values(ACCOUNT_PERMISSIONS),
     ]);
+    fixture.member(ACTOR, orgA);
     const versionId = await publishStructure(fixture, orgA, TWO_LEVELS);
     const accountId = (await createAccount(fixture, orgA, '02')).id;
 
@@ -1613,6 +1636,7 @@ describe('deployment organization pin over the Task 10.3 surface (ADR-0025)', ()
 
     // Same data, pinned application: only orgA is reachable.
     const pinned = await buildFixture(pinnedAppConfig(orgA));
+    pinned.member(ACTOR, orgA);
     await pinned.grant(ACTOR, [
       ...Object.values(CODING_STRUCTURE_PERMISSIONS),
       ...Object.values(ACCOUNT_PERMISSIONS),

@@ -18,6 +18,7 @@ import { PermissionRegistry } from '../src/modules/rbac/application/permission-r
 import { RolesService } from '../src/modules/rbac/application/roles.service.js';
 import { UserRolesService } from '../src/modules/rbac/application/user-roles.service.js';
 import { OrganizationsRepository } from '../src/modules/organization/data/organizations.repository.js';
+import { OrganizationMembershipsRepository } from '../src/modules/organization/data/organization-memberships.repository.js';
 import { WorkflowDefinitionsRepository } from '../src/modules/workflow/data/workflow-definitions.repository.js';
 import { WorkflowVersionsRepository } from '../src/modules/workflow/data/workflow-versions.repository.js';
 import { WorkflowStatesRepository } from '../src/modules/workflow/data/workflow-states.repository.js';
@@ -146,6 +147,8 @@ describe('Workflow Foundation (e2e)', () => {
           .useValue(stores.userRoles)
           .overrideProvider(OrganizationsRepository)
           .useValue(master.organizations)
+          .overrideProvider(OrganizationMembershipsRepository)
+          .useValue(master.memberships)
           .overrideProvider(WorkflowDefinitionsRepository)
           .useValue(workflow.definitions)
           .overrideProvider(WorkflowVersionsRepository)
@@ -256,6 +259,15 @@ describe('Workflow Foundation (e2e)', () => {
       .send({ code: 'OTHER', name: 'Other Co' })
       .expect(201);
     state.otherOrgId = other.body.id as string;
+
+    // ODR-3 (Task 19): every persona below is a legitimate member of both
+    // organizations (the cross-org assertions are data-scoped).
+    master.raw.memberships.seed(rootUser.id, state.orgId);
+    master.raw.memberships.seed(rootUser.id, state.otherOrgId);
+    master.raw.memberships.seed(limitedUser.id, state.orgId);
+    master.raw.memberships.seed(limitedUser.id, state.otherOrgId);
+    master.raw.memberships.seed(operatorUser.id, state.orgId);
+    master.raw.memberships.seed(operatorUser.id, state.otherOrgId);
   });
 
   afterAll(async () => {

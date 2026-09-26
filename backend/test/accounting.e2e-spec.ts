@@ -12,6 +12,7 @@ import { PermissionRegistry } from '../src/modules/rbac/application/permission-r
 import { RolesService } from '../src/modules/rbac/application/roles.service.js';
 import { UserRolesService } from '../src/modules/rbac/application/user-roles.service.js';
 import { OrganizationsRepository } from '../src/modules/organization/data/organizations.repository.js';
+import { OrganizationMembershipsRepository } from '../src/modules/organization/data/organization-memberships.repository.js';
 import { FinancialAreasRepository } from '../src/modules/accounting/data/financial-areas.repository.js';
 import { FiscalYearsRepository } from '../src/modules/accounting/data/fiscal-years.repository.js';
 import { AccountingPeriodsRepository } from '../src/modules/accounting/data/accounting-periods.repository.js';
@@ -96,6 +97,8 @@ describe('Accounting foundation (e2e)', () => {
           .useValue(stores.userRoles)
           .overrideProvider(OrganizationsRepository)
           .useValue(master.organizations)
+          .overrideProvider(OrganizationMembershipsRepository)
+          .useValue(master.memberships)
           .overrideProvider(FinancialAreasRepository)
           .useValue(accounting.areas)
           .overrideProvider(FiscalYearsRepository)
@@ -276,6 +279,14 @@ describe('Accounting foundation (e2e)', () => {
       .send({ code: 'OTHER', name: 'Other Org' })
       .expect(201);
     state.otherOrgId = other.body.id;
+    // ODR-3 (Task 19): organization scope is principal-bound. Both
+    // personas are legitimate members of both organizations — the cross-org
+    // assertions below are data-scoped (foreign rows invisible), never
+    // membership-scoped.
+    master.raw.memberships.seed(state.rootId, state.orgId);
+    master.raw.memberships.seed(state.rootId, state.otherOrgId);
+    master.raw.memberships.seed(state.limitedId, state.orgId);
+    master.raw.memberships.seed(state.limitedId, state.otherOrgId);
 
     const res = await root
       .post('/api/v1/financial-areas')

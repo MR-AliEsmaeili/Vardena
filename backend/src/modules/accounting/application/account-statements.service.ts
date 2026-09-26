@@ -109,7 +109,7 @@ export class AccountStatementsService {
     await this.authorization.requireAllPermissions([
       ACCOUNT_STATEMENT_PERMISSIONS.VIEW,
     ]);
-    this.organizations.assertOrganizationInScope(query.organizationId);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     await this.organizations.requireUsableOrganization(query.organizationId);
 
     // The statement order IS the running-balance order (prompt §11): a client

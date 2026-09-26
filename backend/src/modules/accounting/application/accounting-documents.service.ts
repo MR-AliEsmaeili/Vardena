@@ -155,7 +155,7 @@ export class AccountingDocumentsService {
     await this.authorization.requireAllPermissions([
       ACCOUNTING_DOCUMENT_PERMISSIONS.VIEW,
     ]);
-    this.organizations.assertOrganizationInScope(query.organizationId);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {
@@ -216,7 +216,7 @@ export class AccountingDocumentsService {
     await this.authorization.requireAllPermissions([
       ACCOUNTING_DOCUMENT_PERMISSIONS.CREATE,
     ]);
-    this.organizations.assertOrganizationInScope(input.organizationId);
+    await this.organizations.assertOrganizationInScope(input.organizationId);
 
     const documentDate = parseDocumentDate(input.documentDate);
     const description = assertDescription(input.description);
@@ -730,7 +730,7 @@ export class AccountingDocumentsService {
     organizationId: string,
     id: string,
   ): Promise<AccountingDocument> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const document = await this.repository.findById(id);
     if (document === null || document.organizationId !== organizationId) {
       throw AppException.notFound('AccountingDocument', id);

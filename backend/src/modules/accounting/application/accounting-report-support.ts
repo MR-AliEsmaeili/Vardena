@@ -54,7 +54,7 @@ export async function resolveAccountingReportScope(
   organizations: OrganizationsService,
   query: ReportScopeQuery,
 ): Promise<ResolvedAccountingReportScope> {
-  organizations.assertOrganizationInScope(query.organizationId);
+  await organizations.assertOrganizationInScope(query.organizationId);
   await organizations.requireUsableOrganization(query.organizationId);
 
   const area = await repository.findFinancialArea(

@@ -181,7 +181,7 @@ export class UnitConversionsService {
     await this.authorization.requireAllPermissions([
       UNIT_CONVERSION_PERMISSIONS.VIEW,
     ]);
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const stored = await this.repository.findStoredById(id);
     if (
       stored === null ||

@@ -109,6 +109,12 @@ model Organization {
   // `accounting.account_balance_projections.organization_id`.
   accountBalanceProjections AccountBalanceProjection[]
 
+  // Back-relation for the principal → organization binding (Task 19, ODR-3).
+  // Unlike the virtual-only back-relations above, this one is REAL: the
+  // membership rows live in THIS schema (`organization.organization_memberships`)
+  // and carry the foreign keys; see `model OrganizationMembership` below.
+  memberships OrganizationMembership[]
+
   // The organization code is the tenant root's business key: unique
   // deployment-wide (there is no wider scope to be unique within).
   @@unique([code], map: "uq_organizations_code")
@@ -240,5 +246,47 @@ model Party {
   @@index([organizationId, isActive], map: "idx_parties_organization_id_is_active")
   @@index([organizationId, partyType], map: "idx_parties_organization_id_party_type")
   @@map("parties")
+  @@schema("organization")
+}
+
+// Principal → organization membership — the smallest Organization-owned
+// binding that implements ODR-3 (Task 19): organization authorization is
+// bound to the authenticated principal's authorized organization context, so
+// a module permission alone can no longer cross organizations by supplying an
+// arbitrary `organizationId`.
+//
+// Shape follows the `rbac.user_roles` precedent (the repository's other
+// user-link table):
+// - COMPOSITE primary key (user_id, organization_id): the database itself
+//   makes a duplicate grant impossible, so the application never relies on a
+//   read-then-write check;
+// - `onDelete: Cascade` on the user relation — a membership is not a business
+//   record and must not outlive the user (users are soft-deleted in practice,
+//   so this is a safety net, exactly as in `rbac.user_roles`);
+// - `onDelete: Restrict` on the organization relation — an organization row
+//   can never disappear under its memberships (every other `organization_id`
+//   FK in the repository is RESTRICT too);
+// - presence IS the authorization: there is no `is_active`, no role column
+//   and no validity window. The full membership model (roles per
+//   organization, deactivation, effective dating) remains future work under
+//   OQ-01/OQ-22; adding a second, unused lifecycle mechanism here is what
+//   master-data-strategy.md §7 forbids.
+//
+// Deliberately NOT seeded/backfilled by the migration: which principals may
+// access which existing organizations is an operational grant decision, not a
+// schema fact. Deployments grant memberships explicitly after upgrading
+// (see the Task 19 implementation report for the rollout note).
+model OrganizationMembership {
+  userId         String   @map("user_id")
+  organizationId String   @map("organization_id")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@id([userId, organizationId], map: "pk_organization_memberships_user_organization")
+  @@index([organizationId], map: "idx_organization_memberships_organization_id")
+  @@map("organization_memberships")
   @@schema("organization")
 }

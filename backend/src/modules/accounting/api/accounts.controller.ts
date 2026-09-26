@@ -50,9 +50,13 @@ const PaginatedAccountDto = paginatedResponseOf(AccountResponseDto);
  *
  * There is deliberately NO DELETE endpoint and no `Accounting.Account.Delete`
  * permission: accounts are never deleted and their codes are never reused
- * (§8.6, OQ-36); `disable` is the whole lifecycle. There is also no tree
- * endpoint: the chart-of-accounts/account-tree READS are reporting projections
- * over `parent_id` (contract §19.1), not part of this module's API.
+ * (§8.6, OQ-36); `disable` is the whole lifecycle.
+ *
+ * This is the ADMINISTRATION surface. The chart-tree READ projection for tree
+ * consumers is a separate Accounting-owned read surface (ODR-2, Task 19):
+ * `GET /api/v1/accounting/chart-tree` — read-only, code-ascending, no
+ * figures. It is not a Reporting module and not a second Account master
+ * (ADR-0009).
  */
 @ApiTags('accounts')
 @ApiUnauthorizedResponse({ description: 'Not authenticated.' })

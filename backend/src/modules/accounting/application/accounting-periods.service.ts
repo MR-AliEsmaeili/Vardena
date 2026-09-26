@@ -369,7 +369,7 @@ export class AccountingPeriodsService {
     organizationId: string,
     id: string,
   ): Promise<AccountingPeriod> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const period = await this.repository.findById(id);
     if (period === null || period.organizationId !== organizationId) {
       throw AppException.notFound('AccountingPeriod', id);

@@ -377,7 +377,7 @@ export class WarehousesService {
     organizationId: string,
     id: string,
   ): Promise<Warehouse> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const warehouse = await this.repository.findById(id);
     if (warehouse === null || warehouse.organizationId !== organizationId) {
       throw AppException.notFound('Warehouse', id);

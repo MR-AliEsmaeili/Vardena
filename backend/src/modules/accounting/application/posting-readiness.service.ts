@@ -88,7 +88,7 @@ export class PostingReadinessService {
     organizationId: string,
     documentId: string,
   ): Promise<PostingReadiness> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const document = await this.documents.findById(documentId);
     if (document === null || document.organizationId !== organizationId) {
       throw AppException.notFound('AccountingDocument', documentId);

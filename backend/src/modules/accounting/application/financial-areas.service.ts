@@ -423,7 +423,7 @@ export class FinancialAreasService {
     organizationId: string,
     id: string,
   ): Promise<FinancialArea> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const area = await this.repository.findById(id);
     if (area === null || area.organizationId !== organizationId) {
       throw AppException.notFound('FinancialArea', id);

@@ -263,7 +263,7 @@ export class PostingService {
     organizationId: string,
     voucherId: string,
   ): Promise<AccountingDocument> {
-    this.organizations.assertOrganizationInScope(organizationId);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const document = await this.documents.findById(voucherId);
     if (document === null || document.organizationId !== organizationId) {
       throw AppException.notFound('AccountingDocument', voucherId);
