@@ -2,7 +2,7 @@
 
 - **Document type:** investigation — **DESIGN / GOVERNANCE ONLY (DOCUMENTATION ONLY)**
 - **Date:** 2026-09-26
-- **Task status:** **READY FOR REVIEW — NOT ACCEPTED**
+- **Task status:** **ACCEPTED (2026-09-26)**
 - **Branch:** `arena/01a0de9b-vardena`
 - **Baseline:** `main` @ `10797e1400fda6329ca481877f9bbf9eff850fcd`
 - **Method:** read-only inspection of governance documents **and** production code
