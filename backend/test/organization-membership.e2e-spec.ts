@@ -271,14 +271,14 @@ describe('Organization membership administration (e2e)', () => {
   it('refuses a grant for an unknown user with 404 (user FK)', async () => {
     const res = await admin
       .post(`/api/v1/organizations/${state.orgId}/members`)
-      .send({ userId: '01UNKNOWN0000000000000000X' })
+      .send({ userId: '01AAAAAAAAAAAAAAAAAAAAAAAA' })
       .expect(404);
     expect(res.body.code).toBe('EntityNotFound');
   });
 
   it('refuses a grant for an unknown organization with 404', async () => {
     const res = await admin
-      .post('/api/v1/organizations/01UNKNOWN0000000000000000X/members')
+      .post('/api/v1/organizations/01AAAAAAAAAAAAAAAAAAAAAAAA/members')
       .send({ userId: state.memberId })
       .expect(404);
     expect(res.body.code).toBe('EntityNotFound');
@@ -296,7 +296,7 @@ describe('Organization membership administration (e2e)', () => {
     expect(foreign.body.code).toBe('EntityNotFound');
 
     const unknown = await member
-      .get('/api/v1/organizations/01UNKNOWN0000000000000000X')
+      .get('/api/v1/organizations/01AAAAAAAAAAAAAAAAAAAAAAAA')
       .expect(404);
     expect(unknown.body.code).toBe('EntityNotFound');
   });
