@@ -6,6 +6,7 @@ governance / consolidation (documentation only) · Task 17C status:
 the Task 17C Acceptance Sync (no self-acceptance; the acceptance was recorded per
 the Owner's explicit Acceptance-Sync authorization — acceptance record:
 [`docs/tasks/task-17/task-17c-acceptance-record.md`](../tasks/task-17/task-17c-acceptance-record.md))
+· Task 19 ODR-1…ODR-3: **DECIDED** (appended §11; implementation **not** started)
 
 | | |
 |---|---|
@@ -382,3 +383,72 @@ Question, which stays OPEN in [`docs/open-questions.md`](../open-questions.md).
   IMPLEMENTATION BLOCKED BY OPEN QUESTIONS** and **NOT complete**. No production code,
   schema, migration, test, API, permission or dependency was touched by the
   synchronization.
+- 2026-09-25 — **Task 19 Owner Decision Sync (documentation only).** Appended
+  **ODR-1 / ODR-2 / ODR-3** (all **DECIDED**) as §11 of this register. Q1–Q22 and
+  I-1…I-3 are unchanged. No production implementation.
+
+---
+
+## 11. ODR-1…ODR-3 — Task 19 (DECIDED)
+
+Canonical Owner Decision Register entries for Task 19. These are **decisions**,
+not proposals. They do **not** implement production behavior.
+
+Identifier mapping vs
+[`accounting-chart-configuration-investigation.md`](../tasks/task-19/accounting-chart-configuration-investigation.md)
+§21: Owner **ODR-1** = investigation ODR-3 (dual pin); Owner **ODR-2** =
+investigation ODR-2 (tree ownership); Owner **ODR-3** = investigation ODR-9
+(organization authorization). Investigation labels are not competing decisions.
+
+### ODR-1 — Dual Configuration Pin / Explicit Coherence Rule
+
+| Field | Content |
+|---|---|
+| **Question** | When `coding_structure_version_id` and `accounting_configuration_id` diverge, which pin defines Account code-shape validation, and may the system silently fall back? |
+| **Owner decision** | **C — Explicit Coherence Rule.** The two references must remain explicitly coherent. If they diverge in a way that violates the defined configuration relationship, the operation **MUST be rejected**. No silent selection of one pin. |
+| **Status** | **DECIDED** |
+| **Decision rationale** | Two independent sources of truth for the same code-shape would make validation non-deterministic. |
+| **Architectural implications** | Do **not** invent a second configuration architecture. Inspect the existing model (Task 10.3 coding structure + Task 11 accounting configuration). Preserve existing concepts. Exact canonical resolution/coherence mechanism is **derived from the repository**, not designed here. |
+| **Security implications** | None beyond integrity of validation (fail closed on incoherence). |
+| **Explicit non-goals** | Second configuration system; duplicated coding-structure state; silent pin choice; rewriting historical ledger data; generic configuration engine; EAV/giant JSONB; unrelated refactor. |
+| **Implementation consequences** | Task 19 Slice 1 — Configuration Coherence Guard. **Implementation detail — requires Task 19 implementation design** for the exact comparison algorithm. |
+| **Related OQ(s)** | **OQ-62** remains **OPEN** (algorithm/repair of existing divergent rows); **OQ-63** remains **OPEN** (legacy fallback shape). Architectural “do not silently pick a winner” is decided. |
+| **Factual repository state** | Accounting configuration owns `accounting_configurations` / `_levels` (ADR-0028). Coding structure owns `coding_structure_versions` / `_levels` (Task 10.3). Both pins are persisted NOT NULL on `accounts`. Today **only configuration levels** feed `checkAccountCode`; coding-structure digit lengths are not consulted. Divergence is possible (Task 11 rehearsal). **No coherence invariant is enforced.** Task 11 D2 text (“coding_structure_version_id remains the code-shape pin”) is **not** true of the live validation path — recorded, not silently treated as already fixed. |
+
+### ODR-2 — Chart Tree Read Ownership / Accounting-owned
+
+| Field | Content |
+|---|---|
+| **Question** | Which bounded context owns the canonical Chart of Accounts / Chart Tree read surface? |
+| **Owner decision** | **A — Accounting-owned.** Accounting owns the canonical Account master and hierarchy. A read/query layer may be used internally; Reporting and UI are **consumers**. |
+| **Status** | **DECIDED** |
+| **Decision rationale** | The Chart Tree must not become a duplicate Account master inside Reporting. |
+| **Architectural implications** | Ownership: Account master, identity, hierarchy, domain invariants stay in Accounting. Consumption: Accounting UI, Reporting, future Legal Adapter/Profile, other authorized readers. Exact API shape is derived during implementation. |
+| **Security implications** | Tree reads remain organization-scoped; ODR-3 applies. |
+| **Explicit non-goals** | Second canonical Account model in Reporting; transferring Account ownership to Reporting; Reporting as source of truth for hierarchy; introducing a Reporting module merely to provide the Tree; coupling UI directly to Accounting tables. |
+| **Implementation consequences** | Task 19 Slice 2 — read-only Accounting-owned Chart Tree. Must preserve org scope, Account identity, hierarchy, code, name, level, active/inactive, posting/aggregation semantics **where already authoritative**, deterministic ordering. |
+| **Related OQ(s)** | Does **not** close **OQ-25** (classification/content) or **OQ-43**. |
+| **Factual repository state** | Existing APIs: `GET /api/v1/accounting/accounts` (list) and get-by-id. **No complete Chart Tree API exists.** Task 18 GL/TB/statement are ledger reads, not a chart tree. |
+
+### ODR-3 — Organization Authorization Boundary / Principal-bound Organization
+
+| Field | Content |
+|---|---|
+| **Question** | May a caller access another Organization by changing `organizationId` if they hold a valid Accounting permission? |
+| **Owner decision** | **A — Principal-bound Organization Authorization.** Organization authorization is bound to the authenticated Principal's authorized organization context. Permission alone is insufficient. Multi-org access only where repository-supported membership/access explicitly authorizes that Organization. |
+| **Status** | **DECIDED** (target invariant). **Not implemented.** |
+| **Decision rationale** | Organization authorization is a tenant-isolation boundary. |
+| **Architectural implications** | Chain: Principal → Authorized Organization Membership/Context → Requested Organization → Module Permission → Resource Access. |
+| **Security implications** | The following **MUST NOT** be possible: Principal + valid Accounting permission + arbitrary `organizationId` → cross-organization data access. |
+| **Explicit non-goals** | Trusting arbitrary caller-supplied `organizationId`; wildcard organization access; bypassing existing RBAC; duplicating organization membership data; a new authorization subsystem without repository evidence; weakening 404/not-found tenant isolation. |
+| **Implementation consequences** | Task 19 Slice 3. Do **not** claim this is implemented because it is decided. |
+| **Related OQ(s)** | **OQ-01** / **OQ-22** remain **OPEN** (deployment tenancy / books). ODR-3 decides the **authorization invariant**, not the full product tenancy model. |
+| **Factual repository state** | Principal: Identity session (`AuthGuard`). Permissions: RBAC `AuthorizationGuard` / `AuthorizationService` (no wildcards). **Principal→Organization membership is not modeled** in `users`/`rbac` schemas. Organization-scoped requests take caller-supplied `organizationId`. Guards: `requireUsableOrganization` / `assertOrganizationInScope` enforce the **optional ADR-0025 deployment pin**, not per-principal membership. Accounting reads use **404** for foreign/unknown keys. **Current gap:** with the pin unset, permission + arbitrary `organizationId` can access another org's chart (investigation S-1). |
+
+**Current vs target vs future (ODR-3):**
+
+| Layer | Current implementation | Approved target (ODR-3) | Future work |
+|---|---|---|---|
+| Isolation | Structural `organization_id` + optional deployment pin | Principal-bound membership/context **then** permission | Task 19 Slice 3 |
+| Cross-org via `organizationId` | Possible when pin unset | Forbidden | Tests required |
+| 404 posture | Accounting reads 404 foreign keys | Preserve | Do not leak existence |

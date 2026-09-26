@@ -95,4 +95,4 @@ Keep ADRs **short** (≤ ~60 lines). If it needs more, it belongs in `docs/`.
 | [0034](./0034-posting-versus-aggregation-accounts.md) | Posting Account XOR Aggregation Account — one semantic role per account node | Proposed |
 | [0035](./0035-account-code-structure-migration.md) | Accounting code structure migration — controlled, licensed, audited; never rewrites economic ledger history | Proposed |
 | [0036](./0036-legal-reporting-architecture.md) | Legal reporting architecture — Accounting Core → Legal Adapter / Legal Profile | Proposed |
-| [0037](./0037-accounting-configuration-boundary.md) | Accounting configuration boundary — base structure, standard control roles, configurability bounded by invariants | Proposed |
+| [0037](./0037-accounting-configuration-boundary.md) | Accounting configuration boundary — base structure, standard control roles, configurability bounded by invariants | Proposed (Task 19 ODR-1: Owner decision exists; implementation adoption remains pending) |

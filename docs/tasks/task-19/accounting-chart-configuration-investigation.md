@@ -6,16 +6,16 @@
 - **Branch:** `arena/01a0da8b-vardena` (base `8b22068783e318600d87cbe76b8c80dcf632a2d0`, merge of PR #49)
 - **Repository baseline inspected:** the working tree at the base commit, plus `STATE.md`, `docs/accounting/*`, `docs/adr/0033…0037`, `docs/tasks/task-17/*`, `docs/tasks/task-18/*`, `docs/open-questions.md`, the Accounting Prisma schema, all 15 migrations and the Accounting module source.
 
-> **Status banner — this document defines no task.** `Task 19` is used here only as the
-> *next free integer* in the Accounting task numbering (`docs/accounting/task-index.md`
-> §2/§6: Tasks 12–14, 16, 17 (+17A/17B/17C) and 18 are taken; a repository-wide search
-> returns **zero** hits for `Task 19` / `task-19`). Per
-> [`docs/accounting/task-index.md`](../../accounting/task-index.md) §7 a future capability
-> becomes an implementation task **only after** its objective, domain scope, non-goals,
-> dependencies, blocking OQs, required ADR/decisions and acceptance criteria exist **and**
-> it is explicitly added to that index's §2 table. **None of those exists for Task 19.**
-> This report is therefore an investigation record, not a task brief, and it authorizes
-> nothing.
+> **Status banner — investigation record (historical).** Written 2026-09-25 as
+> documentation-only investigation. **Superseding governance (same date):** the Owner
+> decided **ODR-1 / ODR-2 / ODR-3** (see
+> [`owner-decision-baseline.md`](../../accounting/owner-decision-baseline.md) §11).
+> The implementation gate is
+> [`task-19-implementation-gate.md`](./task-19-implementation-gate.md)
+> (**READY FOR IMPLEMENTATION**; production **not started**). Owner ODR numbering
+> **supersedes** this file's §21 labels (mapping in the gate). §20's
+> `BLOCKED — OWNER DECISION REQUIRED` was correct **at investigation time**; it is
+> **not** the current Task 19 gate.
 
 > **No production change.** No TypeScript, Prisma schema, migration, SQL, API contract,
 > permission, seed, dependency, refactor, test or UI change was made by this investigation.
