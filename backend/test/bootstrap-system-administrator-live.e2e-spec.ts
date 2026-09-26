@@ -176,9 +176,9 @@ describe.skipIf(DATABASE_URL === undefined)(
       organizationId = organization.body.id as string;
 
       // Full RBAC does not bypass ODR-3: before a real membership exists, an
-      // organization-scoped Inventory path is deliberately invisible.
+      // organization-scoped Accounting path is deliberately invisible.
       await admin
-        .get('/api/v1/inventory/items')
+        .get('/api/v1/accounting/balances')
         .query({ organizationId })
         .expect(404);
 
@@ -193,7 +193,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         '/api/v1/inventory/items',
         '/api/v1/documents/types',
         '/api/v1/workflow/definitions',
-        '/api/v1/financial-areas',
+        '/api/v1/accounting/balances',
       ]) {
         // eslint-disable-next-line no-await-in-loop
         await admin.get(path).query({ organizationId }).expect(200);
