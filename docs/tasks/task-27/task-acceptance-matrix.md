@@ -1,0 +1,24 @@
+# Task 27 — Task Acceptance Matrix
+
+| AC | Requirement | Evidence | Status |
+|---|---|---|---|
+| **AC-01** | Current main audited | Audited commit `cb521f4ba2662f4a4cdac7864cf0c712b6bba816` on `main`; verified via `git log` and GitHub API. | **VERIFIED** |
+| **AC-02** | Task 26 merge verified | PR #71 (`e7fe80d04620170733ad9672d991ffd576607a5a`) and follow-up PR #72 (`cb521f4ba2662f4a4cdac7864cf0c712b6bba816`) verified merged into `main`. | **VERIFIED** |
+| **AC-03** | ODR-3 implementation re-audited | `OrganizationsService.assertOrganizationInScope` in `backend/src/modules/organization/application/organizations.service.ts:167-184` audited: deployment pin, authentication, and principal-bound membership checks verified fail-closed. | **VERIFIED** |
+| **AC-04** | All 37 Task 25 read surfaces reconciled | All 37 SEC-01 methods across 5 modules audited in source; verified by `backend/src/modules/organization/application/organization-read-scope-completion.spec.ts` (38 tests PASS). | **VERIFIED** |
+| **AC-05** | Permission-first ordering verified | Code and test inspection proves `requireAllPermissions` precedes `assertOrganizationInScope` across all 37 surfaces; 403 on missing permission, 404 on out-of-scope org. | **VERIFIED** |
+| **AC-06** | APP_GUARD/F-3 documentation reconciled | `backend/src/modules/organization/organization.module.ts:81` confirms `{ provide: APP_GUARD, useClass: DeploymentOrganizationScopeGuard }`; Task 24 F-3 claim retracted and documented. | **VERIFIED** |
+| **AC-07** | Task 25 findings reconciled | SEC-01 (resolved by Task 26 PR #71), SEC-02 (reconciled in docs/guard audit), SEC-03 (resolved by comment fix in PR #70) classified and reconciled in `main-based-reconciliation-report.md`. | **VERIFIED** |
+| **AC-08** | Task 24 status reconciled | Task 24 R-2 account list fix verified on `main`; F-3 error retracted; status classified as IMPLEMENTED / MERGED — NOT ACCEPTED. | **VERIFIED** |
+| **AC-09** | Task 23/Base Chart mechanism reconciled | Four invariants verified in `BaseChartAdoptionsService` and related services; 0 content rows found in migrations/seed; OQ-25 confirmed OPEN. | **VERIFIED** |
+| **AC-10** | OQs reconciled without unauthorized closure | `docs/open-questions.md` audited; OQ-01..63 remain OPEN; OQ-64 remains RESOLVED; no OQ closed or reclassified by this task. | **VERIFIED** |
+| **AC-11** | ADRs reconciled without unauthorized promotion | All 37 ADR files in `docs/adr/` audited (22 Accepted, 15 Proposed; ADR-0038 Proposed); no ADR promoted by this task. | **VERIFIED** |
+| **AC-12** | STATE.md reconciled | `STATE.md` updated with Task 27 reconciliation report, current `main` HEAD @ `cb521f4`, and resolved SEC-01 status. | **VERIFIED** |
+| **AC-13** | Roadmap reconciled | `docs/roadmap/backend-mvp-roadmap.md` and `future-task-candidates.md` synchronized with Task 25/26 completions (C-01, C-05, C-06 resolved). | **VERIFIED** |
+| **AC-14** | MVP scope verified | Treasury and Purchasing confirmed outside MVP (zero models/controllers/routes); modular monolith, no microservices, no EAV, no wildcard bypass verified. | **VERIFIED** |
+| **AC-15** | Documentation drift identified/corrected | 6 documentation drift items (DR-01..DR-06) logged in `documentation-drift-report.md` and corrected where unambiguous. | **VERIFIED** |
+| **AC-16** | Owner decision pack prepared | `docs/tasks/task-27/owner-decision-pack.md` prepared with OD-27-01..OD-27-04 formatted per specification. | **VERIFIED** |
+| **AC-17** | Next implementation gate identified from evidence | 4 implementation candidates (Phase 1A, Phase 3A, Phase 2A, Phase 6.2/6.3) analyzed with prerequisites, dependencies, blockers, and actionability. | **VERIFIED** |
+| **AC-18** | No production capability changed | `git diff origin/main` confirms 0 production behavior, controller, service, or route changes. | **VERIFIED** |
+| **AC-19** | No schema/migration/permission architecture changed | `git diff origin/main` confirms 0 schema changes, 0 migrations added/modified, 0 permissions added/modified, 0 guard logic altered. | **VERIFIED** |
+| **AC-20** | Final status is READY FOR REVIEW — NOT ACCEPTED | Final task outcome explicitly recorded as **READY FOR REVIEW — NOT ACCEPTED**; owner review required. | **VERIFIED** |
