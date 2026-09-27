@@ -21,7 +21,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vardena} -d ${POSTGRES_DB:-vardena}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-vardena} -d ${POSTGRES_DB:-vardena}",
+        ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -35,6 +39,10 @@ services:
       target: build
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://vardena@postgres:5432/vardena}
+      # Optional single-organization pin (ADR-0025). When set, the bootstrap
+      # command below also provisions that organization and the administrator's
+      # ordinary membership of it.
+      DEPLOYMENT_ORGANIZATION_ID: ${DEPLOYMENT_ORGANIZATION_ID:-}
       CHECKPOINT_DISABLE: "1"
       NPM_CONFIG_FETCH_RETRIES: "5"
       NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "15000"
@@ -68,6 +76,8 @@ services:
       TRUST_PROXY: ${TRUST_PROXY:-false}
       RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-300}
+      # Must match the value given to the migrate/bootstrap service (ADR-0025).
+      DEPLOYMENT_ORGANIZATION_ID: ${DEPLOYMENT_ORGANIZATION_ID:-}
       # Local HTTP is the default; use true when the API is served over HTTPS.
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-vardena_session}
       AUTH_COOKIE_PATH: ${AUTH_COOKIE_PATH:-/}

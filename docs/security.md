@@ -5,7 +5,7 @@ Status: Accepted (foundation) · Updated: 2026-09-27
 Scope: authentication, authorization (RBAC), audit logging, API security,
 credential/session policies, integration security. Security **defaults** below
 are architectural configuration values (tunable per deployment via config); they
-are *not* business rules. Where a value is a business/policy decision, it is
+are _not_ business rules. Where a value is a business/policy decision, it is
 registered as an OQ instead of being assumed.
 
 ## 1. Threat Model & Boundaries
@@ -26,18 +26,18 @@ registered as an OQ instead of being assumed.
 
 **Mechanism: server-side opaque sessions.**
 
-| Aspect | Decision |
-|---|---|
-| Credential | username + password |
-| Password storage | argon2id (memory/time/parallelism tuned for server; salted) |
-| Token | opaque random 256-bit, base64url; only the SHA-256 hash is stored |
-| Delivery | httpOnly cookie (`vardena_session`), `SameSite=Lax`, `Secure` when HTTPS, `Path=/` |
-| Storage | `identity.sessions`: token hash, user, user-agent, IP, created, last-seen, absolute expiry, revoked-at |
-| Sliding expiry | idle timeout default **30 min** (config) |
-| Absolute expiry | default **12 h** (config) — hard session cap regardless of activity |
-| Revocation | user logout, admin revoke (self/any), user deactivation, password change revokes other sessions (keep current configurable) |
-| Concurrent sessions | allowed by default; per-user max is config (OQ-06) |
-| MFA | deferred; hooks reserved in Users (OQ-06) |
+| Aspect              | Decision                                                                                                                    |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Credential          | username + password                                                                                                         |
+| Password storage    | argon2id (memory/time/parallelism tuned for server; salted)                                                                 |
+| Token               | opaque random 256-bit, base64url; only the SHA-256 hash is stored                                                           |
+| Delivery            | httpOnly cookie (`vardena_session`), `SameSite=Lax`, `Secure` when HTTPS, `Path=/`                                          |
+| Storage             | `identity.sessions`: token hash, user, user-agent, IP, created, last-seen, absolute expiry, revoked-at                      |
+| Sliding expiry      | idle timeout default **30 min** (config)                                                                                    |
+| Absolute expiry     | default **12 h** (config) — hard session cap regardless of activity                                                         |
+| Revocation          | user logout, admin revoke (self/any), user deactivation, password change revokes other sessions (keep current configurable) |
+| Concurrent sessions | allowed by default; per-user max is config (OQ-06)                                                                          |
+| MFA                 | deferred; hooks reserved in Users (OQ-06)                                                                                   |
 
 Why not JWT: on-premise ERP needs **revocability** and centralized session
 management (admin "kill sessions", deactivation, lockout) without relying on
@@ -77,12 +77,12 @@ checks cannot exist (prevents "DB-only permissions" that are never enforced).
 
 1. **Route guard** — declarative: every controller method declares required
    permission(s) via `@RequirePermission(...)` and applies `AuthGuard` +
-   `AuthorizationGuard`. The guard answers *before* any controller logic. A
+   `AuthorizationGuard`. The guard answers _before_ any controller logic. A
    guarded route that declares nothing **fails closed** (500): it must never
    become an open endpoint.
 2. **Application service check** — the application service re-checks the same
    permission(s) through `AuthorizationService.requireAllPermissions`. The
-   service layer is the *authoritative* layer; the guard is defense-in-depth and
+   service layer is the _authoritative_ layer; the guard is defense-in-depth and
    the fast path. Several permissions on one route mean **ALL of them** are
    required — there are no permission expressions.
 3. **Data-level rules** — e.g. deactivated users cannot authenticate (and their
@@ -105,7 +105,7 @@ defense-in-depth; no second guard or authorization model is used.
 `Unauthorized`**; valid session without the required permission → **403
 `PermissionDenied`** with a generic message (the client is never told which
 permission it lacks). Inside application services the same rule holds, with one
-documented exception: calls that run *outside* an HTTP request (bootstrap/seed,
+documented exception: calls that run _outside_ an HTTP request (bootstrap/seed,
 worker, tests) are **system context** where authorization is the caller's
 concern — HTTP requests always carry a context and can never use that path.
 
@@ -135,24 +135,106 @@ remains OPEN for occupational roles (Accountant, Warehouse, Sales, Auditor, and
 so on), their permission baselines, auditor/administrator separation, and
 future role permission baselines.
 
+**Future permission reconciliation contract (registry-driven, Task 26
+follow-up).** `مدیر` is the default system administrator and receives
+administrative authority through the ordinary `User → Role → Permission` model
+only. The `System Administrator` role represents the _complete currently
+registered_ application permission catalog, and that catalog is derived from
+code:
+
+```text
+New module / feature
+        ↓
+Permission declared in the module's canonical PermissionRegistry registration
+        ↓
+Canonical application permission catalog (PermissionRegistry → rbac.permissions)
+        ↓
+System Administrator reconciliation (SystemAdministratorRbacService.ensureForUser)
+        ↓
+مدیر receives the permission through the ordinary role assignment (user_roles)
+```
+
+_Fresh installation._ `prisma migrate deploy` then `npm run bootstrap:system-admin`
+creates/adopts `مدیر`, creates/adopts the `System Administrator` role, mirrors
+the registry into `rbac.permissions`, grants every registered code to the role,
+assigns the role to `مدیر`, and adds the organization membership required by the
+deployment mode (see the bootstrap paragraph below).
+
+_Existing installation, new module deployed._ The same reconciliation resolves
+`PermissionRegistry.all()` again and inserts only the missing
+`role_permissions` rows on the existing role — nothing is removed, so
+operator-granted extra permissions on that role survive. **This is not a runtime
+effect:** the new permission reaches `مدیر` when the deployment runs
+`npm run bootstrap:system-admin` (Docker Compose runs it in the `migrate`
+service; CI runs the same built command). No manual modification of the `مدیر`
+user, role, or any administrator permission list is required or permitted.
+
+_Developer rule for a new protected capability_ — for example
+`Sales.Invoice.Export`:
+
+1. Define the permission in the module's canonical permission registry
+   (`*-permissions.ts` definitions, AR-22).
+2. Register it through the existing module registration class
+   (`…PermissionRegistration` → `PermissionRegistry`), so it enters the
+   canonical catalog and the `rbac.permissions` mirror.
+3. Protect the route with `@RequirePermission(...)` **and** re-check it in the
+   application service (AR-21).
+4. Add authorization tests, including a denial test.
+5. Do **not** add the code to any special `مدیر` permission list — no such list
+   exists and none may be created.
+6. Do **not** maintain a hardcoded administrator permission count anywhere.
+7. Do **not** write a username-specific rule such as
+   `if (user.username === 'مدیر')`.
+8. Do **not** introduce wildcard permissions (`*`, `Admin.*`, `Module.*`).
+9. The existing System Administrator reconciliation makes the permission
+   available to `مدیر` on the next bootstrap run — that is the only supported
+   mechanism.
+
+_Explicitly prohibited_ as authorization mechanisms, now and in future modules:
+`if (user.username === 'مدیر')`; `if (role.name === 'System Administrator')`;
+a manually maintained `ADMIN_PERMISSIONS = [...]`; a hardcoded permission count
+as an architectural contract; wildcard permission codes; an administrator-only
+guard, interceptor or service bypass; an `isSystemAdmin`/superuser flag; or a
+second administrator authorization subsystem. The `user_roles →
+role_permissions → permissions` relationship remains the single source of
+truth, and role names and usernames carry no runtime authority.
+
 **First-administrator bootstrap (PR #64 merged implementation; work item READY
 FOR REVIEW — NOT ACCEPTED; OQ-19 remains OPEN):**
 after migrations, `npm run bootstrap:system-admin` creates the real Users-domain
 account `مدیر` with the specified initial credential, hashing the password
 through the existing Argon2id `PasswordService`, then assigns `System
 Administrator`. The command is idempotent: it creates no duplicate
-user/role/assignment, adds newly registered permissions on later deployment
-runs, and never resets an existing user's password or lifecycle state. Docker
+user/role/assignment/membership, adds newly registered permissions on later
+deployment runs, and never resets an existing user's password or lifecycle
+state — a disabled or soft-deleted `مدیر` is never silently reactivated; the
+command fails loudly instead (Task 26 closure). Docker
 Compose runs it in the `migrate` service; CI runs the same built command against
 PostgreSQL. There is no bootstrap HTTP endpoint. This records the provisioning
 mechanism implemented by PR #64; it does not record an Owner Decision or fully
 resolve OQ-19. Self-disable protection, self-role-removal protection, and
 last-administrator lockout protection remain OPEN. The bootstrap does not invent
-or hardcode an organization. On a fresh database the administrator may create
-the initial organization and then grant their own ordinary membership through
-the existing empty-organization first-grant rule; until that membership exists,
-ODR-3 still returns 404 from organization-scoped paths despite the full RBAC
-role. The schema has no forced-password-change state or login contract; the
+or hardcode an organization. Its organization behaviour depends on the
+deployment shape (ADR-0025):
+
+- **Pinned deployment (`DEPLOYMENT_ORGANIZATION_ID` set).** The bootstrap
+  command provisions that exact organization row if it does not exist yet (the
+  ADR-0025 "bootstrapped out-of-band" step, refused inside any HTTP request) and
+  creates `مدیر`'s ordinary `organization.organization_memberships` row through
+  the owning service. The administrator therefore authorizes organization-scoped
+  APIs through the normal ODR-3 membership check, with no bypass, no second
+  organization on re-runs, and no manual SQL. An existing membership is left
+  alone; other memberships are never removed or replaced.
+- **Unpinned deployment (default, ADR-0021 structural mode).** No organization
+  is invented. The administrator creates the initial organization through the
+  ordinary API and then grants their own membership through the existing
+  empty-organization first-grant rule; until that membership exists, ODR-3 still
+  returns 404 from organization-scoped paths despite the full RBAC role.
+
+Authorization stays `required permission AND organization membership`: removing
+one permission from the `System Administrator` role denies exactly that
+operation (403), and removing the membership denies organization-scoped reads
+(404). Neither the username `مدیر` nor the role name carries any authority. The schema has no forced-password-change state or login contract; the
 initial credential must therefore be changed immediately after first login
 through the existing password-reset operation, which revokes sessions.
 
@@ -172,10 +254,10 @@ post-merge — the first Task 19 implementation bound only the data paths and
 deliberately exempted the grantor, which was a cross-organization
 authorization bypass on the administration surface). The rule now:
 
-| Target organization | Required of the acting principal |
-|---|---|
-| **has ≥ 1 member** | authenticated **+** member of that organization **+** the operation's permission (`Membership.View` to list, `Membership.Grant` to grant, `Membership.Revoke` to revoke) |
-| **has 0 members** (bootstrap) | authenticated **+** `Organization.Membership.Grant` — may create the **FIRST** membership only; list and revoke stay membership-bound |
+| Target organization           | Required of the acting principal                                                                                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **has ≥ 1 member**            | authenticated **+** member of that organization **+** the operation's permission (`Membership.View` to list, `Membership.Grant` to grant, `Membership.Revoke` to revoke) |
+| **has 0 members** (bootstrap) | authenticated **+** `Organization.Membership.Grant` — may create the **FIRST** membership only; list and revoke stay membership-bound                                    |
 
 The bootstrap exception is the only case in which a permission alone is
 authority over an organization, it is confined to the first `POST
@@ -197,7 +279,7 @@ this session does not create a parallel audit store.
 
 ## 4. Audit Logging (AR-23)
 
-- **What:** who, what, when, from where, and *what changed*:
+- **What:** who, what, when, from where, and _what changed_:
   (actor id + type [user/system], action, module, entity type + id, before/after
   JSONB snapshots, correlation id, IP, user-agent, timestamp).
 - **Where:** `audit.audit_logs`, append-only. No update/delete API; DB-level
@@ -284,3 +366,20 @@ this session does not create a parallel audit store.
 7. Rate-limit/pagination/upload caps appropriate for the endpoint? (AR-24)
 8. Any new secret → config/env only, encrypted at rest if integration credential?
 9. Docs updated (module section + permission list) + ADR if architectural? (AG-07)
+
+### 9.1 RBAC / System Administrator evolution check (every new protected capability)
+
+- [ ] Every new protected capability has an explicit permission.
+- [ ] The permission is registered in the module's canonical permission registry.
+- [ ] The permission is included in the canonical application permission catalog
+      (`PermissionRegistry` → `rbac.permissions` mirror).
+- [ ] The endpoint/controller has the normal `@RequirePermission(...)` guard.
+- [ ] The application service performs the authoritative permission check.
+- [ ] Authorization tests exist (grant **and** denial).
+- [ ] No separate permission assignment for `مدیر` was introduced.
+- [ ] No username-based administrator bypass was introduced.
+- [ ] No wildcard permission was introduced.
+- [ ] The System Administrator receives the permission through the existing
+      registry/reconciliation mechanism (§3, "Future permission reconciliation
+      contract") — i.e. by re-running `npm run bootstrap:system-admin` at
+      deployment, not by editing any list.

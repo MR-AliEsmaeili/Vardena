@@ -88,7 +88,9 @@ npm run bootstrap:system-admin
 
 The bootstrap is deterministic and idempotent. It creates the real Users/RBAC
 records for the initial `System Administrator`, reconciles that role to every
-currently registered permission, and never resets an existing password. It has
+currently registered permission, ensures the administrator's membership of the
+pinned deployment organization when one is configured, and never resets an
+existing password or lifecycle state. It has
 no HTTP endpoint and performs no runtime authorization bypass.
 
 The API boots **without** a database (liveness is DB-free; `/ready` reports DB
@@ -166,10 +168,16 @@ credential is hashed with the existing Argon2id mechanism before storage and is
 never printed by the bootstrap command. Change it immediately after first login
 with `POST /api/v1/users/{id}/password-reset`; all sessions are then revoked.
 Forced password change is not implemented, so this operational step is required.
-On a fresh database no organization is invented: create the initial organization,
-then use the existing first-member grant to assign `مدیر` a normal organization
-membership. Organization-scoped routes continue to enforce ODR-3 before that
-membership exists.
+Organization access depends on the deployment shape (ADR-0025). When
+`DEPLOYMENT_ORGANIZATION_ID` is set, the bootstrap command provisions that exact
+organization (code `MAIN`, rename it afterwards through the ordinary
+`Organization.Edit` API) and creates `مدیر`'s ordinary membership, so the first
+login can immediately use organization-scoped APIs with no manual step. When it
+is unset (the default, ADR-0021 structural mode) no organization is invented:
+create the initial organization, then use the existing first-member grant to
+assign `مدیر` a normal organization membership. Organization-scoped routes
+enforce ODR-3 in both cases — the administrator holds no scope bypass, and
+removing its membership immediately removes organization-scoped access.
 
 Inside the images, installs run with npm 11 (`node:22-slim` bundles npm 10,
 whose resolver crashes on this dependency graph) plus generous fetch

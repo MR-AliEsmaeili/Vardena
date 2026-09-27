@@ -29,6 +29,7 @@ describe.skipIf(DATABASE_URL === undefined)(
     let userId = '';
     let roleId = '';
     let organizationId = '';
+    let impostorUserId = '';
 
     beforeAll(async () => {
       const built = await createTestApp({
@@ -67,6 +68,9 @@ describe.skipIf(DATABASE_URL === undefined)(
         await client.user.deleteMany({
           where: { username: BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME },
         });
+        if (impostorUserId !== '') {
+          await client.user.deleteMany({ where: { id: impostorUserId } });
+        }
         if (organizationId !== '') {
           await client.organization.deleteMany({
             where: { id: organizationId },
@@ -199,5 +203,252 @@ describe.skipIf(DATABASE_URL === undefined)(
         await admin.get(path).query({ organizationId }).expect(200);
       }
     }, 60_000);
+
+    it('gives no administrator authority to a different user with a similar username', async () => {
+      const admin = request.agent(app!.getHttpServer());
+      await admin
+        .post('/api/v1/auth/login')
+        .send({ username: 'مدیر', password: '1' })
+        .expect(200);
+
+      // A real, ordinary user whose name merely resembles the bootstrap one.
+      const impostorName = `مدیر-${generateId().slice(-6)}`;
+      const created = await admin
+        .post('/api/v1/users')
+        .send({ username: impostorName, password: 'Impostor-password-1' })
+        .expect(201);
+      impostorUserId = created.body.id as string;
+
+      const impostor = request.agent(app!.getHttpServer());
+      await impostor
+        .post('/api/v1/auth/login')
+        .send({ username: impostorName, password: 'Impostor-password-1' })
+        .expect(200);
+
+      // Authenticated, but holding no role: the username grants nothing.
+      const effective = await impostor
+        .get('/api/v1/permissions/effective')
+        .expect(200);
+      expect(effective.body.permissions).toEqual([]);
+      await impostor.get('/api/v1/users').expect(403);
+      await impostor.get('/api/v1/roles').expect(403);
+      await impostor
+        .get('/api/v1/inventory/items')
+        .query({ organizationId })
+        .expect(403);
+    }, 60_000);
+
+    it('denies the administrator when a single permission is removed from the role (ordinary RBAC, not a bypass)', async () => {
+      const client = await prisma.getClient<{
+        permission: {
+          findFirst: (args: unknown) => Promise<{ id: string } | null>;
+        };
+        rolePermission: {
+          delete: (args: unknown) => Promise<unknown>;
+          create: (args: unknown) => Promise<unknown>;
+        };
+      }>();
+      const permission = await client.permission.findFirst({
+        where: { code: 'Users.User.View' },
+      });
+      expect(permission).not.toBeNull();
+
+      const admin = request.agent(app!.getHttpServer());
+      await admin
+        .post('/api/v1/auth/login')
+        .send({ username: 'مدیر', password: '1' })
+        .expect(200);
+      await admin.get('/api/v1/users').expect(200);
+
+      await client.rolePermission.delete({
+        where: {
+          roleId_permissionId: { roleId, permissionId: permission!.id },
+        },
+      });
+      try {
+        // The role name is still 'System Administrator' — it carries no
+        // authority of its own, so the operation is now denied.
+        await admin.get('/api/v1/users').expect(403);
+        // An unrelated permission is unaffected: this is per-permission RBAC.
+        await admin.get('/api/v1/roles').expect(200);
+      } finally {
+        await client.rolePermission.create({
+          data: {
+            roleId,
+            permissionId: permission!.id,
+            createdAt: new Date(),
+            createdBy: null,
+          },
+        });
+      }
+      await admin.get('/api/v1/users').expect(200);
+    }, 60_000);
+
+    it('denies organization-scoped access when the administrator membership is removed', async () => {
+      const client = await prisma.getClient<{
+        organizationMembership: {
+          deleteMany: (args: unknown) => Promise<{ count: number }>;
+          create: (args: unknown) => Promise<unknown>;
+        };
+      }>();
+      const admin = request.agent(app!.getHttpServer());
+      await admin
+        .post('/api/v1/auth/login')
+        .send({ username: 'مدیر', password: '1' })
+        .expect(200);
+      await admin
+        .get('/api/v1/inventory/items')
+        .query({ organizationId })
+        .expect(200);
+
+      await client.organizationMembership.deleteMany({
+        where: { userId, organizationId },
+      });
+      try {
+        // Complete permissions, no membership: ODR-3 answers 404.
+        await admin
+          .get('/api/v1/inventory/items')
+          .query({ organizationId })
+          .expect(404);
+        await admin
+          .get('/api/v1/accounting/balances')
+          .query({ organizationId })
+          .expect(404);
+      } finally {
+        await client.organizationMembership.create({
+          data: {
+            userId,
+            organizationId,
+            createdAt: new Date(),
+            createdBy: null,
+          },
+        });
+      }
+      await admin
+        .get('/api/v1/inventory/items')
+        .query({ organizationId })
+        .expect(200);
+    }, 60_000);
+  },
+);
+
+/**
+ * Fresh-install acceptance for a PINNED deployment (ADR-0025): the bootstrap
+ * command alone must produce the pinned organization, the administrator, the
+ * complete permission catalog, and the ordinary membership — with no manual
+ * SQL and no API call in between.
+ */
+describe.skipIf(DATABASE_URL === undefined)(
+  'Bootstrap System Administrator — pinned deployment fresh install (live database)',
+  () => {
+    const pin = generateId();
+    let app: INestApplication | undefined;
+    let prisma: PrismaService;
+    let userId = '';
+
+    beforeAll(async () => {
+      const built = await createTestApp({
+        override: (builder) =>
+          builder.overrideProvider(APP_CONFIG).useValue({
+            ...loadAppConfig(),
+            databaseUrl: DATABASE_URL,
+            deploymentOrganizationId: pin,
+          }),
+      });
+      app = built.app;
+      prisma = built.module.get(PrismaService);
+    }, 60_000);
+
+    afterAll(async () => {
+      if (app === undefined) return;
+      try {
+        const client = await prisma.getClient<{
+          user: { deleteMany: (args: unknown) => Promise<unknown> };
+          organization: { deleteMany: (args: unknown) => Promise<unknown> };
+          organizationMembership: {
+            deleteMany: (args: unknown) => Promise<unknown>;
+          };
+          role: { deleteMany: (args: unknown) => Promise<unknown> };
+        }>();
+        await client.organizationMembership.deleteMany({
+          where: { organizationId: pin },
+        });
+        await client.organization.deleteMany({ where: { id: pin } });
+        await client.user.deleteMany({
+          where: { username: BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME },
+        });
+        await client.role.deleteMany({
+          where: { name: SYSTEM_ADMINISTRATOR_ROLE_NAME },
+        });
+      } finally {
+        await app.close();
+      }
+    }, 60_000);
+
+    it('provisions the pinned organization, the administrator, and the membership in one idempotent command', async () => {
+      const bootstrap = app!.get(SystemAdministratorBootstrapService);
+      const first = await bootstrap.run();
+      userId = first.userId;
+      expect(first).toMatchObject({
+        organizationId: pin,
+        organizationCreated: true,
+        membershipCreated: true,
+      });
+      expect(first.permissionCount).toBe(app!.get(PermissionRegistry).size);
+
+      const second = await bootstrap.run();
+      expect(second).toMatchObject({
+        userId,
+        roleId: first.roleId,
+        permissionCount: first.permissionCount,
+        userCreated: false,
+        roleCreated: false,
+        userRoleCreated: false,
+        organizationId: pin,
+        organizationCreated: false,
+        membershipCreated: false,
+      });
+
+      const client = await prisma.getClient<{
+        organization: { count: (args: unknown) => Promise<number> };
+        organizationMembership: {
+          count: (args: unknown) => Promise<number>;
+        };
+      }>();
+      await expect(
+        client.organization.count({ where: { id: pin } }),
+      ).resolves.toBe(1);
+      await expect(
+        client.organizationMembership.count({
+          where: { organizationId: pin, userId },
+        }),
+      ).resolves.toBe(1);
+    }, 120_000);
+
+    it('logs in with the initial credential and reaches organization-scoped APIs with no manual step', async () => {
+      const admin = request.agent(app!.getHttpServer());
+      await admin
+        .post('/api/v1/auth/login')
+        .send({ username: 'مدیر', password: '1' })
+        .expect(200);
+
+      for (const path of [
+        '/api/v1/inventory/items',
+        '/api/v1/documents/types',
+        '/api/v1/workflow/definitions',
+        '/api/v1/accounting/balances',
+        '/api/v1/branches',
+      ]) {
+        // eslint-disable-next-line no-await-in-loop
+        await admin.get(path).query({ organizationId: pin }).expect(200);
+      }
+
+      // The deployment pin is intact: another organization id is invisible,
+      // so an arbitrary organizationId cannot widen the administrator's scope.
+      await admin
+        .get('/api/v1/inventory/items')
+        .query({ organizationId: generateId() })
+        .expect(404);
+    }, 120_000);
   },
 );
