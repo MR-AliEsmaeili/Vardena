@@ -177,6 +177,36 @@ export const TRIAL_BALANCE_PERMISSIONS = {
   VIEW: 'Accounting.TrialBalance.View',
 } as const;
 
+/**
+ * Base Chart — the product-delivered chart template and its explicit
+ * organization adoption (Task 23, task §16 = D-R-7).
+ *
+ * THREE codes map one-to-one onto the three actions the task authorizes:
+ *
+ * - `View` — every read (template catalog, version content, adoption
+ *   records, the adoption preview);
+ * - `Configure` — the template lifecycle (create template/version, edit a
+ *   draft, approve, publish, supersede): the management authority over the
+ *   product asset. The contract §22 table has NO `BaseChart` row (the
+ *   template is a product asset, not a tenant entity), so this task extends
+ *   the vocabulary with the mapping the task itself fixes (D-R-7) — it
+ *   does NOT stretch `Accounting.CodingStructure.Configure` to cover a live
+ *   product template (no reuse implied);
+ * - `Adopt` — the ONE organization-chart mutation: the explicit adoption
+ *   boundary. It sits next to `Accounting.Account.Create` on purpose: both
+ *   write `accounts` rows, but the LOCALE of authority differs — account
+ *   authoring is organization scope; adoption is the product→tenant
+ *   delivery gateway, so it is its own explicit code (never implicit from
+ *   `View` or from account authoring).
+ *
+ * No wildcards, no superuser, no implicit bypass (OQ-21).
+ */
+export const BASE_CHART_PERMISSIONS = {
+  VIEW: 'Accounting.BaseChart.View',
+  CONFIGURE: 'Accounting.BaseChart.Configure',
+  ADOPT: 'Accounting.BaseChart.Adopt',
+} as const;
+
 export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] =
   [
     {
@@ -345,5 +375,20 @@ export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] 
       code: TRIAL_BALANCE_PERMISSIONS.VIEW,
       description:
         'Read the bounded Trial Balance with POSTING/AGGREGATION hierarchy roll-up.',
+    },
+    {
+      code: BASE_CHART_PERMISSIONS.VIEW,
+      description:
+        'View base chart templates, their versions and organization adoption records (product asset + adoption reads).',
+    },
+    {
+      code: BASE_CHART_PERMISSIONS.CONFIGURE,
+      description:
+        'Manage the base chart template lifecycle: create templates/versions, edit draft content, approve, publish, supersede.',
+    },
+    {
+      code: BASE_CHART_PERMISSIONS.ADOPT,
+      description:
+        'Adopt a published base chart version into an organization’s chart (the one template→tenant write boundary).',
     },
   ];

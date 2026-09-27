@@ -958,6 +958,250 @@ export interface LedgerEntryDelegate {
 }
 
 // ---------------------------------------------------------------------------
+// Base Chart product template + adoption (Task 23, OD-20-1)
+// ---------------------------------------------------------------------------
+
+/** The template identity row (product asset — NO organization_id by design). */
+export type BaseChartTemplateRow = {
+  id: string;
+  code: string;
+  title: string;
+} & AuditColumns;
+
+export interface BaseChartTemplateWhere {
+  id?: string;
+  code?: string;
+  OR?: Array<{
+    code?: { contains: string; mode: 'insensitive' };
+    title?: { contains: string; mode: 'insensitive' };
+  }>;
+}
+
+export interface BaseChartTemplateDelegate {
+  findUnique(args: {
+    where: { id: string };
+  }): Promise<BaseChartTemplateRow | null>;
+  findFirst(args: {
+    where: BaseChartTemplateWhere;
+  }): Promise<BaseChartTemplateRow | null>;
+  findMany(args: {
+    where: BaseChartTemplateWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<BaseChartTemplateRow[]>;
+  count(args: { where: BaseChartTemplateWhere }): Promise<number>;
+  create(args: {
+    data: BaseChartTemplateCreate;
+  }): Promise<BaseChartTemplateRow>;
+  update(args: {
+    where: { id: string };
+    data: { title: string; updatedAt: Date; updatedBy: string | null };
+  }): Promise<BaseChartTemplateRow>;
+}
+
+export interface BaseChartTemplateCreate {
+  id: string;
+  code: string;
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+/** One lifecycle row per template version (immutable once published). */
+export type BaseChartTemplateVersionRow = {
+  id: string;
+  templateId: string;
+  versionNumber: number;
+  status: string;
+  maxDepth: number;
+  approvedAt: Date | null;
+  publishedAt: Date | null;
+  supersededAt: Date | null;
+  supersededByVersionId: string | null;
+} & AuditColumns;
+
+export interface BaseChartTemplateVersionWhere {
+  id?: string;
+  templateId?: string;
+  status?: string;
+}
+
+export interface BaseChartTemplateVersionCreate {
+  id: string;
+  templateId: string;
+  versionNumber: number;
+  status: string;
+  maxDepth: number;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface BaseChartTemplateVersionUpdate {
+  status?: string | undefined;
+  maxDepth?: number | undefined;
+  approvedAt?: Date | null | undefined;
+  publishedAt?: Date | null | undefined;
+  supersededAt?: Date | null | undefined;
+  supersededByVersionId?: string | null | undefined;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+export interface BaseChartTemplateVersionDelegate {
+  findUnique(args: {
+    where: { id: string };
+  }): Promise<BaseChartTemplateVersionRow | null>;
+  findMany(args: {
+    where: BaseChartTemplateVersionWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<BaseChartTemplateVersionRow[]>;
+  count(args: { where: BaseChartTemplateVersionWhere }): Promise<number>;
+  create(args: {
+    data: BaseChartTemplateVersionCreate;
+  }): Promise<BaseChartTemplateVersionRow>;
+  update(args: {
+    where: { id: string };
+    data: BaseChartTemplateVersionUpdate;
+  }): Promise<BaseChartTemplateVersionRow>;
+}
+
+/** One level of one template version's own coding shape (no title/kind). */
+export type BaseChartTemplateLevelRow = {
+  id: string;
+  versionId: string;
+  levelIndex: number;
+  digitLength: number;
+  defaultIsPostable: boolean;
+} & AuditColumns;
+
+export interface BaseChartTemplateLevelCreate {
+  id: string;
+  versionId: string;
+  levelIndex: number;
+  digitLength: number;
+  defaultIsPostable: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface BaseChartTemplateLevelDelegate {
+  findMany(args: {
+    where: { versionId: string };
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<BaseChartTemplateLevelRow[]>;
+  create(args: {
+    data: BaseChartTemplateLevelCreate;
+  }): Promise<BaseChartTemplateLevelRow>;
+  deleteMany(args: {
+    where: { versionId: string };
+  }): Promise<{ count: number }>;
+}
+
+/** One node of the template chart tree (template-internal key space). */
+export type BaseChartTemplateNodeRow = {
+  id: string;
+  versionId: string;
+  nodeKey: string;
+  parentNodeKey: string | null;
+  parentId: string | null;
+  code: string;
+  title: string;
+  accountNature: string;
+  isPostable: boolean;
+  isMandatory: boolean;
+  defaultIsActive: boolean;
+  level: number;
+} & AuditColumns;
+
+export interface BaseChartTemplateNodeCreate {
+  id: string;
+  versionId: string;
+  nodeKey: string;
+  parentNodeKey: string | null;
+  parentId: string | null;
+  code: string;
+  title: string;
+  accountNature: string;
+  isPostable: boolean;
+  isMandatory: boolean;
+  defaultIsActive: boolean;
+  level: number;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface BaseChartTemplateNodeDelegate {
+  findMany(args: {
+    where: { versionId: string };
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<BaseChartTemplateNodeRow[]>;
+  create(args: {
+    data: BaseChartTemplateNodeCreate;
+  }): Promise<BaseChartTemplateNodeRow>;
+  deleteMany(args: {
+    where: { versionId: string };
+  }): Promise<{ count: number }>;
+}
+
+/** The tenant-scoped adoption record (created once, never mutated). */
+export type BaseChartAdoptionRow = {
+  id: string;
+  organizationId: string;
+  templateVersionId: string;
+  accountingConfigurationId: string;
+  codingStructureVersionId: string;
+  accountCount: number;
+} & AuditColumns;
+
+export interface BaseChartAdoptionWhere {
+  id?: string;
+  organizationId?: string;
+  templateVersionId?: string;
+}
+
+export interface BaseChartAdoptionCreate {
+  id: string;
+  organizationId: string;
+  templateVersionId: string;
+  accountingConfigurationId: string;
+  codingStructureVersionId: string;
+  accountCount: number;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface BaseChartAdoptionDelegate {
+  findUnique(args: {
+    where: { id: string };
+  }): Promise<BaseChartAdoptionRow | null>;
+  findFirst(args: {
+    where: BaseChartAdoptionWhere;
+  }): Promise<BaseChartAdoptionRow | null>;
+  findMany(args: {
+    where: BaseChartAdoptionWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<BaseChartAdoptionRow[]>;
+  count(args: { where: BaseChartAdoptionWhere }): Promise<number>;
+  create(args: {
+    data: BaseChartAdoptionCreate;
+  }): Promise<BaseChartAdoptionRow>;
+}
+
+// ---------------------------------------------------------------------------
 // Transaction client
 // ---------------------------------------------------------------------------
 
@@ -1050,6 +1294,31 @@ export interface AccountingTxClient {
    * explicit `rebuild` transaction (atomic replace per scope).
    */
   accountBalanceProjection: AccountBalanceProjectionDelegate;
+  /**
+   * Task 23: the Base Chart template store. Lifecycle writes lock the
+   * template's version rows (`FOR UPDATE`, ascending id) and mutate ONLY
+   * these delegates; the adoption transaction additionally locks the
+   * organization's pinned coding-structure version + accounting
+   * configuration (never the reverse order) and writes ordinary `accounts`
+   * rows plus ONE `baseChartAdoption` record — nothing else.
+   */
+  baseChartTemplate: Pick<BaseChartTemplateDelegate, 'findFirst' | 'create'>;
+  baseChartTemplateVersion: Pick<
+    BaseChartTemplateVersionDelegate,
+    'findMany' | 'create' | 'update'
+  >;
+  baseChartTemplateLevel: Pick<
+    BaseChartTemplateLevelDelegate,
+    'findMany' | 'create' | 'deleteMany'
+  >;
+  baseChartTemplateNode: Pick<
+    BaseChartTemplateNodeDelegate,
+    'findMany' | 'create' | 'deleteMany'
+  >;
+  baseChartAdoption: Pick<
+    BaseChartAdoptionDelegate,
+    'findFirst' | 'create' | 'count'
+  >;
 }
 
 export interface AccountingTransactionalClient {

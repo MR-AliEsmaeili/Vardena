@@ -703,3 +703,81 @@ export async function lockAccountRowForShare(
   const [row] = rows;
   return row ?? null;
 }
+
+// ---------------------------------------------------------------------------
+// Base Chart template versions (Task 23)
+// ---------------------------------------------------------------------------
+//
+// These rows live OUTSIDE the tenant chain above: template lifecycles lock
+// ONLY template-version rows (a template-wide set, ascending id), and the
+// adoption transaction locks ONE template-version row BEFORE taking the
+// organization's pinned coding-structure-version + accounting-configuration
+// locks — i.e. `template_version → coding_structure_version →
+// accounting_configuration → accounts`, the same order as every account
+// write, extended at the front by a row no other chain touches. No code path
+// ever takes a coding/configuration/account lock and then waits on a
+// template-version lock, so the global order stays acyclic (recorded in
+// docs/accounting/lock-order-matrix.md, row B1/B2).
+
+/** A locked base-chart template-version row: what lifecycle guards read. */
+export interface LockedBaseChartTemplateVersion {
+  id: string;
+  templateId: string;
+  versionNumber: number;
+  status: string;
+  maxDepth: number;
+}
+
+/**
+ * Lock one base-chart template-version row.
+ *
+ * Draft-content writes and every lifecycle transition take this lock BEFORE
+ * mutating and re-check `status` under it (the ADR-0024 double-check the
+ * coding-structure draft/publish paths established). The ADOPTION
+ * transaction takes the same lock to re-assert `status = 'published'` at
+ * the write boundary — an adoption that raced a supersede is refused, never
+ * resolved against a stale read.
+ *
+ * @returns null when the row does not exist (the service maps it to 404).
+ */
+export async function lockBaseChartTemplateVersionRow(
+  tx: AccountingTxClient,
+  versionId: string,
+): Promise<LockedBaseChartTemplateVersion | null> {
+  const rows = await tx.$queryRaw<LockedBaseChartTemplateVersion>`
+    SELECT "id"              AS "id",
+           "template_id"     AS "templateId",
+           "version_number"  AS "versionNumber",
+           "status"          AS "status",
+           "max_depth"       AS "maxDepth"
+      FROM "accounting"."base_chart_template_versions"
+     WHERE "id" = ${versionId}
+     FOR UPDATE`;
+  const [row] = rows;
+  return row ?? null;
+}
+
+/**
+ * Lock EVERY base-chart template-version row of one template, ascending by
+ * id — the publish/supersede path's serialization point.
+ *
+ * "At most one PUBLISHED version per template" is a template-wide statement
+ * (the exact analogue of "exactly one ACTIVE coding-structure version per
+ * organization", §9.4), so it needs a template-wide lock: two concurrent
+ * publishes serialize here and the loser re-reads the winner's committed
+ * rows. A partial unique index is rejected for the reason this module
+ * already records for `financial_areas.is_default` (Prisma cannot represent
+ * it; the next generated migration would drop it).
+ */
+export async function lockBaseChartTemplateVersionsOfTemplate(
+  tx: AccountingTxClient,
+  templateId: string,
+): Promise<string[]> {
+  const rows = await tx.$queryRaw<{ id: string }>`
+    SELECT "id"
+      FROM "accounting"."base_chart_template_versions"
+     WHERE "template_id" = ${templateId}
+     ORDER BY "id" ASC
+     FOR UPDATE`;
+  return rows.map((row) => row.id);
+}

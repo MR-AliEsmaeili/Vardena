@@ -109,6 +109,12 @@ model Organization {
   // `accounting.account_balance_projections.organization_id`.
   accountBalanceProjections AccountBalanceProjection[]
 
+  // Back-relations for the Base Chart adoption records (Task 23, OD-20-1).
+  // Virtual side only — the real FK column stays
+  // `accounting.base_chart_adoptions.organization_id`. The Base Chart
+  // TEMPLATE tables carry no organization relation by design (product data).
+  baseChartAdoptions BaseChartAdoption[]
+
   // Back-relation for the principal → organization binding (Task 19, ODR-3).
   // Unlike the virtual-only back-relations above, this one is REAL: the
   // membership rows live in THIS schema (`organization.organization_memberships`)
