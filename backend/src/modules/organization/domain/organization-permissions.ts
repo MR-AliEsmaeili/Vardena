@@ -73,13 +73,23 @@ const PARTY = lifecycle('Party', 'party');
  * authorization act, not record creation. `View` reads an organization's
  * member list.
  *
- * Granting deliberately does NOT require the GRANTOR to already be a member
- * of the target organization — that would make the first membership of any
- * organization impossible to grant (bootstrap deadlock). The permission is
- * the authority, exactly as `Rbac.UserRole.Assign` is: an administrator who
- * can grant access can by definition also grant it to themselves, which is
- * what administration means in this permission model (no wildcards, no
- * superuser, no implicit bypass — OQ-21).
+ * **Holding one of these codes is NOT authority over an arbitrary
+ * organization** (corrected by PR #55, the ODR-3 post-merge correction; the
+ * earlier wording here described the pre-correction rule and was stale).
+ * Membership ADMINISTRATION is organization-bound exactly like the data
+ * surface: `listMembers`, `grantMembership` and `revokeMembership` each run
+ * the permission check AND `OrganizationsService.assertOrganizationInScope`
+ * (deployment pin → the acting principal's own membership) before the
+ * business operation — see `OrganizationMembershipsService` and
+ * `docs/security.md` §3.
+ *
+ * The ONLY exception is the bootstrap of the FIRST member: when the target
+ * organization has no member at all, a principal holding
+ * `Organization.Membership.Grant` may create that first membership without
+ * being a member itself (otherwise no organization could ever be populated —
+ * the deadlock ODR-3 must avoid). It applies to `grantMembership` only, never
+ * to list or revoke, and it closes as soon as one member exists. Still no
+ * wildcards, no superuser, no implicit bypass (OQ-21).
  */
 const MEMBERSHIP = {
   VIEW: 'Organization.Membership.View',
