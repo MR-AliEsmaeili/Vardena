@@ -170,6 +170,7 @@ export class WorkflowInstancesService {
     await this.authorization.requireAllPermissions([
       WORKFLOW_INSTANCE_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {
@@ -202,6 +203,7 @@ export class WorkflowInstancesService {
     await this.authorization.requireAllPermissions([
       WORKFLOW_INSTANCE_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(organizationId);
     return toWorkflowInstanceDto(
       await this.mustFindInOrganization(organizationId, id),
     );
@@ -320,6 +322,7 @@ export class WorkflowInstancesService {
     await this.authorization.requireAllPermissions([
       WORKFLOW_INSTANCE_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const instance = await this.mustFindInOrganization(
       organizationId,
       instanceId,
@@ -469,6 +472,7 @@ export class WorkflowInstancesService {
     await this.authorization.requireAllPermissions([
       WORKFLOW_INSTANCE_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     await this.mustFindInOrganization(query.organizationId, query.instanceId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.history.listByInstance({

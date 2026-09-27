@@ -101,6 +101,7 @@ export class WorkflowApprovalsService {
     await this.authorization.requireAllPermissions([
       WORKFLOW_INSTANCE_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     await this.instances.requireInstanceInOrganization(
       query.organizationId,
       query.instanceId,

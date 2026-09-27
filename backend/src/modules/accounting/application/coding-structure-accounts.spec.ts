@@ -756,6 +756,7 @@ describe('CodingStructuresService', () => {
   it('separates View from Configure and rejects a principal-less HTTP request', async () => {
     const viewer = '01VIEWER000000000000000000';
     await fixture.grant(viewer, [CODING_STRUCTURE_PERMISSIONS.VIEW]);
+    fixture.member(viewer, orgA);
     const configured = await publishStructure(fixture, orgA, TWO_LEVELS);
 
     expect(
@@ -1719,19 +1720,19 @@ describe('deployment organization pin over the Task 10.3 surface (ADR-0025)', ()
         ),
       ),
     ).toMatchObject({ code: 'EntityNotFound' });
-    // The coding-structure list still answers an empty page: the same missing
-    // chokepoint on the other accounting list surfaces is finding F-2 of the
-    // Task 24 gate and is deliberately left to its own task (R-5) — R-2 is a
-    // bounded correction of the ACCOUNT list only.
+    // Task 26 closes Task 25 SEC-01 on the coding-structure list as well: the
+    // same deployment pin and principal-bound chokepoint now answers 404.
     expect(
-      await asActor(ACTOR, () =>
-        pinned.structures.listVersions({
-          organizationId: foreignId,
-          page: 1,
-          pageSize: 10,
-        }),
+      await failure(
+        asActor(ACTOR, () =>
+          pinned.structures.listVersions({
+            organizationId: foreignId,
+            page: 1,
+            pageSize: 10,
+          }),
+        ),
       ),
-    ).toMatchObject({ total: 0, items: [] });
+    ).toMatchObject({ code: 'EntityNotFound' });
 
     // The pinned organization itself is unaffected.
     expect(

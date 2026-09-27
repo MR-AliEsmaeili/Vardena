@@ -1,6 +1,6 @@
 # Vardena — Security Architecture
 
-Status: Accepted (foundation) · Updated: 2026-09-10
+Status: Accepted (foundation) · Updated: 2026-09-27
 
 Scope: authentication, authorization (RBAC), audit logging, API security,
 credential/session policies, integration security. Security **defaults** below
@@ -88,6 +88,18 @@ checks cannot exist (prevents "DB-only permissions" that are never enforced).
 3. **Data-level rules** — e.g. deactivated users cannot authenticate (and their
    sessions are revoked on the `User.Disabled` event); soft-deleted records are
    invisible to reads; permission evaluation always reads current assignments.
+
+**Organization-scoped data (ODR-3):** every organization-scoped read and write
+passes through `OrganizationsService.assertOrganizationInScope` (directly or
+through an established resolver). The chokepoint applies the deployment pin and,
+for HTTP request context, binds the authenticated principal to an ordinary
+organization-membership row. An unknown, unpinned, or non-member organization
+answers **404 `EntityNotFound`**; changing a caller-supplied `organizationId`
+cannot widen scope. Task 26 completed the 37 read surfaces identified by Task 25
+SEC-01. Permission checks remain independent and run before the scope assertion:
+access requires **the required permission AND valid organization scope**. The
+existing globally registered `DeploymentOrganizationScopeGuard` remains
+defense-in-depth; no second guard or authorization model is used.
 
 **Failure semantics:** no session (or expired/revoked session) → **401
 `Unauthorized`**; valid session without the required permission → **403

@@ -46,6 +46,7 @@ function loggerStub(): JsonLogger {
 interface Fixture {
   numbering: NumberingService;
   series: NumberingSeriesService;
+  organizations: OrganizationsService;
   stores: DocumentStores;
   events: DomainEvent[];
   organizationId: string;
@@ -106,6 +107,7 @@ async function buildFixture(): Promise<Fixture> {
     seriesService,
     stores.numberingSeries,
     stores.numberingAllocations,
+    organizations,
     authorization,
     loggerStub(),
     bus,
@@ -124,6 +126,7 @@ async function buildFixture(): Promise<Fixture> {
   return {
     numbering,
     series: seriesService,
+    organizations,
     stores,
     events,
     organizationId,
@@ -287,6 +290,7 @@ describe('NumberingService allocation', () => {
       fixture.series,
       losing as never,
       fixture.stores.numberingAllocations,
+      fixture.organizations,
       new AuthorizationService(undefined as never, loggerStub()),
       loggerStub(),
       new DomainEventBus(),

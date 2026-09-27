@@ -93,6 +93,7 @@ export class WorkflowAutomationsService {
     await this.authorization.requireAllPermissions([
       WORKFLOW_VERSION_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const transition = await this.transitions.requireTransitionInOrganization(
       query.organizationId,
       query.transitionId,
@@ -126,6 +127,7 @@ export class WorkflowAutomationsService {
     await this.authorization.requireAllPermissions([
       WORKFLOW_VERSION_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(organizationId);
     return toWorkflowAutomationBindingDto(
       await this.mustFindInOrganization(organizationId, id),
     );

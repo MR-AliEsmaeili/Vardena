@@ -80,6 +80,7 @@ export class DocumentRelationsService {
     query: ListRelationsQuery,
   ): Promise<PaginatedResult<ReturnType<typeof toDocumentRelationDto>>> {
     await this.authorization.requireAllPermissions([RELATION_PERMISSIONS.VIEW]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {
@@ -106,6 +107,7 @@ export class DocumentRelationsService {
 
   async getRelation(organizationId: string, id: string) {
     await this.authorization.requireAllPermissions([RELATION_PERMISSIONS.VIEW]);
+    await this.organizations.assertOrganizationInScope(organizationId);
     return toDocumentRelationDto(
       await this.requireRelationInOrganization(organizationId, id),
     );

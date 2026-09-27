@@ -93,6 +93,7 @@ export class AccountingConfigurationsService {
     await this.authorization.requireAllPermissions([
       ACCOUNTING_CONFIGURATION_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     if (
       query.status !== undefined &&
       !isAccountingConfigurationStatus(query.status)

@@ -88,6 +88,7 @@ export class WorkflowDefinitionsService {
     await this.authorization.requireAllPermissions([
       WORKFLOW_DEFINITION_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {
@@ -114,6 +115,7 @@ export class WorkflowDefinitionsService {
     await this.authorization.requireAllPermissions([
       WORKFLOW_DEFINITION_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(organizationId);
     return toWorkflowDefinitionDto(
       await this.mustFindInOrganization(organizationId, id),
     );

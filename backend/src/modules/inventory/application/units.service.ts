@@ -88,6 +88,7 @@ export class UnitsService {
 
   async listUnits(query: ListUnitsQuery): Promise<PaginatedResult<UnitDto>> {
     await this.authorization.requireAllPermissions([UNIT_PERMISSIONS.VIEW]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {
