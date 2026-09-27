@@ -4,7 +4,7 @@
 
 **Objective:** remediate Task 25 SEC-01 without changing the ODR-3 architecture.  
 **Scope/result:** all independently re-audited 28 list and 9 detail service surfaces now retain their existing permission check and then explicitly call `OrganizationsService.assertOrganizationInScope` before reading organization-owned rows.  
-**Status:** implementation and local verification complete; GitHub CI is pending.
+**Status:** implementation, local verification, and GitHub CI complete (run `36336761914`, PASS). Merged to `main` as `e7fe80d04620170733ad9672d991ffd576607a5a` (PR #71). **READY FOR REVIEW — NOT ACCEPTED.**
 
 ## Baseline
 
@@ -99,4 +99,14 @@ Local commands/results: Prettier PASS; TypeScript PASS; oxlint PASS with 7 pre-e
 
 ## Remaining Risks
 
-Only GitHub CI (including expensive E2E and frontend checks) remains to establish READY FOR REVIEW. Task 26 does not accept itself, close an OQ, promote an ADR, or alter Task 24/25 acceptance state.
+No open implementation risk remains: GitHub CI run `36336761914` (including the expensive E2E and frontend checks) passed and the branch merged as `e7fe80d04620170733ad9672d991ffd576607a5a`. Task 26 does not accept itself, close an OQ, promote an ADR, or alter Task 24/25 acceptance state.
+
+## Post-Merge Independent Re-Verification (`e7fe80d0`)
+
+An independent static sweep of every `list*`/`get*`/`find*`/`search*` service method that consumes an `organizationId` was re-run against merged `main`:
+
+- **37 / 37** SEC-01 surfaces call `OrganizationsService.assertOrganizationInScope` directly, and in every case the existing `requireAllPermissions` call still precedes the scope assertion (permission **AND** scope, not OR).
+- A further **24** organization-scoped read methods outside the SEC-01 inventory (e.g. `ChartTreeService.list/get`, `DocumentTypesService.listDocumentTypes/getDocumentType`, `NumberingSeriesService.listNumberingSeries`, `InventoryBalancesService.getAvailability`, `TrialBalanceService.list`, `GeneralLedgerService.list`, and the `mustFindInOrganization`-based `get*` detail methods) reach the same chokepoint transitively through `requireUsableOrganization`, `mustFindInOrganization`, `resolveAccountingReportScope`, or `authorizeMembershipAdministration`. No unenforced organization-scoped read surface was found.
+- `APP_GUARD` still has exactly **one** registration (`organization.module.ts:81`, `DeploymentOrganizationScopeGuard`); no second guard exists.
+- Focused local re-run on merged `main`: `organization/application`, `coding-structure-accounts.spec.ts`, `numbering.service.spec.ts` → **7 files / 148 tests PASS** (includes the 38-case `organization-read-scope-completion.spec.ts` and the 8 deployment-pin guard tests).
+- Migrations `0`, schema changes `0`, new permissions `0` — re-confirmed.
