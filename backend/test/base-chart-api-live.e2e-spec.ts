@@ -32,7 +32,7 @@ const LEVELS = [
     title: 'Level 1',
     digitLength: 2,
     defaultIsPostable: false,
-    levelKind: 'level_1',
+    levelKind: 'group',
   },
   {
     levelIndex: 2,

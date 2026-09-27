@@ -34,7 +34,7 @@ const LEVELS = [
 const CONFIG_LEVELS = LEVELS.map((level) => ({
   ...level,
   title: `Level ${level.levelIndex}`,
-  levelKind: `level_${level.levelIndex}`,
+  levelKind: null,
 }));
 
 const TREE = [
