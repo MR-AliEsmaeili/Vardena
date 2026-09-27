@@ -27,29 +27,31 @@ authorization, and API. The frontend talks only to the Vardena API.
 
 ## Current Repository State
 
-*Verified against the repository at `d46bb4e` (2026-09-26) by
-`docs/repository-documentation-audit.md`. Task/acceptance state is recorded in
-`STATE.md` and `docs/accounting/task-index.md` — implementation existing in
-`main` is **not** the same as a task or ADR being accepted.*
+*Current-state synchronization verified against `main` at
+`2aae5fba99671639fec4bffeb8877d3bcad09b6a` (2026-09-27), after the
+2026-09-26 `docs/repository-documentation-audit.md`. Task/acceptance state is
+recorded in `STATE.md` and `docs/accounting/task-index.md` — implementation
+existing in `main` is **not** the same as a task or ADR being accepted.*
 
 - **The backend is implemented.** `backend/` is a NestJS modular monolith:
   `backend/src/kernel` (config, correlation, errors, HTTP pipeline, ids, jobs
   registry, logging, pagination, Prisma service, rate limiting) plus nine
   modules under `backend/src/modules` — `health` and the eight domain modules
   `{users,identity,rbac,organization,inventory,documents,workflow,accounting}`
-  (the order `app.module.ts` registers them); 43 controllers under `/api/v1`;
+  (the order `app.module.ts` registers them); 46 controllers under `/api/v1`;
   Prisma schemas in `backend/prisma/schema/` (schema-per-module, 8 database
-  schemas, 47 models) and **16 migrations** in `backend/prisma/migrations/`;
-  **131 registered permission codes** (Accounting 38, Inventory 32,
+  schemas, 52 models) and **17 migrations** in `backend/prisma/migrations/`;
+  **134 registered permission codes** (Accounting 41, Inventory 32,
   Organization 28, Workflow 10, Documents 9, RBAC 8, Users 6).
 - **Installation bootstrap:** the post-migration
   `npm run bootstrap:system-admin` command provisions the real Users/RBAC
-  account `مدیر` and the ordinary `System Administrator` role with all 131
-  currently registered permissions. Docker Compose and CI invoke the same
-  idempotent command; it creates no endpoint, wildcard, or organization bypass.
-  No organization is invented: ODR-3 membership remains required. This change
-  is **READY FOR REVIEW — NOT ACCEPTED** in PR #64; implementation-head CI run
-  `36269856402` passed backend (including live PostgreSQL) and frontend jobs.
+  account `مدیر` and the ordinary `System Administrator` role with the
+  permission registry available when it runs. Docker Compose and CI invoke the
+  same idempotent command; it creates no endpoint, wildcard, or organization
+  bypass. No organization is invented: ODR-3 membership remains required. PR
+  #64 is **MERGED** (`21306e53fd8e4c0c8db82338a2be75d3b8477eff`), with green
+  backend/frontend PR checks; its work item remains **READY FOR REVIEW — NOT
+  ACCEPTED** because no explicit Owner acceptance record exists.
 - **Accounting** is the most advanced module: financial areas / fiscal years /
   periods, coding structures + chart of accounts, accounting configurations
   (Task 11, D1–D7) with the operational freeze wired at finalization (Task 13),
@@ -61,10 +63,16 @@ authorization, and API. The frontend talks only to the Vardena API.
   the read layer — ledger movements (17A), account statements (17B), General
   Ledger and Trial Balance over one shared read-query repository (Task 18) —
   and the Accounting-owned Chart Tree read surface plus explicit configuration
-  pin coherence (Task 19, ODR-1/ODR-2).
+  pin coherence (Task 19, ODR-1/ODR-2). Task 23 adds a versioned Base Chart
+  template and explicit organization adoption mechanism; template identity stays
+  separate from Ledger identity, adoption copies into organization-owned
+  accounts, posting remains leaf-only, and aggregation remains read-time. Task
+  24 R-2 makes `GET /api/v1/accounts` assert the existing principal-bound
+  organization scope on every list path. Both Task 23 and Task 24 are merged
+  and CI-green but **READY FOR REVIEW — NOT ACCEPTED**.
   Still **not** implemented: posting rules / automatic mapping, control roles,
-  detail dimensions, base chart templates, cross-year opening carry-forward,
-  statutory/legal books, exports and any source-module posting trigger.
+  detail dimensions, cross-year opening carry-forward, statutory/legal books,
+  exports and any source-module posting trigger.
 - **Inventory** has both halves: master data (Task 6) **and** the core movement
   ledger, balances, reservations and transfers (Tasks 9.5/9.6, ADR-0022).
   **Documents** (ADR-0023) and **Workflow** (ADR-0024) are implemented modules.
@@ -74,8 +82,8 @@ authorization, and API. The frontend talks only to the Vardena API.
   Reporting, Excel, Print, Customization, Integration, Sync and Jobs modules;
   the worker has no dispatch loop; the domain-event bus is in-memory only (no
   `core.domain_events`, no outbox table, no jobs table).
-- **Tests:** unit specs live beside the code (101 `backend/src/**/*.spec.ts`);
-  31 e2e specs in `backend/test/**/*.e2e-spec.ts`. Live-database suites are
+- **Tests:** unit specs live beside the code (107 `backend/src/**/*.spec.ts`);
+  34 e2e specs in `backend/test/**/*.e2e-spec.ts`. Live-database suites are
   opt-in via `VARDENA_TEST_DATABASE_URL`; two migration rehearsals exist
   (`npm run test:migration-rehearsal` — Task 11 backfill;
   `npm run test:operational-freeze-rehearsal` — Task 13).
@@ -137,7 +145,7 @@ docs/
   architecture/domain/ ← domain blueprint, glossary, per-domain analyses
   product/           ← MVP scope proposal, roadmap, product decision baseline
   decisions/product/ ← per-OQ product decision records
-  tasks/task-16…21/  ← briefs, gates, implementation reports, acceptance records
+  tasks/             ← briefs, gates, implementation reports, acceptance records
   testing/           ← test-execution policy, e2e notes
   task-*.md          ← earlier per-task implementation reports (A–J format)
 backend/
@@ -145,7 +153,7 @@ backend/
   src/modules/       ← health + the eight domain modules (domain/application/data/api)
   test/              ← e2e specs + support harness (live suites opt-in)
   prisma/schema/     ← schema-per-module Prisma sources (base + 8 modules)
-  prisma/migrations/ ← 16 applied migrations
+  prisma/migrations/ ← 17 applied migrations
   prisma/rehearsal/  ← Task 11 / 12 / 13 migration & freeze rehearsal fixtures
 frontend/            ← React SPA (Task 22 slice; see frontend/README.md)
   src/app/           ← providers, router, route guards, app shell

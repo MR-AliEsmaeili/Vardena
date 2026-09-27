@@ -309,10 +309,10 @@ explicit-upgrade = **IMPLEMENTATION CONSTRAINT / ARCHITECTURAL governance
 2. **Content deliberately absent.** No account code, title, nature, mandatory-list
    entry, or control role is proposed as content. Task 21 approves *governance and
    a content model*, never *content*.
-3. **Predecessor acceptance state.** Task 20 is READY FOR REVIEW — NOT ACCEPTED at
-   the baseline; Task 21's conclusions therefore also remain NOT ACCEPTED and
-   depend on Task 20's Owner decisions standing.
-4. **Governance proposals need owner ratification.** Conclusions marked as
-   proposed governance (mandatory semantics, adoption/version/customization rules,
-   control-role governance contract) are logically derived but require Owner /
-   accountant acceptance to become binding policy.
+3. **Predecessor acceptance state.** At this investigation's baseline, Task 20
+   was READY FOR REVIEW — NOT ACCEPTED. It was subsequently accepted, and Task 21
+   is now **ACCEPTED (2026-09-26)** by its explicit Repository Owner acceptance
+   record; neither acceptance authorizes production implementation by itself.
+4. **Governance acceptance boundary.** The explicit Task 21 acceptance ratifies
+   its governance within the documented scope. Concrete Base Chart content still
+   requires separate Owner/accountant approval before implementation.

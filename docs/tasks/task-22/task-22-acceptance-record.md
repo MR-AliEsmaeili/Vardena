@@ -88,7 +88,10 @@ Acceptance does **not** authorize or implement:
 - Notification system
 - Unrelated backend capabilities or architecture changes
 
-Task 23 remains **NOT IMPLEMENTED / separate subsequent task**.
+At the time of this acceptance, Task 23 was a **separate subsequent task**
+and was not part of Task 22's accepted scope. Its later implementation status
+is recorded in `STATE.md` and `docs/accounting/task-index.md`; that later work
+does not broaden this Task 22 acceptance.
 
 ## Open items preserved
 
