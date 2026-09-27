@@ -72,9 +72,11 @@ Statuses: `Shipped` (exists in repo today), `Partial` (exists, gaps listed),
 | Create a custom report | Report Builder — **depth = OQ-49** | D (OQ-49) |
 
 **Interpretation rule (recorded, not assumed):** where an OQ blocks a step's
-"full" form, the MVP proposal includes the *minimal decided mechanism* (e.g.
-manual voucher instead of automatic posting) and registers the dependency —
-it does not invent the unresolved behavior.
+"full" form, this proposal records the current mechanism as an implementation
+fallback and registers the dependency (for example, manual voucher capability
+exists today while system Sales → Accounting remains MVP-required and gated).
+A fallback is not the final MVP integration state, and this proposal does not
+invent unresolved behavior.
 
 ---
 
@@ -101,10 +103,10 @@ it does not invent the unresolved behavior.
 | A-17 | Sales reports | To build | Scenario step 15 | Reporting pipeline; sales views | Sales by period/customer/item; totals reconcile to invoices | OQ-30 (tax columns) | Medium |
 | A-18 | Accounting reporting | To build | Scenario step 16; accounting credibility | A-07 ledger; balances candidate | Accounting reports, with legal/accounting outputs validated separately | OQ-25/OQ-43 | High |
 | A-19 | Report Builder (MVP depth) | Blocked by OQ | Scenario step 17; differentiator | OQ-49; reporting pipeline; semantic-entity registry | Level per OQ-49 outcome (recommended B: composition over approved entities; saved, versioned, permission-bound) | **OQ-49** | High |
-| A-20 | Dashboard | To build | Usability; situational awareness | Reporting pipeline; customization module (ADR-0013) | Default dashboard: a few KPI/report widgets; user-configurable layout persisted | None | Low |
-| A-21 | Excel import (master data) | Shipped (foundation) | Migration onboarding | ADR-0011 | Validated import for items/parties at minimum | None | Low |
-| A-22 | Excel export | Shipped (confirmed) | Data ownership; reporting | ADR-0009 §6 | Export of all MVP reports/lists | OQ-46 (beyond-MVP completeness) | Low |
-| A-23 | Audit logging (MVP surface) | Shipped (foundation) | Trust; security | AR-23 | Sensitive MVP actions audited (auth, RBAC, accounting writes, inventory movements, sales lifecycle, exports of flagged reports) | OQ-17 (retention values) | Low |
+| A-20 | Dashboard | **POST-MVP / not admitted by current roadmap** | Usability; situational awareness | Reporting pipeline; customization module (ADR-0013) | Not a Backend MVP gate; future product decision required | OQ-09 | Low |
+| A-21 | Excel import (master data) | **To build — ADR decision only; implementation not present** | Migration onboarding | ADR-0011 | Separate implementation candidate; no import capability is claimed on `main` | OQ-08 | Low |
+| A-22 | Excel export | **To build — implementation not present** | Data ownership; reporting | ADR-0011/ADR-0009 decision boundary | Export only after bounded report implementation; OQ-46 recorded XLSX posture remains open where applicable | OQ-46 | Low |
+| A-23 | Audit logging (MVP surface) | **To build — audit module not present** | Trust; security | AR-23 | Scope and retention require a separate implementation decision; no audit store is claimed on `main` | OQ-17, OQ-14 | Low |
 | A-24 | Backup/restore (customer-visible) | To build | Data safety; trust | database-strategy §14; OQ-52/53 | Scheduled auto-backup; customer-admin "backup now"; controlled restore path; **pre-migration auto-backup wired into update flow** | OQ-52 (targets), OQ-53 (self-service degree) | High |
 | A-25 | License foundation (enforcement-off) | Blocked by ADR | PD-17 platform capability | **ADR-0030 (proposed)** | License record + module enablement read + admin view; **no blocking behavior** | **ADR-0030 ratification; OQ-45 (behavior)** | Medium |
 | A-26 | Persian-context UX baseline | To build | Non-specialist usability | OQ-02 | RTL layout; i18n dictionary; Jalali display where OQ-02 decides; Persian labels | **OQ-02 (language/calendar)** | Medium |
@@ -137,11 +139,11 @@ no method is invented.
 | B-01 | RBAC (roles, granular permissions, enforcement) | Shipped | ADR-0006/0016; every MVP endpoint declares permissions |
 | B-02 | Document Foundation | Shipped | ADR-0019/0023 — numbering, relations, states used by vouchers & sales |
 | B-03 | Workflow Foundation | Shipped | ADR-0018/0024 — available for approval policies when OQ-13/OQ-26 decide content |
-| B-04 | Integration foundation (outbox + adapter ports) | Shipped | ADR-0004; taxpayer/legacy adapters land later behind it |
-| B-05 | Jobs (DB-backed queue) | Shipped | ADR-0010 — carries async reports, backup schedules |
-| B-06 | Notifications (in-app) | Shipped (foundation) | Per OQ-15 interim posture |
-| B-07 | Customization (preferences) | Shipped | ADR-0013 — table/grid/dashboard state |
-| B-08 | Print system | Shipped (foundation) | ADR-0012 — invoice template rides on it |
+| B-04 | Integration foundation (outbox + adapter ports) | **Documented decision — implementation not present** | ADR-0004; taxpayer/legacy adapters land later behind it |
+| B-05 | Jobs (DB-backed queue) | **Documented decision — implementation not present** | ADR-0010 — async work only if an admitted capability requires it |
+| B-06 | Notifications (in-app) | **Not implemented** | Per OQ-15 interim posture |
+| B-07 | Customization (preferences) | **Documented decision — implementation not present** | ADR-0013 — table/grid/dashboard state |
+| B-08 | Print system | **Documented decision — implementation not present** | ADR-0012 — invoice template rides on it |
 | B-09 | OpenAPI contract | Shipped | ADR-0014 — frontend types derived |
 | B-10 | Docker Compose deployment | Shipped (strategy) | architecture.md §10; install runbook is Stage 6 work |
 | B-11 | Licensing *record* (foundation) | Blocked by ADR | ADR-0030 — see A-25 (foundation is both A and B; enforcement is neither) |

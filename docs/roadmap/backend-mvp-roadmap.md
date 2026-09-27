@@ -307,7 +307,7 @@ mechanism (exists — Task 23 merged)  ≠  content (OQ-25/OQ-36 — not approve
 
 **2B — Report definition + query pipeline (bounded slices).**
 - Report definitions in code registry over approved sources; permissions per report (`Module.Entity.Action`); filter/sort whitelists; row caps; read-only execution; view regression tests (fixture rows → expected output) per reporting-strategy §9.
-- *Module impact:* the Reporting module is documented in the accepted module catalog and its architecture is decided by ADR-0009 (Accepted). Under AR-29 a new module is ADR-gated: the implementation task must either confirm that ADR-0009 + the existing catalog entry are the deciding ADR for the module's creation, or supply the required ADR in the same change. DB impact — module-owned views only where needed (raw SQL scoped per AR-11); API impact — `/api/v1/reports/...` namespace per strategy; frontend dependency — the four read surfaces already have UI; new report screens follow after API/OpenAPI stability.
+- *Module impact:* the bounded Reporting capability and its module-view architecture are documented by ADR-0009 (Accepted), but a `reporting` module is **NOT PRESENT** on `main` (§1.2). Under AR-29 a new module is ADR-gated: the implementation task must confirm the architectural decision and supply any required adoption record before creating it. DB impact — module-owned views only where needed (raw SQL scoped per AR-11); API impact — `/api/v1/reports/...` namespace per strategy; frontend dependency — the four read surfaces already have UI; new report screens follow after API/OpenAPI stability.
 
 **2C — XLSX/CSV export.**
 - *Objective:* export of admitted reports/lists through the Excel module (ADR-0011/Accepted decision; OQ-46 recorded posture: XLSX export of reports/lists is the confirmed channel).
@@ -407,7 +407,7 @@ Currently consumed backend APIs (VERIFIED in `frontend/src/api/`): `POST /auth/l
 | Base Chart administration UI | Task 23 endpoints (exist, not accepted) | candidate — after Task 23 acceptance |
 | Inventory screens | Inventory APIs (exist) | candidate |
 | Report screens beyond the four read surfaces | Phase 2 reporting APIs | blocked by Phase 2 |
-| Sales screens | Phase 3 Sales APIs | blocked by Phase 3 admission |
+| Sales screens | Phase 3 Sales APIs | blocked by Phase 3 implementation/domain gates |
 | Login-adjacent UX (password change, session management) | Phase 6 identity completion | blocked by 6.3 |
 | Jalali/Persian display | OQ-02 decision (architecture already isolates formatting in `lib/`) | blocked by OQ-02 |
 

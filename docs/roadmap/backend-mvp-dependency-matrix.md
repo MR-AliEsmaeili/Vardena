@@ -69,7 +69,7 @@ Verified against `docs/accounting/task-index.md` §4 (authoritative candidate ma
 | Corrections (correction/difference, replacement, adjustment) | NOT PRESENT (contract-only) | posting, periods | **OQ-27** | — | Phase 1E — decision-gated |
 | Year-transition / opening carry-forward | NOT PRESENT (explicitly excluded from projection) | calendar | **OQ-23** | — | Phase 1F — decision-gated |
 | Posting rules / account mapping | NOT PRESENT | chart, roles | OQ-24, OQ-25, OQ-30 (+ OQ-39/42 for activation) | — | Phase 1G — required only if integration admitted |
-| Inventory → Accounting integration | NOT PRESENT (no consumer; in-memory bus only) | posting rules + OQ-39 decision | **OQ-39** (+24/25/30, 42) | ADR-0005 Accepted (contract); new ADR likely for delivery semantics | Phase 4C — decision-gated |
+| Inventory → Accounting integration | NOT PRESENT (no consumer; in-memory bus only) | posting rules + OQ-39 decision | **OQ-39** (+24/25/30, 42) | ADR-0005 Accepted (contract); new ADR likely for delivery semantics | **MVP REQUIRED — Phase 4C decision-gated** |
 | Electronic Books / Tax Accounting / Iranian legal outputs | NOT PRESENT | Accounting read models, validated legal/domain samples | reporting, MVP final gate | **OQ-43 — every legal fact/format requires validation** | ADR-0036 Proposed | **IN MVP — REQUIRED capability; implementation gated** |
 | Code Structure Migration Service | NOT PRESENT — explicitly not authorized | code history, licensing, backup | OQ-45, OQ-52/53, OQ-62/63 | ADR-0035 Proposed; ADR-0030 Proposed | **POST-MVP** |
 | Settlement / allocation (Task 16) | NOT PRESENT | contract finalized; implementation authorization BLOCKED | Owner confirmation | — | **BLOCKED**; bounded by Treasury deferral |
