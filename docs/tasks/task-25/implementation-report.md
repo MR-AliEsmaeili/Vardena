@@ -301,6 +301,8 @@ PASS. This branch — PR #70, GitHub Actions run `36325486898` on commit
 covering prisma validate/generate, lint, typecheck, format:check, unit tests,
 build, `migrate deploy` against PostgreSQL 16, `bootstrap:system-admin`, the
 Task 11 migration rehearsal and the E2E suites including the live-DB ones.
+Follow-up documentation-only commit `faafe8e` (this CI record): run
+`36325765257` — `backend` success (3m31s), `frontend` success (40s).
 Audited baseline `main` @ `80944ce112dc16fd834585f8a4c2d83906547480` — run
 `36323517204`: PASS. Expensive verification was executed in CI rather than
 locally, per the task's §11 policy; local checks were `git diff --check`
