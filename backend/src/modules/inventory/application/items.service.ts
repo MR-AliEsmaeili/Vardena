@@ -145,6 +145,7 @@ export class ItemsService {
 
   async listItems(query: ListItemsQuery): Promise<PaginatedResult<ItemDto>> {
     await this.authorization.requireAllPermissions([ITEM_PERMISSIONS.VIEW]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {

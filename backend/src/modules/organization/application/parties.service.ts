@@ -118,6 +118,7 @@ export class PartiesService {
     query: ListPartiesQuery,
   ): Promise<PaginatedResult<PartyDto>> {
     await this.authorization.requireAllPermissions([PARTY_PERMISSIONS.VIEW]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {

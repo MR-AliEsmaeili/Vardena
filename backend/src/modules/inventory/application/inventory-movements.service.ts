@@ -122,6 +122,7 @@ export class InventoryMovementsService {
     query: ListMovementsQuery,
   ): Promise<PaginatedResult<InventoryMovementDto>> {
     await this.authorization.requireAllPermissions([MOVEMENT_PERMISSIONS.VIEW]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.movements.list({
       where: {

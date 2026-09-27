@@ -104,6 +104,7 @@ export class EmployeesService {
     query: ListEmployeesQuery,
   ): Promise<PaginatedResult<EmployeeDto>> {
     await this.authorization.requireAllPermissions([EMPLOYEE_PERMISSIONS.VIEW]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {

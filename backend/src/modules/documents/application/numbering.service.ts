@@ -14,6 +14,7 @@ import {
 } from '../../../kernel/pagination/paginated-result.js';
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
+import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { NumberingSeriesRepository } from '../data/numbering-series.repository.js';
 import { NumberingAllocationsRepository } from '../data/numbering-allocations.repository.js';
 import type { NumberingAllocation } from '../domain/numbering-allocation.js';
@@ -74,6 +75,7 @@ export class NumberingService {
     private readonly series: NumberingSeriesService,
     private readonly seriesRepository: NumberingSeriesRepository,
     private readonly allocations: NumberingAllocationsRepository,
+    private readonly organizations: OrganizationsService,
     private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
@@ -85,6 +87,7 @@ export class NumberingService {
     await this.authorization.requireAllPermissions([
       NUMBERING_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.allocations.list({
       where: {
@@ -111,6 +114,7 @@ export class NumberingService {
     await this.authorization.requireAllPermissions([
       NUMBERING_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(organizationId);
     const allocation = await this.allocations.findById(id);
     if (allocation === null || allocation.organizationId !== organizationId) {
       throw AppException.notFound('Numbering allocation', id);

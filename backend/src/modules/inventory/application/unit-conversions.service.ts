@@ -119,6 +119,7 @@ export class UnitConversionsService {
     await this.authorization.requireAllPermissions([
       UNIT_CONVERSION_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const orderBy = resolveSort(query.sort, SORTABLE_FIELDS, [
       { validFrom: 'desc' },

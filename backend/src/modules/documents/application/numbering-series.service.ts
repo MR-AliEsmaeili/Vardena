@@ -111,6 +111,7 @@ export class NumberingSeriesService {
     await this.authorization.requireAllPermissions([
       NUMBERING_SERIES_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(organizationId);
     return toNumberingSeriesDto(
       await this.requireSeriesInOrganization(organizationId, id),
     );

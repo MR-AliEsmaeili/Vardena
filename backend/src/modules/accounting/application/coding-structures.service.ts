@@ -122,6 +122,7 @@ export class CodingStructuresService {
     await this.authorization.requireAllPermissions([
       CODING_STRUCTURE_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     if (query.status !== undefined && !isCodingStructureStatus(query.status)) {
       throw AppException.badRequest(
         'status must be one of: draft, active, superseded.',

@@ -113,6 +113,7 @@ export class WorkflowTransitionsService {
     await this.authorization.requireAllPermissions([
       WORKFLOW_VERSION_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     await this.versions.requireVersionInOrganization(
       query.organizationId,
       query.versionId,
@@ -147,6 +148,7 @@ export class WorkflowTransitionsService {
     await this.authorization.requireAllPermissions([
       WORKFLOW_VERSION_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(organizationId);
     return toWorkflowTransitionDto(
       await this.mustFindInOrganization(organizationId, id),
     );

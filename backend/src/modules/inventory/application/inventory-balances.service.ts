@@ -107,6 +107,7 @@ export class InventoryBalancesService {
     query: ListBalancesQuery,
   ): Promise<PaginatedResult<InventoryBalanceDto>> {
     await this.authorization.requireAllPermissions([BALANCE_PERMISSIONS.VIEW]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.balances.list({
       where: {
