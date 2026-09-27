@@ -112,8 +112,9 @@ codes) and refetches on RBAC change events.
 
 **Role administration:** roles are created, renamed and given/removed
 permissions and users through the RBAC endpoints; there is **no role deletion**
-and no `Rbac.Role.Delete` permission in v1 (OQ-20). PR #64's in-review
-implementation provisions one installation role named `System Administrator`
+and no `Rbac.Role.Delete` permission in v1 (OQ-20). PR #64's merged
+implementation (work item **READY FOR REVIEW — NOT ACCEPTED**) provisions one
+installation role named `System Administrator`
 and reconciles it to every permission in the current code registry. It uses
 ordinary `roles`, `role_permissions`, and `user_roles` rows: role names have no
 runtime semantics, and there is no wildcard or administrator bypass. This is an
@@ -122,7 +123,8 @@ remains OPEN for occupational roles (Accountant, Warehouse, Sales, Auditor, and
 so on), their permission baselines, auditor/administrator separation, and
 future role permission baselines.
 
-**First-administrator bootstrap (PR #64 implementation; OQ-19 remains OPEN):**
+**First-administrator bootstrap (PR #64 merged implementation; work item READY
+FOR REVIEW — NOT ACCEPTED; OQ-19 remains OPEN):**
 after migrations, `npm run bootstrap:system-admin` creates the real Users-domain
 account `مدیر` with the specified initial credential, hashing the password
 through the existing Argon2id `PasswordService`, then assigns `System

@@ -374,7 +374,7 @@ Vardena Base Chart   ≠   Iran statutory reporting profile
   - Extended mandatory restrictions (move / nature / structural compatibility) that
     depend on future consumers.
   - Deletion/code-reuse policy (**OQ-36**) and account-level template provenance.
-  - Owner ratification of Task 21's proposed governance rules.
+  - Concrete Base Chart content approval, which is outside this governance acceptance.
 
 OQ-25 is therefore **not** marked resolved.
 
@@ -434,10 +434,10 @@ promoted; no production/schema/migration/API/DTO/permission/test/frontend change
 
 ## 17. Final status
 
-```text
-READY FOR REVIEW — NOT ACCEPTED
-```
+**ACCEPTED (2026-09-26)** by the explicit Repository Owner record in
+[`task-21-acceptance-record.md`](./task-21-acceptance-record.md). This acceptance
+is documentation/governance only and authorizes no production implementation.
 
-Likely correct outcome: **OQ-25 substantially narrowed**, not resolved. Concrete
-accounting content and Owner ratification of the proposed governance rules are still
-required.
+**OQ-25 remains substantially narrowed, not resolved.** Concrete accounting
+content still requires separate Owner/accountant approval; OQ-36, OQ-41 and OQ-43
+remain OPEN.

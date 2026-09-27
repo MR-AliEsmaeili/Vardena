@@ -100,7 +100,9 @@ No ADR is promoted or created.
 
 ## 6. Acceptance boundary
 
-Task 21 finishes as **READY FOR REVIEW — NOT ACCEPTED**. The likely correct
-outcome is **OQ-25 = substantially narrowed**, not fully resolved: concrete
+Task 21's pre-acceptance delivery state was **READY FOR REVIEW — NOT
+ACCEPTED**. It is now **ACCEPTED (2026-09-26)** by the explicit Repository Owner
+record in [`task-21-acceptance-record.md`](./task-21-acceptance-record.md). The
+accepted outcome is **OQ-25 = substantially narrowed**, not resolved: concrete
 accounting content (codes, titles, natures, mandatory list, role catalog) still
-requires Owner/accountant approval and therefore stays OPEN.
+requires separate Owner/accountant approval and therefore stays OPEN.

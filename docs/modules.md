@@ -1,8 +1,7 @@
 # Vardena — Module Catalog
 
-Status: Accepted (foundation) · Updated: 2026-09-26 (implementation-state
-corrections only — `repository-documentation-audit.md`; ADR-0017–0020 note
-scoped per PR #61 review)
+Status: Accepted (foundation) · Updated: 2026-09-27 (governance-state
+synchronization after Tasks 23–24; ADR-0017–0020 note scoped per PR #61 review)
 
 > **Domain foundation:** the domain model, configurability and workflow architecture
 > are specified in [`architecture/domain/`](./architecture/domain/README.md)
@@ -46,7 +45,7 @@ published/consumed events, and extension points. Adding a module = new folder pe
 | RBAC          | v1 core — **implemented**                                                                                                                                                                                                                 | Roles, granular permissions, assignments                                                                                                                                                    | `rbac`          |
 | Audit         | v1 core — **not implemented**                                                                                                                                                                                                                 | Append-only audit log of sensitive operations                                                                                                                                               | `audit`         |
 | Notifications | v1 core — **not implemented**                                                                                                                                                                                                                 | In-app notifications driven by events                                                                                                                                                       | `notifications` |
-| Accounting    | **implemented** — foundation + chart + configuration + documents + posting/ledger (Tasks 10.2–10.8, 11 ACCEPTED 2026-09-22; ADR-0026 Accepted), operational freeze (Task 13), period-close enforcement (Task 14, ADR-0032 *Proposed*), balance projection (Task 12 **ACCEPTED WITH FOLLOW-UP 2026-09-23**, ADR-0031 *Proposed*, P1 concurrency verification still open), document reversal (merged, recorded as Task 15 in `STATE.md` §7 — **no acceptance record found**), ledger-movement source (17A ACCEPTED), account statements (17B ACCEPTED), General Ledger + Trial Balance + shared read-query layer (Task 18 ACCEPTED), Chart Tree read surface + configuration pin coherence (Task 19 ACCEPTED, ODR-1/ODR-2). **Still absent:** posting rules/mapping, control roles, detail dimensions, base chart templates, cross-year carry-forward, statutory books, exports | Financial areas, fiscal years/periods, coding structures, accounting configurations, chart of accounts (+ read-only chart tree), accounting documents + lines, immutable ledger entries, posting orchestration, document reversal, balance projection, and the read-only account-statement / general-ledger / trial-balance surfaces | `accounting`    |
+| Accounting    | **implemented** — foundation + chart + configuration + documents + posting/ledger (Tasks 10.2–10.8, 11 ACCEPTED 2026-09-22; ADR-0026 Accepted), operational freeze (Task 13), period-close enforcement (Task 14, ADR-0032 *Proposed*), balance projection (Task 12 **ACCEPTED WITH FOLLOW-UP 2026-09-23**, ADR-0031 *Proposed*, P1 concurrency verification still open), document reversal (merged, recorded as Task 15 in `STATE.md` §7 — **no acceptance record found**), ledger-movement source (17A ACCEPTED), account statements (17B ACCEPTED), General Ledger + Trial Balance + shared read-query layer (Task 18 ACCEPTED), Chart Tree read surface + configuration pin coherence (Task 19 ACCEPTED, ODR-1/ODR-2), and a versioned Base Chart template/adoption mechanism (Task 23 **MERGED / READY FOR REVIEW — NOT ACCEPTED**). Task 24 R-2 is likewise **MERGED / READY FOR REVIEW — NOT ACCEPTED** and restores principal-bound organization scope on Account listing. **Still absent:** posting rules/mapping, control roles, detail dimensions, cross-year carry-forward, statutory books, exports | Financial areas, fiscal years/periods, coding structures, accounting configurations, chart of accounts (+ read-only chart tree), Base Chart templates/adoptions, accounting documents + lines, immutable ledger entries, posting orchestration, document reversal, balance projection, and the read-only account-statement / general-ledger / trial-balance surfaces | `accounting`    |
 | Inventory     | v1 core — **implemented** (master data Task 6 + core movement ledger/balances/reservations/transfers Tasks 9.5/9.6, ADR-0022 Accepted)                                                                                                                                                                                                                 | Items, warehouses, stock, receipts/issues/transfers/adjustments                                                                                                                             | `inventory`     |
 | Documents     | **implemented** (Task 8, ADR-0023 Accepted)                                                                                                                                                                              | Document type configuration, numbering series + allocation ledger, typed relations between logical documents                                                                                | `documents`     |
 | Workflow      | **implemented** (Task 9, ADR-0024 Accepted)                                                                                                                                                                             | Versioned workflow definitions/states/transitions, instances bound to logical entities, single-level approvals, automation bindings                                                          | `workflow`      |
@@ -233,8 +232,9 @@ Remove`. No `Rbac.Role.Delete` (OQ-20).
   unauthenticated, 403 when authorized-but-not-permitted (ADR-0016).
 - **Publishes:** `Role.Created`, `Role.Updated`, `RolePermission.Assigned`,
   `RolePermission.Removed`, `UserRole.Assigned`, `UserRole.Removed`.
-- **Installation bootstrap:** PR #64's in-review implementation provisions one
-  installation role named `System Administrator`. The post-migration bootstrap
+- **Installation bootstrap:** PR #64's merged implementation (work item
+  **READY FOR REVIEW — NOT ACCEPTED**) provisions one installation role named
+  `System Administrator`. The post-migration bootstrap
   assigns it every code in the current permission registry and connects the
   real Users-domain account through `rbac.user_roles`. Re-runs add
   missing/newly registered grants without duplicates. The role has no runtime
@@ -260,12 +260,14 @@ Remove`. No `Rbac.Role.Delete` (OQ-20).
 - **Write path:** modules emit audit data through the kernel audit port inside
   their business transaction; Audit persists it. Retention/archival = OQ-17.
 
-## Accounting (v1 core — **implemented through Task 19**)
+## Accounting (v1 core — **implementation includes merged Tasks 23–24; neither is accepted**)
 
-> **Status correction (2026-09-26, `repository-documentation-audit.md`).** The
-> narrative below was written incrementally and stopped at Task 18; several of
-> its "not implemented" statements are no longer true. Verified against the
-> code at `d46bb4e`, Accounting **additionally** contains:
+> **Status correction (2026-09-26, `repository-documentation-audit.md`;
+> synchronized 2026-09-27 after Tasks 23–24).** The narrative below was written
+> incrementally and stopped at Task 18; several of its "not implemented"
+> statements are no longer true. The 2026-09-26 inventory was verified at
+> `d46bb4e`; the later merged Task 23/24 facts are recorded below. Accounting
+> **additionally** contains:
 >
 > - **Balance projection (Task 12)** — `accounting.account_balance_projections`,
 >   derived views, transactional maintenance and the audited rebuild
@@ -297,13 +299,24 @@ Remove`. No `Rbac.Role.Delete` (OQ-20).
 >   transaction. Existing divergent rows are **not** repaired (OQ-62/OQ-63 stay
 >   OPEN). This supersedes "validate **only** against the account's own
 >   configuration/version pair" below.
-> - **Permissions: 38 registered codes**, not 36 — the list further down omits
->   `Accounting.GeneralLedger.View` and `Accounting.TrialBalance.View`.
+> - **Base Chart template + explicit organization adoption (Task 23)** — PR
+>   #66 is merged; the versioned template/adoption mechanism, including dedicated
+>   PostgreSQL integration and live HTTP E2E coverage, exists without chart
+>   content. The four implementation invariants are Template identity ≠ Ledger
+>   identity, Adoption = Copy, Posting = Leaf-only, and Aggregation =
+>   Reporting/read-time. The task is **READY FOR REVIEW — NOT ACCEPTED**.
+> - **Account-list organization scope (Task 24 R-2)** — PR #67 is merged;
+>   `GET /api/v1/accounts` now calls the existing principal-bound organization
+>   scope chokepoint before reads. The correction is **READY FOR REVIEW — NOT
+>   ACCEPTED** and changes no lifecycle or posting policy.
+> - **Permissions: 41 registered codes**, not 36 — the list further down omits
+>   `Accounting.GeneralLedger.View`, `Accounting.TrialBalance.View`, and the
+>   three Base Chart codes.
 >
 > Still genuinely absent in code: posting rules / automatic account mapping,
-> control roles, detail dimensions, base chart templates, cross-year opening
-> carry-forward, statutory/legal books, exports, print, a Reporting module, and
-> any source-module (Inventory/Sales/**Treasury**) posting trigger.
+> control roles, detail dimensions, cross-year opening carry-forward,
+> statutory/legal books, exports, print, a Reporting module, and any
+> source-module (Inventory/Sales/**Treasury**) posting trigger.
 > **Treasury is deferred and out of MVP** — Accounting must not implement cash,
 > bank, payment, receipt, cheque or settlement behavior implicitly.
 
@@ -531,8 +544,10 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   (the organization's active version), `GET :id`, `POST` (draft a version with
   its levels), `PATCH :id` (reconfigure while `draft` only),
   `POST :id/publish` (validate + activate + supersede the previous active one).
-  `/api/v1/accounts` — `GET` list (mandatory `organizationId`; `parentId`,
-  `level`, `isActive`, `isPostable`, `codingStructureVersionId`, `search`),
+  `/api/v1/accounts` — `GET` list (mandatory `organizationId`; the existing
+  principal-bound organization-scope chokepoint is asserted before every list
+  read by Task 24 R-2; `parentId`, `level`, `isActive`, `isPostable`,
+  `codingStructureVersionId`, `search`),
   `GET :id`, `POST`, `PATCH :id` (title, nature, postability, re-parent),
   `POST :id/enable`, `POST :id/disable`. No DELETE, no
   per-level routes, and no code-editing route: `level` and
