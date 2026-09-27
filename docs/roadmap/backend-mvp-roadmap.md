@@ -29,7 +29,8 @@
 3. **No invented business rules** (AG-09/AR-31). Where a capability depends on an unresolved business/domain/legal decision, the dependency is recorded, not guessed.
 4. **Treasury (خزانه‌داری) is deferred and OUT of MVP scope.** No Treasury capability is a Backend MVP milestone or a dependency of the final gate (§2.2).
 5. **This roadmap does not reopen decided matters.** Task 19 (ODR-1/ODR-2/ODR-3), Task 20 (OD-20-1…OD-20-6), Task 21 (Base Chart governance), Task 22 (frontend slice), Task 17A/17B/17C and Task 18 acceptances stand exactly as recorded.
-6. Future work items are **candidates**, not tasks. A numbered implementation task is created only through the governance process of `docs/accounting/task-index.md` §7 (Accounting) or its equivalent Owner-approved gate (other domains).
+6. **Owner-directed MVP scope correction (2026-09-27):** Full Inventory / Warehouse, Sales, Sales → Accounting, Inventory → Accounting, Reporting, and Electronic Books / Tax Accounting are required MVP capabilities. Purchasing, Purchasing → Accounting, Purchasing Reports, and Treasury are POST-MVP. This changes scope classification only; it closes no OQ, promotes no ADR, and authorizes no implementation.
+7. Future work items are **candidates**, not tasks. A numbered implementation task is created only through the governance process of `docs/accounting/task-index.md` §7 (Accounting) or its equivalent Owner-approved gate (other domains).
 
 ### 0.2 Evidence vocabulary
 
@@ -127,123 +128,100 @@ All remain **OPEN** in the registry: OQ-01 (tenancy — product question; the OD
 
 ## 2. MVP scope boundary
 
-### 2.1 IN MVP (proven by repository/Owner decisions)
+### 2.1 IN MVP — REQUIRED (Owner-directed scope correction)
 
-Only capabilities with repository-backed admission:
+The following capabilities are the required Backend MVP path. **Required does not mean implemented or accepted.** Each unimplemented capability remains a separately gated implementation candidate; unresolved implementation details remain OQ/ADR-gated.
 
-1. The **implemented and accepted backend foundations**: identity, users, RBAC, organization/memberships, inventory core, documents, workflow, accounting foundation through the Task 18/19 read surfaces.
-2. **Accounting completion** within the accepted task-index candidate map and its OQ gates (§Phase 1) — the accounting task index is the authoritative bridge (§7 of that document).
-3. **Reporting foundation** as a bounded capability: ADR-0009 (Accepted) + `docs/reporting-strategy.md` (Accepted foundation) name Reporting/Excel/Print as first-class capabilities; the Accounting read layer already exists. The bounded MVP form is report definitions over existing/approved read sources, permission-gated, bounded, exportable. **A generic Report Builder is NOT admitted** — that is OQ-49, undecided.
-4. **Operational ERP core** — *only to the extent the Owner admits it*. No accepted document yet admits Sales/Purchasing/AR-AP into MVP: `docs/modules.md` marks Sales "v1 core — not implemented" (a scope label, not an admission), and `docs/product/mvp-scope-proposal-v1.md` (which proposes minimal Sales in MVP) is explicitly **Proposed — pending product-owner approval**. See §Phase 3.
-5. **Cross-module Accounting integration** for admitted sources only, through the accepted architecture (domain events / public application surface; never cross-module table access).
-6. **Audit/Security/Tenant hardening and Production readiness** to the depth required by the final gate (§Phases 6–7).
+1. **Foundation** — identity, users, RBAC, organization, documents, workflow, security and deployment foundations.
+2. **Accounting Core + Accounting Completion** — accounting configuration, chart, vouchers, posting/ledger, periods, corrections, dimensions, posting rules, reporting read models and the accepted governance decisions, subject to their recorded gates.
+3. **Full Inventory / Warehouse Subsystem** — not merely Inventory Core. Required operational scope is listed in §2.3.
+4. **Party / Customer foundation** — preserve the existing party master and complete only the customer-facing foundation required by Sales; Party/Master Data Foundation is not Purchasing.
+5. **Sales** — customer sales documents/invoices, line items, quantities, prices, tax-related fields under the approved tax model, numbering, lifecycle/finalization, applicable inventory effects and accounting effects.
+6. **Sales → Accounting** — required capability; its implementation shape is gated by OQ-39/OQ-42/OQ-25/OQ-30 and related decisions. A manual voucher is not the final MVP integration state.
+7. **Inventory → Accounting** — required independently of Purchasing; valuation, mapping and durable integration rules remain gated.
+8. **Reporting** — Accounting, Inventory/Warehouse, Sales and required legal/accounting outputs. Generic Report Builder is not admitted without its own decision.
+9. **Electronic Books / Tax Accounting / Iranian legal accounting outputs** — required MVP capability, with legal/tax facts validated from Owner-provided samples and domain/legal review. Formats are not invented.
 
-### 2.2 DEFERRED / POST-MVP (verified)
+### 2.2 OUT OF CURRENT MVP / POST-MVP
 
-| Item | Evidence |
+| Capability | MVP posture and boundary |
 |---|---|
-| **Treasury** — cash (صندوق), bank (بانک), payment (پرداخت), receipt (دریافت), cheque (چک), settlement (تسویه) workflows and instruments; Cash Book/Bank Book/cash & bank turnover/receipt & payment operational modules/cheque management/bank reconciliation/treasury-native reports | Explicit scope boundary in `.vardena/project-context.md`, `docs/modules.md`, task-index §3; repository audit §E. **Not an MVP milestone and not a dependency of the final gate.** |
-| Purchasing module | OQ-16 recorded posture: planned post-v1; manual inventory receipts cover the gap; MVP-SCOPE C-01 (proposal) |
-| Payroll/HR | OQ-32 |
-| Multi-currency operations / revaluation | OQ-47/OQ-48 (single-currency MVP) |
-| Multi-device offline sync | OQ-44 (excluded from MVP and post-MVP until named demand) |
-| Webhooks / public API program | OQ-50; ADR-0029 Proposed |
-| Marketplace / third-party extensions | OQ-57 |
-| Two-book accounting; branch cost-center/allocation engine | OQ-56; OQ-55 |
-| CRM/ticketing | OQ-61 |
-| SaaS/multi-tenant hosting | OQ-01 product question open; OQ-22 |
-| License enforcement (blocking behavior) | ADR-0030 Proposed, enforcement OFF; OQ-45 |
-| Taxpayer System adapter; legacy FaraPayam adapter | OQ-51; OQ-04 |
-| Settlement/allocation engine (Task 16) | Contract finalized; **implementation authorization BLOCKED — Owner confirmation required**; bounded by the Treasury deferral note |
-| Code Structure Migration Service | ADR-0035 Proposed — explicitly not authorized |
-| Legal Profile / statutory legal books (Journal Book `دفتر روزنامه`, statutory General Ledger, income-and-expense book) | ADR-0036 Proposed; OQ-43 — every legal fact requires expert validation |
-| Advanced customization (org-level preferences, shared filters), dashboards-as-product, report scheduling/delivery | OQ-09; MVP-SCOPE C-14 (proposal); ADR-0013 Accepted as decision only |
-| Consolidation / multi-company | OQ-31/OQ-59 — needs its own ADR |
+| **Purchasing** | **POST-MVP**: supplier purchasing flow, purchase documents/invoices, purchasing lifecycle and purchasing-specific behavior. OQ-16 remains open; no MVP dependency. |
+| **Purchasing → Accounting** | **POST-MVP**. It is not a condition of the MVP graph or Final Gate. |
+| **Purchasing Reports** | **POST-MVP**. Inventory reports remain MVP and are not purchasing reports. |
+| **Treasury** | **POST-MVP / DEFERRED**: cash, bank, Treasury Receipt/Payment, cheque, settlement, bank reconciliation and Treasury-native reports. |
+| External Taxpayer System Adapter | Separate integration boundary; not implied by Electronic Books / Tax Accounting. OQ-43 remains open. |
 
-### 2.3 BLOCKED / OWNER DECISION REQUIRED
+**Terminology boundary:** Warehouse Receipt (quantity or rial) and Warehouse Issue are Inventory/Warehouse MVP documents. Treasury Receipt and Treasury Payment are Treasury capabilities and remain POST-MVP. Warehouse Receipt is not Purchasing; removing Purchasing does not remove Inventory Receipt or Issue.
 
-Anything whose safe progression needs a missing business/domain/legal/security decision. The concrete blockers at this baseline:
+Other post-MVP items remain as previously classified: payroll/HR, multi-currency activation, offline sync, public API/webhooks, marketplace, two-book accounting, consolidation, advanced customization and unadmitted integrations.
 
-- **Pending acceptances**: Bootstrap System Administrator, Task 23, Task 24; historical Tasks 13/14/15; ADR-0017…0021/0031/0032 promotions.
-- **Base Chart content values + control-role catalog/mandatory set** (OQ-25) and the **OQ-36 prerequisites** recorded by Task 21 (code-reuse policy, deletion eligibility of unused adopted accounts, code-history producer coexistence).
-- **Detail-dimension content** (OQ-41), **correction windows** (OQ-27), **fiscal-calendar policy** (OQ-23), **posting modes** (OQ-42), **durable delivery semantics** (OQ-39 — Architecture + product), **valuation method** (OQ-24), **tax model** (OQ-30).
-- **Sales admission decision** (with OQ-54/OQ-30/OQ-34/OQ-35/OQ-38) and **AR/AP admission** (no accepted admission exists).
-- **Report Builder depth** (OQ-49), **UI language/calendar** (OQ-02), **MVP acceptance thresholds** (OQ-60), **backup RPO/RTO** (OQ-52/OQ-53), **occupational roles** (OQ-14), **administrator safety** (OQ-19), **pin-divergence repair** (OQ-62/OQ-63), **tenancy posture** (OQ-01/OQ-22).
+### 2.3 Full Inventory / Warehouse MVP scope
 
----
+**Inventory Core ≠ Full Inventory / Warehouse.** Inventory Core is the technical/domain foundation already present on `main` (movement ledger, balances, reservations and transfers). The Owner-directed MVP requires the complete operational subsystem built on that foundation, without changing its architecture.
 
-## 3. Dependency graph
+| Required MVP capability | Scope boundary / current classification |
+|---|---|
+| Warehouse master / coding | Warehouse coding, definition/management and required warehouse master information; implementation candidate, not present as a complete operational flow. |
+| Product / Item master | Product/item coding, definition, supported attributes, required units, barcode and required master data; no business rules invented beyond repository/Owner evidence. |
+| Opening balances | **Opening quantity** and **opening rial** are separate required capabilities; dependencies on Inventory and Accounting are distinct. |
+| Operational documents | Material Request; Warehouse Receipt — quantity and rial; Warehouse Issue — quantity and rial. Receipt/Issue remain Inventory documents, not Purchasing. |
+| Valuation / rial flows | Quantity stock and rial stock; unvalued receipts and unvalued issues. Valuation/accounting treatment is required in capability, but method and rules stay gated by OQ-24/OQ-11 and relevant ADRs. |
+| Reports | Current stock, quantity stock, rial stock, quantity Kardex, rial Kardex, unvalued receipts, unvalued issues, item movement, inventory analysis, inventory management and inventory settings. |
 
-Corrected against actual repository dependencies. `→` means "must exist/decide before". Items marked **[OQ]** are decision-gated; **[ADR]** are ADR-gated.
+Preserved architecture: `Inventory Movement → Inventory Balance`; where the existing contract applies, `Available = Quantity - Reserved`; immutable movement semantics, current negative-stock policy, organization isolation, module ownership and no direct cross-module Prisma access remain binding. Generic Report Builder is not admitted merely because Inventory reports are required.
+
+### 2.4 Capability state rule
+
+`NOT PRESENT` or `DOCUMENTED BUT NOT IMPLEMENTED` means **MVP-required implementation candidate** for the capabilities in §2.1/§2.3; it does not mean POST-MVP. Purchasing, Purchasing → Accounting, Purchasing Reports and Treasury are the actual POST-MVP boundaries.
+
+### 2.5 Open decisions remain open
+
+Scope admission does not close OQ-24, OQ-25, OQ-30, OQ-34, OQ-35, OQ-39, OQ-42, OQ-43 or OQ-54, and does not promote any ADR. Capability is required; implementation rule remains OQ/ADR-gated.
+
+### 2.6 Owner-blocked implementation gates
+
+The required path remains blocked where repository evidence says it is blocked: Base Chart content and OQ-36 prerequisites; valuation; tax/pricing/credit/finalization policy; durable integration; posting mode; Iranian legal validation; report-builder depth; security/tenant decisions; and all recorded acceptance backlogs. The roadmap is a navigation map, not permission to code.
+
+## 3. Updated MVP dependency graph
+
+This is a conceptual dependency map; repository evidence and the gates below remain authoritative.
 
 ```text
-Current main (c654be9)
-   │
-   ├── Phase 0 — Governance / current-state closure
-   │      ├── Owner acceptance: Bootstrap SysAdmin, Task 23, Task 24
-   │      ├── Owner acceptance backlog: Tasks 13/14/15; ADR-0017…21, 0031, 0032
-   │      └── Documentation synchronization (continuous, AG-07)
-   │
-   ├── Phase 1 — Accounting completion
-   │      ├── Base Chart CONTENT approval [OQ-25 + OQ-36 prerequisites]
-   │      │      └── controlled content loading through the Task 23 mechanism
-   │      ├── Account lifecycle / code history producer [OD-20-4; ADR-0033 Proposed; OQ-36]
-   │      ├── Control roles (consumer-first: a consumer task must exist first)
-   │      │            [OQ-25 catalog; OD-20-2/OD-20-3]
-   │      ├── Detail dimensions [OQ-41; OD-20-6]
-   │      ├── Corrections (replacement/adjustment + windows) [OQ-27]
-   │      └── Year-transition / opening carry-forward [OQ-23]
-   │
-   ├── Phase 2 — Reporting foundation (read layer ALREADY EXISTS: Tasks 17A/17B/18/19)
-   │      ├── Bounded report definitions over approved read sources
-   │      │            [OQ-25/OQ-43 only for NEW layouts beyond existing surfaces]
-   │      ├── XLSX/CSV export (Excel module; ADR-0011 decision Accepted)
-   │      └── Print/PDF (Print module; ADR-0012) ── depends on Phase 5 evaluation
-   │
-   ├── Phase 3 — Operational ERP core (each item needs an admission/investigation gate FIRST)
-   │      ├── Party completion [OQ-38]
-   │      ├── Sales  [Owner admission + OQ-54/30/34/35]
-   │      ├── Purchasing — POST-MVP (OQ-16 posture)
-   │      └── AR/AP — BLOCKED by Owner admission
-   │
-   ├── Phase 4 — Cross-module Accounting integration
-   │      ├── OQ-39 delivery-semantics decision (+ likely ADR extending ADR-0005)
-   │      ├── OQ-42 posting-mode policy
-   │      ├── Posting rules / account mapping [OQ-24/25/30]
-   │      ├── Inventory → Accounting (ADR-0005 event contract — NO consumer exists today)
-   │      └── Sales → Accounting (only after a Sales domain contract exists)
-   │             (Treasury → Accounting: NOT MVP)
-   │
-   ├── Phase 5 — Durable infrastructure / worker / outbox / jobs
-   │      └── admitted ONLY when an admitted MVP capability requires it
-   │             (OQ-39 outcome; heavy report/PDF jobs; audit event consumption)
-   │
-   ├── Phase 6 — Audit / security / tenant hardening
-   │      ├── ODR-3 list-scope completion (F-2: financial-areas, fiscal-years,
-   │      │      accounting-periods, coding-structures) [Owner decision — Task 24 R-5]
-   │      ├── Audit module scope decision (AR-23; security.md §4 — NOT PRESENT)
-   │      ├── Identity session-surface completion (list/revoke, self password change)
-   │      ├── Administrator safety [OQ-19]; occupational roles [OQ-14]
-   │      └── Denial-path coverage; security logging; no-wildcard verification
-   │
-   ├── Phase 7 — Production readiness
-   │      ├── CI gate verification + branch protection [Owner confirmation]
-   │      ├── Task 12 P1 real-PostgreSQL concurrency verification (OPEN follow-up)
-   │      ├── Backup/restore posture [OQ-52/53; database-strategy §14 — no implementation]
-   │      ├── Production configuration / secrets / TLS posture [OQ-06/OQ-17]
-   │      └── OpenAPI/error-contract consistency verification
-   │
-   └── Phase 8 — Backend MVP Final Gate (§8) — verifies capabilities, not task existence
+Foundation
+    ↓
+Accounting Core
+    ↓
+Accounting Completion
+    ↓
+Party / Customer foundation
+    ↓
+FULL INVENTORY / WAREHOUSE
+    ├── Warehouse Coding
+    ├── Product Coding / Attributes / Units / Barcode
+    ├── Opening Quantity / Opening Rial
+    ├── Material Request
+    ├── Receipt Quantity / Receipt Rial
+    ├── Issue Quantity / Issue Rial
+    ├── Stock Management / Inventory Settings
+    └── Inventory Reports (Stock / Kardex / Movement / Analysis / Unvalued)
+    ↓
+Sales
+    ↓
+Inventory Effects
+    ↓
+Sales → Accounting
+    ↓
+Accounting / Operational Reporting
+    ↓
+Electronic Books / Tax Accounting / Iranian legal accounting outputs
+    ↓
+Backend MVP Final Gate
 ```
 
-**Sequencing notes (repository-driven):**
+`Inventory → Accounting` is an independent required path and is not downstream of Purchasing. Purchasing, Purchasing → Accounting and Purchasing Reports are outside this graph. Treasury is also outside it. Warehouse Receipt/Issue in the graph mean Inventory documents; Treasury Receipt/Payment is not represented.
 
-- Phases 1 and 2 partially overlap: the Accounting read layer is done (Task 18 ACCEPTED), so bounded Reporting work over existing sources does not wait for Base Chart *content*. New *layouts* (P&L, legal books) do wait on OQ-25/OQ-43.
-- Phase 4 strictly depends on Phase 3 admission (Sales) and on OQ-39; Inventory → Accounting needs no new domain module but needs OQ-24/25/30 mapping decisions + OQ-39 + OQ-42.
-- Phase 5 is demand-driven, not calendar-driven: the architecture diagrams describe outbox/worker/jobs, but **documentation explicitly distinguishes target from implemented**; infrastructure is admitted only when an admitted capability requires it.
-- Phase 6 items are independent of Phases 3–5 and can proceed in parallel; the ODR-3 F-2 correction is the most concrete and lowest-risk item in this roadmap.
-
----
+**Dependency notes:** opening quantity depends on Inventory master/movement rules; opening rial depends additionally on Accounting and valuation policy; rial receipt/issue and unvalued-document reporting depend on valuation/account mapping decisions; Sales depends on Party, Documents, Inventory effects and tax/pricing/finalization decisions; Sales → Accounting and Inventory → Accounting both depend on durable integration/posting decisions, but neither depends on Purchasing. Electronic Books depends on accounting read models plus Owner-provided/legal validation, not on an external Taxpayer System adapter.
 
 ## 4. Phase 0 — Governance / current-state closure
 
@@ -324,7 +302,7 @@ mechanism (exists — Task 23 merged)  ≠  content (OQ-25/OQ-36 — not approve
 
 **2A — Reporting foundation design task (investigation gate).**
 - *Objective:* define the bounded MVP report set and the report-definition approach consistent with ADR-0009 (code-defined definitions, module-owned views, one pipeline).
-- *Required verification:* MVP reporting candidates verified against the accepted strategy — Account Statement, General Ledger, Trial Balance, ledger movements, balance/movement views (all exist as read APIs); the **Journal Book and statutory/legal book surfaces are NOT admitted** (OQ-43 legal validation required; ADR-0036 Proposed); a minimal P&L is only a *proposed* interpretation (MVP-SCOPE D-04 — proposal, not accepted).
+- *Required verification:* MVP reporting candidates verified against the accepted strategy — Account Statement, General Ledger, Trial Balance, ledger movements, balance/movement views (all exist as read APIs); the Journal Book, Iranian legal books and electronic-book outputs are **MVP-required capability**, but their exact legal facts, fields and formats remain blocked by OQ-43 and ADR-0036 Proposed; a minimal P&L is only a *proposed* interpretation (MVP-SCOPE D-04 — proposal, not accepted).
 - *Blocking OQ/ADR:* OQ-25/OQ-43 for any NEW layout; **OQ-49 for any builder** — a generic Report Builder is NOT admitted by default.
 
 **2B — Report definition + query pipeline (bounded slices).**
@@ -341,14 +319,17 @@ mechanism (exists — Task 23 merged)  ≠  content (OQ-25/OQ-36 — not approve
 
 ### 5.3 Phase 3 — Operational ERP core
 
-**Rule.** Do **not** blindly create Sales/Purchasing/AR-AP tasks. For each candidate the investigation must first establish the twelve determinations required by the repository's own gate process: (1) existing repository support; (2) domain ownership; (3) blocking OQs; (4) the Accounting integration contract; (5) Inventory dependency; (6) Documents dependency; (7) Workflow dependency; (8) numbering dependency; (9) permissions; (10) required events; (11) required reports; (12) required frontend later.
+**Rule.** Full Inventory/Warehouse and Sales are required MVP capabilities, but this roadmap still does not authorize implementation. For each candidate the investigation must establish the twelve determinations required by the repository's own gate process: (1) existing repository support; (2) domain ownership; (3) blocking OQs; (4) the Accounting integration contract; (5) Inventory dependency; (6) Documents dependency; (7) Workflow dependency; (8) numbering dependency; (9) permissions; (10) required events; (11) required reports; (12) required frontend later.
 
 **Verified starting point:** `organization.parties` exists as a flat master (code, display_name, legal_name?, party_type, is_customer, is_supplier, email?, phone?) — VERIFIED IN MAIN. Sales, Purchasing, AR/AP: NOT PRESENT.
 
 - **3A — Party completion** (contacts/addresses/bank accounts/legal identifiers): BLOCKED by OQ-38; needed before statutory-facing sales documents; minimal MVP may proceed with the flat party.
-- **3B — Sales**: investigation + **Owner admission decision** first. Evidence state: `modules.md` "v1 core — not implemented"; MVP-SCOPE A-14 proposes a minimal customer-invoice set in MVP but is a **proposal**; form-gating OQs: OQ-54 (cancel/edit policy), OQ-30 (tax fields), OQ-34 (pricing), OQ-35 (credit warnings), OQ-38 (identifiers). Reuses: Documents Foundation (numbering/types/relations), Workflow (approvals if admitted), parties, inventory (stock effects — OQ-15 second half).
-- **3C — Purchasing**: POST-MVP per the OQ-16 recorded posture (manual receipts cover the gap). Re-admission requires an explicit Owner decision.
-- **3D — AR/AP**: no accepted admission anywhere in the repository; classify as BLOCKED by Owner admission. If admitted, its dependency on Sales/Purchasing documents, parties, and the Accounting integration contract must be designed first. Any settlement/allocation need stays with Task 16 (blocked) and the Treasury boundary (deferred).
+- **3B — Sales (MVP REQUIRED)**: implementation investigation and domain contract. Evidence state: `modules.md` "v1 core — not implemented"; the Owner scope correction admits the capability, while MVP-SCOPE A-14 remains proposal documentation. Required scope: Party/Customer, sales document/invoice, line items, quantities, prices, approved tax fields, numbering, lifecycle/finalization, applicable inventory effect and accounting effect. Form-gating OQs: OQ-54 (cancel/edit policy), OQ-30 (tax fields), OQ-34 (pricing), OQ-35 (credit warnings), OQ-38 (identifiers). Reuses: Documents Foundation (numbering/types/relations), Workflow (approvals if admitted), parties, inventory (stock effects — OQ-15 second half).
+- **3C — Full Inventory/Warehouse (MVP REQUIRED)**: expand Inventory Core into the complete operational scope in §2.3: warehouse/product coding, attributes, units/barcode, opening quantity and rial, Material Request, quantity/rial Receipt and Issue, stock management/settings, valuation/unvalued flows and reports. Existing Inventory Core architecture is preserved; OQ-24/OQ-11 gate valuation and opening treatment.
+- **3D — Purchasing**: POST-MVP per the OQ-16 recorded posture. This does not remove Warehouse Receipt or Warehouse Issue; no purchasing dependency is permitted in the Inventory MVP path.
+- **3E — Party / Customer foundation**: preserve the existing flat party master and complete the customer-facing foundation required by Sales; Supplier purchasing flow is not an MVP requirement.
+- **3F — AR/AP**: no accepted admission anywhere; not required to admit Sales. If later admitted, it must be separately designed.
+
 
 ### 5.4 Phase 4 — Cross-module Accounting integration
 
@@ -358,8 +339,8 @@ mechanism (exists — Task 23 merged)  ≠  content (OQ-25/OQ-36 — not approve
 
 - **4A — OQ-39 decision + likely ADR**: transactional in-process subscription vs durable queued/outbox delivery, including rejected-posting semantics (blocked source vs exception queue). This is the single highest-risk decision on the path (development-roadmap-v1 Stage 3 risk note — proposal document, but the risk classification matches the OQ registry). Only after this: enabling code.
 - **4B — OQ-42 posting-mode policy** (Mode A direct vs Mode B review; approval authority; segregation of duties).
-- **4C — Inventory → Accounting**: needs 4A + 4B + posting rules (1G: OQ-24/25/30 mapping). Activation gate: contract §20.4 / AC-D-32.
-- **4D — Sales → Accounting**: only after a Sales domain contract exists (3B). Same architecture.
+- **4C — Inventory → Accounting (MVP REQUIRED)**: independent of Purchasing; needs 4A + 4B + posting rules (1G: OQ-24/25/30 mapping). Inventory rial flows and unvalued documents remain capability requirements even while valuation/accounting treatment is gated. Activation gate: contract §20.4 / AC-D-32.
+- **4D — Sales → Accounting (MVP REQUIRED)**: after the Sales domain contract exists (3B), with no manual voucher as the final MVP state. Same architecture; OQ-30/OQ-39/OQ-42 and related accounting gates remain open.
 - **Treasury → Accounting: NOT MVP.** If a capability (e.g. settlement/allocation) requires Treasury in the future, it is POST-MVP/DEFERRED unless current accepted repository documentation explicitly says otherwise — it does not.
 
 ### 5.5 Phase 5 — Durable infrastructure / worker / outbox / jobs
@@ -455,9 +436,16 @@ The gate verifies **capabilities**, not task existence. Backend MVP may be decla
 - [ ] Organization/master data, Inventory, Documents, Workflow, Accounting — per the verified inventory (§1.2), plus each Phase 1–5 item the Owner admitted.
 - [ ] Chart: Base Chart mechanism **and approved content** if admitted (Phase 1A); leaf-only posting; read-time aggregation.
 - [ ] Posting/ledger: atomic, idempotent, period-close-enforced.
-- [ ] Reporting: admitted report set served with permissions, bounds, timeouts; exports if admitted.
-- [ ] Operational domains (Sales etc.) **only if admitted** — the gate does not require un-admitted modules.
-- [ ] Integrations (Inventory → Accounting etc.) **only if admitted**, following the event/public-service architecture.
+- [ ] Reporting: Accounting, Inventory/Warehouse, Sales and required Electronic Books/Tax Accounting outputs served with permissions, bounds and timeouts; exact legal formats validated rather than guessed.
+- [ ] Full Inventory/Warehouse operational flow: master/coding, openings (quantity and rial), Material Request, quantity/rial Receipt and Issue, stock, settings, valuation/unvalued flows and inventory reports.
+- [ ] Sales and Party/Customer flow per the required scope, including lifecycle/finalization and applicable inventory effect.
+- [ ] Inventory → Accounting and Sales → Accounting are operational MVP capabilities; their implementation follows the approved event/public-service architecture and recorded OQ/ADR gates.
+- [ ] Purchasing, Purchasing → Accounting, Purchasing Reports and Treasury are not required by this gate.
+
+### Required operational qualification flows
+- [ ] End-to-end: Master Data → Inventory/Warehouse → Sales → Inventory Effect → Accounting Effect → Reports → Electronic Books/Tax Accounting.
+- [ ] Inventory standalone: Warehouse → Product → Opening Quantity/Rial → Material Request → Receipt/Issue → Movement → Stock → Quantity/Rial Kardex and reports.
+- [ ] Purchasing is not a qualification prerequisite; Warehouse Receipt is explicitly qualified as Inventory, not Purchasing.
 
 ### Reliability
 - [ ] Idempotency where required (posting operations — exist; outbox consumers if admitted — AR-15).
