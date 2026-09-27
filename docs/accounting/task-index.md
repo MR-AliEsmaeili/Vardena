@@ -254,7 +254,7 @@ Candidate capabilities supported by repository evidence
 documentation tasks called out below remain implementation-blocked; **no row
 authorizes production implementation.** No priority order is implied.
 
-> **Cross-domain planning pointer (2026-09-27).** The repository-level path
+> **Cross-domain planning pointer (2026-09-27, scope synchronized).** The Owner-directed Backend MVP scope requires Full Inventory/Warehouse, Sales, Sales → Accounting, Inventory → Accounting, Reporting and Electronic Books/Tax Accounting in addition to Foundation and Accounting. Purchasing, Purchasing → Accounting, Purchasing Reports and Treasury remain POST-MVP. This is a navigation map only: it changes no status in this index, creates no task number, closes no OQ and promotes no ADR. The repository-level path
 > from the current `main` to Backend MVP — including where each row below sits
 > in the phase structure, its OQ/ADR dependency matrix and its Future Task
 > Candidate Register entry — is recorded in
