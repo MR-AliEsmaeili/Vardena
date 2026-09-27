@@ -39,13 +39,20 @@ import { AccountingLedgerMovementsController } from './api/accounting-ledger-mov
 import { AccountStatementsController } from './api/account-statements.controller.js';
 import { AccountStatementsService } from './application/account-statements.service.js';
 import { AccountStatementsRepository } from './data/account-statements.repository.js';
+import { BaseChartTemplatesRepository } from './data/base-chart-templates.repository.js';
+import { BaseChartAdoptionsRepository } from './data/base-chart-adoptions.repository.js';
 import { AccountingReadQueryRepository } from './data/accounting-read-query.repository.js';
 import { GeneralLedgerService } from './application/general-ledger.service.js';
 import { TrialBalanceService } from './application/trial-balance.service.js';
 import { ChartTreeService } from './application/chart-tree.service.js';
+import { BaseChartTemplatesService } from './application/base-chart-templates.service.js';
+import { BaseChartAdoptionsService } from './application/base-chart-adoptions.service.js';
 import { GeneralLedgerController } from './api/general-ledger.controller.js';
 import { TrialBalanceController } from './api/trial-balance.controller.js';
 import { ChartTreeController } from './api/chart-tree.controller.js';
+import { BaseChartTemplatesController } from './api/base-chart-templates.controller.js';
+import { BaseChartTemplateVersionsController } from './api/base-chart-template-versions.controller.js';
+import { BaseChartAdoptionsController } from './api/base-chart-adoptions.controller.js';
 
 /**
  * Accounting module — foundation + chart structure (Task 10.2, Task 10.3;
@@ -128,6 +135,11 @@ import { ChartTreeController } from './api/chart-tree.controller.js';
     TrialBalanceController,
     // Task 19 (ODR-2): the Accounting-owned, read-only Chart Tree surface.
     ChartTreeController,
+    // Task 23: the product-owned Base Chart template lifecycle and the
+    // explicit organization adoption boundary.
+    BaseChartTemplatesController,
+    BaseChartTemplateVersionsController,
+    BaseChartAdoptionsController,
   ],
   providers: [
     FinancialAreasRepository,
@@ -177,6 +189,13 @@ import { ChartTreeController } from './api/chart-tree.controller.js';
     // master — same repository as the administration surface, no second
     // Account master, no figures (Task 18 owns those).
     ChartTreeService,
+    // Task 23: the Base Chart store. Provided (not exported) — tenant
+    // consumption goes ONLY through the explicit adoption endpoints; no
+    // cross-module consumer of this service is authorized yet (AR-07).
+    BaseChartTemplatesRepository,
+    BaseChartAdoptionsRepository,
+    BaseChartTemplatesService,
+    BaseChartAdoptionsService,
     AccountingPermissionRegistration,
     AccountingDocumentTypeRegistration,
     // Task 10.8: the posting orchestration seam — ONE entry point

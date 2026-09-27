@@ -260,9 +260,14 @@ model CodingStructureVersion {
   createdBy      String?  @map("created_by")
   updatedBy      String?  @map("updated_by")
 
-  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   levels       CodingStructureLevel[]
   accounts     Account[]
+
+  /// Base Chart adoption records that pinned this version (Task 23).
+  /// Virtual side only — the real FK column stays
+  /// `base_chart_adoptions.coding_structure_version_id`.
+  baseChartAdoptions BaseChartAdoption[]
 
   /// Two concurrent "create the next version" writes collide HERE (the loser
   /// retries with the recomputed ordinal — the Workflow version precedent).
@@ -473,6 +478,11 @@ model AccountingConfiguration {
   /// The real FK is `accounts.accounting_configuration_id`; this is the
   /// virtual side.
   accounts     Account[] @relation("AccountAccountingConfiguration")
+
+  /// Base Chart adoption records that pinned this configuration (Task 23).
+  /// Virtual side only — the real FK column stays
+  /// `base_chart_adoptions.accounting_configuration_id`.
+  baseChartAdoptions BaseChartAdoption[]
 
   @@unique([organizationId, code, versionNumber], map: "uq_accounting_configurations_org_code_version")
   @@index([organizationId, status], map: "idx_accounting_configurations_org_status")
@@ -908,5 +918,230 @@ model AccountBalanceProjection {
   @@index([organizationId, accountId],                map: "idx_account_balance_projections_org_account")
   @@index([organizationId, accountingPeriodId],        map: "idx_account_balance_projections_org_period")
   @@map("account_balance_projections")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Task 23 — the Base Chart product template + explicit organization adoption
+// (OD-20-1, Task 21 governance baseline §1…§5/§7/§8/§12; docs/tasks/task-23）。
+//
+//   `accounting.base_chart_templates`          — template identity only. A
+//     versioned, Accounting-owned PRODUCT asset (OD-20-1): it is never
+//     organization data and never ledger identity.
+//   `accounting.base_chart_template_versions`  — version identity + the
+//     `draft → approved → published → superseded` lifecycle (Task 21 §8).
+//     A published/superseded version is IMMUTABLE: its content is the
+//     levels/nodes rows below, guarded by the same draft-workspace rule the
+//     coding structure uses (only `draft` rows are ever edited, inside a
+//     locked transaction, and a draft is never reachable from an adopted
+//     account). `superseded_by_version_id` records which newer version
+//     replaced this one.
+//   `accounting.base_chart_template_levels`    — the template's level SHAPE
+//     (digit lengths + per-level postability defaults, Task 21 §7). It
+//     deliberately mirrors `coding_structure_levels` MINUS `title` and
+//     `level_kind`: level titles/kinds are organization configuration
+//     vocabulary (contract §8.1), not template content.
+//   `accounting.base_chart_template_nodes`     — the template chart tree via
+//     template-internal keys (`node_key`/`parent_node_key`, Task 21 §2) so
+//     hierarchy exists BEFORE any organization `Account.id` exists. Node
+//     codes are canonical digits-only codes relative to the version's own
+//     level shape; VALUES are owner/accountant content (OQ-25 stays OPEN),
+//     never seeded by this module. `level` is stored DERIVED (root = 1),
+//     exactly like `accounts.level`.
+//   `accounting.base_chart_adoptions`          — the only tenant-scoped new
+//     table: the immutable record that organization X explicitly adopted
+//     published template version Y, pinned to the ODR-1 configuration pair
+//     the copied `accounts` rows carry. An adoption is the ONLY path that
+//     materializes organization-owned accounts out of a template (copy, not
+//     reference — there is deliberately NO column on `accounts` pointing at
+//     template rows: account-level provenance stays OPEN, Task 21 §4.2/§8).
+//
+// Tenancy exception (OD-20-1): the schema-level "every row carries
+//   `organization_id`" rule above guards TENANT data. The four template
+//   tables are product/catalog data — organization ids are excluded from
+//   them BY DESIGN (Task 21 §2a), the way `rbac.permissions` is global.
+//   Authorization on the template surface is a module permission; the
+//   adoption surface re-adds the full organization boundary
+//   (`organization_id` NOT NULL + FK RESTRICT + scope-leading indexes).
+//   No `LedgerEntry`/document line/balance may ever reference a template
+//   id: there is no FK from any ledger path to these tables, and adoption
+//   writes ordinary `accounts` rows under the organization's own identity.
+//
+// Deliberately absent (AR-29 / OQ boundary): no `accounts.`
+// base_chart_template_node_id` (provenance — OPEN), no `accounts.`
+// is_mandatory` (mandatoriness is an adoption-time completeness rule, not a
+// post-adoption column), no control-role column anywhere (OD-20-2/3), no
+// dimension/statutory column (OQ-41/OQ-43), no `account_type`/`is_temporary`
+// (OQ-25), no `reserved_ranges`.
+// ---------------------------------------------------------------------------
+
+model BaseChartTemplate {
+  id        String   @id
+  /// Product identity of the template (versions share it — stable identity).
+  code      String   @db.VarChar(64)
+  title     String   @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  versions BaseChartTemplateVersion[]
+
+  @@unique([code], map: "uq_base_chart_templates_code")
+  @@map("base_chart_templates")
+  @@schema("accounting")
+}
+
+model BaseChartTemplateVersion {
+  id            String   @id
+  templateId    String   @map("template_id")
+  /// 1-based ordinal per template, assigned at creation (retry on race, the
+  /// coding-structure version precedent).
+  versionNumber Int      @map("version_number")
+  /// `draft` | `approved` | `published` | `superseded` (closed code-defined
+  /// list, domain/base-chart-template.ts; TEXT with no CHECK — see header).
+  status        String   @default("draft") @db.VarChar(16)
+  /// Levels of the version's own shape: 1..MAX_CODING_STRUCTURE_DEPTH (8).
+  maxDepth      Int      @map("max_depth")
+  /// Lifecycle evidence (published/superseded versions are immutable; these
+  /// stamps are the only columns that may change after `approved`).
+  approvedAt    DateTime? @map("approved_at") @db.Timestamptz(6)
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(6)
+  supersededAt  DateTime? @map("superseded_at") @db.Timestamptz(6)
+  /// Which newer PUBLISHED version of the same template replaced this one
+  /// (null when superseded without a named successor). RESTRICT: history is
+  /// never removed.
+  supersededByVersionId String? @map("superseded_by_version_id")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy     String?  @map("created_by")
+  updatedBy     String? @map("updated_by")
+
+  template     BaseChartTemplate        @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  supersededBy BaseChartTemplateVersion? @relation("BaseChartSupersession", fields: [supersededByVersionId], references: [id], onDelete: Restrict)
+  supersedes   BaseChartTemplateVersion[] @relation("BaseChartSupersession")
+  levels       BaseChartTemplateLevel[]
+  nodes        BaseChartTemplateNode[]
+  adoptions    BaseChartAdoption[]
+
+  @@unique([templateId, versionNumber], map: "uq_base_chart_template_versions_template_id_version_number")
+  /// "the template's published version" — the resolver the adoption path and
+  /// the publish transition need.
+  @@index([templateId, status], map: "idx_base_chart_template_versions_template_id_status")
+  @@map("base_chart_template_versions")
+  @@schema("accounting")
+}
+
+model BaseChartTemplateLevel {
+  id         String  @id
+  versionId  String  @map("version_id")
+  /// 1-based ordinal inside the version.
+  levelIndex Int     @map("level_index")
+  /// Digits this level's segment contributes (≥ 1; total across the version
+  /// ≤ MAX_ACCOUNT_CODE_LENGTH = 32 — architecture caps, not policy).
+  digitLength Int    @map("digit_length")
+  /// Per-level default for the node's `is_postable` (Task 21 §7) — a default,
+  /// never a rule: leaf-only posting is derived (OD-20-5).
+  defaultIsPostable Boolean @default(false) @map("default_is_postable")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy  String?  @map("created_by")
+  updatedBy  String?  @map("updated_by")
+
+  version BaseChartTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId, levelIndex], map: "uq_base_chart_template_levels_version_id_level_index")
+  @@map("base_chart_template_levels")
+  @@schema("accounting")
+}
+
+model BaseChartTemplateNode {
+  id            String  @id
+  versionId     String  @map("version_id")
+  /// Template-INTERNAL identity of the node (Task 21 §2): it is never an
+  /// organization `Account.id` and never ledger identity. Authored by the
+  /// template editor; unique within the version.
+  nodeKey       String  @map("node_key") @db.VarChar(64)
+  /// The AUTHORED tree edge, expressed in the template key space (Task 21 §2
+  ///: "node key + parent node key"). Kept next to `parentId` so reads and
+  /// partial-adoption selections never need a join back into the key space;
+  /// the planner writes both from one derivation, so they cannot disagree.
+  parentNodeKey String? @map("parent_node_key") @db.VarChar(64)
+  /// The RESOLVED tree edge — the same adjacency + RESTRICT self-FK the
+  /// `accounts` table uses, so an ancestor can never disappear under its
+  /// subtree. Null for roots.
+  parentId      String? @map("parent_id")
+  /// Canonical digits-only code relative to the version's level shape (the
+  /// same §9.2 semantics `accounts.code` carries).
+  code          String  @db.VarChar(32)
+  /// Persian-capable title (content; authored, never seeded).
+  title         String  @db.VarChar(200)
+  /// `debit` | `credit` — the decided closed list (§8.3).
+  accountNature String  @map("account_nature") @db.VarChar(8)
+  /// Per-node postability default (Task 21 §7), seeded from the level's
+  /// `default_is_postable` at authoring; HARD-BOUNDED by leaf-only: the
+  /// publish gate refuses a postable parent and the adoption derivation
+  /// forces `false` on every node that has children in the adopted set
+  /// (OD-20-5), whatever this flag says.
+  isPostable    Boolean @default(false) @map("is_postable")
+  /// Adoption-completeness flag ONLY (Task 21 §5): a mandatory node must be
+  /// part of every adoption of this version. No RBAC/control-role/statutory
+  /// meaning is attached here (§11 of the baseline).
+  isMandatory   Boolean @default(false) @map("is_mandatory")
+  /// Whether the adopted account is created active (Task 21 §2).
+  defaultIsActive Boolean @default(true) @map("default_is_active")
+  /// 1-based depth, ALWAYS derived (root = 1, child = parent.level + 1) —
+  /// stored like `accounts.level`, never client input.
+  level         Int
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy     String? @map("created_by")
+  updatedBy     String? @map("updated_by")
+
+  version  BaseChartTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+  parent   BaseChartTemplateNode?   @relation("BaseChartTemplateNodeTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children BaseChartTemplateNode[]  @relation("BaseChartTemplateNodeTree")
+
+  @@unique([versionId, nodeKey], map: "uq_base_chart_template_nodes_version_id_node_key")
+  /// Code uniqueness within the version (the template-local §9.2 mirror).
+  @@unique([versionId, code], map: "uq_base_chart_template_nodes_version_id_code")
+  @@index([versionId, parentId], map: "idx_base_chart_template_nodes_version_id_parent_id")
+  @@index([versionId, level], map: "idx_base_chart_template_nodes_version_id_level")
+  @@map("base_chart_template_nodes")
+  @@schema("accounting")
+}
+
+model BaseChartAdoption {
+  id               String   @id
+  organizationId   String   @map("organization_id")
+  /// The exact immutable published version this organization adopted.
+  templateVersionId String  @map("template_version_id")
+  /// The ODR-1 configuration pair the adopted accounts are pinned to (the
+  /// organization's ACTIVE pair at adoption time, resolved, never
+  /// recomputed).
+  accountingConfigurationId String @map("accounting_configuration_id")
+  codingStructureVersionId  String @map("coding_structure_version_id")
+  /// Number of `accounts` rows the adoption created (final adoption set
+  /// size — requested ∪ ancestor closure ∪ mandatory).
+  accountCount     Int      @map("account_count")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy        String?  @map("created_by")
+  updatedBy        String?  @map("updated_by")
+
+  organization             Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  templateVersion          BaseChartTemplateVersion @relation(fields: [templateVersionId], references: [id], onDelete: Restrict)
+  accountingConfiguration  AccountingConfiguration  @relation(fields: [accountingConfigurationId], references: [id], onDelete: Restrict)
+  codingStructureVersion   CodingStructureVersion   @relation(fields: [codingStructureVersionId], references: [id], onDelete: Restrict)
+
+  /// One adoption of the same version per organization — the idempotency
+  /// backstop: two concurrent adoptions collide HERE, and the loser answers
+  /// a deterministic 409 (never a duplicate chart).
+  @@unique([organizationId, templateVersionId], map: "uq_base_chart_adoptions_organization_id_template_version_id")
+  /// The organization-side listing (scope-leading, ADR-0021 §3).
+  @@index([organizationId], map: "idx_base_chart_adoptions_organization_id")
+  /// "which organizations adopted this version" — the reverse lookup.
+  @@index([templateVersionId], map: "idx_base_chart_adoptions_template_version_id")
+  @@map("base_chart_adoptions")
   @@schema("accounting")
 }
