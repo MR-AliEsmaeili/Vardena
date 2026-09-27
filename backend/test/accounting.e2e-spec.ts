@@ -194,11 +194,12 @@ describe('Accounting foundation (e2e)', () => {
     }
   });
 
-  it('lets a read-only principal list but not create (403, not 401)', async () => {
-    await limited
+  it('requires organization scope for reads and still denies writes without permission', async () => {
+    const outOfScope = await limited
       .get('/api/v1/financial-areas')
       .query({ organizationId: '01FFFFFFFFFFFFFFFFFFFFFFFF' })
-      .expect(200);
+      .expect(404);
+    expect(outOfScope.body.code).toBe('EntityNotFound');
 
     const denied = await limited
       .post('/api/v1/financial-areas')
