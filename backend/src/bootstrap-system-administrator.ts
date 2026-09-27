@@ -33,6 +33,9 @@ async function bootstrapSystemAdministrator(): Promise<void> {
         userCreated: result.userCreated,
         roleCreated: result.roleCreated,
         userRoleCreated: result.userRoleCreated,
+        organizationId: result.organizationId,
+        organizationCreated: result.organizationCreated,
+        membershipCreated: result.membershipCreated,
       },
       'SystemAdministratorBootstrap',
     );

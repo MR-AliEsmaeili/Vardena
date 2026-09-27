@@ -48,6 +48,15 @@ const SORTABLE_FIELDS: Record<string, string> = {
   updatedAt: 'updatedAt',
 };
 
+/**
+ * Identity of the organization row the installation bootstrap creates for the
+ * configured `DEPLOYMENT_ORGANIZATION_ID` (ADR-0025). Only the initial values:
+ * an operator renames it afterwards through the ordinary Organization.Edit
+ * API, and a later bootstrap never overwrites the stored code/name.
+ */
+export const DEPLOYMENT_ORGANIZATION_BOOTSTRAP_CODE = 'MAIN';
+export const DEPLOYMENT_ORGANIZATION_BOOTSTRAP_NAME = 'سازمان اصلی';
+
 export interface ListOrganizationsQuery {
   page: number;
   pageSize: number;
@@ -383,6 +392,80 @@ export class OrganizationsService {
       allowInactive: false,
     });
     return organization;
+  }
+
+  /**
+   * INSTALLATION ONLY — materialize the organization named by
+   * `DEPLOYMENT_ORGANIZATION_ID` (ADR-0025 "bootstrapped out-of-band").
+   *
+   * ADR-0025 pins a deployment to exactly one organization id but deliberately
+   * refuses to create organizations through the API in pinned mode, so a fresh
+   * installation previously had a pinned id pointing at no row and no
+   * documented, non-SQL way to create it. This method is that missing
+   * out-of-band step and nothing more:
+   *
+   * - it exists only for the post-migration `bootstrap:system-admin` command
+   *   and is refused when an HTTP request is in flight, so it adds no API
+   *   surface and no authorization bypass;
+   * - it creates at most the single pinned row, with the pinned id, so
+   *   repeated installs can never produce a second organization;
+   * - it returns `null` when no pin is configured — an unpinned deployment
+   *   stays in ADR-0021 structural mode, where the administrator creates the
+   *   first organization through the ordinary API and takes the existing
+   *   ODR-3 first-member grant. No organization is invented there.
+   */
+  async ensureDeploymentOrganization(): Promise<{
+    organization: Organization;
+    created: boolean;
+  } | null> {
+    const pin = this.config.deploymentOrganizationId;
+    if (pin === null) return null;
+    if (getRequestContext() !== undefined) {
+      // Fail closed: this is an installation command operation, never a
+      // request-serving one. No controller may reach it.
+      throw AppException.forbidden(
+        'The deployment organization can only be provisioned by the installation bootstrap command.',
+      );
+    }
+
+    const existing = await this.repository.findById(pin);
+    if (existing !== null) return { organization: existing, created: false };
+
+    const now = new Date();
+    try {
+      const created = await this.repository.create({
+        id: pin,
+        code: DEPLOYMENT_ORGANIZATION_BOOTSTRAP_CODE,
+        name: DEPLOYMENT_ORGANIZATION_BOOTSTRAP_NAME,
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: null,
+      });
+      await publishEvent(this.events, {
+        type: ORGANIZATION_CREATED_EVENT,
+        aggregateType: 'Organization',
+        aggregateId: created.id,
+        payload: { id: created.id, code: created.code },
+      });
+      this.logger.log(
+        'Deployment organization provisioned by installation bootstrap',
+        { organizationId: created.id },
+        OrganizationsService.name,
+      );
+      return { organization: created, created: true };
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        // A concurrent bootstrap won the race (same pinned id, or the code is
+        // already taken by an operator-renamed row). Adopt the real state.
+        const raced = await this.repository.findById(pin);
+        if (raced !== null) return { organization: raced, created: false };
+        throw AppException.conflict(
+          'The deployment organization code is already used by a different organization; rename it or set DEPLOYMENT_ORGANIZATION_ID to that organization.',
+        );
+      }
+      throw error;
+    }
   }
 
   // ---- internals ----------------------------------------------------------

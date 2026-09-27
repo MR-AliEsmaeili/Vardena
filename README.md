@@ -50,9 +50,11 @@ enabled at <http://localhost:3000/api/docs>.
 
 Initial login is `مدیر` / `1`. The password is stored only as an Argon2id hash;
 change it immediately through the existing password-reset API because forced
-password change is not implemented. The bootstrap creates no organization and
-no scope bypass: after creating the initial organization, grant `مدیر` its
-ordinary first membership before using organization-scoped capabilities. See
+password change is not implemented. The bootstrap grants no scope bypass: with
+`DEPLOYMENT_ORGANIZATION_ID` configured it provisions that single organization
+and `مدیر`'s ordinary membership, so organization-scoped APIs work at first
+login; without it, create the initial organization and grant `مدیر` its ordinary
+first membership before using organization-scoped capabilities. See
 [backend/README.md](backend/README.md) for the exact procedure and limitations.
 
 To stop the stack, press `Ctrl+C`. To remove the containers and the local
@@ -64,16 +66,16 @@ production deployment.
 
 ## Start Here
 
-| If you are… | Read |
-|---|---|
-| An AI coding agent / new contributor | [.vardena/project-context.md](.vardena/project-context.md) (onboarding, mandatory order) |
+| If you are…                                            | Read                                                                                                                                                  |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| An AI coding agent / new contributor                   | [.vardena/project-context.md](.vardena/project-context.md) (onboarding, mandatory order)                                                              |
 | Asking "what is actually built and what was accepted?" | [STATE.md](STATE.md) (project memory, task history, review status) + [docs/repository-documentation-audit.md](docs/repository-documentation-audit.md) |
-| Planning or proposing the next MVP work | [docs/roadmap/backend-mvp-roadmap.md](docs/roadmap/backend-mvp-roadmap.md) (read before proposing or implementing future work) |
-| Reviewing the system design | [docs/architecture.md](docs/architecture.md) |
-| Working on a domain | [docs/modules.md](docs/modules.md) + the matching `docs/*.md` |
-| Working on the UI | [frontend/README.md](frontend/README.md) + [docs/architecture.md](docs/architecture.md) §7 |
-| Changing the architecture | [docs/adr/](docs/adr/) (process in `adr/README.md` — an ADR is required) |
-| Asking about behavior that isn't specified | [docs/open-questions.md](docs/open-questions.md) (register an OQ — never invent business rules) |
+| Planning or proposing the next MVP work                | [docs/roadmap/backend-mvp-roadmap.md](docs/roadmap/backend-mvp-roadmap.md) (read before proposing or implementing future work)                        |
+| Reviewing the system design                            | [docs/architecture.md](docs/architecture.md)                                                                                                          |
+| Working on a domain                                    | [docs/modules.md](docs/modules.md) + the matching `docs/*.md`                                                                                         |
+| Working on the UI                                      | [frontend/README.md](frontend/README.md) + [docs/architecture.md](docs/architecture.md) §7                                                            |
+| Changing the architecture                              | [docs/adr/](docs/adr/) (process in `adr/README.md` — an ADR is required)                                                                              |
+| Asking about behavior that isn't specified             | [docs/open-questions.md](docs/open-questions.md) (register an OQ — never invent business rules)                                                       |
 
 ## Documentation
 

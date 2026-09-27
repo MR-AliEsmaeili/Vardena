@@ -82,6 +82,10 @@ import { OrganizationMembershipsController } from './api/organization-membership
   ],
   exports: [
     OrganizationsService,
+    // Exported for the installation bootstrap command, which must create the
+    // administrator's ordinary deployment membership through the service that
+    // owns it (never by writing the table from outside the module, AR-07).
+    OrganizationMembershipsService,
     BranchesService,
     DepartmentsService,
     EmployeesService,

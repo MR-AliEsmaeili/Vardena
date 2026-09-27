@@ -5,7 +5,7 @@ Status: Accepted (foundation) · Updated: 2026-09-27
 Scope: authentication, authorization (RBAC), audit logging, API security,
 credential/session policies, integration security. Security **defaults** below
 are architectural configuration values (tunable per deployment via config); they
-are *not* business rules. Where a value is a business/policy decision, it is
+are _not_ business rules. Where a value is a business/policy decision, it is
 registered as an OQ instead of being assumed.
 
 ## 1. Threat Model & Boundaries
@@ -26,18 +26,18 @@ registered as an OQ instead of being assumed.
 
 **Mechanism: server-side opaque sessions.**
 
-| Aspect | Decision |
-|---|---|
-| Credential | username + password |
-| Password storage | argon2id (memory/time/parallelism tuned for server; salted) |
-| Token | opaque random 256-bit, base64url; only the SHA-256 hash is stored |
-| Delivery | httpOnly cookie (`vardena_session`), `SameSite=Lax`, `Secure` when HTTPS, `Path=/` |
-| Storage | `identity.sessions`: token hash, user, user-agent, IP, created, last-seen, absolute expiry, revoked-at |
-| Sliding expiry | idle timeout default **30 min** (config) |
-| Absolute expiry | default **12 h** (config) — hard session cap regardless of activity |
-| Revocation | user logout, admin revoke (self/any), user deactivation, password change revokes other sessions (keep current configurable) |
-| Concurrent sessions | allowed by default; per-user max is config (OQ-06) |
-| MFA | deferred; hooks reserved in Users (OQ-06) |
+| Aspect              | Decision                                                                                                                    |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Credential          | username + password                                                                                                         |
+| Password storage    | argon2id (memory/time/parallelism tuned for server; salted)                                                                 |
+| Token               | opaque random 256-bit, base64url; only the SHA-256 hash is stored                                                           |
+| Delivery            | httpOnly cookie (`vardena_session`), `SameSite=Lax`, `Secure` when HTTPS, `Path=/`                                          |
+| Storage             | `identity.sessions`: token hash, user, user-agent, IP, created, last-seen, absolute expiry, revoked-at                      |
+| Sliding expiry      | idle timeout default **30 min** (config)                                                                                    |
+| Absolute expiry     | default **12 h** (config) — hard session cap regardless of activity                                                         |
+| Revocation          | user logout, admin revoke (self/any), user deactivation, password change revokes other sessions (keep current configurable) |
+| Concurrent sessions | allowed by default; per-user max is config (OQ-06)                                                                          |
+| MFA                 | deferred; hooks reserved in Users (OQ-06)                                                                                   |
 
 Why not JWT: on-premise ERP needs **revocability** and centralized session
 management (admin "kill sessions", deactivation, lockout) without relying on
@@ -77,12 +77,12 @@ checks cannot exist (prevents "DB-only permissions" that are never enforced).
 
 1. **Route guard** — declarative: every controller method declares required
    permission(s) via `@RequirePermission(...)` and applies `AuthGuard` +
-   `AuthorizationGuard`. The guard answers *before* any controller logic. A
+   `AuthorizationGuard`. The guard answers _before_ any controller logic. A
    guarded route that declares nothing **fails closed** (500): it must never
    become an open endpoint.
 2. **Application service check** — the application service re-checks the same
    permission(s) through `AuthorizationService.requireAllPermissions`. The
-   service layer is the *authoritative* layer; the guard is defense-in-depth and
+   service layer is the _authoritative_ layer; the guard is defense-in-depth and
    the fast path. Several permissions on one route mean **ALL of them** are
    required — there are no permission expressions.
 3. **Data-level rules** — e.g. deactivated users cannot authenticate (and their
@@ -105,7 +105,7 @@ defense-in-depth; no second guard or authorization model is used.
 `Unauthorized`**; valid session without the required permission → **403
 `PermissionDenied`** with a generic message (the client is never told which
 permission it lacks). Inside application services the same rule holds, with one
-documented exception: calls that run *outside* an HTTP request (bootstrap/seed,
+documented exception: calls that run _outside_ an HTTP request (bootstrap/seed,
 worker, tests) are **system context** where authorization is the caller's
 concern — HTTP requests always carry a context and can never use that path.
 
@@ -141,18 +141,36 @@ after migrations, `npm run bootstrap:system-admin` creates the real Users-domain
 account `مدیر` with the specified initial credential, hashing the password
 through the existing Argon2id `PasswordService`, then assigns `System
 Administrator`. The command is idempotent: it creates no duplicate
-user/role/assignment, adds newly registered permissions on later deployment
-runs, and never resets an existing user's password or lifecycle state. Docker
+user/role/assignment/membership, adds newly registered permissions on later
+deployment runs, and never resets an existing user's password or lifecycle
+state — a disabled or soft-deleted `مدیر` is never silently reactivated; the
+command fails loudly instead (Task 26 closure). Docker
 Compose runs it in the `migrate` service; CI runs the same built command against
 PostgreSQL. There is no bootstrap HTTP endpoint. This records the provisioning
 mechanism implemented by PR #64; it does not record an Owner Decision or fully
 resolve OQ-19. Self-disable protection, self-role-removal protection, and
 last-administrator lockout protection remain OPEN. The bootstrap does not invent
-or hardcode an organization. On a fresh database the administrator may create
-the initial organization and then grant their own ordinary membership through
-the existing empty-organization first-grant rule; until that membership exists,
-ODR-3 still returns 404 from organization-scoped paths despite the full RBAC
-role. The schema has no forced-password-change state or login contract; the
+or hardcode an organization. Its organization behaviour depends on the
+deployment shape (ADR-0025):
+
+- **Pinned deployment (`DEPLOYMENT_ORGANIZATION_ID` set).** The bootstrap
+  command provisions that exact organization row if it does not exist yet (the
+  ADR-0025 "bootstrapped out-of-band" step, refused inside any HTTP request) and
+  creates `مدیر`'s ordinary `organization.organization_memberships` row through
+  the owning service. The administrator therefore authorizes organization-scoped
+  APIs through the normal ODR-3 membership check, with no bypass, no second
+  organization on re-runs, and no manual SQL. An existing membership is left
+  alone; other memberships are never removed or replaced.
+- **Unpinned deployment (default, ADR-0021 structural mode).** No organization
+  is invented. The administrator creates the initial organization through the
+  ordinary API and then grants their own membership through the existing
+  empty-organization first-grant rule; until that membership exists, ODR-3 still
+  returns 404 from organization-scoped paths despite the full RBAC role.
+
+Authorization stays `required permission AND organization membership`: removing
+one permission from the `System Administrator` role denies exactly that
+operation (403), and removing the membership denies organization-scoped reads
+(404). Neither the username `مدیر` nor the role name carries any authority. The schema has no forced-password-change state or login contract; the
 initial credential must therefore be changed immediately after first login
 through the existing password-reset operation, which revokes sessions.
 
@@ -172,10 +190,10 @@ post-merge — the first Task 19 implementation bound only the data paths and
 deliberately exempted the grantor, which was a cross-organization
 authorization bypass on the administration surface). The rule now:
 
-| Target organization | Required of the acting principal |
-|---|---|
-| **has ≥ 1 member** | authenticated **+** member of that organization **+** the operation's permission (`Membership.View` to list, `Membership.Grant` to grant, `Membership.Revoke` to revoke) |
-| **has 0 members** (bootstrap) | authenticated **+** `Organization.Membership.Grant` — may create the **FIRST** membership only; list and revoke stay membership-bound |
+| Target organization           | Required of the acting principal                                                                                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **has ≥ 1 member**            | authenticated **+** member of that organization **+** the operation's permission (`Membership.View` to list, `Membership.Grant` to grant, `Membership.Revoke` to revoke) |
+| **has 0 members** (bootstrap) | authenticated **+** `Organization.Membership.Grant` — may create the **FIRST** membership only; list and revoke stay membership-bound                                    |
 
 The bootstrap exception is the only case in which a permission alone is
 authority over an organization, it is confined to the first `POST
@@ -197,7 +215,7 @@ this session does not create a parallel audit store.
 
 ## 4. Audit Logging (AR-23)
 
-- **What:** who, what, when, from where, and *what changed*:
+- **What:** who, what, when, from where, and _what changed_:
   (actor id + type [user/system], action, module, entity type + id, before/after
   JSONB snapshots, correlation id, IP, user-agent, timestamp).
 - **Where:** `audit.audit_logs`, append-only. No update/delete API; DB-level
