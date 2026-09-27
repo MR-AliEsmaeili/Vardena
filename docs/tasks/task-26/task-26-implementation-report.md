@@ -87,7 +87,7 @@ Local commands/results: Prettier PASS; TypeScript PASS; oxlint PASS with 7 pre-e
 ## CI
 
 - CI run `36336552917`: frontend job `108668390348` passed; backend job `108668390516` passed validation, lint, typecheck, formatting, unit tests, build, migration, bootstrap, and rehearsal, then failed E2E because `accounting.e2e-spec.ts` still expected the pre-remediation `200` contract for an out-of-scope financial-area list. The expectation was corrected to the established `404 EntityNotFound` contract and pushed for a new run.
-- Final CI run ID/result: pending the follow-up run; this report does not claim CI passed without it.
+- Final verification run `36336761914`: **PASS**. Backend job `108668982971` passed validation, Prisma generation, lint, typecheck, format, 1267 unit tests, build, migration, bootstrap, migration rehearsal, and the complete E2E/live-database suites. Frontend job `108668983153` passed install, lint, typecheck, format, tests, and build. E2E result: **PASS**.
 
 ## Diff Summary / Scope Verification
 
