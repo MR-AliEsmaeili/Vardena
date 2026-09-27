@@ -105,7 +105,10 @@ organization-scoped APIs authorized with no manual step (pinned mode)
 ## J. CI evidence
 
 - Workflow: `CI` (`.github/workflows/ci.yml`) — backend job runs validate → lint → typecheck → format → unit → build → `prisma migrate deploy` → `bootstrap:system-admin` → migration rehearsal → full E2E incl. live-DB suites; frontend job runs lint/typecheck/format/test/build.
-- Run ID: recorded in the “CI” section of the final answer for this task (pushed from `arena/01a0e3f3-vardena`).
+- Run ID: **`36338648394`** (PR #72, head `b6bb163bf05ec58785912966dc57f03308d34cbe`) — conclusion **success**.
+  - backend job `108674263738`: **success** (prisma validate/generate, oxlint, tsc, prettier, 1282 unit tests, build, `prisma migrate deploy`, `bootstrap:system-admin`, migration rehearsal, full E2E including the live-database suites — `VARDENA_TEST_DATABASE_URL` is set job-wide, so both bootstrap live suites executed rather than skipped).
+  - frontend job `108674263677`: **success**.
+- Local verification: `npx tsc --noEmit` PASS; `npm run lint` 0 errors / 7 pre-existing warnings; `npx prettier --check src test` PASS; `npx vitest run` **109 files / 1282 tests PASS**; `npx vitest run --config ./vitest.config.e2e.ts test/bootstrap-system-administrator-live.e2e-spec.ts test/deployment-scope.e2e-spec.ts` PASS (live cases skipped locally — no database in the sandbox).
 
 ## K. Documentation changes
 
