@@ -166,6 +166,17 @@ export class AccountsService {
     query: ListAccountsQuery,
   ): Promise<PaginatedResult<AccountDto>> {
     await this.authorization.requireAllPermissions([ACCOUNT_PERMISSIONS.VIEW]);
+    // ODR-3 (Task 19) + Owner decision R-2 (Task 24): the organization scope is
+    // asserted on EVERY path of this list, BEFORE any row is read — the
+    // deployment pin (ADR-0025) and the principal → membership binding are the
+    // same single chokepoint every by-id account path already passes through.
+    // It used to run only on the `parentId` branch below, which made the scope
+    // check depend on an OPTIONAL query parameter: a permission holder who is
+    // not a member of the named organization could list its accounts by simply
+    // omitting the filter. A foreign/unknown organization answers 404 here,
+    // indistinguishable from "does not exist" (the established non-disclosure
+    // posture, AC-I-16) — never 403, never an empty page.
+    await this.organizations.assertOrganizationInScope(query.organizationId);
     if (query.parentId !== undefined && query.parentId !== null) {
       // A parent filter is a scope filter: resolve it in-organization first so
       // a foreign id answers 404 instead of silently returning nothing.

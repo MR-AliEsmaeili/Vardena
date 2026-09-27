@@ -1703,19 +1703,26 @@ describe('deployment organization pin over the Task 10.3 surface (ADR-0025)', ()
       });
     }
 
-    // Lists never return the pinned organization's rows to another scope: the
-    // HTTP surface is confined by the global pin guard, and a direct service
-    // caller of a LIST is scoped by its parameter (the same posture the
-    // calendar services keep — no invented second authorization system).
+    // Lists never return the pinned organization's rows to another scope.
+    // Task 24 / Owner decision R-2: the ACCOUNT list now asserts the scope
+    // itself, on every path, so a non-pinned organization answers 404 instead
+    // of an empty page (an empty page is indistinguishable from "no rows yet"
+    // and therefore is not evidence of enforcement).
     expect(
-      await asActor(ACTOR, () =>
-        pinned.accounts.listAccounts({
-          organizationId: foreignId,
-          page: 1,
-          pageSize: 10,
-        }),
+      await failure(
+        asActor(ACTOR, () =>
+          pinned.accounts.listAccounts({
+            organizationId: foreignId,
+            page: 1,
+            pageSize: 10,
+          }),
+        ),
       ),
-    ).toMatchObject({ total: 0, items: [] });
+    ).toMatchObject({ code: 'EntityNotFound' });
+    // The coding-structure list still answers an empty page: the same missing
+    // chokepoint on the other accounting list surfaces is finding F-2 of the
+    // Task 24 gate and is deliberately left to its own task (R-5) — R-2 is a
+    // bounded correction of the ACCOUNT list only.
     expect(
       await asActor(ACTOR, () =>
         pinned.structures.listVersions({
@@ -1767,5 +1774,281 @@ describe('Accounting event vocabulary (contract §21)', () => {
     expect(
       ACCOUNTING_EVENT_TYPES.filter((t) => t.startsWith('CodingStructure')),
     ).toEqual([]);
+  });
+});
+
+/**
+ * Owner decision R-2 (Task 24): the ODR-3 organization chokepoint must run on
+ * EVERY path of `GET /api/v1/accounts`, not only when the optional `parentId`
+ * filter is supplied.
+ *
+ * Before the fix, `listAccounts` asserted the scope inside the `parentId`
+ * branch only, so an authenticated principal holding `Accounting.Account.View`
+ * but holding NO membership of the named organization received that
+ * organization's accounts by simply omitting the filter. These tests drive the
+ * real `AuthorizationService`, real RBAC rows and the real
+ * `OrganizationsService` membership store, so they fail against the
+ * pre-fix code path.
+ *
+ * Scope discipline: this is an authorization correction only. No account
+ * lifecycle policy, no response shape, no permission code and no schema is
+ * touched here.
+ */
+describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
+  let fixture: Fixture;
+  let orgA = '';
+  let orgB = '';
+  let parentInA = '';
+  let childInA = '';
+  let parentInB = '';
+
+  beforeEach(async () => {
+    fixture = await buildFixture();
+    orgA = (
+      await asSystem(() =>
+        fixture.organizations.createOrganization({
+          code: 'R2ORGA',
+          name: 'Org A (member)',
+        }),
+      )
+    ).id;
+    orgB = (
+      await asSystem(() =>
+        fixture.organizations.createOrganization({
+          code: 'R2ORGB',
+          name: 'Org B (foreign, genuinely populated)',
+        }),
+      )
+    ).id;
+
+    // The actor holds every Account/structure/configuration permission — the
+    // point of these tests is that PERMISSION ALONE MUST NOT CROSS
+    // ORGANIZATIONS (ODR-3) — but is a member of orgA ONLY.
+    await fixture.grant(ACTOR, [
+      ...Object.values(CODING_STRUCTURE_PERMISSIONS),
+      ...Object.values(ACCOUNT_PERMISSIONS),
+      ...Object.values(ACCOUNTING_CONFIGURATION_PERMISSIONS),
+    ]);
+    fixture.member(ACTOR, orgA);
+
+    await publishBoth(fixture, orgA, TWO_LEVELS);
+    // orgB is provisioned through the trusted system context ONLY: the actor
+    // must stay a complete stranger to it for the boundary under test to mean
+    // anything.
+    await asSystem(async () => {
+      const version = await fixture.structures.createVersion({
+        organizationId: orgB,
+        code: 'DEFAULT',
+        maxDepth: TWO_LEVELS.maxDepth,
+        levels: TWO_LEVELS.levels,
+      });
+      await fixture.structures.publishVersion(orgB, version.id);
+      const configuration = await fixture.configurations.createConfiguration({
+        organizationId: orgB,
+        code: 'DEFAULT',
+        name: 'DEFAULT',
+        levels: TWO_LEVELS.levels.map((level) => ({
+          levelIndex: level.levelIndex,
+          title: level.title,
+          digitLength: level.digitLength,
+          defaultIsPostable: level.defaultIsPostable,
+          levelKind: null,
+        })),
+      });
+      await fixture.configurations.publishConfiguration(orgB, configuration.id);
+    });
+
+    // orgA: a root plus a child, so the `parentId` branch has real data.
+    parentInA = (await createAccount(fixture, orgA, '02')).id;
+    childInA = (
+      await createAccount(fixture, orgA, '02001', { parentId: parentInA })
+    ).id;
+
+    // orgB genuinely OWNS accounts: an empty result must never be mistaken for
+    // an enforced boundary. System context bypasses the membership check by
+    // design (trusted internal caller), which is exactly how the fixture data
+    // is planted without granting the actor anything.
+    parentInB = (
+      await asSystem(() =>
+        fixture.accounts.createAccount({
+          organizationId: orgB,
+          code: '03',
+          title: 'Foreign root',
+          accountNature: 'debit',
+        }),
+      )
+    ).id;
+    await asSystem(() =>
+      fixture.accounts.createAccount({
+        organizationId: orgB,
+        code: '03001',
+        title: 'Foreign child',
+        accountNature: 'debit',
+        parentId: parentInB,
+      }),
+    );
+  });
+
+  // Test A — same organization: the happy path is untouched.
+  it('returns the caller’s own organization accounts (no behaviour change)', async () => {
+    const page = await asActor(ACTOR, () =>
+      fixture.accounts.listAccounts({
+        organizationId: orgA,
+        page: 1,
+        pageSize: 50,
+      }),
+    );
+    expect(page.total).toBe(2);
+    expect(page.items.map((account) => account.code)).toEqual(['02', '02001']);
+    for (const account of page.items) {
+      expect(account.organizationId).toBe(orgA);
+    }
+  });
+
+  // Test B + Test C — the regression: a foreign organization, WITHOUT the
+  // optional `parentId` filter. This is the path that used to skip the
+  // chokepoint entirely.
+  it('refuses a foreign organization with 404 when no parentId filter is supplied', async () => {
+    // The foreign rows really exist — proven through the trusted system
+    // context — so a 404 below is an enforced boundary, not an empty table.
+    const asSeenBySystem = await asSystem(() =>
+      fixture.accounts.listAccounts({
+        organizationId: orgB,
+        page: 1,
+        pageSize: 50,
+      }),
+    );
+    expect(asSeenBySystem.total).toBe(2);
+
+    const refused = await failure(
+      asActor(ACTOR, () =>
+        fixture.accounts.listAccounts({
+          organizationId: orgB,
+          page: 1,
+          pageSize: 50,
+        }),
+      ),
+    );
+    // 404, never 403: a permission holder must not learn that another
+    // organization exists by probing its id (AC-I-16, ODR-3).
+    expect(refused.code).toBe('EntityNotFound');
+  });
+
+  it('refuses a foreign organization identically for every optional filter combination', async () => {
+    const queries = [
+      { isActive: true },
+      { isPostable: true },
+      { level: 1 },
+      { search: '03' },
+      { sort: 'code' },
+    ] as const;
+    for (const extra of queries) {
+      // eslint-disable-next-line no-await-in-loop
+      const refused = await failure(
+        asActor(ACTOR, () =>
+          fixture.accounts.listAccounts({
+            organizationId: orgB,
+            page: 1,
+            pageSize: 50,
+            ...extra,
+          }),
+        ),
+      );
+      expect(refused.code).toBe('EntityNotFound');
+    }
+  });
+
+  it('never leaks a foreign organization’s accounts into an in-scope list', async () => {
+    const page = await asActor(ACTOR, () =>
+      fixture.accounts.listAccounts({
+        organizationId: orgA,
+        page: 1,
+        pageSize: 50,
+        search: '03',
+      }),
+    );
+    expect(page.total).toBe(0);
+    expect(page.items).toEqual([]);
+  });
+
+  // Test D — with `parentId`: the previously-scoped path keeps working.
+  it('keeps the parentId path working inside the caller’s organization', async () => {
+    const page = await asActor(ACTOR, () =>
+      fixture.accounts.listAccounts({
+        organizationId: orgA,
+        page: 1,
+        pageSize: 50,
+        parentId: parentInA,
+      }),
+    );
+    expect(page.total).toBe(1);
+    expect(page.items[0]).toMatchObject({ id: childInA, parentId: parentInA });
+  });
+
+  it('refuses a foreign organization even when a parentId filter is supplied', async () => {
+    const refused = await failure(
+      asActor(ACTOR, () =>
+        fixture.accounts.listAccounts({
+          organizationId: orgB,
+          page: 1,
+          pageSize: 50,
+          parentId: parentInB,
+        }),
+      ),
+    );
+    expect(refused.code).toBe('EntityNotFound');
+  });
+
+  // Test E — foreign parent under an in-scope organization: unchanged
+  // non-disclosure behaviour.
+  it('reports a parent that belongs to another organization as not found', async () => {
+    const refused = await failure(
+      asActor(ACTOR, () =>
+        fixture.accounts.listAccounts({
+          organizationId: orgA,
+          page: 1,
+          pageSize: 50,
+          parentId: parentInB,
+        }),
+      ),
+    );
+    expect(refused.code).toBe('EntityNotFound');
+  });
+
+  it('keeps the deployment pin (ADR-0025) enforced on the list without a parentId', async () => {
+    // Same data, a deployment pinned to orgA: the list path must refuse a
+    // non-pinned organization too, not answer an empty page.
+    const pinned = await buildFixture(pinnedAppConfig(orgA));
+    await pinned.grant(ACTOR, [...Object.values(ACCOUNT_PERMISSIONS)]);
+    pinned.member(ACTOR, orgA);
+    pinned.member(ACTOR, orgB);
+    const refused = await failure(
+      asActor(ACTOR, () =>
+        pinned.accounts.listAccounts({
+          organizationId: orgB,
+          page: 1,
+          pageSize: 50,
+        }),
+      ),
+    );
+    expect(refused.code).toBe('EntityNotFound');
+  });
+
+  it('still refuses the list with 403 when the View permission is missing', async () => {
+    const other = '01ACTOR000000000000000000B';
+    fixture.member(other, orgA);
+    await fixture.grant(other, [CODING_STRUCTURE_PERMISSIONS.VIEW]);
+    const refused = await failure(
+      asActor(other, () =>
+        fixture.accounts.listAccounts({
+          organizationId: orgA,
+          page: 1,
+          pageSize: 50,
+        }),
+      ),
+    );
+    // Authorization order is unchanged: the permission is decided first, so a
+    // missing code is still 403 and never downgraded to 404.
+    expect(refused.code).toBe('PermissionDenied');
   });
 });
