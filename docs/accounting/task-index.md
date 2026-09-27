@@ -254,6 +254,17 @@ Candidate capabilities supported by repository evidence
 documentation tasks called out below remain implementation-blocked; **no row
 authorizes production implementation.** No priority order is implied.
 
+> **Cross-domain planning pointer (2026-09-27).** The repository-level path
+> from the current `main` to Backend MVP — including where each row below sits
+> in the phase structure, its OQ/ADR dependency matrix and its Future Task
+> Candidate Register entry — is recorded in
+> [`docs/roadmap/backend-mvp-roadmap.md`](../roadmap/backend-mvp-roadmap.md)
+> (+ [`backend-mvp-dependency-matrix.md`](../roadmap/backend-mvp-dependency-matrix.md),
+> [`future-task-candidates.md`](../roadmap/future-task-candidates.md)).
+> That roadmap is a navigation map only: it changes no status in this index,
+> creates no task number, closes no OQ and promotes no ADR. §7 of this index
+> remains the sole bridge from a candidate to an authorized Accounting task.
+
 | Capability                                                                     | Status                                                     | Gates                                                        | Evidence                                                               |
 | ------------------------------------------------------------------------------ | ---------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------- |
 | Control roles (consumer-first code-defined role → effective-dated account mapping) | Candidate · Blocked by OQ / future consumer | OQ-25 for concrete catalog/mandatory set; OD-20-2/OD-20-3 decide sequencing and mapping shape | Contract §8.7 (AC-D-09); ADR-0037; OD-20-2/OD-20-3 |
