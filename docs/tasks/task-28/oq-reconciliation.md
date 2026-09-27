@@ -41,6 +41,8 @@
 
 > **Critical Rule:** The existence and technical readiness of the Base Chart *mechanism* does NOT imply that Base Chart *content* is approved. Base Chart content remains decision-blocked by **OQ-25**.
 
+> **OD-27-02 Update (2026-09-27, Task 28 follow-up — DECIDED):** The Owner explicitly decided that **the MVP requires the Base Chart mechanism but does not require a concrete Base Chart content set**. The mechanism/capability (layers 1, 2, 4, 5, 6 above, plus the Task 21 governance baseline) is MVP scope and must be provided and retained. The concrete content set (layer 3) is **not** MVP-required and must not be introduced by implementation inference — layer 3 stays at 0 rows / OPEN unless and until a separately approved content artifact exists. This decides the MVP-scope sub-question only; it does not close OQ-25 and does not reinterpret Task 21 or Task 23.
+
 ---
 
 ## 2. OQ-25 Owner Decision Space
@@ -50,8 +52,8 @@
 | **What remains undecided?** | 1. The exact account codes, hierarchy levels (Group 2-digit, General 2-digit, Subsidiary 2-3 digit, Detail 3-digit).<br>2. Persian account titles (e.g. دارایی‌های جاری، موجودی نقد و بانک، حساب‌های دریافتنی تجاری، موجودی کالا).<br>3. Account natures (`DEBIT`, `CREDIT`, `EITHER`) and leaf postability flags.<br>4. Mandatory standard control roles (Receivables, Payables, Inventory, Sales Revenue, VAT Output, VAT Input). |
 | **Why is the decision needed?** | Without an approved chart content artifact, new organizations have no standard Iranian SME chart to copy upon adoption and cannot use pre-configured accounting flows out-of-the-box. |
 | **What implementation depends on it?** | 1. Phase 1A Base Chart Content Loading (JSON/fixture loader via Task 23 API).<br>2. Posting rules mapping (Phase 1G / Phase 4) from Inventory and Sales events to standard chart accounts. |
-| **Does the decision affect MVP?** | **YES.** Accounting completion, sales/inventory automated posting, and statutory trial balance reporting for MVP require standard chart structure. |
-| **What becomes unblocked after the decision?** | Phase 1A execution (0 migrations, 0 schema changes, loading template nodes and verifying adoption rehearsal in CI). |
+| **Does the decision affect MVP?** | **YES — for the mechanism only (OD-27-02, DECIDED 2026-09-27).** The MVP requires the Base Chart *mechanism*; it does **not** require a concrete Base Chart *content* set. Accounting completion for MVP does not depend on a standard chart content artifact; automated Sales/Inventory posting mappings and statutory trial-balance content remain gated by the still-open OQ-25 content decisions (and OQ-43/OQ-39/OQ-42), not by the MVP boundary itself. |
+| **What becomes unblocked after the decision?** | Nothing content-level. OD-27-02 (2026-09-27) decided only the MVP boundary (mechanism = in MVP; concrete content = not required). Phase 1A content loading remains gated by a separately approved content artifact plus the OQ-36 prerequisites; the concrete content decisions remain open under OQ-25. |
 | **Does it require accounting/domain input?** | **YES.** Requires Iranian statutory accounting expertise to guarantee compliance with standard Iranian Chart of Accounts standards. |
 
 ---
@@ -60,7 +62,7 @@
 
 | OQ | Area | Summary | Status | MVP Gating Role | Implementation State on `main` | Required Owner / Domain Action |
 |---|---|---|---|---|---|---|
-| **OQ-25** | Accounting | Chart of accounts: codes, titles, levels, control roles, natures | **OPEN** | **Gating Base Chart Content (Phase 1A)** | Mechanism merged (Task 23); 0 content rows | Owner/accountant approval of standard Iranian SME chart artifact. |
+| **OQ-25** | Accounting | Chart of accounts: codes, titles, levels, control roles, natures | **OPEN** — MVP-scope sub-question **DECIDED by OD-27-02 (2026-09-27)**: mechanism in MVP, concrete content set NOT MVP-required; content-level decisions remain open | **Gating Base Chart Content (Phase 1A) — not the MVP mechanism boundary** | Mechanism merged (Task 23); 0 content rows | Owner/accountant approval of a concrete standard Iranian SME chart artifact **only when content loading is to be authorized**; no content may be introduced without a separately approved artifact. |
 | **OQ-23** | Accounting | Fiscal calendar: Jalali vs Gregorian alignment, adjustment periods, close/reopen, opening carry-forward | **OPEN** | Gating year-end transition (Phase 1F) | Periods and closing gate exist (Task 14); first-period opening = 0 (ADR-0031); no carry-forward | Decision on calendar rules and statutory year-end carry-forward. |
 | **OQ-24** | Inventory / Accounting | Inventory valuation / costing method (FIFO, Moving Average, Standard); unvalued receipts/issues | **OPEN** | **Gating Inventory $\rightarrow$ Accounting integration & Rial Kardex** | Inventory Core physical ledger merged; 0 costing tables/methods | Decision on supported costing method and negative-stock valuation policy. |
 | **OQ-27** | Accounting | Correction policies: replacement vouchers, adjustment vouchers, time windows, cross-period rules | **OPEN** | Gating corrections beyond reversal (Phase 1E) | Document reversal merged (Task 15); replacement/adjustment not implemented | Decision on correction windows and uncorrectable document classes. |
@@ -90,3 +92,4 @@
 - **Open Questions Remaining OPEN:** 18
 - **Open Questions Blocking Active Implementation:** 8 (OQ-25, OQ-24, OQ-30, OQ-34, OQ-35, OQ-38, OQ-39, OQ-42)
 - **OQs Closed by Task 28:** **0** (No OQ is closed without explicit Owner Decision).
+- **2026-09-27 follow-up (OD-27-02):** the OQ-25 **MVP-scope sub-question** is now decided (Base Chart mechanism = MVP; concrete content set = NOT MVP-required). **OQ-25 itself remains OPEN** for every content-level decision (content values, account codes, Persian titles, natures, mandatory-account set, control-role catalog/mandatory set, and other Task 21 unresolved content items). No OQ status changed; no OQ was closed by the follow-up.

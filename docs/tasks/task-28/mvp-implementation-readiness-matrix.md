@@ -30,7 +30,7 @@
 | **Workflow Foundation** | YES | YES | YES (ADR-0018, 0024) | NO | YES (ODR-3) | YES (Implemented) | **N/A (Already Merged)** |
 | **Accounting Core (Vouchers, Ledger, Periods, Reversal)** | YES | YES | YES (ADR-0026, 0028, 0031, 0032) | NO | YES (ODR-3) | YES (Implemented) | **N/A (Already Merged)** |
 | **Base Chart Mechanism (Templates & Adoption Copy)** | YES | YES | YES (ADR-0037 Proposed, Task 21 Accepted) | NO | YES (ODR-3) | YES (Task 23 Merged) | **N/A (Already Merged)** |
-| **Base Chart Content (Standard Iranian SME Chart)** | YES (Mechanism exists) | NO (Chart structure/codes undecided) | PARTIAL (ADR-0037 Proposed) | YES (OQ-25, OQ-36) | YES (ODR-3) | PENDING OWNER DECISION | **NO (Blocked by OQ-25)** |
+| **Base Chart Content (Standard Iranian SME Chart)** | YES (Mechanism exists) | NO (Chart structure/codes undecided) | PARTIAL (ADR-0037 Proposed) | YES (OQ-25, OQ-36) | YES (ODR-3) | PENDING OWNER DECISION — **OD-27-02 (2026-09-27): content NOT required for MVP; loading only with a separately approved content artifact** | **NO (Blocked by OQ-25 content decisions; not an MVP requirement per OD-27-02)** |
 | **Account Lifecycle & Code History** | PARTIAL | NO | PARTIAL (ADR-0033 Proposed) | YES (OQ-36) | YES | PENDING OWNER DECISION | **NO (Blocked by OQ-36)** |
 | **Control Roles (Catalog & Account Mapping)** | PARTIAL | NO | PARTIAL (ADR-0037 Proposed) | YES (OQ-25, Consumer missing) | YES | PENDING OWNER DECISION | **NO (Blocked by OQ-25 & Consumer)** |
 | **Detail Dimensions (Line-Level Analytical Assignments)** | PARTIAL | NO | PARTIAL (ADR-0037 Proposed) | YES (OQ-41) | YES | PENDING OWNER DECISION | **NO (Blocked by OQ-41)** |
@@ -57,12 +57,14 @@
 
 ## 2. Summary of Implementation Readiness
 
+> **OD-27-02 note (2026-09-27, Task 28 follow-up):** the Owner decided the MVP requires the Base Chart **mechanism** (already merged — Task 23) but **not** a concrete Base Chart **content** set. This changes no readiness verdict above: Base Chart Content remains blocked by the OQ-25 content decisions and is no longer treated as an MVP requirement.
+
 - **Capabilities Implementation-Ready for Production Code:** **0**
 - **Capabilities Ready for Investigation / Design Gate:** **4**
-  1. *Track 1 (Phase 1A):* Base Chart Content Loading (if Owner resolves OQ-25 / OD-27-02).
+  1. *Track 1 (Phase 1A):* Base Chart Content Loading — **optional, not MVP-required per OD-27-02 (2026-09-27)**; gated by a separately approved content artifact and the remaining OQ-25 content decisions.
   2. *Track 2 (Phase 3A/3C):* Full Inventory / Warehouse Operational Subsystem Investigation Gate.
   3. *Track 3 (Phase 2A):* Reporting Foundation & Code-Defined Report Registry Design Gate.
   4. *Track 4 (Phase 6.2/6.3):* Audit Module Scope & Identity Session Management Specification Gate.
 - **Capabilities Blocked by Domain Decisions / OQs:** **10** (Base Chart Content, Dimensions, Costing, Posting Rules, Sales, Integrations, Statutory Books, etc.).
 - **Capabilities Explicitly OUT OF MVP:** **4** (Treasury, Purchasing, Purchasing $\rightarrow$ Accounting, Purchasing Reports).
-- **Core Conclusion:** Active production coding is **BLOCKED — OWNER DECISION REQUIRED**.
+- **Core Conclusion:** Active production coding is **BLOCKED — OWNER DECISION REQUIRED** (OD-27-01/OD-27-03/OD-27-04 and the domain OQ gates remain pending).

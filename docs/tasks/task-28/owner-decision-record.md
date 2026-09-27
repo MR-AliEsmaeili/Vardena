@@ -5,12 +5,15 @@
 
 > **Governing Rule (STATE.md §1/§6):** The Agent does not fabricate Owner decisions or manufacture acceptance.
 > Where explicit Owner decisions have not yet been recorded in the repository, this record strictly marks them as `PENDING OWNER DECISION`.
+> Owner decisions that have been explicitly provided by the Owner are recorded as `DECIDED` (2026-09-27 follow-up: OD-27-02, Decision 1 below).
 
 ---
 
 ## Decision Summary
 
-All four core decision areas identified by Task 27 (OD-27-01 through OD-27-04), along with supporting domain decisions (OQ-25, OQ-36, OQ-39, OQ-42, OQ-24, OQ-30, OQ-43), remain in state **`PENDING OWNER DECISION`**.
+**Update (2026-09-27, Task 28 follow-up):** The Owner has explicitly decided **OD-27-02** (Base Chart / OQ-25 — MVP scope boundary): **DECIDED — MVP requires the Base Chart mechanism, but does not require a concrete Base Chart content set.** The full decision is recorded in Decision 1 below. This decision records an MVP scope boundary only: it authorizes no implementation, closes no OQ (OQ-25 remains OPEN for content-level decisions), changes no production code, and leaves Task 23 (mechanism) and Task 21 (accepted governance baseline) intact.
+
+All remaining decision areas — OD-27-01, OD-27-03, OD-27-04 (identified by Task 27), along with supporting domain decisions (OD-28-01 through OD-28-06; OQ-36, OQ-39, OQ-42, OQ-24, OQ-30, OQ-43) — remain in state **`PENDING OWNER DECISION`**.
 
 No production implementation capability is authorized to proceed without explicit Owner resolution.
 
@@ -35,13 +38,53 @@ Owner and accounting domain authorization of:
 2. The specific account codes, Persian titles, account natures (DEBIT / CREDIT / EITHER), and default leaf postability flags.
 3. Authorization to load this content artifact into template tables through the Task 23 API mechanism (Phase 1A).
 
+*(Historical note: items 1–3 above remain undecided — the 2026-09-27 decision below decides only the MVP scope boundary between mechanism and content.)*
+
 ### Owner Decision
-`PENDING OWNER DECISION`
+
+**`DECIDED` (2026-09-27 — Task 28 follow-up, explicit Owner Decision)**
+
+> **DECIDED — MVP requires the Base Chart mechanism, but does not require a concrete Base Chart content set.**
+
+**1. The MVP shall provide and retain the Base Chart mechanism**, including:
+- Base Chart template model
+- versioned template lifecycle
+- Draft → Approved → Published → Superseded lifecycle
+- organization adoption semantics
+- adoption by copy, not live reference
+- immutable published-version semantics
+- no silent mutation of an adopted organization chart when the template changes
+- partial-adoption governance already established by Task 21
+- separation between:
+  - Base Chart Template
+  - organization-owned accounts
+  - ledger identity
+- leaf-only posting invariant
+- read-time/report-time aggregation
+
+**2. Explicit MVP boundary.** For MVP, DO NOT introduce a concrete standard Base Chart content set merely by implementation inference. Specifically, do NOT invent or seed:
+- standard account codes
+- Persian account titles
+- account natures
+- mandatory-account list
+- concrete control-role catalog
+- statutory account requirements
+- assumed Iranian accounting chart content
+
+No migration or seed should introduce such content unless a separately approved content artifact exists.
+
+**3. Meaning of the decision.** **Base Chart mechanism = MVP. Concrete Base Chart content = NOT MVP-required.** This does NOT mean Base Chart functionality is removed or deferred. The product must be capable of supporting a Base Chart, while the actual accounting content remains organization/domain-owner controlled until an explicit approved content artifact is provided.
+
+**4. OQ-25 handling.** OQ-25 is NOT fully resolved. Its MVP-scope question is now decided, while the following content decisions remain explicitly open unless already resolved elsewhere: concrete Base Chart content values; concrete account codes; Persian titles; account natures; the mandatory-account set; the concrete control-role catalog/mandatory set; and any other content decisions already identified by Task 21 as unresolved. All existing OQ-25 history is preserved; no historical decision is overwritten.
+
+**5. Task 23 / Task 21 treatment.** This decision does NOT reinterpret Task 23 or Task 21. Task 23 remains the implementation of the Base Chart mechanism. Task 21 remains the accepted governance baseline for Base Chart structure and adoption semantics. This decision only establishes the MVP boundary between (1) mechanism/capability and (2) concrete accounting content.
 
 ### Consequence
-- Base Chart content loading (Phase 1A) remains **BLOCKED BY OQ-25**.
-- Tenant organizations currently have no pre-packaged standard Iranian chart to adopt upon provisioning and must create accounts manually.
-- Downstream automated posting rules (Phase 1G / Phase 4) cannot be wired to standard account codes.
+- Base Chart **mechanism** is confirmed as MVP scope (implemented and merged via Task 23; its formal acceptance remains a separate matter under OD-27-01).
+- Base Chart **content** loading (Phase 1A) remains **BLOCKED** until a separately approved content artifact exists; no content may be introduced by implementation inference, and no migration or seed may introduce content without such an artifact.
+- **OQ-25 remains OPEN** — only its MVP-scope sub-question is decided; all content-level decisions (codes, Persian titles, natures, mandatory-account set, control-role catalog/mandatory set, other Task 21 unresolved content items) remain open.
+- Tenant organizations continue to construct custom charts manually or to await a future approved standard chart artifact.
+- Downstream automated posting rules (Phase 1G / Phase 4) continue to require the remaining OQ-25 content decisions (concrete control-role catalog/mapping) before being wired to concrete accounts.
 
 ---
 
