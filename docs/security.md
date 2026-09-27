@@ -135,6 +135,70 @@ remains OPEN for occupational roles (Accountant, Warehouse, Sales, Auditor, and
 so on), their permission baselines, auditor/administrator separation, and
 future role permission baselines.
 
+**Future permission reconciliation contract (registry-driven, Task 26
+follow-up).** `مدیر` is the default system administrator and receives
+administrative authority through the ordinary `User → Role → Permission` model
+only. The `System Administrator` role represents the _complete currently
+registered_ application permission catalog, and that catalog is derived from
+code:
+
+```text
+New module / feature
+        ↓
+Permission declared in the module's canonical PermissionRegistry registration
+        ↓
+Canonical application permission catalog (PermissionRegistry → rbac.permissions)
+        ↓
+System Administrator reconciliation (SystemAdministratorRbacService.ensureForUser)
+        ↓
+مدیر receives the permission through the ordinary role assignment (user_roles)
+```
+
+_Fresh installation._ `prisma migrate deploy` then `npm run bootstrap:system-admin`
+creates/adopts `مدیر`, creates/adopts the `System Administrator` role, mirrors
+the registry into `rbac.permissions`, grants every registered code to the role,
+assigns the role to `مدیر`, and adds the organization membership required by the
+deployment mode (see the bootstrap paragraph below).
+
+_Existing installation, new module deployed._ The same reconciliation resolves
+`PermissionRegistry.all()` again and inserts only the missing
+`role_permissions` rows on the existing role — nothing is removed, so
+operator-granted extra permissions on that role survive. **This is not a runtime
+effect:** the new permission reaches `مدیر` when the deployment runs
+`npm run bootstrap:system-admin` (Docker Compose runs it in the `migrate`
+service; CI runs the same built command). No manual modification of the `مدیر`
+user, role, or any administrator permission list is required or permitted.
+
+_Developer rule for a new protected capability_ — for example
+`Sales.Invoice.Export`:
+
+1. Define the permission in the module's canonical permission registry
+   (`*-permissions.ts` definitions, AR-22).
+2. Register it through the existing module registration class
+   (`…PermissionRegistration` → `PermissionRegistry`), so it enters the
+   canonical catalog and the `rbac.permissions` mirror.
+3. Protect the route with `@RequirePermission(...)` **and** re-check it in the
+   application service (AR-21).
+4. Add authorization tests, including a denial test.
+5. Do **not** add the code to any special `مدیر` permission list — no such list
+   exists and none may be created.
+6. Do **not** maintain a hardcoded administrator permission count anywhere.
+7. Do **not** write a username-specific rule such as
+   `if (user.username === 'مدیر')`.
+8. Do **not** introduce wildcard permissions (`*`, `Admin.*`, `Module.*`).
+9. The existing System Administrator reconciliation makes the permission
+   available to `مدیر` on the next bootstrap run — that is the only supported
+   mechanism.
+
+_Explicitly prohibited_ as authorization mechanisms, now and in future modules:
+`if (user.username === 'مدیر')`; `if (role.name === 'System Administrator')`;
+a manually maintained `ADMIN_PERMISSIONS = [...]`; a hardcoded permission count
+as an architectural contract; wildcard permission codes; an administrator-only
+guard, interceptor or service bypass; an `isSystemAdmin`/superuser flag; or a
+second administrator authorization subsystem. The `user_roles →
+role_permissions → permissions` relationship remains the single source of
+truth, and role names and usernames carry no runtime authority.
+
 **First-administrator bootstrap (PR #64 merged implementation; work item READY
 FOR REVIEW — NOT ACCEPTED; OQ-19 remains OPEN):**
 after migrations, `npm run bootstrap:system-admin` creates the real Users-domain
@@ -302,3 +366,20 @@ this session does not create a parallel audit store.
 7. Rate-limit/pagination/upload caps appropriate for the endpoint? (AR-24)
 8. Any new secret → config/env only, encrypted at rest if integration credential?
 9. Docs updated (module section + permission list) + ADR if architectural? (AG-07)
+
+### 9.1 RBAC / System Administrator evolution check (every new protected capability)
+
+- [ ] Every new protected capability has an explicit permission.
+- [ ] The permission is registered in the module's canonical permission registry.
+- [ ] The permission is included in the canonical application permission catalog
+      (`PermissionRegistry` → `rbac.permissions` mirror).
+- [ ] The endpoint/controller has the normal `@RequirePermission(...)` guard.
+- [ ] The application service performs the authoritative permission check.
+- [ ] Authorization tests exist (grant **and** denial).
+- [ ] No separate permission assignment for `مدیر` was introduced.
+- [ ] No username-based administrator bypass was introduced.
+- [ ] No wildcard permission was introduced.
+- [ ] The System Administrator receives the permission through the existing
+      registry/reconciliation mechanism (§3, "Future permission reconciliation
+      contract") — i.e. by re-running `npm run bootstrap:system-admin` at
+      deployment, not by editing any list.

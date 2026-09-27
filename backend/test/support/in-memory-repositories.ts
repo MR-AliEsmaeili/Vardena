@@ -453,6 +453,67 @@ export class InMemoryRolesRepository {
     return this.assignments.delete(`${roleId}:${permissionId}`);
   }
 
+  /**
+   * Installation reconciliation, mirroring the real repository transaction:
+   * upsert by role NAME (preserving an existing role's id/description), add
+   * only the missing `role_permissions` rows, and ensure the `user_roles` row.
+   * Nothing is ever removed, so administrator-added extra permissions survive.
+   */
+  async ensureRoleWithPermissionsForUser(input: {
+    roleId: string;
+    roleName: string;
+    description: string;
+    permissionIds: readonly string[];
+    userId: string;
+    now: Date;
+  }): Promise<{
+    role: Role;
+    permissionCount: number;
+    roleCreated: boolean;
+    userRoleCreated: boolean;
+  }> {
+    const existing = await this.findByName(input.roleName);
+    const role =
+      existing ??
+      (await this.createWithPermissions({
+        id: input.roleId,
+        name: input.roleName,
+        description: input.description,
+        permissionIds: [],
+        now: input.now,
+        createdBy: null,
+      }));
+    for (const permissionId of input.permissionIds) {
+      this.assignments.set(`${role.id}:${permissionId}`, permissionId);
+    }
+    const assigned = new Set(this.permissionIdsFor(role.id));
+    const userRoleCreated =
+      this.userRoles !== undefined &&
+      !this.userRoles.isAssigned(input.userId, role.id);
+    if (userRoleCreated) {
+      await this.userRoles!.assign({
+        userId: input.userId,
+        roleId: role.id,
+        now: input.now,
+        createdBy: null,
+      });
+    }
+    return {
+      role,
+      permissionCount: input.permissionIds.filter((id) => assigned.has(id))
+        .length,
+      roleCreated: existing === null,
+      userRoleCreated,
+    };
+  }
+
+  /** Wired by `createInMemoryStores` (the real repository shares one transaction). */
+  private userRoles: InMemoryUserRolesRepository | undefined;
+
+  attachUserRoles(userRoles: InMemoryUserRolesRepository): void {
+    this.userRoles = userRoles;
+  }
+
   /** Test helper: database-level check that an assignment exists. */
   isPermissionAssigned(roleId: string, permissionId: string): boolean {
     return this.assignments.has(`${roleId}:${permissionId}`);
@@ -554,6 +615,7 @@ export function createInMemoryStores(): InMemoryStores {
   const userRoles = new InMemoryUserRolesRepository(permissions, roles, (id) =>
     users.exists(id),
   );
+  roles.attachUserRoles(userRoles);
   return {
     users: users as unknown as UsersRepository,
     sessions: sessions as unknown as SessionsRepository,

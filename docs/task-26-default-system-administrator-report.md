@@ -148,6 +148,73 @@ organization-scoped APIs authorized with no manual step (pinned mode)
 | Documentation matches implementation                | PASS                           | §K                                                                                                                              |
 | CI passes                                           | PASS (see final answer run ID) | workflow `CI`                                                                                                                   |
 
+## Future Permission Reconciliation Contract
+
+**Architectural invariant.** `مدیر` is the default system administrator and
+receives administrative authority through the ordinary
+`User → Role → Permission` model. The `System Administrator` role represents the
+complete currently registered application permission catalog:
+
+```text
+New module / feature → permission declared in the module's PermissionRegistry
+registration → canonical application permission catalog (PermissionRegistry →
+rbac.permissions) → System Administrator reconciliation
+(SystemAdministratorRbacService.ensureForUser) → مدیر receives it through the
+ordinary user_roles assignment
+```
+
+**Developer rule for a new permission** (e.g. `Sales.Invoice.Export`): declare
+it in the module's canonical permission definitions, register it through the
+module's `…PermissionRegistration` class, guard the route with
+`@RequirePermission(...)`, re-check it in the application service, and add
+grant + denial tests. Do **not** add it to a `مدیر` list (none exists), do not
+maintain a hardcoded permission count, do not write a username or role-name
+rule, and do not introduce a wildcard code.
+
+**Fresh install.** `prisma migrate deploy` → `bootstrap:system-admin` creates
+`مدیر`, the `System Administrator` role, every registered permission grant, the
+role assignment and the deployment-mode organization membership.
+
+**Existing install after a new module ships.** The same command re-resolves
+`PermissionRegistry.all()` and inserts only the missing `role_permissions` rows
+on the existing role; nothing is removed. This happens **when the deployment
+runs the bootstrap command** (Docker Compose `migrate` service; CI step
+`Bootstrap system administrator`) — not magically at runtime.
+
+**Documentation changed:** `docs/security.md` (§3 "Future permission
+reconciliation contract" + new §9.1 RBAC/System Administrator evolution
+checklist), `docs/modules.md` (RBAC module section cross-reference).
+
+**Tests proving the behaviour**
+(`backend/src/modules/rbac/application/system-administrator-permission-reconciliation.spec.ts`,
+new; run against the real `PermissionRegistry`, `PermissionSyncService`,
+`AuthorizationService` and the in-memory RBAC stores, with every expectation
+computed from `registry.size` — no fixed count anywhere):
+
+| Test                                                                                                            | Proves                                                                                                               |
+| --------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `derives the administrator role from the registry, never from a fixed count`                                    | registry-driven catalog; effective codes equal the registry; no wildcard code                                        |
+| `adds a permission registered by a future module to the EXISTING administrator role on the next reconciliation` | `Sales.Invoice.Export` is denied before and granted after the second reconciliation, on the same role and assignment |
+| `keeps unrelated permissions granted to the administrator role by an operator`                                  | reconciliation only adds; it never removes                                                                           |
+| `denies an unregistered capability, proving authority comes from grants and not from the role name`             | role name carries no authority; `requireAllPermissions` yields `PermissionDenied`                                    |
+
+Pre-existing evidence reused, not duplicated:
+`system-administrator-rbac.service.spec.ts` (`assigns every and only currently
+registered permission through normal RBAC rows`, two fail-closed tests) and the
+live suite's `uses normal RBAC and organization membership across implemented
+domains` (effective codes equal `PermissionRegistry.size`).
+
+Support change required for the new test: `backend/test/support/in-memory-repositories.ts`
+gained `InMemoryRolesRepository.ensureRoleWithPermissionsForUser`, mirroring the
+real repository's upsert-by-name / `skipDuplicates` semantics. Test-support only
+— no production RBAC change.
+
+**Confirmation.** A repository-wide check finds no username comparison against
+`مدیر`, no `role.name === 'System Administrator'` authorization branch, no
+manually maintained administrator permission list, no wildcard permission code,
+and no superuser flag. Authorization remains `user_roles → role_permissions →
+permissions`.
+
 ## Scope statement
 
 No schema change, no migration, no new permission code, no new authorization model, no second guard, no superuser flag, no username/role-name check, no Treasury or other out-of-MVP capability, no unrelated refactor. Task 26 does not accept itself, close OQ-14/OQ-19, or promote any ADR (ADR-0038 is Proposed).
