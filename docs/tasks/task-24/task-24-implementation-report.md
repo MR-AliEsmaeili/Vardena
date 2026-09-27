@@ -4,6 +4,7 @@
 **Owner decision implemented:** **R-2 — APPROVED** (recorded in `docs/tasks/task-24/task-24-scope-design-gate.md`, finding **F-1**)
 **Branch:** `arena/01a0e18c-vardena`
 **Pull request:** [#67](https://github.com/MR-AliEsmaeili/Vardena/pull/67)
+**Commit:** `67e1bc8`  **CI:** run `36306140879` — `backend` pass, `frontend` pass
 **Status:** READY FOR REVIEW — *not* accepted. Acceptance is the Owner's act (`STATE.md` §6: "READY FOR REVIEW is not acceptance").
 
 ---
@@ -250,9 +251,15 @@ Local fast gates (executed in `backend/`, all green):
 | Build | `npm run build` | **success** |
 | Prisma validate | `npm run prisma:validate` | not runnable locally — requires `DATABASE_URL`; no schema change to validate, CI covers it |
 
-Heavy/long gates — Postgres-backed `migrate deploy`, `bootstrap:system-admin` and the 34 e2e specs — are
-**delegated to GitHub CI** on PR #67 (`backend`, `frontend` workflows), per the standing instruction not to block
-on local E2E. The e2e suites were inspected for dependence on the old behaviour: the only cross-organization
+Heavy/long gates — Postgres-backed `migrate deploy`, `bootstrap:system-admin` and the 34 e2e specs — were
+**delegated to GitHub CI** on PR #67, per the standing instruction not to block on local E2E.
+
+**GitHub CI — run [`36306140879`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36306140879) on commit `67e1bc8`: GREEN.**
+
+| Workflow job | Result | Duration |
+|---|---|---|
+| `backend` (prisma validate → generate → lint → typecheck → format:check → unit → build → `migrate deploy` on postgres:16 → `bootstrap:system-admin` → e2e) | **pass** | 3m56s |
+| `frontend` | **pass** | 57s | The e2e suites were inspected for dependence on the old behaviour: the only cross-organization
 account list in `test/account-structure.e2e-spec.ts` is made by a principal that the fixture seeds as a member of
 **both** organizations, so it legitimately still expects 200. CI result is reported in the final summary and on
 the PR.
@@ -270,6 +277,6 @@ the PR.
 | 5 | 404 / non-disclosure preserved; no 403, no empty-page tell | ✅ |
 | 6 | No new account policy invented | ✅ |
 | 7 | No unnecessary contract / schema / permission change | ✅ (schema untouched; the 404 is the approved fix; OpenAPI annotation is documentation) |
-| 8 | Relevant CI green | ⏳ reported on PR #67 |
+| 8 | Relevant CI green | ✅ run `36306140879` — `backend` **pass**, `frontend` **pass** |
 | 9 | Report complete (9 required questions answered) | ✅ |
 | 10 | **Agent does not ACCEPT the task** | ✅ Status is **READY FOR REVIEW**; acceptance belongs to the Owner |
