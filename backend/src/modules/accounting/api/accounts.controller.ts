@@ -70,10 +70,18 @@ export class AccountsController {
   @Get()
   @UseGuards(AuthGuard, AuthorizationGuard)
   @RequirePermission(ACCOUNT_PERMISSIONS.VIEW)
-  @ApiOperation({ summary: 'List the accounts of one organization.' })
+  @ApiOperation({
+    summary: 'List the accounts of one organization.',
+    description:
+      'The organization scope is asserted before any row is read, on every request and independently of the optional filters (ODR-3 + the deployment pin of ADR-0025).',
+  })
   @ApiExtraModels(PaginatedAccountDto)
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedAccountDto) }] },
+  })
+  @ApiNotFoundResponse({
+    description:
+      'The organization is outside the caller’s scope — unknown, outside the deployment pin, or one the principal holds no membership of. Indistinguishable from a non-existent organization (no 403, no empty page).',
   })
   async list(@Query() query: ListAccountsQueryDto): Promise<{
     items: AccountResponseDto[];
