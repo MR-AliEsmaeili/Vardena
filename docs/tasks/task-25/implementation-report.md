@@ -185,7 +185,7 @@ Existing coverage that protects the edited file's subject remains green in CI:
 | Task 23 PR #66 — checks `36298005115` | — | success |
 | Task 19 / PR #55 — `36238862315` | `86273b8` | success |
 | Task 18 PR #46 — `36133360887` | `5971bed` | success |
-| **This branch** | `arena/01a0e32b-vardena` | **pending — CI runs on the pull request; the result is the AC-10 evidence** |
+| **This branch — PR [#70](https://github.com/MR-AliEsmaeili/Vardena/pull/70), run [`36325486898`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36325486898)** | `743a063` on `arena/01a0e32b-vardena` | **PASS** — `backend` **success (3m46s)**, `frontend` **success (53s)**. The backend job executed every configured gate on the branch: prisma validate → generate → lint → typecheck → format:check → unit tests → build → `migrate deploy` (PostgreSQL 16 service) → `bootstrap:system-admin` → Task 11 migration rehearsal → E2E incl. the live-DB suites |
 
 Expensive verification (PostgreSQL `migrate deploy`, `bootstrap:system-admin`, the migration
 rehearsal and the 34 E2E specs including the live-DB suites) is delegated to the `backend` job on
@@ -247,7 +247,7 @@ the reason the recommended next gate is a security completion rather than a feat
 | AC-07 no undocumented security discrepancy | **MET** | SEC-01/SEC-02/SEC-03 documented and classified ≥ HIGH |
 | AC-08 Task 20/21/23/24 status and relationships explicit; four invariants preserved | **MET** | audit report §10 |
 | AC-09 stale comment corrected with zero behavioural change | **MET** | §2.3; comment-only diff |
-| AC-10 required CI green for the changed branch | **PENDING CI** — the branch PR run is the evidence; the audited baseline is green | §6 |
+| AC-10 required CI green for the changed branch | **MET** — PR #70 run `36325486898`: `backend` success, `frontend` success; expensive E2E executed in CI, not locally | §6 |
 | AC-11 no scope creep | **MET** | §3; no capability/migration/API/module/permission/schema/mechanism added |
 | AC-12 Owner decisions isolated, none made implicitly | **MET** | owner-decision-pack.md, D-01…D-10 all PENDING |
 | AC-13 next implementation gate identified with READY / BLOCKED / OWNER DECISION REQUIRED / IMPLEMENTATION REQUIRED / DOCUMENTATION ONLY | **MET** | audit report §16 |
@@ -296,12 +296,15 @@ Blocking Findings:
 surfaces while `docs/security.md` §3 claims universal enforcement)
 
 CI:
+PASS. This branch — PR #70, GitHub Actions run `36325486898` on commit
+`743a063`: `backend` **success (3m46s)** and `frontend` **success (53s)**,
+covering prisma validate/generate, lint, typecheck, format:check, unit tests,
+build, `migrate deploy` against PostgreSQL 16, `bootstrap:system-admin`, the
+Task 11 migration rehearsal and the E2E suites including the live-DB ones.
 Audited baseline `main` @ `80944ce112dc16fd834585f8a4c2d83906547480` — run
-`36323517204`: PASS (`backend` + `frontend`). This branch: verification is
-delegated to the pull-request CI run per the task's §11 policy; the only
-production change is comment-only and no test or behaviour is affected.
-Local: `git diff --check` clean; no local suite executed (no `node_modules`
-in the sandbox, and §11 forbids blocking on local E2E).
+`36323517204`: PASS. Expensive verification was executed in CI rather than
+locally, per the task's §11 policy; local checks were `git diff --check`
+(clean) and diff inspection confirming the production edit is comment-only.
 
 Recommended Next Gate:
 ODR-3 list-scope completion — an Owner-approved, bounded, schema-free security
