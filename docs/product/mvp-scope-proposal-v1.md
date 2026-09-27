@@ -16,6 +16,23 @@
 > owner ratifies it together with the Stage-0 gate decisions (OQ-49 Report
 > Builder depth, OQ-60 acceptance thresholds, ADR-0029/0030 ratification).
 
+### Owner-directed scope correction — 2026-09-27
+
+For synchronization with the Backend MVP Roadmap, the Owner has directed that
+these capabilities are **MVP REQUIRED**: Foundation; Accounting Core and
+Accounting Completion; the **Full Inventory / Warehouse Subsystem**; Party /
+Customer foundation; Sales; Sales → Accounting; Inventory → Accounting;
+Reporting; and Electronic Books / Tax Accounting / Iranian legal accounting
+outputs. This scope admission does not close any OQ or promote any ADR, and it
+does not authorize implementation. This document remains a proposal for the
+implementation form, acceptance thresholds and unresolved product details.
+
+**POST-MVP:** Purchasing, Purchasing → Accounting, Purchasing Reports and
+Treasury. Warehouse Receipt/Issue are Inventory/Warehouse MVP documents and
+must not be removed when Purchasing is excluded. External Taxpayer System
+submission is a separate integration boundary; it is not synonymous with
+Electronic Books / Tax Accounting, and OQ-43 remains open.
+
 ## 0. Scope test and classification
 
 A feature belongs in MVP **only** if it satisfies at least one of:
@@ -47,17 +64,19 @@ Statuses: `Shipped` (exists in repo today), `Partial` (exists, gaps listed),
 | Register warehouse receipt | Inventory receipts (ADR-0017/0022) | Shipped (core) |
 | Register warehouse issue | Inventory issues (ADR-0017/0022) | Shipped (core) |
 | Register sale | Sales documents (parties, invoice minimal set) | To build — Stage 4 |
-| Generate accounting entry | Manual voucher path Shipped (Tasks 10.4–10.8); **system-posted sale→journal is blocked by OQ-39/OQ-42** (durable delivery + posting mode) — MVP fallback: manual voucher entry by the accountant | Shipped (manual) / D (OQ-39, OQ-42) |
+| Generate accounting entry | Sales → Accounting is MVP-required; system-posting shape is gated by OQ-39/OQ-42. Manual voucher is not the final MVP integration state. | To build — D (OQ-39, OQ-42) |
 | Finalize accounting document | Voucher `draft→temporary→final` + atomic posting + ledger (Task 10.4–10.8) | Shipped |
-| Inventory reports | Reporting pipeline + inventory views (ADR-0009) | Partial — Stage 5 |
+| Inventory reports | Full Inventory/Warehouse reports: stock, quantity/rial Kardex, movement, unvalued receipt/issue, analysis and management | To build — Stage 5 |
 | Sales reports | Reporting pipeline + sales views | To build — Stage 5 |
-| Profit and loss report | Accounting balances + reports — **blocked by OQ-25 (layouts) and OQ-43 (statutory) in minimal form**; minimal revenue/expense/caption P&L over ledger entries is the proposed MVP interpretation | To build — Stage 5 / D (OQ-25, OQ-43) |
+| Profit and loss report | Accounting balances + reports; exact legal/accounting layouts remain validated against Owner/domain evidence | To build — Stage 5 / D (OQ-25, OQ-43) |
 | Create a custom report | Report Builder — **depth = OQ-49** | D (OQ-49) |
 
 **Interpretation rule (recorded, not assumed):** where an OQ blocks a step's
-"full" form, the MVP proposal includes the *minimal decided mechanism* (e.g.
-manual voucher instead of automatic posting) and registers the dependency —
-it does not invent the unresolved behavior.
+"full" form, this proposal records the current mechanism as an implementation
+fallback and registers the dependency (for example, manual voucher capability
+exists today while system Sales → Accounting remains MVP-required and gated).
+A fallback is not the final MVP integration state, and this proposal does not
+invent unresolved behavior.
 
 ---
 
@@ -74,28 +93,44 @@ it does not invent the unresolved behavior.
 | A-07 | Posting & ledger | Shipped | Scenario step 12 | Tasks 10.5–10.8 | Posting readiness; atomic finalize; one ledger entry per line; idempotent | OQ-39/OQ-42 gate only *system* posting, not manual | Medium |
 | A-08 | Items & units (products) | Partial | Scenario step 6 | Inventory core; OQ-29 | Item CRUD with kinds/capabilities; unit definitions; conversions with rounding rules | OQ-29 (precision/rounding sign-off), OQ-33 (kind list) — gap tasks in Stage 3 | Medium |
 | A-09 | Warehouses & branches (scope) | Shipped (foundation) | Scenario step 6 | ADR-0022; OQ-22 posture | Warehouse CRUD; branch assignment; branch-scoped availability | OQ-22 final wording stands | Low |
-| A-10 | Opening inventory entry | To build | Scenario step 7 | A-08, A-09, A-22 | Opening receipt flow producing correct stock-on-hand with cost | OQ-24 (costing method) affects cost capture; opening *accounting* balances = OQ-11 | Medium |
-| A-11 | Warehouse receipts | Shipped (core) | Scenario step 8 | ADR-0017/0022 | Receipt → ledger movement; availability update; validation; negative stock rejected by default | OQ-24 (default policy confirmed) | Low |
-| A-12 | Warehouse issues | Shipped (core) | Scenario step 9 | ADR-0017/0022 | Issue with stock validation; cost capture (method per OQ-24) | OQ-24 | Medium |
+| A-10 | Full Inventory/Warehouse opening balances | To build | Scenario step 7 | A-08, A-09, A-22 | Separate opening quantity and opening rial flows | OQ-11, OQ-24 | High |
+| A-11 | Warehouse receipts (quantity and rial) | Partial — core only | Scenario step 8 | ADR-0017/0022 | Quantity/rial Receipt; valuation/unvalued state preserved without invented method | OQ-24, OQ-39, OQ-42 | High |
+| A-12 | Warehouse issues (quantity and rial) | Partial — core only | Scenario step 9 | ADR-0017/0022 | Quantity/rial Issue; stock validation; valuation/unvalued state preserved | OQ-24, OQ-39, OQ-42 | High |
 | A-13 | Parties (customers) | Shipped (foundation) | Sales prerequisite | organization.parties | Party CRUD customer/supplier flags | OQ-38 (legal identifiers for e-invoice later) — MVP works without | Low |
-| A-14 | Sales documents (minimal set) | To build | Scenario step 10; revenue | A-08, A-13; document foundation (ADR-0019/0023) | Customer invoice (order optional): lines, quantities, prices, per-line tax snapshot fields, document numbering; state machine per OQ-54 outcome | OQ-30 (tax fields shape), OQ-34 (pricing), OQ-35 (credit — warning only), **OQ-54 (cancel/edit policy)** | High |
+| A-14 | Sales documents / invoice | To build | Scenario step 10; revenue | A-08, A-13; document foundation (ADR-0019/0023) | Customer invoice: lines, quantities, prices, approved tax fields, numbering, lifecycle/finalization, applicable inventory and accounting effects | OQ-30, OQ-34, OQ-35, **OQ-54** | High |
 | A-15 | Sales document print | To build (minimal) | Practical usability | ADR-0012 print system | One printable invoice template | OQ-02 (labels/locale) | Low |
-| A-16 | Inventory reports | Partial | Scenario step 14 | Reporting pipeline; inventory views | Stock on hand, movements, availability by warehouse — view regression tests | None blocking | Low |
+| A-16 | Full Inventory/Warehouse reports and management | To build | Scenario step 14 | Reporting pipeline; Inventory views | Current/quantity/rial stock, quantity/rial Kardex, unvalued receipts/issues, movement, analysis, management and settings | OQ-24, OQ-49 | High |
 | A-17 | Sales reports | To build | Scenario step 15 | Reporting pipeline; sales views | Sales by period/customer/item; totals reconcile to invoices | OQ-30 (tax columns) | Medium |
-| A-18 | Profit & loss report (minimal) | To build | Scenario step 16; accounting credibility | A-07 ledger; balances candidate | Revenue/expense caption report over ledger entries for a period; balances projection per accounting task-index candidate | **OQ-25/OQ-43 (caption/layout minimal form)** | High |
+| A-18 | Accounting reporting | To build | Scenario step 16; accounting credibility | A-07 ledger; balances candidate | Accounting reports, with legal/accounting outputs validated separately | OQ-25/OQ-43 | High |
 | A-19 | Report Builder (MVP depth) | Blocked by OQ | Scenario step 17; differentiator | OQ-49; reporting pipeline; semantic-entity registry | Level per OQ-49 outcome (recommended B: composition over approved entities; saved, versioned, permission-bound) | **OQ-49** | High |
-| A-20 | Dashboard | To build | Usability; situational awareness | Reporting pipeline; customization module (ADR-0013) | Default dashboard: a few KPI/report widgets; user-configurable layout persisted | None | Low |
-| A-21 | Excel import (master data) | Shipped (foundation) | Migration onboarding | ADR-0011 | Validated import for items/parties at minimum | None | Low |
-| A-22 | Excel export | Shipped (confirmed) | Data ownership; reporting | ADR-0009 §6 | Export of all MVP reports/lists | OQ-46 (beyond-MVP completeness) | Low |
-| A-23 | Audit logging (MVP surface) | Shipped (foundation) | Trust; security | AR-23 | Sensitive MVP actions audited (auth, RBAC, accounting writes, inventory movements, sales lifecycle, exports of flagged reports) | OQ-17 (retention values) | Low |
+| A-20 | Dashboard | **POST-MVP / not admitted by current roadmap** | Usability; situational awareness | Reporting pipeline; customization module (ADR-0013) | Not a Backend MVP gate; future product decision required | OQ-09 | Low |
+| A-21 | Excel import (master data) | **To build — ADR decision only; implementation not present** | Migration onboarding | ADR-0011 | Separate implementation candidate; no import capability is claimed on `main` | OQ-08 | Low |
+| A-22 | Excel export | **To build — implementation not present** | Data ownership; reporting | ADR-0011/ADR-0009 decision boundary | Export only after bounded report implementation; OQ-46 recorded XLSX posture remains open where applicable | OQ-46 | Low |
+| A-23 | Audit logging (MVP surface) | **To build — audit module not present** | Trust; security | AR-23 | Scope and retention require a separate implementation decision; no audit store is claimed on `main` | OQ-17, OQ-14 | Low |
 | A-24 | Backup/restore (customer-visible) | To build | Data safety; trust | database-strategy §14; OQ-52/53 | Scheduled auto-backup; customer-admin "backup now"; controlled restore path; **pre-migration auto-backup wired into update flow** | OQ-52 (targets), OQ-53 (self-service degree) | High |
 | A-25 | License foundation (enforcement-off) | Blocked by ADR | PD-17 platform capability | **ADR-0030 (proposed)** | License record + module enablement read + admin view; **no blocking behavior** | **ADR-0030 ratification; OQ-45 (behavior)** | Medium |
 | A-26 | Persian-context UX baseline | To build | Non-specialist usability | OQ-02 | RTL layout; i18n dictionary; Jalali display where OQ-02 decides; Persian labels | **OQ-02 (language/calendar)** | Medium |
 | A-27 | Security hardening pass | To build | Release qualification | AG-06/AG-13 | Denial-path tests for every MVP endpoint; session lifecycle tests; rate limits configured; security review done | None | Medium |
 
-**Operational modules in MVP:** Accounting (A-03…A-07, A-18), Inventory
-(A-08…A-12, A-16), Sales (A-13…A-15, A-17), Reporting/Report Builder
-(A-16…A-19, A-20).
+**Operational modules in MVP:** Foundation; Accounting Core/Completion;
+Full Inventory/Warehouse (warehouse/product coding, attributes, units,
+barcode, opening quantity/rial, Material Request, quantity/rial Receipt and
+Issue, stock/settings and reports); Party/Customer; Sales; Sales → Accounting;
+Inventory → Accounting; Reporting; Electronic Books / Tax Accounting / Iranian
+legal accounting outputs. Report Builder remains separately gated by OQ-49.
+
+## 2A. Full Inventory / Warehouse MVP detail
+
+The MVP-required warehouse subsystem is broader than Inventory Core. Required
+implementation candidates are: Warehouse Coding; Product Coding; Product
+Attributes; Units; Barcode; Opening Quantity; Opening Rial; Material Request;
+Receipt Quantity; Receipt Rial; Issue Quantity; Issue Rial; Current Stock;
+Quantity Stock; Rial Stock; Quantity Kardex; Rial Kardex; Unvalued Receipts;
+Unvalued Issues; Item Movement; Inventory Analysis; Inventory Management; and
+Inventory Settings. Preserve `Inventory Movement → Inventory Balance`,
+immutable movements, current negative-stock policy, organization isolation and
+module ownership. Valuation/accounting treatment remains gated by OQ-24/OQ-11;
+no method is invented.
 
 ## 3. Category B — Platform foundation (present, supporting)
 
@@ -104,11 +139,11 @@ it does not invent the unresolved behavior.
 | B-01 | RBAC (roles, granular permissions, enforcement) | Shipped | ADR-0006/0016; every MVP endpoint declares permissions |
 | B-02 | Document Foundation | Shipped | ADR-0019/0023 — numbering, relations, states used by vouchers & sales |
 | B-03 | Workflow Foundation | Shipped | ADR-0018/0024 — available for approval policies when OQ-13/OQ-26 decide content |
-| B-04 | Integration foundation (outbox + adapter ports) | Shipped | ADR-0004; taxpayer/legacy adapters land later behind it |
-| B-05 | Jobs (DB-backed queue) | Shipped | ADR-0010 — carries async reports, backup schedules |
-| B-06 | Notifications (in-app) | Shipped (foundation) | Per OQ-15 interim posture |
-| B-07 | Customization (preferences) | Shipped | ADR-0013 — table/grid/dashboard state |
-| B-08 | Print system | Shipped (foundation) | ADR-0012 — invoice template rides on it |
+| B-04 | Integration foundation (outbox + adapter ports) | **Documented decision — implementation not present** | ADR-0004; taxpayer/legacy adapters land later behind it |
+| B-05 | Jobs (DB-backed queue) | **Documented decision — implementation not present** | ADR-0010 — async work only if an admitted capability requires it |
+| B-06 | Notifications (in-app) | **Not implemented** | Per OQ-15 interim posture |
+| B-07 | Customization (preferences) | **Documented decision — implementation not present** | ADR-0013 — table/grid/dashboard state |
+| B-08 | Print system | **Documented decision — implementation not present** | ADR-0012 — invoice template rides on it |
 | B-09 | OpenAPI contract | Shipped | ADR-0014 — frontend types derived |
 | B-10 | Docker Compose deployment | Shipped (strategy) | architecture.md §10; install runbook is Stage 6 work |
 | B-11 | Licensing *record* (foundation) | Blocked by ADR | ADR-0030 — see A-25 (foundation is both A and B; enforcement is neither) |
@@ -118,9 +153,10 @@ it does not invent the unresolved behavior.
 
 | Feature ID | Item | Reason for exclusion | Revisit |
 |---|---|---|---|
-| C-01 | Purchasing module | Post-MVP (OQ-16 posture: manual receipts cover the gap) | Stage 7 |
+| C-01 | Purchasing module, Purchasing → Accounting and Purchasing Reports | POST-MVP (OQ-16 posture); does not remove Inventory Receipt/Issue | Future phase |
 | C-02 | Payroll / HR | Future module (OQ-32) | Post-MVP |
-| C-03 | Taxpayer System submission/adapter | Release boundary OQ-51; only document-model readiness (tax fields, ids, correction links) is in MVP via A-14 | Stage 4 |
+| C-02A | Treasury (cash, bank, Treasury Receipt/Payment, cheque, settlement, reconciliation) | Explicitly outside current MVP | Post-MVP |
+| C-03 | External Taxpayer System submission/adapter | Separate integration boundary; Electronic Books/Tax Accounting remains MVP; OQ-43/OQ-51 | Future phase |
 | C-04 | Multi-device offline sync | OPEN/HIGH complexity — excluded (OQ-44) | OQ-44 |
 | C-05 | Multi-currency operations (revaluation, FX P/L, currency reporting) | Single-currency MVP; seams dormant (OQ-47/OQ-48) | Stage 7 |
 | C-06 | Public API program & webhooks | ADR-0029 mechanism only; no webhooks/public program (OQ-50) | Stage 7 |
@@ -141,10 +177,10 @@ it does not invent the unresolved behavior.
 
 | Feature ID | Item | Depends on | MVP fallback (if unresolved at build time) |
 |---|---|---|---|
-| D-01 | Sale → accounting entry (system posting) | **OQ-39** (durable delivery), **OQ-42** (posting mode) | Manual voucher entry by accountant (mechanism shipped, Tasks 10.4–10.8) |
+| D-01 | Sales → Accounting entry (system posting) | **OQ-39** (durable delivery), **OQ-42** (posting mode) | Manual voucher is temporary implementation fallback; it is not the final MVP integration state |
 | D-02 | Detail dimensions on voucher lines | **OQ-41** (requiredness/binding) | Account-tree-only postings; dimension columns absent |
 | D-03 | Report Builder depth | **OQ-49** | Registry reports + saved filters/columns (level A) |
-| D-04 | P&L report layout | **OQ-25/OQ-43** (minimal captions) | Simple revenue/expense/caption report over ledger; statutory layouts wait |
+| D-04 | Accounting / legal output layout | **OQ-25/OQ-43** | Required MVP capability; exact Iranian legal facts and formats require validation, not invention |
 | D-05 | Document cancel/edit posture for sales/inventory | **OQ-54** | Cancel-only (recommended default; *not* assumed decided — implementation waits for the answer or the owner's explicit interim choice) |
 | D-06 | UI language/calendar | **OQ-02** | i18n dictionary + formatters built; display defaults follow the decision |
 | D-07 | Tax fields on sales documents | **OQ-30** | Snapshot fields reserved, no rates invented |
@@ -154,7 +190,7 @@ it does not invent the unresolved behavior.
 
 ## 6. Category E — Candidates for post-MVP
 
-Purchasing (C-01) · Treasury/cash management · Payroll/HR (C-02) ·
+Purchasing (C-01) · Purchasing → Accounting · Purchasing Reports · Treasury/cash management · Payroll/HR (C-02) ·
 Taxpayer slices 2–3 (C-03) · Multi-currency activation (C-05) ·
 Webhooks/API surface (C-06) · Fixed assets · Cost accounting/allocation ·
 Report Builder levels C/D (per OQ-49) · Scheduling/delivery (C-14) ·

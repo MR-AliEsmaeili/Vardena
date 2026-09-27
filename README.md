@@ -68,6 +68,7 @@ production deployment.
 |---|---|
 | An AI coding agent / new contributor | [.vardena/project-context.md](.vardena/project-context.md) (onboarding, mandatory order) |
 | Asking "what is actually built and what was accepted?" | [STATE.md](STATE.md) (project memory, task history, review status) + [docs/repository-documentation-audit.md](docs/repository-documentation-audit.md) |
+| Planning or proposing the next MVP work | [docs/roadmap/backend-mvp-roadmap.md](docs/roadmap/backend-mvp-roadmap.md) (read before proposing or implementing future work) |
 | Reviewing the system design | [docs/architecture.md](docs/architecture.md) |
 | Working on a domain | [docs/modules.md](docs/modules.md) + the matching `docs/*.md` |
 | Working on the UI | [frontend/README.md](frontend/README.md) + [docs/architecture.md](docs/architecture.md) §7 |
@@ -76,6 +77,7 @@ production deployment.
 
 ## Documentation
 
+- [docs/roadmap/backend-mvp-roadmap.md](docs/roadmap/backend-mvp-roadmap.md) — **Backend MVP Roadmap**: the planned path from the current repository state to Backend MVP, with the dependency matrix ([backend-mvp-dependency-matrix.md](docs/roadmap/backend-mvp-dependency-matrix.md)) and the Future Task Candidate Register ([future-task-candidates.md](docs/roadmap/future-task-candidates.md)). The current Owner-directed scope requires Foundation, Accounting, Full Inventory/Warehouse, Party/Customer, Sales, Sales → Accounting, Inventory → Accounting, Reporting, and Electronic Books/Tax Accounting; Purchasing, Purchasing → Accounting, Purchasing Reports, and Treasury remain post-MVP. This roadmap describes the planned path from the current repository state to Backend MVP. **It does not itself authorize implementation or accept future work** — future agents must read it before proposing or implementing MVP work, and the repository wins on any conflict.
 - [docs/architecture.md](docs/architecture.md) — system architecture, module anatomy, event model, API conventions, deployment
 - [docs/modules.md](docs/modules.md) — module catalog, boundaries, event catalog
 - [docs/security.md](docs/security.md) — authentication, RBAC, audit, API security
