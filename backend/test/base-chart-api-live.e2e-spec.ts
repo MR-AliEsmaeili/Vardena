@@ -39,14 +39,14 @@ const LEVELS = [
     title: 'Level 2',
     digitLength: 2,
     defaultIsPostable: false,
-    levelKind: 'level_2',
+    levelKind: 'general',
   },
   {
     levelIndex: 3,
     title: 'Level 3',
     digitLength: 2,
     defaultIsPostable: true,
-    levelKind: 'level_3',
+    levelKind: 'detail',
   },
 ] as const;
 
