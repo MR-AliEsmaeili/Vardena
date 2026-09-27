@@ -181,7 +181,7 @@ Scope admission does not close OQ-24, OQ-25, OQ-30, OQ-34, OQ-35, OQ-39, OQ-42, 
 
 ### 2.6 Owner-blocked implementation gates
 
-The required path remains blocked where repository evidence says it is blocked: Base Chart content and OQ-36 prerequisites; valuation; tax/pricing/credit/finalization policy; durable integration; posting mode; Iranian legal validation; report-builder depth; security/tenant decisions; and all recorded acceptance backlogs. The roadmap is a navigation map, not permission to code.
+The required path remains blocked where repository evidence says it is blocked: Base Chart content loading (per OD-27-02, DECIDED 2026-09-27: concrete Base Chart content is **not required for MVP** — the block applies only to loading content without a separately approved content artifact) and OQ-36 prerequisites; valuation; tax/pricing/credit/finalization policy; durable integration; posting mode; Iranian legal validation; report-builder depth; security/tenant decisions; and all recorded acceptance backlogs. The roadmap is a navigation map, not permission to code.
 
 ## 3. Updated MVP dependency graph
 
@@ -259,6 +259,7 @@ mechanism (exists — Task 23 merged)  ≠  content (OQ-25/OQ-36 — not approve
 ```
 
 **1A — Base Chart content approval + controlled content loading.**
+- *MVP boundary (OD-27-02, DECIDED 2026-09-27):* the MVP requires the Base Chart **mechanism** but **not** a concrete Base Chart content set. 1A is therefore a decision-gated optional work item, **not** an MVP requirement: no content may be introduced by implementation inference, and no migration or seed may introduce content unless a separately approved content artifact exists.
 - *Objective:* an Owner/accountant-approved Base Chart content artifact (codes, Persian titles, level shape, natures, postability defaults, mandatory-account list) loaded **through the Task 23 mechanism** (template → version → publish → explicit organization adoption).
 - *Non-goals:* inventing content (Task 23 deliberately supplied none); direct DB seeding that bypasses the adoption mechanism; statutory claims (OQ-43 is separate); upgrading already-adopted organizations silently (Task 21: no silent mutation on template upgrade).
 - *Dependencies:* Task 23 acceptance (0.2); **OQ-36 prerequisites recorded by Task 21 §10**: (1) code-reuse policy for superseded codes vs `uq_accounts_organization_id_code`; (2) deletion eligibility for unused adopted accounts; (3) code-history producer coexistence with the never-reuse rule.
@@ -434,7 +435,7 @@ The gate verifies **capabilities**, not task existence. Backend MVP may be decla
 
 ### Core ERP
 - [ ] Organization/master data, Inventory, Documents, Workflow, Accounting — per the verified inventory (§1.2), plus each Phase 1–5 item the Owner admitted.
-- [ ] Chart: Base Chart mechanism **and approved content** if admitted (Phase 1A); leaf-only posting; read-time aggregation.
+- [ ] Chart: Base Chart mechanism (OD-27-02, DECIDED 2026-09-27: mechanism **required for MVP**; concrete content **NOT required for MVP** — content only if a separately approved content artifact is admitted under Phase 1A); leaf-only posting; read-time aggregation.
 - [ ] Posting/ledger: atomic, idempotent, period-close-enforced.
 - [ ] Reporting: Accounting, Inventory/Warehouse, Sales and required Electronic Books/Tax Accounting outputs served with permissions, bounds and timeouts; exact legal formats validated rather than guessed.
 - [ ] Full Inventory/Warehouse operational flow: master/coding, openings (quantity and rial), Material Request, quantity/rial Receipt and Issue, stock, settings, valuation/unvalued flows and inventory reports.

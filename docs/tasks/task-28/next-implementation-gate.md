@@ -10,11 +10,11 @@
 **Current Gate State:** `IMPLEMENTATION BLOCKED — OWNER DECISION REQUIRED`
 
 There is currently **NO authorized next production implementation task**.
-All core candidate areas require prior Owner decisions (OD-27-01 through OD-27-04) and unresolved domain Open Questions (OQ-25, OQ-24, OQ-30, OQ-39, OQ-42, OQ-43).
+All core candidate areas require prior Owner decisions (OD-27-01, OD-27-03, OD-27-04; the MVP-scope part of OD-27-02 was decided 2026-09-27 — see §4) and unresolved domain Open Questions (OQ-25, OQ-24, OQ-30, OQ-39, OQ-42, OQ-43).
 
 However, based on repository readiness and architectural dependencies, four prioritized candidate tracks have been prepared for Owner selection:
 
-- **Primary Candidate Track 1 (Phase 1A — Accounting Base Chart Content):** Controlled loading of approved Iranian SME chart template nodes via the Task 23 mechanism. *(Unblocked by Owner resolution of OD-27-02 / OQ-25)*.
+- **Primary Candidate Track 1 (Phase 1A — Accounting Base Chart Content):** Controlled loading of approved Iranian SME chart template nodes via the Task 23 mechanism. *(Still gated: OD-27-02 (DECIDED 2026-09-27) settled only the MVP boundary — mechanism in MVP, concrete content NOT MVP-required; Track 1 remains blocked until a separately approved content artifact exists under OQ-25.)*
 - **Alternative Candidate Track 2 (Phase 3A/3C — Full Inventory / Warehouse Operational Flow):** Investigation gate for operational warehouse coding, product master enhancements, Material Requests, and quantity Receipt/Issue flows. *(Unblocked by Owner priority selection under OD-27-03)*.
 - **Alternative Candidate Track 3 (Phase 2A — Reporting Foundation Design Gate):** Code-defined report registry and pipeline over existing Accounting read queries per ADR-0009. *(Unblocked by Owner priority selection under OD-27-03)*.
 - **Alternative Candidate Track 4 (Phase 6.2/6.3 — Audit & Identity Session Completion):** Specification gate for persistent `audit_logs` store and self/admin session management endpoints. *(Unblocked by Owner priority selection under OD-27-03)*.
@@ -58,7 +58,7 @@ However, based on repository readiness and architectural dependencies, four prio
 To authorize any of the candidate tracks, the Owner must resolve:
 
 1. **OD-27-01:** Formal acceptance of merged work items (Bootstrap Admin, Task 23, Task 24, Task 25, Task 26).
-2. **OD-27-02 (for Track 1):** Approval of the Base Chart content specification (OQ-25) and OQ-36 lifecycle prerequisites.
+2. **OD-27-02 (for Track 1):** Approval of the Base Chart content specification (OQ-25) and OQ-36 lifecycle prerequisites. *(Update 2026-09-27: the MVP-scope part of OD-27-02 is DECIDED — mechanism in MVP, concrete content not MVP-required. The content-artifact approval itself remains required for Track 1 and is NOT granted by that decision.)*
 3. **OD-27-03:** Explicit selection of the authorized track for the next task brief.
 4. **OD-27-04:** Ratification of implemented-ahead-of-governance ADRs (ADR-0017..0021, 0031, 0032, 0038).
 
