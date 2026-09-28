@@ -67,3 +67,5 @@ While **`Account Type`** determines period-end closing and carry-forward physics
 ## 5. Owner Decision Closure Boundary (2026-09-28)
 
 OD-29-05 remains **`PENDING OWNER DECISION`**. The categories and organization-configurable model above remain historical Task 29 analysis/proposal only. No final Statement Classification model, Account field, organization configuration, or implementation is authorized.
+
+**Decision Pack (2026-09-28):** the dedicated Owner Decision preparation for OD-29-05 — option analysis (A: none / B: fixed built-in / C: organization-configurable), fit/gap against the current architecture, qualitative decision matrix, and a non-binding recommendation — is recorded in `od-29-05-statement-classification-decision-pack.md`. It decides nothing; OD-29-05 stays `PENDING OWNER DECISION`.

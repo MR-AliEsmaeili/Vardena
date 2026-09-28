@@ -49,6 +49,7 @@
 - **Status:** **`PENDING OWNER DECISION`**
 - **Proposal:** Maintain `Statement Class` as an organization-configurable reporting presentation concept separate from `AccountType`, and defer its implementation to the post-MVP Reporting Foundation phase.
 - **Rationale:** Avoids conflating presentation layouts with ledger closing rules.
+- **Decision Pack (2026-09-28):** `od-29-05-statement-classification-decision-pack.md` — full option analysis (A / B / C), fit/gap, qualitative decision matrix, and a non-binding architectural recommendation. Status: **READY FOR OWNER DECISION**; the pack decides nothing.
 
 ### OD-29-06: System Account
 - **Status:** **`DECIDED`** (2026-09-28; see `owner-decision-closure.md`)
