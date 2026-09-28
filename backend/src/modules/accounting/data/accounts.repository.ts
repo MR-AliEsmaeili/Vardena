@@ -8,6 +8,7 @@ import type {
 } from '../domain/account.js';
 import {
   isAccountNature,
+  isAccountType,
   planAccountEdit,
   planAccountMovePin,
   planAccountPlacement,
@@ -32,6 +33,7 @@ import {
   lockCodingStructureVersionRow,
 } from './accounting-locks.js';
 import { countReferencingLinesInTx } from './accounting-document-lines.repository.js';
+import { countPostedLedgerEntriesInTx } from './ledger-entries.repository.js';
 import type { LockedAccount } from './accounting-locks.js';
 import type {
   AccountingTransactionalClient,
@@ -41,6 +43,7 @@ import type {
   AccountRow,
   AccountUpdate,
   AccountWhere,
+  LedgerEntryDelegate,
   OrderBy,
 } from './accounting-rows.js';
 
@@ -81,6 +84,7 @@ import type {
 
 type Client = {
   account: AccountDelegate;
+  ledgerEntry: Pick<LedgerEntryDelegate, 'count'>;
 };
 
 /**
@@ -226,6 +230,8 @@ export class AccountsRepository {
     title: string;
     parentId: string | null;
     accountNature: string;
+    accountType?: string | undefined;
+    detailGroupId?: string | null | undefined;
     isPostable: boolean;
     structure: AccountStructureSnapshot;
     now: Date;
@@ -319,6 +325,23 @@ export class AccountsRepository {
       // A brand-new account has no children, so `is_postable` cannot violate
       // the leaf rule here; the placement check covered the parent's side.
 
+      // Validate Detail Group if provided: must belong to organization and be level 1
+      if (input.detailGroupId !== null && input.detailGroupId !== undefined) {
+        const detailGroup = await tx.detail.findUnique({
+          where: { id: input.detailGroupId },
+        });
+        if (
+          detailGroup === null ||
+          detailGroup.organizationId !== input.organizationId ||
+          detailGroup.level !== 1 ||
+          !detailGroup.isActive
+        ) {
+          throw new Error(
+            `Detail group "${input.detailGroupId}" is invalid, inactive, or not a Level-1 Detail Group in this organization.`,
+          );
+        }
+      }
+
       const data: AccountCreate = {
         id: input.id,
         organizationId: input.organizationId,
@@ -329,6 +352,8 @@ export class AccountsRepository {
         codingStructureVersionId: input.structure.versionId,
         accountingConfigurationId: input.structure.accountingConfigurationId,
         accountNature: input.accountNature,
+        accountType: input.accountType ?? 'BALANCE_SHEET',
+        detailGroupId: input.detailGroupId ?? null,
         isPostable: input.isPostable,
         isActive: true,
         createdAt: input.now,
@@ -359,6 +384,8 @@ export class AccountsRepository {
     id: string;
     title?: string | undefined;
     accountNature?: string | undefined;
+    accountType?: string | undefined;
+    detailGroupId?: string | null | undefined;
     isPostable?: boolean | undefined;
     parentId?: string | null | undefined;
     /** Required for a move only (the code/prefix rules read the level rows). */
@@ -411,14 +438,41 @@ export class AccountsRepository {
       // sees the committed lines or waits until they are committed.
       const referencedByDocumentLine =
         (await countReferencingLinesInTx(tx, node.id)) > 0;
+      const hasPostedLedgerEntry =
+        input.accountType !== undefined &&
+        input.accountType !== node.accountType
+          ? (await countPostedLedgerEntriesInTx(tx, node.id)) > 0
+          : false;
       const refused = this.immutableRefusals(
         input,
         node,
         parentChanged,
         referencedByDocumentLine,
+        hasPostedLedgerEntry,
       );
       if (refused.length > 0) {
         throw new AccountImmutableAfterUseError(refused);
+      }
+
+      // Validate Detail Group if changed and provided: must belong to organization and be level 1
+      if (
+        input.detailGroupId !== undefined &&
+        input.detailGroupId !== null &&
+        input.detailGroupId !== node.detailGroupId
+      ) {
+        const detailGroup = await tx.detail.findUnique({
+          where: { id: input.detailGroupId },
+        });
+        if (
+          detailGroup === null ||
+          detailGroup.organizationId !== node.organizationId ||
+          detailGroup.level !== 1 ||
+          !detailGroup.isActive
+        ) {
+          throw new Error(
+            `Detail group "${input.detailGroupId}" is invalid, inactive, or not a Level-1 Detail Group in this organization.`,
+          );
+        }
       }
 
       const children = await tx.account.findMany({
@@ -499,6 +553,12 @@ export class AccountsRepository {
       if (input.accountNature !== undefined) {
         patch.accountNature = input.accountNature;
       }
+      if (input.accountType !== undefined) {
+        patch.accountType = input.accountType;
+      }
+      if (input.detailGroupId !== undefined) {
+        patch.detailGroupId = input.detailGroupId;
+      }
       if (input.isPostable !== undefined) patch.isPostable = input.isPostable;
       if (parentChanged) {
         patch.parentId = requestedParentId ?? null;
@@ -507,6 +567,69 @@ export class AccountsRepository {
       return toDomain(
         await tx.account.update({ where: { id: node.id }, data: patch }),
       );
+    });
+  }
+
+  /**
+   * Controlled destructive unlinking of Account <-> Detail relationship (OD-29-03).
+   * Requires explicit confirmation, clears historical detail allocations atomically
+   * from document lines and ledger entries, preserves monetary account turnover,
+   * and produces data for an audit event.
+   */
+  async unlinkDetailGroupChecked(input: {
+    id: string;
+    confirmUnlink: boolean;
+    now: Date;
+    actorId: string | null;
+  }): Promise<{
+    account: Account;
+    unlinkedDocumentLinesCount: number;
+    unlinkedLedgerEntriesCount: number;
+    previousDetailGroupId: string;
+  }> {
+    if (!input.confirmUnlink) {
+      throw new Error(
+        'Explicit confirmation (confirmUnlink=true) is required to unlink Detail Group and clear historical detail allocations.',
+      );
+    }
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
+      const lockedRow = await lockAccountRow(tx, input.id);
+      if (lockedRow === null) {
+        throw new Error(`Account "${input.id}" no longer exists.`);
+      }
+      const node = toDomain(lockedRow);
+      if (!node.detailGroupId) {
+        throw new Error(
+          `Account "${input.id}" does not have a linked detail group.`,
+        );
+      }
+      const previousDetailGroupId = node.detailGroupId;
+
+      const updatedLines = await tx.accountingDocumentLine.updateMany({
+        where: { accountId: node.id, detailId: { not: null } },
+        data: { detailId: null },
+      });
+      const updatedEntries = await tx.ledgerEntry.updateMany({
+        where: { accountId: node.id, detailId: { not: null } },
+        data: { detailId: null },
+      });
+
+      const updatedAccountRow = await tx.account.update({
+        where: { id: node.id },
+        data: {
+          detailGroupId: null,
+          updatedAt: input.now,
+          updatedBy: input.actorId,
+        },
+      });
+
+      return {
+        account: toDomain(updatedAccountRow),
+        unlinkedDocumentLinesCount: updatedLines.count,
+        unlinkedLedgerEntriesCount: updatedEntries.count,
+        previousDetailGroupId,
+      };
     });
   }
 
@@ -522,6 +645,15 @@ export class AccountsRepository {
   }
 
   /**
+   * OD-29-02: count posted ledger entries for fast pre-flight check in service.
+   * Authoritative check is performed under transaction row lock in updateChecked.
+   */
+  async countPostedLedgerEntries(accountId: string): Promise<number> {
+    const { ledgerEntry } = await this.client();
+    return ledgerEntry.count({ where: { accountId } });
+  }
+
+  /**
    * Which requested changes AC-I-11 freezes for a referenced account. The
    * caller passes the line count's verdict (Task 10.4 wires it to
    * `accounting_document_lines`); the decision itself stays in the domain.
@@ -530,13 +662,17 @@ export class AccountsRepository {
     input: {
       isPostable?: boolean | undefined;
       accountNature?: string | undefined;
+      accountType?: string | undefined;
+      detailGroupId?: string | null | undefined;
     },
     node: Account,
     parentChanged: boolean,
     referencedByDocumentLine: boolean,
+    hasPostedLedgerEntry: boolean,
   ): AccountImmutableField[] {
     return planAccountEdit({
       referencedByDocumentLine,
+      hasPostedLedgerEntry,
       changes: {
         parentId: parentChanged,
         // `level` moves with the parent; it is never an independent input.
@@ -544,6 +680,12 @@ export class AccountsRepository {
         accountNature:
           input.accountNature !== undefined &&
           input.accountNature !== node.accountNature,
+        accountType:
+          input.accountType !== undefined &&
+          input.accountType !== node.accountType,
+        detailGroupId:
+          input.detailGroupId !== undefined &&
+          input.detailGroupId !== node.detailGroupId,
         isPostable:
           input.isPostable !== undefined &&
           input.isPostable !== node.isPostable,
@@ -642,7 +784,11 @@ function toDomain(row: AccountRow | LockedAccount): Account {
     // fallback picks the reading no report should silently treat as credit.
     accountNature: isAccountNature(row.accountNature)
       ? row.accountNature
-      : 'debit',
+      : 'DEBIT',
+    accountType: isAccountType((row as any).accountType)
+      ? (row as any).accountType
+      : 'BALANCE_SHEET',
+    detailGroupId: row.detailGroupId ?? null,
     isPostable: row.isPostable,
     isActive: row.isActive,
     createdAt: row.createdAt,

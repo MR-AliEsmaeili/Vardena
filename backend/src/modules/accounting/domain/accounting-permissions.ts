@@ -73,6 +73,20 @@ export const ACCOUNT_PERMISSIONS = {
   EDIT: 'Accounting.Account.Edit',
   ENABLE: 'Accounting.Account.Enable',
   DISABLE: 'Accounting.Account.Disable',
+  UNLINK_DETAIL_GROUP: 'Accounting.Account.UnlinkDetailGroup',
+} as const;
+
+export const DETAIL_STRUCTURE_PERMISSIONS = {
+  VIEW: 'Accounting.DetailStructure.View',
+  CONFIGURE: 'Accounting.DetailStructure.Configure',
+} as const;
+
+export const DETAIL_PERMISSIONS = {
+  VIEW: 'Accounting.Detail.View',
+  CREATE: 'Accounting.Detail.Create',
+  EDIT: 'Accounting.Detail.Edit',
+  ENABLE: 'Accounting.Detail.Enable',
+  DISABLE: 'Accounting.Detail.Disable',
 } as const;
 
 export const ACCOUNTING_PERIOD_PERMISSIONS = {
@@ -317,6 +331,42 @@ export const ACCOUNTING_PERMISSION_DEFINITIONS: readonly PermissionDefinition[] 
       code: ACCOUNT_PERMISSIONS.DISABLE,
       description:
         'Disable an account (blocks new postings and new children, keeps history readable). There is no delete.',
+    },
+    {
+      code: ACCOUNT_PERMISSIONS.UNLINK_DETAIL_GROUP,
+      description:
+        'Controlled destructive unlinking of Account <-> Detail relationship with atomic historical detail allocation clearing.',
+    },
+    {
+      code: DETAIL_STRUCTURE_PERMISSIONS.VIEW,
+      description: 'View detail coding structures, their versions and levels.',
+    },
+    {
+      code: DETAIL_STRUCTURE_PERMISSIONS.CONFIGURE,
+      description:
+        'Draft, edit and publish a detail coding structure version (Task 30 detail foundation).',
+    },
+    {
+      code: DETAIL_PERMISSIONS.VIEW,
+      description:
+        'View detail records, detail groups, and the detail hierarchy tree.',
+    },
+    {
+      code: DETAIL_PERMISSIONS.CREATE,
+      description: 'Create detail records (detail groups or child details).',
+    },
+    {
+      code: DETAIL_PERMISSIONS.EDIT,
+      description: 'Edit detail records.',
+    },
+    {
+      code: DETAIL_PERMISSIONS.ENABLE,
+      description: 'Re-enable a disabled detail record.',
+    },
+    {
+      code: DETAIL_PERMISSIONS.DISABLE,
+      description:
+        'Disable a detail record (blocks new postings with this detail, keeps history readable).',
     },
     {
       code: ACCOUNTING_DOCUMENT_PERMISSIONS.VIEW,

@@ -370,6 +370,7 @@ export interface AccountingDocumentLineDto {
   id: string;
   lineNo: number;
   accountId: string;
+  detailId: string | null;
   /** Canonical decimal strings (`numeric(18,2)` values, never floats). */
   debitAmount: string;
   creditAmount: string;
@@ -419,6 +420,7 @@ export function toAccountingDocumentDto(
       id: line.id,
       lineNo: line.lineNo,
       accountId: line.accountId,
+      detailId: line.detailId ?? null,
       debitAmount: canonicalizeAmount(line.debitAmount),
       creditAmount: canonicalizeAmount(line.creditAmount),
       description: line.description,

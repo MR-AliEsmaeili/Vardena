@@ -121,10 +121,11 @@ interface Fixture {
 
 async function buildFixture(
   config: AppConfig = UNPINNED_APP_CONFIG,
+  customStores?: StructureStores,
 ): Promise<Fixture> {
   const rbacStores = createInMemoryStores();
   const masterStores = createMasterDataStores();
-  const stores = createStructureStores();
+  const stores = customStores ?? createStructureStores();
   const bus = new DomainEventBus();
   const events: DomainEvent[] = [];
   for (const type of [
@@ -351,7 +352,7 @@ async function createAccount(
     organizationId,
     code,
     title: overrides.title ?? `Account ${code}`,
-    accountNature: overrides.accountNature ?? 'debit',
+    accountNature: overrides.accountNature ?? 'DEBIT',
   };
   if (overrides.isPostable !== undefined)
     input.isPostable = overrides.isPostable;
@@ -370,7 +371,7 @@ function accountFailures(fixture: Fixture) {
         organizationId,
         code,
         title: overrides.title ?? `Account ${code}`,
-        accountNature: overrides.accountNature ?? 'debit',
+        accountNature: overrides.accountNature ?? 'DEBIT',
       };
       if (overrides.isPostable !== undefined) {
         input.isPostable = overrides.isPostable;
@@ -870,7 +871,7 @@ describe('AccountsService', () => {
       title: 'Current Assets',
       parentId: null,
       level: 1,
-      accountNature: 'debit',
+      accountNature: 'DEBIT',
       // Level 1 of THIS configuration defaults to non-postable (§14 rule 4).
       isPostable: false,
       isActive: true,
@@ -1127,7 +1128,7 @@ describe('AccountsService', () => {
               organizationId,
               code,
               title: `Account ${code}`,
-              accountNature: 'debit',
+              accountNature: 'DEBIT',
             }),
           ),
         ),
@@ -1253,13 +1254,13 @@ describe('AccountsService', () => {
     const renamed = await asActor(ACTOR, () =>
       fixture.accounts.updateAccount(orgA, root.id, {
         title: '  Current Assets  ',
-        accountNature: 'credit',
+        accountNature: 'CREDIT',
       }),
     );
     expect(renamed).toMatchObject({
       code: '02',
       title: 'Current Assets',
-      accountNature: 'credit',
+      accountNature: 'CREDIT',
     });
     expect(fixture.events.map((event) => event.type)).toContain(
       ACCOUNT_UPDATED_EVENT,
@@ -1270,6 +1271,12 @@ describe('AccountsService', () => {
     expect(
       await accountFailures(fixture).update(orgA, root.id, {
         accountNature: 'asset',
+      }),
+    ).toMatchObject({ code: 'BadRequest' });
+    // Lowercase values are rejected at boundary (OD-29-01)
+    expect(
+      await accountFailures(fixture).update(orgA, root.id, {
+        accountNature: 'credit',
       }),
     ).toMatchObject({ code: 'BadRequest' });
     // `UpdateAccountInput` has no `code` property: the immutability is
@@ -1429,7 +1436,7 @@ describe('AccountsService', () => {
             organizationId: orgA,
             code: '02',
             title: 'Nope',
-            accountNature: 'debit',
+            accountNature: 'DEBIT',
           }),
         ),
       ),
@@ -1452,7 +1459,7 @@ describe('AccountsService', () => {
           organizationId: orgA,
           code: '07',
           title: 'Created',
-          accountNature: 'debit',
+          accountNature: 'DEBIT',
         }),
       ),
     ).toMatchObject({ code: '07' });
@@ -1512,10 +1519,10 @@ describe('AccountsService', () => {
       await asActor(ACTOR, () =>
         fixture.accounts.updateAccount(orgA, root.id, {
           isPostable: true,
-          accountNature: 'credit',
+          accountNature: 'CREDIT',
         }),
       ),
-    ).toMatchObject({ isPostable: true, accountNature: 'credit' });
+    ).toMatchObject({ isPostable: true, accountNature: 'CREDIT' });
     expect(fixture.stores.raw.state.versions.findById(versionId)?.status).toBe(
       'active',
     );
@@ -1680,7 +1687,7 @@ describe('deployment organization pin over the Task 10.3 surface (ADR-0025)', ()
           organizationId: foreignId,
           code: '05',
           title: 'Out of scope',
-          accountNature: 'debit',
+          accountNature: 'DEBIT',
         }),
       () =>
         pinned.structures.createVersion({
@@ -1875,7 +1882,7 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
           organizationId: orgB,
           code: '03',
           title: 'Foreign root',
-          accountNature: 'debit',
+          accountNature: 'DEBIT',
         }),
       )
     ).id;
@@ -1884,7 +1891,7 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
         organizationId: orgB,
         code: '03001',
         title: 'Foreign child',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         parentId: parentInB,
       }),
     );
@@ -2020,7 +2027,7 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
     // Same data, a deployment pinned to orgA: the list path must refuse a
     // non-pinned organization too, not answer an empty page.
     const pinned = await buildFixture(pinnedAppConfig(orgA));
-    await pinned.grant(ACTOR, [...Object.values(ACCOUNT_PERMISSIONS)]);
+    await pinned.grant(ACTOR, Object.values(ACCOUNT_PERMISSIONS));
     pinned.member(ACTOR, orgA);
     pinned.member(ACTOR, orgB);
     const refused = await failure(
@@ -2051,5 +2058,230 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
     // Authorization order is unchanged: the permission is decided first, so a
     // missing code is still 403 and never downgraded to 404.
     expect(refused.code).toBe('PermissionDenied');
+  });
+
+  describe('OD-29-01 and OD-29-02 semantics and immutability timing', () => {
+    it('accepts exactly DEBIT, CREDIT, DUAL and rejects lowercase or invalid values', async () => {
+      const debitAcc = await createAccount(fixture, orgA, '11', {
+        accountNature: 'DEBIT',
+      });
+      expect(debitAcc.accountNature).toBe('DEBIT');
+
+      const creditAcc = await createAccount(fixture, orgA, '12', {
+        accountNature: 'CREDIT',
+      });
+      expect(creditAcc.accountNature).toBe('CREDIT');
+
+      const dualAcc = await createAccount(fixture, orgA, '13', {
+        accountNature: 'DUAL',
+      });
+      expect(dualAcc.accountNature).toBe('DUAL');
+
+      // Lowercase is rejected at API/service boundary
+      const badDebit = await accountFailures(fixture).create(orgA, '14', {
+        accountNature: 'debit',
+      });
+      expect(badDebit.code).toBe('BadRequest');
+
+      const badCredit = await accountFailures(fixture).create(orgA, '15', {
+        accountNature: 'credit',
+      });
+      expect(badCredit.code).toBe('BadRequest');
+
+      const badDual = await accountFailures(fixture).create(orgA, '16', {
+        accountNature: 'dual',
+      });
+      expect(badDual.code).toBe('BadRequest');
+    });
+
+    it('accepts BALANCE_SHEET, INCOME_STATEMENT, MEMORANDUM for accountType', async () => {
+      const bs = await asActor(ACTOR, () =>
+        fixture.accounts.createAccount({
+          organizationId: orgA,
+          code: '21',
+          title: 'Balance Sheet Account',
+          accountNature: 'DEBIT',
+          accountType: 'BALANCE_SHEET',
+        }),
+      );
+      expect(bs.accountType).toBe('BALANCE_SHEET');
+
+      const is = await asActor(ACTOR, () =>
+        fixture.accounts.createAccount({
+          organizationId: orgA,
+          code: '22',
+          title: 'Income Statement Account',
+          accountNature: 'CREDIT',
+          accountType: 'INCOME_STATEMENT',
+        }),
+      );
+      expect(is.accountType).toBe('INCOME_STATEMENT');
+
+      const memo = await asActor(ACTOR, () =>
+        fixture.accounts.createAccount({
+          organizationId: orgA,
+          code: '23',
+          title: 'Memorandum Account',
+          accountNature: 'DUAL',
+          accountType: 'MEMORANDUM',
+        }),
+      );
+      expect(memo.accountType).toBe('MEMORANDUM');
+    });
+
+    describe('OD-29-02 Account Type immutability timing', () => {
+      let customFixture: Fixture;
+      let customOrg: string;
+      const referencedAccountIds = new Set<string>();
+      const postedAccountIds = new Set<string>();
+
+      beforeEach(async () => {
+        referencedAccountIds.clear();
+        postedAccountIds.clear();
+
+        customFixture = await buildFixture(
+          UNPINNED_APP_CONFIG,
+          createStructureStores({
+            lineUsage: {
+              countForAccount: (id) => (referencedAccountIds.has(id) ? 1 : 0),
+            },
+            ledgerUsage: {
+              countForAccount: (id) => (postedAccountIds.has(id) ? 1 : 0),
+            },
+          }),
+        );
+        customOrg = (
+          await asSystem(() =>
+            customFixture.organizations.createOrganization({
+              code: 'CUSTOM_ORG',
+              name: 'Custom Org',
+            }),
+          )
+        ).id;
+        await customFixture.grant(ACTOR, Object.values(ACCOUNT_PERMISSIONS));
+        customFixture.member(ACTOR, customOrg);
+        await publishBoth(customFixture, customOrg, TWO_LEVELS);
+      });
+
+      it('Case 1 — unused account allows changing accountType', async () => {
+        const acc = await asActor(ACTOR, () =>
+          customFixture.accounts.createAccount({
+            organizationId: customOrg,
+            code: '31',
+            title: 'Unused Account',
+            accountNature: 'DEBIT',
+            accountType: 'BALANCE_SHEET',
+          }),
+        );
+        expect(acc.accountType).toBe('BALANCE_SHEET');
+
+        const updated = await asActor(ACTOR, () =>
+          customFixture.accounts.updateAccount(customOrg, acc.id, {
+            accountType: 'INCOME_STATEMENT',
+          }),
+        );
+        expect(updated.accountType).toBe('INCOME_STATEMENT');
+      });
+
+      it('Case 2 — Draft document line allows changing accountType while freezing other structural fields', async () => {
+        const acc = await asActor(ACTOR, () =>
+          customFixture.accounts.createAccount({
+            organizationId: customOrg,
+            code: '32',
+            title: 'Draft Referenced Account',
+            accountNature: 'DEBIT',
+            accountType: 'BALANCE_SHEET',
+          }),
+        );
+
+        // Account referenced in Draft document line (lines exist, 0 posted ledger entries)
+        referencedAccountIds.add(acc.id);
+
+        // accountType change SUCCEEDS (OD-29-02)
+        const updated = await asActor(ACTOR, () =>
+          customFixture.accounts.updateAccount(customOrg, acc.id, {
+            accountType: 'MEMORANDUM',
+          }),
+        );
+        expect(updated.accountType).toBe('MEMORANDUM');
+
+        // Other structural fields are frozen by document line reference
+        const blockedNature = await failure(
+          asActor(ACTOR, () =>
+            customFixture.accounts.updateAccount(customOrg, acc.id, {
+              accountNature: 'CREDIT',
+            }),
+          ),
+        );
+        expect(blockedNature.code).toBe('BusinessRuleViolation');
+      });
+
+      it('Case 3 — Temporary document line allows changing accountType while freezing other structural fields', async () => {
+        const acc = await asActor(ACTOR, () =>
+          customFixture.accounts.createAccount({
+            organizationId: customOrg,
+            code: '33',
+            title: 'Temporary Referenced Account',
+            accountNature: 'DEBIT',
+            accountType: 'BALANCE_SHEET',
+          }),
+        );
+
+        // Account referenced in Temporary document line (lines exist, 0 posted ledger entries)
+        referencedAccountIds.add(acc.id);
+
+        // accountType change SUCCEEDS (OD-29-02)
+        const updated = await asActor(ACTOR, () =>
+          customFixture.accounts.updateAccount(customOrg, acc.id, {
+            accountType: 'INCOME_STATEMENT',
+          }),
+        );
+        expect(updated.accountType).toBe('INCOME_STATEMENT');
+
+        // Other structural fields (e.g. accountNature) are frozen
+        const blockedNature = await failure(
+          asActor(ACTOR, () =>
+            customFixture.accounts.updateAccount(customOrg, acc.id, {
+              accountNature: 'CREDIT',
+            }),
+          ),
+        );
+        expect(blockedNature.code).toBe('BusinessRuleViolation');
+      });
+
+      it('Case 4 — Posted ledger entry blocks changing accountType and preserves title editability', async () => {
+        const acc = await asActor(ACTOR, () =>
+          customFixture.accounts.createAccount({
+            organizationId: customOrg,
+            code: '34',
+            title: 'Posted Account',
+            accountNature: 'DEBIT',
+            accountType: 'BALANCE_SHEET',
+          }),
+        );
+
+        // Account referenced in finalized / posted ledger entries
+        referencedAccountIds.add(acc.id);
+        postedAccountIds.add(acc.id);
+
+        // accountType change is BLOCKED (OD-29-02)
+        const blockedType = await failure(
+          asActor(ACTOR, () =>
+            customFixture.accounts.updateAccount(customOrg, acc.id, {
+              accountType: 'INCOME_STATEMENT',
+            }),
+          ),
+        );
+        expect(blockedType.code).toBe('BusinessRuleViolation');
+
+        // Title update always still succeeds
+        const updatedTitle = await asActor(ACTOR, () =>
+          customFixture.accounts.updateAccount(customOrg, acc.id, {
+            title: 'Posted Account Renamed',
+          }),
+        );
+        expect(updatedTitle.title).toBe('Posted Account Renamed');
+      });
+    });
   });
 });

@@ -100,6 +100,8 @@ export interface AccountRecord extends Row {
   codingStructureVersionId: string | null;
   accountingConfigurationId: string | null;
   accountNature: string;
+  accountType: string;
+  detailGroupId: string | null;
   isPostable: boolean;
   isActive: boolean;
   createdAt: Date;
@@ -821,10 +823,19 @@ const NO_LINE_USAGE: AccountLineUsage = {
   countForAccount: () => 0,
 };
 
+export interface AccountLedgerUsage {
+  countForAccount(accountId: string): number;
+}
+
+const NO_LEDGER_USAGE: AccountLedgerUsage = {
+  countForAccount: () => 0,
+};
+
 export class InMemoryAccountsRepository {
   constructor(
     private readonly state: StructureState,
     private readonly lineUsage: AccountLineUsage = NO_LINE_USAGE,
+    private readonly ledgerUsage: AccountLedgerUsage = NO_LEDGER_USAGE,
   ) {}
 
   async findById(id: string): Promise<Account | null> {
@@ -872,6 +883,8 @@ export class InMemoryAccountsRepository {
     title: string;
     parentId: string | null;
     accountNature: string;
+    accountType?: string | undefined;
+    detailGroupId?: string | null | undefined;
     isPostable: boolean;
     structure: AccountStructureSnapshot;
     now: Date;
@@ -995,6 +1008,8 @@ export class InMemoryAccountsRepository {
       codingStructureVersionId: input.structure.versionId,
       accountingConfigurationId: input.structure.accountingConfigurationId,
       accountNature: input.accountNature,
+      accountType: input.accountType ?? 'BALANCE_SHEET',
+      detailGroupId: input.detailGroupId ?? null,
       isPostable: input.isPostable,
       isActive: true,
       createdAt: input.now,
@@ -1010,6 +1025,8 @@ export class InMemoryAccountsRepository {
     id: string;
     title?: string | undefined;
     accountNature?: string | undefined;
+    accountType?: string | undefined;
+    detailGroupId?: string | null | undefined;
     isPostable?: boolean | undefined;
     parentId?: string | null | undefined;
     structure: AccountStructureSnapshot | null;
@@ -1033,12 +1050,19 @@ export class InMemoryAccountsRepository {
 
     const refused = planAccountEdit({
       referencedByDocumentLine: this.lineUsage.countForAccount(node.id) > 0,
+      hasPostedLedgerEntry: this.ledgerUsage.countForAccount(node.id) > 0,
       changes: {
         parentId: parentChanged,
         level: parentChanged,
         accountNature:
           input.accountNature !== undefined &&
           input.accountNature !== node.accountNature,
+        accountType:
+          input.accountType !== undefined &&
+          input.accountType !== node.accountType,
+        detailGroupId:
+          input.detailGroupId !== undefined &&
+          input.detailGroupId !== node.detailGroupId,
         isPostable:
           input.isPostable !== undefined &&
           input.isPostable !== node.isPostable,
@@ -1122,6 +1146,8 @@ export class InMemoryAccountsRepository {
     this.state.accounts.patch(node.id, {
       title: input.title,
       accountNature: input.accountNature,
+      accountType: input.accountType,
+      detailGroupId: input.detailGroupId,
       isPostable: input.isPostable,
       parentId: parentChanged ? requestedParentId : undefined,
       level: parentChanged ? level : undefined,
@@ -1133,6 +1159,50 @@ export class InMemoryAccountsRepository {
       throw new Error(`Account "${node.id}" no longer exists.`);
     }
     return toAccount(updated) as Account;
+  }
+
+  async unlinkDetailGroupChecked(input: {
+    id: string;
+    confirmUnlink: boolean;
+    now: Date;
+    actorId: string | null;
+  }): Promise<{
+    account: Account;
+    unlinkedDocumentLinesCount: number;
+    unlinkedLedgerEntriesCount: number;
+    previousDetailGroupId: string;
+  }> {
+    if (!input.confirmUnlink) {
+      throw new Error(
+        'Explicit confirmation (confirmUnlink=true) is required.',
+      );
+    }
+    const node = this.state.accounts.findById(input.id);
+    if (node === null) {
+      throw new Error(`Account "${input.id}" no longer exists.`);
+    }
+    if (!node.detailGroupId) {
+      throw new Error(
+        `Account "${input.id}" does not have a linked detail group.`,
+      );
+    }
+    const previousDetailGroupId = node.detailGroupId;
+    this.state.accounts.patch(node.id, {
+      detailGroupId: null,
+      updatedAt: input.now,
+      updatedBy: input.actorId,
+    });
+    const updated = this.state.accounts.findById(node.id);
+    return {
+      account: toAccount(updated) as Account,
+      unlinkedDocumentLinesCount: 0,
+      unlinkedLedgerEntriesCount: 0,
+      previousDetailGroupId,
+    };
+  }
+
+  async countPostedLedgerEntries(accountId: string): Promise<number> {
+    return this.ledgerUsage.countForAccount(accountId);
   }
 
   async update(
@@ -1218,6 +1288,8 @@ function toAccount(row: AccountRecord | null | undefined): Account | null {
     codingStructureVersionId: row.codingStructureVersionId,
     accountingConfigurationId: row.accountingConfigurationId,
     accountNature: row.accountNature as Account['accountNature'],
+    accountType: (row.accountType ?? 'BALANCE_SHEET') as Account['accountType'],
+    detailGroupId: row.detailGroupId ?? null,
     isPostable: row.isPostable,
     isActive: row.isActive,
     createdAt: row.createdAt,
@@ -1238,7 +1310,10 @@ export interface StructureStores {
 }
 
 export function createStructureStores(
-  options: { lineUsage?: AccountLineUsage } = {},
+  options: {
+    lineUsage?: AccountLineUsage;
+    ledgerUsage?: AccountLedgerUsage;
+  } = {},
 ): StructureStores {
   const state = createStructureState();
   const structures = new InMemoryCodingStructuresRepository(state);
@@ -1246,6 +1321,7 @@ export function createStructureStores(
   const accounts = new InMemoryAccountsRepository(
     state,
     options.lineUsage ?? NO_LINE_USAGE,
+    options.ledgerUsage ?? NO_LEDGER_USAGE,
   );
   return {
     structures: structures as unknown as CodingStructuresRepository,

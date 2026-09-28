@@ -367,7 +367,7 @@ describe('Accounting ledger movements (e2e)', () => {
             organizationId: state.orgA,
             code,
             title,
-            accountNature: 'debit',
+            accountNature: 'DEBIT',
             isPostable: true,
           })
           .expect(201)

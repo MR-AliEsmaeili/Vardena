@@ -47,6 +47,7 @@ import {
 } from '../domain/document-reversal.js';
 
 import type {
+  LockedAccountUsage,
   LockedAccountingDocument,
   LockedAccountingPeriod,
   LockedFiscalYear,
@@ -331,11 +332,7 @@ export class AccountingDocumentsRepository {
         financialAreaId: input.financialAreaId,
         documentDate: input.documentDate,
       });
-      await lockAccountsForLinesInTx(
-        tx,
-        input.organizationId,
-        input.lines.map((line) => line.accountId),
-      );
+      await lockAccountsForLinesInTx(tx, input.organizationId, input.lines);
       assertLineComposition(input.lines);
 
       const row = await tx.accountingDocument.create({
@@ -408,11 +405,7 @@ export class AccountingDocumentsRepository {
         financialAreaId: input.financialAreaId,
         documentDate: input.documentDate,
       });
-      await lockAccountsForLinesInTx(
-        tx,
-        input.organizationId,
-        input.lines.map((line) => line.accountId),
-      );
+      await lockAccountsForLinesInTx(tx, input.organizationId, input.lines);
       assertLineComposition(input.lines);
 
       const locked = await this.lockDocumentInTx(
@@ -593,10 +586,22 @@ export class AccountingDocumentsRepository {
         now: input.finalizedAt,
         actorId: input.finalizedBy,
       });
+
+      const lines = await readLinesInTx(tx, input.id);
+      if (
+        !sameIds(
+          lockedAccountIds,
+          lines.map((line) => line.accountId),
+        )
+      ) {
+        // A concurrent edit replaced the line set: some referenced account is
+        // not covered by the locks this transaction holds.
+        throw new AccountingDocumentStaleError();
+      }
       await lockAccountsForLinesInTx(
         tx,
         input.organizationId,
-        lockedAccountIds,
+        lineInputsOf(lines),
       );
 
       // Task 12 — global order `… → accounts FOR SHARE → balance_projections FOR UPDATE → document FOR UPDATE`.
@@ -648,17 +653,6 @@ export class AccountingDocumentsRepository {
       ) {
         // A concurrent edit re-dated the voucher (or moved its area) after the
         // calendar locks were taken: the validated scope is not the stored one.
-        throw new AccountingDocumentStaleError();
-      }
-      const lines = await readLinesInTx(tx, input.id);
-      if (
-        !sameIds(
-          lockedAccountIds,
-          lines.map((line) => line.accountId),
-        )
-      ) {
-        // A concurrent edit replaced the line set: some referenced account is
-        // not covered by the locks this transaction holds.
         throw new AccountingDocumentStaleError();
       }
       assertOpenScope(scope);
@@ -795,11 +789,44 @@ export class AccountingDocumentsRepository {
         now: input.finalizedAt,
         actorId: input.finalizedBy,
       });
-      await lockAccountsForLinesInTx(
-        tx,
-        input.organizationId,
-        lockedAccountIds,
+
+      const originalLines = await readLinesInTx(tx, input.originalDocumentId);
+      if (
+        !sameIds(
+          lockedAccountIds,
+          originalLines.map((line) => line.accountId),
+        )
+      ) {
+        throw new AccountingDocumentStaleError();
+      }
+      const inverted = invertDocumentLines(
+        originalLines.map((line) => ({
+          id: line.id,
+          documentId: line.documentId,
+          lineNo: line.lineNo,
+          accountId: line.accountId,
+          detailId: line.detailId ?? null,
+          debitAmount: toAmountString(line.debitAmount),
+          creditAmount: toAmountString(line.creditAmount),
+          description: line.description,
+          sourceLineReference: line.sourceLineReference,
+        })),
       );
+      assertLineComposition(inverted);
+      const reversalLines: AccountingDocumentLineWrite[] = inverted.map(
+        (line) => ({
+          id: generateId(),
+          lineNo: line.lineNo,
+          accountId: line.accountId,
+          detailId: line.detailId ?? null,
+          debitAmount: line.debitAmount,
+          creditAmount: line.creditAmount,
+          description: line.description,
+          sourceLineReference: line.sourceLineReference,
+        }),
+      );
+      await lockAccountsForLinesInTx(tx, input.organizationId, reversalLines);
+
       const projectionKeys = lockedAccountIds.map((accountId) => ({
         organizationId: input.organizationId,
         financialAreaId: originalHeader.financialAreaId,
@@ -825,39 +852,6 @@ export class AccountingDocumentsRepository {
       if (locked.reversedByDocumentId) {
         throw new AccountingDocumentAlreadyReversedError(locked.id);
       }
-      const originalLines = await readLinesInTx(tx, input.originalDocumentId);
-      if (
-        !sameIds(
-          lockedAccountIds,
-          originalLines.map((line) => line.accountId),
-        )
-      ) {
-        throw new AccountingDocumentStaleError();
-      }
-      const inverted = invertDocumentLines(
-        originalLines.map((line) => ({
-          id: line.id,
-          documentId: line.documentId,
-          lineNo: line.lineNo,
-          accountId: line.accountId,
-          debitAmount: toAmountString(line.debitAmount),
-          creditAmount: toAmountString(line.creditAmount),
-          description: line.description,
-          sourceLineReference: line.sourceLineReference,
-        })),
-      );
-      assertLineComposition(inverted);
-      const reversalLines: AccountingDocumentLineWrite[] = inverted.map(
-        (line) => ({
-          id: generateId(),
-          lineNo: line.lineNo,
-          accountId: line.accountId,
-          debitAmount: line.debitAmount,
-          creditAmount: line.creditAmount,
-          description: line.description,
-          sourceLineReference: line.sourceLineReference,
-        }),
-      );
       const row = await tx.accountingDocument.create({
         data: {
           id: input.reversalId,
@@ -1139,9 +1133,9 @@ function assertEditablePhase(state: string): void {
 
 /**
  * Lock every referenced account `FOR SHARE`, ascending by id and deduplicated
- * (a balanced voucher often touches an account twice), and re-evaluate
- * AC-I-09 under the lock: the account must belong to the organization, be
- * postable and be active.
+ * (a balanced voucher often touches an account twice), re-evaluate AC-I-09
+ * under the lock: the account must belong to the organization, be postable and
+ * be active, and enforce Detail requirements (OD-29-03).
  *
  * @throws AccountingDocumentAccountRejectedError with `account_not_found` for
  *   a missing/foreign account — the service maps it to 404 (AC-I-16).
@@ -1149,9 +1143,14 @@ function assertEditablePhase(state: string): void {
 async function lockAccountsForLinesInTx(
   tx: AccountingTxClient,
   organizationId: string,
-  accountIds: readonly string[],
-): Promise<void> {
-  const ids = [...new Set(accountIds)].sort();
+  lines: readonly (
+    | AccountingDocumentLineInput
+    | AccountingDocumentLineWrite
+    | AccountingDocumentLineRow
+  )[],
+): Promise<Map<string, LockedAccountUsage>> {
+  const ids = [...new Set(lines.map((l) => l.accountId))].sort();
+  const accounts = new Map<string, LockedAccountUsage>();
   for (const accountId of ids) {
     const account = await lockAccountRowForShare(tx, accountId);
     if (account === null || account.organizationId !== organizationId) {
@@ -1172,7 +1171,63 @@ async function lockAccountsForLinesInTx(
         'account_disabled',
       );
     }
+    accounts.set(accountId, account);
   }
+
+  for (const line of lines) {
+    const account = accounts.get(line.accountId);
+    if (!account) continue;
+
+    if (account.detailGroupId !== null) {
+      if (!line.detailId) {
+        throw new AccountingDocumentLineRejectedError(['detail_required']);
+      }
+    } else {
+      if (line.detailId) {
+        throw new AccountingDocumentLineRejectedError(['detail_not_allowed']);
+      }
+    }
+
+    if (line.detailId) {
+      const detail = await tx.detail.findUnique({
+        where: { id: line.detailId },
+      });
+      if (detail === null || detail.organizationId !== organizationId) {
+        throw new AccountingDocumentLineRejectedError(['detail_not_found']);
+      }
+      if (!detail.isPostable) {
+        throw new AccountingDocumentLineRejectedError(['detail_not_postable']);
+      }
+      if (!detail.isActive) {
+        throw new AccountingDocumentLineRejectedError(['detail_disabled']);
+      }
+
+      // Verify the detail belongs to the account's linked Level-1 Detail Group
+      const rootDetailId = await findRootDetailIdInTx(tx, detail);
+      if (rootDetailId !== account.detailGroupId) {
+        throw new AccountingDocumentLineRejectedError([
+          'detail_group_mismatch',
+        ]);
+      }
+    }
+  }
+
+  return accounts;
+}
+
+async function findRootDetailIdInTx(
+  tx: AccountingTxClient,
+  detail: { id: string; parentId: string | null; level: number },
+): Promise<string> {
+  let curr = detail;
+  while (curr.parentId !== null) {
+    const parent = await tx.detail.findUnique({
+      where: { id: curr.parentId },
+    });
+    if (parent === null) break;
+    curr = parent;
+  }
+  return curr.id;
 }
 
 /**
@@ -1186,6 +1241,7 @@ function lineInputsOf(
   return rows.map((row) => ({
     lineNo: row.lineNo,
     accountId: row.accountId,
+    detailId: row.detailId ?? null,
     debitAmount: toAmountString(row.debitAmount),
     creditAmount: toAmountString(row.creditAmount),
     description: row.description,
@@ -1221,6 +1277,7 @@ async function writeLinesInTx(
     accountingPeriodId: input.document.accountingPeriodId,
     lineNo: line.lineNo,
     accountId: line.accountId,
+    detailId: line.detailId ?? null,
     debitAmount: line.debitAmount,
     creditAmount: line.creditAmount,
     description: line.description,
@@ -1282,6 +1339,7 @@ function toLedgerEntryCreate(
     voucherLineId: entry.voucherLineId,
     lineNo: entry.lineNo,
     accountId: entry.accountId,
+    detailId: entry.detailId ?? null,
     debitAmount: entry.debitAmount,
     creditAmount: entry.creditAmount,
     description: entry.description,
@@ -1394,6 +1452,7 @@ function toDomain(
         documentId: line.documentId,
         lineNo: line.lineNo,
         accountId: line.accountId,
+        detailId: line.detailId ?? null,
         debitAmount: canonicalizeAmount(toAmountString(line.debitAmount)),
         creditAmount: canonicalizeAmount(toAmountString(line.creditAmount)),
         description: line.description,

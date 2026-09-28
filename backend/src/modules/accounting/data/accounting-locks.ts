@@ -372,6 +372,8 @@ export interface LockedAccount {
   codingStructureVersionId: string;
   accountingConfigurationId: string;
   accountNature: string;
+  accountType: string;
+  detailGroupId: string | null;
   isPostable: boolean;
   isActive: boolean;
   createdAt: Date;
@@ -419,6 +421,8 @@ export async function lockAccountRow(
            "coding_structure_version_id"   AS "codingStructureVersionId",
            "accounting_configuration_id"   AS "accountingConfigurationId",
            "account_nature"                AS "accountNature",
+           "account_type"                  AS "accountType",
+           "detail_group_id"               AS "detailGroupId",
            "is_postable"                   AS "isPostable",
            "is_active"                     AS "isActive",
            "created_at"                    AS "createdAt",
@@ -658,6 +662,7 @@ export interface LockedAccountUsage {
   code: string;
   isPostable: boolean;
   isActive: boolean;
+  detailGroupId: string | null;
 }
 
 /**
@@ -692,11 +697,12 @@ export async function lockAccountRowForShare(
   accountId: string,
 ): Promise<LockedAccountUsage | null> {
   const rows = await tx.$queryRaw<LockedAccountUsage>`
-    SELECT "id"             AS "id",
+    SELECT "id"              AS "id",
            "organization_id" AS "organizationId",
-           "code"           AS "code",
-           "is_postable"    AS "isPostable",
-           "is_active"      AS "isActive"
+           "code"            AS "code",
+           "is_postable"     AS "isPostable",
+           "is_active"       AS "isActive",
+           "detail_group_id" AS "detailGroupId"
       FROM "accounting"."accounts"
      WHERE "id" = ${accountId}
      FOR SHARE`;

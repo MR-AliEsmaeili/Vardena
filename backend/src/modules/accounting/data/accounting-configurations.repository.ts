@@ -492,7 +492,7 @@ function levelCreate(
   level: ConfigurationLevelWrite,
   createdAt: Date,
   actorId: string | null,
-): import('./accounting-rows.js').AccountingConfigurationLevelCreate {
+): AccountingConfigurationLevelCreate {
   return {
     id: level.id,
     organizationId,

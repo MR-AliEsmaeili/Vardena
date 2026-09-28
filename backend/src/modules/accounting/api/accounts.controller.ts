@@ -30,11 +30,13 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { AccountsService } from '../application/accounts.service.js';
 import { ACCOUNT_PERMISSIONS } from '../domain/accounting-permissions.js';
+import type { AccountType } from '../domain/account.js';
 import { AccountingScopeQueryDto } from './dto/accounting-scope.dto.js';
 import {
   AccountResponseDto,
   CreateAccountDto,
   ListAccountsQueryDto,
+  UnlinkDetailGroupDto,
   UpdateAccountDto,
 } from './dto/account.dto.js';
 
@@ -131,6 +133,8 @@ export class AccountsController {
       title: body.title,
       parentId: body.parentId,
       accountNature: body.accountNature,
+      accountType: body.accountType as AccountType | undefined,
+      detailGroupId: body.detailGroupId,
       isPostable: body.isPostable,
     });
   }
@@ -140,7 +144,7 @@ export class AccountsController {
   @RequirePermission(ACCOUNT_PERMISSIONS.EDIT)
   @ApiOperation({
     summary:
-      'Edit an account (title and nature; postability and parent only while unreferenced). The code is immutable.',
+      'Edit an account (title, nature, accountType, detailGroupId; postability, parent, and accountType only while unreferenced). The code is immutable.',
   })
   @ApiOkResponse({ type: AccountResponseDto })
   @ApiNotFoundResponse({ description: 'Account does not exist.' })
@@ -159,9 +163,37 @@ export class AccountsController {
     return this.accounts.updateAccount(scope.organizationId, id, {
       title: body.title,
       accountNature: body.accountNature,
+      accountType: body.accountType as AccountType | undefined,
+      detailGroupId: body.detailGroupId,
       isPostable: body.isPostable,
       parentId: body.parentId,
     });
+  }
+
+  @Post(':id/unlink-detail-group')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard, AuthorizationGuard)
+  @RequirePermission(ACCOUNT_PERMISSIONS.UNLINK_DETAIL_GROUP)
+  @ApiOperation({
+    summary:
+      'Controlled destructive unlinking of Account <-> Detail relationship (OD-29-03). Atomically clears historical detail allocations and preserves monetary turnover.',
+  })
+  @ApiOkResponse({ type: AccountResponseDto })
+  @ApiNotFoundResponse({ description: 'Account does not exist.' })
+  @ApiBadRequestResponse({
+    description:
+      'Confirmation missing or account is not linked to a detail group.',
+  })
+  async unlinkDetailGroup(
+    @Param('id') id: string,
+    @Query() scope: AccountingScopeQueryDto,
+    @Body() body: UnlinkDetailGroupDto,
+  ): Promise<AccountResponseDto> {
+    return this.accounts.unlinkDetailGroup(
+      scope.organizationId,
+      id,
+      body.confirmUnlink,
+    );
   }
 
   @Post(':id/enable')

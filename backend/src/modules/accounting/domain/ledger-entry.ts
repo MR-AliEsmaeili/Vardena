@@ -145,6 +145,8 @@ export interface LedgerEntry {
   readonly lineNo: number;
   /** Postable account reference (AC-I-09). */
   readonly accountId: string;
+  /** Optional Detail item allocation (Task 30 — OD-29-03). */
+  readonly detailId?: string | null;
   /** Non-negative exact decimal, exactly one of debit/credit non-zero (AC-I-08). */
   readonly debitAmount: string;
   /** Non-negative exact decimal, exactly one of debit/credit non-zero (AC-I-08). */

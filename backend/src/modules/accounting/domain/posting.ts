@@ -274,6 +274,8 @@ export interface PostingLineInput {
   readonly lineNo: number;
   /** Postable account reference (AC-I-09). */
   readonly accountId: string;
+  /** Optional detail reference (OD-29-03). */
+  readonly detailId?: string | null | undefined;
   /** Non-negative exact decimal string. */
   readonly debitAmount: string;
   /** Non-negative exact decimal string. */
@@ -564,6 +566,7 @@ export function toPostingInput(params: {
       id: line.id,
       lineNo: line.lineNo,
       accountId: line.accountId,
+      detailId: line.detailId ?? null,
       debitAmount: line.debitAmount,
       creditAmount: line.creditAmount,
       description: line.description,
@@ -633,6 +636,7 @@ export function toLedgerEntries(
     voucherLineId: line.id,
     lineNo: line.lineNo,
     accountId: line.accountId,
+    detailId: line.detailId ?? null,
     debitAmount: canonicalizeAmount(line.debitAmount),
     creditAmount: canonicalizeAmount(line.creditAmount),
     description: line.description,

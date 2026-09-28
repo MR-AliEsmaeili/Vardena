@@ -49,6 +49,7 @@ export function reversalEligibilityProblemMessage(
 export function invertDocumentLine(line: AccountingDocumentLine): {
   lineNo: number;
   accountId: string;
+  detailId: string | null;
   debitAmount: string;
   creditAmount: string;
   description: string | null;
@@ -57,6 +58,7 @@ export function invertDocumentLine(line: AccountingDocumentLine): {
   return {
     lineNo: line.lineNo,
     accountId: line.accountId,
+    detailId: line.detailId ?? null,
     debitAmount: canonicalizeAmount(line.creditAmount),
     creditAmount: canonicalizeAmount(line.debitAmount),
     description: line.description,

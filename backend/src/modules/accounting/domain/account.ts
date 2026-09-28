@@ -35,14 +35,57 @@ import {
 } from './account-code.js';
 import type { CodingStructureLevel } from './coding-structure.js';
 
-/** Balance direction (`ماهیت`) — a closed DECIDED list (§8.3). */
-export const ACCOUNT_NATURES = ['debit', 'credit'] as const;
+/** Balance direction (`ماهیت`) — a closed DECIDED list (§8.3, OD-29-01). Exactly three canonical values. */
+export const ACCOUNT_NATURES = ['DEBIT', 'CREDIT', 'DUAL'] as const;
+
+export const CANONICAL_ACCOUNT_NATURES = ['DEBIT', 'CREDIT', 'DUAL'] as const;
 
 export type AccountNature = (typeof ACCOUNT_NATURES)[number];
 
 export function isAccountNature(value: string): value is AccountNature {
   return (ACCOUNT_NATURES as readonly string[]).includes(value);
 }
+
+export function normalizeAccountNature(value: string): AccountNature {
+  const trimmed = value.trim();
+  if (isAccountNature(trimmed)) {
+    return trimmed;
+  }
+  throw new Error(`Invalid account nature: ${value}`);
+}
+
+/** Account Type (`نوع حساب`) — fixed three global types (OD-29-02). */
+export const ACCOUNT_TYPES = [
+  'BALANCE_SHEET',
+  'INCOME_STATEMENT',
+  'MEMORANDUM',
+] as const;
+
+export const CANONICAL_ACCOUNT_TYPES = [
+  'BALANCE_SHEET',
+  'INCOME_STATEMENT',
+  'MEMORANDUM',
+] as const;
+
+export type AccountType = (typeof ACCOUNT_TYPES)[number];
+
+export function isAccountType(value: string): value is AccountType {
+  return (ACCOUNT_TYPES as readonly string[]).includes(value);
+}
+
+export function normalizeAccountType(value: string): AccountType {
+  const trimmed = value.trim();
+  if (isAccountType(trimmed)) {
+    return trimmed;
+  }
+  throw new Error(`Invalid account type: ${value}`);
+}
+
+/**
+ * OD-29-03 mandatory exact warning for destructive unlinking of Account <-> Detail Group.
+ */
+export const ACCOUNT_DETAIL_UNLINK_WARNING =
+  'این تغییر باعث حذف ارتباط بین تفصیلی و کد حساب می‌شود و تمامی گردش‌های تفصیلی در سندهایی که کدحساب مدنظر گردش داشته باشد حذف خواهد شد . قبل از انجام این کار از دیتا بیس بکاپ بگیرید';
 
 /** One node of the chart of accounts. */
 export interface Account {
@@ -59,6 +102,10 @@ export interface Account {
   /** The accounting configuration version this account belongs to — sole configuration scope (Task 11 D1, NOT NULL after D3). Nullable in legacy in-memory fixtures (posting-readiness). */
   accountingConfigurationId: string | null;
   accountNature: AccountNature;
+  /** Account Type (OD-29-02): BALANCE_SHEET | INCOME_STATEMENT | MEMORANDUM */
+  accountType: AccountType;
+  /** Optional link to Level-1 Detail Group (OD-29-03) */
+  detailGroupId: string | null;
   isPostable: boolean;
   isActive: boolean;
   createdAt: Date;
@@ -75,6 +122,8 @@ export interface AccountDto {
   codingStructureVersionId: string | null;
   accountingConfigurationId: string | null;
   accountNature: AccountNature;
+  accountType: AccountType;
+  detailGroupId: string | null;
   isPostable: boolean;
   isActive: boolean;
   createdAt: string;
@@ -92,6 +141,8 @@ export function toAccountDto(account: Account): AccountDto {
     codingStructureVersionId: account.codingStructureVersionId,
     accountingConfigurationId: account.accountingConfigurationId,
     accountNature: account.accountNature,
+    accountType: account.accountType ?? 'BALANCE_SHEET',
+    detailGroupId: account.detailGroupId ?? null,
     isPostable: account.isPostable,
     isActive: account.isActive,
     createdAt: account.createdAt.toISOString(),
@@ -116,12 +167,14 @@ export function toAccountDto(account: Account): AccountDto {
  * purpose: the lines ARE the evidence, and a denormalized flag could drift.
  */
 
-/** The fields AC-I-11 freezes for a referenced account (§8.4 rule 4). */
+/** The fields AC-I-11 freezes for a referenced account (§8.4 rule 4, OD-29-02, OD-29-03). */
 export const ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS = [
   'parentId',
   'level',
   'accountNature',
+  'detailGroupId',
   'isPostable',
+  'accountType',
 ] as const;
 
 export type AccountImmutableField =
@@ -136,15 +189,40 @@ export interface AccountEditPlan {
  * Decide an account edit: `title` (and lifecycle) always pass; the structural
  * fields pass only while the account is unreferenced. `code` never appears —
  * it is immutable from creation (§8.3), so the API has no field to send.
+ *
+ * Immutability timing rules:
+ * - `parentId`, `level`, `accountNature`, `detailGroupId`, `isPostable` freeze
+ *   once any document line references the account (§8.4 rule 4, OD-29-03).
+ * - `accountType` freezes ONLY after the account is referenced in at least one
+ *   immutable posted ledger entry (OD-29-02). Draft/temporary document lines
+ *   do not freeze `accountType`.
  */
 export function planAccountEdit(input: {
   referencedByDocumentLine: boolean;
+  hasPostedLedgerEntry?: boolean;
   changes: Partial<Record<AccountImmutableField, boolean>>;
 }): AccountEditPlan {
-  if (!input.referencedByDocumentLine) return { refused: [] };
-  const refused = ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS.filter(
-    (field) => input.changes[field] === true,
-  );
+  const refused: AccountImmutableField[] = [];
+
+  const docLineFrozenFields: AccountImmutableField[] = [
+    'parentId',
+    'level',
+    'accountNature',
+    'detailGroupId',
+    'isPostable',
+  ];
+  if (input.referencedByDocumentLine) {
+    for (const field of docLineFrozenFields) {
+      if (input.changes[field] === true) {
+        refused.push(field);
+      }
+    }
+  }
+
+  if (input.hasPostedLedgerEntry && input.changes.accountType === true) {
+    refused.push('accountType');
+  }
+
   return { refused };
 }
 

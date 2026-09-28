@@ -5,10 +5,12 @@ import type {
 } from './account.js';
 import {
   ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS,
-  ACCOUNT_NATURES,
   accountPlacementProblemMessage,
   defaultIsPostableForLevel,
   isAccountNature,
+  isAccountType,
+  normalizeAccountNature,
+  normalizeAccountType,
   planAccountEdit,
   planAccountMovePin,
   planAccountPlacement,
@@ -399,66 +401,104 @@ describe('one subtree, one coding-structure version (§9.4) — now accounting c
   });
 });
 
-describe('AC-I-11 immutability after use', () => {
+describe('AC-I-11 immutability after use and OD-29-02 accountType immutability', () => {
   it('allows every structural change while the account is unreferenced', () => {
     expect(
       planAccountEdit({
         referencedByDocumentLine: false,
+        hasPostedLedgerEntry: false,
         changes: {
           parentId: true,
           level: true,
           accountNature: true,
+          accountType: true,
+          detailGroupId: true,
           isPostable: true,
         },
       }).refused,
     ).toEqual([]);
   });
 
-  it('refuses the structural fields once a document line references the account', () => {
-    const plan = planAccountEdit({
+  it('refuses structural fields once a document line references the account, but keeps accountType mutable until posted', () => {
+    const planDraftLine = planAccountEdit({
       referencedByDocumentLine: true,
+      hasPostedLedgerEntry: false,
       changes: {
         parentId: true,
         level: true,
         accountNature: true,
+        accountType: true,
+        detailGroupId: true,
         isPostable: true,
       },
     });
-    expect(plan.refused).toEqual([...ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS]);
+    expect(planDraftLine.refused).toEqual([
+      'parentId',
+      'level',
+      'accountNature',
+      'detailGroupId',
+      'isPostable',
+    ]);
+
+    const planPosted = planAccountEdit({
+      referencedByDocumentLine: true,
+      hasPostedLedgerEntry: true,
+      changes: {
+        parentId: true,
+        level: true,
+        accountNature: true,
+        accountType: true,
+        detailGroupId: true,
+        isPostable: true,
+      },
+    });
+    expect(planPosted.refused).toEqual([...ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS]);
   });
 
   it('never refuses a title change, and refuses nothing when no structural field moves', () => {
     expect(
-      planAccountEdit({ referencedByDocumentLine: true, changes: {} }).refused,
+      planAccountEdit({
+        referencedByDocumentLine: true,
+        hasPostedLedgerEntry: true,
+        changes: {},
+      }).refused,
     ).toEqual([]);
     expect(
       planAccountEdit({
         referencedByDocumentLine: true,
+        hasPostedLedgerEntry: true,
         changes: { isPostable: false, parentId: false },
       }).refused,
     ).toEqual([]);
   });
 
-  it('freezes exactly the structural fields once a line references the account', () => {
-    // The after-use PREDICATE is data, not a domain fact: Task 10.4 wires it to
-    // `accounting_document_lines` (`AccountingDocumentLinesRepository.countForAccount`
-    // for the pre-check, `countReferencingLinesInTx` under the account row's
-    // `FOR UPDATE` lock inside the guard transaction). What the domain owns —
-    // and what is pinned here — is the DECISION the predicate feeds.
+  it('freezes accountType only when hasPostedLedgerEntry is true', () => {
+    // 1. Unreferenced: accountType can change
     expect(
-      planAccountEdit({ referencedByDocumentLine: true, changes: {} }).refused,
+      planAccountEdit({
+        referencedByDocumentLine: false,
+        hasPostedLedgerEntry: false,
+        changes: { accountType: true },
+      }).refused,
     ).toEqual([]);
+
+    // 2. Draft/temporary document line: accountType can STILL change (OD-29-02)
     expect(
       planAccountEdit({
         referencedByDocumentLine: true,
-        changes: {
-          parentId: true,
-          level: true,
-          accountNature: true,
-          isPostable: true,
-        },
+        hasPostedLedgerEntry: false,
+        changes: { accountType: true },
       }).refused,
-    ).toEqual([...ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS]);
+    ).toEqual([]);
+
+    // 3. Posted ledger entry: accountType is frozen
+    expect(
+      planAccountEdit({
+        referencedByDocumentLine: true,
+        hasPostedLedgerEntry: true,
+        changes: { accountType: true },
+      }).refused,
+    ).toEqual(['accountType']);
   });
 });
 
@@ -540,11 +580,52 @@ describe('root pin write boundary (D1 + §9.4)', () => {
 });
 
 describe('account nature list', () => {
-  it('is exactly debit|credit and nothing else is accepted', () => {
-    expect([...ACCOUNT_NATURES]).toEqual(['debit', 'credit']);
-    expect(isAccountNature('debit')).toBe(true);
-    expect(isAccountNature('credit')).toBe(true);
+  it('is exactly DEBIT, CREDIT, DUAL and lowercase/invalid values are rejected', () => {
+    expect(isAccountNature('DEBIT')).toBe(true);
+    expect(isAccountNature('CREDIT')).toBe(true);
+    expect(isAccountNature('DUAL')).toBe(true);
+    expect(isAccountNature('debit')).toBe(false);
+    expect(isAccountNature('credit')).toBe(false);
+    expect(isAccountNature('dual')).toBe(false);
     // `natural`/`contra`/`asset` are not natures (type is OQ-25, not nature).
     expect(isAccountNature('asset')).toBe(false);
+
+    expect(normalizeAccountNature('DEBIT')).toBe('DEBIT');
+    expect(normalizeAccountNature(' CREDIT ')).toBe('CREDIT');
+    expect(normalizeAccountNature('DUAL')).toBe('DUAL');
+    expect(() => normalizeAccountNature('debit')).toThrow(
+      /Invalid account nature/,
+    );
+    expect(() => normalizeAccountNature('credit')).toThrow(
+      /Invalid account nature/,
+    );
+    expect(() => normalizeAccountNature('invalid')).toThrow(
+      /Invalid account nature/,
+    );
+  });
+});
+
+describe('account type list', () => {
+  it('is exactly BALANCE_SHEET, INCOME_STATEMENT, MEMORANDUM and lowercase/invalid values are rejected', () => {
+    expect(isAccountType('BALANCE_SHEET')).toBe(true);
+    expect(isAccountType('INCOME_STATEMENT')).toBe(true);
+    expect(isAccountType('MEMORANDUM')).toBe(true);
+    expect(isAccountType('balance_sheet')).toBe(false);
+    expect(isAccountType('income_statement')).toBe(false);
+    expect(isAccountType('memorandum')).toBe(false);
+    expect(isAccountType('EQUITY')).toBe(false);
+
+    expect(normalizeAccountType('BALANCE_SHEET')).toBe('BALANCE_SHEET');
+    expect(normalizeAccountType(' INCOME_STATEMENT ')).toBe('INCOME_STATEMENT');
+    expect(normalizeAccountType('MEMORANDUM')).toBe('MEMORANDUM');
+    expect(() => normalizeAccountType('balance_sheet')).toThrow(
+      /Invalid account type/,
+    );
+    expect(() => normalizeAccountType('income_statement')).toThrow(
+      /Invalid account type/,
+    );
+    expect(() => normalizeAccountType('invalid')).toThrow(
+      /Invalid account type/,
+    );
   });
 });

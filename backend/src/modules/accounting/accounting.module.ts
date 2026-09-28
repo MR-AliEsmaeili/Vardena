@@ -53,6 +53,12 @@ import { ChartTreeController } from './api/chart-tree.controller.js';
 import { BaseChartTemplatesController } from './api/base-chart-templates.controller.js';
 import { BaseChartTemplateVersionsController } from './api/base-chart-template-versions.controller.js';
 import { BaseChartAdoptionsController } from './api/base-chart-adoptions.controller.js';
+import { DetailStructuresRepository } from './data/detail-structures.repository.js';
+import { DetailsRepository } from './data/details.repository.js';
+import { DetailStructuresService } from './application/detail-structures.service.js';
+import { DetailsService } from './application/details.service.js';
+import { DetailStructuresController } from './api/detail-structures.controller.js';
+import { DetailsController } from './api/details.controller.js';
 
 /**
  * Accounting module — foundation + chart structure (Task 10.2, Task 10.3;
@@ -140,6 +146,9 @@ import { BaseChartAdoptionsController } from './api/base-chart-adoptions.control
     BaseChartTemplatesController,
     BaseChartTemplateVersionsController,
     BaseChartAdoptionsController,
+    // Task 30: Detail Structures and Details (OD-29-03)
+    DetailStructuresController,
+    DetailsController,
   ],
   providers: [
     FinancialAreasRepository,
@@ -148,6 +157,8 @@ import { BaseChartAdoptionsController } from './api/base-chart-adoptions.control
     CodingStructuresRepository,
     AccountingConfigurationsRepository,
     AccountsRepository,
+    DetailStructuresRepository,
+    DetailsRepository,
     AccountingDocumentLinesRepository,
     AccountingDocumentsRepository,
     AccountingPostingOperationsRepository,
@@ -163,6 +174,8 @@ import { BaseChartAdoptionsController } from './api/base-chart-adoptions.control
     CodingStructuresService,
     AccountingConfigurationsService,
     AccountsService,
+    DetailStructuresService,
+    DetailsService,
     AccountingDocumentsService,
     AccountingBalancesService,
     // Task 17A: the read-only movement source over the immutable ledger
@@ -223,6 +236,8 @@ import { BaseChartAdoptionsController } from './api/base-chart-adoptions.control
     CodingStructuresService,
     AccountingConfigurationsService,
     AccountsService,
+    DetailStructuresService,
+    DetailsService,
     // Task 10.4: the document aggregate's application service. A future source
     // module composes system-origin documents through IT (contract §16.3) and
     // never touches `accounting.*` tables (AC-I-13) — but no such caller exists

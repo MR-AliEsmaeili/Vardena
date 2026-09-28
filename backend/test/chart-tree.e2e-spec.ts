@@ -286,7 +286,7 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
         organizationId: state.orgA,
         code: '20',
         title: 'Receivables',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       })
       .expect(201);
     const cash = await root
@@ -295,7 +295,7 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
         organizationId: state.orgA,
         code: '10',
         title: 'Cash',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       })
       .expect(201);
     state.cashId = cash.body.id as string;
@@ -305,7 +305,7 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
         organizationId: state.orgA,
         code: '10101',
         title: 'Cash — bank',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         parentId: state.cashId,
       })
       .expect(201);
@@ -324,7 +324,9 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
       level: 1,
       codingStructureVersionId: null,
       accountingConfigurationId: null,
-      accountNature: 'debit',
+      accountNature: 'DEBIT',
+      accountType: 'BALANCE_SHEET',
+      detailGroupId: null,
       isPostable: false,
       isActive: true,
       createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -372,14 +374,14 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
       level: 2,
       isPostable: true,
       isActive: true,
-      accountNature: 'debit',
+      accountNature: 'DEBIT',
     });
     // The two configuration pins are part of the node (ODR-1 surface).
     expect(bank.codingStructureVersionId).toBeTruthy();
     expect(bank.accountingConfigurationId).toBeTruthy();
-    // No financial figures, no invented classification (ODR-2).
+    // No financial figures (ODR-2).
     expect(bank).not.toHaveProperty('balance');
-    expect(bank).not.toHaveProperty('accountType');
+    expect(bank.accountType).toBe('BALANCE_SHEET');
 
     const cashRoot = res.body.items.find(
       (item: { code: string }) => item.code === '10',
@@ -496,7 +498,7 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
         organizationId: state.orgB,
         code: '30',
         title: 'Equity',
-        accountNature: 'credit',
+        accountNature: 'CREDIT',
       })
       .expect(201);
     expect(created.body).toMatchObject({ code: '30', level: 1 });
@@ -533,7 +535,7 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
         organizationId: state.orgB,
         code: '31',
         title: 'Equity — retained',
-        accountNature: 'credit',
+        accountNature: 'CREDIT',
       })
       .expect(422);
     expect(refused.body.code).toBe('BusinessRuleViolation');

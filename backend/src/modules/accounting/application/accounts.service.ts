@@ -33,13 +33,17 @@ import { AccountingDocumentLinesRepository } from '../data/accounting-document-l
 import type {
   Account,
   AccountDto,
+  AccountNature,
   AccountPlacementParent,
   AccountPlacementProblem,
+  AccountType,
 } from '../domain/account.js';
 import {
+  ACCOUNT_DETAIL_UNLINK_WARNING,
   accountPlacementProblemMessage,
   defaultIsPostableForLevel,
   isAccountNature,
+  isAccountType,
   pinCoherenceProblemMessage,
   planAccountEdit,
   planAccountPlacement,
@@ -48,7 +52,6 @@ import {
 } from '../domain/account.js';
 import type { AccountImmutableField } from '../domain/account.js';
 import { collectDescendantIds } from '../domain/hierarchy.js';
-import type { CodingStructureVersion } from '../domain/coding-structure.js';
 import { ACCOUNT_PERMISSIONS } from '../domain/accounting-permissions.js';
 import { normalizeCode, normalizeTitle } from '../domain/master-data.js';
 import {
@@ -56,6 +59,7 @@ import {
   ACCOUNT_DISABLED_EVENT,
   ACCOUNT_ENABLED_EVENT,
   ACCOUNT_UPDATED_EVENT,
+  ACCOUNT_DETAIL_UNLINKED_EVENT,
 } from '../domain/accounting.events.js';
 import {
   assertAccountCode,
@@ -132,6 +136,8 @@ export interface CreateAccountInput {
   title: string;
   parentId?: string | null | undefined;
   accountNature: string;
+  accountType?: AccountType | undefined;
+  detailGroupId?: string | null | undefined;
   /** Omitted = the coding structure's default for the resolved level. */
   isPostable?: boolean | undefined;
 }
@@ -139,6 +145,8 @@ export interface CreateAccountInput {
 export interface UpdateAccountInput {
   title?: string | undefined;
   accountNature?: string | undefined;
+  accountType?: AccountType | undefined;
+  detailGroupId?: string | null | undefined;
   isPostable?: boolean | undefined;
   parentId?: string | null | undefined;
 }
@@ -360,6 +368,8 @@ export class AccountsService {
         title,
         parentId,
         accountNature: input.accountNature,
+        accountType: input.accountType,
+        detailGroupId: input.detailGroupId,
         isPostable,
         structure: snapshot(
           structure as any,
@@ -419,7 +429,12 @@ export class AccountsService {
       !isAccountNature(input.accountNature)
     ) {
       throw AppException.badRequest(
-        'accountNature must be "debit" or "credit".',
+        'accountNature must be "DEBIT", "CREDIT", or "DUAL".',
+      );
+    }
+    if (input.accountType !== undefined && !isAccountType(input.accountType)) {
+      throw AppException.badRequest(
+        'accountType must be "BALANCE_SHEET", "INCOME_STATEMENT", or "MEMORANDUM".',
       );
     }
 
@@ -575,11 +590,18 @@ export class AccountsService {
       });
     }
 
+    const hasPostedLedgerEntry =
+      input.accountType !== undefined &&
+      input.accountType !== current.accountType
+        ? (await this.repository.countPostedLedgerEntries(current.id)) > 0
+        : false;
+
     const refused = planAccountEditFor(
       input,
       current,
       parentChanging,
       (await this.documentLines.countForAccount(current.id)) > 0,
+      hasPostedLedgerEntry,
     );
     if (refused.length > 0) {
       throw AppException.businessRule(
@@ -593,6 +615,8 @@ export class AccountsService {
         id,
         title,
         accountNature: input.accountNature,
+        accountType: input.accountType,
+        detailGroupId: input.detailGroupId,
         isPostable: input.isPostable,
         parentId: input.parentId,
         structure:
@@ -614,6 +638,61 @@ export class AccountsService {
       if (mapped !== null) throw mapped;
       throw error;
     }
+  }
+
+  async unlinkDetailGroup(
+    organizationId: string,
+    id: string,
+    confirmUnlink: boolean,
+  ): Promise<AccountDto> {
+    await this.authorization.requireAllPermissions([
+      ACCOUNT_PERMISSIONS.UNLINK_DETAIL_GROUP,
+    ]);
+    const current = await this.mustFindInOrganization(organizationId, id);
+    if (!confirmUnlink) {
+      throw AppException.badRequest(
+        `Explicit confirmation (confirmUnlink=true) is required to unlink Detail Group. Warning: ${ACCOUNT_DETAIL_UNLINK_WARNING}`,
+      );
+    }
+    if (!current.detailGroupId) {
+      throw AppException.badRequest(
+        'Account does not have a linked detail group.',
+      );
+    }
+    const actorId = getPrincipal()?.userId ?? null;
+    const now = new Date();
+    const result = await this.repository.unlinkDetailGroupChecked({
+      id: current.id,
+      confirmUnlink: true,
+      now,
+      actorId,
+    });
+    await publishEvent(this.events, {
+      type: ACCOUNT_DETAIL_UNLINKED_EVENT,
+      aggregateType: 'Account',
+      aggregateId: result.account.id,
+      payload: {
+        accountId: result.account.id,
+        organizationId: result.account.organizationId,
+        previousDetailGroupId: result.previousDetailGroupId,
+        unlinkedDocumentLinesCount: result.unlinkedDocumentLinesCount,
+        unlinkedLedgerEntriesCount: result.unlinkedLedgerEntriesCount,
+        actorId,
+        occurredAt: now.toISOString(),
+      },
+    });
+    this.logger.log(
+      'Account detail group unlinked',
+      {
+        accountId: result.account.id,
+        organizationId: result.account.organizationId,
+        previousDetailGroupId: result.previousDetailGroupId,
+        unlinkedDocumentLinesCount: result.unlinkedDocumentLinesCount,
+        unlinkedLedgerEntriesCount: result.unlinkedLedgerEntriesCount,
+      },
+      AccountsService.name,
+    );
+    return toAccountDto(result.account);
   }
 
   async enableAccount(organizationId: string, id: string): Promise<AccountDto> {
@@ -689,10 +768,18 @@ export class AccountsService {
     };
   }
 
-  private assertNature(nature: string): void {
+  private assertNature(nature: string): asserts nature is AccountNature {
     if (!isAccountNature(nature)) {
       throw AppException.badRequest(
-        'accountNature must be "debit" or "credit".',
+        'accountNature must be "DEBIT", "CREDIT", or "DUAL".',
+      );
+    }
+  }
+
+  private assertAccountType(accountType: string): void {
+    if (!isAccountType(accountType)) {
+      throw AppException.badRequest(
+        'accountType must be "BALANCE_SHEET", "INCOME_STATEMENT", or "MEMORANDUM".',
       );
     }
   }
@@ -838,15 +925,23 @@ function planAccountEditFor(
   current: Account,
   parentChanging: boolean,
   referencedByDocumentLine: boolean,
+  hasPostedLedgerEntry: boolean = false,
 ): readonly AccountImmutableField[] {
   return planAccountEdit({
     referencedByDocumentLine,
+    hasPostedLedgerEntry,
     changes: {
       parentId: parentChanging,
       level: parentChanging,
       accountNature:
         input.accountNature !== undefined &&
         input.accountNature !== current.accountNature,
+      accountType:
+        input.accountType !== undefined &&
+        input.accountType !== current.accountType,
+      detailGroupId:
+        input.detailGroupId !== undefined &&
+        input.detailGroupId !== current.detailGroupId,
       isPostable:
         input.isPostable !== undefined &&
         input.isPostable !== current.isPostable,

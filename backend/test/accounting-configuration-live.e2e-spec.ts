@@ -158,7 +158,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         organizationId: orgId,
         code: '10',
         title: 'Assets',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       });
       expect(acc.accountingConfigurationId).toBe(published.id);
       expect(acc.codingStructureVersionId).toBe(codingDraft.id);
@@ -208,7 +208,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           organizationId: org2,
           code: '10',
           title: 'Assets',
-          accountNature: 'debit',
+          accountNature: 'DEBIT',
         });
       } catch (error) {
         failure = error as { code?: string; message?: string };
@@ -229,7 +229,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         organizationId: org2,
         code: '10',
         title: 'Assets',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       });
       expect(acc.accountingConfigurationId).toBeTruthy();
       expect(acc.codingStructureVersionId).toBeTruthy();
@@ -295,7 +295,7 @@ describe.skipIf(DATABASE_URL === undefined)(
            "coding_structure_version_id", "accounting_configuration_id",
            "account_nature", "is_postable", "is_active", "created_at", "updated_at")
         VALUES (${controlId}, ${orgId}, '50', 'Control', NULL, 1,
-                ${validVersionId}, ${published.id}, 'debit', false, true, NOW(), NOW())`;
+                ${validVersionId}, ${published.id}, 'DEBIT', false, true, NOW(), NOW())`;
       const control = await client.$queryRaw<{ id: string }>`
         SELECT "id" FROM "accounting"."accounts" WHERE "id" = ${controlId}`;
       expect(control).toHaveLength(1);
@@ -311,7 +311,7 @@ describe.skipIf(DATABASE_URL === undefined)(
              "coding_structure_version_id", "accounting_configuration_id",
              "account_nature", "is_postable", "is_active", "created_at", "updated_at")
           VALUES (${probeId}, ${orgId}, '51', 'Fake', NULL, 1,
-                  ${published.id}, ${published.id}, 'debit', false, true, NOW(), NOW())`;
+                  ${published.id}, ${published.id}, 'DEBIT', false, true, NOW(), NOW())`;
       } catch (error) {
         rejection = error;
       }
@@ -527,7 +527,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           code: '70',
           title: 'Stale pin',
           parentId: null,
-          accountNature: 'debit',
+          accountNature: 'DEBIT',
           isPostable: false,
           structure: structure(v1.id),
           now: new Date(),
@@ -549,7 +549,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         code: '71',
         title: 'Fresh pin',
         parentId: null,
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         isPostable: false,
         structure: structure(v2.id),
         now: new Date(),
@@ -571,7 +571,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         organizationId: orgId,
         code: '60',
         title: 'Deferred marker probe',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       });
 
       const after = await configs.getConfiguration(orgId, before.id);
