@@ -1,6 +1,6 @@
 # Vardena — Open Questions
 
-Status: Living document · Updated: 2026-09-26 (factual corrections to the OQ-01 and OQ-62 assumption cells only — no question opened, closed or reworded; `docs/repository-documentation-audit.md`)
+Status: Living document · Updated: 2026-09-28 (factual corrections to the OQ-01 and OQ-62 assumption cells only — no question opened, closed or reworded; `docs/repository-documentation-audit.md`)
 
 Rules for this file (AG-09): business rules and genuinely ambiguous architecture
 are **never invented**. Each item gets a stable id (`OQ-xx`), is referenced from
