@@ -1,6 +1,6 @@
 # Task 27 — Prompt (Verbatim)
 
-````markdown
+```markdown
 # Task 27 — Main Governance Reconciliation & MVP Gate
 
 ## 0. Task Identity
@@ -36,18 +36,17 @@ Before doing anything else:
 3. Verify that `main` contains the merged Task 26 / PR #71.
 4. Record:
 
-   - current `main` HEAD SHA
-   - Task 26 merge commit SHA
-   - PR #71 number
-   - relevant parent/base SHA
-
+   * current `main` HEAD SHA
+   * Task 26 merge commit SHA
+   * PR #71 number
+   * relevant parent/base SHA
 5. Do NOT audit an old local branch or stale checkout.
 
 Expected Task 26 merge evidence:
 
-- PR: `#71`
-- Task: `Task 26 — complete ODR-3 organization read scope`
-- Merge commit:
+* PR: `#71`
+* Task: `Task 26 — complete ODR-3 organization read scope`
+* Merge commit:
   `e7fe80d04620170733ad9672d991ffd576607a5a`
 
 If the current repository differs from this expected state, report the actual state rather than assuming the expected SHA is present.
@@ -60,58 +59,58 @@ If the current repository differs from this expected state, report the actual st
 
 This task may:
 
-- inspect source code
-- inspect tests
-- inspect migrations
-- inspect permissions
-- inspect guards
-- inspect module registration
-- inspect CI configuration
-- inspect Git history
-- inspect merged PRs
-- inspect task documents
-- inspect ADRs
-- inspect OQs
-- inspect STATE.md
-- inspect roadmap documents
-- inspect security documentation
-- create/update governance and documentation artifacts specifically required by Task 27
-- correct factually stale documentation
-- create reconciliation reports
-- create owner decision records/packs
-- identify blockers and dependencies
-- recommend what the next implementation gate should investigate
+* inspect source code
+* inspect tests
+* inspect migrations
+* inspect permissions
+* inspect guards
+* inspect module registration
+* inspect CI configuration
+* inspect Git history
+* inspect merged PRs
+* inspect task documents
+* inspect ADRs
+* inspect OQs
+* inspect STATE.md
+* inspect roadmap documents
+* inspect security documentation
+* create/update governance and documentation artifacts specifically required by Task 27
+* correct factually stale documentation
+* create reconciliation reports
+* create owner decision records/packs
+* identify blockers and dependencies
+* recommend what the next implementation gate should investigate
 
 ## 3.2 Forbidden
 
 Do NOT:
 
-- implement new business capabilities
-- add new API endpoints
-- modify existing production behavior
-- add migrations
-- modify Prisma schema
-- modify database structure
-- add permissions
-- change permission semantics
-- add/change guards
-- change authorization architecture
-- add organization-scope behavior
-- change authentication
-- change accounting behavior
-- change inventory behavior
-- implement Base Chart content
-- seed accounting data
-- close OQs
-- promote ADRs
-- invent Owner Decisions
-- accept tasks
-- mark tasks as Accepted without an existing explicit owner acceptance record
-- introduce new architecture
-- perform drive-by refactoring
-- modify tests merely to make the repository appear compliant
-- add production code under the justification of "cleanup"
-- silently rewrite historical records
+* implement new business capabilities
+* add new API endpoints
+* modify existing production behavior
+* add migrations
+* modify Prisma schema
+* modify database structure
+* add permissions
+* change permission semantics
+* add/change guards
+* change authorization architecture
+* add organization-scope behavior
+* change authentication
+* change accounting behavior
+* change inventory behavior
+* implement Base Chart content
+* seed accounting data
+* close OQs
+* promote ADRs
+* invent Owner Decisions
+* accept tasks
+* mark tasks as Accepted without an existing explicit owner acceptance record
+* introduce new architecture
+* perform drive-by refactoring
+* modify tests merely to make the repository appear compliant
+* add production code under the justification of "cleanup"
+* silently rewrite historical records
 
 If an implementation defect is discovered, **do not fix it in Task 27** unless it is strictly a documentation/comment-only factual correction explicitly allowed by this task.
 
@@ -137,16 +136,16 @@ Do not infer correctness merely from task reports.
 
 Verify and document:
 
-- current `main` HEAD
-- recent merge history
-- Task 23 merge
-- Task 24 merge
-- Task 25 merge
-- Task 26 merge
-- Bootstrap System Administrator PR #64
-- roadmap/dependency PR #69
-- PR #70 / Task 25
-- PR #71 / Task 26
+* current `main` HEAD
+* recent merge history
+* Task 23 merge
+* Task 24 merge
+* Task 25 merge
+* Task 26 merge
+* Bootstrap System Administrator PR #64
+* roadmap/dependency PR #69
+* PR #70 / Task 25
+* PR #71 / Task 26
 
 For each relevant task/PR, record:
 
@@ -162,11 +161,11 @@ For each relevant task/PR, record:
 
 Distinguish:
 
-- implementation merged
-- reviewed
-- approved
-- owner accepted
-- documentation recorded
+* implementation merged
+* reviewed
+* approved
+* owner accepted
+* documentation recorded
 
 These are NOT interchangeable.
 
@@ -190,9 +189,9 @@ Documentation claimed every organization-scoped read/write passes through:
 
 but the audit found:
 
-- 28 `list*` surfaces
-- 9 `get*` surfaces
-- total: **37 read surfaces**
+* 28 `list*` surfaces
+* 9 `get*` surfaces
+* total: **37 read surfaces**
 
 that did not satisfy the documented organization-scope invariant.
 
@@ -208,21 +207,21 @@ Search the current `main` source tree and verify the 37-surface inventory agains
 
 For every one of the 37 surfaces, record:
 
-- module
-- file path
-- class
-- method
-- list/get category
-- permission check
-- organization-scope check
-- exact scope mechanism
-- test coverage
-- current status
+* module
+* file path
+* class
+* method
+* list/get category
+* permission check
+* organization-scope check
+* exact scope mechanism
+* test coverage
+* current status
 
 Use a table such as:
 
-| #   | Module | File | Method | Type | Permission-first | Org scope enforced | Test evidence | Status |
-| --- | ------ | ---- | ------ | ---- | ---------------- | ------------------ | ------------- | ------ |
+| # | Module | File | Method | Type | Permission-first | Org scope enforced | Test evidence | Status |
+| - | ------ | ---- | ------ | ---- | ---------------- | ------------------ | ------------- | ------ |
 
 The exact implementation evidence must be cited using repository paths and symbols.
 
@@ -240,14 +239,14 @@ Verify that the implementation does not accidentally turn organization membershi
 
 Check for:
 
-- permission checks
-- membership checks
-- `assertOrganizationInScope`
-- principal-bound organization context
-- deployment pin behavior
-- administrator behavior
-- cross-organization behavior
-- failure/deny paths
+* permission checks
+* membership checks
+* `assertOrganizationInScope`
+* principal-bound organization context
+* deployment pin behavior
+* administrator behavior
+* cross-organization behavior
+* failure/deny paths
 
 If ordering differs between surfaces, record the exact discrepancy.
 
@@ -263,15 +262,15 @@ Verify the actual current behavior against the ODR-3 principle:
 
 Audit for:
 
-- organization context
-- principal identity
-- membership checks
-- deployment organization pin
-- explicit organization IDs supplied by callers
-- list queries
-- get queries
-- admin paths
-- system/bootstrap paths
+* organization context
+* principal identity
+* membership checks
+* deployment organization pin
+* explicit organization IDs supplied by callers
+* list queries
+* get queries
+* admin paths
+* system/bootstrap paths
 
 Specifically verify that there is no hidden path equivalent to:
 
@@ -337,17 +336,16 @@ docs/tasks/task-25/owner-decision-pack.md
 docs/tasks/task-25/implementation-report.md
 STATE.md
 ```
-````
 
 For each major Task 25 finding determine:
 
-- still true
-- resolved by Task 26
-- documentation-only historical finding
-- superseded
-- still open
-- requires owner decision
-- requires future implementation
+* still true
+* resolved by Task 26
+* documentation-only historical finding
+* superseded
+* still open
+* requires owner decision
+* requires future implementation
 
 Do NOT rewrite history.
 
@@ -377,18 +375,18 @@ Then separately verify whether Base Chart **content** has actually been approved
 
 Do NOT confuse:
 
-- Base Chart mechanism
-- Base Chart template/content
-- organization adoption
-- ledger accounts
+* Base Chart mechanism
+* Base Chart template/content
+* organization adoption
+* ledger accounts
 
 Specifically search for:
 
-- seed data
-- default chart entries
-- hardcoded account hierarchy
-- bootstrap chart content
-- migrations inserting Base Chart account content
+* seed data
+* default chart entries
+* hardcoded account hierarchy
+* bootstrap chart content
+* migrations inserting Base Chart account content
 
 If Base Chart content has not been explicitly approved, do not create or infer it.
 
@@ -406,12 +404,12 @@ Use the repository's actual OQ documents as the source.
 
 For every relevant OQ determine:
 
-- current status
-- evidence
-- whether implementation depends on it
-- whether it is decision-only
-- whether it blocks the next implementation gate
-- whether documentation is stale
+* current status
+* evidence
+* whether implementation depends on it
+* whether it is decision-only
+* whether it blocks the next implementation gate
+* whether documentation is stale
 
 Do NOT close an OQ.
 
@@ -421,12 +419,12 @@ Use explicit existing acceptance/decision evidence only.
 
 Pay special attention to:
 
-- OQ-25
-- OQ-39
-- OQ-42
-- any accounting OQs
-- any remaining MVP-gating OQs
-- any security/OAuth/identity OQs relevant to the next gate
+* OQ-25
+* OQ-39
+* OQ-42
+* any accounting OQs
+* any remaining MVP-gating OQs
+* any security/OAuth/identity OQs relevant to the next gate
 
 ---
 
@@ -436,19 +434,19 @@ Audit ADRs against current implementation.
 
 For every ADR relevant to Tasks 23–26 and the next implementation stage, classify:
 
-- Proposed
-- Accepted
-- Superseded
-- Historical
-- Missing evidence
-- Documentation drift
+* Proposed
+* Accepted
+* Superseded
+* Historical
+* Missing evidence
+* Documentation drift
 
 Verify:
 
-- implementation matches ADR
-- ADR status matches repository evidence
-- task acceptance has not been incorrectly converted into ADR acceptance
-- proposed ADRs are not silently promoted
+* implementation matches ADR
+* ADR status matches repository evidence
+* task acceptance has not been incorrectly converted into ADR acceptance
+* proposed ADRs are not silently promoted
 
 Do NOT promote ADRs.
 
@@ -462,20 +460,20 @@ Treat `STATE.md` as a current project state document, not as an immutable histor
 
 Audit for stale statements concerning:
 
-- Task 19
-- Task 23
-- Task 24
-- Task 25
-- Task 26
-- ODR-3
-- F-2
-- F-3
-- Base Chart
-- Bootstrap System Administrator
-- Treasury
-- Purchasing
-- MVP status
-- remaining governance blockers
+* Task 19
+* Task 23
+* Task 24
+* Task 25
+* Task 26
+* ODR-3
+* F-2
+* F-3
+* Base Chart
+* Bootstrap System Administrator
+* Treasury
+* Purchasing
+* MVP status
+* remaining governance blockers
 
 Especially search for statements implying that the old Task 24 F-2 list-scope issue is still unresolved if Task 26 actually resolved it.
 
@@ -497,17 +495,17 @@ against current `main`.
 
 Verify:
 
-- Task 26 is represented correctly
-- Task 25 is represented correctly
-- Task 24 is represented correctly
-- Task 23/Base Chart mechanism is represented correctly
-- Treasury remains outside MVP
-- Purchasing remains outside MVP
-- roadmap does not claim implementation that does not exist
-- roadmap does not claim acceptance without owner acceptance
-- roadmap does not close OQs automatically
-- roadmap does not authorize implementation by itself
-- roadmap dependencies are consistent with actual code and decisions
+* Task 26 is represented correctly
+* Task 25 is represented correctly
+* Task 24 is represented correctly
+* Task 23/Base Chart mechanism is represented correctly
+* Treasury remains outside MVP
+* Purchasing remains outside MVP
+* roadmap does not claim implementation that does not exist
+* roadmap does not claim acceptance without owner acceptance
+* roadmap does not close OQs automatically
+* roadmap does not authorize implementation by itself
+* roadmap dependencies are consistent with actual code and decisions
 
 Preserve the principle:
 
@@ -523,17 +521,17 @@ Audit the current MVP boundary.
 
 Confirm that the repository/documentation does not accidentally reintroduce:
 
-- Treasury
-- Purchasing
-- microservices
-- workflow designer
-- scripting/rules engine
-- universal document table
-- giant EAV model
-- unnecessary Redis
-- generic cross-module database access
-- hidden permission wildcard
-- unauthorized cross-organization administration
+* Treasury
+* Purchasing
+* microservices
+* workflow designer
+* scripting/rules engine
+* universal document table
+* giant EAV model
+* unnecessary Redis
+* generic cross-module database access
+* hidden permission wildcard
+* unauthorized cross-organization administration
 
 Do not implement anything.
 
@@ -547,13 +545,13 @@ The MVP gate must evaluate **capabilities**, not simply the existence of task fo
 
 For each relevant MVP capability, determine:
 
-- implemented?
-- tested?
-- documented?
-- accepted?
-- dependency complete?
-- security constraints satisfied?
-- owner decision complete?
+* implemented?
+* tested?
+* documented?
+* accepted?
+* dependency complete?
+* security constraints satisfied?
+* owner decision complete?
 
 Do not conclude:
 
@@ -576,14 +574,14 @@ Do not assign subjective scores.
 
 Use statuses such as:
 
-- IMPLEMENTED
-- IMPLEMENTED / ACCEPTANCE PENDING
-- PARTIAL
-- GOVERNANCE BLOCKED
-- DECISION BLOCKED
-- NOT IMPLEMENTED
-- OUTSIDE MVP
-- HISTORICAL / SUPERSEDED
+* IMPLEMENTED
+* IMPLEMENTED / ACCEPTANCE PENDING
+* PARTIAL
+* GOVERNANCE BLOCKED
+* DECISION BLOCKED
+* NOT IMPLEMENTED
+* OUTSIDE MVP
+* HISTORICAL / SUPERSEDED
 
 ---
 
@@ -608,11 +606,11 @@ The next gate must be selected based on:
 
 The report should explain:
 
-- candidate next implementation gate(s)
-- prerequisites
-- blockers
-- owner decisions required
-- why each candidate is or is not currently actionable
+* candidate next implementation gate(s)
+* prerequisites
+* blockers
+* owner decisions required
+* why each candidate is or is not currently actionable
 
 Do not rank candidates as "best/worst".
 
@@ -647,21 +645,21 @@ Do not convert technical observations into owner decisions unless an actual prod
 
 Search the repository for stale claims related to:
 
-- Task 24 F-2
-- Task 24 F-3
-- Task 25 SEC-01
-- Task 25 SEC-02
-- Task 26 ODR-3
-- `assertOrganizationInScope`
-- `DeploymentOrganizationScopeGuard`
-- `APP_GUARD`
-- Base Chart
-- OQ-25
-- Treasury
-- Purchasing
-- MVP final gate
-- roadmap acceptance
-- task acceptance
+* Task 24 F-2
+* Task 24 F-3
+* Task 25 SEC-01
+* Task 25 SEC-02
+* Task 26 ODR-3
+* `assertOrganizationInScope`
+* `DeploymentOrganizationScopeGuard`
+* `APP_GUARD`
+* Base Chart
+* OQ-25
+* Treasury
+* Purchasing
+* MVP final gate
+* roadmap acceptance
+* task acceptance
 
 For every stale claim record:
 
@@ -684,18 +682,18 @@ npm run test:e2e
 
 Therefore:
 
-- prefer repository inspection
-- prefer existing GitHub CI evidence
-- use targeted lightweight checks only when necessary
-- rely on GitHub CI for expensive validation
+* prefer repository inspection
+* prefer existing GitHub CI evidence
+* use targeted lightweight checks only when necessary
+* rely on GitHub CI for expensive validation
 
 Record relevant CI:
 
-- workflow
-- run ID
-- job
-- result
-- commit SHA
+* workflow
+* run ID
+* job
+* result
+* commit SHA
 
 Do not modify tests to make CI green.
 
@@ -713,14 +711,14 @@ Every substantive conclusion must be backed by concrete evidence.
 
 Prefer:
 
-- exact file path
-- exact class/service
-- exact method
-- exact line/section when practical
-- commit SHA
-- PR number
-- test name
-- CI run ID
+* exact file path
+* exact class/service
+* exact method
+* exact line/section when practical
+* commit SHA
+* PR number
+* test name
+* CI run ID
 
 Avoid statements such as:
 
@@ -732,10 +730,10 @@ Instead write:
 
 Evidence must distinguish:
 
-- observed
-- documented
-- inferred
-- claimed by prior report
+* observed
+* documented
+* inferred
+* claimed by prior report
 
 ---
 
@@ -945,14 +943,14 @@ Run a complete diff against the starting `main` state.
 
 The final diff must prove that Task 27 did not introduce:
 
-- production capability
-- schema changes
-- migration changes
-- permission changes
-- authorization changes
-- API behavior
-- database behavior
-- architectural refactor
+* production capability
+* schema changes
+* migration changes
+* permission changes
+* authorization changes
+* API behavior
+* database behavior
+* architectural refactor
 
 If any such change exists:
 
@@ -982,9 +980,9 @@ do NOT change Task 25 to say:
 
 Instead:
 
-- preserve the historical finding
-- record that Task 26 resolved it
-- update current-state documentation
+* preserve the historical finding
+* record that Task 26 resolved it
+* update current-state documentation
 
 Historical accuracy is part of governance integrity.
 
@@ -994,14 +992,14 @@ Historical accuracy is part of governance integrity.
 
 Task 27 must NOT:
 
-- accept Task 23
-- accept Task 24
-- accept Task 25
-- accept Task 26
-- accept Task 27 itself
-- close OQ-25
-- promote ADRs
-- authorize future implementation
+* accept Task 23
+* accept Task 24
+* accept Task 25
+* accept Task 26
+* accept Task 27 itself
+* close OQ-25
+* promote ADRs
+* authorize future implementation
 
 The agent may verify that acceptance already exists.
 
@@ -1135,9 +1133,9 @@ A security defect exists that must be handled before the next implementation sta
 
 Do NOT use:
 
-- ACCEPTED
-- DONE
-- COMPLETE
+* ACCEPTED
+* DONE
+* COMPLETE
 
 unless an explicit owner acceptance process separately establishes that state.
 
@@ -1169,7 +1167,4 @@ Final wording must include:
 > **Task 27 — READY FOR REVIEW — NOT ACCEPTED**
 >
 > Owner review and explicit acceptance are required before Task 27 is considered accepted.
-
-```
-
 ```

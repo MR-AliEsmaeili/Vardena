@@ -18,7 +18,7 @@ from reporting strategy, usability timings, defect-count definitions) and have
 never been ratified by the owner.
 
 Also undecided: the precise definition of **P0/P1** (what counts as release-
-blocking) and which criteria are _gates_ (must pass) vs _measures_ (tracked,
+blocking) and which criteria are *gates* (must pass) vs *measures* (tracked,
 informed judgment).
 
 ## Why this matters
@@ -51,11 +51,11 @@ informed judgment).
 
 ## Options
 
-| Option                                       | Advantages                                                    | Disadvantages                                                                          |
-| -------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| **A. Ratify proposed numbers as-is**         | Immediate definition; drill-backed restore targets            | Numbers are untested estimates                                                         |
-| **B. Owner amends numbers once, at Stage 0** | Owner authority exercised where it matters; stable thereafter | Requires a decision session now                                                        |
-| **C. Defer numbers to Stage 6**              | Informed by reality                                           | "Done" stays undefined through Stages 1–5 — the exact ambiguity this OQ exists to kill |
+| Option | Advantages | Disadvantages |
+|---|---|---|
+| **A. Ratify proposed numbers as-is** | Immediate definition; drill-backed restore targets | Numbers are untested estimates |
+| **B. Owner amends numbers once, at Stage 0** | Owner authority exercised where it matters; stable thereafter | Requires a decision session now |
+| **C. Defer numbers to Stage 6** | Informed by reality | "Done" stays undefined through Stages 1–5 — the exact ambiguity this OQ exists to kill |
 
 ## Risks
 
@@ -70,7 +70,7 @@ informed judgment).
 ## Recommended option
 
 **B**: a single Stage-0 decision session ratifies all numbers and P0/P1
-definitions; changes afterwards require an owner waiver, recorded.
+definitions; changes afterwards require an owner waiver, recorded. 
 **Recommendation only.**
 
 ## Questions requiring product owner confirmation

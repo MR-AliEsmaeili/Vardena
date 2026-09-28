@@ -8,19 +8,19 @@ Date: 2026-09-11 · Branch: `arena/01a08f1a-vardena` · Base: `d22419a`
 
 ### Entities (11 tables, 2 new PostgreSQL schemas)
 
-| Schema         | Table                   | Notes                                                                                                         |
-| -------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `organization` | `organizations`         | deployment-wide unique `code`; the scope root                                                                 |
-| `organization` | `branches`              | scope dimension, not a legal entity (OQ-22)                                                                   |
-| `organization` | `departments`           | nullable self-FK hierarchy                                                                                    |
-| `organization` | `employees`             | minimal reference data: code, first/last name, optional department + branch (OQ-32/OQ-37)                     |
-| `organization` | `parties`               | one counterparty table with `is_customer` / `is_supplier` capabilities — no separate Customer/Supplier tables |
-| `inventory`    | `units`                 | code, name, optional symbol                                                                                   |
-| `inventory`    | `unit_conversions`      | global unit-pair versions                                                                                     |
-| `inventory`    | `item_unit_conversions` | item-specific versions                                                                                        |
-| `inventory`    | `item_groups`           | nullable self-FK classification hierarchy                                                                     |
-| `inventory`    | `items`                 | one table, `item_kind` + 7 capability booleans                                                                |
-| `inventory`    | `warehouses`            | belongs to a branch                                                                                           |
+| Schema | Table | Notes |
+|---|---|---|
+| `organization` | `organizations` | deployment-wide unique `code`; the scope root |
+| `organization` | `branches` | scope dimension, not a legal entity (OQ-22) |
+| `organization` | `departments` | nullable self-FK hierarchy |
+| `organization` | `employees` | minimal reference data: code, first/last name, optional department + branch (OQ-32/OQ-37) |
+| `organization` | `parties` | one counterparty table with `is_customer` / `is_supplier` capabilities — no separate Customer/Supplier tables |
+| `inventory` | `units` | code, name, optional symbol |
+| `inventory` | `unit_conversions` | global unit-pair versions |
+| `inventory` | `item_unit_conversions` | item-specific versions |
+| `inventory` | `item_groups` | nullable self-FK classification hierarchy |
+| `inventory` | `items` | one table, `item_kind` + 7 capability booleans |
+| `inventory` | `warehouses` | belongs to a branch |
 
 ### Modules
 
@@ -63,9 +63,9 @@ published on the existing `DomainEventBus` with `correlationId` and `occurredAt`
 ## 2. Architectural Decisions
 
 **2.1 — `organization_id` on every master-data table.** Recorded as **ADR-0021
-(Proposed)**. It contradicts the _assumptions_ of open questions OQ-01/OQ-22, so it
+(Proposed)**. It contradicts the *assumptions* of open questions OQ-01/OQ-22, so it
 was documented rather than taken silently. It is a structural decision, not
-tenancy: there is no principal→organization binding, so no request is _restricted_
+tenancy: there is no principal→organization binding, so no request is *restricted*
 to one organization.
 
 **2.2 — Lifecycle is `is_active` only.** No `deleted_at`, no DELETE endpoints, no
@@ -83,8 +83,8 @@ open-ended one **in the same transaction**. Overlaps that cannot be resolved by
 supersession are rejected rather than silently split. `resolveConversion(…, asOf)`
 returns `null` when no version covers the instant — it never assumes 1:1.
 
-**2.5 — `item_kind` is immutable after creation.** Kind supplies _defaults at
-creation_; re-applying them over flags a user set deliberately is a rule nobody
+**2.5 — `item_kind` is immutable after creation.** Kind supplies *defaults at
+creation*; re-applying them over flags a user set deliberately is a rule nobody
 approved. Wrong kind ⇒ disable and recreate. Recorded in the service header and in
 §6.
 
@@ -94,7 +94,7 @@ into existence. A foreign key cannot express "same organization", so the check i
 in the service.
 
 **2.7 — Inactive-parent rule.** An inactive record cannot become the
-owner/parent/base/unit of a _new_ record (§7.4). On update the reference is
+owner/parent/base/unit of a *new* record (§7.4). On update the reference is
 re-validated **only when it changes**, so a record whose parent was disabled
 afterwards stays editable.
 
@@ -114,7 +114,7 @@ hidden.
 
 **2.11 — Path parameter `id` is not ULID-validated.** Matches the existing house
 convention in `rbac/api/roles.controller.ts`; a malformed id resolves to 404.
-Request _bodies_ and _queries_ are ULID-validated via the new
+Request *bodies* and *queries* are ULID-validated via the new
 `kernel/http/is-ulid.decoratorator` → `is-ulid.decorator.ts`.
 
 ---
@@ -131,7 +131,7 @@ Request _bodies_ and _queries_ are ULID-validated via the new
 
 **Amended (assumption text updated in place, not re-decided):**
 
-- **OQ-01** — now states that the master-data tables _do_ carry `organization_id`
+- **OQ-01** — now states that the master-data tables *do* carry `organization_id`
   (ADR-0021) while there is still no principal→organization binding.
 - **OQ-22** — same note; the tables being organization-scoped keeps the question open
   rather than answering it.
@@ -200,14 +200,14 @@ OQ-01/22 annotated), `docs/database-strategy.md` §4, `docs/adr/README.md` (inde
 
 ## 5. Validation — actual results
 
-| Gate      | Command                          | Result                                                                                                                                                             |
-| --------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Lint      | `npm run lint` (oxlint)          | **0 warnings, 0 errors** on 206 files (baseline was 0/0 on 125)                                                                                                    |
-| Typecheck | `npx tsc --noEmit`               | **clean**, no output                                                                                                                                               |
-| Unit      | `npm run test`                   | **34 files, 323 tests passed** (baseline 26 files / 134 tests)                                                                                                     |
-| E2E       | `npm run test:e2e`               | **8 files passed, 81 tests passed, 4 skipped** (baseline 44 passed / 4 skipped; the 4 skips are the pre-existing `db.e2e-spec.ts` cases that need a live Postgres) |
-| Build     | `npm run build` (`nest build`)   | **exit 0**                                                                                                                                                         |
-| OpenAPI   | app booted, `GET /api/docs-json` | **200**; all 40 expected paths present; `unit-conversions` exposes only `get`/`post` (no `patch`)                                                                  |
+| Gate | Command | Result |
+|---|---|---|
+| Lint | `npm run lint` (oxlint) | **0 warnings, 0 errors** on 206 files (baseline was 0/0 on 125) |
+| Typecheck | `npx tsc --noEmit` | **clean**, no output |
+| Unit | `npm run test` | **34 files, 323 tests passed** (baseline 26 files / 134 tests) |
+| E2E | `npm run test:e2e` | **8 files passed, 81 tests passed, 4 skipped** (baseline 44 passed / 4 skipped; the 4 skips are the pre-existing `db.e2e-spec.ts` cases that need a live Postgres) |
+| Build | `npm run build` (`nest build`) | **exit 0** |
+| OpenAPI | app booted, `GET /api/docs-json` | **200**; all 40 expected paths present; `unit-conversions` exposes only `get`/`post` (no `patch`) |
 
 ### Migration validation — and its honest limits
 
@@ -272,32 +272,32 @@ in §6.
 
 ## 7. §68 Final Review Checklist
 
-| #   | Question                                                        | Answer                                                                                                                                                                                                                                                               |
-| --- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Did you inspect the repository before changing code?            | Yes — all of `.vardena/`, `docs/**`, every existing module, kernel, tests, migrations and configs before the first edit.                                                                                                                                             |
-| 2   | Did you follow AR-02 module anatomy?                            | Yes — `domain/`, `data/`, `application/`, `api/` in both new modules.                                                                                                                                                                                                |
-| 3   | Are controllers transport-only (AR-03)?                         | Yes — no business logic, no Prisma, only DTO↔service mapping.                                                                                                                                                                                                        |
-| 4   | Are use cases in application services (AR-04)?                  | Yes — all 10 services.                                                                                                                                                                                                                                               |
-| 5   | Is the domain framework-free (AR-05)?                           | Yes — no Nest imports in any `domain/` file; verified by the domain specs running without a Nest context.                                                                                                                                                            |
-| 6   | Is `kernel/` still technical-only (AR-06)?                      | Yes — the three new kernel files are a ULID validator, a boolean parser and a Prisma error mapper.                                                                                                                                                                   |
-| 7   | Do modules cross only via public services (AR-07)?              | Yes — Inventory resolves branches through `BranchesService`, never by reading `organization.branches`.                                                                                                                                                               |
-| 8   | One schema per module (AR-09)?                                  | Yes — `organization` and `inventory`.                                                                                                                                                                                                                                |
-| 9   | Migration-only schema changes (AR-10)?                          | Yes — 2 new migrations; no applied migration edited.                                                                                                                                                                                                                 |
-| 10  | Standard entity columns (AR-12)?                                | Yes — `created_at`, `updated_at`, `created_by`, `updated_by` on all 11 tables.                                                                                                                                                                                       |
-| 11  | Soft delete (AR-13)?                                            | **Deliberately not used** — `is_active` lifecycle instead, per §7.4; documented as OQ-36. AR-13 concerns documents.                                                                                                                                                  |
-| 12  | Outbox (AR-14)?                                                 | Not applicable — no external delivery in Task 6; events use the in-process bus.                                                                                                                                                                                      |
-| 13  | Authorization in the service, not just guards (AR-21/22)?       | Yes — first statement of every use case; proven by `master-data-authorization.spec.ts` (403 with no write) and e2e.                                                                                                                                                  |
-| 14  | Audit (AR-23)?                                                  | Actor ids persisted; 37 event types published with correlation ids.                                                                                                                                                                                                  |
-| 15  | Validation (AR-24)?                                             | DTOs never expose Prisma models; no hash/actor leakage; whitelist + `forbidNonWhitelisted`.                                                                                                                                                                          |
-| 16  | OpenAPI (AR-26)?                                                | Yes — `/api/docs-json` returns 200 with every new path and schema.                                                                                                                                                                                                   |
-| 17  | ADR only for genuinely new decisions (AR-29)?                   | Yes — exactly one, ADR-0021, for the `organization_id` decision that conflicts with open questions.                                                                                                                                                                  |
-| 18  | Are ULIDs used for PKs?                                         | Yes, generated in the application layer (`generateId()`), never DB defaults.                                                                                                                                                                                         |
-| 19  | UTC timestamps?                                                 | Yes — `timestamptz`, `DEFAULT CURRENT_TIMESTAMP`.                                                                                                                                                                                                                    |
-| 20  | Quantities `numeric(18,4)`?                                     | No quantity column exists yet. `unit_conversions.factor` is `numeric(18,6)` (a factor is not a quantity) — see §2.9.                                                                                                                                                 |
-| 21  | JSONB only for governed custom fields?                          | No JSONB column was created.                                                                                                                                                                                                                                         |
-| 22  | No `*` / SuperAdmin / wildcard permissions?                     | None — asserted by a test over all 47 codes.                                                                                                                                                                                                                         |
-| 23  | No separate Customer/Supplier/Product/Service/StockItem tables? | None — one `parties` table with capability booleans, one `items` table with `item_kind`.                                                                                                                                                                             |
-| 24  | Did you invent business rules?                                  | No. Every judgement call is either traced to a doc (`master-data-strategy.md` §3.3/§7.4, D-25/D-26) or registered as an Open Question. The recorded _assumptions_ (item-kind defaults for the four kinds §3.3 does not cover) are flagged in code as OQ-33 material. |
+| # | Question | Answer |
+|---|---|---|
+| 1 | Did you inspect the repository before changing code? | Yes — all of `.vardena/`, `docs/**`, every existing module, kernel, tests, migrations and configs before the first edit. |
+| 2 | Did you follow AR-02 module anatomy? | Yes — `domain/`, `data/`, `application/`, `api/` in both new modules. |
+| 3 | Are controllers transport-only (AR-03)? | Yes — no business logic, no Prisma, only DTO↔service mapping. |
+| 4 | Are use cases in application services (AR-04)? | Yes — all 10 services. |
+| 5 | Is the domain framework-free (AR-05)? | Yes — no Nest imports in any `domain/` file; verified by the domain specs running without a Nest context. |
+| 6 | Is `kernel/` still technical-only (AR-06)? | Yes — the three new kernel files are a ULID validator, a boolean parser and a Prisma error mapper. |
+| 7 | Do modules cross only via public services (AR-07)? | Yes — Inventory resolves branches through `BranchesService`, never by reading `organization.branches`. |
+| 8 | One schema per module (AR-09)? | Yes — `organization` and `inventory`. |
+| 9 | Migration-only schema changes (AR-10)? | Yes — 2 new migrations; no applied migration edited. |
+| 10 | Standard entity columns (AR-12)? | Yes — `created_at`, `updated_at`, `created_by`, `updated_by` on all 11 tables. |
+| 11 | Soft delete (AR-13)? | **Deliberately not used** — `is_active` lifecycle instead, per §7.4; documented as OQ-36. AR-13 concerns documents. |
+| 12 | Outbox (AR-14)? | Not applicable — no external delivery in Task 6; events use the in-process bus. |
+| 13 | Authorization in the service, not just guards (AR-21/22)? | Yes — first statement of every use case; proven by `master-data-authorization.spec.ts` (403 with no write) and e2e. |
+| 14 | Audit (AR-23)? | Actor ids persisted; 37 event types published with correlation ids. |
+| 15 | Validation (AR-24)? | DTOs never expose Prisma models; no hash/actor leakage; whitelist + `forbidNonWhitelisted`. |
+| 16 | OpenAPI (AR-26)? | Yes — `/api/docs-json` returns 200 with every new path and schema. |
+| 17 | ADR only for genuinely new decisions (AR-29)? | Yes — exactly one, ADR-0021, for the `organization_id` decision that conflicts with open questions. |
+| 18 | Are ULIDs used for PKs? | Yes, generated in the application layer (`generateId()`), never DB defaults. |
+| 19 | UTC timestamps? | Yes — `timestamptz`, `DEFAULT CURRENT_TIMESTAMP`. |
+| 20 | Quantities `numeric(18,4)`? | No quantity column exists yet. `unit_conversions.factor` is `numeric(18,6)` (a factor is not a quantity) — see §2.9. |
+| 21 | JSONB only for governed custom fields? | No JSONB column was created. |
+| 22 | No `*` / SuperAdmin / wildcard permissions? | None — asserted by a test over all 47 codes. |
+| 23 | No separate Customer/Supplier/Product/Service/StockItem tables? | None — one `parties` table with capability booleans, one `items` table with `item_kind`. |
+| 24 | Did you invent business rules? | No. Every judgement call is either traced to a doc (`master-data-strategy.md` §3.3/§7.4, D-25/D-26) or registered as an Open Question. The recorded *assumptions* (item-kind defaults for the four kinds §3.3 does not cover) are flagged in code as OQ-33 material. |
 
 **Task 5 conflicts:** the task brief's ownership list put all ten entities in one
 `organization` module. **Task 5's ownership table wins**: Unit/UnitConversion/
@@ -309,7 +309,7 @@ brief's 2-segment permission examples (`Organization.View`) would fail
 
 **Not done (out of scope, correctly):** accounting/CoA/journals, inventory ledger,
 movements, balances, reservations, valuation, all documents, workflow/approval, tax,
-pricing, BOM, variants, lot/serial _implementation_, costing, integrations, frontend,
+pricing, BOM, variants, lot/serial *implementation*, costing, integrations, frontend,
 custom fields, seed data.
 
 ---

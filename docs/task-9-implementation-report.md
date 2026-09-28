@@ -8,16 +8,16 @@ Date: 2026-09-12 · Branch: `arena/01a096e9-vardena` · Base: `1bc0327`
 
 ### Entities (8 tables, 1 new PostgreSQL schema)
 
-| Schema     | Table                          | Notes                                                                                       |
-| ---------- | ------------------------------ | ------------------------------------------------------------------------------------------- |
-| `workflow` | `workflow_definitions`         | org-scoped unique `code`; the workflow identity                                             |
-| `workflow` | `workflow_versions`            | `draft → active → superseded`; unique `(definition_id, version_number)`                     |
-| `workflow` | `workflow_states`              | unique `(version_id, code)`; `is_initial` / `is_terminal` flags                             |
-| `workflow` | `workflow_transitions`         | explicit source/target FKs; unique `(version_id, code)`; bounded condition columns          |
-| `workflow` | `workflow_instances`           | logical entity binding `(entity_module, entity_type, entity_id)`; unique; pins `version_id` |
-| `workflow` | `workflow_transition_history`  | append-only; 1-based `sequence` per instance; unique `(instance_id, sequence)`              |
-| `workflow` | `workflow_approvals`           | single-level; `base_sequence` staleness pin                                                 |
-| `workflow` | `workflow_automation_bindings` | unique `(transition_id, action)`; actions are code-registered, never stored code            |
+| Schema | Table | Notes |
+|---|---|---|
+| `workflow` | `workflow_definitions` | org-scoped unique `code`; the workflow identity |
+| `workflow` | `workflow_versions` | `draft → active → superseded`; unique `(definition_id, version_number)` |
+| `workflow` | `workflow_states` | unique `(version_id, code)`; `is_initial` / `is_terminal` flags |
+| `workflow` | `workflow_transitions` | explicit source/target FKs; unique `(version_id, code)`; bounded condition columns |
+| `workflow` | `workflow_instances` | logical entity binding `(entity_module, entity_type, entity_id)`; unique; pins `version_id` |
+| `workflow` | `workflow_transition_history` | append-only; 1-based `sequence` per instance; unique `(instance_id, sequence)` |
+| `workflow` | `workflow_approvals` | single-level; `base_sequence` staleness pin |
+| `workflow` | `workflow_automation_bindings` | unique `(transition_id, action)`; actions are code-registered, never stored code |
 
 All 27 foreign keys are `ON DELETE RESTRICT ON UPDATE CASCADE`. There are no
 FKs from `workflow` into any business schema — bindings are logical references
@@ -149,16 +149,16 @@ No applied migration was edited (AR-10). No kernel file was touched (AR-06).
 
 ## 5. Validation — actual results
 
-| Gate          | Command                                 | Result                                                                                                                                       |
-| ------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Lint          | `npx oxlint .`                          | **0 warnings, 0 errors** on 333 files                                                                                                        |
-| Format        | `npx prettier --write` on touched files | clean                                                                                                                                        |
-| Typecheck     | `npx tsc --noEmit`                      | **clean**, no output                                                                                                                         |
-| Unit          | `npm run test`                          | **51 files, 541 tests passed** (of which workflow: 6 files / 74 tests)                                                                       |
-| E2E           | `npm run test:e2e`                      | **10 files passed, 135 tests passed, 11 skipped** (of which workflow: 29 passed; the 4 workflow-live skips need `VARDENA_TEST_DATABASE_URL`) |
-| Build         | `npm run build` (`nest build`)          | **exit 0**                                                                                                                                   |
-| OpenAPI       | app booted, `GET /api/docs-json`        | **200**; 94 paths total, **all 18 `/workflow/` paths present**                                                                               |
-| Migration DDL | all 8 migrations in order on PGlite     | `ALL MIGRATIONS APPLIED CLEANLY`: **8 tables, 27 indexes, 27 FKs — all `ON DELETE RESTRICT` + `ON UPDATE CASCADE`**, 7 unique indexes        |
+| Gate | Command | Result |
+|---|---|---|
+| Lint | `npx oxlint .` | **0 warnings, 0 errors** on 333 files |
+| Format | `npx prettier --write` on touched files | clean |
+| Typecheck | `npx tsc --noEmit` | **clean**, no output |
+| Unit | `npm run test` | **51 files, 541 tests passed** (of which workflow: 6 files / 74 tests) |
+| E2E | `npm run test:e2e` | **10 files passed, 135 tests passed, 11 skipped** (of which workflow: 29 passed; the 4 workflow-live skips need `VARDENA_TEST_DATABASE_URL`) |
+| Build | `npm run build` (`nest build`) | **exit 0** |
+| OpenAPI | app booted, `GET /api/docs-json` | **200**; 94 paths total, **all 18 `/workflow/` paths present** |
+| Migration DDL | all 8 migrations in order on PGlite | `ALL MIGRATIONS APPLIED CLEANLY`: **8 tables, 27 indexes, 27 FKs — all `ON DELETE RESTRICT` + `ON UPDATE CASCADE`**, 7 unique indexes |
 
 The e2e suite covers the Task 9 §20 journey list: definition/version/state/
 transition lifecycles, publish validation, the full publish freeze (all 9
@@ -224,30 +224,30 @@ follow-up §6.2.
 
 ## 7. Final Review Checklist
 
-| #   | Question                                                    | Answer                                                                                                                                                                             |
-| --- | ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Did you inspect the repository before changing code?        | Yes — kernel, all modules, migrations, ADRs, domain docs, test support and configs before the first edit.                                                                          |
-| 2   | Did you follow AR-02 module anatomy?                        | Yes — `domain/`, `data/`, `application/`, `api/` in the new module.                                                                                                                |
-| 3   | Are controllers transport-only (AR-03)?                     | Yes — guards + DTO mapping only; no business logic, no Prisma.                                                                                                                     |
-| 4   | Are use cases in application services (AR-04)?              | Yes — all 7 services; authorization is the first statement of every use case.                                                                                                      |
-| 5   | Is the domain framework-free (AR-05)?                       | Yes — no Nest imports in any `domain/` file; the 74 domain specs run without a Nest context (vitest unit config).                                                                  |
-| 6   | Is `kernel/` still technical-only (AR-06)?                  | Yes — no kernel file was touched.                                                                                                                                                  |
-| 7   | Do modules cross only via public services (AR-07)?          | Yes — Organization via `OrganizationsService`, RBAC via `AuthorizationService`/`PermissionRegistry`, Identity via forward-ref; business entities referenced logically, never read. |
-| 8   | One schema per module (AR-09)?                              | Yes — `workflow`.                                                                                                                                                                  |
-| 9   | Migration-only schema changes (AR-10)?                      | Yes — 1 new migration; no applied migration edited.                                                                                                                                |
-| 10  | Standard entity columns (AR-12)?                            | Yes — `created_at`, `updated_at`, `created_by`, `updated_by` on all 8 tables (plus `occurred_at` on history, `requested/decided` stamps on approvals).                             |
-| 11  | Soft delete (AR-13)?                                        | Not applicable — definitions use `is_active`; versions/instances/history are never deleted by design.                                                                              |
-| 12  | Outbox (AR-14)?                                             | No external delivery in Task 9; events use the in-process bus. The gap is recorded in ADR-0024 and §6.3.                                                                           |
-| 13  | Authorization in the service, not just guards (AR-21/22)?   | Yes — guard + service re-check on both the workflow permission and the transition's own permission; proven by the operator e2e (guard passes, service returns 403).                |
-| 14  | Audit (AR-23)?                                              | Actor ids + correlation ids persisted on history/approvals; 4 event types published with correlation ids.                                                                          |
-| 15  | Validation (AR-24)?                                         | DTOs never expose Prisma models; dates/names normalized in services; whitelist + `forbidNonWhitelisted`; no hash/actor leakage.                                                    |
-| 16  | OpenAPI (AR-26)?                                            | Yes — `/api/docs-json` returns 200 with all 18 workflow paths.                                                                                                                     |
-| 17  | ADR only for genuinely new decisions (AR-29)?               | Yes — exactly one, ADR-0024, for the implementation binding the migration header references.                                                                                       |
-| 18  | Are ULIDs used for PKs?                                     | Yes, generated in the application layer (`generateId()`), never DB defaults; entity ids must be ULIDs (DTO + domain validated).                                                    |
-| 19  | UTC timestamps?                                             | Yes — `timestamptz(6)`, `DEFAULT CURRENT_TIMESTAMP`.                                                                                                                               |
-| 20  | No `*` / SuperAdmin / wildcard permissions?                 | None — asserted by `workflow-permissions.spec.ts` over all 10 codes.                                                                                                               |
-| 21  | No universal documents table / cross-module table coupling? | None — 8 workflow-owned tables; entity binding is `(module, type, id)` with no FK.                                                                                                 |
-| 22  | Did you invent business rules?                              | No. Every rule traces to Task 9 / ADR-0018 / `workflow-architecture.md` D-15…D-18; judgement calls (§2) are recorded above and in code comments.                                   |
+| # | Question | Answer |
+|---|---|---|
+| 1 | Did you inspect the repository before changing code? | Yes — kernel, all modules, migrations, ADRs, domain docs, test support and configs before the first edit. |
+| 2 | Did you follow AR-02 module anatomy? | Yes — `domain/`, `data/`, `application/`, `api/` in the new module. |
+| 3 | Are controllers transport-only (AR-03)? | Yes — guards + DTO mapping only; no business logic, no Prisma. |
+| 4 | Are use cases in application services (AR-04)? | Yes — all 7 services; authorization is the first statement of every use case. |
+| 5 | Is the domain framework-free (AR-05)? | Yes — no Nest imports in any `domain/` file; the 74 domain specs run without a Nest context (vitest unit config). |
+| 6 | Is `kernel/` still technical-only (AR-06)? | Yes — no kernel file was touched. |
+| 7 | Do modules cross only via public services (AR-07)? | Yes — Organization via `OrganizationsService`, RBAC via `AuthorizationService`/`PermissionRegistry`, Identity via forward-ref; business entities referenced logically, never read. |
+| 8 | One schema per module (AR-09)? | Yes — `workflow`. |
+| 9 | Migration-only schema changes (AR-10)? | Yes — 1 new migration; no applied migration edited. |
+| 10 | Standard entity columns (AR-12)? | Yes — `created_at`, `updated_at`, `created_by`, `updated_by` on all 8 tables (plus `occurred_at` on history, `requested/decided` stamps on approvals). |
+| 11 | Soft delete (AR-13)? | Not applicable — definitions use `is_active`; versions/instances/history are never deleted by design. |
+| 12 | Outbox (AR-14)? | No external delivery in Task 9; events use the in-process bus. The gap is recorded in ADR-0024 and §6.3. |
+| 13 | Authorization in the service, not just guards (AR-21/22)? | Yes — guard + service re-check on both the workflow permission and the transition's own permission; proven by the operator e2e (guard passes, service returns 403). |
+| 14 | Audit (AR-23)? | Actor ids + correlation ids persisted on history/approvals; 4 event types published with correlation ids. |
+| 15 | Validation (AR-24)? | DTOs never expose Prisma models; dates/names normalized in services; whitelist + `forbidNonWhitelisted`; no hash/actor leakage. |
+| 16 | OpenAPI (AR-26)? | Yes — `/api/docs-json` returns 200 with all 18 workflow paths. |
+| 17 | ADR only for genuinely new decisions (AR-29)? | Yes — exactly one, ADR-0024, for the implementation binding the migration header references. |
+| 18 | Are ULIDs used for PKs? | Yes, generated in the application layer (`generateId()`), never DB defaults; entity ids must be ULIDs (DTO + domain validated). |
+| 19 | UTC timestamps? | Yes — `timestamptz(6)`, `DEFAULT CURRENT_TIMESTAMP`. |
+| 20 | No `*` / SuperAdmin / wildcard permissions? | None — asserted by `workflow-permissions.spec.ts` over all 10 codes. |
+| 21 | No universal documents table / cross-module table coupling? | None — 8 workflow-owned tables; entity binding is `(module, type, id)` with no FK. |
+| 22 | Did you invent business rules? | No. Every rule traces to Task 9 / ADR-0018 / `workflow-architecture.md` D-15…D-18; judgement calls (§2) are recorded above and in code comments. |
 
 **Not done (out of scope, correctly):** Accounting/Inventory/Sales/Purchasing
 workflows, multi-level approval, delegation/escalation, a rules/scripting

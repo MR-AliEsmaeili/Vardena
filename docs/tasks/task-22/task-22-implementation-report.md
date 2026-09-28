@@ -58,20 +58,20 @@ called `SwaggerModule.createDocument`; the script was deleted immediately and
 
 ## 3. Contract-fidelity decisions (no invention)
 
-| Area                           | Decision                                                                                                                                                                                     | Source of truth                                                               |
-| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Auth transport                 | httpOnly session cookie; `withCredentials: true` only, no token in JS/localStorage/UI                                                                                                        | `backend/src/modules/identity` (ADR-0007)                                     |
-| Login failure                  | one generic message for every cause; the UI renders the server answer                                                                                                                        | `POST /auth/login` returns 401 "Invalid username or password." for all causes |
-| Session state                  | `GET /auth/me` 401 ⇒ state `unauthenticated` (not an error); other failures ⇒ error state                                                                                                    | identity controller                                                           |
-| Permissions                    | exact-match codes from the backend registry, no wildcard/prefix expansion                                                                                                                    | `accounting-permissions.ts`, `organization-permissions.ts`; AR-21             |
-| Organization                   | `GET /organizations`; one row ⇒ fixed context, several ⇒ switcher; selection in memory only, never persisted, never treated as authorization                                                 | ADR-0025, `assertOrganizationInScope` (Task 19 ODR-3)                         |
-| Chart tree                     | flat, code-ascending pages nested for display only; **no `sort` sent** (explicit sort ⇒ 400)                                                                                                 | `chart-tree.controller.ts` (Task 19 ODR-2)                                    |
-| Account statement              | `organizationId + accountId + fiscalYearId` required; period/area optional; **no `sort`** (fixed legal order); totals rendered as returned                                                   | `account-statement.dto.ts` (Task 17B D1–D5)                                   |
-| General ledger / trial balance | required `organizationId + financialAreaId + fiscalYearId`; optional period/account/code/name/date range; sorting limited to the endpoint's allow-list (column id **is** the API sort field) | Task 18 controllers/DTOs                                                      |
-| Amounts                        | exact decimal strings; grouping-only display, never `Number()`, never summed — the trial balance shows **no total row** because the contract returns none                                    | AR-05, `docs/accounting/domain-contract.md`                                   |
-| Dates                          | `YYYY-MM-DD` displayed verbatim; Zod mirrors `DATE_ONLY_PATTERN`; no Jalali conversion                                                                                                       | `accounting/domain/date-range.ts`; OQ-02 OPEN                                 |
-| Errors                         | branch on `code`, never on `message`; correlation id surfaced                                                                                                                                | `kernel/errors/*`                                                             |
-| Paging                         | server-owned `page`/`pageSize`/`total`; page 1 on any filter/sort/page-size change                                                                                                           | `kernel/pagination/*`                                                         |
+| Area | Decision | Source of truth |
+|---|---|---|
+| Auth transport | httpOnly session cookie; `withCredentials: true` only, no token in JS/localStorage/UI | `backend/src/modules/identity` (ADR-0007) |
+| Login failure | one generic message for every cause; the UI renders the server answer | `POST /auth/login` returns 401 "Invalid username or password." for all causes |
+| Session state | `GET /auth/me` 401 ⇒ state `unauthenticated` (not an error); other failures ⇒ error state | identity controller |
+| Permissions | exact-match codes from the backend registry, no wildcard/prefix expansion | `accounting-permissions.ts`, `organization-permissions.ts`; AR-21 |
+| Organization | `GET /organizations`; one row ⇒ fixed context, several ⇒ switcher; selection in memory only, never persisted, never treated as authorization | ADR-0025, `assertOrganizationInScope` (Task 19 ODR-3) |
+| Chart tree | flat, code-ascending pages nested for display only; **no `sort` sent** (explicit sort ⇒ 400) | `chart-tree.controller.ts` (Task 19 ODR-2) |
+| Account statement | `organizationId + accountId + fiscalYearId` required; period/area optional; **no `sort`** (fixed legal order); totals rendered as returned | `account-statement.dto.ts` (Task 17B D1–D5) |
+| General ledger / trial balance | required `organizationId + financialAreaId + fiscalYearId`; optional period/account/code/name/date range; sorting limited to the endpoint's allow-list (column id **is** the API sort field) | Task 18 controllers/DTOs |
+| Amounts | exact decimal strings; grouping-only display, never `Number()`, never summed — the trial balance shows **no total row** because the contract returns none | AR-05, `docs/accounting/domain-contract.md` |
+| Dates | `YYYY-MM-DD` displayed verbatim; Zod mirrors `DATE_ONLY_PATTERN`; no Jalali conversion | `accounting/domain/date-range.ts`; OQ-02 OPEN |
+| Errors | branch on `code`, never on `message`; correlation id surfaced | `kernel/errors/*` |
+| Paging | server-owned `page`/`pageSize`/`total`; page 1 on any filter/sort/page-size change | `kernel/pagination/*` |
 
 ## 4. Files
 
@@ -103,15 +103,15 @@ changed and no decision was invented.**
 
 ## 5. Verification (local, on the implementation head)
 
-| Gate              | Command (in `frontend/`)                    | Result                                                                                                             |
-| ----------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Install           | `npm ci` / `npm install`                    | OK (lockfile committed; `npm ci --dry-run` in sync)                                                                |
-| Lint              | `npm run lint`                              | **0 warnings, 0 errors** (86 files, 191 rules)                                                                     |
-| Typecheck         | `npm run typecheck`                         | clean (strict, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`)                                           |
-| Format            | `npm run format:check`                      | "All matched files use Prettier code style!"                                                                       |
-| Tests             | `npm test`                                  | **11 files / 63 tests passed**                                                                                     |
-| Build             | `npm run build`                             | OK — `react` 50.69 kB, `forms` 112.40 kB, `data` 136.17 kB, `index` 320.70 kB, CSS 24.08 kB; no chunk-size warning |
-| Backend untouched | `cd backend && npm run build`; `git status` | build OK; no backend file modified                                                                                 |
+| Gate | Command (in `frontend/`) | Result |
+|---|---|---|
+| Install | `npm ci` / `npm install` | OK (lockfile committed; `npm ci --dry-run` in sync) |
+| Lint | `npm run lint` | **0 warnings, 0 errors** (86 files, 191 rules) |
+| Typecheck | `npm run typecheck` | clean (strict, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) |
+| Format | `npm run format:check` | "All matched files use Prettier code style!" |
+| Tests | `npm test` | **11 files / 63 tests passed** |
+| Build | `npm run build` | OK — `react` 50.69 kB, `forms` 112.40 kB, `data` 136.17 kB, `index` 320.70 kB, CSS 24.08 kB; no chunk-size warning |
+| Backend untouched | `cd backend && npm run build`; `git status` | build OK; no backend file modified |
 
 Backend live-database E2E was **not** run locally (no Docker/PostgreSQL in the
 environment, and the suites are opt-in via `VARDENA_TEST_DATABASE_URL`); that
@@ -171,9 +171,9 @@ drifting definition of the contract.
    - `AccountStatementResponseDto.movements` and the `AccountStatementScopeDto`
      members emit as `Record<string, never>`, and `AccountStatementEntryDto` is
      absent from the document.
-     The frontend compensates with documented, narrowly-scoped type refinements
-     in `src/api/contracts.ts`; fixing the annotations would let those be
-     deleted.
+   The frontend compensates with documented, narrowly-scoped type refinements
+   in `src/api/contracts.ts`; fixing the annotations would let those be
+   deleted.
 2. **Organization context for principals without `Organization.Organization.View`.**
    A session with accounting read permissions but no organization view
    permission cannot discover its organization: the shell shows an explicit

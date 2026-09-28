@@ -9,7 +9,7 @@ ADR-0018 (`bounded-versioned-workflow`) decides that Vardena configures bounded,
 versioned state machines instead of a generic BPMN engine, and
 `docs/architecture/domain/workflow-architecture.md` designs the concepts
 (definitions, versions, states, transitions, approvals, automations). What
-remained open was the _implementation binding_: where the primitives live, how
+remained open was the *implementation binding*: where the primitives live, how
 business modules consume them without schema coupling, how concurrent
 transitions serialize, and how authorization composes with the existing RBAC
 system. Task 9 implements the bounded part of ADR-0018 as a reusable platform

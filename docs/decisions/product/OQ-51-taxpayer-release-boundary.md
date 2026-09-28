@@ -9,7 +9,7 @@
 
 ## Context
 
-The intended Taxpayer System (سامانه مودیان) scope is decided _as a vision_
+The intended Taxpayer System (سامانه مودیان) scope is decided *as a vision*
 (PB-BASELINE §19.1): e-invoice submission, status retrieval, retry, error
 explanation, user guidance, reconciliation, corrective invoices, cancellation,
 returns, corrective returns, full tracking/reporting. The architecture is also
@@ -26,7 +26,7 @@ exactly what AG-09/AR-31 prohibit.
 ## Why this matters
 
 - Stage 4 (Sales + taxpayer) cannot be sized without the boundary.
-- The e-invoice law phase-in affects _sales_ customers directly — missing the
+- The e-invoice law phase-in affects *sales* customers directly — missing the
   window has commercial cost; building too early against an unverified contract
   wastes work.
 - Corrective invoices/returns/cancellations interact with the accounting
@@ -46,11 +46,11 @@ exactly what AG-09/AR-31 prohibit.
 
 ## Options
 
-| Option                                                                                                           | Advantages                                                        | Disadvantages                                                                 |
-| ---------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **A. Manual workflow only** (system produces the data, users submit via the taxpayer portal)                     | Zero external dependency; safe                                    | Poor UX; competitive gap once e-invoicing is mandatory                        |
-| **B. Minimal submission slice** (submit e-invoice + poll status + retry + error explanation; no corrective docs) | Covers the mandatory-day-1 need; bounded build; uses outbox as-is | Corrective/return flows manual initially                                      |
-| **C. Full scope in one release** (submission + correction + returns + reconciliation)                            | Complete story                                                    | Large; corrective flows depend on OQ-27/OQ-30; risky against unknown contract |
+| Option | Advantages | Disadvantages |
+|---|---|---|
+| **A. Manual workflow only** (system produces the data, users submit via the taxpayer portal) | Zero external dependency; safe | Poor UX; competitive gap once e-invoicing is mandatory |
+| **B. Minimal submission slice** (submit e-invoice + poll status + retry + error explanation; no corrective docs) | Covers the mandatory-day-1 need; bounded build; uses outbox as-is | Corrective/return flows manual initially |
+| **C. Full scope in one release** (submission + correction + returns + reconciliation) | Complete story | Large; corrective flows depend on OQ-27/OQ-30; risky against unknown contract |
 
 ## Risks
 

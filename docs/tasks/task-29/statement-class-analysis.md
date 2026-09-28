@@ -3,7 +3,6 @@
 ## 1. Domain Concept & Purpose
 
 **`Statement Class`** (طبقه در صورت‌های مالی / طبقه‌بندی گزارشگری) is the architectural mechanism that governs:
-
 > **Where and how an account appears within formal financial-statement presentation and reporting.**
 
 While **`Account Type`** determines period-end closing and carry-forward physics (`BALANCE_SHEET` vs `INCOME_STATEMENT` vs `MEMORANDUM`), **`Statement Class`** is the separate presentation/grouping concept for financial reports. Exact hierarchy, level count, mapping cardinality, and report runtime behavior remain future design decisions.
@@ -12,10 +11,9 @@ While **`Account Type`** determines period-end closing and carry-forward physics
 
 ## 2. Illustrative Statement Class Categories
 
-_(Note: The reporting lines and categories listed below are illustrative examples only; they are not source-artifact facts, not Vardena's official/default taxonomy, and not Owner-approved content for seed data or production records)._
+*(Note: The reporting lines and categories listed below are illustrative examples only; they are not source-artifact facts, not Vardena's official/default taxonomy, and not Owner-approved content for seed data or production records).*
 
 ### Illustrative Balance Sheet Presentation Lines (`ترازنامه / صورت وضعیت مالی`)
-
 - **دارایی‌های جاری (Current Assets):** Cash, Receivables, Inventories, Prepayments.
 - **دارایی‌های غیرجاری (Non-Current Assets):** Property, Plant & Equipment (PPE), Intangibles, Long-Term Investments.
 - **بدهی‌های جاری (Current Liabilities):** Trade Payables, Short-Term Borrowings, Tax Payables.
@@ -23,7 +21,6 @@ _(Note: The reporting lines and categories listed below are illustrative example
 - **حقوق مالکانه (Equity):** Capital, Reserves, Retained Earnings.
 
 ### Illustrative Income Statement Presentation Lines (`صورت سود و زیان`)
-
 - **درآمدهای عملیاتی (Operating Revenues)**
 - **بهای تمام شده درآمدهای عملیاتی (Cost of Goods / Services Sold)**
 - **هزینه‌های عمومی و اداری (General & Administrative Expenses)**
@@ -49,7 +46,6 @@ _(Note: The reporting lines and categories listed below are illustrative example
 ```
 
 ### Key Principles:
-
 1. **`Statement Class ≠ Account Type`:** Two accounts may share the same `AccountType` (`BALANCE_SHEET`), but belong to completely different statement classes (e.g., `Current Asset` vs `Non-Current Liability`).
 2. **Organization-Configurable (OD-29-05 Option C):** Different organizations may structure their financial statement presentation lines differently. Statement classes are therefore recorded as organization-scoped and configurable in the domain direction, rather than hardcoded in core backend code.
 3. **Accounting Core Independence:** Statement Classification does not alter transaction posting rules, the double-entry equation, Chart of Accounts operation, General Ledger, Account Turnover, or Trial Balance. Future report runtime behavior remains separately gated.
@@ -63,7 +59,6 @@ _(Note: The reporting lines and categories listed below are illustrative example
 - **Reporting Surfaces:** Current read reports (`account-statements`, `general-ledger`, `trial-balance`) aggregate via the account tree hierarchy directly (Task 18), without financial statement layout mapping.
 
 ### Fit-Gap Classification & Governance Status:
-
 - **Classification:** `DECISION DIRECTION RECORDED — FUTURE DESIGN / IMPLEMENTATION GATED` (Reporting Foundation and any production implementation require separate authorization).
 - **Owner Decision:** OD-29-05 (`DECIDED — OPTION C`, 2026-09-28).
 

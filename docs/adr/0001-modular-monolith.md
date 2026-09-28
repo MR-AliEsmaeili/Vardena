@@ -36,5 +36,5 @@ public-service reads for an API — without rewriting neighbors.
   later, optionally, by CI checks); a "shared business service" smell is banned
   (AR-06).
 - In-process events mean a bug in a consumer can fail the publisher's
-  transaction (accepted: for accounting effects this is _desired_ atomicity,
+  transaction (accepted: for accounting effects this is *desired* atomicity,
   ADR-0005); future async dispatch is a kernel-level swap, not a module rewrite.

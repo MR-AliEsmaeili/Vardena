@@ -4,7 +4,7 @@
 
 The following is the verbatim prompt received for Task 29:
 
-````markdown
+```markdown
 # Task 29 — VARDENA Base Chart Reconciliation & Accounting Domain Decision Gate
 
 ## Role
@@ -13,12 +13,12 @@ You are Arena Agent operating on the Vardena repository.
 
 Act as:
 
-- Senior Software Architect
-- Accounting / Domain Architect
-- Backend Architect
-- Repository Auditor
-- Governance / ADR Reviewer
-- Fit-Gap Analyst
+* Senior Software Architect
+* Accounting / Domain Architect
+* Backend Architect
+* Repository Auditor
+* Governance / ADR Reviewer
+* Fit-Gap Analyst
 
 This task is a **governance, domain-reconciliation, fit-gap and implementation-readiness task only**.
 
@@ -48,26 +48,26 @@ This task MUST NOT implement production functionality.
 
 Do NOT modify:
 
-- Prisma schema
-- migrations
-- database tables
-- seed data
-- production domain models
-- production services
-- controllers
-- DTOs
-- permissions
-- guards
-- posting behavior
-- accounting behavior
-- closing behavior
-- reporting behavior
-- document validation behavior
-- Base Chart runtime behavior
-- API contracts
-- frontend
-- tests that change production behavior
-- architecture
+* Prisma schema
+* migrations
+* database tables
+* seed data
+* production domain models
+* production services
+* controllers
+* DTOs
+* permissions
+* guards
+* posting behavior
+* accounting behavior
+* closing behavior
+* reporting behavior
+* document validation behavior
+* Base Chart runtime behavior
+* API contracts
+* frontend
+* tests that change production behavior
+* architecture
 
 Documentation and governance artifacts are allowed.
 
@@ -85,22 +85,22 @@ Start from the latest `main`.
 
 First verify:
 
-- current HEAD
-- latest merged Task 27
-- latest merged Task 28
-- latest Task 28 follow-up / Owner Decision OD-27-02
-- current STATE.md
-- current roadmap
-- current OQ status
-- current ADR status
+* current HEAD
+* latest merged Task 27
+* latest merged Task 28
+* latest Task 28 follow-up / Owner Decision OD-27-02
+* current STATE.md
+* current roadmap
+* current OQ status
+* current ADR status
 
 Do not rely on historical branch state if main has moved.
 
 The current governance baseline includes:
 
-- Task 27 Main Governance Reconciliation & MVP Gate
-- Task 28 Owner Decision Closure & MVP Implementation Selection Gate
-- OD-27-02: Base Chart MVP scope boundary
+* Task 27 Main Governance Reconciliation & MVP Gate
+* Task 28 Owner Decision Closure & MVP Implementation Selection Gate
+* OD-27-02: Base Chart MVP scope boundary
 
 ---
 
@@ -114,30 +114,30 @@ Base Chart MVP requires the **Base Chart mechanism**, not a concrete standard ch
 
 The mechanism includes:
 
-- template identity
-- template version
-- template levels
-- template nodes
-- version lifecycle
-- Draft → Approved → Published → Superseded
-- organization adoption by copy
-- immutable published semantics
-- no silent mutation
-- Template identity ≠ Ledger identity
-- Adoption = Copy
-- Posting = Leaf-only
-- Aggregation = Read-time
+* template identity
+* template version
+* template levels
+* template nodes
+* version lifecycle
+* Draft → Approved → Published → Superseded
+* organization adoption by copy
+* immutable published semantics
+* no silent mutation
+* Template identity ≠ Ledger identity
+* Adoption = Copy
+* Posting = Leaf-only
+* Aggregation = Read-time
 
 Concrete chart content is NOT MVP-required unless separately approved.
 
 Do NOT invent:
 
-- standard account codes
-- standard Persian account titles
-- statutory account lists
-- mandatory control-role catalog
-- accounting policies
-- regulatory requirements
+* standard account codes
+* standard Persian account titles
+* statutory account lists
+* mandatory control-role catalog
+* accounting policies
+* regulatory requirements
 
 However, this task is specifically authorized to reconcile the **actual owner-provided VARDENA source artifact** as a real source dataset.
 
@@ -153,16 +153,16 @@ Use the owner-provided VARDENA chart artifact:
 
 The artifact contains approximately 264 account rows and these fields:
 
-- کد حساب
-- عنوان حساب
-- ماهيت حساب
-- نوع حساب
-- عنوان انگليسي حساب
-- ACLTafsil1
-- ACLTafsil2
-- ACLTafsil3
-- ACLTafsil4
-- وضعيت حساب غيرفعال/فعال
+* کد حساب
+* عنوان حساب
+* ماهيت حساب
+* نوع حساب
+* عنوان انگليسي حساب
+* ACLTafsil1
+* ACLTafsil2
+* ACLTafsil3
+* ACLTafsil4
+* وضعيت حساب غيرفعال/فعال
 
 Treat the supplied artifact as the source of truth for this reconciliation.
 
@@ -209,7 +209,6 @@ Group      = 1 digit
 General    = 2 digits
 Subsidiary = 3 digits
 ```
-````
 
 Example:
 
@@ -241,35 +240,35 @@ The task is to verify whether the existing configurable Coding Structure support
 
 Inspect the actual current implementation of:
 
-- Coding Structure
-- Coding Structure Level
-- Account
-- Base Chart Template
-- Base Chart Template Version
-- Base Chart Template Level
-- Base Chart Template Node
-- Base Chart Adoption
-- compatibility validation
-- adoption planning
-- account code validation
-- parent/child validation
-- postability derivation
+* Coding Structure
+* Coding Structure Level
+* Account
+* Base Chart Template
+* Base Chart Template Version
+* Base Chart Template Level
+* Base Chart Template Node
+* Base Chart Adoption
+* compatibility validation
+* adoption planning
+* account code validation
+* parent/child validation
+* postability derivation
 
 Determine whether the following are already supported:
 
 ### Required checks
 
-- configurable level count
-- configurable segment digit lengths
-- cumulative code length
-- hierarchical parent/child relationship
-- prefix validation
-- account-code uniqueness
-- level validation
-- leaf detection based on actual hierarchy
-- leaf-only posting
-- Base Chart template compatibility
-- Base Chart adoption by copy
+* configurable level count
+* configurable segment digit lengths
+* cumulative code length
+* hierarchical parent/child relationship
+* prefix validation
+* account-code uniqueness
+* level validation
+* leaf detection based on actual hierarchy
+* leaf-only posting
+* Base Chart template compatibility
+* Base Chart adoption by copy
 
 For the VARDENA artifact, explicitly verify:
 
@@ -295,9 +294,9 @@ The VARDENA field:
 
 has these source values:
 
-- بدهکار
-- بستانکار
-- هردو
+* بدهکار
+* بستانکار
+* هردو
 
 The owner clarified:
 
@@ -338,12 +337,12 @@ Determine exactly where and how this exists.
 
 Report:
 
-- file path
-- domain type / enum
-- services using it
-- validation using it
-- tests using it
-- API exposure if applicable
+* file path
+* domain type / enum
+* services using it
+* validation using it
+* tests using it
+* API exposure if applicable
 
 Determine the gap between:
 
@@ -405,15 +404,15 @@ Permanent accounts representing financial position.
 
 Examples include:
 
-- assets
-- liabilities
-- equity
+* assets
+* liabilities
+* equity
 
 Expected domain behavior:
 
-- balance carries forward
-- participates in balance-sheet reporting
-- does not close as a normal income statement account
+* balance carries forward
+* participates in balance-sheet reporting
+* does not close as a normal income statement account
 
 ## INCOME_STATEMENT
 
@@ -421,15 +420,15 @@ Temporary / performance accounts.
 
 Examples include:
 
-- revenue
-- expenses
-- cost of sales
+* revenue
+* expenses
+* cost of sales
 
 Expected domain behavior:
 
-- participates in period performance reporting
-- closing process eventually closes these accounts
-- period result ultimately flows into equity / retained earnings through the appropriate closing process
+* participates in period performance reporting
+* closing process eventually closes these accounts
+* period result ultimately flows into equity / retained earnings through the appropriate closing process
 
 ## MEMORANDUM
 
@@ -437,10 +436,10 @@ Memorandum / انتظامی accounts.
 
 Expected domain behavior:
 
-- outside the core accounting equation
-- separate reporting treatment
-- special posting/reporting rules
-- should not contaminate ordinary financial statements
+* outside the core accounting equation
+* separate reporting treatment
+* special posting/reporting rules
+* should not contaminate ordinary financial statements
 
 IMPORTANT:
 
@@ -498,15 +497,15 @@ Its purpose is:
 
 Examples may include categories such as:
 
-- current asset
-- non-current asset
-- current liability
-- non-current liability
-- equity
-- operating income
-- non-operating income
-- operating expense
-- non-operating expense
+* current asset
+* non-current asset
+* current liability
+* non-current liability
+* equity
+* operating income
+* non-operating income
+* operating expense
+* non-operating expense
 
 Do NOT assume these exact values are approved Vardena configuration.
 
@@ -548,9 +547,9 @@ Examples may include future system-managed accounts such as closing-related or i
 
 However:
 
-- do not invent system accounts
-- do not infer system status from account titles
-- do not add `isSystem` in Task 29
+* do not invent system accounts
+* do not infer system status from account titles
+* do not add `isSystem` in Task 29
 
 Determine whether current Vardena already has an equivalent concept.
 
@@ -634,13 +633,13 @@ They imply future document-line validation.
 
 Inspect the current Vardena architecture for:
 
-- Detail
-- Control Role
-- dimensions
-- accounting dimensions
-- account-detail relationships
-- document-line validation
-- any existing concept that can represent required details
+* Detail
+* Control Role
+* dimensions
+* accounting dimensions
+* account-detail relationships
+* document-line validation
+* any existing concept that can represent required details
 
 Determine whether ACLTafsil1..4 can conceptually map to an existing generic mechanism.
 
@@ -665,10 +664,10 @@ if such a mechanism already exists.
 
 The output must distinguish:
 
-- source semantics
-- current Vardena support
-- conceptual mapping
-- missing implementation
+* source semantics
+* current Vardena support
+* conceptual mapping
+* missing implementation
 
 ---
 
@@ -684,11 +683,11 @@ English title is NOT required for the current MVP.
 
 Therefore:
 
-- record it as source-only metadata
-- do not add it to the MVP Account model
-- do not make it a blocker for Base Chart loading
-- do not invent an English translation
-- do not remove it from the source artifact
+* record it as source-only metadata
+* do not add it to the MVP Account model
+* do not make it a blocker for Base Chart loading
+* do not invent an English translation
+* do not remove it from the source artifact
 
 Classification:
 
@@ -728,22 +727,22 @@ At minimum check:
 
 ### Codes
 
-- duplicate codes
-- malformed codes
-- invalid segment lengths
-- invalid cumulative lengths
-- invalid characters
-- missing parents
-- orphan nodes
-- parent/child inconsistencies
-- invalid hierarchy
-- invalid level assumptions
+* duplicate codes
+* malformed codes
+* invalid segment lengths
+* invalid cumulative lengths
+* invalid characters
+* missing parents
+* orphan nodes
+* parent/child inconsistencies
+* invalid hierarchy
+* invalid level assumptions
 
 ### Titles
 
-- missing titles
-- duplicate titles where relevant
-- empty values
+* missing titles
+* duplicate titles where relevant
+* empty values
 
 ### Nature
 
@@ -753,9 +752,9 @@ Check all distinct values of:
 
 Expected source values:
 
-- بدهکار
-- بستانکار
-- هردو
+* بدهکار
+* بستانکار
+* هردو
 
 Report any unexpected value.
 
@@ -767,9 +766,9 @@ Check all distinct values of:
 
 Expected:
 
-- ترازنامه ای
-- سود و زیان
-- انتظامی
+* ترازنامه ای
+* سود و زیان
+* انتظامی
 
 Report any unexpected value.
 
@@ -777,10 +776,10 @@ Report any unexpected value.
 
 Check:
 
-- ACLTafsil1
-- ACLTafsil2
-- ACLTafsil3
-- ACLTafsil4
+* ACLTafsil1
+* ACLTafsil2
+* ACLTafsil3
+* ACLTafsil4
 
 Expected values:
 
@@ -827,15 +826,15 @@ Explicitly distinguish:
 
 Current Vardena already has Base Chart mechanism including:
 
-- templates
-- versions
-- levels
-- nodes
-- publication lifecycle
-- adoption by copy
-- compatibility checks
-- leaf-only postability
-- template identity ≠ ledger identity
+* templates
+* versions
+* levels
+* nodes
+* publication lifecycle
+* adoption by copy
+* compatibility checks
+* leaf-only postability
+* template identity ≠ ledger identity
 
 ### VARDENA content
 
@@ -843,9 +842,9 @@ The 264 accounts are actual source content.
 
 They are NOT:
 
-- a universal Vardena standard
-- automatically an approved statutory chart
-- automatically MVP-required content
+* a universal Vardena standard
+* automatically an approved statutory chart
+* automatically MVP-required content
 
 The task should determine whether this specific owner-provided content is structurally loadable.
 
@@ -893,7 +892,7 @@ Do not use vague statuses.
 
 Create a table covering at least:
 
-| Concept          | VARDENA source    | Vardena current state | Fit-Gap | Decision | Future Task |
+| Concept          | VARDENA source  | Vardena current state | Fit-Gap | Decision | Future Task |
 | ---------------- | ----------------- | --------------------- | ------- | -------- | ----------- |
 | Coding Structure | 1+2+3             | inspect               |         |          |             |
 | Account Type     | 3 values          | inspect               |         |          |             |
@@ -930,11 +929,11 @@ Inspect all relevant Accounting/Base Chart ADRs.
 
 For each relevant ADR:
 
-- current status
-- whether Task 29 confirms it
-- whether Task 29 requires amendment
-- whether it remains Proposed
-- whether Owner Decision is required
+* current status
+* whether Task 29 confirms it
+* whether Task 29 requires amendment
+* whether it remains Proposed
+* whether Owner Decision is required
 
 Do NOT automatically promote an ADR to Accepted.
 
@@ -1038,21 +1037,21 @@ If any proposition is contradicted by repository evidence, report the contradict
 
 Do NOT implement:
 
-- fiscal closing
-- carry-forward
-- financial statements
-- trial balance
-- memorandum accounting engine
-- posting rules
-- system-account restrictions
-- statement-class engine
-- detail validation
-- inventory accounting
-- sales accounting
-- purchasing
-- treasury
-- reporting engine
-- frontend
+* fiscal closing
+* carry-forward
+* financial statements
+* trial balance
+* memorandum accounting engine
+* posting rules
+* system-account restrictions
+* statement-class engine
+* detail validation
+* inventory accounting
+* sales accounting
+* purchasing
+* treasury
+* reporting engine
+* frontend
 
 These may be future tasks.
 
@@ -1105,19 +1104,19 @@ If an artifact is unnecessary, explain why in the implementation report rather t
 
 `source-artifact-profile.md` must document:
 
-- source filename
-- row count
-- field list
-- distinct values
-- code depth
-- code segment structure
-- root accounts
-- hierarchy statistics
-- nature distribution
-- account-type distribution
-- detail-flag distribution
-- active/inactive distribution
-- anomalies
+* source filename
+* row count
+* field list
+* distinct values
+* code depth
+* code segment structure
+* root accounts
+* hierarchy statistics
+* nature distribution
+* account-type distribution
+* detail-flag distribution
+* active/inactive distribution
+* anomalies
 
 Do not alter source content.
 
@@ -1265,10 +1264,10 @@ Because this task is governance-only:
 
 Prefer:
 
-- repository inspection
-- static analysis
-- documentation consistency checks
-- existing tests only where lightweight
+* repository inspection
+* static analysis
+* documentation consistency checks
+* existing tests only where lightweight
 
 Do NOT spend significant time running local E2E.
 
@@ -1286,19 +1285,19 @@ Create a dedicated branch following the repository's established Arena branch na
 
 Commit only:
 
-- Task 29 documentation
-- governance records
-- decision records
-- state/roadmap updates that are genuinely justified by the analysis
+* Task 29 documentation
+* governance records
+* decision records
+* state/roadmap updates that are genuinely justified by the analysis
 
 Do NOT modify production code.
 
 Before opening the PR:
 
-- inspect git diff
-- verify no production code/schema/migration changes
-- verify no generated noise
-- verify documentation references are internally consistent
+* inspect git diff
+* verify no production code/schema/migration changes
+* verify no generated noise
+* verify documentation references are internally consistent
 
 Open a PR for review.
 
@@ -1414,31 +1413,31 @@ Content Loading Readiness
 
 DO NOT:
 
-- invent accounts
-- invent codes
-- invent titles
-- translate titles and treat translations as source truth
-- approve the VARDENA chart as a universal standard
-- close OQ-25 wholesale
-- promote ADRs automatically
-- fabricate Owner Decisions
-- add production fields
-- change Prisma
-- create migrations
-- create seeds
-- change permissions
-- change guards
-- change posting behavior
-- implement closing
-- implement reporting
-- implement financial statements
-- implement detail validation
-- implement system-account restrictions
-- implement frontend
-- introduce microservices
-- introduce Redis
-- refactor unrelated modules
-- perform drive-by cleanup
+* invent accounts
+* invent codes
+* invent titles
+* translate titles and treat translations as source truth
+* approve the VARDENA chart as a universal standard
+* close OQ-25 wholesale
+* promote ADRs automatically
+* fabricate Owner Decisions
+* add production fields
+* change Prisma
+* create migrations
+* create seeds
+* change permissions
+* change guards
+* change posting behavior
+* implement closing
+* implement reporting
+* implement financial statements
+* implement detail validation
+* implement system-account restrictions
+* implement frontend
+* introduce microservices
+* introduce Redis
+* refactor unrelated modules
+* perform drive-by cleanup
 
 ---
 
@@ -1475,7 +1474,4 @@ Do not claim acceptance.
 Do not claim Owner approval.
 
 Do not start the next implementation task automatically.
-
-```
-
 ```

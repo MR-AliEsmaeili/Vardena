@@ -12,7 +12,7 @@
 The owner's clarifications describe Vardena as **one ERP product built on a
 platform core, with independent modules and potential future products**
 (CRM/ticketing as separate products, marketplace possibility, enterprise
-capabilities). But the _strategy_ for how products relate is unstated:
+capabilities). But the *strategy* for how products relate is unstated:
 
 1. **One ERP + satellite products**: Vardena ERP is the center; CRM, ticketing,
    vertical packages etc. are separate products that integrate with it.
@@ -31,7 +31,7 @@ different sales stories, and different multi-installation data architecture
 
 - Post-MVP investment (Stage 7+) divides differently under each strategy.
 - The multi-DB-per-customer + consolidation question (holding groups) has real
-  architecture consequences (cross-installation reporting is _not_ possible in
+  architecture consequences (cross-installation reporting is *not* possible in
   the current single-installation model) — knowing the strategy decides whether
   to keep reserving seams.
 - Without the answer, "future products" remains a loose list rather than a
@@ -48,11 +48,11 @@ different sales stories, and different multi-installation data architecture
 
 ## Options
 
-| Option                                                                                             | Advantages                                                    | Disadvantages                                                            |
-| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| **A. Center-and-satellites** (Vardena ERP is _the_ product; others orbit and integrate)            | Focused investment; clear story; matches current architecture | Ceiling if ERP market saturates                                          |
-| **B. Platform family** (platform core is the product; ERP is one app)                              | Broader ambition; reuse payoff                                | Platform-first trap (PB §32 non-goal #3); dilutes near-term focus        |
-| **C. ERP with consolidation flagship** (invest in multi-installation consolidation for enterprise) | Enterprise revenue; differentiator vs competitors             | Heavy architecture (cross-DB reporting); OQ-31 territory; not SMB market |
+| Option | Advantages | Disadvantages |
+|---|---|---|
+| **A. Center-and-satellites** (Vardena ERP is *the* product; others orbit and integrate) | Focused investment; clear story; matches current architecture | Ceiling if ERP market saturates |
+| **B. Platform family** (platform core is the product; ERP is one app) | Broader ambition; reuse payoff | Platform-first trap (PB §32 non-goal #3); dilutes near-term focus |
+| **C. ERP with consolidation flagship** (invest in multi-installation consolidation for enterprise) | Enterprise revenue; differentiator vs competitors | Heavy architecture (cross-DB reporting); OQ-31 territory; not SMB market |
 
 ## Risks
 
@@ -78,7 +78,7 @@ owner initiates. **Recommendation only — owner decides.**
 1. Is Vardena ERP the center of your product strategy for the next 2–3 years?
 2. Is holding-level consolidation a market you intend to serve, or explicitly
    not?
-3. Do you accept recording "future products integrate _with_ Vardena" as the
+3. Do you accept recording "future products integrate *with* Vardena" as the
    working rule until a strategic review changes it?
 
 ## Decision deadline or dependency

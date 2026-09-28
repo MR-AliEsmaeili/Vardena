@@ -25,22 +25,22 @@ was implemented (§10).
 The eligibility definition is **not invented here**; it is derived, section by
 section, from the accepted documents:
 
-| Root                                                     | What it fixes for this task                                                                                                                                                                                                                                                                                               |
-| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Root | What it fixes for this task |
+| --- | --- |
 | `docs/accounting/domain-contract.md` **§15.5 (AC-D-23)** | Finalization's own re-validation set — balance, ≥2 lines with both sides, postable+active+area-applicable accounts, resolved **open** year/period, scope, description, number, origin evidence — is the invariant set that "makes a voucher part of the books". Readiness re-evaluates the PERMANENT members of this set. |
-| contract **§7.2 rule 7**                                 | "Final documents keep their resolved period forever. A later period close does not move or invalidate them" ⇒ period/year STATUS is not a readiness criterion (openness is finalization's own gate, AC-I-04).                                                                                                             |
-| contract **§8.6 (AC-D-08)**                              | Account deactivation "blocks new posting lines and new child creation; existing lines, balances, reports and history keep referring to the account and remain fully readable" ⇒ account ACTIVITY is not a readiness criterion.                                                                                            |
-| contract **§14 / AC-I-09**                               | Posting eligibility of accounts is a validated attribute (`is_postable`, leaf); a missing/foreign account is invisible (AC-I-16). Reused, not re-implemented.                                                                                                                                                             |
-| contract **§13 / AC-I-07/08**                            | The exact `Σ debit = Σ credit` and line-shape rules — consumed through `checkVoucherLines`, never duplicated.                                                                                                                                                                                                             |
-| contract **§16.1/§16.3**                                 | Origin evidence (`manual` carries none, `system` carries all four snake_case fields) — consumed through `checkOriginEvidence`.                                                                                                                                                                                            |
-| contract **§6.2 rule 4 / AC-I-02 / AC-I-14**             | The stored scope resolution is authoritative and never recomputed; readiness verifies it still resolves.                                                                                                                                                                                                                  |
-| contract **§18 / AC-I-22**                               | "A Final document always has one [number]" — the number is part of the final-state contract.                                                                                                                                                                                                                              |
-| contract **§19.3 (AC-D-31/AC-I-19)**                     | The future consumer of Final lines (balance projections, rebuildable, never the source of truth) — the engine this seam serves.                                                                                                                                                                                           |
-| **ADR-0026** (Accepted)                                  | Accounting owns posting; the engine is in-module, so the seam is internal. §7 inherits the organization posture verbatim.                                                                                                                                                                                                 |
-| Task 10.4 implementation                                 | The aggregate, the guard vocabularies (`VoucherLineProblem`, `AccountingDocumentAccountProblem`, `AccountingDocumentScopeRejectedError`'s `area                                                                                                                                                                           | year | period`), the lock order and the idempotency ledger this task composes with. |
+| contract **§7.2 rule 7** | "Final documents keep their resolved period forever. A later period close does not move or invalidate them" ⇒ period/year STATUS is not a readiness criterion (openness is finalization's own gate, AC-I-04). |
+| contract **§8.6 (AC-D-08)** | Account deactivation "blocks new posting lines and new child creation; existing lines, balances, reports and history keep referring to the account and remain fully readable" ⇒ account ACTIVITY is not a readiness criterion. |
+| contract **§14 / AC-I-09** | Posting eligibility of accounts is a validated attribute (`is_postable`, leaf); a missing/foreign account is invisible (AC-I-16). Reused, not re-implemented. |
+| contract **§13 / AC-I-07/08** | The exact `Σ debit = Σ credit` and line-shape rules — consumed through `checkVoucherLines`, never duplicated. |
+| contract **§16.1/§16.3** | Origin evidence (`manual` carries none, `system` carries all four snake_case fields) — consumed through `checkOriginEvidence`. |
+| contract **§6.2 rule 4 / AC-I-02 / AC-I-14** | The stored scope resolution is authoritative and never recomputed; readiness verifies it still resolves. |
+| contract **§18 / AC-I-22** | "A Final document always has one [number]" — the number is part of the final-state contract. |
+| contract **§19.3 (AC-D-31/AC-I-19)** | The future consumer of Final lines (balance projections, rebuildable, never the source of truth) — the engine this seam serves. |
+| **ADR-0026** (Accepted) | Accounting owns posting; the engine is in-module, so the seam is internal. §7 inherits the organization posture verbatim. |
+| Task 10.4 implementation | The aggregate, the guard vocabularies (`VoucherLineProblem`, `AccountingDocumentAccountProblem`, `AccountingDocumentScopeRejectedError`'s `area|year|period`), the lock order and the idempotency ledger this task composes with. |
 
 **No STOP condition was reached**: every eligibility dimension is defined by
-the contract above; the OQ-gated dimensions (OQ-39…OQ-43) are _excluded_ and
+the contract above; the OQ-gated dimensions (OQ-39…OQ-43) are *excluded* and
 recorded as seams rather than resolved (§7).
 
 ## 3. Design
@@ -69,13 +69,13 @@ Key decisions, each with its contract reason:
 2. **Narrow inputs make the non-criteria structural**: the scope input carries
    identity + dates only (no `status`), the account input carries
    `id/organizationId/isPostable` only (no `isActive`). The decision
-   _cannot_ depend on the two dimensions §7.2 rule 7 and §8.6 exclude.
+   *cannot* depend on the two dimensions §7.2 rule 7 and §8.6 exclude.
 3. **Scope verification by stored ids + containment**: because years of one
    area and periods of one year never overlap (AC-I-03), reading the stored
    rows and checking ownership + date containment is exactly the resolution
    finalization validated — drift (the real seam: fiscal-year dates are
    editable while a year is open; Task 10.2's §6.5 reading has no
-   document-reference guard yet) is _reported_, never re-resolved.
+   document-reference guard yet) is *reported*, never re-resolved.
 4. **No locks, documented consistency boundary**: every fact the verdict
    depends on is immutable (final voucher + lines, §15.2), frozen by reference
    (postability, AC-I-11) or excluded (statuses, activity) — so a `ready`
@@ -102,18 +102,18 @@ Key decisions, each with its contract reason:
 - **`not_ready`** — one or more reasons, ALL reported (the `checkVoucherLines`
   convention), in the fixed order state → source → composition → accounts
   (ascending by id) → scope (area, year, period). Never a raw database error;
-  a missing/foreign document is the module's uniform 404 _before_ any verdict.
+  a missing/foreign document is the module's uniform 404 *before* any verdict.
 - **Reason codes** (machine-readable; consumers match `problem`, never text):
 
-| Code (context)                                                                                                                                                                                       | Dimension                                                             | Reused vocabulary                                                                          |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `document_not_final` (`phase`)                                                                                                                                                                       | state (§15.1/§15.5)                                                   | new, readiness-specific                                                                    |
-| `document_not_numbered`                                                                                                                                                                              | state (§18, AC-I-22; final only — a draft legitimately has no serial) | new                                                                                        |
-| `missing_description`                                                                                                                                                                                | state (§12.2)                                                         | new                                                                                        |
-| `source_required_for_system` / `source_forbidden_for_manual` / `malformed_source`                                                                                                                    | origin evidence (§16.1/§16.3)                                         | `AccountingDocumentOriginProblem` verbatim                                                 |
-| `too_few_lines`, `missing_debit_side`, `missing_credit_side`, `unbalanced_document`, `invalid_amount`, `zero_line`, `both_sides_set`, `invalid_line_no`, `duplicate_line_no`, `gaps_in_line_numbers` | composition (§13/§12.5)                                               | `VoucherLineProblem` verbatim                                                              |
-| `account_not_found` / `account_not_postable` (`accountId`)                                                                                                                                           | accounts (§14, AC-I-09/16)                                            | narrowed `AccountingDocumentAccountProblem` (`account_disabled` deliberately absent, §8.6) |
-| `scope_unresolvable` (`scope: area                                                                                                                                                                   | year                                                                  | period`)                                                                                   | calendar (§6.2 rule 4, AC-I-02/14) | the guard's `scope` vocabulary |
+| Code (context) | Dimension | Reused vocabulary |
+| --- | --- | --- |
+| `document_not_final` (`phase`) | state (§15.1/§15.5) | new, readiness-specific |
+| `document_not_numbered` | state (§18, AC-I-22; final only — a draft legitimately has no serial) | new |
+| `missing_description` | state (§12.2) | new |
+| `source_required_for_system` / `source_forbidden_for_manual` / `malformed_source` | origin evidence (§16.1/§16.3) | `AccountingDocumentOriginProblem` verbatim |
+| `too_few_lines`, `missing_debit_side`, `missing_credit_side`, `unbalanced_document`, `invalid_amount`, `zero_line`, `both_sides_set`, `invalid_line_no`, `duplicate_line_no`, `gaps_in_line_numbers` | composition (§13/§12.5) | `VoucherLineProblem` verbatim |
+| `account_not_found` / `account_not_postable` (`accountId`) | accounts (§14, AC-I-09/16) | narrowed `AccountingDocumentAccountProblem` (`account_disabled` deliberately absent, §8.6) |
+| `scope_unresolvable` (`scope: area|year|period`) | calendar (§6.2 rule 4, AC-I-02/14) | the guard's `scope` vocabulary |
 
 **Deliberate non-criteria** (documented in the domain file, pinned by tests):
 period/year `status` and account/area activity — §7.2 rule 7 and §8.6 keep a
@@ -126,25 +126,25 @@ behaviour (OQ-43) are recorded as seams, not evaluated.
 
 **Created (4)**
 
-| File                                                                      | Why                                                                                                                                                                                               |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend/src/modules/accounting/domain/posting-readiness.ts`              | The contract: result model, narrow status-free inputs, the pure `evaluatePostingReadiness` decision.                                                                                              |
-| `backend/src/modules/accounting/domain/posting-readiness.spec.ts`         | 21 unit tests: every reason code, vocabulary reuse, fixed order, all-problems-at-once, purity.                                                                                                    |
-| `backend/src/modules/accounting/application/posting-readiness.service.ts` | The seam: scoped 404 resolution, snapshot assembly by stored ids, delegation. Read-only by construction.                                                                                          |
-| `backend/src/modules/accounting/application/posting-readiness.spec.ts`    | 13 tests against the real service + in-memory repositories: positive/negative journeys, the two non-criteria on real state transitions, corruption/drift re-checks, before/after store snapshots. |
+| File | Why |
+| --- | --- |
+| `backend/src/modules/accounting/domain/posting-readiness.ts` | The contract: result model, narrow status-free inputs, the pure `evaluatePostingReadiness` decision. |
+| `backend/src/modules/accounting/domain/posting-readiness.spec.ts` | 21 unit tests: every reason code, vocabulary reuse, fixed order, all-problems-at-once, purity. |
+| `backend/src/modules/accounting/application/posting-readiness.service.ts` | The seam: scoped 404 resolution, snapshot assembly by stored ids, delegation. Read-only by construction. |
+| `backend/src/modules/accounting/application/posting-readiness.spec.ts` | 13 tests against the real service + in-memory repositories: positive/negative journeys, the two non-criteria on real state transitions, corruption/drift re-checks, before/after store snapshots. |
 
 **Modified (3)**
 
-| File                                                  | What changed                                                                                                                                                                                                 |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `backend/src/modules/accounting/accounting.module.ts` | Header note + `PostingReadinessService` in `providers` (deliberately not `exports`), with the boundary rationale.                                                                                            |
-| `backend/test/accounting-documents.e2e-spec.ts`       | The lifecycle journey records `state.finalizedId`; one new journey proves the seam resolves from the booted app (ready / not-ready / foreign-org 404 / read-only snapshots). No existing assertion weakened. |
-| `docs/modules.md`                                     | One new bullet in the Accounting entry describing the Task 10.5 seam (AG-07).                                                                                                                                |
+| File | What changed |
+| --- | --- |
+| `backend/src/modules/accounting/accounting.module.ts` | Header note + `PostingReadinessService` in `providers` (deliberately not `exports`), with the boundary rationale. |
+| `backend/test/accounting-documents.e2e-spec.ts` | The lifecycle journey records `state.finalizedId`; one new journey proves the seam resolves from the booted app (ready / not-ready / foreign-org 404 / read-only snapshots). No existing assertion weakened. |
+| `docs/modules.md` | One new bullet in the Accounting entry describing the Task 10.5 seam (AG-07). |
 
 **Created (1) documentation**
 
-| File                                      | Why          |
-| ----------------------------------------- | ------------ |
+| File | Why |
+| --- | --- |
 | `docs/task-10.5-implementation-report.md` | This report. |
 
 No file under `prisma/`, no ADR, no `docs/open-questions.md` change, no
@@ -159,13 +159,13 @@ the evaluation needed a schema change, so no STOP was required (task §16).
 
 ## 7. Open questions
 
-| OQ                                        | Status after this task                                                                                                                             |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OQ-39 (durable cross-module delivery)     | **unchanged** — no outbox, no durable delivery, no system-posting caller; the seam is in-module and delivery-agnostic by design.                   |
-| OQ-40 (financial-area applicability)      | **unchanged** — no `account_financial_area` or equivalent; §14 rule 1's "area-applicable" is recorded as an unimplemented seam in the domain file. |
-| OQ-41 (dimensions)                        | **unchanged** — no dimension tables/columns; AC-I-18's check is recorded as a seam that extends the decision table when the dimension task ships.  |
-| OQ-42 (posting mode / approval authority) | **unchanged** — no approval state, no mode configuration; readiness evaluates the final state, not how it was reached.                             |
-| OQ-43 (Iranian statutory/e-ledger)        | **unchanged** — no statutory behaviour implemented.                                                                                                |
+| OQ | Status after this task |
+| --- | --- |
+| OQ-39 (durable cross-module delivery) | **unchanged** — no outbox, no durable delivery, no system-posting caller; the seam is in-module and delivery-agnostic by design. |
+| OQ-40 (financial-area applicability) | **unchanged** — no `account_financial_area` or equivalent; §14 rule 1's "area-applicable" is recorded as an unimplemented seam in the domain file. |
+| OQ-41 (dimensions) | **unchanged** — no dimension tables/columns; AC-I-18's check is recorded as a seam that extends the decision table when the dimension task ships. |
+| OQ-42 (posting mode / approval authority) | **unchanged** — no approval state, no mode configuration; readiness evaluates the final state, not how it was reached. |
+| OQ-43 (Iranian statutory/e-ledger) | **unchanged** — no statutory behaviour implemented. |
 
 `docs/open-questions.md` is byte-identical to the base commit.
 
@@ -174,16 +174,16 @@ the evaluation needed a schema change, so no STOP was required (task §16).
 New: **34 unit/application tests** (21 domain + 13 application) and **1 e2e
 journey**; suite totals 68 files / 816 unit tests and 21 files / 219 e2e tests.
 
-| Gate                   | Command                        | Result                                                                                                     |
-| ---------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| Format                 | `npm run format:check`         | **PASSED** (exit 0)                                                                                        |
-| Lint                   | `npm run lint` (`oxlint .`)    | **PASSED** (0 warnings / 0 errors, 420 files)                                                              |
-| Typecheck              | `npm run typecheck`            | **PASSED** (exit 0)                                                                                        |
-| Build                  | `npm run build`                | **PASSED** (exit 0)                                                                                        |
-| Unit tests             | `npm test`                     | **PASSED** — 68 files / 816 tests (was 66/782)                                                             |
-| E2E tests              | `npm run test:e2e`             | **PASSED** — 188 passed / 31 skipped (was 187/31; the skips are the pre-existing live-DB guards)           |
-| Live PostgreSQL suites | `VARDENA_TEST_DATABASE_URL`    | **SKIPPED** — no PostgreSQL in this sandbox; wired for CI, not counted as passing                          |
-| Prisma CLI gates       | `npx prisma validate/generate` | **NOT RUN** — no schema change to validate; the 10.4 report's BLOCKED status (sandbox egress) is unchanged |
+| Gate | Command | Result |
+| --- | --- | --- |
+| Format | `npm run format:check` | **PASSED** (exit 0) |
+| Lint | `npm run lint` (`oxlint .`) | **PASSED** (0 warnings / 0 errors, 420 files) |
+| Typecheck | `npm run typecheck` | **PASSED** (exit 0) |
+| Build | `npm run build` | **PASSED** (exit 0) |
+| Unit tests | `npm test` | **PASSED** — 68 files / 816 tests (was 66/782) |
+| E2E tests | `npm run test:e2e` | **PASSED** — 188 passed / 31 skipped (was 187/31; the skips are the pre-existing live-DB guards) |
+| Live PostgreSQL suites | `VARDENA_TEST_DATABASE_URL` | **SKIPPED** — no PostgreSQL in this sandbox; wired for CI, not counted as passing |
+| Prisma CLI gates | `npx prisma validate/generate` | **NOT RUN** — no schema change to validate; the 10.4 report's BLOCKED status (sandbox egress) is unchanged |
 
 Case coverage (task §18): finalized valid → READY; draft → NOT_READY
 (`document_not_final`); temporary → NOT_READY; invalid composition → NOT_READY
@@ -212,7 +212,7 @@ and the e2e journey.
 - **No duplicate validation logic**: the balance/line rules are
   `checkVoucherLines` (one decision table), origin evidence is
   `checkOriginEvidence`, date containment is `dateOnlyRangeWithin`, account
-  vocabulary is the guard's (narrowed and documented). The only new _rules_ are
+  vocabulary is the guard's (narrowed and documented). The only new *rules* are
   the readiness-specific state/scope predicates that had no prior owner.
 - **No Document Foundation redesign**: zero changes outside the accounting
   module and its tests; the module wiring comment documents the boundary.

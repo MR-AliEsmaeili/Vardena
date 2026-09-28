@@ -18,7 +18,7 @@ The Excel module owns the **mechanism**; each target module provides the
 
 - **Session lifecycle** (`excel.import_sessions`):
   `uploaded → parsed → validated → (preview) → confirmed → applying →
-completed | failed | canceled`. Rows (`excel.import_rows`) carry per-row
+  completed | failed | canceled`. Rows (`excel.import_rows`) carry per-row
   status (`pending|valid|invalid|imported|skipped`), error code, message, and
   the parsed payload.
 - **ImportSpec** (per target entity, owned by the target module): target

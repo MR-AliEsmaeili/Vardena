@@ -18,38 +18,38 @@ table exists.
 Classification legend: **C** = core (stable spine), **G** = configurable,
 **X** = extensible, **E** = needs domain-expert validation.
 
-| Master entity                   | Class                      | Owner (module)                                                     | Scope                          | Notes                                                              |
-| ------------------------------- | -------------------------- | ------------------------------------------------------------------ | ------------------------------ | ------------------------------------------------------------------ |
-| Organization (settings root)    | C + G                      | Organization (proposed)                                            | singleton                      | Fiscal calendar, defaults, feature switches                        |
-| Branch                          | C + G                      | Organization                                                       | organization                   | Reporting/scope dimension; not a legal entity (OQ-22)              |
-| Department                      | G                          | Organization                                                       | organization                   | Responsibility reporting; accounting-dimension use is expert-gated |
-| Employee                        | G                          | Organization                                                       | branch/department              | Minimal reference data; HR/payroll scope is OQ-32                  |
-| Cost center                     | C + E                      | Accounting                                                         | organization                   | Accounting dimension (OQ-25)                                       |
-| Project                         | G + E                      | Accounting                                                         | organization                   | Analytical dimension (OQ-25)                                       |
-| Account (chart of accounts)     | C + G + E                  | Accounting                                                         | organization                   | See `accounting-domain-analysis.md` §2                             |
-| Currency                        | C + G                      | Organization (kernel-ish reference)                                | organization                   | Precision/base currency OQ-03                                      |
-| Unit of measure (UoM)           | C                          | Inventory (master data)                                            | organization                   | Decimal precision per unit (OQ-29)                                 |
-| Unit conversion                 | C + G                      | Inventory                                                          | organization and/or item       | Global + item-specific pairs (OQ-29)                               |
-| Item group (category tree)      | G                          | Inventory                                                          | organization                   | Defaults + reporting classification                                |
-| Item                            | C + G                      | Inventory                                                          | organization                   | Kind + capability flags (this doc §3)                              |
-| Warehouse                       | C + G                      | Inventory                                                          | branch                         | Belongs to exactly one branch                                      |
-| Warehouse location              | G                          | Inventory                                                          | warehouse                      | Enabled per warehouse (§4)                                         |
-| Lot / batch                     | C (when `requires_lot`)    | Inventory                                                          | item + warehouse               | Traceability; expert for regulated industries                      |
-| Serial number                   | C (when `requires_serial`) | Inventory                                                          | item                           | Traceability                                                       |
-| Partner (customer/supplier)     | C + G                      | Sales (customer) / Purchasing (supplier) — one party table, see §5 | organization                   | Contact/address children                                           |
-| Contact / Address               | C                          | same as partner                                                    | partner                        | Never owns balances                                                |
-| Price list (sales/purchase)     | G                          | Sales / Purchasing                                                 | organization (+ branch option) | v1: explicit lines, no price engine (§6)                           |
-| Tax (rate/group)                | G + E                      | Organization (config)                                              | organization                   | Used by Sales/Purchasing; expert OQ-30                             |
-| Numbering series                | G + E                      | Organization (config)                                              | organization/branch/type       | Legal rules OQ-12                                                  |
-| Document template / letterhead  | G                          | Print                                                              | organization/branch            | Print module owns templates (ADR-0012)                             |
-| Workflow definition (versioned) | G                          | Organization (config)                                              | document type                  | ADR-0018                                                           |
-| Custom-field definition         | G                          | Customization                                                      | entity type                    | Registry, `configurability-architecture.md` §5                     |
+| Master entity | Class | Owner (module) | Scope | Notes |
+|---|---|---|---|---|
+| Organization (settings root) | C + G | Organization (proposed) | singleton | Fiscal calendar, defaults, feature switches |
+| Branch | C + G | Organization | organization | Reporting/scope dimension; not a legal entity (OQ-22) |
+| Department | G | Organization | organization | Responsibility reporting; accounting-dimension use is expert-gated |
+| Employee | G | Organization | branch/department | Minimal reference data; HR/payroll scope is OQ-32 |
+| Cost center | C + E | Accounting | organization | Accounting dimension (OQ-25) |
+| Project | G + E | Accounting | organization | Analytical dimension (OQ-25) |
+| Account (chart of accounts) | C + G + E | Accounting | organization | See `accounting-domain-analysis.md` §2 |
+| Currency | C + G | Organization (kernel-ish reference) | organization | Precision/base currency OQ-03 |
+| Unit of measure (UoM) | C | Inventory (master data) | organization | Decimal precision per unit (OQ-29) |
+| Unit conversion | C + G | Inventory | organization and/or item | Global + item-specific pairs (OQ-29) |
+| Item group (category tree) | G | Inventory | organization | Defaults + reporting classification |
+| Item | C + G | Inventory | organization | Kind + capability flags (this doc §3) |
+| Warehouse | C + G | Inventory | branch | Belongs to exactly one branch |
+| Warehouse location | G | Inventory | warehouse | Enabled per warehouse (§4) |
+| Lot / batch | C (when `requires_lot`) | Inventory | item + warehouse | Traceability; expert for regulated industries |
+| Serial number | C (when `requires_serial`) | Inventory | item | Traceability |
+| Partner (customer/supplier) | C + G | Sales (customer) / Purchasing (supplier) — one party table, see §5 | organization | Contact/address children |
+| Contact / Address | C | same as partner | partner | Never owns balances |
+| Price list (sales/purchase) | G | Sales / Purchasing | organization (+ branch option) | v1: explicit lines, no price engine (§6) |
+| Tax (rate/group) | G + E | Organization (config) | organization | Used by Sales/Purchasing; expert OQ-30 |
+| Numbering series | G + E | Organization (config) | organization/branch/type | Legal rules OQ-12 |
+| Document template / letterhead | G | Print | organization/branch | Print module owns templates (ADR-0012) |
+| Workflow definition (versioned) | G | Organization (config) | document type | ADR-0018 |
+| Custom-field definition | G | Customization | entity type | Registry, `configurability-architecture.md` §5 |
 
 **Ownership principle.** Each entity is owned by exactly one module (AR-08) and
 lives in that module's schema (AR-09); other modules read it through the owner's
 public application service or a module-owned view (AR-07). Where the table currently
 has no natural owner (currencies, taxes, numbering, workflow definitions), the
-proposed `organization` module owns it (ADR-0020) — deliberately _not_ `kernel/`,
+proposed `organization` module owns it (ADR-0020) — deliberately *not* `kernel/`,
 which must stay technical (AR-06).
 
 ---
@@ -58,12 +58,12 @@ which must stay technical (AR-06).
 
 ### 2.1 Options
 
-| Option                                                          | Description                                                                                                                       | Pros                                                                                         | Cons                                                                                                                                         |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| **O-1: Flat, single organization** (no branch concept)          | Organization only; no branch/department columns                                                                                   | Simplest schema, least code                                                                  | Cannot report per branch, cannot scope numbering/warehouses; retrofitting later touches every document and ledger table                      |
-| **O-2: Organization + branch dimension** (recommended)          | One organization; branch is a typed column on documents, warehouses, journals, balances; departments for responsibility reporting | Covers real single-company businesses (main + branches), keeps reports simple, retrofit-safe | Requires discipline: every document/ledger table carries `branch_id`; branch semantics must be agreed (OQ-22)                                |
-| **O-3: Multi-company (2+ legal entities in one DB)**            | `company_id` everywhere, inter-company documents, consolidation                                                                   | One deployment can serve a group                                                             | Large complexity: inter-company accounting, permissions, numbering, fiscal calendars per company. Needs its own ADR and a full-domain review |
-| **O-4: Tenant-per-organization** (`organization_id` everywhere) | SaaS-style isolation                                                                                                              | Cloud multi-tenant path                                                                      | v1 is on-premise single-org (OQ-01); adds cost for a path nobody uses yet                                                                    |
+| Option | Description | Pros | Cons |
+|---|---|---|---|
+| **O-1: Flat, single organization** (no branch concept) | Organization only; no branch/department columns | Simplest schema, least code | Cannot report per branch, cannot scope numbering/warehouses; retrofitting later touches every document and ledger table |
+| **O-2: Organization + branch dimension** (recommended) | One organization; branch is a typed column on documents, warehouses, journals, balances; departments for responsibility reporting | Covers real single-company businesses (main + branches), keeps reports simple, retrofit-safe | Requires discipline: every document/ledger table carries `branch_id`; branch semantics must be agreed (OQ-22) |
+| **O-3: Multi-company (2+ legal entities in one DB)** | `company_id` everywhere, inter-company documents, consolidation | One deployment can serve a group | Large complexity: inter-company accounting, permissions, numbering, fiscal calendars per company. Needs its own ADR and a full-domain review |
+| **O-4: Tenant-per-organization** (`organization_id` everywhere) | SaaS-style isolation | Cloud multi-tenant path | v1 is on-premise single-org (OQ-01); adds cost for a path nobody uses yet |
 
 ### 2.2 Recommendation
 
@@ -74,7 +74,7 @@ Reasons:
 
 1. It matches the documented assumption (OQ-01) and the deployment reality
    (on-premise installation per business).
-2. It is _retrofit-hostile to ignore_: adding `branch_id` to a ledger after
+2. It is *retrofit-hostile to ignore*: adding `branch_id` to a ledger after
    production data exists means rewriting history. Adding it now costs one column per
    relevant table.
 3. It keeps reports simple: "sales by branch" is a `GROUP BY branch_id`, not a join
@@ -104,13 +104,13 @@ changes (AR-29) and must not be pre-added as nullable columns "just in case"
 
 ### 3.1 Options considered
 
-| Option                                                                        | Description                                                                                             | Pros                                                                                          | Cons                                                                                                                                                              |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| I-1: One Item table, kind as free string                                      | Simple                                                                                                  | Reports/validation must parse strings; typos become behaviour                                 | Inconsistent data, untestable                                                                                                                                     |
-| I-2: One Item + **closed kind** + **explicit capability flags** (recommended) | Kind is a code-managed list; capabilities are booleans on each item; code branches on capabilities only | One table, indexable, reportable; per-item exceptions possible; new capabilities are additive | Slight duplication (kind defaults + stored flags) — resolved by resolving defaults at create time and never at read time                                          |
-| I-3: Table per kind (Goods, Service, Asset…)                                  | Type-pure tables                                                                                        | Clean per-type fields                                                                         | Every shared feature (pricing, documents, reports, permissions) needs N implementations; cross-type reports = UNIONs; violates "one owner per fact" (AR-08)       |
-| I-4: EAV attributes (`ItemAttributeValue`)                                    | Fully dynamic fields                                                                                    | No migrations for new attributes                                                              | No type safety/constraints, painful queries, reporting pivots; rejected system-wide (§ blueprint 17)                                                              |
-| I-5: Item + JSONB free attributes                                             | Flexible                                                                                                | Cheap for descriptive extras                                                                  | Anything business-critical in JSONB is invisible to constraints/reports; only allowed for _custom fields_ under governance (`configurability-architecture.md` §5) |
+| Option | Description | Pros | Cons |
+|---|---|---|---|
+| I-1: One Item table, kind as free string | Simple | Reports/validation must parse strings; typos become behaviour | Inconsistent data, untestable |
+| I-2: One Item + **closed kind** + **explicit capability flags** (recommended) | Kind is a code-managed list; capabilities are booleans on each item; code branches on capabilities only | One table, indexable, reportable; per-item exceptions possible; new capabilities are additive | Slight duplication (kind defaults + stored flags) — resolved by resolving defaults at create time and never at read time |
+| I-3: Table per kind (Goods, Service, Asset…) | Type-pure tables | Clean per-type fields | Every shared feature (pricing, documents, reports, permissions) needs N implementations; cross-type reports = UNIONs; violates "one owner per fact" (AR-08) |
+| I-4: EAV attributes (`ItemAttributeValue`) | Fully dynamic fields | No migrations for new attributes | No type safety/constraints, painful queries, reporting pivots; rejected system-wide (§ blueprint 17) |
+| I-5: Item + JSONB free attributes | Flexible | Cheap for descriptive extras | Anything business-critical in JSONB is invisible to constraints/reports; only allowed for *custom fields* under governance (`configurability-architecture.md` §5) |
 
 ### 3.2 Recommended model
 
@@ -119,14 +119,14 @@ changes (AR-29) and must not be pre-added as nullable columns "just in case"
 - Identity: `id` (ULID), `code` (human key, unique among non-deleted), `name`,
   `description`, `item_group_id`, `base_unit_id`, `is_active`, plus AR-12 columns.
 - `item_kind` — closed, code-managed: `goods`, `service`, `consumable`, `asset`,
-  `raw_material`, `semi_finished`, `finished_good`, `other`. _(OQ-33 confirms the list
-  and the naming with the project owner.)_
+  `raw_material`, `semi_finished`, `finished_good`, `other`. *(OQ-33 confirms the list
+  and the naming with the project owner.)*
 - **Capability flags** (stored, authoritative):
   `is_stockable`, `is_purchasable`, `is_sellable`, `is_valued`,
   `requires_lot`, `requires_serial`, `requires_expiry`.
   Kind supplies defaults at creation; the flags are then what the code and the
   database constraints use.
-- Standard attributes that are _not_ capabilities: `barcode` (optional),
+- Standard attributes that are *not* capabilities: `barcode` (optional),
   `default_supplier_id`, `default_tax_id`, `min_stock`/`reorder_point` (planning
   placeholders — no planning logic in v1).
 - **No** variant/BOM/kit columns in v1; those are later modules (§3.5).
@@ -143,14 +143,14 @@ changes (AR-29) and must not be pre-added as nullable columns "just in case"
 
 ### 3.3 Services vs goods — behaviour differences (no type tables)
 
-| Behaviour                    | Goods (stockable)    | Service                          | Consumable      | Asset                              |
-| ---------------------------- | -------------------- | -------------------------------- | --------------- | ---------------------------------- |
-| Buy/sell document lines      | Yes                  | Yes                              | Buy (internal)  | Buy                                |
-| Warehouse dimension on lines | Required             | **Forbidden**                    | Required        | Forbidden (asset register instead) |
-| Stock movements              | Yes                  | No                               | Yes             | No                                 |
-| Inventory valuation          | Yes (if `is_valued`) | No                               | Yes (if valued) | Depreciated later (out of scope)   |
-| Lot/serial/expiry            | Configurable         | No                               | Configurable    | Serial typical                     |
-| COGS on sale                 | Yes                  | No (cost of service, if tracked) | No              | No                                 |
+| Behaviour | Goods (stockable) | Service | Consumable | Asset |
+|---|---|---|---|---|
+| Buy/sell document lines | Yes | Yes | Buy (internal) | Buy |
+| Warehouse dimension on lines | Required | **Forbidden** | Required | Forbidden (asset register instead) |
+| Stock movements | Yes | No | Yes | No |
+| Inventory valuation | Yes (if `is_valued`) | No | Yes (if valued) | Depreciated later (out of scope) |
+| Lot/serial/expiry | Configurable | No | Configurable | Serial typical |
+| COGS on sale | Yes | No (cost of service, if tracked) | No | No |
 
 This table is the contract that makes a single Item model coherent: the differences
 are **capability-driven**, not table-driven.
@@ -163,8 +163,8 @@ are **capability-driven**, not table-driven.
 - **Global conversions** (`unit_conversions`): `from_unit`, `to_unit`, factor and
   rounding rule — valid for any item (e.g. `KG ↔ G`).
 - **Item-specific conversions** (`item_unit_conversions`): e.g. `1 BOX(of THIS item)
-= 12 PCS`. These are the common case in practice.
-- Document lines record the **entered unit** _and_ the quantity converted to the base
+  = 12 PCS`. These are the common case in practice.
+- Document lines record the **entered unit** *and* the quantity converted to the base
   unit, so the business-facing value is preserved for printing while the ledger stays
   in one unit.
 - **Expert-gated:** rounding of fractional conversions, whether conversion factors
@@ -174,8 +174,8 @@ are **capability-driven**, not table-driven.
 ### 3.5 Extension points (deliberately not designed now)
 
 Variants/matrix items, kits/BOM, substitutes, catch-weight, item revision control,
-asset registers, service contracts, price formulas. Each is a _new module or a
-capability extension_ with its own ADR; none of them may require redefining
+asset registers, service contracts, price formulas. Each is a *new module or a
+capability extension* with its own ADR; none of them may require redefining
 `Item`'s identity.
 
 ---
@@ -189,7 +189,7 @@ capability extension_ with its own ADR; none of them may require redefining
   or without. The stock balance key is `(item, warehouse, location, lot, serial)`
   where location/lot/serial are only filled when enabled/required.
 - **Transfer** between warehouses = two movements (out/in) sharing a transfer
-  document and a transfer identifier; between _branches_ it is the same mechanism
+  document and a transfer identifier; between *branches* it is the same mechanism
   with an inter-branch flag that accounting may treat specially (OQ-31, expert).
 - **Negative stock:** policy `reject | allow_with_permission | allow` evaluated at
   movement creation inside the transaction that updates the balance. Default when
@@ -209,8 +209,8 @@ with `is_customer` / `is_supplier` flags (a business is frequently both).
   **Organization module owns the party master data** (contacts, addresses, bank
   accounts, credit terms), while **Sales and Purchasing own the commercial
   relationship** (price lists, credit limit enforcement, statements). This is part of
-  ADR-0020 and needs owner confirmation _(it changes the current `docs/modules.md`
-  ownership note for customers/suppliers — flagged as a structural change)_.
+  ADR-0020 and needs owner confirmation *(it changes the current `docs/modules.md`
+  ownership note for customers/suppliers — flagged as a structural change)*.
 - **Contacts** are children of a party; **addresses** are typed (billing/shipping/
   registered) with `country`/`province`/`city`/`postal_code`/`line` fields.
 - **Credit limit / payment terms** live on the party's customer-profile side; whether
@@ -224,7 +224,7 @@ with `is_customer` / `is_supplier` flags (a business is frequently both).
 
 - **Price lists (v1 recommendation):** explicit `price_list` + `price_list_items`
   (item, unit, price, `valid_from/valid_to`, optional branch/customer-group scope).
-  A price _engine_ (formulas, cascading discounts) is deliberately not designed —
+  A price *engine* (formulas, cascading discounts) is deliberately not designed —
   unbounded scope (D-13).
 - **Tax (v1 recommendation):** `tax_groups` + `tax_rates` (rate, `valid_from/to`,
   account mapping reference), referenced from document lines which copy the applied
@@ -235,9 +235,9 @@ with `is_customer` / `is_supplier` flags (a business is frequently both).
 
 ## 7. Master-data lifecycle (binding rules)
 
-Applies to every entity in §1. The invariant from the blueprint §12 holds: _a
+Applies to every entity in §1. The invariant from the blueprint §12 holds: *a
 historical document must remain fully interpretable without the current state of any
-master record._
+master record.*
 
 1. **Identity:** ULID `id` (never reused) + a human **code** unique among
    non-deleted rows (partial unique index `WHERE deleted_at IS NULL`).
@@ -255,7 +255,7 @@ master record._
    owning module across known referencing modules via their public services, or by
    FK constraints where clean). Where any history exists: soft delete
    (`deleted_at`/`deleted_by`, AR-13). For **accounting dimensions** (accounts, cost
-   centres, projects): **never delete** — disable/archive only _(expert)_.
+   centres, projects): **never delete** — disable/archive only *(expert)*.
 7. **Effective dating:** entities whose change alters interpretation
    (tax rates, conversions, price lists, mappings, workflow versions) are
    **versioned rows** with `valid_from`/`valid_to`; updates create a new version.
@@ -265,7 +265,7 @@ master record._
    for grouping/joins.
 9. **Reuse of a code** after soft delete: allowed only if the owning module documents
    it and history remains unambiguous (partial unique index makes this technically
-   possible; whether it is _business-desirable_ is per entity — default: **no reuse**).
+   possible; whether it is *business-desirable* is per entity — default: **no reuse**).
 10. **Audit:** lifecycle changes emit domain events (`Item.Updated`, `Item.Disabled`,
     …) consumed by Audit/Notifications; no parallel audit table (§ AR-23).
 
@@ -278,7 +278,7 @@ master record._
   value" to interpret a historical fact.
 - Item/party/warehouse **codes and names are denormalized into reporting views**
   (module-owned `vw_*`), so reports do not join five tables to render one row.
-- Stock and ledger reports group by _ids_ (stable), while display resolves the
+- Stock and ledger reports group by *ids* (stable), while display resolves the
   current name; historical snapshots are used where the printed document matters.
 - Capability flags are indexed (at least `is_stockable`, `is_active`) because every
   stock report filters on them.

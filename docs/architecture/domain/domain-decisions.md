@@ -103,7 +103,7 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
   inferring per movement makes reports ambiguous; a consuming strategy keeps the
   quantity model stable and lets the method be chosen per organization.
 - **Recommendation:** **the ledger + balance carry quantity and the cost actually
-  assigned**; the _method_ (moving average / FIFO / standard) is organization
+  assigned**; the *method* (moving average / FIFO / standard) is organization
   configuration evaluated by an Accounting-owned engine reading movements;
   method-specific state (average state, cost layers) is derived and rebuildable.
 - **Reason:** valuation policy is an accounting decision (OQ-24) and must not be
@@ -142,7 +142,7 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 - **Pros/cons:** A duplicates mechanics; C destroys integrity/reporting; D couples
   schemas via a shared table.
 - **Recommendation:** **B** — typed, module-owned tables following a common document
-  contract, with shared _mechanics_ (numbering, transition history, relation table).
+  contract, with shared *mechanics* (numbering, transition history, relation table).
 - **Reason:** type safety and reportability with uniform behaviour.
 - **Consequences:** each new document type adopts the contract (a checklist, not a
   framework); shared mechanics are the only cross-module structure.
@@ -233,7 +233,7 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 - **Pros/cons:** hard blocking without policy clarity creates operational deadlocks;
   ignoring credit entirely is unacceptable for many businesses.
 - **Recommendation:** **defer**; store credit limit/terms on the party profile and
-  provide a _warning_ surface, but no enforcement until policy is defined.
+  provide a *warning* surface, but no enforcement until policy is defined.
 - **Reason:** enforcement semantics (scope, override authority, aging) are business
   decisions that must be specified, not guessed.
 - **Consequences:** credit policy becomes a registered open question before Sales ships.
@@ -344,7 +344,7 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 - **Pros/cons:** in-place edits corrupt history; temporal tables everywhere are heavy;
   targeted versioning is proportionate.
 - **Recommendation:** **effective-dated configuration rows + explicit version
-  references from documents/journals/movements**; in-place edits of _used_ rows are
+  references from documents/journals/movements**; in-place edits of *used* rows are
   forbidden.
 - **Reason:** auditable, point-in-time reproducible, low overhead.
 - **Consequences:** every consumer table must carry the version/ snapshot columns from
@@ -423,7 +423,7 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 - **Options:** store the entered unit only; store the base unit only; store both
   (recommended); per-document rounding rules.
 - **Pros/cons:** entered-only blocks aggregation; base-only loses printable values;
-  storing both costs one extra column per line and gives correct reports _and_
+  storing both costs one extra column per line and gives correct reports *and*
   documents.
 - **Recommendation:** **store both** — entered quantity/unit for documents, converted
   base quantity for ledgers; conversions are data (global + item-specific); precision
@@ -439,31 +439,31 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 
 ## Summary table
 
-| #    | Decision                                | Recommendation                                     | Expert?                   |
-| ---- | --------------------------------------- | -------------------------------------------------- | ------------------------- |
-| D-01 | Organization scope                      | O-2 organization + branch dimension                | accounting/implementation |
-| D-02 | Party master ownership                  | Organization module owns parties                   | implementation            |
-| D-03 | Accounting meaning vs operational facts | AR-16 reaffirmed                                   | accounting                |
-| D-04 | Inventory source of truth               | Ledger + materialized balance                      | inventory/accounting      |
-| D-05 | Movement representation                 | Signed, typed, immutable                           | inventory                 |
-| D-06 | Valuation method                        | Ledger-consuming strategy; no schema lock-in       | accounting/inventory      |
-| D-07 | Reservations & negative stock           | Separate reservations; reject negatives by default | inventory/accounting      |
-| D-08 | Document foundation                     | Typed tables + shared mechanics                    | —                         |
-| D-09 | Document relations                      | Closed kinds, line-level links, logical refs       | implementation            |
-| D-10 | Cancellation/reversal                   | Cancel unposted; reverse posted                    | accounting/legal          |
-| D-11 | Numbering                               | Configured series, in-transaction allocation       | accounting/legal          |
-| D-12 | Chart of accounts                       | Hybrid control roles + org detail                  | accounting                |
-| D-13 | Pricing                                 | Price lists as configuration; no engine            | implementation            |
-| D-14 | Credit control                          | Deferred; warn only                                | accounting/implementation |
-| D-15 | Workflow flexibility                    | Code structure + versioned configuration           | implementation            |
-| D-16 | Workflow versioning                     | Pinned per document                                | legal/accounting          |
-| D-17 | Automations                             | Registered catalogue, idempotent                   | —                         |
-| D-18 | Approvals                               | Single-level recorded approvals in v1              | accounting/implementation |
-| D-19 | Accounting activation                   | Feature switch per organization                    | accounting                |
-| D-20 | Configuration ownership                 | New Organization module                            | —                         |
-| D-21 | History mechanism                       | Effective dating + version pinning                 | accounting/legal          |
-| D-22 | Custom fields                           | Governed JSONB whitelist + promotion path          | legal                     |
-| D-23 | Rules engine                            | None; six bounded categories                       | —                         |
-| D-24 | Inter-branch/internal settlement        | Inventory-only transfers; settlement deferred      | accounting                |
-| D-25 | Item model                              | One Item + kind + capabilities                     | inventory                 |
-| D-26 | Units/conversions                       | Store both; base-unit ledgers                      | inventory/accounting      |
+| # | Decision | Recommendation | Expert? |
+|---|---|---|---|
+| D-01 | Organization scope | O-2 organization + branch dimension | accounting/implementation |
+| D-02 | Party master ownership | Organization module owns parties | implementation |
+| D-03 | Accounting meaning vs operational facts | AR-16 reaffirmed | accounting |
+| D-04 | Inventory source of truth | Ledger + materialized balance | inventory/accounting |
+| D-05 | Movement representation | Signed, typed, immutable | inventory |
+| D-06 | Valuation method | Ledger-consuming strategy; no schema lock-in | accounting/inventory |
+| D-07 | Reservations & negative stock | Separate reservations; reject negatives by default | inventory/accounting |
+| D-08 | Document foundation | Typed tables + shared mechanics | — |
+| D-09 | Document relations | Closed kinds, line-level links, logical refs | implementation |
+| D-10 | Cancellation/reversal | Cancel unposted; reverse posted | accounting/legal |
+| D-11 | Numbering | Configured series, in-transaction allocation | accounting/legal |
+| D-12 | Chart of accounts | Hybrid control roles + org detail | accounting |
+| D-13 | Pricing | Price lists as configuration; no engine | implementation |
+| D-14 | Credit control | Deferred; warn only | accounting/implementation |
+| D-15 | Workflow flexibility | Code structure + versioned configuration | implementation |
+| D-16 | Workflow versioning | Pinned per document | legal/accounting |
+| D-17 | Automations | Registered catalogue, idempotent | — |
+| D-18 | Approvals | Single-level recorded approvals in v1 | accounting/implementation |
+| D-19 | Accounting activation | Feature switch per organization | accounting |
+| D-20 | Configuration ownership | New Organization module | — |
+| D-21 | History mechanism | Effective dating + version pinning | accounting/legal |
+| D-22 | Custom fields | Governed JSONB whitelist + promotion path | legal |
+| D-23 | Rules engine | None; six bounded categories | — |
+| D-24 | Inter-branch/internal settlement | Inventory-only transfers; settlement deferred | accounting |
+| D-25 | Item model | One Item + kind + capabilities | inventory |
+| D-26 | Units/conversions | Store both; base-unit ledgers | inventory/accounting |

@@ -8,17 +8,17 @@ D1–D7. Acceptance record:
 [`task-17b-acceptance-record.md`](./task-17b-acceptance-record.md). This report
 does not close an Open Question, promote an ADR or complete Task 17.
 
-|                       |                                                                                                                                                                                                                                           |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Slice                 | Task 17B Account Statement — the bounded, read-only **account statement** (one account + one fiscal year + optional period) and one narrow read endpoint over it                                                                          |
-| Status                | **ACCEPTED (2026-09-25)** — by the Repository Owner/Reviewer; **Task 17 overall remains NOT COMPLETE (FORMALIZED / IMPLEMENTATION BLOCKED BY OQ-25, OQ-43)**                                                                              |
-| Branch / base / merge | `arena/01a0d5a0-vardena` (base `main` @ `4b1489d952cb932727b4d95f8ef1e65163d67232`) — PR #43 **MERGED** into `main` in `b10e007`                                                                                                          |
-| Commit                | `9ee46f7` — `feat(accounting): add account statement read surface` (implementation + tests); `8335556` — documentation; `c57a1a1` — live-fixture calendar fix (see §8); `1ec996e` — CI-evidence documentation (**merged head**)           |
-| PR                    | [#43](https://github.com/MR-AliEsmaeili/Vardena/pull/43) — **MERGED 2026-09-25T07:00:33Z**; required CI **green** on the merged head (run `36074225037`, job `backend` `completed success`)                                               |
-| Acceptance            | **2026-09-25** by the Repository **Owner/Reviewer** (`MR-AliEsmaeili`), who reviewed PR #43 before merge — see [`task-17b-acceptance-record.md`](./task-17b-acceptance-record.md)                                                         |
-| Owner authority       | `docs/tasks/task-17/task-17b-prompt.md` (saved before implementation) — Owner decisions **D1–D7**; gate P-10 authorizes the `Accounting.AccountStatement.View` vocabulary addition                                                        |
-| Contract references   | `docs/accounting/domain-contract.md` §6/§7/§8/§13/§15/§19 (AC-D-30/31/34; AC-I-01/05/06/07/09/16/19), §22 (permission vocabulary), ADR-0031 §2/§4/§9, ADR-0009, ADR-0025, AR-05/AR-07/AR-21/AR-22/AR-25                                   |
-| Not implemented here  | Task 17 (Accounting Reporting Foundation) remains **FORMALIZED / IMPLEMENTATION BLOCKED (OQ-25, OQ-43)**; no Reporting module, Report Builder, exports, statutory books, Trial Balance/Income/Balance Sheet/Cash Flow, Treasury reporting |
+| | |
+|---|---|
+| Slice | Task 17B Account Statement — the bounded, read-only **account statement** (one account + one fiscal year + optional period) and one narrow read endpoint over it |
+| Status | **ACCEPTED (2026-09-25)** — by the Repository Owner/Reviewer; **Task 17 overall remains NOT COMPLETE (FORMALIZED / IMPLEMENTATION BLOCKED BY OQ-25, OQ-43)** |
+| Branch / base / merge | `arena/01a0d5a0-vardena` (base `main` @ `4b1489d952cb932727b4d95f8ef1e65163d67232`) — PR #43 **MERGED** into `main` in `b10e007` |
+| Commit | `9ee46f7` — `feat(accounting): add account statement read surface` (implementation + tests); `8335556` — documentation; `c57a1a1` — live-fixture calendar fix (see §8); `1ec996e` — CI-evidence documentation (**merged head**) |
+| PR | [#43](https://github.com/MR-AliEsmaeili/Vardena/pull/43) — **MERGED 2026-09-25T07:00:33Z**; required CI **green** on the merged head (run `36074225037`, job `backend` `completed success`) |
+| Acceptance | **2026-09-25** by the Repository **Owner/Reviewer** (`MR-AliEsmaeili`), who reviewed PR #43 before merge — see [`task-17b-acceptance-record.md`](./task-17b-acceptance-record.md) |
+| Owner authority | `docs/tasks/task-17/task-17b-prompt.md` (saved before implementation) — Owner decisions **D1–D7**; gate P-10 authorizes the `Accounting.AccountStatement.View` vocabulary addition |
+| Contract references | `docs/accounting/domain-contract.md` §6/§7/§8/§13/§15/§19 (AC-D-30/31/34; AC-I-01/05/06/07/09/16/19), §22 (permission vocabulary), ADR-0031 §2/§4/§9, ADR-0009, ADR-0025, AR-05/AR-07/AR-21/AR-22/AR-25 |
+| Not implemented here | Task 17 (Accounting Reporting Foundation) remains **FORMALIZED / IMPLEMENTATION BLOCKED (OQ-25, OQ-43)**; no Reporting module, Report Builder, exports, statutory books, Trial Balance/Income/Balance Sheet/Cash Flow, Treasury reporting |
 
 ---
 
@@ -28,15 +28,15 @@ The approved scope is exactly the Task 17B Account Statement slice described in
 `docs/tasks/task-17/task-17b-prompt.md`, implemented under the recorded Owner
 decisions:
 
-| Decision                                                 | As implemented                                                                                                                                                                                                                                                                                                                                                                          |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **D1** — one account + one fiscal year + optional period | `GET /api/v1/accounting/account-statements` takes exactly `organizationId`, `accountId`, `fiscalYearId`, optional `accountingPeriodId`, optional `financialAreaId` (+ shared `page`/`pageSize`). Non-postable accounts answer **422** (ancestor rollups are out of this slice — D1).                                                                                                    |
-| **D2** — intra-fiscal-year, sequence-based opening       | Whole-year window opens at `0`; a period opens at Σ(debit − credit) of the lower-`sequence` periods of the **same** fiscal year (gap sequences skipped silently, §7.1). **No prior-year carry-forward exists** (ADR-0031 §4/§9; the accepted Task 12 behavior) — proven by the 2027 statement opening at `0` after 2026 closed at `135.51`.                                             |
-| **D3** — Debit/Credit/Net only                           | `net = debit − credit`, `closing = opening + net` (`signConvention: 'debit-positive'` echoed on every response). Exact decimal strings only (BigInt-mantissa arithmetic in `domain/money.ts` — `negateAmount`/`subtractAmounts` added); no rounding, no floats, no `accountNature`/classification presentation anywhere in the response.                                                |
-| **D4** — org-scoped + financial area in scope            | The statement is single-area: the fiscal year's `financialAreaId` (the contract's one-area-per-year rule). Optional client `financialAreaId` must exist in the organization (**404** otherwise) and equal the year's area (**422** on mismatch). No per-user area grants or new area-auth system was created (OQ-40 posture unchanged).                                                 |
-| **D5** — all period statuses readable                    | `open`/`closed`/`sealed` periods and years are equally readable; status is echoed in the scope, never a read filter, and the read path never mutates it (asserted before/after with `updated_at` in the live suite).                                                                                                                                                                    |
-| **D6** — independent permission                          | New **36th** code `Accounting.AccountStatement.View` (`domain/accounting-permissions.ts` + contract §22 row, authorized by gate P-10). Enforced route-level (`AuthGuard` + `AuthorizationGuard` + `@RequirePermission`) **and** at the service entry (ADR-0016 double enforcement). Not satisfied by `Accounting.LedgerMovement.View` or `Accounting.Balance.View` (asserted in tests). |
-| **D7** — bounded read-only statement                     | One `GET`, computed per request from the immutable ledger. No `POST`/`PUT`/`PATCH`/`DELETE` route (e2e asserts 404 on all four), no persistence, no snapshot/cache, no export/print/format variants.                                                                                                                                                                                    |
+| Decision | As implemented |
+|---|---|
+| **D1** — one account + one fiscal year + optional period | `GET /api/v1/accounting/account-statements` takes exactly `organizationId`, `accountId`, `fiscalYearId`, optional `accountingPeriodId`, optional `financialAreaId` (+ shared `page`/`pageSize`). Non-postable accounts answer **422** (ancestor rollups are out of this slice — D1). |
+| **D2** — intra-fiscal-year, sequence-based opening | Whole-year window opens at `0`; a period opens at Σ(debit − credit) of the lower-`sequence` periods of the **same** fiscal year (gap sequences skipped silently, §7.1). **No prior-year carry-forward exists** (ADR-0031 §4/§9; the accepted Task 12 behavior) — proven by the 2027 statement opening at `0` after 2026 closed at `135.51`. |
+| **D3** — Debit/Credit/Net only | `net = debit − credit`, `closing = opening + net` (`signConvention: 'debit-positive'` echoed on every response). Exact decimal strings only (BigInt-mantissa arithmetic in `domain/money.ts` — `negateAmount`/`subtractAmounts` added); no rounding, no floats, no `accountNature`/classification presentation anywhere in the response. |
+| **D4** — org-scoped + financial area in scope | The statement is single-area: the fiscal year's `financialAreaId` (the contract's one-area-per-year rule). Optional client `financialAreaId` must exist in the organization (**404** otherwise) and equal the year's area (**422** on mismatch). No per-user area grants or new area-auth system was created (OQ-40 posture unchanged). |
+| **D5** — all period statuses readable | `open`/`closed`/`sealed` periods and years are equally readable; status is echoed in the scope, never a read filter, and the read path never mutates it (asserted before/after with `updated_at` in the live suite). |
+| **D6** — independent permission | New **36th** code `Accounting.AccountStatement.View` (`domain/accounting-permissions.ts` + contract §22 row, authorized by gate P-10). Enforced route-level (`AuthGuard` + `AuthorizationGuard` + `@RequirePermission`) **and** at the service entry (ADR-0016 double enforcement). Not satisfied by `Accounting.LedgerMovement.View` or `Accounting.Balance.View` (asserted in tests). |
+| **D7** — bounded read-only statement | One `GET`, computed per request from the immutable ledger. No `POST`/`PUT`/`PATCH`/`DELETE` route (e2e asserts 404 on all four), no persistence, no snapshot/cache, no export/print/format variants. |
 
 Stop conditions were evaluated against repository reality before implementation
 (`docs/tasks/task-17/task-17b-prompt.md` §3): none triggered — D1–D7 match the
@@ -47,18 +47,18 @@ or an existing repo convention (see §6 for the two narrow judgment calls).
 
 ## 2. Implemented (file map)
 
-| Item                                                                                                                                                | Where                                                                                                                                      |
-| --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| Exact statement math (net, running, closing identity) + disclosures + scope echo                                                                    | `backend/src/modules/accounting/domain/account-statement.ts`                                                                               |
-| Exact decimal negation/subtraction (`0.3 − 0.1 = 0.2`; signed derived measures)                                                                     | `backend/src/modules/accounting/domain/money.ts` (`negateAmount`, `subtractAmounts`)                                                       |
-| 36th permission `Accounting.AccountStatement.View`                                                                                                  | `backend/src/modules/accounting/domain/accounting-permissions.ts`                                                                          |
-| Read-only window repository (scope reads + ONE `REPEATABLE READ` transaction: count, window sums, prior-sequence opening sums, pre-page nets, page) | `backend/src/modules/accounting/data/account-statements.repository.ts`                                                                     |
-| Shared row mapping exported (one mapping, never two)                                                                                                | `backend/src/modules/accounting/data/ledger-entries.repository.ts` (`toLedgerEntryFromRow`, `storedAmountToString`; class verbs untouched) |
-| Application boundary (permission → org pin → org usability → `sort` 400 → scope-key matrix → opening/running/totals)                                | `backend/src/modules/accounting/application/account-statements.service.ts`                                                                 |
-| Query/response DTOs (whitelist-only query surface; exact-string amounts)                                                                            | `backend/src/modules/accounting/api/dto/account-statement.dto.ts`                                                                          |
-| Single `GET` controller (no other method exists)                                                                                                    | `backend/src/modules/accounting/api/account-statements.controller.ts`                                                                      |
-| Wiring (providers + controller; provided **not** exported — cross-module report consumption is OQ-26-gated, AR-07)                                  | `backend/src/modules/accounting/accounting.module.ts`                                                                                      |
-| In-memory statement repository fake (mirrors the predicates/order/aggregates exactly)                                                               | `backend/test/support/account-statement-repositories.ts`                                                                                   |
+| Item | Where |
+|---|---|
+| Exact statement math (net, running, closing identity) + disclosures + scope echo | `backend/src/modules/accounting/domain/account-statement.ts` |
+| Exact decimal negation/subtraction (`0.3 − 0.1 = 0.2`; signed derived measures) | `backend/src/modules/accounting/domain/money.ts` (`negateAmount`, `subtractAmounts`) |
+| 36th permission `Accounting.AccountStatement.View` | `backend/src/modules/accounting/domain/accounting-permissions.ts` |
+| Read-only window repository (scope reads + ONE `REPEATABLE READ` transaction: count, window sums, prior-sequence opening sums, pre-page nets, page) | `backend/src/modules/accounting/data/account-statements.repository.ts` |
+| Shared row mapping exported (one mapping, never two) | `backend/src/modules/accounting/data/ledger-entries.repository.ts` (`toLedgerEntryFromRow`, `storedAmountToString`; class verbs untouched) |
+| Application boundary (permission → org pin → org usability → `sort` 400 → scope-key matrix → opening/running/totals) | `backend/src/modules/accounting/application/account-statements.service.ts` |
+| Query/response DTOs (whitelist-only query surface; exact-string amounts) | `backend/src/modules/accounting/api/dto/account-statement.dto.ts` |
+| Single `GET` controller (no other method exists) | `backend/src/modules/accounting/api/account-statements.controller.ts` |
+| Wiring (providers + controller; provided **not** exported — cross-module report consumption is OQ-26-gated, AR-07) | `backend/src/modules/accounting/accounting.module.ts` |
+| In-memory statement repository fake (mirrors the predicates/order/aggregates exactly) | `backend/test/support/account-statement-repositories.ts` |
 
 **No schema, migration, or index change** (stop-condition compliant). The window
 predicate `(organization_id, financial_area_id, fiscal_year_id, account_id,
@@ -74,7 +74,7 @@ the prompt (§22), single endpoint, typed OpenAPI response
 (`AccountStatementResponseDto`), no aliases, no `POST`.
 
 **Query (whitelisted; anything else → 400 `forbidNonWhitelisted`):**
-`organizationId`_, `accountId`_, `fiscalYearId`*, `accountingPeriodId`,
+`organizationId`*, `accountId`*, `fiscalYearId`*, `accountingPeriodId`,
 `financialAreaId`, `page` (default 1), `pageSize` (default 100, hard max 500).
 An explicit `sort` is refused **400** (the statement order IS the running-balance
 order — §11). No date range, voucher, serial, status, text or nature filter
@@ -163,20 +163,20 @@ periods incl. `updated_at` (live suite) before/after representative reads.
 
 ## 8. Tests actually executed (this sandbox, 2026-09-25)
 
-| Suite                                                                   | Command                | Result                                                                                                                                                                                                                                                                                               |
-| ----------------------------------------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Statement domain math (`domain/account-statement.spec.ts`)              | `npm test`             | ✅ 17 passed                                                                                                                                                                                                                                                                                         |
-| Exact money (`domain/money.spec.ts`, incl. negate/subtract)             | `npm test`             | ✅ passed (in the 1086 below)                                                                                                                                                                                                                                                                        |
-| Application boundary (`application/account-statements.service.spec.ts`) | `npm test`             | ✅ 24 passed                                                                                                                                                                                                                                                                                         |
-| Full unit battery (93 files)                                            | `npm test`             | ✅ **1086 passed** (0 failed)                                                                                                                                                                                                                                                                        |
-| In-memory HTTP e2e (`test/accounting-account-statements.e2e-spec.ts`)   | `npm run test:e2e`     | ✅ **28 passed** (envelope, cross-page running, sequence-gap + misaligned-order openings, no carry-forward, 401/403/404/422 matrix, whitelist 400s, statuses readable + untouched, no mutation, deployment pin)                                                                                      |
-| Full e2e battery (28 files)                                             | `npm run test:e2e`     | ✅ **246 passed**, 85 skipped (the 85 are live-PostgreSQL tests — skipped by design without `VARDENA_TEST_DATABASE_URL`; **never relabeled as passed**)                                                                                                                                              |
-| Live PostgreSQL (`test/account-statements-live.e2e-spec.ts`, 11 tests)  | `npm run test:e2e`     | ⏭️ **skipped locally** (CI-only): reversal pair nets zero, opening ↔ `vw_account_balance_derived`, misaligned sequence-vs-calendar fixture, 0.01 exactness, no-mutation incl. `account_balance_projections`, org isolation, statuses                                                                 |
-| Formatting                                                              | `npm run format:check` | ✅ "All matched files use Prettier code style"                                                                                                                                                                                                                                                       |
-| Lint                                                                    | `npm run lint`         | ✅ 0 errors (6 pre-existing warnings in untouched files remain)                                                                                                                                                                                                                                      |
-| Typecheck                                                               | `npx tsc --noEmit`     | ✅ clean                                                                                                                                                                                                                                                                                             |
-| Build                                                                   | `npm run build`        | ✅ clean                                                                                                                                                                                                                                                                                             |
-| Prisma validate                                                         | `npx prisma validate`  | ⚠️ **not runnable in this sandbox** — `PrismaConfigEnvError: Cannot resolve environment variable: DATABASE_URL` (binaries.prisma.sh blocked; same environment as 17A §13.4). The schema is **unchanged** by this task (zero migration/index edits), so no schema risk is introduced; CI must run it. |
+| Suite | Command | Result |
+|---|---|---|
+| Statement domain math (`domain/account-statement.spec.ts`) | `npm test` | ✅ 17 passed |
+| Exact money (`domain/money.spec.ts`, incl. negate/subtract) | `npm test` | ✅ passed (in the 1086 below) |
+| Application boundary (`application/account-statements.service.spec.ts`) | `npm test` | ✅ 24 passed |
+| Full unit battery (93 files) | `npm test` | ✅ **1086 passed** (0 failed) |
+| In-memory HTTP e2e (`test/accounting-account-statements.e2e-spec.ts`) | `npm run test:e2e` | ✅ **28 passed** (envelope, cross-page running, sequence-gap + misaligned-order openings, no carry-forward, 401/403/404/422 matrix, whitelist 400s, statuses readable + untouched, no mutation, deployment pin) |
+| Full e2e battery (28 files) | `npm run test:e2e` | ✅ **246 passed**, 85 skipped (the 85 are live-PostgreSQL tests — skipped by design without `VARDENA_TEST_DATABASE_URL`; **never relabeled as passed**) |
+| Live PostgreSQL (`test/account-statements-live.e2e-spec.ts`, 11 tests) | `npm run test:e2e` | ⏭️ **skipped locally** (CI-only): reversal pair nets zero, opening ↔ `vw_account_balance_derived`, misaligned sequence-vs-calendar fixture, 0.01 exactness, no-mutation incl. `account_balance_projections`, org isolation, statuses |
+| Formatting | `npm run format:check` | ✅ "All matched files use Prettier code style" |
+| Lint | `npm run lint` | ✅ 0 errors (6 pre-existing warnings in untouched files remain) |
+| Typecheck | `npx tsc --noEmit` | ✅ clean |
+| Build | `npm run build` | ✅ clean |
+| Prisma validate | `npx prisma validate` | ⚠️ **not runnable in this sandbox** — `PrismaConfigEnvError: Cannot resolve environment variable: DATABASE_URL` (binaries.prisma.sh blocked; same environment as 17A §13.4). The schema is **unchanged** by this task (zero migration/index edits), so no schema risk is introduced; CI must run it. |
 
 **CI evidence:** PR #43, run **36073988599** (head `c57a1a1`), job `backend`
 **completed success** — `prisma validate` ✅, `prisma generate` ✅, lint ✅,

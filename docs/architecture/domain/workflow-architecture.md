@@ -4,7 +4,7 @@ Status: Proposed (design for review) · Updated: 2026-09-11
 Companion: [blueprint](./domain-blueprint.md) §8 · [documents](./document-architecture.md) ·
 ADR-0018 (proposed) · ADR-0006/0016 (RBAC) · OQ-26, OQ-14, OQ-27
 
-This document defines how a business configures _its own_ document flows without
+This document defines how a business configures *its own* document flows without
 Vardena becoming a low-code workflow platform. The core idea: **structure is code,
 selection is configuration, history is recorded.**
 
@@ -15,16 +15,16 @@ selection is configuration, history is recorded.**
 The task lists eight concepts that are frequently collapsed into one table. In
 Vardena they are distinct, and each has exactly one home:
 
-| Concept           | Definition                                                                                                               | Home                                                                 | Who changes it                                                                |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| **Status**        | Where a document is (`draft`, `approved`, `posted`, `cancelled`, `closed`)                                               | Code: a closed enum per document type                                | Nobody at runtime (code change + ADR)                                         |
-| **Transition**    | An allowed edge between statuses (`draft → approved`) with effects                                                       | Code: the document type's transition table                           | Nobody at runtime; configuration **enables/disables** edges                   |
-| **Permission**    | RBAC code(s) required to perform a transition                                                                            | Code registry (AR-22) + role assignments                             | Administrators assign roles; configuration binds a permission to a transition |
-| **Approval**      | A recorded decision that a transition may proceed for _this_ document (conditions, threshold)                            | Configuration (workflow version) + `document_transitions` audit rows | Configuration decides _whether_; actors decide _this document_                |
-| **Business rule** | A condition in a bounded, code-supported vocabulary (amount > X, partner in group, warehouse in branch, credit exceeded) | Configuration condition rows, evaluated by code                      | Configuration, within supported condition keys                                |
-| **Automation**    | A registered action triggered by an event or a transition (create a linked document, post, notify)                       | Code: action catalogue; configuration: trigger binding + parameters  | Configuration selects from the catalogue                                      |
-| **Domain event**  | The fact that something happened (`Invoice.Approved`, `Invoice.Posted`)                                                  | Code: event schemas; emitted in the transaction                      | Nobody; events are facts                                                      |
-| **Side effect**   | The effect of an automation (movement, journal, notification, outbox row)                                                | Owning module of the effect                                          | Nobody (idempotent, audited)                                                  |
+| Concept | Definition | Home | Who changes it |
+|---|---|---|---|
+| **Status** | Where a document is (`draft`, `approved`, `posted`, `cancelled`, `closed`) | Code: a closed enum per document type | Nobody at runtime (code change + ADR) |
+| **Transition** | An allowed edge between statuses (`draft → approved`) with effects | Code: the document type's transition table | Nobody at runtime; configuration **enables/disables** edges |
+| **Permission** | RBAC code(s) required to perform a transition | Code registry (AR-22) + role assignments | Administrators assign roles; configuration binds a permission to a transition |
+| **Approval** | A recorded decision that a transition may proceed for *this* document (conditions, threshold) | Configuration (workflow version) + `document_transitions` audit rows | Configuration decides *whether*; actors decide *this document* |
+| **Business rule** | A condition in a bounded, code-supported vocabulary (amount > X, partner in group, warehouse in branch, credit exceeded) | Configuration condition rows, evaluated by code | Configuration, within supported condition keys |
+| **Automation** | A registered action triggered by an event or a transition (create a linked document, post, notify) | Code: action catalogue; configuration: trigger binding + parameters | Configuration selects from the catalogue |
+| **Domain event** | The fact that something happened (`Invoice.Approved`, `Invoice.Posted`) | Code: event schemas; emitted in the transaction | Nobody; events are facts |
+| **Side effect** | The effect of an automation (movement, journal, notification, outbox row) | Owning module of the effect | Nobody (idempotent, audited) |
 
 **Why the separation matters:** statuses must be enumerable for reports and
 permissions; transitions must be auditable; approvals must be evidence, not state
@@ -79,14 +79,14 @@ These sets are **complete for v1**; adding a state is a code change with an ADR 
 changes the meaning of reports, permissions and automation). No configuration can
 introduce a state.
 
-### 2.2 Transitions are code; their _enablement_ is configuration
+### 2.2 Transitions are code; their *enablement* is configuration
 
 For every legal edge the code declares: source status, target status, the side
 effects it performs, and the default permission. A **workflow definition version**
 then says, for the organization:
 
 - which edges are **enabled** (e.g. some businesses have no approval step: `draft →
-posted` directly);
+  posted` directly);
 - which **permission** is required (within the codes the document type declares);
 - whether an **approval** is required, with conditions (threshold, partner group,
   branch, item group) and who may approve (permission code);
@@ -95,13 +95,13 @@ posted` directly);
 
 Example (configuration rows, not code):
 
-| Document type       | Edge                             | Enabled                            | Approval condition                                     | Bound automation                                    |
-| ------------------- | -------------------------------- | ---------------------------------- | ------------------------------------------------------ | --------------------------------------------------- |
-| `Sales.Invoice`     | `draft → approved`               | yes                                | `total > 100_000_000` requires `Sales.Invoice.Approve` | —                                                   |
-| `Sales.Invoice`     | `approved → posted`              | yes                                | —                                                      | `create_issue` (if stockable lines), `post_journal` |
-| `Sales.Order`       | `draft → approved`               | yes                                | always requires `Sales.Order.Approve`                  | —                                                   |
-| `Sales.Order`       | `approved → partially_fulfilled` | yes                                | —                                                      | —                                                   |
-| `Inventory.Receipt` | `draft → posted`                 | yes (no approval in this business) | —                                                      | `create_movements`                                  |
+| Document type | Edge | Enabled | Approval condition | Bound automation |
+|---|---|---|---|---|
+| `Sales.Invoice` | `draft → approved` | yes | `total > 100_000_000` requires `Sales.Invoice.Approve` | — |
+| `Sales.Invoice` | `approved → posted` | yes | — | `create_issue` (if stockable lines), `post_journal` |
+| `Sales.Order` | `draft → approved` | yes | always requires `Sales.Order.Approve` | — |
+| `Sales.Order` | `approved → partially_fulfilled` | yes | — | — |
+| `Inventory.Receipt` | `draft → posted` | yes (no approval in this business) | — | `create_movements` |
 
 ### 2.3 Transition history is append-only
 
@@ -125,14 +125,14 @@ transitions; each is a separate record.
 
 Actions are code, each with a typed parameter schema, e.g.:
 
-| Action                                  | Effect                                                                    | Idempotency key                        |
-| --------------------------------------- | ------------------------------------------------------------------------- | -------------------------------------- |
-| `create_issue`                          | Ask Inventory (public service) to create an issue for the stockable lines | `(source_document_id, action)`         |
-| `create_receipt`                        | Ask Inventory to receive goods for a purchase document                    | same pattern                           |
-| `post_journal`                          | Ask Accounting to post the mapped journal for this document               | `(source_document_id, event_id)`       |
-| `reserve_stock` / `release_reservation` | Inventory reservation operation                                           | `(document_id, line_id)`               |
-| `notify`                                | Notifications module: recipients (role/permission) + template             | `(document_id, transition, recipient)` |
-| `enqueue_outbox`                        | Write an outbox row for an external system (AR-14)                        | `dedup_key`                            |
+| Action | Effect | Idempotency key |
+|---|---|---|
+| `create_issue` | Ask Inventory (public service) to create an issue for the stockable lines | `(source_document_id, action)` |
+| `create_receipt` | Ask Inventory to receive goods for a purchase document | same pattern |
+| `post_journal` | Ask Accounting to post the mapped journal for this document | `(source_document_id, event_id)` |
+| `reserve_stock` / `release_reservation` | Inventory reservation operation | `(document_id, line_id)` |
+| `notify` | Notifications module: recipients (role/permission) + template | `(document_id, transition, recipient)` |
+| `enqueue_outbox` | Write an outbox row for an external system (AR-14) | `dedup_key` |
 
 Automations triggered by **domain events** use the existing event machinery and must
 be idempotent (AR-15). Automations bound to a **transition** run inside the same
@@ -181,34 +181,34 @@ intended bound.
   in-place edits), so the audit trail explains every change.
 
 **Historical integrity guarantee:** changing a workflow never changes what an already
-recorded document means; it changes what may happen _next_ to documents that are still
+recorded document means; it changes what may happen *next* to documents that are still
 open and to documents created afterwards.
 
 ---
 
 ## 4. Minimum viable workflow (v1 scope)
 
-| Capability                 | v1                                              | Extension (later, needs its own design)             |
-| -------------------------- | ----------------------------------------------- | --------------------------------------------------- |
-| Statuses & transitions     | Code-defined per document type                  | New states/types via code + ADR                     |
-| Enable/disable transitions | Configuration                                   | —                                                   |
-| Permission per transition  | Configuration (from declared codes)             | Scope-aware permissions (per branch)                |
-| Approval                   | **Single-level**, condition-bounded, recorded   | Multi-level chains, parallel approvals, quorum      |
-| Delegation (out-of-office) | No                                              | Later: time-boxed delegation records                |
-| Escalation on timeout      | No                                              | Later: reminder + escalation rules on the job queue |
-| Automations                | Closed catalogue, bound to transitions/events   | New actions via code (registry)                     |
-| Conditions                 | Bounded vocabulary (§2.6)                       | More primitives as real needs appear                |
-| Versioning                 | Versioned, effective-dated, pinned per document | Scheduled activation, A/B testing (no)              |
-| Delegation of authority    | Not in v1 (OQ-26)                               | —                                                   |
+| Capability | v1 | Extension (later, needs its own design) |
+|---|---|---|
+| Statuses & transitions | Code-defined per document type | New states/types via code + ADR |
+| Enable/disable transitions | Configuration | — |
+| Permission per transition | Configuration (from declared codes) | Scope-aware permissions (per branch) |
+| Approval | **Single-level**, condition-bounded, recorded | Multi-level chains, parallel approvals, quorum |
+| Delegation (out-of-office) | No | Later: time-boxed delegation records |
+| Escalation on timeout | No | Later: reminder + escalation rules on the job queue |
+| Automations | Closed catalogue, bound to transitions/events | New actions via code (registry) |
+| Conditions | Bounded vocabulary (§2.6) | More primitives as real needs appear |
+| Versioning | Versioned, effective-dated, pinned per document | Scheduled activation, A/B testing (no) |
+| Delegation of authority | Not in v1 (OQ-26) | — |
 
 This is deliberately the smallest model that supports the task's three sample
 businesses:
 
-| Business                                             | Configuration rows needed                                                                                                                        |
-| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Business | Configuration rows needed |
+|---|---|
 | A: `Quote → Approval → Invoice → Issue → Accounting` | Quotation enabled with approval on `sent`; automation `derive` invoice on acceptance; invoice posting automation `create_issue` + `post_journal` |
-| B: `Order → Issue → Invoice`                         | Quotation disabled; order approval; order approval automation `create_issue`; invoice posting `post_journal`                                     |
-| C: `Invoice → Issue`                                 | Order disabled; invoice `draft → posted` in one step; automation `create_issue` on approval, `post_journal` on posting                           |
+| B: `Order → Issue → Invoice` | Quotation disabled; order approval; order approval automation `create_issue`; invoice posting `post_journal` |
+| C: `Invoice → Issue` | Order disabled; invoice `draft → posted` in one step; automation `create_issue` on approval, `post_journal` on posting |
 
 ---
 
@@ -218,9 +218,9 @@ businesses:
   reference **declared** codes for that document type, e.g.
   `Sales.Invoice.Approve`, `Sales.Invoice.Post`, `Sales.Invoice.Cancel`,
   `Inventory.Receipt.Post`.
-- The route guard + application service check the permission on the _action endpoint_
+- The route guard + application service check the permission on the *action endpoint*
   (e.g. `POST /sales/invoices/{id}/approve`), while the workflow definition decides
-  _which_ permission that action requires for this organization — checked in the
+  *which* permission that action requires for this organization — checked in the
   application service at transition time (a workflow-aware check, still
   `AuthorizationService`, ADR-0016).
 - Separation of duties ("the creator may not approve their own document") is a
@@ -275,14 +275,14 @@ of the action's registration, not of the configuration.
 
 ## 8. Anti-patterns avoided
 
-| Temptation                                             | Why avoided                                                                             |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| Generic BPMN-style engine with user-drawn graphs       | Unbounded scope, unreviewable logic, no type safety, testing nightmare (§ blueprint 17) |
-| Workflow state stored only as a string on the document | No history, no "who approved under which rule", no pending-approval worklists           |
-| Approvals as a boolean flag                            | Loses actor/time/rule; audit cannot answer the obvious questions                        |
-| Automations as arbitrary user scripts                  | Security and determinism; actions come from a registered catalogue                      |
-| Coupling workflow to UI                                | The engine is server-side; the UI only renders available transitions                    |
-| Per-customer state machines in code                    | Configuration over code-defined edges is the entire point                               |
+| Temptation | Why avoided |
+|---|---|
+| Generic BPMN-style engine with user-drawn graphs | Unbounded scope, unreviewable logic, no type safety, testing nightmare (§ blueprint 17) |
+| Workflow state stored only as a string on the document | No history, no "who approved under which rule", no pending-approval worklists |
+| Approvals as a boolean flag | Loses actor/time/rule; audit cannot answer the obvious questions |
+| Automations as arbitrary user scripts | Security and determinism; actions come from a registered catalogue |
+| Coupling workflow to UI | The engine is server-side; the UI only renders available transitions |
+| Per-customer state machines in code | Configuration over code-defined edges is the entire point |
 
 ## 9. Decisions introduced here
 

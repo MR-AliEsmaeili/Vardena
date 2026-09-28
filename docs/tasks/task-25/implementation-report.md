@@ -1,14 +1,14 @@
 # Task 25 — Implementation Report
 
-|             |                                                                                                       |
-| ----------- | ----------------------------------------------------------------------------------------------------- |
-| Task        | **Task 25 — Main-Based Governance Closure**                                                           |
-| Type        | Governance / repository audit / documentation closure                                                 |
-| Branch      | `arena/01a0e32b-vardena`                                                                              |
-| Baseline    | `main` @ **`80944ce112dc16fd834585f8a4c2d83906547480`** (merge of PR #69)                             |
+| | |
+|---|---|
+| Task | **Task 25 — Main-Based Governance Closure** |
+| Type | Governance / repository audit / documentation closure |
+| Branch | `arena/01a0e32b-vardena` |
+| Baseline | `main` @ **`80944ce112dc16fd834585f8a4c2d83906547480`** (merge of PR #69) |
 | Baseline CI | run [`36323517204`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36323517204) — **success** |
-| Status      | **READY FOR REVIEW — NOT ACCEPTED**                                                                   |
-| Date        | 2026-09-27                                                                                            |
+| Status | **READY FOR REVIEW — NOT ACCEPTED** |
+| Date | 2026-09-27 |
 
 ---
 
@@ -47,15 +47,15 @@ boundary (Treasury and Purchasing remain out).
 
 ### 2.1 New documentation (7 files, all under `docs/tasks/task-25/`)
 
-| File                                    | Content                                                                                                                                                                                                                                                     |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File | Content |
+|---|---|
 | `main-based-governance-audit-report.md` | The 18-section audit: scope, commit SHA, repository state, capability inventory, task/ADR/OQ reconciliation summaries, documentation drift, security findings, CI evidence, unresolved issues, Owner decisions, next gate, follow-up classification, limits |
-| `implementation-acceptance-matrix.md`   | 30 work items × 12 columns; five distinct states per row; aggregate counts                                                                                                                                                                                  |
-| `adr-reconciliation.md`                 | 37 ADRs × 7 columns; the seven-ADR “implemented before accepted” backlog isolated                                                                                                                                                                           |
-| `oq-reconciliation.md`                  | The 18 specified OQs × 8 columns plus six further registry entries touched                                                                                                                                                                                  |
-| `documentation-drift-report.md`         | 10 findings (1 CRITICAL, 2 HIGH, 2 MEDIUM, 2 LOW, 3 INFORMATIONAL), each with Document / Claim / Actual / Evidence / Severity / Required correction                                                                                                         |
-| `owner-decision-pack.md`                | D-01…D-10, every `Owner decision: PENDING`                                                                                                                                                                                                                  |
-| `implementation-report.md`              | This file                                                                                                                                                                                                                                                   |
+| `implementation-acceptance-matrix.md` | 30 work items × 12 columns; five distinct states per row; aggregate counts |
+| `adr-reconciliation.md` | 37 ADRs × 7 columns; the seven-ADR “implemented before accepted” backlog isolated |
+| `oq-reconciliation.md` | The 18 specified OQs × 8 columns plus six further registry entries touched |
+| `documentation-drift-report.md` | 10 findings (1 CRITICAL, 2 HIGH, 2 MEDIUM, 2 LOW, 3 INFORMATIONAL), each with Document / Claim / Actual / Evidence / Severity / Required correction |
+| `owner-decision-pack.md` | D-01…D-10, every `Owner decision: PENDING` |
+| `implementation-report.md` | This file |
 
 ### 2.2 `STATE.md`
 
@@ -87,21 +87,21 @@ comment. `git diff --check` is clean.
 
 ## 3. What was intentionally NOT changed
 
-| Not changed                                                                                 | Why                                                                                     |
-| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Any production behaviour, schema, migration, endpoint, DTO, permission, guard or dependency | Prohibited by the task (§§ header, 12, AC-11)                                           |
-| Any frontend file                                                                           | Prohibited                                                                              |
-| **SEC-01** (37 organization-scoped read surfaces missing the ODR-3 chokepoint)              | Fixing it is production capability and an API contract change — Owner decision **D-01** |
-| `docs/security.md` §3 wording                                                               | It documents an accepted security decision; editing it is Owner decision **D-10**       |
-| `docs/tasks/task-24/*` (finding **F-3**, finding **F-2** scope)                             | Merged governance records of a not-yet-accepted task — Owner decisions **D-02 / D-03**  |
-| `docs/roadmap/*` (§6.1 and candidate C-06 repeat F-3 / the narrow F-2 scope)                | Same; recorded as drift instead                                                         |
-| `docs/accounting/domain-contract.md` header                                                 | Pre-existing BOOT-R-10; Owner decision **D-09**                                         |
-| Any ADR status                                                                              | Task acceptance never promotes an ADR; §2.1/AC-04 forbid automatic promotion            |
-| Any OQ status, wording or number                                                            | §2.4/AC-05 — code existing never closes an OQ                                           |
-| Any task's acceptance status                                                                | §2.2/AC-03 — acceptance is the Owner's act                                              |
-| Task 12's “ACCEPTED WITH FOLLOW-UP” and Task 13's “IN PROGRESS (self-review)” labels        | Historical nonconforming labels are quoted as evidence, never silently normalized       |
-| Treasury / Purchasing scope                                                                 | Must not be reintroduced; verified absent and left absent                               |
-| `.github/workflows/ci.yml`                                                                  | No CI change was authorized; the freeze-rehearsal gap is recorded as **D-08**           |
+| Not changed | Why |
+|---|---|
+| Any production behaviour, schema, migration, endpoint, DTO, permission, guard or dependency | Prohibited by the task (§§ header, 12, AC-11) |
+| Any frontend file | Prohibited |
+| **SEC-01** (37 organization-scoped read surfaces missing the ODR-3 chokepoint) | Fixing it is production capability and an API contract change — Owner decision **D-01** |
+| `docs/security.md` §3 wording | It documents an accepted security decision; editing it is Owner decision **D-10** |
+| `docs/tasks/task-24/*` (finding **F-3**, finding **F-2** scope) | Merged governance records of a not-yet-accepted task — Owner decisions **D-02 / D-03** |
+| `docs/roadmap/*` (§6.1 and candidate C-06 repeat F-3 / the narrow F-2 scope) | Same; recorded as drift instead |
+| `docs/accounting/domain-contract.md` header | Pre-existing BOOT-R-10; Owner decision **D-09** |
+| Any ADR status | Task acceptance never promotes an ADR; §2.1/AC-04 forbid automatic promotion |
+| Any OQ status, wording or number | §2.4/AC-05 — code existing never closes an OQ |
+| Any task's acceptance status | §2.2/AC-03 — acceptance is the Owner's act |
+| Task 12's “ACCEPTED WITH FOLLOW-UP” and Task 13's “IN PROGRESS (self-review)” labels | Historical nonconforming labels are quoted as evidence, never silently normalized |
+| Treasury / Purchasing scope | Must not be reintroduced; verified absent and left absent |
+| `.github/workflows/ci.yml` | No CI change was authorized; the freeze-rehearsal gap is recorded as **D-08** |
 
 ---
 
@@ -109,18 +109,18 @@ comment. `git diff --check` is clean.
 
 ### 4.1 Verified inventory at `80944ce`
 
-| Fact             | Value                         | Command / path                                               |
-| ---------------- | ----------------------------- | ------------------------------------------------------------ |
-| Modules          | 9                             | `backend/src/app.module.ts`                                  |
-| Controllers      | 46                            | `grep -rl "@Controller" backend/src --include=*.ts \| wc -l` |
-| Prisma models    | 52                            | `grep -rh "^model " backend/prisma/schema/*.prisma \| wc -l` |
-| Migrations       | 17                            | `ls backend/prisma/migrations`                               |
-| Permission codes | 134 (41/32/28/10/9/8/6)       | per-module `domain/*permissions*.ts`                         |
-| Unit specs       | 107                           | `find backend/src -name '*.spec.ts' \| wc -l`                |
-| E2E specs        | 34                            | `find backend/test -name '*.e2e-spec.ts' \| wc -l`           |
-| Frontend tests   | 11                            | `find frontend/src -name '*.test.ts*' \| wc -l`              |
-| ADR files        | 37 (no 0027)                  | `docs/adr/`                                                  |
-| OQ registry      | OQ-01…63 OPEN, OQ-64 RESOLVED | `docs/open-questions.md`                                     |
+| Fact | Value | Command / path |
+|---|---|---|
+| Modules | 9 | `backend/src/app.module.ts` |
+| Controllers | 46 | `grep -rl "@Controller" backend/src --include=*.ts \| wc -l` |
+| Prisma models | 52 | `grep -rh "^model " backend/prisma/schema/*.prisma \| wc -l` |
+| Migrations | 17 | `ls backend/prisma/migrations` |
+| Permission codes | 134 (41/32/28/10/9/8/6) | per-module `domain/*permissions*.ts` |
+| Unit specs | 107 | `find backend/src -name '*.spec.ts' \| wc -l` |
+| E2E specs | 34 | `find backend/test -name '*.e2e-spec.ts' \| wc -l` |
+| Frontend tests | 11 | `find frontend/src -name '*.test.ts*' \| wc -l` |
+| ADR files | 37 (no 0027) | `docs/adr/` |
+| OQ registry | OQ-01…63 OPEN, OQ-64 RESOLVED | `docs/open-questions.md` |
 
 All match `STATE.md` §2, `.vardena/project-context.md` and the roadmap — **no numeric drift**.
 
@@ -164,11 +164,11 @@ full dependency install for a comment-only diff), and the task's §11 CI policy 
 GitHub CI for expensive suites and forbids letting a local `test:e2e` become a blocking or
 hanging step. The applicable local checks that do not require installation were run:
 
-| Check                                                    | Result                                          |
-| -------------------------------------------------------- | ----------------------------------------------- |
-| `git diff --check` (whitespace/conflict markers)         | **clean**                                       |
-| `git diff --stat`                                        | 1 production file, +17 / −7, comment block only |
-| Manual review that the diff contains no executable token | **confirmed**                                   |
+| Check | Result |
+|---|---|
+| `git diff --check` (whitespace/conflict markers) | **clean** |
+| `git diff --stat` | 1 production file, +17 / −7, comment block only |
+| Manual review that the diff contains no executable token | **confirmed** |
 
 Existing coverage that protects the edited file's subject remains green in CI:
 `organization-memberships.service.spec.ts` (17 tests) and
@@ -178,13 +178,13 @@ Existing coverage that protects the edited file's subject remains green in CI:
 
 ## 6. CI results
 
-| Run                                                                                                                                                                    | Commit                                | Result                                                                                                                                                                                                                                                                                                                                                     |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Baseline `main` — [`36323517204`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36323517204)                                                                  | `80944ce` (audited)                   | **success** — `backend` + `frontend`                                                                                                                                                                                                                                                                                                                       |
-| Task 24 PR #67 — `36306140879`; checks `36306360274`                                                                                                                   | `67e1bc8`                             | success                                                                                                                                                                                                                                                                                                                                                    |
-| Task 23 PR #66 — checks `36298005115`                                                                                                                                  | —                                     | success                                                                                                                                                                                                                                                                                                                                                    |
-| Task 19 / PR #55 — `36238862315`                                                                                                                                       | `86273b8`                             | success                                                                                                                                                                                                                                                                                                                                                    |
-| Task 18 PR #46 — `36133360887`                                                                                                                                         | `5971bed`                             | success                                                                                                                                                                                                                                                                                                                                                    |
+| Run | Commit | Result |
+|---|---|---|
+| Baseline `main` — [`36323517204`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36323517204) | `80944ce` (audited) | **success** — `backend` + `frontend` |
+| Task 24 PR #67 — `36306140879`; checks `36306360274` | `67e1bc8` | success |
+| Task 23 PR #66 — checks `36298005115` | — | success |
+| Task 19 / PR #55 — `36238862315` | `86273b8` | success |
+| Task 18 PR #46 — `36133360887` | `5971bed` | success |
 | **This branch — PR [#70](https://github.com/MR-AliEsmaeili/Vardena/pull/70), run [`36325486898`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36325486898)** | `743a063` on `arena/01a0e32b-vardena` | **PASS** — `backend` **success (3m46s)**, `frontend` **success (53s)**. The backend job executed every configured gate on the branch: prisma validate → generate → lint → typecheck → format:check → unit tests → build → `migrate deploy` (PostgreSQL 16 service) → `bootstrap:system-admin` → Task 11 migration rehearsal → E2E incl. the live-DB suites |
 
 Expensive verification (PostgreSQL `migrate deploy`, `bootstrap:system-admin`, the migration
@@ -196,36 +196,36 @@ drift DR-09).
 
 ## 7. Documentation changes
 
-| File                                                                  | Change                                                                                      |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `docs/tasks/task-25/main-based-governance-audit-report.md`            | **new**                                                                                     |
-| `docs/tasks/task-25/implementation-acceptance-matrix.md`              | **new**                                                                                     |
-| `docs/tasks/task-25/adr-reconciliation.md`                            | **new**                                                                                     |
-| `docs/tasks/task-25/oq-reconciliation.md`                             | **new**                                                                                     |
-| `docs/tasks/task-25/documentation-drift-report.md`                    | **new**                                                                                     |
-| `docs/tasks/task-25/owner-decision-pack.md`                           | **new**                                                                                     |
-| `docs/tasks/task-25/implementation-report.md`                         | **new** (this file)                                                                         |
-| `STATE.md`                                                            | §8 current task, §9 OQ note, §10 two new risk rows — verified facts only, nothing rewritten |
-| `backend/src/modules/organization/domain/organization-permissions.ts` | **comment-only** (Workstream F)                                                             |
+| File | Change |
+|---|---|
+| `docs/tasks/task-25/main-based-governance-audit-report.md` | **new** |
+| `docs/tasks/task-25/implementation-acceptance-matrix.md` | **new** |
+| `docs/tasks/task-25/adr-reconciliation.md` | **new** |
+| `docs/tasks/task-25/oq-reconciliation.md` | **new** |
+| `docs/tasks/task-25/documentation-drift-report.md` | **new** |
+| `docs/tasks/task-25/owner-decision-pack.md` | **new** |
+| `docs/tasks/task-25/implementation-report.md` | **new** (this file) |
+| `STATE.md` | §8 current task, §9 OQ note, §10 two new risk rows — verified facts only, nothing rewritten |
+| `backend/src/modules/organization/domain/organization-permissions.ts` | **comment-only** (Workstream F) |
 
 ---
 
 ## 8. Unresolved governance items
 
-| #    | Item                                                                                     | Class        | Owner decision          |
-| ---- | ---------------------------------------------------------------------------------------- | ------------ | ----------------------- |
-| U-01 | ODR-3 binding absent on 37 read surfaces; `security.md` overstates coverage              | F6 / F5 / F1 | D-01, D-10              |
-| U-02 | Task 24 finding F-3 is factually wrong; repeated in the roadmap and candidate register   | F1           | D-02                    |
-| U-03 | Task 24 finding F-2's recorded scope (4 surfaces) understates a 37-surface class         | F1           | D-01                    |
-| U-04 | Bootstrap SysAdmin, Task 23, Task 24, roadmap PR #69 merged without acceptance           | F2           | D-04, D-05              |
-| U-05 | Tasks 13 / 14 merged and recorded NOT ACCEPTED; Task 15 merged with no record at all     | F2           | D-06                    |
-| U-06 | Task 12's forbidden “ACCEPTED WITH FOLLOW-UP” label; P1 real-PostgreSQL concurrency open | F2 / F7      | D-07                    |
-| U-07 | ADR-0017/0018/0019/0020/0021/0031/0032 Proposed while implemented                        | F3           | D-03                    |
-| U-08 | 18+ load-bearing OQs OPEN (OQ-39/30/24/25/43/42/41 gate MVP capabilities)                | F4           | — (domain/legal owners) |
-| U-09 | Operational-freeze rehearsal is not a CI step                                            | F7           | D-08                    |
-| U-10 | Required branch-protection checks UNKNOWN                                                | F2           | —                       |
-| U-11 | Accounting domain-contract header still says Proposed/no-implementation                  | F1           | D-09                    |
-| U-12 | Task 16 implementation authorization BLOCKED; Task 17 umbrella BLOCKED                   | F2 / F4      | —                       |
+| # | Item | Class | Owner decision |
+|---|---|---|---|
+| U-01 | ODR-3 binding absent on 37 read surfaces; `security.md` overstates coverage | F6 / F5 / F1 | D-01, D-10 |
+| U-02 | Task 24 finding F-3 is factually wrong; repeated in the roadmap and candidate register | F1 | D-02 |
+| U-03 | Task 24 finding F-2's recorded scope (4 surfaces) understates a 37-surface class | F1 | D-01 |
+| U-04 | Bootstrap SysAdmin, Task 23, Task 24, roadmap PR #69 merged without acceptance | F2 | D-04, D-05 |
+| U-05 | Tasks 13 / 14 merged and recorded NOT ACCEPTED; Task 15 merged with no record at all | F2 | D-06 |
+| U-06 | Task 12's forbidden “ACCEPTED WITH FOLLOW-UP” label; P1 real-PostgreSQL concurrency open | F2 / F7 | D-07 |
+| U-07 | ADR-0017/0018/0019/0020/0021/0031/0032 Proposed while implemented | F3 | D-03 |
+| U-08 | 18+ load-bearing OQs OPEN (OQ-39/30/24/25/43/42/41 gate MVP capabilities) | F4 | — (domain/legal owners) |
+| U-09 | Operational-freeze rehearsal is not a CI step | F7 | D-08 |
+| U-10 | Required branch-protection checks UNKNOWN | F2 | — |
+| U-11 | Accounting domain-contract header still says Proposed/no-implementation | F1 | D-09 |
+| U-12 | Task 16 implementation authorization BLOCKED; Task 17 umbrella BLOCKED | F2 / F4 | — |
 
 **Total governance findings: 22** (10 documentation-drift items DR-01…DR-10 + 12 unresolved
 items U-01…U-12, overlapping where a drift item is also unresolved).
@@ -236,22 +236,22 @@ the reason the recommended next gate is a security completion rather than a feat
 
 ## 9. Acceptance-criteria self-check
 
-| AC                                                                                                                                      | Verdict                                                                                                              | Where                                                                      |
-| --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| AC-01 reproducible audit of the current `main` with the exact SHA                                                                       | **MET**                                                                                                              | audit report header + §2                                                   |
-| AC-02 implementation inventory with concrete evidence per capability                                                                    | **MET**                                                                                                              | audit report §3 (every row carries paths/tests/CI)                         |
-| AC-03 explicit implementation + acceptance status per task; none falsely Accepted                                                       | **MET**                                                                                                              | implementation/acceptance matrix; 6 rows read IMPLEMENTED BUT NOT ACCEPTED |
-| AC-04 ADRs reconciled, none promoted                                                                                                    | **MET**                                                                                                              | ADR matrix; 0 promotions                                                   |
-| AC-05 OQs reconciled, none closed                                                                                                       | **MET**                                                                                                              | OQ matrix; 0 closures                                                      |
-| AC-06 no known material contradiction left undocumented                                                                                 | **MET**                                                                                                              | drift report DR-01…DR-10; all 10 recorded with required corrections        |
-| AC-07 no undocumented security discrepancy                                                                                              | **MET**                                                                                                              | SEC-01/SEC-02/SEC-03 documented and classified ≥ HIGH                      |
-| AC-08 Task 20/21/23/24 status and relationships explicit; four invariants preserved                                                     | **MET**                                                                                                              | audit report §10                                                           |
-| AC-09 stale comment corrected with zero behavioural change                                                                              | **MET**                                                                                                              | §2.3; comment-only diff                                                    |
-| AC-10 required CI green for the changed branch                                                                                          | **MET** — PR #70 run `36325486898`: `backend` success, `frontend` success; expensive E2E executed in CI, not locally | §6                                                                         |
-| AC-11 no scope creep                                                                                                                    | **MET**                                                                                                              | §3; no capability/migration/API/module/permission/schema/mechanism added   |
-| AC-12 Owner decisions isolated, none made implicitly                                                                                    | **MET**                                                                                                              | owner-decision-pack.md, D-01…D-10 all PENDING                              |
-| AC-13 next implementation gate identified with READY / BLOCKED / OWNER DECISION REQUIRED / IMPLEMENTATION REQUIRED / DOCUMENTATION ONLY | **MET**                                                                                                              | audit report §16                                                           |
-| AC-14 Task 25 not self-accepted                                                                                                         | **MET**                                                                                                              | status is READY FOR REVIEW — NOT ACCEPTED throughout                       |
+| AC | Verdict | Where |
+|---|---|---|
+| AC-01 reproducible audit of the current `main` with the exact SHA | **MET** | audit report header + §2 |
+| AC-02 implementation inventory with concrete evidence per capability | **MET** | audit report §3 (every row carries paths/tests/CI) |
+| AC-03 explicit implementation + acceptance status per task; none falsely Accepted | **MET** | implementation/acceptance matrix; 6 rows read IMPLEMENTED BUT NOT ACCEPTED |
+| AC-04 ADRs reconciled, none promoted | **MET** | ADR matrix; 0 promotions |
+| AC-05 OQs reconciled, none closed | **MET** | OQ matrix; 0 closures |
+| AC-06 no known material contradiction left undocumented | **MET** | drift report DR-01…DR-10; all 10 recorded with required corrections |
+| AC-07 no undocumented security discrepancy | **MET** | SEC-01/SEC-02/SEC-03 documented and classified ≥ HIGH |
+| AC-08 Task 20/21/23/24 status and relationships explicit; four invariants preserved | **MET** | audit report §10 |
+| AC-09 stale comment corrected with zero behavioural change | **MET** | §2.3; comment-only diff |
+| AC-10 required CI green for the changed branch | **MET** — PR #70 run `36325486898`: `backend` success, `frontend` success; expensive E2E executed in CI, not locally | §6 |
+| AC-11 no scope creep | **MET** | §3; no capability/migration/API/module/permission/schema/mechanism added |
+| AC-12 Owner decisions isolated, none made implicitly | **MET** | owner-decision-pack.md, D-01…D-10 all PENDING |
+| AC-13 next implementation gate identified with READY / BLOCKED / OWNER DECISION REQUIRED / IMPLEMENTATION REQUIRED / DOCUMENTATION ONLY | **MET** | audit report §16 |
+| AC-14 Task 25 not self-accepted | **MET** | status is READY FOR REVIEW — NOT ACCEPTED throughout |
 
 ---
 

@@ -89,9 +89,6 @@ model Organization {
   codingStructureLevels     CodingStructureLevel[]
   accountingConfigurations  AccountingConfiguration[]
   accountingConfigurationLevels AccountingConfigurationLevel[]
-  detailStructureVersions   DetailStructureVersion[]
-  detailStructureLevels     DetailStructureLevel[]
-  details                   Detail[]
   accounts                  Account[]
 
   // Back-relations for the accounting documents (Task 10.4, contract §12/§16).

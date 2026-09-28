@@ -42,5 +42,5 @@ implementation must pin them so later agents build on one convention.
 
 - One documented convention per concern; reviewable in `backend/README.md`.
 - Sandbox-verifiable except Prisma CLI ops (need `binaries.prisma.sh`)
-  and live-DB paths (covered by skippable integration tests + CI).
+   and live-DB paths (covered by skippable integration tests + CI).
 - Throttler/helmet choices are revisit points, recorded, not drift.

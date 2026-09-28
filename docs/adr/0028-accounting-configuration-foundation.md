@@ -16,7 +16,7 @@ Task 11 final per Product Decisions D1-D7 (Review Fix Round 2):
   - orphan>0 + Product Strategy 5 approved = Legacy Config strategy: create `LEGACY` ACTIVE config per orphan org, copy levels from active coding version or default 2 levels, backfill, then SET NOT NULL
   - orphan>0 not approved = BLOCKED
   - no live DB = `blocked: no live DB` — migration must handle both orphan=0 and orphan>0 (implemented)
-    Orphan query: `SELECT o.id, o.name, COUNT(a.id) orphan_count FROM organization.organizations o LEFT JOIN accounting.accounts a ON a.organization_id=o.id AND a.accounting_configuration_id IS NULL LEFT JOIN accounting.accounting_configurations ac ON ac.organization_id=o.id AND ac.status='ACTIVE' WHERE ac.id IS NULL AND a.id IS NOT NULL GROUP BY o.id, o.name` — sandbox has no DATABASE_URL, result = `blocked: no live DB`.
+  Orphan query: `SELECT o.id, o.name, COUNT(a.id) orphan_count FROM organization.organizations o LEFT JOIN accounting.accounts a ON a.organization_id=o.id AND a.accounting_configuration_id IS NULL LEFT JOIN accounting.accounting_configurations ac ON ac.organization_id=o.id AND ac.status='ACTIVE' WHERE ac.id IS NULL AND a.id IS NOT NULL GROUP BY o.id, o.name` — sandbox has no DATABASE_URL, result = `blocked: no live DB`.
 - **D4 — markOperationallyUsed deferred:** `markOperationallyUsed` NOT called in Task 11. Caller deferred to Posting/System Posting (first Voucher, not Account). Remains as deferred abstraction without caller, must be documented explicitly as deferred in ADR-0028 and docs not implicit dead code.
 - **D5 — Squash migrations:** Three Task 11 migrations squashed to one final clean migration `20260920000000_accounting_configuration_foundation` (branch personal not merged).
 - **D6 — Remove string matching:** `isNoActiveAccountingConfigurationError` string matching removed, use typed error `NoActiveAccountingConfigurationError`.
@@ -81,7 +81,7 @@ MAX depth 8 architecture cap, not business rule.
 - **D1 sole scope NOT NULL:** `accounts.accounting_configuration_id` NOT NULL FK RESTRICT → accounting_configurations, sole authority. `coding_structure_version_id` NOT NULL (D2 untouched) code shape version.
 - Root creation MUST require ACTIVE accounting configuration AND ACTIVE coding structure version (code shape) — no fallback (D1). Service throws typed `NoActiveAccountingConfigurationError` (D6).
 - Child inherits parent's accounting_configuration_id AND coding_structure_version_id — both version isolation checks
-- **D3 backfill + NOT NULL:**
+- **D3 backfill + NOT NULL:** 
   1. Add column nullable
   2. UPDATE from ACTIVE accounting_configurations
   3. If orphan remains (org has accounts NULL and no ACTIVE): create LEGACY ACTIVE config per org (code LEGACY, name Legacy Accounting Configuration, version 1, status ACTIVE), copy levels from active coding_structure_versions if exists, else default 2 levels (Group 2, Detail 3)

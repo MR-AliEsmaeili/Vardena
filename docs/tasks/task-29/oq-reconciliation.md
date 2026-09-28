@@ -3,7 +3,6 @@
 ## 1. Principles of OQ Governance
 
 Per repository rule **AG-09**:
-
 1. Open Questions are **never invented or closed wholesale** without explicit Owner decisions.
 2. A task may only record evidence, proposals, and sub-findings; it must not convert proposals into accepted Owner Decisions.
 3. If an open question contains unresolved sub-aspects or pending owner decisions, its official status **REMAINS OPEN**.
@@ -13,7 +12,6 @@ Per repository rule **AG-09**:
 ## 2. Reconciled Open Questions
 
 ### 2.1 OQ-25: Chart of Accounts & Base Chart
-
 - **Recorded Status:** **`OPEN`**
 - **Sub-Questions Resolved in Prior Tasks (Owner Decisions):**
   - Task 20 (OD-20-1..OD-20-5): Base Chart mechanism as versioned template; consumer-first control roles; leaf-only posting; read-time aggregation.
@@ -36,7 +34,6 @@ Per repository rule **AG-09**:
 ---
 
 ### 2.2 OQ-41: Detail Dimensions (`تفصیلی`)
-
 - **Recorded Status:** **`OPEN`**
 - **Owner Decision Closure (OD-29-03 — `DECIDED`):**
   - Detail is a first-class hierarchy independent from Account, with organization-configurable level count, names, digit lengths, parent/child hierarchy, validation, and uniqueness.
@@ -50,7 +47,6 @@ Per repository rule **AG-09**:
 ---
 
 ### 2.3 OQ-43: Iranian Statutory Requirements & Reporting
-
 - **Recorded Status:** **`OPEN`**
 - **Task 29 Findings and Decision Boundaries:**
   - English account title is Owner-decided as not required for MVP (OD-29-04); its absence is not a statutory or lifecycle blocker.
@@ -61,7 +57,6 @@ Per repository rule **AG-09**:
 ---
 
 ### 2.4 OQ-36: Master-Data Lifecycle (Deletion vs Freeze)
-
 - **Recorded Status:** **`OPEN`**
 - **Task 29 Findings:**
   - Reconciled with Base Chart template nodes: Template drafts are fully mutable; published versions are immutable.
@@ -71,7 +66,6 @@ Per repository rule **AG-09**:
 ---
 
 ### 2.5 OQ-62: Configuration Pin Coherence
-
 - **Recorded Status:** **`OPEN`**
 - **Task 29 Findings:**
   - ODR-1 pin coherence (`planPinCoherence`) is verified. Adoption of a 3-level Base Chart template ($1+2+3$) creates an ODR-1-coherent configuration and coding structure version.

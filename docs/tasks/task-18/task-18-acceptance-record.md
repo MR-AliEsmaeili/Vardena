@@ -25,16 +25,16 @@ This record is the governance synchronization that converts the repository state
 **implementation/merge status** into **formal task acceptance**. Both facts are true and
 remain distinct, and neither substitutes for the other:
 
-| Field               | Value                                                                                  |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| Task                | **Task 18 — Accounting Reporting Read Foundation**                                     |
-| Status              | **ACCEPTED**                                                                           |
-| PR                  | **#46** (`feat(accounting): add reporting read foundation`) — **MERGED**               |
-| Merge commit        | `e774a1c37c921ba83e4e9c23729fde6205cedb76`                                             |
-| Implementation head | `5971bedf551a023d3a7936767345f0d70fac477a`                                             |
-| Review-fix commits  | `418234666375e1fb6776dd8b1186b1be5cafe735`; `0d9cf760330ea37b4fded0ddb675731db72c1d25` |
-| Acceptance date     | 2026-09-25                                                                             |
-| Acceptance record   | this file (`docs/tasks/task-18/task-18-acceptance-record.md`)                          |
+| Field | Value |
+|---|---|
+| Task | **Task 18 — Accounting Reporting Read Foundation** |
+| Status | **ACCEPTED** |
+| PR | **#46** (`feat(accounting): add reporting read foundation`) — **MERGED** |
+| Merge commit | `e774a1c37c921ba83e4e9c23729fde6205cedb76` |
+| Implementation head | `5971bedf551a023d3a7936767345f0d70fac477a` |
+| Review-fix commits | `418234666375e1fb6776dd8b1186b1be5cafe735`; `0d9cf760330ea37b4fded0ddb675731db72c1d25` |
+| Acceptance date | 2026-09-25 |
+| Acceptance record | this file (`docs/tasks/task-18/task-18-acceptance-record.md`) |
 
 Task 18 was implemented against the **approved D1–D20 Owner Decision baseline** (§4 below).
 The accepted scope is the bounded, read-only Accounting-owned reporting read foundation:
@@ -141,28 +141,28 @@ introduced by PR #46, and no migration, index, view or persisted report artifact
 The implementation was built against the approved Owner Decisions **D1–D20**. Their meaning is
 preserved exactly as approved; this acceptance promotes nothing beyond them.
 
-| #       | Owner Decision (approved baseline)                                                                                                        | Acceptance note                                                                                                                                                                                                                                                                                                                  |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **D1**  | **Shared Reporting Read Foundation** for **Account Statement**, **General Ledger** and **Trial Balance**, with **explicit APIs for each** | Accepted: one shared Accounting-owned read/query layer plus the three explicit APIs (§1).                                                                                                                                                                                                                                        |
-| **D2**  | General Ledger has the **richer movement fields** required by the approved contract                                                       | Accepted: General Ledger rows expose the approved movement fields (document date, posting timestamp, document type, document/voucher identity and number, ledger/voucher-line identity, line number, account identity/labels, description, exact debit/credit/net, origin and source snapshots, nullable source-line reference). |
-| **D3**  | **Deterministic ordering**: Document Date → Posting Timestamp → Document → Line                                                           | Accepted: General Ledger's default deterministic order is document date, posting timestamp, document, line, completed by immutable row identity; the Account Statement keeps its accepted fixed statement order.                                                                                                                 |
-| **D4**  | Trial Balance includes **Opening**, **Debit Turnover**, **Credit Turnover**, **Period Net**, **Closing**                                  | Accepted: Trial Balance returns exactly those five exact Decimal-string measures.                                                                                                                                                                                                                                                |
-| **D5**  | **Opening/balance source-of-truth decision**                                                                                              | Accepted — see the explicit note in §5.                                                                                                                                                                                                                                                                                          |
-| **D6**  | Posting and aggregation are supported according to the **approved account semantics**                                                     | Accepted: POSTING XOR AGGREGATION is preserved; POSTING activity rolls to AGGREGATION ancestors with no parent/child double counting.                                                                                                                                                                                            |
-| **D7**  | **Classification-agnostic reporting remains valid. OQ-25 is NOT resolved by Task 18**                                                     | Accepted: no classification/nature/type presentation exists in the accepted surfaces; OQ-25 remains OPEN.                                                                                                                                                                                                                        |
-| **D8**  | **Account hierarchy plus code/name support** is retained                                                                                  | Accepted: hierarchy narrowing/roll-up plus account code/name fields are retained.                                                                                                                                                                                                                                                |
-| **D9**  | **Document Date is the primary financial reporting axis**; Posting Timestamp remains available for audit/technical ordering               | Accepted: document date drives the reporting windows; posting timestamp is exposed for audit/technical ordering.                                                                                                                                                                                                                 |
-| **D10** | **One Financial Area per request**                                                                                                        | Accepted: every report requires exactly one organization, one financial area and one fiscal year.                                                                                                                                                                                                                                |
-| **D11** | **OPEN, CLOSED and SEALED periods remain readable**                                                                                       | Accepted: status is echoed, never a read filter, and no report mutates period/year state.                                                                                                                                                                                                                                        |
-| **D12** | **Separate permissions**: `Accounting.AccountStatement.View`, `Accounting.GeneralLedger.View`, `Accounting.TrialBalance.View`             | Accepted: three independent read codes, enforced at the route and at the service entry (ADR-0016).                                                                                                                                                                                                                               |
-| **D13** | **Pagination, hard row limit and query timeout** are part of the bounded read foundation                                                  | Accepted: bounded pages (existing 500 maximum), 50,000-row hard window and a five-second interactive read timeout.                                                                                                                                                                                                               |
-| **D14** | **SQL aggregation and hierarchy rollup** are used within the approved scope                                                               | Accepted: aggregation and the hierarchy roll-up are done in reviewed SQL/CTE branches with bound values.                                                                                                                                                                                                                         |
-| **D15** | APIs expose **source document/line references** for traceability                                                                          | Accepted: General Ledger and Trial Balance expose document/line and ledger-line identities and the existing nullable source-line reference; no unavailable field was fabricated.                                                                                                                                                 |
-| **D16** | **Account Overview UI remains future scope** — Task 18 is the read foundation, not the UI implementation                                  | Accepted: no UI was implemented; the Account Overview remains future scope.                                                                                                                                                                                                                                                      |
-| **D17** | **XLSX/CSV export remains future scope**                                                                                                  | Accepted: no export path exists on the accepted surfaces.                                                                                                                                                                                                                                                                        |
-| **D18** | **Legal Books remain future scope**                                                                                                       | Accepted: no legal/statutory book structure or claim is introduced.                                                                                                                                                                                                                                                              |
-| **D19** | Explicit APIs remain `/accounting/account-statements`, `/accounting/general-ledger`, `/accounting/trial-balance`                          | Accepted: exactly these three read APIs; no generic report surface was added.                                                                                                                                                                                                                                                    |
-| **D20** | A **shared Accounting Read/Query Layer** is the underlying read foundation                                                                | Accepted: one shared `AccountingReadQueryRepository` underlies all three surfaces.                                                                                                                                                                                                                                               |
+| # | Owner Decision (approved baseline) | Acceptance note |
+|---|---|---|
+| **D1** | **Shared Reporting Read Foundation** for **Account Statement**, **General Ledger** and **Trial Balance**, with **explicit APIs for each** | Accepted: one shared Accounting-owned read/query layer plus the three explicit APIs (§1). |
+| **D2** | General Ledger has the **richer movement fields** required by the approved contract | Accepted: General Ledger rows expose the approved movement fields (document date, posting timestamp, document type, document/voucher identity and number, ledger/voucher-line identity, line number, account identity/labels, description, exact debit/credit/net, origin and source snapshots, nullable source-line reference). |
+| **D3** | **Deterministic ordering**: Document Date → Posting Timestamp → Document → Line | Accepted: General Ledger's default deterministic order is document date, posting timestamp, document, line, completed by immutable row identity; the Account Statement keeps its accepted fixed statement order. |
+| **D4** | Trial Balance includes **Opening**, **Debit Turnover**, **Credit Turnover**, **Period Net**, **Closing** | Accepted: Trial Balance returns exactly those five exact Decimal-string measures. |
+| **D5** | **Opening/balance source-of-truth decision** | Accepted — see the explicit note in §5. |
+| **D6** | Posting and aggregation are supported according to the **approved account semantics** | Accepted: POSTING XOR AGGREGATION is preserved; POSTING activity rolls to AGGREGATION ancestors with no parent/child double counting. |
+| **D7** | **Classification-agnostic reporting remains valid. OQ-25 is NOT resolved by Task 18** | Accepted: no classification/nature/type presentation exists in the accepted surfaces; OQ-25 remains OPEN. |
+| **D8** | **Account hierarchy plus code/name support** is retained | Accepted: hierarchy narrowing/roll-up plus account code/name fields are retained. |
+| **D9** | **Document Date is the primary financial reporting axis**; Posting Timestamp remains available for audit/technical ordering | Accepted: document date drives the reporting windows; posting timestamp is exposed for audit/technical ordering. |
+| **D10** | **One Financial Area per request** | Accepted: every report requires exactly one organization, one financial area and one fiscal year. |
+| **D11** | **OPEN, CLOSED and SEALED periods remain readable** | Accepted: status is echoed, never a read filter, and no report mutates period/year state. |
+| **D12** | **Separate permissions**: `Accounting.AccountStatement.View`, `Accounting.GeneralLedger.View`, `Accounting.TrialBalance.View` | Accepted: three independent read codes, enforced at the route and at the service entry (ADR-0016). |
+| **D13** | **Pagination, hard row limit and query timeout** are part of the bounded read foundation | Accepted: bounded pages (existing 500 maximum), 50,000-row hard window and a five-second interactive read timeout. |
+| **D14** | **SQL aggregation and hierarchy rollup** are used within the approved scope | Accepted: aggregation and the hierarchy roll-up are done in reviewed SQL/CTE branches with bound values. |
+| **D15** | APIs expose **source document/line references** for traceability | Accepted: General Ledger and Trial Balance expose document/line and ledger-line identities and the existing nullable source-line reference; no unavailable field was fabricated. |
+| **D16** | **Account Overview UI remains future scope** — Task 18 is the read foundation, not the UI implementation | Accepted: no UI was implemented; the Account Overview remains future scope. |
+| **D17** | **XLSX/CSV export remains future scope** | Accepted: no export path exists on the accepted surfaces. |
+| **D18** | **Legal Books remain future scope** | Accepted: no legal/statutory book structure or claim is introduced. |
+| **D19** | Explicit APIs remain `/accounting/account-statements`, `/accounting/general-ledger`, `/accounting/trial-balance` | Accepted: exactly these three read APIs; no generic report surface was added. |
+| **D20** | A **shared Accounting Read/Query Layer** is the underlying read foundation | Accepted: one shared `AccountingReadQueryRepository` underlies all three surfaces. |
 
 ---
 
@@ -191,25 +191,25 @@ line with ADR-0031.
 The following evidence was completed for the reviewed/merged Task 18 state. It is **recorded**;
 this acceptance synchronization re-runs no test suite and invents no new result.
 
-| Evidence                                                                               | Recorded result                                                              |
-| -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Focused D5 reconciliation (Ledger → Trial Balance opening/turnover/period net/closing) | **2 passed**                                                                 |
-| Accounting unit suite                                                                  | **43 files / 538 tests passed**                                              |
-| Full backend unit suite                                                                | **97 files / 1,100 tests passed**                                            |
-| Static/build validation                                                                | **typecheck passed; build passed; format passed; `git diff --check` passed** |
-| Lint                                                                                   | **0 errors; 6 pre-existing unrelated warnings**                              |
+| Evidence | Recorded result |
+|---|---|
+| Focused D5 reconciliation (Ledger → Trial Balance opening/turnover/period net/closing) | **2 passed** |
+| Accounting unit suite | **43 files / 538 tests passed** |
+| Full backend unit suite | **97 files / 1,100 tests passed** |
+| Static/build validation | **typecheck passed; build passed; format passed; `git diff --check` passed** |
+| Lint | **0 errors; 6 pre-existing unrelated warnings** |
 
 The **six lint warnings are pre-existing in unrelated files and are NOT Task 18 failures**; they
 are neither fixed nor re-attributed by this acceptance.
 
 ### CI evidence
 
-| Field                   | Value                                                                |
-| ----------------------- | -------------------------------------------------------------------- |
-| Run                     | GitHub Actions **`36133360887`** (`CI` → `backend`)                  |
-| PR                      | **#46**                                                              |
+| Field | Value |
+|---|---|
+| Run | GitHub Actions **`36133360887`** (`CI` → `backend`) |
+| PR | **#46** |
 | Head SHA executed by CI | **`5971bedf551a023d3a7936767345f0d70fac477a`** (implementation head) |
-| Job result              | `backend` **completed success**                                      |
+| Job result | `backend` **completed success** |
 
 The relevant backend CI gates passed, including: **Prisma validation**, **lint**, **typecheck**,
 **format**, **unit tests**, **build**, **migration rehearsal** and **live PostgreSQL E2E**.
@@ -240,16 +240,16 @@ None of these is closed merely because Task 18 is accepted.
 
 ## 8. OQ and cross-task state (unchanged by this acceptance)
 
-| Item                                                                | State after this acceptance                                                                                                                                                                                                                     |
-| ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **OQ-25** (chart of accounts / report-layout classification policy) | **OPEN** — not resolved by Task 18 (D7); not annotated, closed or reclassified here                                                                                                                                                             |
-| **OQ-43** (Iranian statutory / legal reporting requirements)        | **OPEN** — not resolved by Task 18; no legal/statutory claim made                                                                                                                                                                               |
-| **Task 17 overall**                                                 | **BLOCKED** (FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS) — **NOT complete**; unchanged                                                                                                                                               |
-| **Task 17A**                                                        | **ACCEPTED (2026-09-25)** — unchanged                                                                                                                                                                                                           |
-| **Task 17B**                                                        | **ACCEPTED (2026-09-25)** for its bounded D1–D7 slice — unchanged                                                                                                                                                                               |
-| **Task 17C**                                                        | **READY FOR REVIEW — NOT ACCEPTED** — unchanged                                                                                                                                                                                                 |
-| Task 12 P1 follow-up, Task 13, Task 14, Task 16                     | Statuses unchanged                                                                                                                                                                                                                              |
-| ADR statuses                                                        | **No ADR promoted** by this acceptance: ADR-0009 / ADR-0026 / ADR-0031 / ADR-0032 and ADR-0033…0037 (Proposed) are unchanged. **No new ADR was created** — Task 18 acceptance is a governance synchronization, not a new architectural decision |
+| Item | State after this acceptance |
+|---|---|
+| **OQ-25** (chart of accounts / report-layout classification policy) | **OPEN** — not resolved by Task 18 (D7); not annotated, closed or reclassified here |
+| **OQ-43** (Iranian statutory / legal reporting requirements) | **OPEN** — not resolved by Task 18; no legal/statutory claim made |
+| **Task 17 overall** | **BLOCKED** (FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS) — **NOT complete**; unchanged |
+| **Task 17A** | **ACCEPTED (2026-09-25)** — unchanged |
+| **Task 17B** | **ACCEPTED (2026-09-25)** for its bounded D1–D7 slice — unchanged |
+| **Task 17C** | **READY FOR REVIEW — NOT ACCEPTED** — unchanged |
+| Task 12 P1 follow-up, Task 13, Task 14, Task 16 | Statuses unchanged |
+| ADR statuses | **No ADR promoted** by this acceptance: ADR-0009 / ADR-0026 / ADR-0031 / ADR-0032 and ADR-0033…0037 (Proposed) are unchanged. **No new ADR was created** — Task 18 acceptance is a governance synchronization, not a new architectural decision |
 
 ---
 

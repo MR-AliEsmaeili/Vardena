@@ -11,12 +11,12 @@
 
 The owner's materials contain a tension the baseline must record rather than
 resolve: Vardena is described as a **commercial product with a licensing model
-(setup fee + licenses + subscriptions)** — implying a _public, marketed
-product_ — while at the same time the current phase behaves like an
+(setup fee + licenses + subscriptions)** — implying a *public, marketed
+product* — while at the same time the current phase behaves like an
 **internal/selective release** (pilot customers from the owner's network,
 controlled installs, product-maturity focus).
 
-Both can be true sequentially, but the _boundary_ — when the product becomes
+Both can be true sequentially, but the *boundary* — when the product becomes
 publicly marketed, under what brand assets, website, trial/demo posture, and
 sales process — is not decided. This is a genuine commercial contradiction
 between "product for the market" and "product being stabilized through
@@ -43,11 +43,11 @@ pilots", and per the task rules it is recorded, not silently resolved.
 
 ## Options
 
-| Option                                                                                                   | Advantages                                                   | Disadvantages                                                     |
-| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ | ----------------------------------------------------------------- |
-| **A. Internal-only until MVP acceptance gate passes** (pilots from owner's network; no public marketing) | Protects reputation during hardening; realistic expectations | Slower market contact; pipeline starts late                       |
-| **B. Public announcement at MVP, pilots continue in parallel**                                           | Marketing momentum at a defensible milestone                 | Support/marketing load during stabilization                       |
-| **C. Public from the start (marketed pre-release)**                                                      | Early demand generation                                      | Reputation risk on unfinished product; contradicts maturity focus |
+| Option | Advantages | Disadvantages |
+|---|---|---|
+| **A. Internal-only until MVP acceptance gate passes** (pilots from owner's network; no public marketing) | Protects reputation during hardening; realistic expectations | Slower market contact; pipeline starts late |
+| **B. Public announcement at MVP, pilots continue in parallel** | Marketing momentum at a defensible milestone | Support/marketing load during stabilization |
+| **C. Public from the start (marketed pre-release)** | Early demand generation | Reputation risk on unfinished product; contradicts maturity focus |
 
 ## Risks
 

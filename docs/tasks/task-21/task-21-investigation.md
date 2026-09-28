@@ -9,7 +9,7 @@
   at the baseline commit. No runtime behaviour was exercised. No production file
   was modified. Where a claim can be answered by repository code, code is cited.
 
-> The authoritative _conclusions_ of Task 21 live in
+> The authoritative *conclusions* of Task 21 live in
 > [`task-21-governance-baseline.md`](./task-21-governance-baseline.md). This
 > document records what was read and what was found, so that the conclusions are
 > traceable and no accounting content is invented.
@@ -34,7 +34,7 @@
 - `docs/tasks/task-19/accounting-chart-configuration-investigation.md`
 - `docs/tasks/task-20/accounting-chart-semantics-investigation.md` (Domains A–E; the primary predecessor)
 - `docs/tasks/task-20/task-20-implementation-gate.md` (READY FOR REVIEW — NOT ACCEPTED; OD-20-1…OD-20-6 DECIDED)
-  - _Note:_ the brief referenced a `task-20-acceptance-record.md`. At Task 21's
+  - *Note:* the brief referenced a `task-20-acceptance-record.md`. At Task 21's
     branch-point (`10797e1`) that file did not yet exist and Task 20 was recorded
     as READY FOR REVIEW — NOT ACCEPTED. It has since merged from `main` (PR #59,
     `docs/tasks/task-20/task-20-acceptance-record.md`), so **Task 20 is now
@@ -53,16 +53,16 @@
 
 ### 1.4 Implementation inspected (read-only)
 
-| Area              | File(s)                                                                                                        | What was verified                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ----------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Account model     | `backend/prisma/schema/accounting.prisma` (`model Account`, lines ~334–405)                                    | Columns: `id`, `organizationId`, `code` (VarChar 32, `uq_accounts_organization_id_code`), `title` (VarChar 200), `parentId` (self-FK RESTRICT), `level` (derived), `codingStructureVersionId` (NOT NULL), `accountingConfigurationId` (NOT NULL), `accountNature` (VarChar 8), `isPostable` (default false), `isActive` (default true), audit columns. **No `control_role` column. No template/base-chart column. No dimension column. No code-history column.** |
-| Coding structure  | `CodingStructureVersion` / `CodingStructureLevel`; `backend/src/modules/accounting/domain/coding-structure.ts` | Versioned `draft→active→superseded`, `max_depth` 1..8 (`MAX_CODING_STRUCTURE_DEPTH = 8`), per-level `digit_length`, `level_kind` informational-only closed list `['group','general','subsidiary','detail']`, `title` free text. **No hardcoded four-level hierarchy.**                                                                                                                                                                                           |
-| Configuration     | `AccountingConfiguration` / `AccountingConfigurationLevel`; `accounting-configuration.ts`                      | Versioned root, exactly one ACTIVE per organization (raw-SQL partial unique index), `operationally_used_at` freeze marker (Task 13), per-level `default_is_postable`.                                                                                                                                                                                                                                                                                            |
-| Account rules     | `backend/src/modules/accounting/domain/account.ts`                                                             | `code` immutable from creation (no code field on update path); `parentId`/`level`/`accountNature`/`isPostable` immutable **after use** (`ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS`, behind `isReferencedByDocumentLine`); `title` and lifecycle always editable; `postable ⇒ leaf` enforced both directions (`planPostabilityChange` → `postable_with_children`; placement → `parent_postable`).                                                                       |
-| Pin coherence     | `accounts.repository.ts`, ODR-1 `planPinCoherence`                                                             | Level-count + per-level digit-length coherence checked at root/child create and move, re-checked in the locked transaction; divergent pins rejected (no silent winner).                                                                                                                                                                                                                                                                                          |
-| Chart tree        | ODR-2 `ChartTreeService`, `GET /api/v1/accounting/chart-tree[/:id]`                                            | Read-only, organization-scoped, fixed `code ASC` order, inactive included.                                                                                                                                                                                                                                                                                                                                                                                       |
-| Reporting roll-up | `accounting-read-query.repository.ts`, `trial-balance.ts` (Task 18)                                            | `role = CASE WHEN isPostable THEN 'POSTING' ELSE 'AGGREGATION' END`; parent totals are read-time roll-ups over leaf postings.                                                                                                                                                                                                                                                                                                                                    |
-| Ledger identity   | `ledger-entry.ts`, `ledger-entries.repository.ts`, `balance-projection.ts`                                     | Ledger/projection key on `account_id`; no code stored on historical rows; insert-only ledger; dimension seam materializes `[]` (OQ-41).                                                                                                                                                                                                                                                                                                                          |
+| Area | File(s) | What was verified |
+|---|---|---|
+| Account model | `backend/prisma/schema/accounting.prisma` (`model Account`, lines ~334–405) | Columns: `id`, `organizationId`, `code` (VarChar 32, `uq_accounts_organization_id_code`), `title` (VarChar 200), `parentId` (self-FK RESTRICT), `level` (derived), `codingStructureVersionId` (NOT NULL), `accountingConfigurationId` (NOT NULL), `accountNature` (VarChar 8), `isPostable` (default false), `isActive` (default true), audit columns. **No `control_role` column. No template/base-chart column. No dimension column. No code-history column.** |
+| Coding structure | `CodingStructureVersion` / `CodingStructureLevel`; `backend/src/modules/accounting/domain/coding-structure.ts` | Versioned `draft→active→superseded`, `max_depth` 1..8 (`MAX_CODING_STRUCTURE_DEPTH = 8`), per-level `digit_length`, `level_kind` informational-only closed list `['group','general','subsidiary','detail']`, `title` free text. **No hardcoded four-level hierarchy.** |
+| Configuration | `AccountingConfiguration` / `AccountingConfigurationLevel`; `accounting-configuration.ts` | Versioned root, exactly one ACTIVE per organization (raw-SQL partial unique index), `operationally_used_at` freeze marker (Task 13), per-level `default_is_postable`. |
+| Account rules | `backend/src/modules/accounting/domain/account.ts` | `code` immutable from creation (no code field on update path); `parentId`/`level`/`accountNature`/`isPostable` immutable **after use** (`ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS`, behind `isReferencedByDocumentLine`); `title` and lifecycle always editable; `postable ⇒ leaf` enforced both directions (`planPostabilityChange` → `postable_with_children`; placement → `parent_postable`). |
+| Pin coherence | `accounts.repository.ts`, ODR-1 `planPinCoherence` | Level-count + per-level digit-length coherence checked at root/child create and move, re-checked in the locked transaction; divergent pins rejected (no silent winner). |
+| Chart tree | ODR-2 `ChartTreeService`, `GET /api/v1/accounting/chart-tree[/:id]` | Read-only, organization-scoped, fixed `code ASC` order, inactive included. |
+| Reporting roll-up | `accounting-read-query.repository.ts`, `trial-balance.ts` (Task 18) | `role = CASE WHEN isPostable THEN 'POSTING' ELSE 'AGGREGATION' END`; parent totals are read-time roll-ups over leaf postings. |
+| Ledger identity | `ledger-entry.ts`, `ledger-entries.repository.ts`, `balance-projection.ts` | Ledger/projection key on `account_id`; no code stored on historical rows; insert-only ledger; dimension seam materializes `[]` (OQ-41). |
 
 ### 1.5 Negative findings (verified absences)
 
@@ -76,27 +76,27 @@
 
 ## 2. What is already decided (the fixed floor Task 21 builds on)
 
-| Ref                       | Decided fact Task 21 must respect                                                                                                                                                                                                                                                                   |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **OD-20-1**               | Base Chart = versioned Accounting-owned database/product template; explicit adoption creates organization-owned `Account` identities; template identities never become ledger references; future versions exist independently from adopted charts; **content is expert-gated, not agent-invented**. |
-| **OD-20-2**               | Control roles are **consumer-first**; no speculative generic catalog.                                                                                                                                                                                                                               |
-| **OD-20-3**               | Control-role association is an **independent effective-dated mapping**, not `Account.control_role`.                                                                                                                                                                                                 |
-| **OD-20-4**               | `Account.id` permanent identity; `Account.code` business address; pre-use code correction permitted; post-use immutable; history is producer-bound (no speculative table).                                                                                                                          |
-| **OD-20-5**               | `POSTING = leaf-only`; `AGGREGATION = reporting/read-time roll-up`. (D-1 resolved.)                                                                                                                                                                                                                 |
-| **OD-20-6**               | Dimensions are line-level analytical assignments; aggregation via read layer; OQ-41 owns the rest.                                                                                                                                                                                                  |
-| **ODR-1**                 | `coding_structure_version_id` + `accounting_configuration_id` must stay coherent; divergence rejected (no silent fallback).                                                                                                                                                                         |
-| **ODR-2**                 | Accounting owns the canonical chart/tree read surface.                                                                                                                                                                                                                                              |
-| **ODR-3**                 | Organization-scoped writes/reads pass the principal-bound membership chokepoint.                                                                                                                                                                                                                    |
-| **I-1/I-2/I-3**           | Account identity is id-keyed; posting XOR aggregation; code migration never rewrites economic ledger history.                                                                                                                                                                                       |
-| **ADR-0028**              | Versioned configuration, single ACTIVE, `operationally_used_at` freeze — never mutate a used configuration in place.                                                                                                                                                                                |
-| **Repository invariants** | `code` immutable from creation; structural fields immutable after use; `postable ⇒ leaf`; codes never reused; freeze-over-delete (no delete endpoint / no `*.Delete` permission).                                                                                                                   |
+| Ref | Decided fact Task 21 must respect |
+|---|---|
+| **OD-20-1** | Base Chart = versioned Accounting-owned database/product template; explicit adoption creates organization-owned `Account` identities; template identities never become ledger references; future versions exist independently from adopted charts; **content is expert-gated, not agent-invented**. |
+| **OD-20-2** | Control roles are **consumer-first**; no speculative generic catalog. |
+| **OD-20-3** | Control-role association is an **independent effective-dated mapping**, not `Account.control_role`. |
+| **OD-20-4** | `Account.id` permanent identity; `Account.code` business address; pre-use code correction permitted; post-use immutable; history is producer-bound (no speculative table). |
+| **OD-20-5** | `POSTING = leaf-only`; `AGGREGATION = reporting/read-time roll-up`. (D-1 resolved.) |
+| **OD-20-6** | Dimensions are line-level analytical assignments; aggregation via read layer; OQ-41 owns the rest. |
+| **ODR-1** | `coding_structure_version_id` + `accounting_configuration_id` must stay coherent; divergence rejected (no silent fallback). |
+| **ODR-2** | Accounting owns the canonical chart/tree read surface. |
+| **ODR-3** | Organization-scoped writes/reads pass the principal-bound membership chokepoint. |
+| **I-1/I-2/I-3** | Account identity is id-keyed; posting XOR aggregation; code migration never rewrites economic ledger history. |
+| **ADR-0028** | Versioned configuration, single ACTIVE, `operationally_used_at` freeze — never mutate a used configuration in place. |
+| **Repository invariants** | `code` immutable from creation; structural fields immutable after use; `postable ⇒ leaf`; codes never reused; freeze-over-delete (no delete endpoint / no `*.Delete` permission). |
 
-**Consequence for Task 21:** the _mechanism, ownership, sequencing and artifact
-shape_ of the Base Chart are already decided. What remains open under OQ-25 is
+**Consequence for Task 21:** the *mechanism, ownership, sequencing and artifact
+shape* of the Base Chart are already decided. What remains open under OQ-25 is
 (a) **content** (codes/titles/natures/mandatory list/role catalog) — which Task 21
 must **not** invent — and (b) **governance detail** (content model, mandatory
 semantics, adoption/version/customization rules, posting-default role, and the
-OQ-36 boundary) — which is exactly what Task 21 may decide _as governance_.
+OQ-36 boundary) — which is exactly what Task 21 may decide *as governance*.
 
 ---
 
@@ -129,7 +129,7 @@ before a consumer); OD-20-1 content boundary; OD-20-3 (role via mapping, not
 column); OD-20-6 / OQ-41 (dimensions out); OD-20-4 (code history producer-bound);
 ODR-1 (code shape bound to configuration).
 
-**Finding:** Task 21 can decide the _conceptual field set_ of a Base Chart entry
+**Finding:** Task 21 can decide the *conceptual field set* of a Base Chart entry
 (a data-model boundary), because that does not require inventing values. It
 **cannot** decide the values. Field-by-field reasoning is in the governance
 baseline §3. Every included field maps to an existing `Account`/configuration
@@ -162,7 +162,6 @@ versions independent of adopted charts); ADR-0037 §3 ("never a seed that silent
 creates accounts in an existing organization"); ADR-0028 freeze; I-3; ADR-0033.
 
 **Findings:**
-
 - **Copy, not reference.** Adoption copies template definitions into org-owned
   `Account` rows; organizations own the resulting records; runtime dependency of
   organization accounts on mutable template rows is **rejected**. Direct
@@ -172,7 +171,7 @@ creates accounts in an existing organization"); ADR-0028 freeze; I-3; ADR-0033.
   an existing organization's chart; upgrades are explicit migration/adaptation
   operations. Rationale: adopted accounts are organization-owned (OD-20-1), a used
   configuration is frozen (ADR-0028 §3), and the ledger is never rewritten by a
-  chart change (I-3). → **IMPLEMENTATION CONSTRAINT**. Whether the _account_ row
+  chart change (I-3). → **IMPLEMENTATION CONSTRAINT**. Whether the *account* row
   carries template provenance is a speculative column today (AR-29) → **OPEN**.
 - **Partial adoption.** Selectable subsets risk breaking accounting consistency
   (orphaned nodes if an ancestor is omitted; missing mandatory or role-backed
@@ -184,17 +183,17 @@ creates accounts in an existing organization"); ADR-0028 freeze; I-3; ADR-0033.
 
 ### 3.5 Mandatory account semantics
 
-**Evidence:** freeze-over-delete (repository); OD-20-2 (roles mandatory _when
-consumed_); ADR-0033 §7 (used account deactivated not deleted); the four distinct
+**Evidence:** freeze-over-delete (repository); OD-20-2 (roles mandatory *when
+consumed*); ADR-0033 §7 (used account deactivated not deleted); the four distinct
 requirement sources (chart / organization / control-role / statutory).
 
-**Finding:** Task 21 can define the _meaning_ of the `is_mandatory` flag (governance
-semantics), not the _list_. A safe **minimal** meaning is: a mandatory account
+**Finding:** Task 21 can define the *meaning* of the `is_mandatory` flag (governance
+semantics), not the *list*. A safe **minimal** meaning is: a mandatory account
 (a) must exist after adoption, (b) cannot be deleted, (c) cannot be deactivated
 while it remains mandatory. Titles remain editable (title ≠ identity). Code change
 stays governed by OD-20-4 (mandatoriness adds no extra code rule). Move / nature
 change / structural-compatibility restrictions are **OPEN** because they depend on
-which consumers exist. The _list_ of mandatory accounts is content → **DEFERRED**.
+which consumers exist. The *list* of mandatory accounts is content → **DEFERRED**.
 Task 21 also records the four distinct requirement sources so they are not
 conflated. → semantics = **IMPLEMENTATION CONSTRAINT (minimal)** + **OPEN**
 (extended restrictions); list = **DEFERRED**.
@@ -203,7 +202,7 @@ conflated. → semantics = **IMPLEMENTATION CONSTRAINT (minimal)** + **OPEN**
 
 **Evidence:** OD-20-2 (consumer-first), OD-20-3 (effective-dated mapping),
 ADR-0037 §4/§5 (code-defined vocabulary, demand-driven mandatoriness), contract
-§8.7 (the listed roles are explicitly _placeholders, not a decision_).
+§8.7 (the listed roles are explicitly *placeholders, not a decision*).
 
 **Finding:** Task 21 defines the **governance contract** (what qualifies as a role,
 who may introduce one, evidence required, how a consumer binds, whether Base Chart
@@ -249,7 +248,7 @@ OQ-43); contract §2.3 (reported legal inputs, not rules); no legal profile mode
 exists.
 
 **Finding:** `Vardena Base Chart ≠ Iran statutory reporting profile`. A Base Chart
-may be _designed to support_ future statutory reporting but must not hardcode or
+may be *designed to support* future statutory reporting but must not hardcode or
 invent legal requirements. No legal compliance claim is made. OQ-43 stays OPEN and
 out of scope. → **IMPLEMENTATION CONSTRAINT** + **OUT OF SCOPE (OQ-43)**.
 
@@ -287,18 +286,18 @@ explicit-upgrade = **IMPLEMENTATION CONSTRAINT / ARCHITECTURAL governance
 
 ## 4. Repository consistency checks performed
 
-| Check                                           | Result                                                                                |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------- |
-| No contradiction with Task 19 (ODR-1/2/3)       | **PASS** — Task 21 reuses and depends on them; changes none.                          |
-| No contradiction with Task 20 (OD-20-1…OD-20-6) | **PASS** — Task 21 refines the OPEN portions only.                                    |
-| No unresolved D-1 statement introduced          | **PASS** — D-1 stays resolved (OD-20-5, leaf-only).                                   |
-| No hardcoded four-level hierarchy               | **PASS** — levels remain configurable data; §3.3/§3.7 forbid a four-level assumption. |
-| No `Account.control_role` claim                 | **PASS** — roles via effective-dated mapping only (OD-20-3).                          |
-| No Base Chart production implementation         | **PASS** — documentation only; no schema/migration/seed/API/DTO/permission/UI.        |
-| No OQ-41 closure                                | **PASS** — dimensions out of scope; OQ-41 stays OPEN.                                 |
-| No OQ-43 closure                                | **PASS** — statutory out of scope; OQ-43 stays OPEN; no legal claim.                  |
-| No ADR promoted to Accepted                     | **PASS** — no ADR changed.                                                            |
-| No production-file modification                 | **PASS** — only `docs/**` changed.                                                    |
+| Check | Result |
+|---|---|
+| No contradiction with Task 19 (ODR-1/2/3) | **PASS** — Task 21 reuses and depends on them; changes none. |
+| No contradiction with Task 20 (OD-20-1…OD-20-6) | **PASS** — Task 21 refines the OPEN portions only. |
+| No unresolved D-1 statement introduced | **PASS** — D-1 stays resolved (OD-20-5, leaf-only). |
+| No hardcoded four-level hierarchy | **PASS** — levels remain configurable data; §3.3/§3.7 forbid a four-level assumption. |
+| No `Account.control_role` claim | **PASS** — roles via effective-dated mapping only (OD-20-3). |
+| No Base Chart production implementation | **PASS** — documentation only; no schema/migration/seed/API/DTO/permission/UI. |
+| No OQ-41 closure | **PASS** — dimensions out of scope; OQ-41 stays OPEN. |
+| No OQ-43 closure | **PASS** — statutory out of scope; OQ-43 stays OPEN; no legal claim. |
+| No ADR promoted to Accepted | **PASS** — no ADR changed. |
+| No production-file modification | **PASS** — only `docs/**` changed. |
 
 ---
 
@@ -308,8 +307,8 @@ explicit-upgrade = **IMPLEMENTATION CONSTRAINT / ARCHITECTURAL governance
    inspection at the baseline commit; no runtime behaviour was exercised and no
    heavy E2E / live PostgreSQL was run (documentation-only task).
 2. **Content deliberately absent.** No account code, title, nature, mandatory-list
-   entry, or control role is proposed as content. Task 21 approves _governance and
-   a content model_, never _content_.
+   entry, or control role is proposed as content. Task 21 approves *governance and
+   a content model*, never *content*.
 3. **Predecessor acceptance state.** At this investigation's baseline, Task 20
    was READY FOR REVIEW — NOT ACCEPTED. It was subsequently accepted, and Task 21
    is now **ACCEPTED (2026-09-26)** by its explicit Repository Owner acceptance

@@ -18,8 +18,8 @@ first release actually contains. The accepted reporting architecture
 builder would sit on top of registered semantic entities.
 
 The owner's answers describe Report Builder as important but do not state the
-minimum level required at MVP — and "custom report" is _in the MVP reference
-scenario_ (§16), so some builder capability is in scope; only the level is open.
+minimum level required at MVP — and "custom report" is *in the MVP reference
+scenario* (§16), so some builder capability is in scope; only the level is open.
 
 ## Why this matters
 
@@ -36,12 +36,12 @@ non-negotiable):
 
 ## Options
 
-| Option                                                                                                                                                                                                                                 | Contents                                                                         | Advantages                                                                              | Disadvantages |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ------------- |
-| **A. Registry reports only, no builder** ("custom report" = saved filters/columns on registry reports)                                                                                                                                 | Fastest; zero new surface                                                        | "Custom report" in the scenario is arguably not satisfied                               |
-| **B. Configurable report composition** (MVP): user combines approved semantic entities into report definitions — pick entity, columns, filters, sort, grouping (single-column), export; definitions saved, versioned, permission-bound | Satisfies scenario; bounded surface; reuses pipeline as-is                       | Needs semantic-entity registry + definition storage + versioning (build item, not huge) |
-| **C. Calculated fields & expressions** (adds expressions over approved fields — no user SQL ever)                                                                                                                                      | Strong differentiator; still safe (expression evaluator over whitelisted fields) | Expression language = real work + security review                                       |
-| **D. Visual Query Builder with joins/charts/scheduling/multi-entity**                                                                                                                                                                  | Full vision (§17.1)                                                              | Too large for MVP; joins across entities need careful permission/limit design           |
+| Option | Contents | Advantages | Disadvantages |
+|---|---|---|---|
+| **A. Registry reports only, no builder** ("custom report" = saved filters/columns on registry reports) | Fastest; zero new surface | "Custom report" in the scenario is arguably not satisfied |
+| **B. Configurable report composition** (MVP): user combines approved semantic entities into report definitions — pick entity, columns, filters, sort, grouping (single-column), export; definitions saved, versioned, permission-bound | Satisfies scenario; bounded surface; reuses pipeline as-is | Needs semantic-entity registry + definition storage + versioning (build item, not huge) |
+| **C. Calculated fields & expressions** (adds expressions over approved fields — no user SQL ever) | Strong differentiator; still safe (expression evaluator over whitelisted fields) | Expression language = real work + security review |
+| **D. Visual Query Builder with joins/charts/scheduling/multi-entity** | Full vision (§17.1) | Too large for MVP; joins across entities need careful permission/limit design |
 
 ## Risks
 

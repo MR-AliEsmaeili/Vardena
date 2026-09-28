@@ -3,13 +3,13 @@
 **Status: ACCEPTED (2026-09-25).** Merged into `main` via PR #39 (`130fab9`).
 The Repository Owner explicitly authorized and accepted the bounded implementation introduced by PR #39 as Task 17A.
 
-|                       |                                                                                                                                                                                                       |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Slice                 | Task 17A — the Accounting-owned, read-only **ledger movement source**, and one narrow read endpoint over it                                                                                           |
-| Branch / base / merge | PR #39 merged into `main` (`130fab9`)                                                                                                                                                                 |
-| Contract references   | `docs/accounting/domain-contract.md` §12/§13/§15/§19/§22 (AC-D-30, AC-D-31, AC-D-34, AC-I-01/05/06/07/09/16/19/22), ADR-0009, ADR-0021 §4, ADR-0022 §3, ADR-0025, AR-07/AR-11/AR-21/AR-22/AR-24/AR-29 |
-| Reporting references  | `docs/reporting-strategy.md` §1/§2/§3/§5, `docs/tasks/task-17/brief.md`, `docs/tasks/task-17/next-step-recommendation.md`, `docs/tasks/task-17/task-17a-acceptance-record.md`                         |
-| Not implemented here  | Task 17 (the Accounting Reporting Foundation). It remains **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS (OQ-25, OQ-43)**.                                                                   |
+| | |
+|---|---|
+| Slice | Task 17A — the Accounting-owned, read-only **ledger movement source**, and one narrow read endpoint over it |
+| Branch / base / merge | PR #39 merged into `main` (`130fab9`) |
+| Contract references | `docs/accounting/domain-contract.md` §12/§13/§15/§19/§22 (AC-D-30, AC-D-31, AC-D-34, AC-I-01/05/06/07/09/16/19/22), ADR-0009, ADR-0021 §4, ADR-0022 §3, ADR-0025, AR-07/AR-11/AR-21/AR-22/AR-24/AR-29 |
+| Reporting references | `docs/reporting-strategy.md` §1/§2/§3/§5, `docs/tasks/task-17/brief.md`, `docs/tasks/task-17/next-step-recommendation.md`, `docs/tasks/task-17/task-17a-acceptance-record.md` |
+| Not implemented here | Task 17 (the Accounting Reporting Foundation). It remains **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS (OQ-25, OQ-43)**. |
 
 ---
 
@@ -28,8 +28,8 @@ posture + owner authorization exists:
 
 `docs/tasks/task-17/next-step-recommendation.md` (documentation-only, class C/D) is
 explicit: the first-slice **start condition is "NOT MET"**, and its proposed minimal
-deliverable excludes _"any executable public endpoint, Report registry/platform or
-permissions installed merely as dormant scaffolding"_.
+deliverable excludes *"any executable public endpoint, Report registry/platform or
+permissions installed merely as dormant scaffolding"*.
 
 ### 1.2 What this slice was instructed to do
 
@@ -53,16 +53,16 @@ The Owner explicitly authorized and accepted Task 17A as implemented in PR #39 (
 
 ### 2.1 In scope (as implemented)
 
-| Item                                                                 | Where                                                                  |
-| -------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Read-only application boundary for posted ledger movements           | `application/ledger-movements.service.ts`                              |
-| Accounting-owned, read-only repository read (`listMovements`)        | `data/ledger-entries.repository.ts`, widened `data/accounting-rows.ts` |
-| Framework-free movement projection (one ledger entry → one movement) | `domain/ledger-movement.ts`                                            |
-| Narrow versioned endpoint `GET /api/v1/accounting/ledger-movements`  | `api/accounting-ledger-movements.controller.ts`                        |
-| Query/response DTOs + OpenAPI decoration                             | `api/dto/ledger-movement.dto.ts`                                       |
-| One new read permission                                              | `domain/accounting-permissions.ts`                                     |
-| Unit + HTTP e2e + live-PostgreSQL suites                             | `*.spec.ts`, `test/*-e2e-spec.ts`                                      |
-| Module doc (`docs/modules.md`) + this report                         | docs                                                                   |
+| Item | Where |
+|---|---|
+| Read-only application boundary for posted ledger movements | `application/ledger-movements.service.ts` |
+| Accounting-owned, read-only repository read (`listMovements`) | `data/ledger-entries.repository.ts`, widened `data/accounting-rows.ts` |
+| Framework-free movement projection (one ledger entry → one movement) | `domain/ledger-movement.ts` |
+| Narrow versioned endpoint `GET /api/v1/accounting/ledger-movements` | `api/accounting-ledger-movements.controller.ts` |
+| Query/response DTOs + OpenAPI decoration | `api/dto/ledger-movement.dto.ts` |
+| One new read permission | `domain/accounting-permissions.ts` |
+| Unit + HTTP e2e + live-PostgreSQL suites | `*.spec.ts`, `test/*-e2e-spec.ts` |
+| Module doc (`docs/modules.md`) + this report | docs |
 
 ### 2.2 Explicitly not in scope (and not implemented)
 
@@ -103,17 +103,17 @@ balance-projection redesign.
 
 ## 4. Filters (whitelisted, parameterized, always organization-scoped)
 
-| Query parameter                 | Stored predicate                | Notes                                                                      |
-| ------------------------------- | ------------------------------- | -------------------------------------------------------------------------- |
-| `organizationId` (**required**) | `organization_id = $1`          | Tenant scope; never optional; must be a ULID                               |
-| `financialAreaId`               | `financial_area_id = $n`        | Stored bookkeeping scope                                                   |
-| `fiscalYearId`                  | `fiscal_year_id = $n`           | Stored year resolution                                                     |
-| `accountingPeriodId`            | `accounting_period_id = $n`     | Stored period resolution                                                   |
-| `accountId`                     | `account_id = $n`               | Account-ledger filter                                                      |
-| `voucherId`                     | `voucher_id = $n`               | Voucher traceability filter                                                |
-| `voucherNumber`                 | `voucher_number = $n`           | Exact serial match (≤ 32 chars, the column width)                          |
-| `dateFrom` / `dateTo`           | `document_date >= $n` / `<= $n` | Inclusive business-date bounds, `YYYY-MM-DD` only, parsed to UTC date-only |
-| `page`, `pageSize`, `sort`      | shared list conventions         | See §9                                                                     |
+| Query parameter | Stored predicate | Notes |
+|---|---|---|
+| `organizationId` (**required**) | `organization_id = $1` | Tenant scope; never optional; must be a ULID |
+| `financialAreaId` | `financial_area_id = $n` | Stored bookkeeping scope |
+| `fiscalYearId` | `fiscal_year_id = $n` | Stored year resolution |
+| `accountingPeriodId` | `accounting_period_id = $n` | Stored period resolution |
+| `accountId` | `account_id = $n` | Account-ledger filter |
+| `voucherId` | `voucher_id = $n` | Voucher traceability filter |
+| `voucherNumber` | `voucher_number = $n` | Exact serial match (≤ 32 chars, the column width) |
+| `dateFrom` / `dateTo` | `document_date >= $n` / `<= $n` | Inclusive business-date bounds, `YYYY-MM-DD` only, parsed to UTC date-only |
+| `page`, `pageSize`, `sort` | shared list conventions | See §9 |
 
 **Deliberate absences** (each is a property of the facts, not an omission):
 
@@ -141,24 +141,24 @@ No client input ever reaches a SQL identifier, fragment, table, column or join.
 
 `LedgerMovementDto` (`domain/ledger-movement.ts`) — ledger-native columns only:
 
-| Field                                                                   | Source column                   | Reason included                                                                     |
-| ----------------------------------------------------------------------- | ------------------------------- | ----------------------------------------------------------------------------------- |
-| `id`                                                                    | `id`                            | Entry identity (immutable ULID; never the voucher's, never the posting-operation's) |
-| `organizationId`                                                        | `organization_id`               | Tenant scope of the fact                                                            |
-| `financialAreaId`                                                       | `financial_area_id`             | Stored bookkeeping scope                                                            |
-| `fiscalYearId`                                                          | `fiscal_year_id`                | Stored year resolution                                                              |
-| `accountingPeriodId`                                                    | `accounting_period_id`          | Stored period resolution                                                            |
-| `voucherId`                                                             | `voucher_id`                    | Source document identity                                                            |
-| `voucherNumber`                                                         | `voucher_number`                | Immutable serial snapshot, text (§18, AC-I-22)                                      |
-| `voucherLineId`                                                         | `voucher_line_id`               | The 1:1 traceability key to the stored line                                         |
-| `lineNo`                                                                | `line_no`                       | Dense 1-based ordinal inside the voucher (§12.5)                                    |
-| `accountId`                                                             | `account_id`                    | Postable account reference (AC-I-09)                                                |
-| `debitAmount`, `creditAmount`                                           | `debit_amount`, `credit_amount` | Exact decimal strings, `numeric(18,2)`                                              |
-| `description`                                                           | `description`                   | Line narration (nullable); the header narration is not copied                       |
-| `documentDate`                                                          | `document_date`                 | Business date, rendered `YYYY-MM-DD` (date-only, UTC)                               |
-| `postingTimestamp`                                                      | `posting_timestamp`             | Instant of the posting act, ISO-8601 — distinct from the business date              |
-| `origin`                                                                | `origin`                        | `manual` \| `system` (closed code-defined list)                                     |
-| `sourceModule`, `sourceEntityType`, `sourceEntityId`, `sourceOperation` | same-named columns              | System-origin source snapshot (§16.3); all `null` for manual entries                |
+| Field | Source column | Reason included |
+|---|---|---|
+| `id` | `id` | Entry identity (immutable ULID; never the voucher's, never the posting-operation's) |
+| `organizationId` | `organization_id` | Tenant scope of the fact |
+| `financialAreaId` | `financial_area_id` | Stored bookkeeping scope |
+| `fiscalYearId` | `fiscal_year_id` | Stored year resolution |
+| `accountingPeriodId` | `accounting_period_id` | Stored period resolution |
+| `voucherId` | `voucher_id` | Source document identity |
+| `voucherNumber` | `voucher_number` | Immutable serial snapshot, text (§18, AC-I-22) |
+| `voucherLineId` | `voucher_line_id` | The 1:1 traceability key to the stored line |
+| `lineNo` | `line_no` | Dense 1-based ordinal inside the voucher (§12.5) |
+| `accountId` | `account_id` | Postable account reference (AC-I-09) |
+| `debitAmount`, `creditAmount` | `debit_amount`, `credit_amount` | Exact decimal strings, `numeric(18,2)` |
+| `description` | `description` | Line narration (nullable); the header narration is not copied |
+| `documentDate` | `document_date` | Business date, rendered `YYYY-MM-DD` (date-only, UTC) |
+| `postingTimestamp` | `posting_timestamp` | Instant of the posting act, ISO-8601 — distinct from the business date |
+| `origin` | `origin` | `manual` \| `system` (closed code-defined list) |
+| `sourceModule`, `sourceEntityType`, `sourceEntityId`, `sourceOperation` | same-named columns | System-origin source snapshot (§16.3); all `null` for manual entries |
 
 Deliberately **not returned**: account code/title, area/year/period codes or titles,
 voucher header fields other than the serial (state, narration, correction links, branch),
@@ -195,14 +195,14 @@ returned ids — this source re-derives nothing.
 registry; `ACCOUNTING_PERMISSION_DEFINITIONS`), mirrored into `rbac.permissions` at
 startup exactly like the other 34.
 
-Why not reuse an existing code (both were considered and rejected as _inapt_, not as
-_insufficient_):
+Why not reuse an existing code (both were considered and rejected as *inapt*, not as
+*insufficient*):
 
-| Candidate                  | Why it was not used                                                                                                                                                                                                                                  |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Accounting.Balance.View`  | Its contract meaning is _projection reads_ (§19.3, AC-D-31) and the projection is explicitly **not** the ledger. Using it would silently widen an approved code's meaning from "read the derived balance projection" to "read the immutable ledger". |
-| `Accounting.Document.View` | It governs the _editable document aggregate_ and its lifecycle (draft/temporary/final, edits, deletion). The movement source is posted-only immutable evidence; the two are different authorities over different resources.                          |
-| `Report.<id>.View`         | That vocabulary belongs to the Reporting module for _report definitions_. No report definition exists in this slice, and Accounting must not register Reporting's codes.                                                                             |
+| Candidate | Why it was not used |
+|---|---|
+| `Accounting.Balance.View` | Its contract meaning is *projection reads* (§19.3, AC-D-31) and the projection is explicitly **not** the ledger. Using it would silently widen an approved code's meaning from "read the derived balance projection" to "read the immutable ledger". |
+| `Accounting.Document.View` | It governs the *editable document aggregate* and its lifecycle (draft/temporary/final, edits, deletion). The movement source is posted-only immutable evidence; the two are different authorities over different resources. |
+| `Report.<id>.View` | That vocabulary belongs to the Reporting module for *report definitions*. No report definition exists in this slice, and Accounting must not register Reporting's codes. |
 
 Consequences that are recorded rather than hidden:
 
@@ -239,7 +239,7 @@ Consequences that are recorded rather than hidden:
 - Shared list conventions: `page` (1-based, default 1), `pageSize` (default 100, **hard
   max 500**), `sort` syntax validated by `PageQueryDto`.
 - **Deterministic total order.** Default: `documentDate asc, voucherNumber asc,
-lineNo asc, id asc` (the legal-book reading order, terminating in the unique entry id).
+  lineNo asc, id asc` (the legal-book reading order, terminating in the unique entry id).
 - If a client supplies `sort`, only `documentDate` and `postingTimestamp` are allowed
   (allow-list in the service; anything else → **400**), and the server **always appends
   the stable tie-breakers** (`voucherNumber`, `lineNo`, `id`) minus any already chosen.
@@ -329,12 +329,12 @@ GET /api/v1/accounting/ledger-movements
 
 ### 13.1 Unit (in-memory, Vitest, `backend/`)
 
-| Suite                                                                               | Tests                 | Result |
-| ----------------------------------------------------------------------------------- | --------------------- | ------ |
-| `src/modules/accounting/domain/ledger-movement.spec.ts`                             | 7                     | pass   |
-| `src/modules/accounting/application/ledger-movements.service.spec.ts`               | 12                    | pass   |
-| `src/modules/accounting/application/posting.service.spec.ts` (surface lock updated) | —                     | pass   |
-| Full unit suite `npm test`                                                          | 91 files / 1043 tests | pass   |
+| Suite | Tests | Result |
+|---|---|---|
+| `src/modules/accounting/domain/ledger-movement.spec.ts` | 7 | pass |
+| `src/modules/accounting/application/ledger-movements.service.spec.ts` | 12 | pass |
+| `src/modules/accounting/application/posting.service.spec.ts` (surface lock updated) | — | pass |
+| Full unit suite `npm test` | 91 files / 1043 tests | pass |
 
 The service suite covers: permission required (403 through the real authorization
 service), deployment-pin 404, unknown organization 404, filter → `where` translation
@@ -387,20 +387,20 @@ build, `migrate deploy` and the Task 11 migration rehearsal green.
 
 ### 13.4 Commands actually executed (and what could not run)
 
-| Command (`backend/`)                                                                                                                                                   | Result                                                                                                                                                                                                                                         |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `npm test` (`vitest run --config ./vitest.config.ts`)                                                                                                                  | **PASS** — 91 files, 1043 tests                                                                                                                                                                                                                |
-| `npm run test:e2e` (`vitest run --config ./vitest.config.e2e.ts`)                                                                                                      | **PASS** — 16 files passed, 10 skipped; 218 passed, 74 skipped                                                                                                                                                                                 |
-| `npx vitest run --config ./vitest.config.ts src/modules/accounting/domain/ledger-movement.spec.ts src/modules/accounting/application/ledger-movements.service.spec.ts` | **PASS** — 2 files, 19 tests                                                                                                                                                                                                                   |
-| `npx vitest run --config ./vitest.config.e2e.ts test/accounting-ledger-movements.e2e-spec.ts`                                                                          | **PASS** — 1 file, 28 tests                                                                                                                                                                                                                    |
-| `npx vitest run --config ./vitest.config.e2e.ts test/ledger-movements-live.e2e-spec.ts`                                                                                | **SKIPPED locally** — 13 tests skipped: no `VARDENA_TEST_DATABASE_URL` in this sandbox. **Executed and green in CI** (run `36048743757`, see §13.3)                                                                                            |
-| `npx tsc --noEmit`                                                                                                                                                     | **PASS** — no diagnostics                                                                                                                                                                                                                      |
-| `npm run format:check`                                                                                                                                                 | **PASS** — all files Prettier-clean                                                                                                                                                                                                            |
-| `npm run lint` (`oxlint .`)                                                                                                                                            | **PASS with 6 pre-existing warnings, 0 errors** — all six are in files this task does not touch (`coding-structure-accounts.spec.ts` ×2, `accounts.service.ts`, `accounting-document-errors.ts` ×2, `accounting-configurations.repository.ts`) |
-| `npm run build` (`nest build`)                                                                                                                                         | **PASS** — `dist/main.js` produced                                                                                                                                                                                                             |
-| `npm run prisma:validate`                                                                                                                                              | **NOT RUNNABLE HERE** — the Prisma CLI must fetch its schema engine from `binaries.prisma.sh`, which this sandbox blocks (TLS). With no `DATABASE_URL` it fails earlier with `PrismaConfigEnvError`. CI runs it against the real schema.       |
-| `npm run prisma:generate`                                                                                                                                              | **NOT RUNNABLE HERE** — same engine fetch. `src/generated/prisma/client.ts` is the repository's checked-in stub (it throws "Prisma Client has not been generated"), which is exactly why live suites are CI-only in this environment.          |
-| migration rehearsal / live suites (`postgres:16` service, job-level `VARDENA_TEST_DATABASE_URL` in `.github/workflows/ci.yml`)                                         | **NOT RUN HERE** — CI-only; nothing here is claimed as executed live evidence.                                                                                                                                                                 |
+| Command (`backend/`) | Result |
+|---|---|
+| `npm test` (`vitest run --config ./vitest.config.ts`) | **PASS** — 91 files, 1043 tests |
+| `npm run test:e2e` (`vitest run --config ./vitest.config.e2e.ts`) | **PASS** — 16 files passed, 10 skipped; 218 passed, 74 skipped |
+| `npx vitest run --config ./vitest.config.ts src/modules/accounting/domain/ledger-movement.spec.ts src/modules/accounting/application/ledger-movements.service.spec.ts` | **PASS** — 2 files, 19 tests |
+| `npx vitest run --config ./vitest.config.e2e.ts test/accounting-ledger-movements.e2e-spec.ts` | **PASS** — 1 file, 28 tests |
+| `npx vitest run --config ./vitest.config.e2e.ts test/ledger-movements-live.e2e-spec.ts` | **SKIPPED locally** — 13 tests skipped: no `VARDENA_TEST_DATABASE_URL` in this sandbox. **Executed and green in CI** (run `36048743757`, see §13.3) |
+| `npx tsc --noEmit` | **PASS** — no diagnostics |
+| `npm run format:check` | **PASS** — all files Prettier-clean |
+| `npm run lint` (`oxlint .`) | **PASS with 6 pre-existing warnings, 0 errors** — all six are in files this task does not touch (`coding-structure-accounts.spec.ts` ×2, `accounts.service.ts`, `accounting-document-errors.ts` ×2, `accounting-configurations.repository.ts`) |
+| `npm run build` (`nest build`) | **PASS** — `dist/main.js` produced |
+| `npm run prisma:validate` | **NOT RUNNABLE HERE** — the Prisma CLI must fetch its schema engine from `binaries.prisma.sh`, which this sandbox blocks (TLS). With no `DATABASE_URL` it fails earlier with `PrismaConfigEnvError`. CI runs it against the real schema. |
+| `npm run prisma:generate` | **NOT RUNNABLE HERE** — same engine fetch. `src/generated/prisma/client.ts` is the repository's checked-in stub (it throws "Prisma Client has not been generated"), which is exactly why live suites are CI-only in this environment. |
+| migration rehearsal / live suites (`postgres:16` service, job-level `VARDENA_TEST_DATABASE_URL` in `.github/workflows/ci.yml`) | **NOT RUN HERE** — CI-only; nothing here is claimed as executed live evidence. |
 
 Environment facts (recorded so the next reader does not re-litigate them): the sandbox
 has Node v22.22.3 and npm 10.9.8, **no** `docker`/`psql`/`postgres` binaries, an
@@ -411,7 +411,7 @@ has Node v22.22.3 and npm 10.9.8, **no** `docker`/`psql`/`postgres` binaries, an
 
 ## 14. Environment rehearsal actually executed (PostgreSQL 17.5 WASM)
 
-To obtain _some_ real-database signal without a server, a **scratch** rehearsal (outside
+To obtain *some* real-database signal without a server, a **scratch** rehearsal (outside
 the repository, nothing committed, not a project dependency) ran the repository's own 15
 migrations against **PGlite / PostgreSQL 17.5 (wasm32)** exposed over a TCP socket:
 
@@ -427,19 +427,19 @@ migrations against **PGlite / PostgreSQL 17.5 (wasm32)** exposed over a TCP sock
 
 **This is rehearsal evidence, not live-PostgreSQL CI evidence**: WASM build, single
 session, warm cache, and absolute times are not comparable to a native server. The plan
-_shapes_ and the index usage are the part worth reading. (The live movement suite itself
+*shapes* and the index usage are the part worth reading. (The live movement suite itself
 has since executed green against real `postgres:16` in CI — §13.3; this rehearsal is
-kept because it is the only _query-plan_ signal obtained for this slice.)
+kept because it is the only *query-plan* signal obtained for this slice.)
 
-| Query (org = tenant A, the service's default order)     | Plan                                                                   | Time                      |
-| ------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------- |
-| Page 1, no filter (LIMIT 100)                           | Seq Scan (org filter, 99,999 rows) + top-N heapsort                    | 65 ms                     |
-| Deep page (LIMIT 100 OFFSET 49,900)                     | Seq Scan + **external merge sort to disk** (18,272 kB temp)            | 214 ms                    |
-| Account filter (LIMIT 100)                              | **Index Scan** `idx_…_org_account` (50 rows) + quicksort               | 0.22 ms                   |
-| Period filter (LIMIT 100)                               | **Bitmap Index Scan** `idx_…_org_period` (8,334 rows) + top-N heapsort | 11.4 ms                   |
-| Voucher filter (LIMIT 100)                              | **Index Scan** `idx_…_org_voucher` (4 rows) + quicksort                | 0.10 ms                   |
-| Voucher/period/account `count()` over the org predicate | Seq Scan / Bitmap Index Scan                                           | 55 ms (tenant-wide count) |
-| Date window (one month)                                 | Seq Scan (no date index) + top-N heapsort                              | 32 ms                     |
+| Query (org = tenant A, the service's default order) | Plan | Time |
+|---|---|---|
+| Page 1, no filter (LIMIT 100) | Seq Scan (org filter, 99,999 rows) + top-N heapsort | 65 ms |
+| Deep page (LIMIT 100 OFFSET 49,900) | Seq Scan + **external merge sort to disk** (18,272 kB temp) | 214 ms |
+| Account filter (LIMIT 100) | **Index Scan** `idx_…_org_account` (50 rows) + quicksort | 0.22 ms |
+| Period filter (LIMIT 100) | **Bitmap Index Scan** `idx_…_org_period` (8,334 rows) + top-N heapsort | 11.4 ms |
+| Voucher filter (LIMIT 100) | **Index Scan** `idx_…_org_voucher` (4 rows) + quicksort | 0.10 ms |
+| Voucher/period/account `count()` over the org predicate | Seq Scan / Bitmap Index Scan | 55 ms (tenant-wide count) |
+| Date window (one month) | Seq Scan (no date index) + top-N heapsort | 32 ms |
 
 Read-out: the equality filters this slice exposes are served by existing indexes; the
 unfiltered tenant-wide page and the tenant-wide `count()` do a tenant-wide scan+sort
@@ -463,7 +463,7 @@ whose cost grows linearly with the tenant's ledger. No migration was added on th
    matching set (measured in §14). No index was added.
 6. `voucherNumber` matching is exact-match only; it is a string column (numeric-only
    serials), and no prefix/range/numeric-coercion semantics are invented.
-7. The endpoint is a reporting _source_, not a user-facing report: no layout, totals,
+7. The endpoint is a reporting *source*, not a user-facing report: no layout, totals,
    export, print or grouping.
 8. Live-PostgreSQL evidence comes from CI (run `36048743757`, §13.3), not from this
    sandbox; the local signals are the WASM rehearsal of §14 and the in-memory HTTP suite.
@@ -486,23 +486,23 @@ artifacts, jobs, caching and read-only DB roles; frontend surfaces.
 
 ## 17. Files changed
 
-| File                                                                                  | Change                                                                    |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| `backend/src/modules/accounting/domain/ledger-movement.ts` + `.spec.ts`               | NEW — movement DTO + pure projection (7 tests)                            |
+| File | Change |
+|---|---|
+| `backend/src/modules/accounting/domain/ledger-movement.ts` + `.spec.ts` | NEW — movement DTO + pure projection (7 tests) |
 | `backend/src/modules/accounting/application/ledger-movements.service.ts` + `.spec.ts` | NEW — read service (permission, scope, filters, order, paging) (12 tests) |
-| `backend/src/modules/accounting/api/accounting-ledger-movements.controller.ts`        | NEW — GET-only versioned controller                                       |
-| `backend/src/modules/accounting/api/dto/ledger-movement.dto.ts`                       | NEW — validated query + documented response DTOs                          |
-| `backend/src/modules/accounting/domain/accounting-permissions.ts`                     | `Accounting.LedgerMovement.View` registered (+ definition)                |
-| `backend/src/modules/accounting/data/ledger-entries.repository.ts`                    | `listMovements` read + `LedgerMovementFilter`; no write path              |
-| `backend/src/modules/accounting/data/accounting-rows.ts`                              | movement predicates; delegate `skip`/`take`/`count`                       |
-| `backend/src/modules/accounting/accounting.module.ts`                                 | provider + controller registration                                        |
-| `backend/src/modules/accounting/application/posting.service.spec.ts`                  | reference-surface lock extended (proves reads only)                       |
-| `backend/test/support/accounting-document-repositories.ts`                            | in-memory `listMovements` + movement filter/sort helpers                  |
-| `backend/test/accounting-ledger-movements.e2e-spec.ts`                                | NEW — 28 HTTP tests                                                       |
-| `backend/test/ledger-movements-live.e2e-spec.ts`                                      | NEW — 13 live PostgreSQL tests (CI)                                       |
-| `docs/modules.md`                                                                     | implemented API + permission count (35) recorded                          |
-| `docs/accounting/task-index.md`, `STATE.md`                                           | evidence-backed status entries                                            |
-| **Schema / migrations**                                                               | **NONE** — no schema change, no migration, no index.                      |
+| `backend/src/modules/accounting/api/accounting-ledger-movements.controller.ts` | NEW — GET-only versioned controller |
+| `backend/src/modules/accounting/api/dto/ledger-movement.dto.ts` | NEW — validated query + documented response DTOs |
+| `backend/src/modules/accounting/domain/accounting-permissions.ts` | `Accounting.LedgerMovement.View` registered (+ definition) |
+| `backend/src/modules/accounting/data/ledger-entries.repository.ts` | `listMovements` read + `LedgerMovementFilter`; no write path |
+| `backend/src/modules/accounting/data/accounting-rows.ts` | movement predicates; delegate `skip`/`take`/`count` |
+| `backend/src/modules/accounting/accounting.module.ts` | provider + controller registration |
+| `backend/src/modules/accounting/application/posting.service.spec.ts` | reference-surface lock extended (proves reads only) |
+| `backend/test/support/accounting-document-repositories.ts` | in-memory `listMovements` + movement filter/sort helpers |
+| `backend/test/accounting-ledger-movements.e2e-spec.ts` | NEW — 28 HTTP tests |
+| `backend/test/ledger-movements-live.e2e-spec.ts` | NEW — 13 live PostgreSQL tests (CI) |
+| `docs/modules.md` | implemented API + permission count (35) recorded |
+| `docs/accounting/task-index.md`, `STATE.md` | evidence-backed status entries |
+| **Schema / migrations** | **NONE** — no schema change, no migration, no index. |
 
 ---
 

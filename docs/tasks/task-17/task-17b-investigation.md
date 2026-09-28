@@ -12,7 +12,7 @@
 > migration, no index, no permission, no report builder, no export, no print
 > engine and no frontend.** Its status is `READY FOR REVIEW`; the only capable
 > reviewers are the Repository Owner / accountant / tax-legal owner. `READY FOR
-REVIEW` is **not** acceptance of implementation.
+> REVIEW` is **not** acceptance of implementation.
 
 ---
 
@@ -62,14 +62,14 @@ If any implementation appears necessary from this analysis, it is recorded in
 
 Every important conclusion is tagged with exactly one classification:
 
-| Marker                  | Meaning                                                                                                   |
-| ----------------------- | --------------------------------------------------------------------------------------------------------- |
+| Marker | Meaning |
+| --- | --- |
 | CONFIRMED BY REPOSITORY | A fact established by citing the current `main` tree (file, symbol, migration, test, or decision record). |
-| PROPOSED DESIGN         | A contract-level proposal made by this task, clearly identified as a proposal and not as repository fact. |
-| UNKNOWN                 | Not determinable from current repository evidence; no assumption is manufactured.                         |
-| REQUIRES OWNER DECISION | Determinable only by the Repository Owner / accountant / tax-legal / architecture owner.                  |
-| BLOCKED BY OQ           | Governed by an Open Question in `docs/open-questions.md`; nothing here resolves or reclassifies it.       |
-| OUT OF SCOPE            | Explicitly outside this task's boundary.                                                                  |
+| PROPOSED DESIGN | A contract-level proposal made by this task, clearly identified as a proposal and not as repository fact. |
+| UNKNOWN | Not determinable from current repository evidence; no assumption is manufactured. |
+| REQUIRES OWNER DECISION | Determinable only by the Repository Owner / accountant / tax-legal / architecture owner. |
+| BLOCKED BY OQ | Governed by an Open Question in `docs/open-questions.md`; nothing here resolves or reclassifies it. |
+| OUT OF SCOPE | Explicitly outside this task's boundary. |
 
 Lineage is fully inside **Accounting-owned facts**; no conclusion below reads
 operational modules (AR-07, AC-I-13, ADR-0026 §3.1).
@@ -80,20 +80,20 @@ operational modules (AR-07, AC-I-13, ADR-0026 §3.1).
 
 - HEAD of `main` and of the working branch: `3322293` — **Merge pull request #40
   from MR-AliEsmaeili/arena/01a0d4d0-vardena** (`docs(accounting): accept Task
-17A ledger movement source`). _(CONFIRMED BY REPOSITORY — `git log -1`.)_
+  17A ledger movement source`). *(CONFIRMED BY REPOSITORY — `git log -1`.)*
 - PR #40 is therefore present in the tree that this investigation reads.
-  _(CONFIRMED BY REPOSITORY.)_
+  *(CONFIRMED BY REPOSITORY.)*
 - `docs/tasks/task-17/task-17a-acceptance-record.md` records Task 17A as
   **ACCEPTED (2026-09-25)** via PR #39 merged in `130fab9`.
-  _(CONFIRMED BY REPOSITORY.)_
+  *(CONFIRMED BY REPOSITORY.)*
 - `docs/tasks/task-17/brief.md` and `prompt.md` record Task 17 as
   **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS (OQ-25/OQ-43)**.
-  _(CONFIRMED BY REPOSITORY.)_
+  *(CONFIRMED BY REPOSITORY.)*
 - `docs/accounting/task-index.md` and `STATE.md` carry the same statuses and
   additionally record Task 12 **ACCEPTED WITH FOLLOW-UP** (P1 real-PG
   concurrency), Task 13 **IN PROGRESS (self-review)**, Task 14 **READY FOR
   REVIEW — NOT ACCEPTED**, Task 16 **BLOCKED — OWNER CONFIRMATION REQUIRED**.
-  None of those statuses is altered by this task. _(CONFIRMED BY REPOSITORY.)_
+  None of those statuses is altered by this task. *(CONFIRMED BY REPOSITORY.)*
 
 ---
 
@@ -153,7 +153,7 @@ project this linkage (Task 17A limitation §15 item 4 in
 set (`pk_ledger_entries`, `uq_ledger_entries_voucher_line_id`,
 `idx_ledger_entries_org_voucher`, `idx_ledger_entries_org_account`,
 `idx_ledger_entries_org_period`) and the **absence of any date-leading index**.
-_Scalability consequence:_ account/period/voucher equality filters are
+*Scalability consequence:* account/period/voucher equality filters are
 index-served; an unfiltered tenant-wide page or a business-date window is a
 tenant-wide scan + top-N sort.
 
@@ -172,13 +172,13 @@ tenant-wide scan + top-N sort.
   postings/children, history stays readable (§8.6).
 - **Nature:** `account_nature` (`debit|credit`) **is** a closed, decided list and
   **is** stored. It is **reporting semantics only** — it does not restrict which
-  side a line uses (§13.4). _(CONFIRMED BY REPOSITORY.)_
+  side a line uses (§13.4). *(CONFIRMED BY REPOSITORY.)*
 - **Classification:** `account_type` and `is_temporary` (asset/liability/equity/
   revenue/expense + temporary closing) are **NOT stored** — the vocabulary and
   the mapping are EXPERT-GATED with OQ-25 (schema file header: “`account_type`
   … no column is invented”; contract §8.3). **Account nature is therefore NOT
-  authoritative for account classification.** _(CONFIRMED BY REPOSITORY —
-  see also `docs/open-questions.md` OQ-25 row.)_
+  authoritative for account classification.** *(CONFIRMED BY REPOSITORY —
+  see also `docs/open-questions.md` OQ-25 row.)*
 - **Hierarchy sufficiency:** one adjacency tree `parent_id` + `level` is
   sufficient for rollups via recursive CTE / materialized path; the schema
   header notes a rebuildable `path` projection belongs “with the reporting task
@@ -206,7 +206,7 @@ tenant-wide scan + top-N sort.
 - **Derived measures:** `vw_account_balance_derived`
   (`backend/prisma/migrations/20260922000000_accounting_balance_projection/migration.sql`)
   computes `period_net = debit − credit`, `opening = cumulative closing up to
-PRIOR period`, `closing = opening + period_net`, **windowed**
+  PRIOR period`, `closing = opening + period_net`, **windowed**
   `PARTITION BY (org, area, fiscal_year, account) ORDER BY accounting_periods.sequence`
   — **never crossing a fiscal-year boundary**. First period opening = 0.
 - **Reporting suitability gap:** the projection answers “turnover per period ×
@@ -378,7 +378,7 @@ nature is not authoritative?**
 - **Evidence:** `account_nature` (`debit|credit`) is stored and decided; but
   asset/liability/equity/revenue/expense classification (`account_type`,
   `is_temporary`) is **not stored** (schema header; OQ-25). `accountNature`
-  governs balance _direction_ only, and §13.4 forbids rejecting a
+  governs balance *direction* only, and §13.4 forbids rejecting a
   contrary-nature balance as a rule.
 - **Decision:** BLOCKED BY OQ. A **debit-nature** account's balance can be
   expressed as `Σ debit − Σ credit`; a **credit-nature** account's natural
@@ -397,7 +397,7 @@ aggregation, detailed trial balance, summary trial balance, period comparison?**
 - **Evidence:** account-level movement ✅ (ledger + `(org, account)` index);
   hierarchy aggregation ✅ structurally (adjacency tree; recursive CTE; note
   the §8.5 no-double-count rule) but **classification-grouped** summary +
-  _control-role_ rollups ❌ (no `account_type`/roles); detailed trial balance
+  *control-role* rollups ❌ (no `account_type`/roles); detailed trial balance
   ✅ over projection/derived view (per period × account) without dimensions;
   summary trial balance ⚠️ only as **account-code/tree rollups** in a
   non-classified form (not asset/liability/… grouped); period comparison ⚠️
@@ -427,7 +427,7 @@ aggregation, detailed trial balance, summary trial balance, period comparison?**
   `financialAreaId` inside the organization; per-user area grants are NOT
   implemented (OQ-40 interim = structural).
 - **Decision:** CONFIRMED BY REPOSITORY for organizational scoping; area as an
-  _authorization_ boundary is BLOCKED BY OQ (OQ-40) until grants exist.
+  *authorization* boundary is BLOCKED BY OQ (OQ-40) until grants exist.
 - **Consequence:** future sources may require a single area id or an
   allow-listed area set within one organization; aggregation across areas and
   area-access enforcement must wait for OQ-40 / OQ-56.
@@ -437,10 +437,10 @@ sealed periods, or multiple financial areas?**
 
 - **Evidence:** stored period/year resolution makes multi-period reads a plain
   predicate; closed/sealed statuses do **not** suppress history (freeze over
-  delete; Task 14 enforcement gates _posting_, not reading); multiple open
+  delete; Task 14 enforcement gates *posting*, not reading); multiple open
   periods allowed; the projection window does **not** cross years (ADR-0031 §9).
 - **Decision:** CONFIRMED BY REPOSITORY for “history stays readable”; the
-  _reporting policy_ for closed/sealed inclusion (which periods a legal book
+  *reporting policy* for closed/sealed inclusion (which periods a legal book
   may show, whether sealed years must be re-rendered identically) is UNKNOWN →
   BLOCKED BY OQ (OQ-23/OQ-27/OQ-43).
 - **Consequence:** a report contract must carry an explicit
@@ -466,7 +466,7 @@ sealed periods, or multiple financial areas?**
   AC-I-19c); accounts are never deleted; a leaf may be non-postable.
 - **Decision:** CONFIRMED BY REPOSITORY for the projection; the **reporting
   density** rule (show vs collapse zero rows in a trial balance) is PROPOSED
-  DESIGN — and the choice between _sparse_ (projection-faithful) and _dense_
+  DESIGN — and the choice between *sparse* (projection-faithful) and *dense*
   (LEFT JOIN periods/accounts) output is REQUIRES OWNER DECISION for each
   future surface.
 - **Consequence:** the report contract must carry a `density` policy (sparse/
@@ -561,14 +561,14 @@ handled?**
 
 ### 8.1 Four distinct layers — never merged
 
-| Layer                                  | Owner                   | Concern                                                                                                                                       | Governed by                                                |
-| -------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| 1. **Accounting domain read contract** | Accounting              | Ledger-native rows and exact turnover/derived balance measures; scope, reconciliation, Decimal strings.                                       | Contract §19, AC-D-30/31, ADR-0031, Task 17A.              |
-| 2. **Shared Reporting envelope**       | Reporting (future)      | The generic `ReportResponse<T>` in §8.2: id, version, context, filters, columns, rows, totals, pagination, order, auth, warnings, provenance. | ADR-0009, `reporting-strategy.md`.                         |
-| 3. **Export-specific formatting**      | Excel/Print             | Column order/labels, number formats, RTL, paper, template — presentation only, never changes money values or scope.                           | ADR-0012, reporting-strategy §6.                           |
-| 4. **Legal/statutory report profile**  | Expert-approved profile | Versioned, validated legal column sets, layout, language, filing obligations.                                                                 | **OQ-43** (not designed here); `prints`/e-ledger excluded. |
+| Layer | Owner | Concern | Governed by |
+| --- | --- | --- | --- |
+| 1. **Accounting domain read contract** | Accounting | Ledger-native rows and exact turnover/derived balance measures; scope, reconciliation, Decimal strings. | Contract §19, AC-D-30/31, ADR-0031, Task 17A. |
+| 2. **Shared Reporting envelope** | Reporting (future) | The generic `ReportResponse<T>` in §8.2: id, version, context, filters, columns, rows, totals, pagination, order, auth, warnings, provenance. | ADR-0009, `reporting-strategy.md`. |
+| 3. **Export-specific formatting** | Excel/Print | Column order/labels, number formats, RTL, paper, template — presentation only, never changes money values or scope. | ADR-0012, reporting-strategy §6. |
+| 4. **Legal/statutory report profile** | Expert-approved profile | Versioned, validated legal column sets, layout, language, filing obligations. | **OQ-43** (not designed here); `prints`/e-ledger excluded. |
 
-Do not merge these into one document or one report table. A report _definition_
+Do not merge these into one document or one report table. A report *definition*
 (layer 2) references an Accounting source (layer 1); an export (layer 3) formats
 a result; a statutory profile (layer 4) is a separate, versioned,
 expert-signed artifact.
@@ -580,79 +580,62 @@ expert-signed artifact.
 ```ts
 interface ReportResponse<T> {
   // Identity + versioning
-  reportId: string; // stable kebab-case id (registry), e.g. "accounting-account-movement"
-  reportVersion: string; // semantic version of the DEFINITION semantics
-  generatedAt: string; // ISO-8601 UTC instant the query executed
+  reportId: string;            // stable kebab-case id (registry), e.g. "accounting-account-movement"
+  reportVersion: string;       // semantic version of the DEFINITION semantics
+  generatedAt: string;         // ISO-8601 UTC instant the query executed
 
   // Context (all mandatory; scope is server-resolved)
   organization: { organizationId: string };
-  financialArea: {
-    financialAreaId: string | null;
-    mode: "single" | "all-shaped" | "unset";
-  };
+  financialArea: { financialAreaId: string | null; mode: "single" | "all-shaped" | "unset" };
   fiscalPeriod: {
     fiscalYearId: string | null;
     accountingPeriodId: string | null;
-    coverage:
-      | "single-period"
-      | "period-range"
-      | "year-to-date"
-      | "all-periods"
-      | "unspecified";
+    coverage: "single-period" | "period-range" | "year-to-date" | "all-periods" | "unspecified";
     includesClosedSealed: boolean;
   };
 
   // Applied filters (normalized, echo-only)
   appliedFilters: ReadonlyArray<{
-    column: string;
-    operator: string;
-    value: string | number | null; // values always serialized
+    column: string; operator: string; value: string | number | null; // values always serialized
   }>;
   appliedSort: ReadonlyArray<{ column: string; direction: "asc" | "desc" }>;
-  sortIsTotal: boolean; // MUST be true (unique id tie-breaker enforced)
+  sortIsTotal: boolean;        // MUST be true (unique id tie-breaker enforced)
 
   // Shape
-  columns: ReadonlyArray<ColumnMeta>; // key, labelKey?, dataType, sortable, groupable, summable
-  rows: T[]; // row type is source-specific (layer 1)
-  totals: ReadonlyArray<TotalSpec>; // only exact-decimal sums declared by the definition
+  columns: ReadonlyArray<ColumnMeta>;   // key, labelKey?, dataType, sortable, groupable, summable
+  rows: T[];                           // row type is source-specific (layer 1)
+  totals: ReadonlyArray<TotalSpec>;     // only exact-decimal sums declared by the definition
 
   // Pagination
   pagination: {
     model: "offset" | "cursor";
     page?: number;
-    pageSize: number; // ≤ 500
-    total?: number; // present for offset; may be estimate-only when declared
+    pageSize: number;          // ≤ 500
+    total?: number;            // present for offset; may be estimate-only when declared
     nextCursor?: string | null;
-    rowCap: number; // enforced cap (UI 5k / export 50k)
-    truncated: boolean; // true when cap cut the result
+    rowCap: number;            // enforced cap (UI 5k / export 50k)
+    truncated: boolean;        // true when cap cut the result
   };
 
   // Ordering metadata
-  ordering: {
-    declared: ReadonlyArray<{ column: string; direction: string }>;
-    tieBreakers: ReadonlyArray<string>;
-  };
+  ordering: { declared: ReadonlyArray<{column:string;direction:string}>; tieBreakers: ReadonlyArray<string> };
 
   // Data representation
-  valueEncoding: {
-    money: "decimal-string";
-    dates: "date-only-string" | "instant-string";
-  };
+  valueEncoding: { money: "decimal-string"; dates: "date-only-string" | "instant-string" };
 
   // Partial-result / warnings (never silent)
   warnings: ReadonlyArray<Warning>;
-  complete: boolean; // false when truncated, timed out, or partial scope resolved
+  complete: boolean;           // false when truncated, timed out, or partial scope resolved
 
   // Source / reconciliation metadata (layer 1 provides; Reporting relays)
   source: {
-    module: string; // "accounting"
-    sourceKind:
-      "ledger" | "balance-projection" | "derived-balance" | "composed-view";
-    readAsOf: string | null; // explicit snapshot note if a point-in-time read is ever authorized
+    module: string;            // "accounting"
+    sourceKind: "ledger" | "balance-projection" | "derived-balance" | "composed-view";
+    readAsOf: string | null;   // explicit snapshot note if a point-in-time read is ever authorized
   };
   reconcile?: {
-    expectation: string; // e.g. "rows reconcile 1:1 with ledger_entries for the same predicate"
-    check: string | null; // reference to the reconciliation surface/identity used
+    expectation: string;       // e.g. "rows reconcile 1:1 with ledger_entries for the same predicate"
+    check: string | null;      // reference to the reconciliation surface/identity used
   };
 }
 
@@ -660,7 +643,7 @@ type Warning =
   | { kind: "row-cap"; message: string }
   | { kind: "timeout-approaching"; message: string }
   | { kind: "scope-unset"; message: string }
-  | { kind: "density-note"; message: string }; // closed, code-defined list — never free text from SQL
+  | { kind: "density-note"; message: string };   // closed, code-defined list — never free text from SQL
 ```
 
 Key properties the proposal **mandates**:
@@ -781,22 +764,22 @@ implemented.
 
 ## 10. Security and data-integrity verification matrix
 
-| Requirement                                               | Verdict / evidence                                                                                                                                                                          |
-| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `organizationId` mandatory for every future read          | REQUIRED (proposal) and already enforced in both existing read paths (`listMovements`, balance reads). CONFIRMED BY REPOSITORY.                                                             |
-| Tenant isolation cannot depend only on the deployment pin | CONFIRMED BY REPOSITORY — pin is an _additional_ assertion; structural `organization_id` predicates + 404 posture are the isolation (ADR-0025; AC-I-01/16).                                 |
-| Cross-organization reads impossible                       | CONFIRMED BY REPOSITORY for current sources (predicates lead with scope; e2e `never returns another organization’s movements`); extended to future sources as a hard requirement (AC-I-16). |
-| Financial-area scope enforced                             | CONFIRMED BY REPOSITORY structurally (stored `financial_area_id`, 404 posture); as _authorization_ (user grants) BLOCKED BY OQ-40.                                                          |
-| Permissions distinct from license/entitlement             | CONFIRMED BY REPOSITORY — RBAC granular codes (ADR-0016/0022/0026 §4) are separate from license (ADR-0030 proposed, enforcement OFF, OQ-45).                                                |
-| Decimal precision preserved                               | CONFIRMED BY REPOSITORY (`numeric(18,2)` + decimal-string transport; `money.ts` exact BigInt arithmetic).                                                                                   |
-| No floating-point calculations                            | CONFIRMED BY REPOSITORY for existing Accounting; REQUIRED for all future report sources.                                                                                                    |
-| No arbitrary SQL fragments                                | CONFIRMED BY REPOSITORY posture (parameterized Prisma/values; ADR-0009 whitelists identifiers; reporting-strategy §3).                                                                      |
-| Filters and sorting allow-listed                          | CONFIRMED BY REPOSITORY (Task 17A sort whitelist + tie-breakers; balance `LIST_SORTABLE`).                                                                                                  |
-| Pagination bounded                                        | CONFIRMED BY REPOSITORY (`MAX_PAGE_SIZE=500`; row caps 5k/50k).                                                                                                                             |
-| Deterministic ordering mandatory                          | REQUIRED (proposal) — total order with unique tie-breaker (§7 Q13).                                                                                                                         |
-| Read models must not become a second source of truth      | CONFIRMED BY REPOSITORY (movement = ledger row; projection rebuildable + reconciliation; AC-I-19).                                                                                          |
-| Report output reproducible or explained                   | REQUIRED (proposal) — `readAsOf`/`reconcile` + `generatedAt`; ledger-movement output reproducible; projection-backed output reproducible given rebuild state (documented).                  |
-| Auditability requirements for future exports              | REQUIRED (proposal), delegated to Reporting/Excel/Print + Audit/Jobs (ADR-0009/0012; AR-17/23); export execution and download must be permission-gated and auditable.                       |
+| Requirement | Verdict / evidence |
+| --- | --- |
+| `organizationId` mandatory for every future read | REQUIRED (proposal) and already enforced in both existing read paths (`listMovements`, balance reads). CONFIRMED BY REPOSITORY. |
+| Tenant isolation cannot depend only on the deployment pin | CONFIRMED BY REPOSITORY — pin is an *additional* assertion; structural `organization_id` predicates + 404 posture are the isolation (ADR-0025; AC-I-01/16). |
+| Cross-organization reads impossible | CONFIRMED BY REPOSITORY for current sources (predicates lead with scope; e2e `never returns another organization’s movements`); extended to future sources as a hard requirement (AC-I-16). |
+| Financial-area scope enforced | CONFIRMED BY REPOSITORY structurally (stored `financial_area_id`, 404 posture); as *authorization* (user grants) BLOCKED BY OQ-40. |
+| Permissions distinct from license/entitlement | CONFIRMED BY REPOSITORY — RBAC granular codes (ADR-0016/0022/0026 §4) are separate from license (ADR-0030 proposed, enforcement OFF, OQ-45). |
+| Decimal precision preserved | CONFIRMED BY REPOSITORY (`numeric(18,2)` + decimal-string transport; `money.ts` exact BigInt arithmetic). |
+| No floating-point calculations | CONFIRMED BY REPOSITORY for existing Accounting; REQUIRED for all future report sources. |
+| No arbitrary SQL fragments | CONFIRMED BY REPOSITORY posture (parameterized Prisma/values; ADR-0009 whitelists identifiers; reporting-strategy §3). |
+| Filters and sorting allow-listed | CONFIRMED BY REPOSITORY (Task 17A sort whitelist + tie-breakers; balance `LIST_SORTABLE`). |
+| Pagination bounded | CONFIRMED BY REPOSITORY (`MAX_PAGE_SIZE=500`; row caps 5k/50k). |
+| Deterministic ordering mandatory | REQUIRED (proposal) — total order with unique tie-breaker (§7 Q13). |
+| Read models must not become a second source of truth | CONFIRMED BY REPOSITORY (movement = ledger row; projection rebuildable + reconciliation; AC-I-19). |
+| Report output reproducible or explained | REQUIRED (proposal) — `readAsOf`/`reconcile` + `generatedAt`; ledger-movement output reproducible; projection-backed output reproducible given rebuild state (documented). |
+| Auditability requirements for future exports | REQUIRED (proposal), delegated to Reporting/Excel/Print + Audit/Jobs (ADR-0009/0012; AR-17/23); export execution and download must be permission-gated and auditable. |
 
 ---
 
@@ -859,12 +842,12 @@ all Open Questions (OQ-03/23/25/27/31/40/41/42/43/49, 62/63).
   and statutory/statement **layouts**. Consequence for Task 17B: only
   nature-agnostic, ledger-native semantics are specified; no asset/liability/
   equity/revenue/expense rule, no control-role summary, no statement section.
-  **Remains OPEN.** _(CONFIRMED BY REPOSITORY — registry row.)_
+  **Remains OPEN.** *(CONFIRMED BY REPOSITORY — registry row.)*
 - **OQ-43** gates Iranian statutory/legal profiles (legal books, timing,
   language/currency, no-deletion, branch obligations, Art. 169, retention).
   Consequence: no legal column set, no 4/6/8-column form, no e-ledger, no
-  statutory ordering is designed. **Remains OPEN.** _(CONFIRMED BY REPOSITORY —
-  registry row.)_
+  statutory ordering is designed. **Remains OPEN.** *(CONFIRMED BY REPOSITORY —
+  registry row.)*
 - Neither OQ is resolved, reclassified, or given a fabricated interim answer by
   this investigation. Any future implementation still requires, per Task 17
   gates: OQ-25/OQ-43 resolution **or** an owner-recorded bounded interim posture

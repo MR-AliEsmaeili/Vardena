@@ -5,8 +5,7 @@ Date: 2026-09-26 · PR **#54** (`arena/01a0dd0a-vardena` → `main`) ·
 **Amended 2026-09-26 by the post-merge ODR-3 membership-administration
 correction — see §6** (branch `arena/01a0dd6c-vardena`, base `f153251`) ·
 Implementation commits `4e2e57e` (implementation), `b91b231` (e2e enablement
-
-- focused suites), `180dcf3` (e2e fix loop), `aaf34c6` (e2e fix loop)
++ focused suites), `180dcf3` (e2e fix loop), `aaf34c6` (e2e fix loop)
 
 Governing decisions: `docs/accounting/owner-decision-baseline.md` §11
 (ODR-1/ODR-2/ODR-3, DECIDED) ·
@@ -136,13 +135,13 @@ Exactly the three authorized slices; nothing outside gate §E was touched.
 
 **LOCAL (ARENA):**
 
-| Gate                                  | Result                                                                                                                                                   |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `format:check`                        | ✅ pass (after prettier on first-authored files)                                                                                                         |
-| `lint` (oxlint)                       | ✅ **0 errors**; 6 warnings — all pre-existing on base `5cff2ab`, verified by diff, not introduced                                                       |
-| `typecheck` (`tsc --noEmit`)          | ✅ pass                                                                                                                                                  |
-| `npm test` (unit)                     | ✅ **100 files / 1131 tests** passed (includes the 28 new tests of this task)                                                                            |
-| `build` (`nest build`)                | ✅ pass                                                                                                                                                  |
+| Gate | Result |
+|---|---|
+| `format:check` | ✅ pass (after prettier on first-authored files) |
+| `lint` (oxlint) | ✅ **0 errors**; 6 warnings — all pre-existing on base `5cff2ab`, verified by diff, not introduced |
+| `typecheck` (`tsc --noEmit`) | ✅ pass |
+| `npm test` (unit) | ✅ **100 files / 1131 tests** passed (includes the 28 new tests of this task) |
+| `build` (`nest build`) | ✅ pass |
 | `prisma:validate` / `prisma:generate` | ⚠️ blocked locally — sandbox cannot download the Prisma engine (`binaries.prisma.sh` unreachable); **delegated to CI** (passed there from the first run) |
 
 **DELEGATED TO GITHUB CI:** `prisma validate/generate`, `migrate deploy`
@@ -151,12 +150,12 @@ PostgreSQL (`postgres:16`), concurrency, full CI-equivalent pipeline.
 
 **CI RUNS (PR #54, job `backend`):**
 
-| Run           | Commit    | Result                                                                                                                                                                |
-| ------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `36235566364` | `4e2e57e` | ❌ E2E step only — the predicted hermetic persona-membership fallout; all earlier steps green (incl. `migrate deploy` + live-DB prerequisites)                        |
+| Run | Commit | Result |
+|---|---|---|
+| `36235566364` | `4e2e57e` | ❌ E2E step only — the predicted hermetic persona-membership fallout; all earlier steps green (incl. `migrate deploy` + live-DB prerequisites) |
 | `36236743575` | `b91b231` | ❌ E2E — 4 residual failures (wrong permission-code string in the new membership spec; unseeded mid-test org; two inner pinned apps missing the memberships override) |
-| `36237079134` | `180dcf3` | ❌ E2E — 1 residual failure (invalid-ULID probe: `@IsUlid()` correctly answers 400, not 404)                                                                          |
-| `36237376395` | `aaf34c6` | ✅ **success** — prisma validate/generate, lint, typecheck, format, unit, build, `migrate deploy`, migration rehearsals, E2E incl. live-DB suites                     |
+| `36237079134` | `180dcf3` | ❌ E2E — 1 residual failure (invalid-ULID probe: `@IsUlid()` correctly answers 400, not 404) |
+| `36237376395` | `aaf34c6` | ✅ **success** — prisma validate/generate, lint, typecheck, format, unit, build, `migrate deploy`, migration rehearsals, E2E incl. live-DB suites |
 
 **No heavy E2E/live-DB test was executed locally unless explicitly
 authorized.** Every e2e failure above was diagnosed from CI annotations and
@@ -214,10 +213,10 @@ acting principal**. The code recorded that as deliberate ("membership of the
 target organization is deliberately NOT required of the grantor", "the
 permission is the administration authority").
 
-That contradicts the ODR-3 invariant _Principal → authorized organization
+That contradicts the ODR-3 invariant *Principal → authorized organization
 membership/context → requested organization → module permission → resource
-access_ and its security clause _permission alone MUST NOT cross organization
-boundaries_: any principal holding `Organization.Membership.Grant` could grant
+access* and its security clause *permission alone MUST NOT cross organization
+boundaries*: any principal holding `Organization.Membership.Grant` could grant
 (and with View/Revoke, list or revoke) membership in an organization it was
 not a member of — a cross-organization authorization bypass on the
 administration surface. The deadlock argument justifies only ONE case: the
@@ -225,10 +224,10 @@ very first member of an organization that has none.
 
 ### 6.2 Rule after the correction
 
-| Target organization | List (`Membership.View`)                       | Grant (`Membership.Grant`)                                                                      | Revoke (`Membership.Revoke`)                                                            |
-| ------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| **0 members**       | membership required → **404** for a non-member | **BOOTSTRAP EXCEPTION**: first membership may be created by a non-member holding the permission | membership required → **404**                                                           |
-| **≥ 1 member**      | member **+** permission, else **404**          | member **+** permission, else **404**                                                           | member **+** permission, else **404** (including when the target user is somebody else) |
+| Target organization | List (`Membership.View`) | Grant (`Membership.Grant`) | Revoke (`Membership.Revoke`) |
+|---|---|---|---|
+| **0 members** | membership required → **404** for a non-member | **BOOTSTRAP EXCEPTION**: first membership may be created by a non-member holding the permission | membership required → **404** |
+| **≥ 1 member** | member **+** permission, else **404** | member **+** permission, else **404** | member **+** permission, else **404** (including when the target user is somebody else) |
 
 - Missing permission → **403** (unchanged); non-member → **404** (never 403,
   never a hint that the organization exists); unknown organization → the same
@@ -254,16 +253,16 @@ very first member of an organization that has none.
 
 ### 6.3 Files changed
 
-| File                                                                         | Change                                                                                                                                                                                                                                                                                                                                         |
-| ---------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `organization/application/organization-memberships.service.ts`               | New `authorizeMembershipAdministration(organizationId, { allowBootstrap })`: deployment pin → membership (`assertOrganizationInScope`) unless bootstrapping → `requireAdministrableOrganization`. `listMembers`/`revokeMembership` never bootstrap; `grantMembership` does. Stale "grantor membership deliberately not required" doc replaced. |
-| `organization/data/organization-memberships.repository.ts`                   | New `hasAnyMember(organizationId)` — indexed `LIMIT 1` existence probe (no member loading).                                                                                                                                                                                                                                                    |
-| `organization/application/organizations.service.ts`                          | Doc-only: `assertDeploymentOrganizationPin` and `requireAdministrableOrganization` no longer claim the grantor's membership is not required; `requireAdministrableOrganization` is documented as the organization resolver of the administration path, not a principal-binding entry point. No behaviour change (ODR-1/ODR-2 untouched).       |
-| `organization/api/organization-memberships.controller.ts`                    | Doc + `@ApiNotFoundResponse` descriptions aligned with the organization-bound rule (404 for non-members).                                                                                                                                                                                                                                      |
-| `organization/application/organization-memberships.service.spec.ts`          | **New** focused unit suite (17 tests) — see §6.4.                                                                                                                                                                                                                                                                                              |
-| `test/support/master-data-repositories.ts`                                   | `InMemoryOrganizationMembershipsRepository.hasAnyMember`.                                                                                                                                                                                                                                                                                      |
-| `test/organization-membership.e2e-spec.ts`                                   | Rewritten around the corrected rule (see §6.4); adds the `OUTSIDER` persona (all membership verbs, member of nothing) and the `hasAnyMember` seam in the user-FK wrapper.                                                                                                                                                                      |
-| `docs/security.md`, `docs/accounting/task-index.md`, `STATE.md`, this report | Documentation synchronized with the enforced behaviour.                                                                                                                                                                                                                                                                                        |
+| File | Change |
+|---|---|
+| `organization/application/organization-memberships.service.ts` | New `authorizeMembershipAdministration(organizationId, { allowBootstrap })`: deployment pin → membership (`assertOrganizationInScope`) unless bootstrapping → `requireAdministrableOrganization`. `listMembers`/`revokeMembership` never bootstrap; `grantMembership` does. Stale "grantor membership deliberately not required" doc replaced. |
+| `organization/data/organization-memberships.repository.ts` | New `hasAnyMember(organizationId)` — indexed `LIMIT 1` existence probe (no member loading). |
+| `organization/application/organizations.service.ts` | Doc-only: `assertDeploymentOrganizationPin` and `requireAdministrableOrganization` no longer claim the grantor's membership is not required; `requireAdministrableOrganization` is documented as the organization resolver of the administration path, not a principal-binding entry point. No behaviour change (ODR-1/ODR-2 untouched). |
+| `organization/api/organization-memberships.controller.ts` | Doc + `@ApiNotFoundResponse` descriptions aligned with the organization-bound rule (404 for non-members). |
+| `organization/application/organization-memberships.service.spec.ts` | **New** focused unit suite (17 tests) — see §6.4. |
+| `test/support/master-data-repositories.ts` | `InMemoryOrganizationMembershipsRepository.hasAnyMember`. |
+| `test/organization-membership.e2e-spec.ts` | Rewritten around the corrected rule (see §6.4); adds the `OUTSIDER` persona (all membership verbs, member of nothing) and the `hasAnyMember` seam in the user-FK wrapper. |
+| `docs/security.md`, `docs/accounting/task-index.md`, `STATE.md`, this report | Documentation synchronized with the enforced behaviour. |
 
 ### 6.4 Tests
 
@@ -295,13 +294,13 @@ No assertion was weakened, skipped or made conditional anywhere.
 
 **LOCAL (ARENA):**
 
-| Gate                                  | Result                                                                                                                                                                 |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `format:check`                        | ✅ pass                                                                                                                                                                |
-| `lint` (oxlint)                       | ✅ 0 errors; 6 warnings — all pre-existing on the base merge commit, not introduced                                                                                    |
-| `typecheck`                           | ✅ pass                                                                                                                                                                |
-| `npm test` (unit)                     | ✅ **101 files / 1148 tests** passed (+17 new)                                                                                                                         |
-| `build`                               | ✅ pass                                                                                                                                                                |
+| Gate | Result |
+|---|---|
+| `format:check` | ✅ pass |
+| `lint` (oxlint) | ✅ 0 errors; 6 warnings — all pre-existing on the base merge commit, not introduced |
+| `typecheck` | ✅ pass |
+| `npm test` (unit) | ✅ **101 files / 1148 tests** passed (+17 new) |
+| `build` | ✅ pass |
 | `prisma:validate` / `prisma:generate` | ⚠️ blocked locally — sandbox cannot download the Prisma engine (`binaries.prisma.sh` unreachable); **delegated to CI**. No schema/migration change in this correction. |
 
 **DELEGATED TO CI:** E2E (hermetic + live PostgreSQL), `migrate deploy`,
@@ -310,8 +309,8 @@ locally unless explicitly authorized.**
 
 **CI (PR #55, job `backend`):**
 
-| Run           | Commit    | Result                                                                                                                                                                                                                                                                                     |
-| ------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Run | Commit | Result |
+|---|---|---|
 | `36238862315` | `86273b8` | ✅ **success on the first run** — Prisma validate, Prisma generate, Lint, Typecheck, Format check, Unit tests, Build, Migrate test database (`migrate deploy`), Migration rehearsal, E2E tests incl. the live-PostgreSQL suites — every step `success`, none skipped or continued-on-error |
 
 ### 6.6 Limitations
@@ -354,7 +353,7 @@ this report:
   Reporting module, `/api/v1/reports`, or legal/statutory report.
 - **ODR-3 — Principal-bound Organization Authorization:** the accepted invariant is
   `Principal → Authorized Organization Membership / Context → Requested Organization
-→ Module Permission → Resource Access`; organization access is membership-bound,
+  → Module Permission → Resource Access`; organization access is membership-bound,
   `assertOrganizationInScope` is the principal-bound chokepoint, arbitrary
   caller-supplied organization ids cannot bypass membership, and the approved 404
   isolation posture is preserved. Membership administration is included in this

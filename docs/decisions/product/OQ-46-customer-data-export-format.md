@@ -13,11 +13,11 @@ Decided: the customer owns its data; data is never deleted by Vardena at
 contract end; export capability must exist; **Excel (XLSX) export is confirmed
 for MVP** (reports and lists via the reporting pipeline, ADR-0009 §6).
 
-Unresolved: is Excel _sufficient_ as the customer-data-ownership story? Excel
+Unresolved: is Excel *sufficient* as the customer-data-ownership story? Excel
 exports are report-shaped (what a report shows), not database-shaped (what the
 system stores): they omit ledger structure, document relations, audit trails,
 configuration, and immutable history. At contract termination or migration-away,
-a customer might legitimately expect a _complete_ copy of their data.
+a customer might legitimately expect a *complete* copy of their data.
 
 ## Why this matters
 
@@ -30,20 +30,20 @@ a customer might legitimately expect a _complete_ copy of their data.
 
 ## Exact decision required
 
-1. Is confirmed Excel export the _complete_ data-ownership answer, or is a
+1. Is confirmed Excel export the *complete* data-ownership answer, or is a
    full-fidelity export also required?
 2. If full-fidelity: what format (documented SQL dump? structured JSON? CSV
    per entity?), what completeness level (business data only? + configuration?
-   - audit?), and who may run it (customer-admin vs Vardena-controlled)?
+   + audit?), and who may run it (customer-admin vs Vardena-controlled)?
 3. What is the promised boundary in customer contracts?
 
 ## Options
 
-| Option                                                                                         | Advantages                                                                       | Disadvantages                                                           |
-| ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **A. Excel only (confirmed export surface)**                                                   | Already decided and cheap; matches what accountants ask for                      | Not database-complete; potential trust gap at contract end              |
+| Option | Advantages | Disadvantages |
+|---|---|---|
+| **A. Excel only (confirmed export surface)** | Already decided and cheap; matches what accountants ask for | Not database-complete; potential trust gap at contract end |
 | **B. Excel + documented logical dump** (pg_dump of customer's own DB + schema/data dictionary) | Trivial on-premise (customer's own server, own DB); complete; strong trust story | Exposes schema; needs documentation effort; "who runs it" policy needed |
-| **C. Excel + product-level full export feature** (in-product complete JSON/CSV export)         | Product-controlled, works if SaaS ever happens; clean UX                         | Real build cost; versioning burden; duplicates pg_dump value on-premise |
+| **C. Excel + product-level full export feature** (in-product complete JSON/CSV export) | Product-controlled, works if SaaS ever happens; clean UX | Real build cost; versioning burden; duplicates pg_dump value on-premise |
 
 ## Risks
 

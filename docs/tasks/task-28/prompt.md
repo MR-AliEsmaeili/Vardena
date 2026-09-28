@@ -24,11 +24,11 @@ The result of Task 28 must be a clear, evidence-backed answer to:
 
 The task must distinguish between:
 
-- technical implementation readiness
-- domain/accounting decision readiness
-- owner acceptance
-- roadmap intent
-- actual authorization to implement
+* technical implementation readiness
+* domain/accounting decision readiness
+* owner acceptance
+* roadmap intent
+* actual authorization to implement
 
 Do not assume that the next numbered task is automatically the next implementation task.
 
@@ -43,10 +43,9 @@ Before doing any work:
 3. Verify that Task 27 / PR #73 is merged.
 4. Record:
 
-   - current `main` HEAD SHA
-   - PR #73 merge SHA
-   - Task 27 status
-
+   * current `main` HEAD SHA
+   * PR #73 merge SHA
+   * Task 27 status
 5. Read the complete Task 27 output from `main`.
 
 Expected Task 27 source:
@@ -81,50 +80,50 @@ Do not work from an old Arena branch.
 
 Task 28 may:
 
-- inspect repository state
-- inspect Task 27 evidence
-- inspect code
-- inspect tests
-- inspect migrations
-- inspect ADRs
-- inspect OQs
-- inspect roadmap
-- inspect STATE.md
-- inspect previous task reports
-- inspect Git history
-- inspect merged PRs
-- reconcile Owner Decisions
-- document decisions already explicitly supplied by the Owner
-- prepare decision records
-- prepare implementation-gate specifications
-- update governance documentation
-- update roadmap documentation where justified
-- prepare the next implementation task specification
+* inspect repository state
+* inspect Task 27 evidence
+* inspect code
+* inspect tests
+* inspect migrations
+* inspect ADRs
+* inspect OQs
+* inspect roadmap
+* inspect STATE.md
+* inspect previous task reports
+* inspect Git history
+* inspect merged PRs
+* reconcile Owner Decisions
+* document decisions already explicitly supplied by the Owner
+* prepare decision records
+* prepare implementation-gate specifications
+* update governance documentation
+* update roadmap documentation where justified
+* prepare the next implementation task specification
 
 ## Forbidden
 
 Task 28 MUST NOT:
 
-- implement production code
-- modify production behavior
-- add API endpoints
-- add Prisma models
-- modify Prisma schema
-- add migrations
-- seed Base Chart content
-- create accounting accounts
-- implement accounting posting
-- modify permissions
-- modify guards
-- modify organization isolation
-- modify authentication
-- modify inventory behavior
-- modify document behavior
-- modify workflow behavior
-- promote ADRs without explicit Owner decision
-- close OQs without explicit Owner decision
-- accept Task 28 automatically
-- implement the selected next task
+* implement production code
+* modify production behavior
+* add API endpoints
+* add Prisma models
+* modify Prisma schema
+* add migrations
+* seed Base Chart content
+* create accounting accounts
+* implement accounting posting
+* modify permissions
+* modify guards
+* modify organization isolation
+* modify authentication
+* modify inventory behavior
+* modify document behavior
+* modify workflow behavior
+* promote ADRs without explicit Owner decision
+* close OQs without explicit Owner decision
+* accept Task 28 automatically
+* implement the selected next task
 
 If an implementation issue is discovered, document it and create a future implementation finding.
 
@@ -136,10 +135,10 @@ Start from the Owner Decision Pack produced by Task 27.
 
 Expected decision areas include:
 
-- OD-27-01 — formal acceptance/reconciliation of merged work
-- OD-27-02 — Base Chart Content / OQ-25
-- OD-27-03 — next implementation direction
-- OD-27-04 — ADR status / promotion decisions
+* OD-27-01 — formal acceptance/reconciliation of merged work
+* OD-27-02 — Base Chart Content / OQ-25
+* OD-27-03 — next implementation direction
+* OD-27-04 — ADR status / promotion decisions
 
 Read the actual Task 27 document and use its exact IDs rather than inventing new ones if they already exist.
 
@@ -223,12 +222,12 @@ Prepare a clear Owner decision record for OQ-25.
 
 The record must identify:
 
-- what remains undecided
-- why the decision is needed
-- what implementation depends on it
-- whether the decision affects MVP
-- what becomes unblocked after the decision
-- whether the decision requires accounting/domain input
+* what remains undecided
+* why the decision is needed
+* what implementation depends on it
+* whether the decision affects MVP
+* what becomes unblocked after the decision
+* whether the decision requires accounting/domain input
 
 Do not invent chart accounts.
 
@@ -244,11 +243,11 @@ Review the ADR status identified by Task 27.
 
 For each relevant ADR determine:
 
-- current status
-- implementation evidence
-- Owner acceptance
-- whether promotion is required
-- whether it blocks the next implementation gate
+* current status
+* implementation evidence
+* Owner acceptance
+* whether promotion is required
+* whether it blocks the next implementation gate
 
 Use:
 
@@ -278,26 +277,26 @@ The purpose is to determine:
 
 Inspect at minimum:
 
-- Identity
-- Users/RBAC
-- Organization/Master Data
-- Inventory
-- Documents
-- Workflow
-- Accounting
-- Base Chart
-- Sales
-- Inventory → Accounting integration
-- Sales → Accounting integration
-- Reporting requirements
-- Audit/security requirements
+* Identity
+* Users/RBAC
+* Organization/Master Data
+* Inventory
+* Documents
+* Workflow
+* Accounting
+* Base Chart
+* Sales
+* Inventory → Accounting integration
+* Sales → Accounting integration
+* Reporting requirements
+* Audit/security requirements
 
 Remember:
 
-- Treasury is OUTSIDE MVP.
-- Purchasing is OUTSIDE MVP.
-- Purchasing → Accounting is OUTSIDE MVP.
-- Purchasing reports are OUTSIDE MVP.
+* Treasury is OUTSIDE MVP.
+* Purchasing is OUTSIDE MVP.
+* Purchasing → Accounting is OUTSIDE MVP.
+* Purchasing reports are OUTSIDE MVP.
 
 Do not reintroduce them.
 
@@ -320,11 +319,11 @@ Use factual statuses only.
 
 Allowed values:
 
-- YES
-- NO
-- PARTIAL
-- N/A
-- PENDING OWNER DECISION
+* YES
+* NO
+* PARTIAL
+* N/A
+* PENDING OWNER DECISION
 
 Do not score or rank capabilities.
 
@@ -361,13 +360,13 @@ If OQ-25 remains unresolved:
 
 Do NOT create:
 
-- account groups
-- general accounts
-- subsidiary accounts
-- detail accounts
-- default account codes
-- account hierarchy seed
-- accounting templates
+* account groups
+* general accounts
+* subsidiary accounts
+* detail accounts
+* default account codes
+* account hierarchy seed
+* accounting templates
 
 Instead state:
 
@@ -439,10 +438,10 @@ IMPLEMENTATION BLOCKED — OWNER DECISION REQUIRED
 
 and clearly identify:
 
-- blocking decision
-- dependency
-- evidence
-- what decision unlocks it
+* blocking decision
+* dependency
+* evidence
+* what decision unlocks it
 
 ---
 
@@ -492,18 +491,18 @@ Do not select one based solely on roadmap order.
 
 Preserve all previously accepted accounting principles:
 
-- System Group benchmark
-- Group → General → Subsidiary
-- configurable floating Details
-- Manual vs System documents
-- Temporary / Final
-- no generic void
-- Fiscal Open / Closed / Sealed
-- branch / financial-area M:N
-- lowest account level posting
-- parent-level read-time turnover aggregation
-- Inventory → Accounting through defined integration contract/event/outbox
-- FaraPayam only through adapter
+* System Group benchmark
+* Group → General → Subsidiary
+* configurable floating Details
+* Manual vs System documents
+* Temporary / Final
+* no generic void
+* Fiscal Open / Closed / Sealed
+* branch / financial-area M:N
+* lowest account level posting
+* parent-level read-time turnover aggregation
+* Inventory → Accounting through defined integration contract/event/outbox
+* FaraPayam only through adapter
 
 Do not modify these decisions.
 
@@ -517,11 +516,11 @@ Task 28 must preserve the Task 26 / ODR-3 result.
 
 No new implementation may be authorized if it would require weakening:
 
-- principal-bound organization scope
-- fail-closed behavior
-- permission-first authorization
-- deployment organization pin behavior
-- cross-organization isolation
+* principal-bound organization scope
+* fail-closed behavior
+* permission-first authorization
+* deployment organization pin behavior
+* cross-organization isolation
 
 Do not introduce wildcard permission or hidden administrator bypass.
 
@@ -606,11 +605,11 @@ update only the affected sections.
 
 The roadmap must not:
 
-- self-accept tasks
-- close OQs
-- promote ADRs
-- authorize implementation
-- claim capability completion without evidence
+* self-accept tasks
+* close OQs
+* promote ADRs
+* authorize implementation
+* claim capability completion without evidence
 
 Roadmap remains dependency/sequence documentation.
 
@@ -624,10 +623,10 @@ Do not add speculative future decisions.
 
 Clearly distinguish:
 
-- historical state
-- current state
-- pending decision
-- selected next gate
+* historical state
+* current state
+* pending decision
+* selected next gate
 
 ---
 
@@ -695,18 +694,18 @@ Do not run expensive local full E2E unless specifically required.
 
 Prefer:
 
-- repository inspection
-- targeted checks
-- existing GitHub CI
+* repository inspection
+* targeted checks
+* existing GitHub CI
 
 If CI is triggered by the PR, record:
 
-- workflow
-- run ID
-- commit SHA
-- backend result
-- frontend result
-- relevant test result
+* workflow
+* run ID
+* commit SHA
+* backend result
+* frontend result
+* relevant test result
 
 Do not invent CI evidence.
 
@@ -724,22 +723,22 @@ or the equivalent repository comparison must demonstrate:
 
 ### Allowed
 
-- documentation
-- governance
-- task reports
-- owner decision records
-- roadmap/state reconciliation
+* documentation
+* governance
+* task reports
+* owner decision records
+* roadmap/state reconciliation
 
 ### Forbidden
 
-- `apps/backend/**` production implementation
-- Prisma schema
-- migrations
-- API behavior
-- permission changes
-- guard changes
-- database behavior
-- frontend production behavior
+* `apps/backend/**` production implementation
+* Prisma schema
+* migrations
+* API behavior
+* permission changes
+* guard changes
+* database behavior
+* frontend production behavior
 
 If forbidden changes exist:
 
@@ -765,8 +764,8 @@ A technical/security/dependency blocker prevents the next implementation gate.
 
 Do not use:
 
-- ACCEPTED
-- COMPLETE
+* ACCEPTED
+* COMPLETE
 
 unless separately established by explicit Owner acceptance.
 

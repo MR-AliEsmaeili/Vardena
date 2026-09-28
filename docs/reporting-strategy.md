@@ -8,11 +8,11 @@ export; printable reports; and easy future extension.
 
 ## 1. Core Design Decisions
 
-1. **Reports are code-defined, not DB-stored.** A report _definition_ lives in
+1. **Reports are code-defined, not DB-stored.** A report *definition* lives in
    the reporting module's code registry (versioned with the app, typed,
    testable). Storing report SQL in the database is rejected: it defeats
    review, versioning, and the AI-agent documentation rule (AG-07). User
-   _configurations_ of reports (saved filters, column order, dashboards) live
+   *configurations* of reports (saved filters, column order, dashboards) live
    in the Customization module — definitions ≠ user config.
 2. **Data access is view-first.** Complex reports read **module-owned SQL
    views** (each module owns its reporting views in `data/`/`reports/`), not
@@ -29,18 +29,18 @@ export; printable reports; and easy future extension.
 
 A definition (code registry) specifies:
 
-| Field        | Meaning                                                                                                                      |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------- |
-| `id`         | stable kebab-case id (`inventory-stock-on-hand`)                                                                             |
-| `title`      | localized label key (i18n, OQ-02)                                                                                            |
-| `module`     | owning domain (for permission prefix + view schema)                                                                          |
-| `permission` | required permission code                                                                                                     |
-| `source`     | `view: <schema>.vw_x` · `raw: <parameterized SQL>` · `prisma: <simple spec>`                                                 |
-| `columns[]`  | key, label key, type (text/number/money/date/bool), align, sortable, groupable, summable (for group totals), default hidden? |
-| `filters[]`  | column, allowed operators (whitelist), default?                                                                              |
-| `defaults`   | sort, page size                                                                                                              |
-| `limits`     | row cap override (else global), async-threshold (rows/time)                                                                  |
-| `exports`    | excel allowed?, print document type link?                                                                                    |
+| Field | Meaning |
+|---|---|
+| `id` | stable kebab-case id (`inventory-stock-on-hand`) |
+| `title` | localized label key (i18n, OQ-02) |
+| `module` | owning domain (for permission prefix + view schema) |
+| `permission` | required permission code |
+| `source` | `view: <schema>.vw_x` · `raw: <parameterized SQL>` · `prisma: <simple spec>` |
+| `columns[]` | key, label key, type (text/number/money/date/bool), align, sortable, groupable, summable (for group totals), default hidden? |
+| `filters[]` | column, allowed operators (whitelist), default? |
+| `defaults` | sort, page size |
+| `limits` | row cap override (else global), async-threshold (rows/time) |
+| `exports` | excel allowed?, print document type link? |
 
 ## 3. Query Pipeline
 
@@ -58,7 +58,7 @@ request (reportId, filters, sort, groupBy, page, pageSize)
 
 - **Filter model:** `{ column, op, value }` with per-column operator
   whitelist: `eq, ne, gt, gte, lt, lte, between, in, like, notLike, isNull,
-notNull`. Dates always timestamptz-UTC in, converted per OQ-02 at display.
+  notNull`. Dates always timestamptz-UTC in, converted per OQ-02 at display.
 - **Sorting:** single or multi-column, direction whitelisted per column.
 - **Counting:** `COUNT(*)` with the same WHERE (for `total`); expensive
   sources may declare `countStrategy: estimate` later (extension).
@@ -75,7 +75,7 @@ notNull`. Dates always timestamptz-UTC in, converted per OQ-02 at display.
   are **later extensions** (design reserved: the pipeline's GROUP BY step is
   already a SQL-building stage; extending it does not change the definition
   contract). Register usage demand as OQ if it blocks a real report — until
-  then, express such reports as purpose-built views (a view _can_ pre-aggregate).
+  then, express such reports as purpose-built views (a view *can* pre-aggregate).
 - Heavy/periodic aggregations (e.g. trial balance by period) belong in
   **materialized views maintained by the owning module** (e.g. Accounting's
   balances), refreshed in-transaction where cheap or by scheduled jobs where not
@@ -104,7 +104,7 @@ notNull`. Dates always timestamptz-UTC in, converted per OQ-02 at display.
 - **Printing:** reports with `exports.print` get a Print document type
   (`Report:<reportId>`) with a default template; user print preferences
   (paper, template choice) come from Customization (`print` category).
-  Printable _documents_ (invoices, receipts) are Print's separate concern via
+  Printable *documents* (invoices, receipts) are Print's separate concern via
   module `documents/` providers (ADR-0012).
 
 ## 7. Performance Rules

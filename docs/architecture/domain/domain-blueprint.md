@@ -8,8 +8,8 @@ Companion docs: [index](./README.md) · [glossary](./domain-glossary.md) ·
 [`../../modules.md`](../../modules.md) · [`../../open-questions.md`](../../open-questions.md)
 
 > **Nothing in this document is a business rule.** Numbering, tax, ledger behaviour,
-> approval chains, valuation and retention are either _configuration_ or _expert
-> decisions_; where Vardena must choose, this document states options, a
+> approval chains, valuation and retention are either *configuration* or *expert
+> decisions*; where Vardena must choose, this document states options, a
 > recommendation, and what would make it wrong. Registered ids: OQ-22 … OQ-35.
 
 ---
@@ -19,8 +19,8 @@ Companion docs: [index](./README.md) · [glossary](./domain-glossary.md) ·
 **Purpose.** Vardena must serve substantially different businesses — different
 document flows, approvals, warehouse and accounting practices — **without a code
 change per customer**, while remaining a normal, queryable, testable ERP. This
-blueprint fixes the domain vocabulary and the boundary between _stable core_,
-_configuration_, _extension points_ and _expert decisions_, before the first ERP
+blueprint fixes the domain vocabulary and the boundary between *stable core*,
+*configuration*, *extension points* and *expert decisions*, before the first ERP
 tables exist.
 
 **Method.**
@@ -38,8 +38,8 @@ tables exist.
 
 **Legacy ERP (FaraPayam) note.** The repository contains no legacy schema or
 service contract (only the adapter-isolation decision, ADR-0003, and OQ-04 for the
-integration itself). What Vardena extracts from the legacy system is the _problem
-class_: Iranian business documents, tax/report formats, batch operations and
+integration itself). What Vardena extracts from the legacy system is the *problem
+class*: Iranian business documents, tax/report formats, batch operations and
 on-premise operational reality. Its internal structure **must not** be copied —
 Vardena owns its model (`.vardena/project-context.md`).
 
@@ -55,9 +55,9 @@ Vardena owns its model (`.vardena/project-context.md`).
 - No invented business rules (AR-31).
 
 **On "flexibility".** The product requirement is **Controlled Business
-Flexibility**: configuration may change _which of the code-defined behaviours_ is
-active, _which permissions_ are required, _which documents_ a process creates and
-_when_, but it may never change the meaning of a recorded fact. The mechanism is
+Flexibility**: configuration may change *which of the code-defined behaviours* is
+active, *which permissions* are required, *which documents* a process creates and
+*when*, but it may never change the meaning of a recorded fact. The mechanism is
 described in [`configurability-architecture.md`](./configurability-architecture.md).
 
 ---
@@ -163,7 +163,7 @@ flowchart LR
 
 Two rules visible here are non-negotiable: **side effects are events**, and
 **commands (Sales → Inventory) are explicit public-service calls** with the caller
-supplying the business intent, while the _effects_ (movements, journals) are owned
+supplying the business intent, while the *effects* (movements, journals) are owned
 by the receiving module.
 
 ---
@@ -174,20 +174,20 @@ These concepts exist in every ERP variant Vardena targets and are therefore
 **core**: their tables, identity and relationships may be extended, never
 redefined per customer.
 
-| #   | Concept                                                           | Why it is core                                                                                                                                  | Lives in                                                                                           |
-| --- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| C1  | **Organization scope + fiscal calendar**                          | Every fact has an owner, a date and a period; statutory reporting depends on it                                                                 | Organization (proposed)                                                                            |
-| C2  | **Party (customer/supplier/contact/address)**                     | Obligations exist toward someone; receivable/payable reporting needs one identity per counterparty                                              | Master data; owned by Sales / Purchasing / Organization (decision in `master-data-strategy.md` §4) |
-| C3  | **Item + unit + capability flags**                                | What moves, sells or is serviced; capabilities (stockable, sellable, purchasable, valued, tracked) drive behaviour without type-specific tables | Inventory (master data)                                                                            |
-| C4  | **Warehouse (+ optional location)**                               | Custody of physical stock is per location; stock reports are meaningless without it                                                             | Inventory                                                                                          |
-| C5  | **Typed business document (header + lines)**                      | Every economic action is recorded as a numbered, auditable, transitionable document                                                             | Owned per module                                                                                   |
-| C6  | **Document relation + transition history**                        | Traceability (which order produced which invoice/issue) and partial fulfilment are unavoidable in real businesses                               | Shared mechanism, module-owned usage                                                               |
-| C7  | **Stock movement (immutable)**                                    | The only defensible source of truth for stock quantity and its value over time                                                                  | Inventory                                                                                          |
-| C8  | **Journal entry (immutable, balanced)**                           | Accounting's facts; every financial report derives from it                                                                                      | Accounting                                                                                         |
-| C9  | **Accounting dimensions (account, cost centre, project, branch)** | Reporting by dimension is a baseline ERP expectation                                                                                            | Accounting (+ Organization scope)                                                                  |
-| C10 | **Money/quantity semantics**                                      | `numeric(18,2)` money, `numeric(18,4)` quantities, explicit currency column, one quantity base unit                                             | All modules (AR-12)                                                                                |
-| C11 | **Audit spine**                                                   | Who did what, when, on which document, with which correlation id                                                                                | Events (AR-23) + module transition tables                                                          |
-| C12 | **Configuration as versioned data**                               | Variation between businesses must be data, but historical documents must not be reinterpreted                                                   | Organization (proposed)                                                                            |
+| # | Concept | Why it is core | Lives in |
+|---|---|---|---|
+| C1 | **Organization scope + fiscal calendar** | Every fact has an owner, a date and a period; statutory reporting depends on it | Organization (proposed) |
+| C2 | **Party (customer/supplier/contact/address)** | Obligations exist toward someone; receivable/payable reporting needs one identity per counterparty | Master data; owned by Sales / Purchasing / Organization (decision in `master-data-strategy.md` §4) |
+| C3 | **Item + unit + capability flags** | What moves, sells or is serviced; capabilities (stockable, sellable, purchasable, valued, tracked) drive behaviour without type-specific tables | Inventory (master data) |
+| C4 | **Warehouse (+ optional location)** | Custody of physical stock is per location; stock reports are meaningless without it | Inventory |
+| C5 | **Typed business document (header + lines)** | Every economic action is recorded as a numbered, auditable, transitionable document | Owned per module |
+| C6 | **Document relation + transition history** | Traceability (which order produced which invoice/issue) and partial fulfilment are unavoidable in real businesses | Shared mechanism, module-owned usage |
+| C7 | **Stock movement (immutable)** | The only defensible source of truth for stock quantity and its value over time | Inventory |
+| C8 | **Journal entry (immutable, balanced)** | Accounting's facts; every financial report derives from it | Accounting |
+| C9 | **Accounting dimensions (account, cost centre, project, branch)** | Reporting by dimension is a baseline ERP expectation | Accounting (+ Organization scope) |
+| C10 | **Money/quantity semantics** | `numeric(18,2)` money, `numeric(18,4)` quantities, explicit currency column, one quantity base unit | All modules (AR-12) |
+| C11 | **Audit spine** | Who did what, when, on which document, with which correlation id | Events (AR-23) + module transition tables |
+| C12 | **Configuration as versioned data** | Variation between businesses must be data, but historical documents must not be reinterpreted | Organization (proposed) |
 
 Anything not on this list (approval chains, reservations, lot tracking, multi-currency,
 inter-branch invoicing, custom fields) is **configuration or extension**, not spine.
@@ -196,36 +196,36 @@ inter-branch invoicing, custom fields) is **configuration or extension**, not sp
 
 ## 4. Classification Matrix — Core / Configurable / Extensible / Expert
 
-Read each row as: _what must never vary_ (Core), _what a business may change through
-configuration_ (Configurable), _what can be added without touching existing code_
-(Extensible), _what needs a domain expert before it is decided_ (Expert).
+Read each row as: *what must never vary* (Core), *what a business may change through
+configuration* (Configurable), *what can be added without touching existing code*
+(Extensible), *what needs a domain expert before it is decided* (Expert).
 
-| Capability                                             | Core                                                                                   | Configurable                                                                                                                           | Extensible                                                                | Expert validation                                                                   |
-| ------------------------------------------------------ | -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| **Organization structure**                             | One organization per deployment; branch is a reporting/scope dimension (OQ-01)         | Which branches/departments exist; whether warehouses/locations are enabled; department tree                                            | Business-unit grouping; second legal entity (multi-company)               | Whether branches need separate books/registers (OQ-22)                              |
-| **Fiscal calendar**                                    | Fiscal year & periods exist; posting is period-bounded; periods can close              | Start date, period count/length, open/close workflow, who may reopen                                                                   | Multi-year calendars, 13-period calendars                                 | Period definition and closing rules _(expert, OQ-23)_                               |
-| **Item / product**                                     | One Item record + kind + capability flags + base unit                                  | Which kinds/groups exist; which capabilities are allowed; required fields per group; lot/serial/expiry on/off                          | New _capabilities_ (code change), kit/BOM, variants — later modules       | Whether services/contracts need revenue recognition treatment _(expert)_            |
-| **Units & conversions**                                | Quantities stored in one base unit; conversions are explicit data                      | Allowed units, their precision, global and item-specific conversions                                                                   | Alternative packaging, catch-weight items                                 | Fractional-unit rounding & presentation rules _(expert, OQ-29)_                     |
-| **Warehouses & locations**                             | Stock is always per warehouse; movements immutable                                     | Locations on/off, per-warehouse defaults, negative-stock policy                                                                        | Automated/robotic location addressing                                     | Whether negative stock is legally/semantically allowed _(expert, OQ-24)_            |
-| **Document flows** (`quote → order → invoice → issue`) | Document types and their allowed transitions are code-defined; posting is irreversible | _Which_ flow a business uses: which documents are required, which transitions auto-create which follow-up document, which are optional | New document types (new module/session), new relation kinds (code change) | Legal/statutory documents and their required sequence _(expert, OQ-27)_             |
-| **Approvals**                                          | A transition may require approval; the decision is recorded with actor + time          | Thresholds, which transitions need approval, who approves (permission code), single vs multi-level                                     | Delegation, escalation, parallel approval _(later, OQ-26)_                | Segregation-of-duties expectations for finance roles _(expert, OQ-26)_              |
-| **Statuses**                                           | Status set per document type is fixed in code (`draft/approved/posted/cancelled/…`)    | Which transitions are enabled; labels/translations; whether approval is needed between states                                          | Additional states require a code change + ADR                             | Whether a status has legal meaning (e.g. "issued" invoice) _(expert)_               |
-| **Numbering**                                          | Numbers are unique per configured scope; assigned inside the write transaction         | Prefix, scope (org/branch/warehouse/type), padding, reset period                                                                       | Multiple series per type (per branch/warehouse)                           | Legal gap/year rules and required formats _(expert, OQ-12)_                         |
-| **Taxes**                                              | Tax is computed per line and stored explicitly on the document                         | Rates, tax groups, inclusive/exclusive behaviour, exempt categories                                                                    | New tax types (withholding, excise) via code                              | All of it: rates, liability accounts, e-invoice fields _(expert, OQ-30)_            |
-| **Chart of accounts**                                  | Accounts exist, are hierarchical, and are referenced by journal lines                  | Which accounts, codes, levels and mappings a business uses                                                                             | Industry templates; sub-ledger modules; consolidation                     | Coding scheme, statutory formats, control accounts _(expert, OQ-25)_                |
-| **Posting rules (event → journal)**                    | Mapping is owned by Accounting; posting is idempotent per event                        | Per-organization account mapping (which account, which dimension defaults)                                                             | New mapping templates per event type                                      | Which account, which side, when revenue/cost is recognized _(expert)_               |
-| **Costing / valuation**                                | Movements carry quantity and (when known) unit cost; balances are derivable            | The **method** is a per-organization setting (moving average / FIFO / standard)                                                        | Cost layers, revaluation runs                                             | The method itself, its effects on COGS/margin and inventory value _(expert, OQ-24)_ |
-| **Period close & year-end**                            | Closing produces an auditable state; posting into closed periods is rejected           | Close checklist, lock granularity                                                                                                      | Retained-earnings automation, opening-balance import tooling              | Closing/opening entries, profit appropriation _(expert, OQ-23)_                     |
-| **Currencies**                                         | Amounts store their currency; base currency per organization                           | Whether foreign currency is used at all; rate source & frequency                                                                       | Multi-currency ledgers, revaluation                                       | IRR/RMT legality, precision, exchange-difference accounts _(expert, OQ-03)_         |
-| **Permissions & roles**                                | Code-registered granular permissions; backend enforcement (ADR-0006/0016)              | Which roles exist and which codes they hold; seed role sets                                                                            | Module-provided permission namespaces                                     | Auditor separation-of-duties expectations (OQ-14)                                   |
-| **Required/optional fields**                           | Base contract fields (item, quantity, date, type)                                      | Per-document-type required/optional _among code-supported_ fields                                                                      | New fields via a code change with an ADR if financial                     | Which fields are legally required on invoices _(expert)_                            |
-| **Notifications**                                      | Events exist; notification rules are registered by modules                             | Which events notify which roles/users, channels (in-app first)                                                                         | Email/SMS channels (OQ-15)                                                | Nothing legal in v1                                                                 |
-| **Reporting**                                          | Definitions are code-owned; data comes from module views (ADR-0009)                    | Saved filters, dashboards, column layouts (per user)                                                                                   | New report definitions, new module views                                  | Statutory report formats _(expert)_                                                 |
-| **Custom fields**                                      | Financial/inventory dimensions and amounts are **never** custom fields                 | Whitelisted descriptive fields on a small set of entities; their definitions are configuration                                         | Promotion path: custom field → real column + migration                    | Anything that must appear in statutory reports _(expert)_                           |
-| **Integrations**                                       | Outbox + adapter ports (ADR-0003/0004)                                                 | Which destinations are enabled, credentials, retry policy                                                                              | New adapters; new outbound operations                                     | Tax-system payload/legal requirements _(expert, OQ-05/OQ-30)_                       |
+| Capability | Core | Configurable | Extensible | Expert validation |
+|---|---|---|---|---|
+| **Organization structure** | One organization per deployment; branch is a reporting/scope dimension (OQ-01) | Which branches/departments exist; whether warehouses/locations are enabled; department tree | Business-unit grouping; second legal entity (multi-company) | Whether branches need separate books/registers (OQ-22) |
+| **Fiscal calendar** | Fiscal year & periods exist; posting is period-bounded; periods can close | Start date, period count/length, open/close workflow, who may reopen | Multi-year calendars, 13-period calendars | Period definition and closing rules *(expert, OQ-23)* |
+| **Item / product** | One Item record + kind + capability flags + base unit | Which kinds/groups exist; which capabilities are allowed; required fields per group; lot/serial/expiry on/off | New *capabilities* (code change), kit/BOM, variants — later modules | Whether services/contracts need revenue recognition treatment *(expert)* |
+| **Units & conversions** | Quantities stored in one base unit; conversions are explicit data | Allowed units, their precision, global and item-specific conversions | Alternative packaging, catch-weight items | Fractional-unit rounding & presentation rules *(expert, OQ-29)* |
+| **Warehouses & locations** | Stock is always per warehouse; movements immutable | Locations on/off, per-warehouse defaults, negative-stock policy | Automated/robotic location addressing | Whether negative stock is legally/semantically allowed *(expert, OQ-24)* |
+| **Document flows** (`quote → order → invoice → issue`) | Document types and their allowed transitions are code-defined; posting is irreversible | *Which* flow a business uses: which documents are required, which transitions auto-create which follow-up document, which are optional | New document types (new module/session), new relation kinds (code change) | Legal/statutory documents and their required sequence *(expert, OQ-27)* |
+| **Approvals** | A transition may require approval; the decision is recorded with actor + time | Thresholds, which transitions need approval, who approves (permission code), single vs multi-level | Delegation, escalation, parallel approval *(later, OQ-26)* | Segregation-of-duties expectations for finance roles *(expert, OQ-26)* |
+| **Statuses** | Status set per document type is fixed in code (`draft/approved/posted/cancelled/…`) | Which transitions are enabled; labels/translations; whether approval is needed between states | Additional states require a code change + ADR | Whether a status has legal meaning (e.g. "issued" invoice) *(expert)* |
+| **Numbering** | Numbers are unique per configured scope; assigned inside the write transaction | Prefix, scope (org/branch/warehouse/type), padding, reset period | Multiple series per type (per branch/warehouse) | Legal gap/year rules and required formats *(expert, OQ-12)* |
+| **Taxes** | Tax is computed per line and stored explicitly on the document | Rates, tax groups, inclusive/exclusive behaviour, exempt categories | New tax types (withholding, excise) via code | All of it: rates, liability accounts, e-invoice fields *(expert, OQ-30)* |
+| **Chart of accounts** | Accounts exist, are hierarchical, and are referenced by journal lines | Which accounts, codes, levels and mappings a business uses | Industry templates; sub-ledger modules; consolidation | Coding scheme, statutory formats, control accounts *(expert, OQ-25)* |
+| **Posting rules (event → journal)** | Mapping is owned by Accounting; posting is idempotent per event | Per-organization account mapping (which account, which dimension defaults) | New mapping templates per event type | Which account, which side, when revenue/cost is recognized *(expert)* |
+| **Costing / valuation** | Movements carry quantity and (when known) unit cost; balances are derivable | The **method** is a per-organization setting (moving average / FIFO / standard) | Cost layers, revaluation runs | The method itself, its effects on COGS/margin and inventory value *(expert, OQ-24)* |
+| **Period close & year-end** | Closing produces an auditable state; posting into closed periods is rejected | Close checklist, lock granularity | Retained-earnings automation, opening-balance import tooling | Closing/opening entries, profit appropriation *(expert, OQ-23)* |
+| **Currencies** | Amounts store their currency; base currency per organization | Whether foreign currency is used at all; rate source & frequency | Multi-currency ledgers, revaluation | IRR/RMT legality, precision, exchange-difference accounts *(expert, OQ-03)* |
+| **Permissions & roles** | Code-registered granular permissions; backend enforcement (ADR-0006/0016) | Which roles exist and which codes they hold; seed role sets | Module-provided permission namespaces | Auditor separation-of-duties expectations (OQ-14) |
+| **Required/optional fields** | Base contract fields (item, quantity, date, type) | Per-document-type required/optional *among code-supported* fields | New fields via a code change with an ADR if financial | Which fields are legally required on invoices *(expert)* |
+| **Notifications** | Events exist; notification rules are registered by modules | Which events notify which roles/users, channels (in-app first) | Email/SMS channels (OQ-15) | Nothing legal in v1 |
+| **Reporting** | Definitions are code-owned; data comes from module views (ADR-0009) | Saved filters, dashboards, column layouts (per user) | New report definitions, new module views | Statutory report formats *(expert)* |
+| **Custom fields** | Financial/inventory dimensions and amounts are **never** custom fields | Whitelisted descriptive fields on a small set of entities; their definitions are configuration | Promotion path: custom field → real column + migration | Anything that must appear in statutory reports *(expert)* |
+| **Integrations** | Outbox + adapter ports (ADR-0003/0004) | Which destinations are enabled, credentials, retry policy | New adapters; new outbound operations | Tax-system payload/legal requirements *(expert, OQ-05/OQ-30)* |
 
-**How to read "Configurable" here:** configuration changes _selection and
-parameters_, never semantics. A business can choose to require an order before an
+**How to read "Configurable" here:** configuration changes *selection and
+parameters*, never semantics. A business can choose to require an order before an
 invoice; it cannot configure "an invoice counts as stock movement" — that would
 change what the recorded facts mean.
 
@@ -238,7 +238,7 @@ Summary of the recommendation:
 
 - **One `Item` table** for goods, services, consumables, assets, raw materials and
   semi/finished goods. No per-type tables, no `ItemAttributeValue` EAV.
-- **Closed `item_kind`** (code-managed list) selects _defaults_; **explicit
+- **Closed `item_kind`** (code-managed list) selects *defaults*; **explicit
   capability flags** on the item are the truth the code branches on:
   `is_stockable`, `is_purchasable`, `is_sellable`, `is_valued`, `requires_lot`,
   `requires_serial`, `requires_expiry`.
@@ -252,7 +252,7 @@ Summary of the recommendation:
 - **Why flags instead of type-based branching:** reporting, permissions and document
   validation all need to ask "is this item sellable/stockable?" without a
   `switch (type)`. Flags keep the question relational and indexable, and let a
-  business make one exception (e.g. a service that _is_ stocked as a spare part)
+  business make one exception (e.g. a service that *is* stocked as a spare part)
   without a schema change.
 - **Units:** each item has one base unit; conversions are data (`master-data-strategy.md` §3).
 - **Explicitly out of scope in the first ERP slice:** variants/matrix items, kits/BOM,
@@ -265,14 +265,14 @@ Summary of the recommendation:
 
 Full analysis in [`document-architecture.md`](./document-architecture.md) §2–§3.
 
-**Option B is recommended: a controlled common document _foundation_ with
+**Option B is recommended: a controlled common document *foundation* with
 specialized, module-owned document tables.**
 
-| Option                                              | What it means                                                                                                                                                      | Verdict                                                                                |
-| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| A. Fully independent models per type                | Every document type reinvents numbering, lines, statuses, relations, validation                                                                                    | Rejected: duplicated rules drift; cross-type reports become unions of unrelated shapes |
-| B. Shared foundation + specialized types            | Typed tables per document type; shared _contracts_ (line shape, status/transition mechanics, numbering, relation & transition tables); shared kernel-level helpers | **Recommended**                                                                        |
-| C. One universal `documents` table with JSONB lines | Maximum uniformity                                                                                                                                                 | Rejected: destroys type safety, indexing, FK integrity, reporting (see §10)            |
+| Option | What it means | Verdict |
+|---|---|---|
+| A. Fully independent models per type | Every document type reinvents numbering, lines, statuses, relations, validation | Rejected: duplicated rules drift; cross-type reports become unions of unrelated shapes |
+| B. Shared foundation + specialized types | Typed tables per document type; shared *contracts* (line shape, status/transition mechanics, numbering, relation & transition tables); shared kernel-level helpers | **Recommended** |
+| C. One universal `documents` table with JSONB lines | Maximum uniformity | Rejected: destroys type safety, indexing, FK integrity, reporting (see §10) |
 
 "Shared foundation" is deliberately **not** "one giant table". Concretely it means:
 
@@ -280,7 +280,7 @@ specialized, module-owned document tables.**
    module's schema.
 2. A small set of **shared mechanics** is reused: `document_links` (typed relations
    with quantities) and `document_transitions` (append-only status history) — see
-   ADR-0019. These are _mechanisms_, not a business model.
+   ADR-0019. These are *mechanisms*, not a business model.
 3. Common header columns follow AR-12 (`id`, audit columns) plus a small, agreed
    document contract: `document_number`, `document_date`, `status`, `branch_id`,
    `currency`, `totals` (see `document-architecture.md` §4).
@@ -299,10 +299,10 @@ Summary; the model and diagrams are in
   using a **closed, code-managed** relation-kind list — not a free string, not a
   user-defined graph.
 - Relations are stored in a shared relation table with **line-level quantity rows**
-  so partial conversion is expressible and _remaining quantity is computable in SQL_.
+  so partial conversion is expressible and *remaining quantity is computable in SQL*.
 - Allowed relation kinds per document-type pair are part of the code-defined
   document contract; configuration chooses whether a relation is created
-  automatically by an automation rule, never whether it is _legal_.
+  automatically by an automation rule, never whether it is *legal*.
 - Realistic patterns, all constructible without hard-coding one process:
   `Quotation → SalesOrder → Invoice → Issue`, `Invoice → Issue`,
   `SalesOrder → Issue → Invoice`, `PurchaseOrder → PurchaseReceipt → PurchaseInvoice`,
@@ -369,14 +369,14 @@ validation**; the project owner's operational experience is input, not authority
   **hybrid — a code-provided template skeleton, organization-editable accounts
   below the control level, with control accounts and their semantics fixed in code.**
   This keeps statutory/report automation possible while matching how Iranian
-  businesses actually operate. _(expert, OQ-25)_
+  businesses actually operate. *(expert, OQ-25)*
 - **Fiscal calendar:** fiscal year + periods as configuration with an explicit
   start date; closing is a recorded, auditable act; posting into a closed period is
   rejected (OQ-23, expert).
 - **Posting:** documents post to journals through mapping rules; journal entries are
   immutable and balanced; corrections are reversing entries (AR-13, expert).
 - **Inventory valuation interacts with accounting through the movement ledger**: the
-  ledger carries quantity and cost data; the _method_ (moving average/FIFO/standard)
+  ledger carries quantity and cost data; the *method* (moving average/FIFO/standard)
   is an accounting decision that must not be baked into the inventory schema
   (ADR-0017, OQ-24, expert).
 - **Sales/Purchasing effects** (revenue, receivable, COGS, payable, tax) are mapping
@@ -389,9 +389,9 @@ validation**; the project owner's operational experience is input, not authority
 ### Sales (`sales`)
 
 - **Documents:** quotation, sales order, invoice, sales return (credit note). Their
-  _presence and order_ are configuration (see §8).
+  *presence and order* are configuration (see §8).
 - **Customer:** party record with credit/terms attributes; credit-limit enforcement
-  is not yet specified _(OQ — flagged in `domain-decisions.md` D-14)_.
+  is not yet specified *(OQ — flagged in `domain-decisions.md` D-14)*.
 - **Pricing/discounts:** pricing rules are configuration-or-code decisions; v1
   recommendation is **explicit line prices with optional configured price lists**
   (code-supported, organization-configured data), because ad-hoc price engines are a
@@ -436,7 +436,7 @@ ADR-0020 (Proposed), OQ-22.
     items, partners, cost centres, projects.
   - Branch-scoped: warehouses (a warehouse belongs to exactly one branch), numbering
     series, document templates/letterheads, cash/bank accounts.
-- **Multi-company (two legal entities in one database)** is explicitly _not_ designed
+- **Multi-company (two legal entities in one database)** is explicitly *not* designed
   yet: it needs an ADR and a schema-wide decision, not a nullable `company_id` added
   later as an afterthought. Two legal entities today = two deployments, with a
   future consolidation/export path.
@@ -448,19 +448,19 @@ ADR-0020 (Proposed), OQ-22.
 Rules that must hold for every master-data table (details in
 [`master-data-strategy.md`](./master-data-strategy.md) §7):
 
-| Stage              | Rule                                                                                                                                                                                                                                                                     |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Create             | Business key unique among **non-deleted** rows (partial unique index). Capability/scope defaults resolved at creation, then owned by the row.                                                                                                                            |
-| Edit               | Allowed; changes are audited (`updated_at/by`, domain event, before/after for sensitive fields).                                                                                                                                                                         |
-| Disable            | A first-class state (`is_active`), reversible, blocks _new_ usage without touching history.                                                                                                                                                                              |
-| Archive            | For records that must never be selectable again but must remain readable in reports; implemented as disable + a `archived_at` marker if needed, never as deletion.                                                                                                       |
-| Delete             | **Only for never-referenced records.** Where history exists: soft delete (`deleted_at/by`, AR-13) with references preserved. Where the record is a financial dimension (account, cost centre), never delete — disable/archive only. _(expert for accounting dimensions)_ |
-| Effective dating   | For configuration that changes behaviour over time (tax rates, mappings, workflow versions, price lists): rows carry `valid_from`/`valid_to`; changes create a new row, they do not overwrite.                                                                           |
-| Renaming           | Historical documents keep the id; reports may show the historical or current label — decided per report, but **never** by rewriting history.                                                                                                                             |
-| Reporting identity | Every master record has a stable code (human) and id (machine) so reports can be grouped even after a rename.                                                                                                                                                            |
+| Stage | Rule |
+|---|---|
+| Create | Business key unique among **non-deleted** rows (partial unique index). Capability/scope defaults resolved at creation, then owned by the row. |
+| Edit | Allowed; changes are audited (`updated_at/by`, domain event, before/after for sensitive fields). |
+| Disable | A first-class state (`is_active`), reversible, blocks *new* usage without touching history. |
+| Archive | For records that must never be selectable again but must remain readable in reports; implemented as disable + a `archived_at` marker if needed, never as deletion. |
+| Delete | **Only for never-referenced records.** Where history exists: soft delete (`deleted_at/by`, AR-13) with references preserved. Where the record is a financial dimension (account, cost centre), never delete — disable/archive only. *(expert for accounting dimensions)* |
+| Effective dating | For configuration that changes behaviour over time (tax rates, mappings, workflow versions, price lists): rows carry `valid_from`/`valid_to`; changes create a new row, they do not overwrite. |
+| Renaming | Historical documents keep the id; reports may show the historical or current label — decided per report, but **never** by rewriting history. |
+| Reporting identity | Every master record has a stable code (human) and id (machine) so reports can be grouped even after a rename. |
 
 The invariant: **a historical document must remain fully interpretable without the
-current state of any master record.** That is why documents copy the _values_ they
+current state of any master record.** That is why documents copy the *values* they
 depend on (unit price, tax rate, unit, exchange rate, account mapping version) at
 posting/issue time even where an FK also exists.
 
@@ -471,17 +471,17 @@ posting/issue time even where an FK also exists.
 Every decision above was checked against reportability (ADR-0009). The rules that
 keep common ERP reports possible:
 
-| Decision                                                                                                                     | Reporting consequence                                                                                                                     |
-| ---------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Movement ledger + materialized balances (ADR-0017)                                                                           | Stock-on-hand is a single indexed read; stock-card/movement reports scan the immutable ledger; balances can be rebuilt for reconciliation |
-| Typed document tables (not JSONB lines)                                                                                      | Sales/purchase registers are plain SQL over typed columns; no JSON extraction in reports                                                  |
-| Dimensions as real columns on document/ledger lines (item, warehouse, branch, cost centre, project, partner, date, currency) | Every report filters/groups by indexed columns; no joins through EAV tables                                                               |
-| Status stored explicitly per document (+ transition history)                                                                 | "Open orders", "unposted invoices", "cancelled documents" are simple predicates; audit reports can replay transitions                     |
-| Document relations with line quantities                                                                                      | "Ordered vs delivered vs invoiced" and remaining-quantity reports are computable in SQL                                                   |
-| Accounting mapping version captured per posting                                                                              | Historical margins/COGS reports remain stable when mappings change                                                                        |
-| Configuration effective dating                                                                                               | Point-in-time reports (tax rate at invoice date, workflow version) are reproducible                                                       |
-| Custom fields restricted to descriptive JSONB                                                                                | Custom data never becomes a reporting dimension; if it must be reported on, it is promoted to a real column (documented migration path)   |
-| Module-owned views (`vw_*`) for cross-module reporting                                                                       | Reporting stays view-first and parameterized (ADR-0009); no ad-hoc joins across module tables from other modules' code                    |
+| Decision | Reporting consequence |
+|---|---|
+| Movement ledger + materialized balances (ADR-0017) | Stock-on-hand is a single indexed read; stock-card/movement reports scan the immutable ledger; balances can be rebuilt for reconciliation |
+| Typed document tables (not JSONB lines) | Sales/purchase registers are plain SQL over typed columns; no JSON extraction in reports |
+| Dimensions as real columns on document/ledger lines (item, warehouse, branch, cost centre, project, partner, date, currency) | Every report filters/groups by indexed columns; no joins through EAV tables |
+| Status stored explicitly per document (+ transition history) | "Open orders", "unposted invoices", "cancelled documents" are simple predicates; audit reports can replay transitions |
+| Document relations with line quantities | "Ordered vs delivered vs invoiced" and remaining-quantity reports are computable in SQL |
+| Accounting mapping version captured per posting | Historical margins/COGS reports remain stable when mappings change |
+| Configuration effective dating | Point-in-time reports (tax rate at invoice date, workflow version) are reproducible |
+| Custom fields restricted to descriptive JSONB | Custom data never becomes a reporting dimension; if it must be reported on, it is promoted to a real column (documented migration path) |
+| Module-owned views (`vw_*`) for cross-module reporting | Reporting stays view-first and parameterized (ADR-0009); no ad-hoc joins across module tables from other modules' code |
 
 **Rejected for reporting reasons:** dynamic per-organization tables/columns, EAV
 attributes on documents, JSONB line items, and any "report builder" that assumes the
@@ -507,7 +507,7 @@ Three classes of configuration, each with a different versioning rule:
    with draft/published states; documents pin the version they used.
 
 **The rule that protects history:** a document, movement or journal records the
-_values_ and the _configuration version_ it used. Changing configuration affects
+*values* and the *configuration version* it used. Changing configuration affects
 future documents only; in-flight documents either stay on their pinned version or are
 explicitly migrated through an audited action (never silently).
 
@@ -517,19 +517,19 @@ explicitly migrated through an audited action (never silently).
 
 Full discussion in [`configurability-architecture.md`](./configurability-architecture.md) §6.
 
-| Category                       | Examples                                                                                      | Where it lives                                                                    | Changeable by configuration?                             |
-| ------------------------------ | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| **Domain invariants**          | Balanced journal entry; posted document immutable; quantity > 0 on a movement; debit = credit | Code + database constraints                                                       | **No** — this is the meaning of the facts                |
-| **Organization configuration** | Fiscal start, numbering format, negative-stock policy, default warehouse per branch           | Configuration tables                                                              | Yes                                                      |
-| **Workflow rules**             | Which transition is enabled, who may perform it, approval thresholds                          | Workflow definition versions                                                      | Yes (within code-defined edges)                          |
-| **Validation rules**           | Required fields, value ranges, partner/item capability constraints                            | DTO/domain validation + configuration for _which optional_ fields become required | Partly (required-ness only)                              |
-| **Automation rules**           | "On invoice issued, create issue"; "notify finance on credit-limit breach"                    | Registered actions + declarative triggers                                         | Yes (within the registered action catalogue)             |
-| **Accounting rules**           | Which accounts, which side, recognition timing, valuation method                              | Accounting mapping data (+ expert-approved code)                                  | Organization mapping: yes; method/rules: expert decision |
-| **Integration rules**          | Destination enabled, retry policy, payload version                                            | Integration configuration                                                         | Yes                                                      |
+| Category | Examples | Where it lives | Changeable by configuration? |
+|---|---|---|---|
+| **Domain invariants** | Balanced journal entry; posted document immutable; quantity > 0 on a movement; debit = credit | Code + database constraints | **No** — this is the meaning of the facts |
+| **Organization configuration** | Fiscal start, numbering format, negative-stock policy, default warehouse per branch | Configuration tables | Yes |
+| **Workflow rules** | Which transition is enabled, who may perform it, approval thresholds | Workflow definition versions | Yes (within code-defined edges) |
+| **Validation rules** | Required fields, value ranges, partner/item capability constraints | DTO/domain validation + configuration for *which optional* fields become required | Partly (required-ness only) |
+| **Automation rules** | "On invoice issued, create issue"; "notify finance on credit-limit breach" | Registered actions + declarative triggers | Yes (within the registered action catalogue) |
+| **Accounting rules** | Which accounts, which side, recognition timing, valuation method | Accounting mapping data (+ expert-approved code) | Organization mapping: yes; method/rules: expert decision |
+| **Integration rules** | Destination enabled, retry policy, payload version | Integration configuration | Yes |
 
 **No universal rules engine.** A general expression/scripting engine is rejected
 (§10/§17): the rule categories above are implemented in code with narrow, typed
-configuration surfaces. Each new configurable rule must be _designed_ (fields it may
+configuration surfaces. Each new configurable rule must be *designed* (fields it may
 read, actions it may trigger) before it is exposed.
 
 ---
@@ -551,13 +551,13 @@ flowchart TB
 
 Evaluate alternatives to this stack:
 
-| Alternative                                                      | Why not                                                                              |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Configuration _inside_ the core (flags scattered on core tables) | Core tables become unreadable; no history; every new variation adds columns          |
-| Everything driven by events with no configuration layer          | Automation without a declared, reviewable definition is not auditable or predictable |
-| A universal workflow/rules engine above the core                 | Unbounded scope; un-reviewable logic; kills type safety and reporting (§17)          |
-| Per-customer code branches or database forks                     | Maintenance impossibility, security-patch fragmentation                              |
-| EAV/JSONB core                                                   | Kills integrity, indexes and reporting                                               |
+| Alternative | Why not |
+|---|---|
+| Configuration *inside* the core (flags scattered on core tables) | Core tables become unreadable; no history; every new variation adds columns |
+| Everything driven by events with no configuration layer | Automation without a declared, reviewable definition is not auditable or predictable |
+| A universal workflow/rules engine above the core | Unbounded scope; un-reviewable logic; kills type safety and reporting (§17) |
+| Per-customer code branches or database forks | Maintenance impossibility, security-patch fragmentation |
+| EAV/JSONB core | Kills integrity, indexes and reporting |
 
 The recommended stack is deliberately shallow: **six layers, each with a narrow
 purpose**, and the existing platform (events, outbox, RBAC, audit, reporting) is
@@ -567,38 +567,38 @@ reused rather than duplicated.
 
 ## 17. Anti-Patterns — explicit evaluation
 
-| Anti-pattern                                                                     | Verdict               | Why / what we do instead                                                                                                                                                                                |
-| -------------------------------------------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Giant EAV (Entity→Attribute→Value) for the whole system                          | **Rejected**          | No type safety, no constraints, catastrophic query plans, reports become pivots. Custom attributes are limited to a whitelisted JSONB column on a few entities (§ `configurability-architecture.md` §5) |
-| Everything JSONB                                                                 | **Rejected**          | Financial/inventory dimensions, quantities, dates and statuses must be typed columns for constraints, indexes and reporting (ADR-0009)                                                                  |
-| Giant universal `Document` table                                                 | **Rejected**          | One table cannot express per-type validation, FKs and report shapes; every module would depend on every other module's fields. Typed tables + shared _mechanics_ (ADR-0019)                             |
-| Giant universal workflow engine                                                  | **Rejected**          | Turns the ERP into a low-code platform: unreviewable, untestable, unbounded. Bounded transitions + configuration + registered automations (ADR-0018)                                                    |
-| Business logic in DB triggers                                                    | **Rejected**          | Hidden coupling, untestable, bypasses authorization/audit, migration-hostile. Constraints stay in the DB, decisions stay in the application (AR-03/04)                                                  |
-| Business logic in the frontend                                                   | **Rejected**          | Frontend is untrusted (AR-19/21); it renders and requests, it never decides                                                                                                                             |
-| Hard-coded workflow per customer                                                 | **Rejected**          | Defeats the product goal; workflow is configuration over code-defined edges                                                                                                                             |
-| One table (or schema) per customer/business                                      | **Rejected**          | Unmaintainable, breaks migrations and reporting; variation belongs in rows, not in DDL                                                                                                                  |
-| Customer-specific code forks                                                     | **Rejected**          | Security/compliance and upgrade cost. Customer variation = configuration + extension points, or a plugin module                                                                                         |
-| Excessive inheritance/abstraction (deep class hierarchies, generic repositories) | **Rejected**          | Indirection without value; explicit code per module wins (matches the existing codebase style)                                                                                                          |
-| Microservices too early                                                          | **Rejected**          | ADR-0001: one deployable on-premise; boundaries are preserved _inside_ the monolith so extraction stays possible                                                                                        |
-| Multi-tenancy by default                                                         | **Deferred**          | OQ-01 assumes one organization per deployment; adding tenancy later is an ADR + migration, not a nullable column sprinkled everywhere                                                                   |
-| Universal custom-field engine on every table                                     | **Deferred/rejected** | Only where § `configurability-architecture.md` §5 allows; everything financial stays relational                                                                                                         |
+| Anti-pattern | Verdict | Why / what we do instead |
+|---|---|---|
+| Giant EAV (Entity→Attribute→Value) for the whole system | **Rejected** | No type safety, no constraints, catastrophic query plans, reports become pivots. Custom attributes are limited to a whitelisted JSONB column on a few entities (§ `configurability-architecture.md` §5) |
+| Everything JSONB | **Rejected** | Financial/inventory dimensions, quantities, dates and statuses must be typed columns for constraints, indexes and reporting (ADR-0009) |
+| Giant universal `Document` table | **Rejected** | One table cannot express per-type validation, FKs and report shapes; every module would depend on every other module's fields. Typed tables + shared *mechanics* (ADR-0019) |
+| Giant universal workflow engine | **Rejected** | Turns the ERP into a low-code platform: unreviewable, untestable, unbounded. Bounded transitions + configuration + registered automations (ADR-0018) |
+| Business logic in DB triggers | **Rejected** | Hidden coupling, untestable, bypasses authorization/audit, migration-hostile. Constraints stay in the DB, decisions stay in the application (AR-03/04) |
+| Business logic in the frontend | **Rejected** | Frontend is untrusted (AR-19/21); it renders and requests, it never decides |
+| Hard-coded workflow per customer | **Rejected** | Defeats the product goal; workflow is configuration over code-defined edges |
+| One table (or schema) per customer/business | **Rejected** | Unmaintainable, breaks migrations and reporting; variation belongs in rows, not in DDL |
+| Customer-specific code forks | **Rejected** | Security/compliance and upgrade cost. Customer variation = configuration + extension points, or a plugin module |
+| Excessive inheritance/abstraction (deep class hierarchies, generic repositories) | **Rejected** | Indirection without value; explicit code per module wins (matches the existing codebase style) |
+| Microservices too early | **Rejected** | ADR-0001: one deployable on-premise; boundaries are preserved *inside* the monolith so extraction stays possible |
+| Multi-tenancy by default | **Deferred** | OQ-01 assumes one organization per deployment; adding tenancy later is an ADR + migration, not a nullable column sprinkled everywhere |
+| Universal custom-field engine on every table | **Deferred/rejected** | Only where § `configurability-architecture.md` §5 allows; everything financial stays relational |
 
 ---
 
 ## 18. Risks Register
 
-| #   | Risk                                                               | Impact                                   | Mitigation                                                                                     | Owner                        |
-| --- | ------------------------------------------------------------------ | ---------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------- |
-| R1  | Accounting decisions made by non-experts                           | Wrong books, legal exposure              | Every accounting item is expert-gated (OQ-23/24/25/30); no posting logic before sign-off       | Project owner + accountant   |
-| R2  | Workflow model over-built early (engine instead of bounded config) | Schedule and maintenance sink            | MVW scope in ADR-0018; extension points for multi-level approval                               | Architecture                 |
-| R3  | Configuration drift between environments (dev/staging/prod)        | "Works on my machine" for business flows | Configuration export/import + versioned seeds (deployment tooling, flagged)                    | Ops + architecture           |
-| R4  | Custom fields used for business-critical data                      | Data loss/duplication; reporting holes   | Registry + whitelist + promotion path; review gate before enabling                             | Architecture                 |
-| R5  | Reporting performance degrades as configuration grows              | Slow reports, user distrust              | Typed columns, indexed dimensions, materialized balances, view-first reporting (ADR-0009/0017) | Architecture                 |
-| R6  | Historical documents reinterpreted after config change             | Audit/legal invalidation                 | Effective dating + pinning per document (§14)                                                  | Architecture + auditor       |
-| R7  | Master-data deletion used as "cleanup"                             | Broken history                           | Lifecycle rules (§12) + permission separation (`*.Delete` rarely granted) + soft delete        | Architecture                 |
-| R8  | Unit conversion/rounding errors                                    | Quantity discrepancies                   | Base-unit storage, explicit conversions, precision config, expert sign-off (OQ-29)             | Inventory expert             |
-| R9  | Branches silently acting as separate companies                     | Wrong consolidation/reporting            | Branch ≠ legal entity is explicit; multi-company is a separate ADR (OQ-22)                     | Project owner + accountant   |
-| R10 | Legacy ERP data imported with its structure                        | Model corruption                         | Import via module ImportSpecs (ADR-0011) after mapping decisions; never copy legacy tables     | Project owner + architecture |
+| # | Risk | Impact | Mitigation | Owner |
+|---|---|---|---|---|
+| R1 | Accounting decisions made by non-experts | Wrong books, legal exposure | Every accounting item is expert-gated (OQ-23/24/25/30); no posting logic before sign-off | Project owner + accountant |
+| R2 | Workflow model over-built early (engine instead of bounded config) | Schedule and maintenance sink | MVW scope in ADR-0018; extension points for multi-level approval | Architecture |
+| R3 | Configuration drift between environments (dev/staging/prod) | "Works on my machine" for business flows | Configuration export/import + versioned seeds (deployment tooling, flagged) | Ops + architecture |
+| R4 | Custom fields used for business-critical data | Data loss/duplication; reporting holes | Registry + whitelist + promotion path; review gate before enabling | Architecture |
+| R5 | Reporting performance degrades as configuration grows | Slow reports, user distrust | Typed columns, indexed dimensions, materialized balances, view-first reporting (ADR-0009/0017) | Architecture |
+| R6 | Historical documents reinterpreted after config change | Audit/legal invalidation | Effective dating + pinning per document (§14) | Architecture + auditor |
+| R7 | Master-data deletion used as "cleanup" | Broken history | Lifecycle rules (§12) + permission separation (`*.Delete` rarely granted) + soft delete | Architecture |
+| R8 | Unit conversion/rounding errors | Quantity discrepancies | Base-unit storage, explicit conversions, precision config, expert sign-off (OQ-29) | Inventory expert |
+| R9 | Branches silently acting as separate companies | Wrong consolidation/reporting | Branch ≠ legal entity is explicit; multi-company is a separate ADR (OQ-22) | Project owner + accountant |
+| R10 | Legacy ERP data imported with its structure | Model corruption | Import via module ImportSpecs (ADR-0011) after mapping decisions; never copy legacy tables | Project owner + architecture |
 
 ---
 
@@ -607,19 +607,19 @@ reused rather than duplicated.
 Nothing in this list may be implemented from this document alone. Each item names the
 expert and the artefact that must be signed off.
 
-| Area                           | Decision needing validation                                                              | Expert                                 | Reference                          |
-| ------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------- | ---------------------------------- |
-| Chart of accounts              | Structure, coding scheme, control accounts, statutory reporting levels                   | Accountant                             | OQ-25                              |
-| Fiscal calendar                | Year start, period layout, close/reopen rules, year-end entries                          | Accountant                             | OQ-23                              |
-| Posting rules                  | Event → account mapping, recognition timing, dimensions required per entry               | Accountant                             | `accounting-domain-analysis.md` §4 |
-| Inventory valuation & costing  | Method (moving average/FIFO/standard), COGS, revaluation, negative stock                 | Accountant + inventory expert          | OQ-24                              |
-| Tax                            | Rates/groups, inclusive/exclusive, exemptions, liability accounts                        | Tax expert                             | OQ-30                              |
-| E-invoicing / taxpayer system  | Required fields, formats, submission flow, retention                                     | Tax expert + integration owner         | OQ-05                              |
-| Legal documents                | Which documents are statutory, required sequences, number formats/gaps, retention window | Accountant + legal                     | OQ-12/OQ-27                        |
-| Unit & quantity precision      | Fractional units, rounding/presentation rules                                            | Inventory expert + accountant          | OQ-29                              |
-| Inter-branch/inter-company     | Whether internal transfers need invoicing/settlement; transfer pricing                   | Accountant                             | OQ-31                              |
-| HR/payroll scope               | Whether employees/payroll are part of Vardena at all                                     | Project owner (+ HR/legal later)       | OQ-32                              |
-| Approval/segregation of duties | Which financial actions need independent approval; auditor expectations                  | Accountant + ERP implementation expert | OQ-26                              |
+| Area | Decision needing validation | Expert | Reference |
+|---|---|---|---|
+| Chart of accounts | Structure, coding scheme, control accounts, statutory reporting levels | Accountant | OQ-25 |
+| Fiscal calendar | Year start, period layout, close/reopen rules, year-end entries | Accountant | OQ-23 |
+| Posting rules | Event → account mapping, recognition timing, dimensions required per entry | Accountant | `accounting-domain-analysis.md` §4 |
+| Inventory valuation & costing | Method (moving average/FIFO/standard), COGS, revaluation, negative stock | Accountant + inventory expert | OQ-24 |
+| Tax | Rates/groups, inclusive/exclusive, exemptions, liability accounts | Tax expert | OQ-30 |
+| E-invoicing / taxpayer system | Required fields, formats, submission flow, retention | Tax expert + integration owner | OQ-05 |
+| Legal documents | Which documents are statutory, required sequences, number formats/gaps, retention window | Accountant + legal | OQ-12/OQ-27 |
+| Unit & quantity precision | Fractional units, rounding/presentation rules | Inventory expert + accountant | OQ-29 |
+| Inter-branch/inter-company | Whether internal transfers need invoicing/settlement; transfer pricing | Accountant | OQ-31 |
+| HR/payroll scope | Whether employees/payroll are part of Vardena at all | Project owner (+ HR/legal later) | OQ-32 |
+| Approval/segregation of duties | Which financial actions need independent approval; auditor expectations | Accountant + ERP implementation expert | OQ-26 |
 
 ---
 
@@ -627,12 +627,12 @@ expert and the artefact that must be signed off.
 
 **1. Can Vardena support substantially different business workflows without
 source-code changes?**
-Yes, within a bounded space: document _types_ and their legal transitions are
+Yes, within a bounded space: document *types* and their legal transitions are
 code-defined, and each business configures which transitions are enabled, who may
 perform them, which need approval with what thresholds, and which registered
 automations fire (ADR-0018). Business A (`Quote → Approval → Invoice → Issue`),
 Business B (`Order → Issue → Invoice`) and Business C (`Invoice → Issue`) are three
-configuration versions over the same code. A genuinely new _kind_ of step (a state
+configuration versions over the same code. A genuinely new *kind* of step (a state
 that does not exist in code) is a code change — deliberately.
 
 **2. Which parts are configurable?**
@@ -659,10 +659,10 @@ same job for tax rates, mappings and price lists.
 
 **5. How can document relationships remain flexible without becoming an uncontrolled
 generic engine?**
-Relation _kinds_ are a closed, code-managed list; a shared relation table stores
+Relation *kinds* are a closed, code-managed list; a shared relation table stores
 typed links with **line-level quantities** so partial fulfilment is expressible; each
-document type declares which relations are legal. Configuration decides _when_ a
-relation is created automatically, not _whether the relation type exists_.
+document type declares which relations are legal. Configuration decides *when* a
+relation is created automatically, not *whether the relation type exists*.
 
 **6. How can inventory remain reliable and reportable?**
 Movements are the immutable source of truth; balances are materialized in the same
@@ -712,7 +712,7 @@ answer in `docs/open-questions.md`, or an explicit, dated owner decision):
 2. **Inventory source of truth**: accept ADR-0017 (immutable movement ledger +
    materialized balances), and decide **negative-stock policy** and **location
    granularity** defaults. → OQ-24.
-3. **Costing/valuation method** (at least: which method is _possible_ in v1) →
+3. **Costing/valuation method** (at least: which method is *possible* in v1) →
    OQ-24, accountant sign-off. Without it the movement/valuation columns cannot be
    finalized (cost columns may be present, but their semantics must be agreed).
 4. **Item model**: one Item + kind + capability flags and the closed kind list →

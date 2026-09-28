@@ -23,7 +23,7 @@ The schema seams for all of the above already exist (reserved currency/rate
 fields on documents and lines; Task 10.1 explicitly kept multi-currency
 additive).
 
-Unresolved — the _rules_ that turn those seams into working accounting:
+Unresolved — the *rules* that turn those seams into working accounting:
 
 1. **Rate source and governance**: who sets rates (manual entry? import from a
    source? central-bank reference?), at what granularity (per day? per
@@ -56,11 +56,11 @@ Unresolved — the _rules_ that turn those seams into working accounting:
 
 ## Options
 
-| Option                                                                                                   | Advantages                                                           | Disadvantages                                                           |
-| -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| **A. Currency as analytical dimension on single chart** (rial books only; per-line rate snapshot exists) | Minimal schema; matches "rial as basis"; simplest reports            | Currency P/L tracking harder; currency exposure visibility limited      |
-| **B. Dedicated currency accounts** (separate control accounts per currency)                              | Standard Iranian practice familiarity; cleaner FX exposure reporting | More chart configuration; posting-rule mapping complexity               |
-| **C. Full dual-currency ledgers** (parallel foreign-currency books)                                      | Strongest FX accounting                                              | Contract/schema extension; heavy; likely unnecessary for target segment |
+| Option | Advantages | Disadvantages |
+|---|---|---|
+| **A. Currency as analytical dimension on single chart** (rial books only; per-line rate snapshot exists) | Minimal schema; matches "rial as basis"; simplest reports | Currency P/L tracking harder; currency exposure visibility limited |
+| **B. Dedicated currency accounts** (separate control accounts per currency) | Standard Iranian practice familiarity; cleaner FX exposure reporting | More chart configuration; posting-rule mapping complexity |
+| **C. Full dual-currency ledgers** (parallel foreign-currency books) | Strongest FX accounting | Contract/schema extension; heavy; likely unnecessary for target segment |
 
 ## Risks
 
@@ -81,12 +81,12 @@ Unresolved — the _rules_ that turn those seams into working accounting:
 **A first, B as a configuration outcome where a customer needs it**: keep
 currency analytical (rate snapshot per line, rial books), dedicate accounts only
 if an accountant requires separation — since the chart is organization-owned,
-B can often be satisfied _without_ new architecture. **Recommendation only.**
+B can often be satisfied *without* new architecture. **Recommendation only.**
 
 ## Questions requiring product owner confirmation
 
 1. Who is the authoritative rate source for your target customers, and does it
-   need to be _the system's_ job or the accountant's manual entry?
+   need to be *the system's* job or the accountant's manual entry?
 2. Do target customers expect dedicated currency accounts (option B) or is
    analytical currency enough (A)?
 3. Must inventory retain currency identity, or convert once at receipt?

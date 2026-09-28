@@ -14,14 +14,14 @@
 > expanding scope.
 
 **Identifier mapping.** The investigation's §21 used provisional labels
-`ODR-1…ODR-10` for _questions_. The Owner's approved identifiers **supersede**
+`ODR-1…ODR-10` for *questions*. The Owner's approved identifiers **supersede**
 that numbering for the three decided items:
 
-| Owner identifier (authoritative)                                | Investigation §21 label | Investigation candidate    |
-| --------------------------------------------------------------- | ----------------------- | -------------------------- |
-| **ODR-1** Dual Configuration Pin / Explicit Coherence Rule      | investigation ODR-3     | NEW-OQ-CANDIDATE-A / OQ-62 |
-| **ODR-2** Chart Tree Read Ownership / Accounting-owned          | investigation ODR-2     | NEW-OQ-CANDIDATE-B         |
-| **ODR-3** Organization Authorization Boundary / Principal-bound | investigation ODR-9     | S-1 / OQ-01                |
+| Owner identifier (authoritative) | Investigation §21 label | Investigation candidate |
+|---|---|---|
+| **ODR-1** Dual Configuration Pin / Explicit Coherence Rule | investigation ODR-3 | NEW-OQ-CANDIDATE-A / OQ-62 |
+| **ODR-2** Chart Tree Read Ownership / Accounting-owned | investigation ODR-2 | NEW-OQ-CANDIDATE-B |
+| **ODR-3** Organization Authorization Boundary / Principal-bound | investigation ODR-9 | S-1 / OQ-01 |
 
 Investigation ODR-1 (“authorize a Task 19 slice”) is satisfied by this gate.
 Investigation ODR-4…ODR-8 and ODR-10 remain **undecided** and **out of scope**
@@ -51,11 +51,11 @@ code-structure migration service.
 
 ## B. Accepted decisions
 
-| ID        | Decision                                                | Status      | Implementation complete? |
-| --------- | ------------------------------------------------------- | ----------- | ------------------------ |
-| **ODR-1** | Explicit Coherence Rule (Decision C)                    | **DECIDED** | **No**                   |
-| **ODR-2** | Chart Tree reads are Accounting-owned (Decision A)      | **DECIDED** | **No**                   |
-| **ODR-3** | Principal-bound Organization Authorization (Decision A) | **DECIDED** | **No**                   |
+| ID | Decision | Status | Implementation complete? |
+|---|---|---|---|
+| **ODR-1** | Explicit Coherence Rule (Decision C) | **DECIDED** | **No** |
+| **ODR-2** | Chart Tree reads are Accounting-owned (Decision A) | **DECIDED** | **No** |
+| **ODR-3** | Principal-bound Organization Authorization (Decision A) | **DECIDED** | **No** |
 
 `Decision resolved ≠ implementation complete.`
 
@@ -68,20 +68,20 @@ investigation) and the Accounting schema/services.
 
 ### Already implemented (must be preserved)
 
-| Area                                                                                                                                                | Evidence                                                                                                                                                    |
-| --------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Account master, hierarchy, identity (`Account.id` ULID), immutable `code`, `level` derived, `is_postable` / `is_active`                             | `accounting.prisma` `Account`; `accounts.service.ts`; `accounts.controller.ts` (list/get/create/patch/enable/disable — **no tree endpoint**, **no DELETE**) |
-| Dual pins, both NOT NULL                                                                                                                            | `accounts.coding_structure_version_id`, `accounts.accounting_configuration_id`                                                                              |
-| Code-shape validation uses **accounting configuration levels**; coding-structure version is pinned/`active` but **digit lengths are not consulted** | investigation §3.3; `AccountsService.createAccount`                                                                                                         |
-| Pin divergence is **possible** (OQ-62 OPEN; Task 11 rehearsal)                                                                                      | `docs/open-questions.md` OQ-62                                                                                                                              |
-| Accounting configuration root, single ACTIVE, freeze                                                                                                | ADR-0028 Accepted; Task 11/13                                                                                                                               |
-| Chart reads today: list/get Account APIs (flat), not a tree                                                                                         | `GET /api/v1/accounting/accounts`                                                                                                                           |
-| Reporting reads: Task 17A/17B/18 ledger/statement/GL/TB                                                                                             | Accounting-owned; **not** a Chart Tree                                                                                                                      |
-| RBAC: permission codes, no wildcards                                                                                                                | ADR-0006/0016; `AuthorizationGuard`                                                                                                                         |
-| Organization scoping: structural `organization_id` + optional ADR-0025 deployment pin                                                               | `requireUsableOrganization` / `assertOrganizationInScope`                                                                                                   |
-| **No principal→organization membership model**                                                                                                      | `users`/`rbac` schemas; STATE.md §2 security inventory; OQ-01                                                                                               |
-| Foreign/unknown org keys → **404** on Accounting reads                                                                                              | Task 17A/17B/18 org-first 404/422 matrix                                                                                                                    |
-| Permission + caller-supplied `organizationId` can currently reach another org's chart when the deployment pin is unset                              | investigation §1 finding 5 / S-1                                                                                                                            |
+| Area | Evidence |
+|---|---|
+| Account master, hierarchy, identity (`Account.id` ULID), immutable `code`, `level` derived, `is_postable` / `is_active` | `accounting.prisma` `Account`; `accounts.service.ts`; `accounts.controller.ts` (list/get/create/patch/enable/disable — **no tree endpoint**, **no DELETE**) |
+| Dual pins, both NOT NULL | `accounts.coding_structure_version_id`, `accounts.accounting_configuration_id` |
+| Code-shape validation uses **accounting configuration levels**; coding-structure version is pinned/`active` but **digit lengths are not consulted** | investigation §3.3; `AccountsService.createAccount` |
+| Pin divergence is **possible** (OQ-62 OPEN; Task 11 rehearsal) | `docs/open-questions.md` OQ-62 |
+| Accounting configuration root, single ACTIVE, freeze | ADR-0028 Accepted; Task 11/13 |
+| Chart reads today: list/get Account APIs (flat), not a tree | `GET /api/v1/accounting/accounts` |
+| Reporting reads: Task 17A/17B/18 ledger/statement/GL/TB | Accounting-owned; **not** a Chart Tree |
+| RBAC: permission codes, no wildcards | ADR-0006/0016; `AuthorizationGuard` |
+| Organization scoping: structural `organization_id` + optional ADR-0025 deployment pin | `requireUsableOrganization` / `assertOrganizationInScope` |
+| **No principal→organization membership model** | `users`/`rbac` schemas; STATE.md §2 security inventory; OQ-01 |
+| Foreign/unknown org keys → **404** on Accounting reads | Task 17A/17B/18 org-first 404/422 matrix |
+| Permission + caller-supplied `organizationId` can currently reach another org's chart when the deployment pin is unset | investigation §1 finding 5 / S-1 |
 
 ### Not implemented (Task 19 slices)
 
@@ -179,14 +179,14 @@ Task 19 implementation **must not** include:
 
 ## F. Dependencies (repository-backed)
 
-| Dependency                                                      | Role                                                                     |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Organization module                                             | `organization_id`, deployment pin, future membership/context for Slice 3 |
-| Identity                                                        | Principal / session (`AuthGuard`)                                        |
-| RBAC                                                            | existing permission evaluation (unchanged semantics)                     |
-| Accounting Account / configuration / coding-structure models    | Slice 1 and 2                                                            |
-| Task 18 read conventions                                        | Slice 2 scoping/narrowing; no financial recalculation                    |
-| ADR-0028 / ADR-0026 / ADR-0021 / ADR-0025 / ADR-0006 / ADR-0016 | constraints                                                              |
+| Dependency | Role |
+|---|---|
+| Organization module | `organization_id`, deployment pin, future membership/context for Slice 3 |
+| Identity | Principal / session (`AuthGuard`) |
+| RBAC | existing permission evaluation (unchanged semantics) |
+| Accounting Account / configuration / coding-structure models | Slice 1 and 2 |
+| Task 18 read conventions | Slice 2 scoping/narrowing; no financial recalculation |
+| ADR-0028 / ADR-0026 / ADR-0021 / ADR-0025 / ADR-0006 / ADR-0016 | constraints |
 
 Not required: Workflow, Inventory posting, License (ADR-0030), Documents
 Foundation (shared), Reporting module.
@@ -225,15 +225,15 @@ Foundation (shared), Reporting module.
 
 ## H. OQ / ADR handling for implementers
 
-| Item          | After this gate                                                                                                        |
-| ------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| OQ-25, OQ-43  | **OPEN** (unchanged)                                                                                                   |
-| OQ-62         | **OPEN** — architectural reject-on-divergence **DECIDED** (ODR-1); exact comparison algorithm is implementation design |
-| OQ-63         | **OPEN** (legacy fallback shape)                                                                                       |
-| OQ-01 / OQ-22 | **OPEN** — target invariant **DECIDED** (ODR-3); membership schema still absent                                        |
-| ADR-0028      | **Accepted** — do not rewrite; Slice 1 must preserve D1/D2 concepts                                                    |
-| ADR-0033…0037 | **Proposed** — `Owner decision exists; implementation adoption remains pending.` Do not self-accept                    |
-| ADR-0009      | **Accepted** — Reporting remains view/SQL policy; Chart Tree ownership is Accounting (ODR-2)                           |
+| Item | After this gate |
+|---|---|
+| OQ-25, OQ-43 | **OPEN** (unchanged) |
+| OQ-62 | **OPEN** — architectural reject-on-divergence **DECIDED** (ODR-1); exact comparison algorithm is implementation design |
+| OQ-63 | **OPEN** (legacy fallback shape) |
+| OQ-01 / OQ-22 | **OPEN** — target invariant **DECIDED** (ODR-3); membership schema still absent |
+| ADR-0028 | **Accepted** — do not rewrite; Slice 1 must preserve D1/D2 concepts |
+| ADR-0033…0037 | **Proposed** — `Owner decision exists; implementation adoption remains pending.` Do not self-accept |
+| ADR-0009 | **Accepted** — Reporting remains view/SQL policy; Chart Tree ownership is Accounting (ODR-2) |
 
 ---
 

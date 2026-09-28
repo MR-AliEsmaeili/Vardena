@@ -7,7 +7,7 @@ Date: 2026-09-13
 
 ADR-0019 decides the document foundation: typed document tables rather than
 one universal table, shared mechanics for numbering and relations, and
-controlled cross-module references. It specified _what_ the platform owns but
+controlled cross-module references. It specified *what* the platform owns but
 not the implementation binding: where document types are declared, how
 numbers are allocated under concurrency without gaps or duplicates, how a
 retry of an allocation behaves, and how documents reference each other

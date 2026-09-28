@@ -13,7 +13,7 @@ PR #22, Task 10.7 accepted) · Task 10.7 implementation commit:
 One new application use case exists after this task: **`PostingService`**
 (`backend/src/modules/accounting/application/posting.service.ts`), with one
 public method, `postVoucher({ organizationId, voucherId, operationKey })`. It
-is the single boundary through which posting is reached, and it _coordinates_ —
+is the single boundary through which posting is reached, and it *coordinates* —
 it decides no accounting rule of its own:
 
 ```
@@ -40,12 +40,12 @@ outcome onto the document DTO and the repository's guard errors onto the API
 error model. Nothing else changed in the module.
 
 **No duplicate abstraction was created.** The reconnaissance the brief asks for
-(§3) found that the posting orchestration _already existed_ — but it existed
+(§3) found that the posting orchestration *already existed* — but it existed
 **inside** `AccountingDocumentsService.finalizeDocument`, mixed with the
 voucher aggregate's other six operations, and `PostingReadinessService`
 (Task 10.5) plus `toPostingResult`/`PostingResult` (Task 10.6) had **no
 production caller at all** (verified: `grep` found only specs). This task
-therefore _extracted and refined_ the existing boundary into a named use case
+therefore *extracted and refined* the existing boundary into a named use case
 and wired the two orphaned contract seams into it, rather than adding a second
 orchestrator beside it. `git grep finalizeChecked` now has exactly **one**
 production call site (`posting.service.ts:193`), which is the mechanical proof
@@ -56,15 +56,15 @@ through it.
 
 ## 2. Files changed
 
-| File                                                                         | Kind                           | Why it was necessary                                                                                                                                                                                                                                                                                                                                                                                      |
-| ---------------------------------------------------------------------------- | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backend/src/modules/accounting/application/posting.service.ts`              | **new** (534 lines, ~50 % doc) | The seam itself: `PostingService`, `PostVoucherCommand`, `PostingOutcome`/`PostingOutcomeKind`, and `assertPostedLedger` (the stored-row integrity assertion). AC-01…AC-08, AC-12.                                                                                                                                                                                                                        |
-| `backend/src/modules/accounting/application/posting.service.spec.ts`         | **new** (1127 lines, 18 tests) | Proves the seam: valid posting, replay, conflict, readiness rejection, lifecycle refusal, org isolation, four rollback classes, concurrency, ledger completeness/snapshot, immutability, delegation. §5.                                                                                                                                                                                                  |
-| `backend/src/modules/accounting/application/accounting-documents.service.ts` | modified (−133/+36)            | `finalizeDocument` delegates to the seam (AC-01: callers must not duplicate orchestration). The two private helpers the seam also needs moved to the shared support file (§3.4). No other operation touched.                                                                                                                                                                                              |
-| `backend/src/modules/accounting/application/accounting-document-support.ts`  | modified (+86)                 | Received `documentOperationRow` and `publishDocumentEvent` **verbatim** from the service, so the idempotency ROW shape and the `AccountingDocument.*` payload have exactly one definition each. This is the file's own stated role ("the things that must not drift between the voucher's operations"); it previously documented the guard-error mapping as belonging here while it lived in the service. |
-| `backend/src/modules/accounting/accounting.module.ts`                        | modified (+11)                 | Registers `PostingService` as a provider — **provided, not exported** (its only caller is in-module; a cross-module caller needs §16.3 + OQ-39 first, AR-07).                                                                                                                                                                                                                                             |
-| `docs/modules.md`                                                            | modified (+30/−2)              | AG-07 doc sync: the Accounting entry gains a "Posting orchestration seam (Task 10.8)" bullet beside the Task 10.5 readiness bullet, and the `POST :id/finalize` line records that the route is now the seam's shell (and that there is still no `POST :id/post`).                                                                                                                                         |
-| `docs/task-10.8-implementation-report.md`                                    | **new**                        | This report (the 10.4/10.5/10.7 convention).                                                                                                                                                                                                                                                                                                                                                              |
+| File | Kind | Why it was necessary |
+| --- | --- | --- |
+| `backend/src/modules/accounting/application/posting.service.ts` | **new** (534 lines, ~50 % doc) | The seam itself: `PostingService`, `PostVoucherCommand`, `PostingOutcome`/`PostingOutcomeKind`, and `assertPostedLedger` (the stored-row integrity assertion). AC-01…AC-08, AC-12. |
+| `backend/src/modules/accounting/application/posting.service.spec.ts` | **new** (1127 lines, 18 tests) | Proves the seam: valid posting, replay, conflict, readiness rejection, lifecycle refusal, org isolation, four rollback classes, concurrency, ledger completeness/snapshot, immutability, delegation. §5. |
+| `backend/src/modules/accounting/application/accounting-documents.service.ts` | modified (−133/+36) | `finalizeDocument` delegates to the seam (AC-01: callers must not duplicate orchestration). The two private helpers the seam also needs moved to the shared support file (§3.4). No other operation touched. |
+| `backend/src/modules/accounting/application/accounting-document-support.ts` | modified (+86) | Received `documentOperationRow` and `publishDocumentEvent` **verbatim** from the service, so the idempotency ROW shape and the `AccountingDocument.*` payload have exactly one definition each. This is the file's own stated role ("the things that must not drift between the voucher's operations"); it previously documented the guard-error mapping as belonging here while it lived in the service. |
+| `backend/src/modules/accounting/accounting.module.ts` | modified (+11) | Registers `PostingService` as a provider — **provided, not exported** (its only caller is in-module; a cross-module caller needs §16.3 + OQ-39 first, AR-07). |
+| `docs/modules.md` | modified (+30/−2) | AG-07 doc sync: the Accounting entry gains a "Posting orchestration seam (Task 10.8)" bullet beside the Task 10.5 readiness bullet, and the `POST :id/finalize` line records that the route is now the seam's shell (and that there is still no `POST :id/post`). |
+| `docs/task-10.8-implementation-report.md` | **new** | This report (the 10.4/10.5/10.7 convention). |
 
 **Not touched** (verified with `git status`): `prisma/schema/*`, `prisma/migrations/*`,
 every `api/` controller and DTO, `domain/accounting-permissions.ts`,
@@ -93,7 +93,7 @@ as written:
   result type. The spec pins `'id' in outcome.result === false` and that no
   entry id equals the evidence row's id, a line id or the voucher id.
 
-`toPostingResult` is deliberately **not** called: it _generates_ entries with
+`toPostingResult` is deliberately **not** called: it *generates* entries with
 fresh ULIDs as the pure contract transform, and re-deriving identities for
 evidence that is already persisted would invent a second identity for the same
 rows. The `PostingResult` is assembled from the entries read back through
@@ -113,21 +113,21 @@ here. Because Task 10.5's contract evaluates a **final** voucher
 voucher exists, and it means one thing per path — both documented in the class
 header:
 
-- **replay path** — a _refusal_: `not_ready` ⇒ `422` with
+- **replay path** — a *refusal*: `not_ready` ⇒ `422` with
   `{ problem: 'posting_not_ready', reasons }` (the Task 10.5 reason objects,
   verbatim). This request mutated nothing, so refusing is truthful, and §16.4's
   "replay the stored result (re-reading **current** rows, never a stale
   snapshot)" is exactly what the evaluation does. The spec reaches it through
-  the one _reachable_ drift Task 10.5 documents (a fiscal year's dates edited
+  the one *reachable* drift Task 10.5 documents (a fiscal year's dates edited
   while it is open), not through a mock.
-- **fresh path** — an _assertion_: `finalizeChecked` re-validated every
+- **fresh path** — an *assertion*: `finalizeChecked` re-validated every
   readiness dimension under the area/year/period/account/document locks
   microseconds earlier and a `ready` verdict on a final voucher is stable
   (Task 10.5), so `not_ready` there means the stored books contradict the
   module's own guarantee. It throws a plain internal `Error`, **not** a 4xx:
   the posting DID commit, and a 422 would tell the caller the opposite.
 
-A pre-transaction readiness _gate_ on a `temporary` voucher was considered and
+A pre-transaction readiness *gate* on a `temporary` voucher was considered and
 rejected: it would either be the constant `document_not_final` (no
 information) or require filtering reasons out of the Task 10.5 verdict — which
 is re-interpreting the contract, i.e. the duplication AC-03 forbids. The
@@ -143,7 +143,7 @@ the same input the service used to build (`id`, `organizationId`, the
 unchanged and by construction:
 
 - ONE transaction — the seam holds no `PrismaService` and no transactional
-  client, so it _cannot_ open one. The spec fixture hands it none, which is the
+  client, so it *cannot* open one. The spec fixture hands it none, which is the
   structural proof (the suite could not pass otherwise);
 - the lock order stays area → year → period → accounts `FOR SHARE` → document
   `FOR UPDATE`; the seam imports no lock helper and takes no lock;
@@ -180,39 +180,39 @@ diff to accepted Task 10.4 code at zero for that method.
 
 ## 4. Invariants verified
 
-| Invariant                                            | Enforced by                                                                                                                                                                                                                                    | Proven by                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| One orchestration boundary (AC-01)                   | `finalizeDocument` delegates; `finalizeChecked` has one production caller                                                                                                                                                                      | `git grep finalizeChecked src` (only `posting.service.ts:193`); `delegates the atomic act…` (exactly one call for a post + its replay)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| Existing PostingInput/PostingResult contract (AC-02) | `toPostingInput`/`checkPostingInput`/`PostingResult` imported from `domain/posting.ts`; no new input type                                                                                                                                      | `posts a temporary voucher…` (`checkPostingInput(outcome.input) === []`, hash/operationKey round-trip)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| Readiness enforcement (AC-03)                        | `PostingReadinessService` consulted on both paths                                                                                                                                                                                              | `refuses to replay a posting whose stored voucher is no longer posting-ready` (422 + the Task 10.5 reasons, zero mutation); `refuses what the lifecycle refuses…` (draft ⇒ `not_temporary` **and** readiness `document_not_final`)                                                                                                                                                                                                                                                                                                                                                                                     |
-| Atomicity (AC-04)                                    | Step 4 is a plain call to the Task 10.7 transaction; the seam holds no Prisma client                                                                                                                                                           | The four rollback tests + the delegation test's structural argument                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Replay (AC-05)                                       | Same `(org, key)` + same hash ⇒ re-read current rows                                                                                                                                                                                           | `replays the same key with the same hash…`: same entry ids, same `postedAt`, one evidence row, **one** event, all eight tables deep-equal unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| Conflict (AC-06)                                     | Different hash _or_ different kind ⇒ 409 before any transaction                                                                                                                                                                                | `refuses the same key with a different hash…` (other voucher stays `temporary`, 0 entries, one evidence row, stores deep-equal); `refuses a key already used for another operation kind`                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Ledger completeness 1:1 (AC-07)                      | `assertPostedLedger` on stored rows (+ the transaction's own count assertion and `uq_ledger_entries_voucher_line_id`)                                                                                                                          | `posts a temporary voucher…` (2 lines ⇒ 2 entries, `voucherLineId` set equals the line id set); `verifies the stored sourcing snapshot…`                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| Snapshot integrity (AC-08)                           | `assertPostedLedger`: org, area, year, period, voucher, number, branch, `lineNo`, `accountId`, debit, credit, description, `documentDate`, `postingTimestamp`, `finalizedBy`, `correlationId`, `origin`, `source`, `voucherLineId ∈ voucherId` | `verifies the stored sourcing snapshot against the voucher (AC-08)` (column by column) + the negative cases (tampered area ⇒ throws; short set ⇒ throws); `refuses to report a replay whose stored entry drifted…` (end to end through the seam)                                                                                                                                                                                                                                                                                                                                                                       |
-| Exact money (AC-09)                                  | No `Number`/`parseFloat` anywhere in the new code; amounts compared as stored decimal strings; `numeric(18,2)` untouched                                                                                                                       | `persists money exactly…`: `0.10` canonicalizes to `0.1`, and `9999999999999999.99` survives verbatim while `String(Number('9999999999999999.99'))` is `'10000000000000000'` — the float trap pinned in the test itself                                                                                                                                                                                                                                                                                                                                                                                                |
-| Failure rollback (AC-10)                             | The fake's `withRollback` mirrors `$transaction`; the seam adds no write of its own                                                                                                                                                            | ledger-insert failure, **partial** ledger insert (first row lands, second throws ⇒ zero rows remain), the 1:1 `voucher_line_id` backstop (only the hand-written row remains), evidence-insert failure — each asserts `temporary` + 0 entries + 0 evidence rows + 0 events                                                                                                                                                                                                                                                                                                                                              |
-| Concurrency (AC-11)                                  | The document lock + the `(org, key)` unique backstop, both unchanged                                                                                                                                                                           | `posts once under concurrent attempts…`: `Promise.allSettled` ⇒ exactly one `posted`, the loser rejected with `AccountingDocumentPhaseConflictError` (the caller maps it to 409), one evidence row, one entry set, one event                                                                                                                                                                                                                                                                                                                                                                                           |
-| Immutability (AC-12)                                 | No mutation verb exists                                                                                                                                                                                                                        | `exposes no ledger update, delete or upsert path`: `Object.getOwnPropertyNames(LedgerEntriesRepository.prototype)` is exactly `['client','constructor','findByVoucher']`; a post + replay leaves the ledger table deep-equal. Structural second proof: `AccountingTxClient.ledgerEntry` is `Pick<LedgerEntryDelegate,'createMany'>` (`data/accounting-rows.ts:795`), so even a future in-transaction writer has only an insert. `git grep -iE 'ledgerEntr(y\|ies)\.(update\|delete\|upsert)' src test` ⇒ no application hit (the only `deleteMany` calls are live-test `afterAll` cleanup through the raw test client) |
-| Lock ordering (AC-13)                                | `data/accounting-locks.ts` untouched; the seam takes no lock                                                                                                                                                                                   | File unmodified (`git status`); the delegation test's structural argument                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| No source integration (AC-14)                        | Nothing outside Accounting was touched                                                                                                                                                                                                         | `git status` (§2); the fresh-posting test asserts lines/areas/years/periods/accounts deep-equal unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| OQs open (AC-15)                                     | No OQ-gated behaviour decided                                                                                                                                                                                                                  | `docs/open-questions.md` byte-identical (`git status` shows no change); §7                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| Evidence identity only                               | `accounting_posting_operations.id` is never returned as a posting or ledger identity                                                                                                                                                           | `keeps the ledger identity independent from the operation evidence identity`; `'id' in outcome.result === false`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Invariant | Enforced by | Proven by |
+| --- | --- | --- |
+| One orchestration boundary (AC-01) | `finalizeDocument` delegates; `finalizeChecked` has one production caller | `git grep finalizeChecked src` (only `posting.service.ts:193`); `delegates the atomic act…` (exactly one call for a post + its replay) |
+| Existing PostingInput/PostingResult contract (AC-02) | `toPostingInput`/`checkPostingInput`/`PostingResult` imported from `domain/posting.ts`; no new input type | `posts a temporary voucher…` (`checkPostingInput(outcome.input) === []`, hash/operationKey round-trip) |
+| Readiness enforcement (AC-03) | `PostingReadinessService` consulted on both paths | `refuses to replay a posting whose stored voucher is no longer posting-ready` (422 + the Task 10.5 reasons, zero mutation); `refuses what the lifecycle refuses…` (draft ⇒ `not_temporary` **and** readiness `document_not_final`) |
+| Atomicity (AC-04) | Step 4 is a plain call to the Task 10.7 transaction; the seam holds no Prisma client | The four rollback tests + the delegation test's structural argument |
+| Replay (AC-05) | Same `(org, key)` + same hash ⇒ re-read current rows | `replays the same key with the same hash…`: same entry ids, same `postedAt`, one evidence row, **one** event, all eight tables deep-equal unchanged |
+| Conflict (AC-06) | Different hash *or* different kind ⇒ 409 before any transaction | `refuses the same key with a different hash…` (other voucher stays `temporary`, 0 entries, one evidence row, stores deep-equal); `refuses a key already used for another operation kind` |
+| Ledger completeness 1:1 (AC-07) | `assertPostedLedger` on stored rows (+ the transaction's own count assertion and `uq_ledger_entries_voucher_line_id`) | `posts a temporary voucher…` (2 lines ⇒ 2 entries, `voucherLineId` set equals the line id set); `verifies the stored sourcing snapshot…` |
+| Snapshot integrity (AC-08) | `assertPostedLedger`: org, area, year, period, voucher, number, branch, `lineNo`, `accountId`, debit, credit, description, `documentDate`, `postingTimestamp`, `finalizedBy`, `correlationId`, `origin`, `source`, `voucherLineId ∈ voucherId` | `verifies the stored sourcing snapshot against the voucher (AC-08)` (column by column) + the negative cases (tampered area ⇒ throws; short set ⇒ throws); `refuses to report a replay whose stored entry drifted…` (end to end through the seam) |
+| Exact money (AC-09) | No `Number`/`parseFloat` anywhere in the new code; amounts compared as stored decimal strings; `numeric(18,2)` untouched | `persists money exactly…`: `0.10` canonicalizes to `0.1`, and `9999999999999999.99` survives verbatim while `String(Number('9999999999999999.99'))` is `'10000000000000000'` — the float trap pinned in the test itself |
+| Failure rollback (AC-10) | The fake's `withRollback` mirrors `$transaction`; the seam adds no write of its own | ledger-insert failure, **partial** ledger insert (first row lands, second throws ⇒ zero rows remain), the 1:1 `voucher_line_id` backstop (only the hand-written row remains), evidence-insert failure — each asserts `temporary` + 0 entries + 0 evidence rows + 0 events |
+| Concurrency (AC-11) | The document lock + the `(org, key)` unique backstop, both unchanged | `posts once under concurrent attempts…`: `Promise.allSettled` ⇒ exactly one `posted`, the loser rejected with `AccountingDocumentPhaseConflictError` (the caller maps it to 409), one evidence row, one entry set, one event |
+| Immutability (AC-12) | No mutation verb exists | `exposes no ledger update, delete or upsert path`: `Object.getOwnPropertyNames(LedgerEntriesRepository.prototype)` is exactly `['client','constructor','findByVoucher']`; a post + replay leaves the ledger table deep-equal. Structural second proof: `AccountingTxClient.ledgerEntry` is `Pick<LedgerEntryDelegate,'createMany'>` (`data/accounting-rows.ts:795`), so even a future in-transaction writer has only an insert. `git grep -iE 'ledgerEntr(y\|ies)\.(update\|delete\|upsert)' src test` ⇒ no application hit (the only `deleteMany` calls are live-test `afterAll` cleanup through the raw test client) |
+| Lock ordering (AC-13) | `data/accounting-locks.ts` untouched; the seam takes no lock | File unmodified (`git status`); the delegation test's structural argument |
+| No source integration (AC-14) | Nothing outside Accounting was touched | `git status` (§2); the fresh-posting test asserts lines/areas/years/periods/accounts deep-equal unchanged |
+| OQs open (AC-15) | No OQ-gated behaviour decided | `docs/open-questions.md` byte-identical (`git status` shows no change); §7 |
+| Evidence identity only | `accounting_posting_operations.id` is never returned as a posting or ledger identity | `keeps the ledger identity independent from the operation evidence identity`; `'id' in outcome.result === false` |
 
 ## 5. Tests
 
 Exact commands, run from `backend/`, and exact results.
 
-| Gate            | Command                                             | Result                                                                                                                                                                                                                                                                                                                                                                         |
-| --------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Format          | `npm run format:check`                              | ✅ `All matched files use Prettier code style!`                                                                                                                                                                                                                                                                                                                                |
-| Lint            | `npm run lint`                                      | ✅ `Found 0 warnings and 0 errors.` — `428 files`, 96 rules (baseline: 426 files)                                                                                                                                                                                                                                                                                              |
-| Typecheck       | `npm run typecheck`                                 | ✅ clean (`tsc --noEmit`)                                                                                                                                                                                                                                                                                                                                                      |
-| Build           | `npm run build`                                     | ✅ clean (`nest build`)                                                                                                                                                                                                                                                                                                                                                        |
-| Unit            | `npm test`                                          | ✅ **71 files / 884 tests passed** (baseline 70 / 866 ⇒ **+1 file, +18 tests**, 0 failures)                                                                                                                                                                                                                                                                                    |
-| E2E             | `npm run test:e2e`                                  | ✅ **189 passed / 37 skipped** over **15 passed / 7 skipped** files (22) — **byte-identical to the baseline**, i.e. zero regression through the delegation                                                                                                                                                                                                                     |
-| Prisma validate | `DATABASE_URL=… npm run prisma:validate`            | ⛔ **BLOCKED** (sandbox egress): `request to https://binaries.prisma.sh/…/schema-engine.gz.sha256 failed … Client network socket disconnected before secure TLS connection was established`. Not a gate for this task: **no schema or migration file changed** (§2). Unchanged since Task 10.4. CI runs both Prisma steps green (`Prisma validate`, `Prisma generate` — §9.1). |
-| Live-DB suites  | `npm run test:e2e` with `VARDENA_TEST_DATABASE_URL` | ⛔ **SKIPPED locally — no PostgreSQL in this sandbox.** Verified: no `psql`, no `docker`, TCP `127.0.0.1:5432` refused. The 37 skipped tests (7 files) are the live suites. **They are not counted as passing locally** — but CI ran them against real PostgreSQL on PR #23 and they pass (`Migrate test database` + `E2E tests (incl. live-DB suites)` both green, §9.1).     |
+| Gate | Command | Result |
+| --- | --- | --- |
+| Format | `npm run format:check` | ✅ `All matched files use Prettier code style!` |
+| Lint | `npm run lint` | ✅ `Found 0 warnings and 0 errors.` — `428 files`, 96 rules (baseline: 426 files) |
+| Typecheck | `npm run typecheck` | ✅ clean (`tsc --noEmit`) |
+| Build | `npm run build` | ✅ clean (`nest build`) |
+| Unit | `npm test` | ✅ **71 files / 884 tests passed** (baseline 70 / 866 ⇒ **+1 file, +18 tests**, 0 failures) |
+| E2E | `npm run test:e2e` | ✅ **189 passed / 37 skipped** over **15 passed / 7 skipped** files (22) — **byte-identical to the baseline**, i.e. zero regression through the delegation |
+| Prisma validate | `DATABASE_URL=… npm run prisma:validate` | ⛔ **BLOCKED** (sandbox egress): `request to https://binaries.prisma.sh/…/schema-engine.gz.sha256 failed … Client network socket disconnected before secure TLS connection was established`. Not a gate for this task: **no schema or migration file changed** (§2). Unchanged since Task 10.4. CI runs both Prisma steps green (`Prisma validate`, `Prisma generate` — §9.1). |
+| Live-DB suites | `npm run test:e2e` with `VARDENA_TEST_DATABASE_URL` | ⛔ **SKIPPED locally — no PostgreSQL in this sandbox.** Verified: no `psql`, no `docker`, TCP `127.0.0.1:5432` refused. The 37 skipped tests (7 files) are the live suites. **They are not counted as passing locally** — but CI ran them against real PostgreSQL on PR #23 and they pass (`Migrate test database` + `E2E tests (incl. live-DB suites)` both green, §9.1). |
 
 Baselines were measured on the clean base commit before any edit
 (`lint` 426 files 0/0 · `typecheck` ✅ · `build` ✅ · unit 70/866 · e2e
@@ -253,16 +253,16 @@ forbids.
 
 ## 6. Scope audit — non-goals, explicitly untouched
 
-| Forbidden                                                                                                        | Touched? | Evidence                                                                                                                                                                                                                                                                                      |
-| ---------------------------------------------------------------------------------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Posting Rules Engine, account mapping, configurable accounting rules, control roles, account selection           | **No**   | The seam contains no rule; step 4 delegates. `grep -i "rule engine\|posting rule\|control role\|mapping" posting.service.ts` ⇒ only the header sentence stating their absence                                                                                                                 |
-| Dimensions (columns, EAV, JSONB, binding, validation framework)                                                  | **No**   | No schema change; `dimensionAssignments` stays `[]` (asserted in the spec); OQ-41 untouched                                                                                                                                                                                                   |
-| Balances, projections, trial balance, statements, reports, closing, reopening, reversal, correction, replacement | **No**   | No such code path; `PostingResult` carries entries only (balances excluded by the Task 10.6 contract)                                                                                                                                                                                         |
-| Inventory/Sales/Purchasing/Treasury/Payroll → Accounting integration, source adapters                            | **No**   | No file outside `modules/accounting` changed except `docs/modules.md`; no event consumer added; the fresh-posting test asserts nothing outside the voucher aggregate changed                                                                                                                  |
-| Transactional outbox, queue, worker, Redis, Kafka, broker, microservices                                         | **No**   | No such import or provider; the only publication is the existing in-memory `AccountingDocument.Finalized` (AC-D-20). OQ-39 not resolved                                                                                                                                                       |
-| Public Posting API, public Ledger CRUD, frontend, new permissions, new RBAC                                      | **No**   | No `api/` file changed; the permission registry and `accounting-permissions.ts` are untouched (still 29 codes); `LedgerEntriesRepository` still exposes one scoped read; the existing scope-audit e2e (`POST :id/post` ⇒ 404) still passes unmodified; there is no frontend in the repository |
-| Schema redesign of Voucher / VoucherLine / LedgerEntry / `accounting_posting_operations`                         | **No**   | `git status backend/prisma` ⇒ empty. No migration, no composite FK, no trigger, no constraint                                                                                                                                                                                                 |
-| Drive-by refactors, unrelated formatting, renames, dependency upgrades                                           | **No**   | 6 files (§2); `package.json`/`package-lock.json` untouched; `prettier --write .` reformatted only the new spec; the two moved helpers are the minimum the seam needs to avoid duplicating the row shape and the event payload                                                                 |
+| Forbidden | Touched? | Evidence |
+| --- | --- | --- |
+| Posting Rules Engine, account mapping, configurable accounting rules, control roles, account selection | **No** | The seam contains no rule; step 4 delegates. `grep -i "rule engine\|posting rule\|control role\|mapping" posting.service.ts` ⇒ only the header sentence stating their absence |
+| Dimensions (columns, EAV, JSONB, binding, validation framework) | **No** | No schema change; `dimensionAssignments` stays `[]` (asserted in the spec); OQ-41 untouched |
+| Balances, projections, trial balance, statements, reports, closing, reopening, reversal, correction, replacement | **No** | No such code path; `PostingResult` carries entries only (balances excluded by the Task 10.6 contract) |
+| Inventory/Sales/Purchasing/Treasury/Payroll → Accounting integration, source adapters | **No** | No file outside `modules/accounting` changed except `docs/modules.md`; no event consumer added; the fresh-posting test asserts nothing outside the voucher aggregate changed |
+| Transactional outbox, queue, worker, Redis, Kafka, broker, microservices | **No** | No such import or provider; the only publication is the existing in-memory `AccountingDocument.Finalized` (AC-D-20). OQ-39 not resolved |
+| Public Posting API, public Ledger CRUD, frontend, new permissions, new RBAC | **No** | No `api/` file changed; the permission registry and `accounting-permissions.ts` are untouched (still 29 codes); `LedgerEntriesRepository` still exposes one scoped read; the existing scope-audit e2e (`POST :id/post` ⇒ 404) still passes unmodified; there is no frontend in the repository |
+| Schema redesign of Voucher / VoucherLine / LedgerEntry / `accounting_posting_operations` | **No** | `git status backend/prisma` ⇒ empty. No migration, no composite FK, no trigger, no constraint |
+| Drive-by refactors, unrelated formatting, renames, dependency upgrades | **No** | 6 files (§2); `package.json`/`package-lock.json` untouched; `prettier --write .` reformatted only the new spec; the two moved helpers are the minimum the seam needs to avoid duplicating the row shape and the event payload |
 
 ## 7. Open questions — OQ-39 … OQ-43 remain open
 
@@ -275,7 +275,7 @@ no dependency, no schema change, no event-contract change — AR-29).
   introduced. The seam publishes the existing in-memory `Finalized` event and
   nothing else, and its header states that a cross-module caller needs §16.3
   plus OQ-39's delivery decision first — which is why `PostingService` is
-  _provided, not exported_ (AR-07). The `kind: 'posted' | 'replayed'` field is
+  *provided, not exported* (AR-07). The `kind: 'posted' | 'replayed'` field is
   a report of what this call did under the accepted atomic model, not a
   delivery guarantee.
 - **OQ-40 (Financial Area semantics/multiplicity)** — untouched: the seam reads
@@ -295,13 +295,13 @@ no dependency, no schema change, no event-contract change — AR-29).
    37 live tests (including the real concurrency, real rollback and real
    `numeric(18,2)` proofs) were **skipped, not passed**. The seam's rollback
    and concurrency tests run against the in-memory fakes, whose `withRollback`
-   _mirrors_ `$transaction` and whose single-threadedness cannot reproduce real
+   *mirrors* `$transaction` and whose single-threadedness cannot reproduce real
    lock contention. CI must run `test:e2e` with `VARDENA_TEST_DATABASE_URL`
    before merge. Mitigation: the delegation is a plain call to the unchanged
    `finalizeChecked`, so the live suites exercise the same code path they did
-   at Task 10.7 — they now exercise it _through_ the seam. **Resolved on CI:**
+   at Task 10.7 — they now exercise it *through* the seam. **Resolved on CI:**
    PR #23's `backend` job passes in all 15 steps, including `Migrate test
-database` and `E2E tests (incl. live-DB suites)`, plus `Prisma validate` and
+   database` and `E2E tests (incl. live-DB suites)`, plus `Prisma validate` and
    `Prisma generate` which are blocked in this sandbox — so the live proofs ran
    against real PostgreSQL and passed. The only live-suite failure CI ever
    showed on this branch was a **pre-existing** test-side deserialization
@@ -327,12 +327,12 @@ database` and `E2E tests (incl. live-DB suites)`, plus `Prisma validate` and
    instead of returning the document DTO. Every non-drifted replay is
    byte-identical to before (the e2e replay journeys pass unmodified). This is
    the intended consequence of §16.4's "re-read current rows" plus AC-03, but
-   it _is_ a behaviour change in that edge and is flagged rather than buried.
+   it *is* a behaviour change in that edge and is flagged rather than buried.
 5. **Pre-existing, found and NOT fixed (AG-03, out of scope).**
    `data/accounting-documents.repository.ts:1077-1081` — the Task 10.4 copy of
    `toAmountString` still contains `if (typeof value === 'number') return
-String(value);` and a blanket `String(value)` fallback. That is the exact
-   float-loss shape Task 10.7's review removed from the _ledger_ copy (§13.4 of
+   String(value);` and a blanket `String(value)` fallback. That is the exact
+   float-loss shape Task 10.7's review removed from the *ledger* copy (§13.4 of
    that report), and it is why the two copies differ. It is unreachable today
    (Prisma returns a `Decimal`/string for `numeric(18,2)`, never a JS number)
    and it is accepted Task 10.4 code, so touching it here would be a drive-by
@@ -376,7 +376,7 @@ that one assertion (22 files, 225 tests green).
 **Root cause (test-side deserialization, not production money).** The raw
 `$queryRaw` read assumed the driver hands back the `numeric` wire literal as a
 string ("`pg` returns numerics as strings"). Through Prisma's PostgreSQL
-adapter a _selected_ `numeric` is deserialized instead, and arrives
+adapter a *selected* `numeric` is deserialized instead, and arrives
 scale-stripped — `0.10` → `0.1`, `0.00` → `0` (note the received values in the
 CI message are unquoted: not the strings the assertion expected). So the
 assertion was testing the adapter's rendering, not the column, and could never
@@ -386,7 +386,7 @@ pass.
 PostgreSQL renders `numeric(18,2)` → `text` with the scale intact — so the
 existing expectations (`'0.10'`, `'0.20'`, `'0.00'`, `'0.30'`) are unchanged
 and now assert what the row physically stores. This is the only
-`$queryRaw` _read_ of an amount column in the live suites (the other
+`$queryRaw` *read* of an amount column in the live suites (the other
 `debit_amount`/`credit_amount` hits are INSERT column lists and bind
 parameters, unaffected), and there is no custom `pg` type parser in the
 repository.
@@ -395,7 +395,7 @@ repository.
 `domain/money.ts`, the ledger decimal mapping, the repository read path and
 every `src/` file are byte-identical in this commit; it changes one test query
 plus its comment. It is kept as a **separate commit** so the Task 10.8
-implementation diff stays clean, and it deliberately does _not_ weaken the
+implementation diff stays clean, and it deliberately does *not* weaken the
 invariant: asserting the physical `numeric(18,2)` scale is stronger evidence
 of exact persistence than asserting the canonical `'0.1'` form would be.
 
@@ -408,7 +408,7 @@ this commit succeeded in all 15 steps — `Prisma validate`, `Prisma generate`,
 database` and `E2E tests (incl. live-DB suites)` — so the 37 locally-skipped
 live tests ran against real PostgreSQL and passed, including this assertion and
 the real atomicity / rollback / concurrency / `numeric(18,2)` proofs, which now
-run _through_ the seam. That closes §8 risk 1 for this change.
+run *through* the seam. That closes §8 risk 1 for this change.
 
 **Final status: READY FOR REVIEW.** This report does not mark the task
 Accepted — that decision is the reviewer's.

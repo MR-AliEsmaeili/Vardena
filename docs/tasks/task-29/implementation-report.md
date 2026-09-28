@@ -7,7 +7,6 @@ Task 29 is a **governance, domain reconciliation, fit-gap analysis, and implemen
 This task evaluated the authoritative owner-provided VARDENA Base Chart artifact (`Pasted markdown(20260927-203801).md`, exactly 264 accounts, 10 columns, 3-level hierarchical coding `1+2+3`) against Vardena's existing accounting architecture and data model.
 
 ### Key Conclusions:
-
 1. **Architecture Compatibility:** **YES (100% COMPATIBLE)**. Vardena's existing Base Chart versioning mechanism and configurable Coding Structure engine natively support the VARDENA `1+2+3` hierarchical structure without architectural redesign.
 2. **Domain Model Gaps Identified (Blocking Content Loading):**
    - **Account Nature:** Source includes 15 accounts with `ماهیت = هردو` (`DUAL`, all in Group 9: Memorandum). Current domain validation is strictly binary (`['debit', 'credit']`) and rejects `'dual'`.
@@ -65,7 +64,7 @@ To ensure complete governance integrity, this report distinguishes four categori
   - `6` — درآمدها (Revenues & Sales, Total=18, L2=3, L3=14)
   - `7` — بهای تمام شده و هزینه ها (Costs & Expenses, Total=79, L2=5, L3=73)
   - `9` — انتظامی (Memorandum, Total=15, L2=2, L3=12)
-    _(Note: Root code `8` does not exist in the source artifact)._
+  *(Note: Root code `8` does not exist in the source artifact).*
 - **Exact Childless Level 2 Nodes (4 accounts):**
   - `307` — مازاد تجدید ارزیابی (Nature: بستانکار, Type: ترازنامه ای)
   - `602` — سایر درآمدهای عملیاتی (Nature: بستانکار, Type: سود و زیان)
@@ -90,23 +89,19 @@ To ensure complete governance integrity, this report distinguishes four categori
 ## 4. Technical Fit-Gap Analysis (TASK 29 ANALYSIS)
 
 ### 4.1 Coding Structure: DIRECTLY COMPATIBLE
-
 - Vardena's configurable Coding Structure (`MAX_DEPTH = 8`, `MAX_CODE_LENGTH = 32`, dynamic level segment widths) natively accepts the $1+2+3$ composite digits without code modifications.
 - Postability is derived dynamically via `postable ⇒ leaf`: 222 childless accounts derive as `isPostable = true`, and 42 parent accounts derive as `isPostable = false`.
 
 ### 4.2 Account Nature: MODEL GAP
-
 - Current domain model defines `ACCOUNT_NATURES = ['debit', 'credit'] as const` in `backend/src/modules/accounting/domain/account.ts`.
 - `isAccountNature`, `BaseChartTemplate`, `AccountsService`, and DTOs reject `'dual'`.
 - Prisma schema column is `VarChar(8)` which fits `'dual'`, but domain/API layers block it.
 
 ### 4.3 Account Type: MODEL GAP
-
 - Prisma schema (`Account`, `BaseChartTemplateNode`) and domain models completely lack an `AccountType` concept.
 - The 3 observed types (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) must be added to the schema and domain under OD-29-02.
 
 ### 4.4 Detail Requirement / Detail Hierarchy: MODEL GAP
-
 - `ACLTafsil1..4` are source boolean flags (`0`/`1`), and the source assigns no fixed business semantics to them.
 - OD-29-03 decides that Detail is a first-class organization-configurable hierarchy independent from Account. Account relationships target the first Detail level; required Detail/Dimension values are backend-enforced at Posting.
 - Removal of a used relationship is a confirmed, atomic, auditable destructive operation that removes affected historical Detail allocations while preserving Account-level turnover.
@@ -116,15 +111,15 @@ To ensure complete governance integrity, this report distinguishes four categori
 
 ## 5. Decision & Governance Status (OWNER DECISION vs PROPOSAL)
 
-| Decision ID  | Subject                                 | Proposal / Decision Summary                                                                                                                                                   | Official Status                   | Category           |
-| ------------ | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------- | ------------------ |
-| **OD-27-02** | Base Chart MVP Scope Boundary           | MVP requires Base Chart mechanism; concrete chart content is NOT MVP-required                                                                                                 | **`DECIDED`** (Task 28 Follow-up) | **OWNER DECISION** |
-| **OD-29-01** | Account Nature                          | Exactly `DEBIT`, `CREDIT`, `DUAL`; Nature is orientation, not an opposite-side prohibition                                                                                    | **`DECIDED`** (2026-09-28)        | **OWNER DECISION** |
-| **OD-29-02** | Three Global Account Types              | Exactly `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`; immutable after first Posting                                                                                      | **`DECIDED`** (2026-09-28)        | **OWNER DECISION** |
-| **OD-29-03** | Detail Requirement / Hierarchy          | First-class configurable Detail hierarchy, first-level Account relationship, backend requirement enforcement, controlled removal                                              | **`DECIDED`** (2026-09-28)        | **OWNER DECISION** |
-| **OD-29-04** | English Account Title Scope Boundary    | Not required for MVP; absence blocks no account lifecycle operation                                                                                                           | **`DECIDED`** (2026-09-28)        | **OWNER DECISION** |
-| **OD-29-05** | Statement Classification Scope Boundary | Independent, Organization-configurable Statement Classification (**Option C**), separate from Account Type/Nature/Hierarchy/Detail/System Account/Base Chart Coding Structure | **`DECIDED`** (2026-09-28)        | **OWNER DECISION** |
-| **OD-29-06** | System Account Scope Boundary           | MVP has no System Account concept or system-owned Account flags                                                                                                               | **`DECIDED`** (2026-09-28)        | **OWNER DECISION** |
+| Decision ID | Subject | Proposal / Decision Summary | Official Status | Category |
+|---|---|---|---|---|
+| **OD-27-02** | Base Chart MVP Scope Boundary | MVP requires Base Chart mechanism; concrete chart content is NOT MVP-required | **`DECIDED`** (Task 28 Follow-up) | **OWNER DECISION** |
+| **OD-29-01** | Account Nature | Exactly `DEBIT`, `CREDIT`, `DUAL`; Nature is orientation, not an opposite-side prohibition | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
+| **OD-29-02** | Three Global Account Types | Exactly `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`; immutable after first Posting | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
+| **OD-29-03** | Detail Requirement / Hierarchy | First-class configurable Detail hierarchy, first-level Account relationship, backend requirement enforcement, controlled removal | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
+| **OD-29-04** | English Account Title Scope Boundary | Not required for MVP; absence blocks no account lifecycle operation | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
+| **OD-29-05** | Statement Classification Scope Boundary | Independent, Organization-configurable Statement Classification (**Option C**), separate from Account Type/Nature/Hierarchy/Detail/System Account/Base Chart Coding Structure | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
+| **OD-29-06** | System Account Scope Boundary | MVP has no System Account concept or system-owned Account flags | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
 
 ---
 
@@ -140,7 +135,7 @@ To ensure complete governance integrity, this report distinguishes four categori
 
 ## 7. Proposed Technical Dependency Sequence — NO TASK AUTHORIZED
 
-_(Note: None of these tasks are authorized or executed by Task 29; they preserve historical dependency analysis only)_:
+*(Note: None of these tasks are authorized or executed by Task 29; they preserve historical dependency analysis only)*:
 
 ```text
 Task 30 (Proposed): Accounting Domain Model Expansion (AccountType & DUAL Nature)
@@ -201,7 +196,7 @@ Future Detail design/implementation gate (NOT AUTHORIZED)
 ## 10. Final Status
 
 **READY FOR REVIEW — NOT ACCEPTED**
-_(This task is a decision gate and does not self-accept or authorize subsequent implementation automatically)._
+*(This task is a decision gate and does not self-accept or authorize subsequent implementation automatically).*
 
 ---
 

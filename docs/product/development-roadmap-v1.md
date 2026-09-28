@@ -2,13 +2,13 @@
 
 ## Document metadata
 
-| Field        | Value                                                                  |
-| ------------ | ---------------------------------------------------------------------- |
-| Document ID  | ROADMAP                                                                |
-| Version      | 1.0 (proposal)                                                         |
-| Status       | **Proposed — pending product-owner approval**                          |
-| Owner        | Ali Esmaeili                                                           |
-| Created      | 2026-09-22                                                             |
+| Field | Value |
+|---|---|
+| Document ID | ROADMAP |
+| Version | 1.0 (proposal) |
+| Status | **Proposed — pending product-owner approval** |
+| Owner | Ali Esmaeili |
+| Created | 2026-09-22 |
 | Derived from | MVP-SCOPE v1 · PB-BASELINE v1 · OQ-44…OQ-61 · ADR-0029/0030 (proposed) |
 
 > **No calendar dates.** The repository contains no approved estimates; stages
@@ -62,7 +62,6 @@ amendment); interim answers where an owner "interim choice" unblocks a stage
 ROADMAP).
 
 **Exit criteria.**
-
 1. PB-BASELINE, MVP-SCOPE, ROADMAP marked Accepted by the owner (or amended
    then accepted).
 2. OQ-49, OQ-60 resolved (Record → decision). OQ-45, OQ-54, OQ-02 resolved or
@@ -88,13 +87,12 @@ no re-opening decided matters; no marketplace/SaaS/consolidation decisions.
 operational stages can stand on; close platform-level gaps.
 
 **Included capabilities.**
-
 - License foundation implementation per ratified ADR-0030 (record + module
   enablement read + admin view; **enforcement-off**).
 - Update pipeline: pre-migration automatic backup wired into the controlled
   update flow (PB §24); health checks; compatibility pre-flight.
-- Deployment runbook v1 (install → login on clean hardware) as a _documented,
-  rehearsed_ procedure (feeds G7).
+- Deployment runbook v1 (install → login on clean hardware) as a *documented,
+  rehearsed* procedure (feeds G7).
 - Stabilization of shipped platform surfaces flagged by task reports
   (e.g. `.vardena/project-context.md` staleness, scoped-read helper
   duplication — as named tasks per accounting task-index §7/§8).
@@ -104,7 +102,6 @@ operational stages can stand on; close platform-level gaps.
 **Dependencies.** Stage 0 exits; existing shipped foundations.
 
 **Exit criteria.**
-
 1. License record visible in admin UI; module enablement reads it; no
    blocking behavior anywhere (ADR-0030 conformance test).
 2. Controlled-update rehearsal performed: backup → migrate → verify → health
@@ -130,10 +127,9 @@ for log/audit defaults.
 
 **Objective.** Complete the accounting core to the point the reference
 scenario's accounting steps run on decided policy — the module is already deep
-(Tasks 10.1–10.8); this stage finishes _policy-gated_ gaps, not architecture.
+(Tasks 10.1–10.8); this stage finishes *policy-gated* gaps, not architecture.
 
 **Included capabilities.**
-
 - Fiscal calendar policy lands (OQ-23): year-start/layout defaults,
   close/reopen authority; year-transition operations (closing/opening
   documents) if decided in scope, else explicit deferral.
@@ -148,10 +144,9 @@ scenario's accounting steps run on decided policy — the module is already deep
 - Numbering policy per OQ-12 if needed beyond Document Foundation defaults.
 
 **Dependencies.** Stage 0 (policy OQs resolved/interim); Stage 1 platform
-stability; OQ-39 resolution is _not_ required for manual-posting scope.
+stability; OQ-39 resolution is *not* required for manual-posting scope.
 
 **Exit criteria.**
-
 1. Scenario steps 4–5, 11–12 run on decided policy: coding structure →
    accounts → manual voucher → finalize → ledger → balances.
 2. Correction path demonstrates every decided window rule with tests.
@@ -166,7 +161,7 @@ tax/statutory automation (OQ-30/OQ-43); no multi-currency (OQ-47/48); no
 allocation engine.
 
 **Required OQ/ADR decisions.** OQ-23, OQ-25, OQ-27, OQ-41 (full or recorded
-interim), OQ-11 (opening balances), OQ-12; OQ-43 validated for the _minimal_
+interim), OQ-11 (opening balances), OQ-12; OQ-43 validated for the *minimal*
 statutory exposure shipped (P&L captions, immutable books posture).
 
 ---
@@ -174,11 +169,10 @@ statutory exposure shipped (P&L captions, immutable books posture).
 ## Stage 3 — Inventory and Accounting Integration
 
 **Objective.** Complete inventory operations to scenario depth and — for the
-first time — connect modules to Accounting _safely_, under the durable
+first time — connect modules to Accounting *safely*, under the durable
 integration decision.
 
 **Included capabilities.**
-
 - Inventory completion: units/conversions precision per OQ-29; costing method
   per OQ-24; opening inventory entry (A-10); valuation reports on decided
   method.
@@ -196,7 +190,6 @@ integration decision.
 (or recorded interims for anything not blocking receipts/issues themselves).
 
 **Exit criteria.**
-
 1. Receipt/issue with correct cost capture per decided method; stock = ledger
    replay tests green (G3).
 2. Warehouse receipt/issue produces an accounting effect through the decided
@@ -224,7 +217,6 @@ OQ-30 (tax model inputs), OQ-25 (control accounts for posting rules).
 tax-invoice domain for the Taxpayer adapter without shipping the adapter.
 
 **Included capabilities.**
-
 - Sales documents (A-14): invoice (order optional) with lines, prices
   (OQ-34), tax snapshot fields (OQ-30), credit warning (OQ-35), document
   states per the OQ-54 outcome, numbering via Document Foundation.
@@ -235,7 +227,7 @@ tax-invoice domain for the Taxpayer adapter without shipping the adapter.
 - **Tax-invoice domain readiness** (PB §19.2 separation): stable ids, tax
   field snapshot, correction links — such that the Taxpayer adapter (later)
   needs no schema change.
-- Taxpayer slice 1 _if_ OQ-51's trigger (phase-in deadline/demand/sandbox)
+- Taxpayer slice 1 *if* OQ-51's trigger (phase-in deadline/demand/sandbox)
   has fired: submission + status + retry + error explanation through the
   outbox adapter (`destination = taxpayer`); else deferred with the gate
   recorded.
@@ -244,7 +236,6 @@ tax-invoice domain for the Taxpayer adapter without shipping the adapter.
 OQ-34, OQ-35, OQ-38 (party identifiers when needed); OQ-51 trigger check.
 
 **Exit criteria.**
-
 1. Scenario steps 10–11 end-to-end: sale registered → accounting entry
    generated per decided mode → finalizable.
 2. Sales reports reconcile to invoices (fixture tests).
@@ -254,7 +245,7 @@ OQ-34, OQ-35, OQ-38 (party identifiers when needed); OQ-51 trigger check.
 
 **Risks.** OQ-54 decided too late forces rework of sales state machine
 (why it gates Stage 0); tax-field shape churn if OQ-30 lags; taxpayer scope
-pull (the adapter is _not_ this stage's deliverable unless triggered).
+pull (the adapter is *not* this stage's deliverable unless triggered).
 
 **Explicit non-goals.** No corrective-invoice/reconciliation automation
 (OQ-51 slice 2+); no CRM; no pricing engine beyond decided price lists.
@@ -270,7 +261,6 @@ pull (the adapter is _not_ this stage's deliverable unless triggered).
 decided in OQ-49 — inside the §17.2 security constraints.
 
 **Included capabilities.**
-
 - Semantic-entity registry over module views (accounting, inventory, sales) —
   the "approved semantic entities" mechanism (small design note; constraints
   already decided).
@@ -286,7 +276,6 @@ decided in OQ-49 — inside the §17.2 security constraints.
 (grouping scope) alignment; OQ-25/OQ-43 for accounting layouts.
 
 **Exit criteria.**
-
 1. Scenario steps 14–17 green: inventory reports, sales reports, P&L, custom
    report built by a non-developer user in-product.
 2. Security constraint tests: no entity outside the registry reachable; every
@@ -313,7 +302,6 @@ it changes contracts).
 secure the release, prepare pilot customers.
 
 **Included capabilities.**
-
 - Acceptance-gate execution (G1–G8 from MVP-SCOPE §7): scenario run-through
   by non-specialist users; invariant suites; LAN-only drill (internet
   physically disabled); install timing run.
@@ -356,7 +344,6 @@ rule (accounting task-index §7 discipline, generalized).
 
 **Included capability candidates** (each individually scoped, none approved
 by this roadmap):
-
 - Purchasing module (C-01) — receipts→payments flow, purchase-side posting.
 - Multi-currency activation (OQ-47/OQ-48 outcomes) — seams exist.
 - Webhooks / machine-API implementation (ADR-0029 implementation + OQ-50
@@ -392,7 +379,6 @@ apply; new ADRs per AR-29 for any new module.
 decided behavior, commercial tooling, public posture.
 
 **Included capabilities.**
-
 - License enforcement implementation per OQ-45 outcome (grace/read-only/
   extension tokens per the decision; ADR-0030 semantics extended — likely a
   small ADR).
@@ -408,7 +394,6 @@ decided behavior, commercial tooling, public posture.
 (owner's commercial process, not this roadmap).
 
 **Exit criteria.**
-
 1. Enforcement behaves exactly per OQ-45 decision with tests (including
    outage behavior — no time bombs).
 2. First non-pilot customer onboarded through the documented commercial
@@ -433,7 +418,6 @@ ADR-0030 extension for enforcement.
 expansions; each requires its own decision program and may never fire.
 
 **Included capability candidates.**
-
 - **Multi-device offline sync** — only if OQ-44 re-opened with named demand:
   narrow field-capture first (OQ-44 option B), full ADR program before code.
 - **Enterprise capabilities** — consolidation/multi-installation reporting
@@ -477,6 +461,6 @@ OQ-57 (ecosystem, if marketplace precedes).
 
 ## Document history
 
-| Date       | Version | Change                                                                                     |
-| ---------- | ------- | ------------------------------------------------------------------------------------------ |
-| 2026-09-22 | 1.0     | Initial staged roadmap proposal. No dates — dependency order only. Pending owner approval. |
+| Date | Version | Change |
+|---|---|---|
+| 2026-09-22 | 1.0 | Initial staged roadmap proposal. No dates — dependency order only. Pending owner approval. |

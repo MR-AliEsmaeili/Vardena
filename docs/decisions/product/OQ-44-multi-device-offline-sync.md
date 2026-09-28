@@ -15,18 +15,18 @@ operations (PB-BASELINE §10.1/§10.2 — DECIDED). The owner also described a
 third capability: **multiple devices operating while disconnected from each
 other or from the server, with later synchronization** (e.g. a salesman taking
 orders on the road, a warehouse in a dead zone). The owner confirmed this is
-desired _eventually_ but did not decide its scope, timing, or architecture.
+desired *eventually* but did not decide its scope, timing, or architecture.
 
 The repository has decided the opposite for MVP: single authoritative
 PostgreSQL server, server-side sessions, no client-side data store. The
 architecture.md "extraction path" and the outbox pattern (ADR-0004) solve
-_external system_ sync — not device-to-server offline sync, which is a
+*external system* sync — not device-to-server offline sync, which is a
 different problem (client-side store, conflict semantics, per-device identity,
 security of local caches).
 
 ## Why this matters
 
-- Sales teams may _assume_ "offline ERP" means this capability; if it is
+- Sales teams may *assume* "offline ERP" means this capability; if it is
   silently expected, MVP expectations collide with its exclusion (risk R-01).
 - It is one of the highest-complexity capabilities possible in this product
   (distributed data + conflict resolution + security) and could destabilize the
@@ -44,11 +44,11 @@ security of local caches).
 
 ## Options
 
-| Option                                                                                                                       | Advantages                                                           | Disadvantages                                                                                                       |
-| ---------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| **A. Exclude indefinitely; re-open on demand** (LAN + single-user local only)                                                | Zero cost now; protects ledger correctness; matches MVP scope        | Field/mobile scenarios unsupported; lost deals if demand is real                                                    |
-| **B. Narrow "field capture" sync** (offline capture of a few document types → queued, validated on reconnect; no true merge) | Bounded problem; reuses outbox-like queueing; useful for sales force | Still needs client store + identity + conflict policy; not trivial; doesn't generalize                              |
-| **C. Full offline replication per device** (local DB per device, bidirectional sync with conflict resolution)                | True offline ERP                                                     | Very high complexity; new architecture; conflicts corrupt accounting/inventory integrity; needs its own ADR program |
+| Option | Advantages | Disadvantages |
+|---|---|---|
+| **A. Exclude indefinitely; re-open on demand** (LAN + single-user local only) | Zero cost now; protects ledger correctness; matches MVP scope | Field/mobile scenarios unsupported; lost deals if demand is real |
+| **B. Narrow "field capture" sync** (offline capture of a few document types → queued, validated on reconnect; no true merge) | Bounded problem; reuses outbox-like queueing; useful for sales force | Still needs client store + identity + conflict policy; not trivial; doesn't generalize |
+| **C. Full offline replication per device** (local DB per device, bidirectional sync with conflict resolution) | True offline ERP | Very high complexity; new architecture; conflicts corrupt accounting/inventory integrity; needs its own ADR program |
 
 ## Risks
 
@@ -77,7 +77,7 @@ if re-opened, start with narrow field capture (B), never C directly.
 
 ## Decision deadline or dependency
 
-No hard deadline; must be _revisited_ at Stage 6 (pilot readiness) and before
+No hard deadline; must be *revisited* at Stage 6 (pilot readiness) and before
 any sales commitment. Blocks nothing in MVP.
 
 ## Related documents
