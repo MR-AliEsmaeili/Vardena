@@ -63,44 +63,38 @@ The final deliverable of this task is an authoritative **decision gate**, NOT a 
 
 ---
 
-## 4. Key Findings Summary
+## 4. Key Findings & Proposals Summary
 
-1. **Coding Structure Compatibility (Proposition A / Proposition I):**
-   - The VARDENA hierarchical coding structure:
-     - Level 1 (Group): 1 digit (e.g. `1`)
-     - Level 2 (General): 2 digits appended (e.g. `1 + 01 = 101`, cumulative length 3)
-     - Level 3 (Subsidiary): 3 digits appended (e.g. `1 + 01 + 001 = 101001`, cumulative length 6)
-   - **Conclusion:** **DIRECTLY COMPATIBLE**. Vardena's configurable Coding Structure mechanism (`MAX_DEPTH = 8`, `MAX_CODE_LENGTH = 32`, dynamic level segment widths, prefix validation, and leaf-only postability derivation) natively supports the VARDENA `1+2+3` structure without any architectural changes.
+1. **Coding Structure Compatibility (Finding / Proposition A & I):**
+   - The VARDENA hierarchical coding structure ($1$ digit Group + $2$ digits General + $3$ digits Subsidiary $\rightarrow$ cumulative lengths 1, 3, 6; 8 Level 1 roots, 38 Level 2, 218 Level 3) is **DIRECTLY COMPATIBLE** with Vardena's configurable coding engine ($MAX\_DEPTH = 8, MAX\_CODE\_LENGTH = 32$).
+   - Posting derives dynamically via `postable ⇒ leaf` (222 leaves including childless Level 2 nodes `307`, `602`, `703`, `704`; 42 non-leaf parents).
 
-2. **Balance Nature / Account Nature (`ماهیت حساب`) Gap (Proposition B):**
-   - Source values: `بدهکار` (DEBIT), `بستانکار` (CREDIT), `هردو` (DUAL).
-   - Current Vardena model: Restricted to `ACCOUNT_NATURES = ['debit', 'credit']` in `backend/src/modules/accounting/domain/account.ts`, `BaseChartTemplate`, `AccountsService`, and DTOs.
-   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. `DUAL` (`هردو`) must be officially admitted into the domain type definition, validation pipelines, and DTO contracts.
+2. **Balance Nature / Account Nature (`ماهیت حساب`) Gap (Proposal OD-29-01):**
+   - Source values observed: `بدهکار` (DEBIT, 171), `بستانکار` (CREDIT, 78), `هردو` (DUAL, 15 in Group 9).
+   - Current Vardena model: Restricted to `ACCOUNT_NATURES = ['debit', 'credit']` in `domain/account.ts`.
+   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. Task 29 proposes admitting `DUAL` under **OD-29-01** (`PENDING OWNER DECISION`).
 
-3. **Account Type (`نوع حساب`) Gap (Proposition C / Proposition D):**
-   - Source values represent three fixed global account types:
-     - `ترازنامه‌ای` $\rightarrow$ `BALANCE_SHEET`
-     - `سود و زیان` $\rightarrow$ `INCOME_STATEMENT`
-     - `انتظامی` $\rightarrow$ `MEMORANDUM`
-   - Current Vardena model: Completely lacks an `AccountType` concept or field on `Account` and `BaseChartTemplateNode`.
-   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. A 3-value enum `AccountType` must be introduced to the domain model and schema in a future implementation task.
+3. **Account Type (`نوع حساب`) Gap (Proposal OD-29-02):**
+   - Source values observed: `ترازنامه ای` (152), `سود و زیان` (97), `انتظامی` (15).
+   - Current Vardena model: Lacks an `AccountType` concept on `Account` and `BaseChartTemplateNode`.
+   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. Task 29 proposes introducing 3 fixed global types (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) under **OD-29-02** (`PENDING OWNER DECISION`).
 
-4. **Statement Class Separation (Proposition E):**
-   - Purpose: Organization-configurable presentation hierarchy / categorization for financial statements (Balance Sheet / Income Statement presentation).
-   - **Conclusion:** **DOMAIN/MODEL GAP — FUTURE IMPLEMENTATION REQUIRED** (post-MVP / reporting design). Must remain separate from the fixed global `AccountType`.
+4. **Statement Class Separation (Proposal OD-29-05):**
+   - Purpose: Organization-configurable presentation layout for financial statements.
+   - **Conclusion:** **DOMAIN/MODEL GAP — FUTURE IMPLEMENTATION REQUIRED** (post-MVP). Preserves strict separation from `AccountType` under **OD-29-05** (`PENDING OWNER DECISION`).
 
-5. **System Account Separation (Proposition F):**
+5. **System Account Separation (Proposal OD-29-06):**
    - Purpose: Distinguish system-controlled accounts (`isSystem`) from user-postable accounts.
-   - **Conclusion:** **FUTURE MODEL GAP**. Not present in current models; deferred to future closing/system integration tasks.
+   - **Conclusion:** **FUTURE MODEL GAP**. Deferred to future closing/integration tasks under **OD-29-06** (`PENDING OWNER DECISION`).
 
-6. **Detail Flags (`ACLTafsil1..4`) Mapping (Proposition G):**
-   - Source values: Boolean requirement flags (`0` = no requirement, `1` = required detail on posting).
-   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. Maps conceptually to Vardena's generic line-level dimension requirement rules (ADR-0037) rather than hardcoded `requiresDetail1..4` columns.
+6. **Detail Flags (`ACLTafsil1..4`) Mapping (Proposal OD-29-03):**
+   - Source values: Boolean requirement flags (all `0` in source).
+   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. Task 29 proposes mapping to generic line-level dimension requirement rules (ADR-0037) under **OD-29-03** (`PENDING OWNER DECISION`).
 
-7. **English Account Title (Proposition H):**
+7. **English Account Title (Proposal OD-29-04):**
    - Source field: `عنوان انگليسي حساب`.
-   - **Conclusion:** **DEFERRED / NON-MVP**. Retained as source-only metadata.
+   - **Conclusion:** **DEFERRED / NON-MVP**. Retained as source-only metadata under **OD-29-04** (`PENDING OWNER DECISION`).
 
 8. **Readiness Gate Conclusion:**
    - **Architecture Ready:** YES (Coding Structure, Base Chart Mechanism, Adoption by Copy, Hierarchy, Leaf Posting).
-   - **Content Loading Ready:** NO (Blocked by missing domain fields: `DUAL` nature, `AccountType` enum, and detail requirement mapping).
+   - **Content Loading Ready:** NO (Blocked by missing domain model gaps: `DUAL` nature OD-29-01 and `AccountType` enum OD-29-02).

@@ -13,32 +13,38 @@ To maintain rigorous governance, this analysis distinguishes between:
 | Area | Architecture Ready? | Production Implementation Ready? | Blocker / Missing Element | Future Work / Implementation Task |
 |---|---|---|---|---|
 | **1. Coding Structure** | **YES** | **YES** | None. Supports depth 8, width 32, dynamic levels ($1+2+3$). | None needed for coding structure. |
-| **2. Base Chart Template Mechanism** | **YES** | **YES** | None. Task 23 mechanism implemented and verified. | None needed for mechanism. |
-| **3. Base Chart Content** | **YES** | **NO** | Blocked by missing domain fields (`AccountType`, `DUAL` nature). | Future Base Chart Content Loading Task. |
-| **4. Account Type** | **YES** | **NO** | Missing `type` column in Prisma schema, DTOs, and domain models. | Schema migration & domain enum addition. |
-| **5. Balance Nature** | **YES** | **NO** | Domain validator `isAccountNature` rejects `'dual'`. | Expand domain enum `ACCOUNT_NATURES` to `['debit', 'credit', 'dual']`. |
-| **6. Statement Class** | **YES** | **NO** | Statement Class model and presentation engine not built. | Future Reporting Foundation Task (Post-MVP). |
-| **7. Detail Requirements (`ACLTafsil1..4`)** | **YES** | **NO** | Dimension requirement rules & line-validation engine not built. | Future Detail Dimensions & Posting Validation Task. |
-| **8. System Accounts (`isSystem`)** | **YES** | **NO** | `isSystem` flag absent from models; closing rules not built. | Future Fiscal Year-End Closing Task. |
-| **9. Base Chart Adoption** | **YES** | **YES** | None. Atomic copy adoption planner verified. | Ingest template nodes when content loading is unblocked. |
+| **2. Base Chart Template Mechanism** | **YES** | **YES** | None. Task 23 mechanism implemented and verified on `main`. | None needed for mechanism. |
+| **3. Base Chart Content Loading** | **YES** | **NO** | Blocked by missing domain fields (`AccountType`, `DUAL` nature). | Proposed Task 31 (Base Chart Content Loading). |
+| **4. Account Type** | **YES** | **NO** | Missing `type` column in Prisma schema, DTOs, and domain models. | Proposed Task 30 (Schema migration & domain enum addition; OD-29-02). |
+| **5. Balance Nature** | **YES** | **NO** | Domain validator `isAccountNature` rejects `'dual'`. | Proposed Task 30 (Expand `ACCOUNT_NATURES` to include `dual`; OD-29-01). |
+| **6. Statement Class** | **YES** | **NO** | Statement Class model and presentation engine not built. | Future Reporting Foundation Task (Post-MVP; OD-29-05). |
+| **7. Detail Requirements (`ACLTafsil1..4`)** | **YES** | **NO** | Generic line-level dimension requirement rules not yet implemented. | Proposed Task 32 (Detail Dimensions & Validation; OD-29-03). |
+| **8. System Accounts (`isSystem`)** | **YES** | **NO** | `isSystem` flag absent from models; closing rules not built. | Future Fiscal Year-End Closing Task (OD-29-06). |
+| **9. Base Chart Adoption** | **YES** | **YES** | None. Atomic copy adoption planner verified. | Unblocked once template version is published. |
 | **10. Ledger Identity Separation** | **YES** | **YES** | None. Invariant 1 verified (`Template.nodeKey ≠ Account.id`). | Fully operational. |
 
 ---
 
-## 3. Prerequisite Path to Content Loading
+## 3. Prerequisite Path & Blocker Clarification
 
-The repository is **NOT** ready to load the 264 accounts today due to three explicit domain model gaps:
+Task 29 clearly distinguishes between **immediate content-loading blockers** and **future detail/dimension architecture**:
 
-```text
-Prerequisite 1: Expand AccountNature
-└── Add 'dual' to ACCOUNT_NATURES in domain/account.ts, DTOs, and validators.
+### 3.1 Immediate Content-Loading Blockers (Proposed Task 30)
+Because the canonical 264-account dataset actively contains 15 `DUAL` accounts in Group 9 and 3 distinct Account Types (152 Balance Sheet, 97 Income Statement, 15 Memorandum), the repository **CANNOT** safely ingest and persist the dataset until the domain model and schema are expanded:
 
-Prerequisite 2: Introduce AccountType
-└── Add AccountType enum (BALANCE_SHEET, INCOME_STATEMENT, MEMORANDUM)
-    to Prisma schema (Account, BaseChartTemplateNode) and DTOs.
+1. **Owner Approval & Implementation of OD-29-01 (Account Nature):**
+   - Expand `ACCOUNT_NATURES` to include `'dual'` in domain validators, DTOs, and frontend badges.
+2. **Owner Approval & Implementation of OD-29-02 (Account Type):**
+   - Add `AccountType` enum (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) to Prisma schema (`Account`, `BaseChartTemplateNode`) and DTOs via a rehearsed migration.
 
-Prerequisite 3: Detail Requirements Mapping Decision
-└── Establish ingestion strategy for ACLTafsil1..4 (store in requirement payload or metadata).
-```
+### 3.2 Future/General ACLTafsil Architecture (Proposed Task 32)
+- In the canonical source artifact, **100% of the 264 rows have `ACLTafsil1..4 = 0`** (no mandatory detail requirement).
+- Therefore, while the long-term generic dimension mapping strategy under **OD-29-03** remains `PENDING OWNER DECISION`, the absence of active detail validation logic does **NOT** block the structural ingestion of this specific 264-row dataset once Prerequisites 1 and 2 are resolved.
+- OD-29-03 remains pending and will govern future document-line validation when dimension requirements are enabled.
 
-Once Prerequisites 1 and 2 are implemented in a dedicated production change task, the VARDENA 264-account template can be loaded and published directly through the existing Base Chart mechanism.
+---
+
+## 4. Final Verdict
+
+1. **Architecture:** **100% COMPATIBLE** (No architectural redesign required).
+2. **Content Ingestion:** **BLOCKED** on Domain Model Gaps (OD-29-01 and OD-29-02) requiring Proposed Task 30.

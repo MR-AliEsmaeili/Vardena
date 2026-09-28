@@ -1,13 +1,16 @@
-# Account Type Domain Decision: Fixed Global Account Types
+# Account Type Domain Proposal: Three Global Account Types (OD-29-02)
 
-## 1. Domain Background & Definition
+## 1. Domain Background & Source Reconciliation
 
-In Iranian accounting and the VARDENA Base Chart artifact, **`نوع حساب`** (Account Type) defines the lifecycle, closing behavior, and financial statement participation of an account.
+In the canonical VARDENA Base Chart artifact (`Pasted markdown(20260927-203801).md`), the field **`نوع حساب`** (Account Type) classifies accounts across three observed values:
+- `ترازنامه ای` (152 accounts across Groups 1, 2, 3, 4, 5)
+- `سود و زیان` (97 accounts across Groups 6, 7)
+- `انتظامی` (15 accounts in Group 9)
 
-The domain architecture establishes exactly **three fixed global account types**:
+Based on this source artifact, **Task 29 reconciles and proposes three fixed global account types** under **OD-29-02** (`PENDING OWNER DECISION`):
 
 ```text
-AccountType
+AccountType (Proposed Enum)
 ├── BALANCE_SHEET   (ترازنامه‌ای)
 ├── INCOME_STATEMENT (سود و زیان)
 └── MEMORANDUM       (انتظامی)
@@ -15,40 +18,42 @@ AccountType
 
 ---
 
-## 2. Detailed Semantics of the Three Fixed Account Types
+## 2. Detailed Semantics of the Proposed Account Types
+
+*(Note: The lifecycle descriptions below represent illustrative domain analysis and design proposals; they are not direct source-artifact text and not Owner-approved Vardena requirements until OD-29-02 is ratified).*
 
 ### 2.1 `BALANCE_SHEET` (`ترازنامه‌ای`)
 - **Nature of Account:** Permanent / Real Accounts.
-- **Underlying Entities:** Assets (دارایی‌ها), Liabilities (بدهی‌ها), and Equity/Capital (حقوق صاحبان سهام / سرمایه).
-- **Core Domain Behavior:**
+- **Source Scope:** 152 accounts across Assets (Groups 1, 2), Equity (Group 3), and Liabilities (Groups 4, 5).
+- **Proposed Domain Behavior:**
   - Balances represent cumulative financial position as of a specific reporting date.
-  - Balances **carry forward** automatically from one fiscal year to the next via the opening balance document (`سند افتتاحیه`).
+  - Balances carry forward across fiscal years via opening balance documents (`سند افتتاحیه`).
   - Participates in Balance Sheet / Statement of Financial Position reporting (`ترازنامه` / `صورت وضعیت مالی`).
-  - Does **NOT** close out to zero at fiscal year-end during standard operational closing.
+  - Does not close out to zero at fiscal year-end during standard operational closing.
 
 ### 2.2 `INCOME_STATEMENT` (`سود و زیان`)
 - **Nature of Account:** Temporary / Nominal Accounts.
-- **Underlying Entities:** Sales & Revenues (درآمدها), Cost of Goods Sold / Cost of Services (بهای تمام شده), Operating & Administrative Expenses (هزینه‌ها), and Non-Operating Income/Expenses.
-- **Core Domain Behavior:**
-  - Measures period financial performance over a specific bounded time range.
+- **Source Scope:** 97 accounts across Revenues (Group 6) and Costs/Expenses (Group 7).
+- **Proposed Domain Behavior:**
+  - Measures period financial performance over a bounded time range.
   - Participates in Income Statement / Profit & Loss reporting (`صورت سود و زیان`).
-  - At fiscal year-end, these accounts are **closed out to zero** through the fiscal closing process (`سند بستن حساب‌های موقت / سود و زیان جاری`), with net result flowing into Retained Earnings / Equity.
-  - Does **NOT** carry forward balances into the next fiscal year's opening balances.
+  - At fiscal year-end, closed out to zero through the fiscal closing process, with net result flowing into Equity / Retained Earnings.
+  - Does not carry forward balances into the next fiscal year's opening balances.
 
 ### 2.3 `MEMORANDUM` (`انتظامی`)
 - **Nature of Account:** Off-Balance-Sheet / Tracking Accounts (حساب‌های انتظامی و طرف حساب‌های انتظامی).
-- **Underlying Entities:** Performance bonds, bank guarantees, collateral received/given, promissory notes, and off-balance-sheet commitments.
-- **Core Domain Behavior:**
-  - Operates **strictly outside** the core accounting equation ($\text{Assets} = \text{Liabilities} + \text{Equity}$).
+- **Source Scope:** 15 accounts in Group 9.
+- **Proposed Domain Behavior:**
+  - Operates strictly outside the core accounting equation ($\text{Assets} = \text{Liabilities} + \text{Equity}$).
   - Paired in equal debit/credit counter-entries (`حساب انتظامی` and `طرف حساب انتظامی`).
-  - Must **NOT contaminate** ordinary financial statements (Balance Sheet or Income Statement).
-  - Presented exclusively in dedicated memorandum reports and financial note disclosures.
+  - Does not contaminate ordinary financial statements (Balance Sheet or Income Statement).
+  - Presented exclusively in dedicated memorandum reports and note disclosures.
 
 ---
 
 ## 3. Four-Way Domain Separation (Proposition D, E, F)
 
-To maintain clean architectural boundaries and avoid domain conflation, the following four concepts MUST remain strictly distinct:
+To maintain clean architectural boundaries and avoid domain conflation, Task 29 proposes keeping the following four concepts strictly distinct:
 
 ```text
 ┌─────────────────┐       ┌─────────────────┐
@@ -71,12 +76,12 @@ To maintain clean architectural boundaries and avoid domain conflation, the foll
 
 ### Distinction Summary
 
-| Concept | Primary Question Answered | Mutability / Scope | Sample Values |
+| Concept | Primary Question Answered | Mutability / Scope | Proposed / Illustrative Values |
 |---|---|---|---|
-| **Account Type** | *What is the period/closing/reporting lifecycle of this account?* | Fixed Global Enum (Core Domain) | `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM` |
-| **Balance Nature** | *What is the normal debit/credit orientation of this account?* | Fixed Global Enum (Core Domain) | `DEBIT`, `CREDIT`, `DUAL` |
-| **Statement Class** | *Where does this account appear in financial statement presentation?* | Organization-Configurable (Presentation) | `Current Asset`, `Operating Expense`, etc. |
-| **System Account** | *Is this account reserved/controlled for automated system posting?* | Core System Flag | `isSystem: boolean` |
+| **Account Type** | *What is the period/closing/reporting lifecycle of this account?* | Fixed Global Enum (Core Domain) | `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM` (OD-29-02) |
+| **Balance Nature** | *What is the normal debit/credit orientation of this account?* | Fixed Global Enum (Core Domain) | `DEBIT`, `CREDIT`, `DUAL` (OD-29-01) |
+| **Statement Class** | *Where does this account appear in financial statement presentation?* | Organization-Configurable (Presentation) | Illustrative: Current Assets, Operating Expenses (OD-29-05) |
+| **System Account** | *Is this account reserved/controlled for automated system posting?* | Core System Flag | `isSystem: boolean` (OD-29-06) |
 
 ---
 
@@ -89,12 +94,12 @@ An audit of the current codebase confirms:
 
 ---
 
-## 5. Fit-Gap Classification
+## 5. Fit-Gap Classification & Governance Status
 
-| Concept | Current Vardena State | Required State | Classification |
-|---|---|---|---|
-| **Account Type Model** | Absent | 3 fixed global values (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) | **MODEL GAP / IMPLEMENTATION REQUIRED** |
-| **Prisma Schema** | Absent on `Account` & `BaseChartTemplateNode` | Add `type AccountType` enum or `VarChar(32)` column | **MODEL GAP / IMPLEMENTATION REQUIRED** |
-| **Base Chart Validation** | No type validation | Validate `type` presence on template authoring | **IMPLEMENTATION REQUIRED** |
-| **API DTOs** | Absent | Add `type` field to creation/view DTOs | **IMPLEMENTATION REQUIRED** |
-| **Closing Engine** | Not implemented (Future task) | Future closing logic consumes `AccountType` | **DEFERRED / FUTURE CAPABILITY** |
+| Concept | Current Vardena State | Proposed State | Fit-Gap Classification | Owner Decision Status |
+|---|---|---|---|---|
+| **Account Type Model** | Absent | 3 fixed global values (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) |
+| **Prisma Schema** | Absent on `Account` & `BaseChartTemplateNode` | Add `type AccountType` enum or `VarChar(32)` column | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) |
+| **Base Chart Validation** | No type validation | Validate `type` presence on template authoring | **IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) |
+| **API DTOs** | Absent | Add `type` field to creation/view DTOs | **IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) |
+| **Closing Engine** | Not implemented | Future closing logic consumes `AccountType` | **DEFERRED / FUTURE CAPABILITY** | Post-MVP / Future Task |
