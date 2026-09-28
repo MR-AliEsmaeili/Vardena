@@ -8,6 +8,9 @@ import {
   accountPlacementProblemMessage,
   defaultIsPostableForLevel,
   isAccountNature,
+  isAccountType,
+  normalizeAccountNature,
+  normalizeAccountType,
   planAccountEdit,
   planAccountMovePin,
   planAccountPlacement,
@@ -586,5 +589,43 @@ describe('account nature list', () => {
     expect(isAccountNature('dual')).toBe(false);
     // `natural`/`contra`/`asset` are not natures (type is OQ-25, not nature).
     expect(isAccountNature('asset')).toBe(false);
+
+    expect(normalizeAccountNature('DEBIT')).toBe('DEBIT');
+    expect(normalizeAccountNature(' CREDIT ')).toBe('CREDIT');
+    expect(normalizeAccountNature('DUAL')).toBe('DUAL');
+    expect(() => normalizeAccountNature('debit')).toThrow(
+      /Invalid account nature/,
+    );
+    expect(() => normalizeAccountNature('credit')).toThrow(
+      /Invalid account nature/,
+    );
+    expect(() => normalizeAccountNature('invalid')).toThrow(
+      /Invalid account nature/,
+    );
+  });
+});
+
+describe('account type list', () => {
+  it('is exactly BALANCE_SHEET, INCOME_STATEMENT, MEMORANDUM and lowercase/invalid values are rejected', () => {
+    expect(isAccountType('BALANCE_SHEET')).toBe(true);
+    expect(isAccountType('INCOME_STATEMENT')).toBe(true);
+    expect(isAccountType('MEMORANDUM')).toBe(true);
+    expect(isAccountType('balance_sheet')).toBe(false);
+    expect(isAccountType('income_statement')).toBe(false);
+    expect(isAccountType('memorandum')).toBe(false);
+    expect(isAccountType('EQUITY')).toBe(false);
+
+    expect(normalizeAccountType('BALANCE_SHEET')).toBe('BALANCE_SHEET');
+    expect(normalizeAccountType(' INCOME_STATEMENT ')).toBe('INCOME_STATEMENT');
+    expect(normalizeAccountType('MEMORANDUM')).toBe('MEMORANDUM');
+    expect(() => normalizeAccountType('balance_sheet')).toThrow(
+      /Invalid account type/,
+    );
+    expect(() => normalizeAccountType('income_statement')).toThrow(
+      /Invalid account type/,
+    );
+    expect(() => normalizeAccountType('invalid')).toThrow(
+      /Invalid account type/,
+    );
   });
 });

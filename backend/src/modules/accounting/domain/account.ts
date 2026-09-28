@@ -74,9 +74,9 @@ export function isAccountType(value: string): value is AccountType {
 }
 
 export function normalizeAccountType(value: string): AccountType {
-  const upper = value.trim().toUpperCase();
-  if (isAccountType(upper)) {
-    return upper;
+  const trimmed = value.trim();
+  if (isAccountType(trimmed)) {
+    return trimmed;
   }
   throw new Error(`Invalid account type: ${value}`);
 }
