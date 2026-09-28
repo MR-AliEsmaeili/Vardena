@@ -43,6 +43,7 @@ import type {
   AccountRow,
   AccountUpdate,
   AccountWhere,
+  LedgerEntryDelegate,
   OrderBy,
 } from './accounting-rows.js';
 
@@ -83,6 +84,7 @@ import type {
 
 type Client = {
   account: AccountDelegate;
+  ledgerEntry: Pick<LedgerEntryDelegate, 'count'>;
 };
 
 /**

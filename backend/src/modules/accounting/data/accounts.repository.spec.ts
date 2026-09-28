@@ -491,7 +491,7 @@ describe('AccountsRepository — OD-29-02 Account Type immutability timing at wr
     }
 
     expect(rejection).toBeInstanceOf(AccountImmutableAfterUseError);
-    expect((rejection as AccountImmutableAfterUseError).refused).toEqual([
+    expect((rejection as AccountImmutableAfterUseError).fields).toEqual([
       'accountType',
     ]);
     expect(calls.updates).toHaveLength(0);
