@@ -32,9 +32,9 @@ Task 29 clearly distinguishes between **immediate content-loading blockers** and
 ### 3.1 Immediate Content-Loading Blockers (Proposed Task 30)
 Because the canonical 264-account dataset actively contains 15 `DUAL` accounts in Group 9 and 3 distinct Account Types (152 Balance Sheet, 97 Income Statement, 15 Memorandum), the repository **CANNOT** safely ingest and persist the dataset until the domain model and schema are expanded:
 
-1. **Owner Approval & Implementation of OD-29-01 (Account Nature):**
+1. **Implementation of decided OD-29-01 (Account Nature):**
    - Expand `ACCOUNT_NATURES` to include `'dual'` in domain validators, DTOs, and frontend badges.
-2. **Owner Approval & Implementation of OD-29-02 (Account Type):**
+2. **Implementation of decided OD-29-02 (Account Type):**
    - Add `AccountType` enum (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) to Prisma schema (`Account`, `BaseChartTemplateNode`) and DTOs via a rehearsed migration.
 
 ### 3.2 Future/General ACLTafsil Architecture (Proposed Task 32)
@@ -53,7 +53,7 @@ The required implementation sequence follows a strict dependency chain:
 │ Task 30 (Proposed): Domain Model & Schema Expansion           │
 │ • Add AccountType enum & column                              │
 │ • Expand ACCOUNT_NATURES to include 'dual'                   │
-│ • Prerequisite: Owner Decisions OD-29-01 and OD-29-02         │
+│ • Prerequisite: OD-29-01/02 decided; implementation authorized│
 └──────────────────────────────┬───────────────────────────────┘
                                │
                                ▼
@@ -80,4 +80,10 @@ The required implementation sequence follows a strict dependency chain:
 ## 5. Final Verdict
 
 1. **Architecture:** **100% COMPATIBLE** (No architectural redesign required).
-2. **Content Ingestion:** **BLOCKED** on Domain Model Gaps (OD-29-01 and OD-29-02) requiring Proposed Task 30.
+2. **Content Ingestion:** **BLOCKED** on implementation of the decided Domain Model Gaps (OD-29-01 and OD-29-02) through a separately authorized task.
+
+---
+
+## 6. Owner Decision Closure Update (2026-09-28)
+
+OD-29-01 and OD-29-02 are **`DECIDED`**, removing the owner-decision ambiguity for the value sets and core semantics. OD-29-04 is also **`DECIDED`**: English Account Title is not an MVP requirement and is not a content-loading blocker. Production readiness remains **NO** until a separately authorized implementation adds `DUAL`, persists Account Type, and enforces Account Type immutability after first Posting. This update does not authorize Task 30 or approve production loading of the 264-account artifact.

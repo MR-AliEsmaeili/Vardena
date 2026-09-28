@@ -12,6 +12,8 @@
 | **Target Branch** | `main` (work on `arena/01a0e4d1-vardena`) |
 | **Date** | 2026-09-28 |
 
+**Owner Decision Closure (2026-09-28):** OD-29-01, OD-29-02, and OD-29-04 are now **`DECIDED`**. Task 29 remains a non-implementation governance task and is not self-accepted. See `owner-decision-closure.md`.
+
 ---
 
 ## 1. Mission and Purpose
@@ -69,15 +71,15 @@ The final deliverable of this task is an authoritative **decision gate**, NOT a 
    - The VARDENA hierarchical coding structure ($1$ digit Group + $2$ digits General + $3$ digits Subsidiary $\rightarrow$ cumulative lengths 1, 3, 6; 8 Level 1 roots, 38 Level 2, 218 Level 3) is **DIRECTLY COMPATIBLE** with Vardena's configurable coding engine ($MAX\_DEPTH = 8, MAX\_CODE\_LENGTH = 32$).
    - Posting derives dynamically via `postable ⇒ leaf` (222 leaves including childless Level 2 nodes `307`, `602`, `703`, `704`; 42 non-leaf parents).
 
-2. **Balance Nature / Account Nature (`ماهیت حساب`) Gap (Proposal OD-29-01):**
+2. **Balance Nature / Account Nature (`ماهیت حساب`) Gap (Decision OD-29-01):**
    - Source values observed: `بدهکار` (DEBIT, 171), `بستانکار` (CREDIT, 78), `هردو` (DUAL, 15 in Group 9).
    - Current Vardena model: Restricted to `ACCOUNT_NATURES = ['debit', 'credit']` in `domain/account.ts`.
-   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. Task 29 proposes admitting `DUAL` under **OD-29-01** (`PENDING OWNER DECISION`).
+   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. OD-29-01 now establishes `DUAL` as the third independent Nature (`DECIDED`); runtime support remains an implementation gap. Nature does not by itself prohibit opposite-side entries.
 
-3. **Account Type (`نوع حساب`) Gap (Proposal OD-29-02):**
+3. **Account Type (`نوع حساب`) Gap (Decision OD-29-02):**
    - Source values observed: `ترازنامه ای` (152), `سود و زیان` (97), `انتظامی` (15).
    - Current Vardena model: Lacks an `AccountType` concept on `Account` and `BaseChartTemplateNode`.
-   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. Task 29 proposes introducing 3 fixed global types (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) under **OD-29-02** (`PENDING OWNER DECISION`).
+   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. OD-29-02 now establishes exactly 3 fixed global types (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) (`DECIDED`), independent from Nature and immutable after first Posting; runtime support and enforcement remain implementation gaps.
 
 4. **Statement Class Separation (Proposal OD-29-05):**
    - Purpose: Organization-configurable presentation layout for financial statements.
@@ -91,9 +93,9 @@ The final deliverable of this task is an authoritative **decision gate**, NOT a 
    - Source values: Boolean requirement flags (all `0` in source).
    - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. Task 29 proposes mapping to generic line-level dimension requirement rules (ADR-0037) under **OD-29-03** (`PENDING OWNER DECISION`).
 
-7. **English Account Title (Proposal OD-29-04):**
+7. **English Account Title (Decision OD-29-04):**
    - Source field: `عنوان انگليسي حساب`.
-   - **Conclusion:** **DEFERRED / NON-MVP**. Retained as source-only metadata under **OD-29-04** (`PENDING OWNER DECISION`).
+   - **Conclusion:** **DEFERRED / NON-MVP**. OD-29-04 is `DECIDED`: English Account Title is not required for MVP and its absence does not block account creation, publication, adoption, or Posting.
 
 8. **Readiness Gate Conclusion:**
    - **Architecture Ready:** YES (Coding Structure, Base Chart Mechanism, Adoption by Copy, Hierarchy, Leaf Posting).
