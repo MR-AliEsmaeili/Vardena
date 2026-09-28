@@ -8,7 +8,7 @@ Companion ADRs: ADR-0003 (isolation), ADR-0004 (outbox), ADR-0010 (DB queue).
 Vardena is **not** built on any legacy ERP:
 
 - own database (PostgreSQL, `vardena`) — never a legacy ERP database;
-- own business logic — legacy data is *imported/synchronized*, never
+- own business logic — legacy data is _imported/synchronized_, never
   authoritative at runtime;
 - own authentication/authorization — no pass-through to legacy identity;
 - own API — the frontend talks only to Vardena.
@@ -40,7 +40,7 @@ integrated through the adapter layer below.
 Rules (binding):
 
 1. **No external HTTP in request paths.** Business code never calls an adapter
-   synchronously to *send* data (AR-14). Reads *from* an external system for
+   synchronously to _send_ data (AR-14). Reads _from_ an external system for
    interactive use (e.g. "lookup a legacy customer") are allowed through an
    adapter with short timeout + cached/tolerant degradation, and are documented
    per integration — they must never block a core transaction.
@@ -49,39 +49,39 @@ Rules (binding):
 3. **One outbox row per (event, destination).** A domain event that must reach
    two systems produces two rows (fan-out at write time).
 4. **All external calls are idempotent** from the sender side (stable
-   `dedup_key`/idempotency key in the payload) *and* consumers (including
+   `dedup_key`/idempotency key in the payload) _and_ consumers (including
    inbound receive) must deduplicate (AR-15).
 
 ## 3. Adapter Contract (kernel port)
 
 Each external system has one adapter in the `integration` module implementing:
 
-| Member | Purpose |
-|---|---|
-| `code` | stable destination id (`faraPayam`, `taxpayer`, `payment`) — matches outbox `destination` |
-| `send(operation, payload, meta)` | deliver an outbox operation; returns success/failure with error taxonomy |
-| `errorTaxonomy` | classify failures: `retryable` (network, 5xx, timeout) vs `permanent` (4xx contract, auth) — permanent fails fast to dead-letter |
-| `health()` | liveness/reachability probe for the admin UI |
-| `credentials` | resolved from config, encrypted at rest; never logged |
-| `inbound?` | optional receive handlers (credential-protected, idempotent) |
+| Member                           | Purpose                                                                                                                          |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `code`                           | stable destination id (`faraPayam`, `taxpayer`, `payment`) — matches outbox `destination`                                        |
+| `send(operation, payload, meta)` | deliver an outbox operation; returns success/failure with error taxonomy                                                         |
+| `errorTaxonomy`                  | classify failures: `retryable` (network, 5xx, timeout) vs `permanent` (4xx contract, auth) — permanent fails fast to dead-letter |
+| `health()`                       | liveness/reachability probe for the admin UI                                                                                     |
+| `credentials`                    | resolved from config, encrypted at rest; never logged                                                                            |
+| `inbound?`                       | optional receive handlers (credential-protected, idempotent)                                                                     |
 
 Concrete adapters may use REST/SOAP/whatever the external system speaks — the
 protocol detail is **private to the adapter**. Nothing outside `integration/`
 imports a concrete adapter; everything depends on the port. (AR-18)
 
-**Mappings** (internal entity ↔ external entity/fields) are *data* owned by the
-Integration module (per-destination mapping configuration), while the *semantic*
+**Mappings** (internal entity ↔ external entity/fields) are _data_ owned by the
+Integration module (per-destination mapping configuration), while the _semantic_
 meaning stays with the owning business module. Changing a mapping is config/data;
 changing what an operation means is an ADR-gated contract change.
 
 ## 4. Planned Integrations
 
-| Destination | Direction | Status | Notes / Open questions |
-|---|---|---|---|
-| FaraPayam-style legacy ERP | in + out | **planned, contract unknown** | OQ-04: service contract (REST/SOAP?), auth mode, data model, sync scope & cadence. Until the contract is known, the adapter is a stub with the port fully exercised by tests. |
-| Iranian Taxpayer System | out (documents/returns) + in (statuses) | planned | OQ-05: scope (which document types, e.g. e-invoices; submission flows), credentials, sandbox availability. No specifics are assumed. |
-| Payment services | in + out | planned | OQ-07: which providers, flows (receipts/refunds), reconciliation model. |
-| Other enterprise systems | TBD | future | Same pattern: new adapter + destination code + ADR if it changes contracts. |
+| Destination                | Direction                               | Status                        | Notes / Open questions                                                                                                                                                        |
+| -------------------------- | --------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FaraPayam-style legacy ERP | in + out                                | **planned, contract unknown** | OQ-04: service contract (REST/SOAP?), auth mode, data model, sync scope & cadence. Until the contract is known, the adapter is a stub with the port fully exercised by tests. |
+| Iranian Taxpayer System    | out (documents/returns) + in (statuses) | planned                       | OQ-05: scope (which document types, e.g. e-invoices; submission flows), credentials, sandbox availability. No specifics are assumed.                                          |
+| Payment services           | in + out                                | planned                       | OQ-07: which providers, flows (receipts/refunds), reconciliation model.                                                                                                       |
+| Other enterprise systems   | TBD                                     | future                        | Same pattern: new adapter + destination code + ADR if it changes contracts.                                                                                                   |
 
 **New integration checklist** (each step maps to a rule):
 
@@ -109,7 +109,7 @@ integration → Retry → Success/Failure state.**
   implemented by Sync — dependency inversion keeps business modules free of Sync
   details).
 - Statuses: `pending → processing → succeeded | failed (retryable) → … →
-  dead_letter`. `processed_at` set on terminal states.
+dead_letter`. `processed_at` set on terminal states.
 - Retry: exponential backoff with jitter (default ladder 1m, 5m, 15m, 1h, 4h,
   12h), `max_retries` default 6 (per-destination policy, configurable).
   Permanent (non-retryable) errors → immediate `dead_letter`.
@@ -118,7 +118,7 @@ integration → Retry → Success/Failure state.**
   every dead-letter is audited and notifies admins.
 - Operational guarantees: at-least-once delivery (dedup makes it effectively
   exactly-once at the business level, AR-15); ordering not guaranteed across
-  entities, *per-entity* ordering is preserved (worker processes per
+  entities, _per-entity_ ordering is preserved (worker processes per
   destination in claim order; per-entity sequence documented per integration if
   required).
 - **Field decision (user-proposed list):** the proposed fields are **used and
@@ -130,11 +130,11 @@ integration → Retry → Success/Failure state.**
 
 - **Sync ≠ replication engine.** v1 sync is operation-based: discrete operations
   (created/updated documents) flow one way at a time per destination. Full
-  historical *replication* from the legacy ERP (bootstrap import) is a one-time
+  historical _replication_ from the legacy ERP (bootstrap import) is a one-time
   data migration task per destination, executed through the same import
   pipeline discipline (validate → preview → confirm) — it is **not** a runtime
   dependency.
-- **Conflict policy v1:** last-write-wins at the *operation* level is acceptable
+- **Conflict policy v1:** last-write-wins at the _operation_ level is acceptable
   for outbound (Vardena is source of truth for its own entities); for inbound,
   Vardena accepts external state changes only for fields the mapping marks as
   externally-owned, and rejects/log conflicts otherwise. Bidirectional ownership

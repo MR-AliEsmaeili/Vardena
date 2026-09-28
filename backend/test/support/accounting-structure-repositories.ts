@@ -100,6 +100,8 @@ export interface AccountRecord extends Row {
   codingStructureVersionId: string | null;
   accountingConfigurationId: string | null;
   accountNature: string;
+  accountType: string;
+  detailGroupId: string | null;
   isPostable: boolean;
   isActive: boolean;
   createdAt: Date;
@@ -872,6 +874,8 @@ export class InMemoryAccountsRepository {
     title: string;
     parentId: string | null;
     accountNature: string;
+    accountType?: string | undefined;
+    detailGroupId?: string | null | undefined;
     isPostable: boolean;
     structure: AccountStructureSnapshot;
     now: Date;
@@ -995,6 +999,8 @@ export class InMemoryAccountsRepository {
       codingStructureVersionId: input.structure.versionId,
       accountingConfigurationId: input.structure.accountingConfigurationId,
       accountNature: input.accountNature,
+      accountType: input.accountType ?? 'BALANCE_SHEET',
+      detailGroupId: input.detailGroupId ?? null,
       isPostable: input.isPostable,
       isActive: true,
       createdAt: input.now,
@@ -1010,6 +1016,8 @@ export class InMemoryAccountsRepository {
     id: string;
     title?: string | undefined;
     accountNature?: string | undefined;
+    accountType?: string | undefined;
+    detailGroupId?: string | null | undefined;
     isPostable?: boolean | undefined;
     parentId?: string | null | undefined;
     structure: AccountStructureSnapshot | null;
@@ -1039,6 +1047,9 @@ export class InMemoryAccountsRepository {
         accountNature:
           input.accountNature !== undefined &&
           input.accountNature !== node.accountNature,
+        accountType:
+          input.accountType !== undefined &&
+          input.accountType !== node.accountType,
         isPostable:
           input.isPostable !== undefined &&
           input.isPostable !== node.isPostable,
@@ -1122,6 +1133,8 @@ export class InMemoryAccountsRepository {
     this.state.accounts.patch(node.id, {
       title: input.title,
       accountNature: input.accountNature,
+      accountType: input.accountType,
+      detailGroupId: input.detailGroupId,
       isPostable: input.isPostable,
       parentId: parentChanged ? requestedParentId : undefined,
       level: parentChanged ? level : undefined,
@@ -1133,6 +1146,46 @@ export class InMemoryAccountsRepository {
       throw new Error(`Account "${node.id}" no longer exists.`);
     }
     return toAccount(updated) as Account;
+  }
+
+  async unlinkDetailGroupChecked(input: {
+    id: string;
+    confirmUnlink: boolean;
+    now: Date;
+    actorId: string | null;
+  }): Promise<{
+    account: Account;
+    unlinkedDocumentLinesCount: number;
+    unlinkedLedgerEntriesCount: number;
+    previousDetailGroupId: string;
+  }> {
+    if (!input.confirmUnlink) {
+      throw new Error(
+        'Explicit confirmation (confirmUnlink=true) is required.',
+      );
+    }
+    const node = this.state.accounts.findById(input.id);
+    if (node === null) {
+      throw new Error(`Account "${input.id}" no longer exists.`);
+    }
+    if (!node.detailGroupId) {
+      throw new Error(
+        `Account "${input.id}" does not have a linked detail group.`,
+      );
+    }
+    const previousDetailGroupId = node.detailGroupId;
+    this.state.accounts.patch(node.id, {
+      detailGroupId: null,
+      updatedAt: input.now,
+      updatedBy: input.actorId,
+    });
+    const updated = this.state.accounts.findById(node.id);
+    return {
+      account: toAccount(updated) as Account,
+      unlinkedDocumentLinesCount: 0,
+      unlinkedLedgerEntriesCount: 0,
+      previousDetailGroupId,
+    };
   }
 
   async update(
@@ -1218,6 +1271,8 @@ function toAccount(row: AccountRecord | null | undefined): Account | null {
     codingStructureVersionId: row.codingStructureVersionId,
     accountingConfigurationId: row.accountingConfigurationId,
     accountNature: row.accountNature as Account['accountNature'],
+    accountType: (row.accountType ?? 'BALANCE_SHEET') as Account['accountType'],
+    detailGroupId: row.detailGroupId ?? null,
     isPostable: row.isPostable,
     isActive: row.isActive,
     createdAt: row.createdAt,

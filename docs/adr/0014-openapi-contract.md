@@ -19,8 +19,8 @@ versioned with the code, and machine-usable by both sides.
   (type generation at build time — the exact generator is an implementation
   detail of the first frontend setup, constrained to the fixed stack's
   tooling ecosystem). No hand-copied duplicate type definitions in `api/`.
-- **Frontend runtime validation (Zod)** applies to *user input* (forms) with
-  schemas mirroring the request DTOs; API *responses* are treated as typed
+- **Frontend runtime validation (Zod)** applies to _user input_ (forms) with
+  schemas mirroring the request DTOs; API _responses_ are treated as typed
   (the backend is trusted within the same product) — documented risk: a
   backend contract change that breaks response shapes is caught by generated
   type mismatch at build time, not runtime.

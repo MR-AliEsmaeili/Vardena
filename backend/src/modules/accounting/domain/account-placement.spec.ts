@@ -5,7 +5,6 @@ import type {
 } from './account.js';
 import {
   ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS,
-  ACCOUNT_NATURES,
   accountPlacementProblemMessage,
   defaultIsPostableForLevel,
   isAccountNature,
@@ -421,6 +420,8 @@ describe('AC-I-11 immutability after use', () => {
         parentId: true,
         level: true,
         accountNature: true,
+        accountType: true,
+        detailGroupId: true,
         isPostable: true,
       },
     });
@@ -455,6 +456,8 @@ describe('AC-I-11 immutability after use', () => {
           parentId: true,
           level: true,
           accountNature: true,
+          accountType: true,
+          detailGroupId: true,
           isPostable: true,
         },
       }).refused,
@@ -540,10 +543,13 @@ describe('root pin write boundary (D1 + §9.4)', () => {
 });
 
 describe('account nature list', () => {
-  it('is exactly debit|credit and nothing else is accepted', () => {
-    expect([...ACCOUNT_NATURES]).toEqual(['debit', 'credit']);
+  it('is exactly debit|credit|dual (case-insensitive accepted) and nothing else is accepted', () => {
     expect(isAccountNature('debit')).toBe(true);
     expect(isAccountNature('credit')).toBe(true);
+    expect(isAccountNature('dual')).toBe(true);
+    expect(isAccountNature('DEBIT')).toBe(true);
+    expect(isAccountNature('CREDIT')).toBe(true);
+    expect(isAccountNature('DUAL')).toBe(true);
     // `natural`/`contra`/`asset` are not natures (type is OQ-25, not nature).
     expect(isAccountNature('asset')).toBe(false);
   });

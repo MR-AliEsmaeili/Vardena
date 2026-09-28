@@ -13,11 +13,11 @@ The repo has decided: branch (شعبه) is a scope dimension of the same legal
 entity's books — warehouses belong to one branch, movements are branch-scoped,
 reports can slice by branch (OQ-22 interim posture, retained by Task 6
 organization-scoping ADR-0021). The accounting contract keeps financial area
-(حوزه مالی) and branch as *separate* subsystems (contract §5.1/§24.2, OQ-40).
+(حوزه مالی) and branch as _separate_ subsystems (contract §5.1/§24.2, OQ-40).
 
 The owner's clarifications describe branches as **physical organizational
 units** with branch-specific inventory, warehouse, cashbox, reporting and
-access — but say nothing about the *accounting* treatment of branch activity:
+access — but say nothing about the _accounting_ treatment of branch activity:
 
 1. Is branch a **cost center** (an accounting dimension attached to journal
    lines for expense allocation and branch P&L)?
@@ -32,7 +32,7 @@ access — but say nothing about the *accounting* treatment of branch activity:
   rework (if branch must appear on journal lines, the posting path and
   dimension model must carry it).
 - Interacts with OQ-41 (detail dimension count/binding) and OQ-24 (cost
-  allocation is a *separate* deferred engine — a branch cost-center answer must
+  allocation is a _separate_ deferred engine — a branch cost-center answer must
   not silently assume allocation).
 - Iranian accounting practice commonly treats branches as cost centers —
   accountants will ask.
@@ -42,17 +42,17 @@ access — but say nothing about the *accounting* treatment of branch activity:
 1. Must journal lines carry branch (yes/no)?
 2. If yes: via detail dimension bound to branch master data (OQ-41 mechanism),
    or a dedicated ledger column?
-3. Is branch-level expense *allocation* (تسهیم) in scope — noting allocation
-   is separately deferred — or only branch-level *aggregation* of what is
+3. Is branch-level expense _allocation_ (تسهیم) in scope — noting allocation
+   is separately deferred — or only branch-level _aggregation_ of what is
    posted?
 
 ## Options
 
-| Option | Advantages | Disadvantages |
-|---|---|---|
-| **A. Branch = operational scope only** (no ledger presence) | Simplest; consistent with OQ-22 interim; no posting changes | No branch P&L from the ledger; accountants may object |
+| Option                                                          | Advantages                                                                                   | Disadvantages                                                          |
+| --------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| **A. Branch = operational scope only** (no ledger presence)     | Simplest; consistent with OQ-22 interim; no posting changes                                  | No branch P&L from the ledger; accountants may object                  |
 | **B. Branch as detail dimension (bound to branch master data)** | Uses the decided dimension mechanism (OQ-41); optional per organization; branch P&L possible | Depends on OQ-41 resolution; dimension discipline required on postings |
-| **C. Branch as first-class ledger column** | Strongest queries/consistency | Schema + contract extension; likely premature |
+| **C. Branch as first-class ledger column**                      | Strongest queries/consistency                                                                | Schema + contract extension; likely premature                          |
 
 ## Risks
 
@@ -78,7 +78,7 @@ only — owner + accountant decide.**
 
 1. Do target customers expect branch-level P&L from the ledger?
 2. Do you accept branch-as-dimension (configurable) as the mechanism?
-3. Is expense *allocation* to branches explicitly out of scope for the
+3. Is expense _allocation_ to branches explicitly out of scope for the
    foreseeable future (it is currently deferred)?
 
 ## Decision deadline or dependency

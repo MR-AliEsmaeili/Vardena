@@ -10,8 +10,8 @@
 ## Context
 
 Sibling of OQ-47 (rate sources, currency account model, currency inventory).
-Even after OQ-47 decides *how foreign amounts enter the books*, the
-*periodic accounting treatment* of currency movement is separately undecided:
+Even after OQ-47 decides _how foreign amounts enter the books_, the
+_periodic accounting treatment_ of currency movement is separately undecided:
 
 1. **Revaluation**: must open foreign-currency balances (AR/AP/cash) be
    revalued at period end to a current rate, with the difference posted?
@@ -45,11 +45,11 @@ Even after OQ-47 decides *how foreign amounts enter the books*, the
 
 ## Options
 
-| Option | Advantages | Disadvantages |
-|---|---|---|
-| **A. No revaluation feature; manual accountant journals** | Zero cost; accountants already do this; no tax-rule liability | No assistance; error-prone; competitive gap for FX-active customers |
+| Option                                                                   | Advantages                                                            | Disadvantages                                                         |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| **A. No revaluation feature; manual accountant journals**                | Zero cost; accountants already do this; no tax-rule liability         | No assistance; error-prone; competitive gap for FX-active customers   |
 | **B. Period-end revaluation document (auto-calculated, human-approved)** | Reuses voucher/review patterns (Mode B, OQ-42); auditable; reversible | Requires OQ-47 account model + rate governance first; real build cost |
-| **C. Continuous revaluation on every document** | Always-current books | Heavy; unusual for segment; tax treatment unclear |
+| **C. Continuous revaluation on every document**                          | Always-current books                                                  | Heavy; unusual for segment; tax treatment unclear                     |
 
 ## Risks
 

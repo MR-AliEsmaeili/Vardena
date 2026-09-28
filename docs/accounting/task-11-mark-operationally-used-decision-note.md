@@ -33,14 +33,14 @@ Related: ADR-0028, [`configuration.md`](./configuration.md) §Operational Freeze
 
 ## 1. What exists today (inspection result)
 
-| Piece | Location | State |
-|---|---|---|
-| Freeze state resolver / guard (`resolveFreezeState`, `isConfigurationFrozen`, `assertConfigurationMutable`, `assertConfigurationDeletable`, `ConfigurationFrozenError`, `OperationalUsage`) | `domain/accounting-configuration-freeze.ts` | Pure, framework-free, unit-tested. No production consumer. |
-| Marker column `operationally_used_at TIMESTAMPTZ(6)` NULL | `accounting.accounting_configurations` | Created by the Task 11 migration; nullable, no default, no index. |
-| Repository seam `markOperationallyUsed({ id, now })` | `data/accounting-configurations.repository.ts:396` | **Idempotent by read-then-write**: returns the existing row when `operationally_used_at` is already set, otherwise one `UPDATE`. **Not** transaction-aware (`this.client()`, not `transacting()`); a single writer is assumed. |
-| Application seam `AccountingConfigurationsService.markOperationallyUsed(id)` | `application/accounting-configurations.service.ts` | **No production caller.** Kept deliberately as the freeze seam; documented as deferred. |
-| Callers in code | – | none; only unit tests and the in-memory fake exercise it. |
-| Regression that keeps it honest | `test/accounting-configuration-live.e2e-spec.ts` ("D4: … NOT called on Account creation") | Asserts `operationallyUsedAt` stays `NULL` after `AccountsService.createAccount`. |
+| Piece                                                                                                                                                                                       | Location                                                                                  | State                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Freeze state resolver / guard (`resolveFreezeState`, `isConfigurationFrozen`, `assertConfigurationMutable`, `assertConfigurationDeletable`, `ConfigurationFrozenError`, `OperationalUsage`) | `domain/accounting-configuration-freeze.ts`                                               | Pure, framework-free, unit-tested. No production consumer.                                                                                                                                                                     |
+| Marker column `operationally_used_at TIMESTAMPTZ(6)` NULL                                                                                                                                   | `accounting.accounting_configurations`                                                    | Created by the Task 11 migration; nullable, no default, no index.                                                                                                                                                              |
+| Repository seam `markOperationallyUsed({ id, now })`                                                                                                                                        | `data/accounting-configurations.repository.ts:396`                                        | **Idempotent by read-then-write**: returns the existing row when `operationally_used_at` is already set, otherwise one `UPDATE`. **Not** transaction-aware (`this.client()`, not `transacting()`); a single writer is assumed. |
+| Application seam `AccountingConfigurationsService.markOperationallyUsed(id)`                                                                                                                | `application/accounting-configurations.service.ts`                                        | **No production caller.** Kept deliberately as the freeze seam; documented as deferred.                                                                                                                                        |
+| Callers in code                                                                                                                                                                             | –                                                                                         | none; only unit tests and the in-memory fake exercise it.                                                                                                                                                                      |
+| Regression that keeps it honest                                                                                                                                                             | `test/accounting-configuration-live.e2e-spec.ts` ("D4: … NOT called on Account creation") | Asserts `operationallyUsedAt` stays `NULL` after `AccountsService.createAccount`.                                                                                                                                              |
 
 D4 (ADR-0028) already decided **what** the marker means: a configuration that has
 affected Transaction/Posting/Reporting is frozen for destructive change; a new
@@ -111,7 +111,7 @@ Options considered:
 - **Replay behavior:** `postVoucher` replays on the existing
   `(organization_id, operation_key)` + `request_hash` identity by re-reading
   current rows. Replay must not touch the marker (the first-finalization branch
-  already returns early); a *rejected* or rolled-back finalization must leave
+  already returns early); a _rejected_ or rolled-back finalization must leave
   `operationally_used_at` `NULL` — guaranteed by §3's same-transaction rule.
 - **Idempotent request, different hash** (409) and readiness refusals never
   reach the write branch, so they never mark.
@@ -127,11 +127,11 @@ configuration — a single voucher may legitimately reference both.
 
 Therefore "mark **the** configuration" is undefined. Candidate rules:
 
-| Rule | Effect | Problem |
-|---|---|---|
-| Mark every distinct configuration referenced by the voucher's lines | Freezes exactly what the posting touched | Needs the line→account→configuration read inside the finalization transaction; more rows/locks per finalization |
-| Mark the organization's currently `ACTIVE` configuration | One row, simple | Wrong when the voucher references only LEGACY/pinned-superseded accounts — it would freeze a configuration the voucher never used and leave the used one mutable |
-| Forbid mixed-configuration vouchers at posting | One configuration per voucher | A new business rule (needs a decision + a migration plan for existing data), and it would refuse legitimate legacy vouchers — out of Task 11 scope |
+| Rule                                                                | Effect                                   | Problem                                                                                                                                                          |
+| ------------------------------------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mark every distinct configuration referenced by the voucher's lines | Freezes exactly what the posting touched | Needs the line→account→configuration read inside the finalization transaction; more rows/locks per finalization                                                  |
+| Mark the organization's currently `ACTIVE` configuration            | One row, simple                          | Wrong when the voucher references only LEGACY/pinned-superseded accounts — it would freeze a configuration the voucher never used and leave the used one mutable |
+| Forbid mixed-configuration vouchers at posting                      | One configuration per voucher            | A new business rule (needs a decision + a migration plan for existing data), and it would refuse legitimate legacy vouchers — out of Task 11 scope               |
 
 Also open: whether a `SUPERSEDED` configuration referenced by a new voucher
 should be marked (it is already immutable, so the marker is audit-only) or left

@@ -306,6 +306,8 @@ function seedAccountRow(
     codingStructureVersionId: row.codingStructureVersionId,
     accountingConfigurationId: row.accountingConfigurationId,
     accountNature: 'debit',
+    accountType: 'BALANCE_SHEET',
+    detailGroupId: null,
     isPostable: row.isPostable ?? false,
     isActive: true,
     createdAt: new Date('2026-01-01T00:00:00Z'),

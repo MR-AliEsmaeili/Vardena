@@ -17,22 +17,22 @@ approximation for the authoritative environment.
 Safe and deterministic in any checkout; no database, no network services, no
 long-lived processes:
 
-| Gate | Command |
-|---|---|
-| Format check | `npm run format:check` |
-| Lint | `npm run lint` |
-| Typecheck | `npm run typecheck` |
-| Unit tests (hermetic) | `npm test` |
-| Targeted unit tests | `npx vitest run <file>` |
-| Build | `npm run build` |
-| Prisma schema validation | `npm run prisma:validate` (needs `DATABASE_URL` present; never connects) |
-| Prisma client generation | `npm run prisma:generate` |
-| Static analysis / schema inspection | repository searches, schema/code review, small deterministic scripts |
+| Gate                                | Command                                                                  |
+| ----------------------------------- | ------------------------------------------------------------------------ |
+| Format check                        | `npm run format:check`                                                   |
+| Lint                                | `npm run lint`                                                           |
+| Typecheck                           | `npm run typecheck`                                                      |
+| Unit tests (hermetic)               | `npm test`                                                               |
+| Targeted unit tests                 | `npx vitest run <file>`                                                  |
+| Build                               | `npm run build`                                                          |
+| Prisma schema validation            | `npm run prisma:validate` (needs `DATABASE_URL` present; never connects) |
+| Prisma client generation            | `npm run prisma:generate`                                                |
+| Static analysis / schema inspection | repository searches, schema/code review, small deterministic scripts     |
 
 Notes:
 
 - `prisma:validate`/`prisma:generate` need the `DATABASE_URL` key to be
-  *present* but never connect; a sandbox without network access to
+  _present_ but never connect; a sandbox without network access to
   `binaries.prisma.sh` cannot download the schema engine. In that case the
   gates are **delegated to CI** and the limitation is documented in the task
   report — never silently skipped.
@@ -89,14 +89,14 @@ sandboxes cannot produce the interleavings these suites exist to catch.
    `CI verification:` / `Not yet verified:`. A CI test is "passed" only when
    the GitHub Actions run actually completed successfully; a local test is
    "passed" only when it was actually executed. Task reports must include the
-   TEST EXECUTION MATRIX and the line *"No heavy E2E/live-DB test was executed
-   locally unless explicitly authorized."*
+   TEST EXECUTION MATRIX and the line _"No heavy E2E/live-DB test was executed
+   locally unless explicitly authorized."_
 5. **A needed test CI does not run** → if permanent and valuable, add an npm
    script plus a dedicated deterministic CI step and document why; if a
    temporary probe, do not run it locally when heavy — document it as an
    investigation limitation.
 6. **Hang protection.** If a heavy test accidentally starts locally and
    misbehaves: stop it safely, do not classify it as a product failure, do
-   not alter the test, move verification to CI, and record *"Local heavy-test
+   not alter the test, move verification to CI, and record _"Local heavy-test
    execution intentionally not used. CI is the authoritative execution
-   environment."*
+   environment."_

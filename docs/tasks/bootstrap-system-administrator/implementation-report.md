@@ -90,19 +90,19 @@ READY FOR REVIEW
 
 ## Test execution matrix
 
-| Gate | Environment | Result |
-|---|---|---|
-| Targeted bootstrap unit tests | Local FAST-LOCAL | PASS — 2 files / 5 tests |
-| Full backend unit tests | Local FAST-LOCAL | PASS — 103 files / 1,153 tests |
-| Typecheck | Local FAST-LOCAL | PASS |
-| Lint | Local FAST-LOCAL | PASS — 0 errors; 6 pre-existing unrelated warnings |
-| Format check | Local FAST-LOCAL | PASS |
-| Build | Local FAST-LOCAL | PASS |
-| Prisma validate/generate | CI | PASS — run `36269856402` (local schema-engine download had failed because the sandbox could not establish TLS to `binaries.prisma.sh`; no schema changed) |
-| Database migration and populated migration rehearsal | CI-LIVE-DB | PASS — run `36269856402` |
-| Built bootstrap command against PostgreSQL | CI-LIVE-DB | PASS — run `36269856402` |
-| Full E2E including live bootstrap suite | CI-HEAVY / CI-LIVE-DB | PASS — run `36269856402` |
-| Frontend lint/typecheck/format/tests/build | CI | PASS — run `36269856402` |
+| Gate                                                 | Environment           | Result                                                                                                                                                    |
+| ---------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Targeted bootstrap unit tests                        | Local FAST-LOCAL      | PASS — 2 files / 5 tests                                                                                                                                  |
+| Full backend unit tests                              | Local FAST-LOCAL      | PASS — 103 files / 1,153 tests                                                                                                                            |
+| Typecheck                                            | Local FAST-LOCAL      | PASS                                                                                                                                                      |
+| Lint                                                 | Local FAST-LOCAL      | PASS — 0 errors; 6 pre-existing unrelated warnings                                                                                                        |
+| Format check                                         | Local FAST-LOCAL      | PASS                                                                                                                                                      |
+| Build                                                | Local FAST-LOCAL      | PASS                                                                                                                                                      |
+| Prisma validate/generate                             | CI                    | PASS — run `36269856402` (local schema-engine download had failed because the sandbox could not establish TLS to `binaries.prisma.sh`; no schema changed) |
+| Database migration and populated migration rehearsal | CI-LIVE-DB            | PASS — run `36269856402`                                                                                                                                  |
+| Built bootstrap command against PostgreSQL           | CI-LIVE-DB            | PASS — run `36269856402`                                                                                                                                  |
+| Full E2E including live bootstrap suite              | CI-HEAVY / CI-LIVE-DB | PASS — run `36269856402`                                                                                                                                  |
+| Frontend lint/typecheck/format/tests/build           | CI                    | PASS — run `36269856402`                                                                                                                                  |
 
 No heavy E2E/live-DB test was executed locally. CI is the authoritative
 execution environment for those suites under `docs/testing/test-execution-policy.md`.

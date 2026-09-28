@@ -115,6 +115,20 @@ export const ACCOUNT_CREATED_EVENT = 'Account.Created' as const;
 export const ACCOUNT_UPDATED_EVENT = 'Account.Updated' as const;
 export const ACCOUNT_ENABLED_EVENT = 'Account.Enabled' as const;
 export const ACCOUNT_DISABLED_EVENT = 'Account.Disabled' as const;
+export const ACCOUNT_DETAIL_UNLINKED_EVENT = 'Account.DetailUnlinked' as const;
+
+export interface AccountDetailUnlinkedEventPayload {
+  organizationId: string;
+  accountId: string;
+  accountCode: string;
+  detailGroupId: string;
+  detailGroupCode: string;
+  actorId: string | null;
+  unlinkedAt: string;
+  operation: 'account_detail_unlink';
+  affectedDocumentLinesCount: number;
+  affectedLedgerEntriesCount: number;
+}
 
 export type AccountCreatedEvent = ScopedEvent<
   typeof ACCOUNT_CREATED_EVENT,
@@ -135,6 +149,11 @@ export type AccountDisabledEvent = ScopedEvent<
   typeof ACCOUNT_DISABLED_EVENT,
   'Account',
   AccountEventPayload
+>;
+export type AccountDetailUnlinkedEvent = ScopedEvent<
+  typeof ACCOUNT_DETAIL_UNLINKED_EVENT,
+  'Account',
+  AccountDetailUnlinkedEventPayload
 >;
 
 // ---- FinancialArea ----------------------------------------------------------
@@ -348,6 +367,7 @@ export const ACCOUNTING_EVENT_TYPES = [
   ACCOUNT_UPDATED_EVENT,
   ACCOUNT_ENABLED_EVENT,
   ACCOUNT_DISABLED_EVENT,
+  ACCOUNT_DETAIL_UNLINKED_EVENT,
   FINANCIAL_AREA_CREATED_EVENT,
   FINANCIAL_AREA_UPDATED_EVENT,
   FINANCIAL_AREA_ENABLED_EVENT,

@@ -16,12 +16,12 @@
 
 The final acceptance record is based on the merged `main` branch and repository evidence, not on an unmerged branch or a PR description alone:
 
-| Evidence | Verified state |
-|---|---|
-| PR #54 | **MERGED** into `main` in merge commit `f15325184023ff0c7e9d34727834da19f4350eda` |
-| PR #55 | **MERGED** into `main` in merge commit `6a69bc6c17bf0dfb69a15adc3e3203ae6098d871` |
-| Current `main` | Contains the PR #55 merge commit as its current head at this synchronization baseline |
-| PR #55 CI | GitHub Actions CI run **`36238862315`** — **SUCCESS**; backend job completed successfully |
+| Evidence       | Verified state                                                                            |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| PR #54         | **MERGED** into `main` in merge commit `f15325184023ff0c7e9d34727834da19f4350eda`         |
+| PR #55         | **MERGED** into `main` in merge commit `6a69bc6c17bf0dfb69a15adc3e3203ae6098d871`         |
+| Current `main` | Contains the PR #55 merge commit as its current head at this synchronization baseline     |
+| PR #55 CI      | GitHub Actions CI run **`36238862315`** — **SUCCESS**; backend job completed successfully |
 
 PR #54 initially implemented the three Task 19 slices, but it left membership administration outside the principal-membership boundary. Consequently, a principal holding the membership-administration permission could administer membership in an organization where that principal was not a member. That was a real ODR-3 authorization defect: permission alone could cross an organization boundary on the administration surface.
 
@@ -151,13 +151,13 @@ wildcard, and no super-admin bypass in the correction.
 
 ### 4.1 Final PR #55 CI evidence
 
-| Field | Recorded result |
-|---|---|
-| CI run | **`36238862315`** |
-| Result | **SUCCESS** |
-| Job | `backend` completed successfully |
-| Required gates | Prisma validate; Prisma generate; lint; typecheck; format check; unit tests; build; migrate deploy; migration rehearsal; E2E including live PostgreSQL suites |
-| Required-gate status | No required CI gate was skipped or continued-on-error |
+| Field                | Recorded result                                                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| CI run               | **`36238862315`**                                                                                                                                             |
+| Result               | **SUCCESS**                                                                                                                                                   |
+| Job                  | `backend` completed successfully                                                                                                                              |
+| Required gates       | Prisma validate; Prisma generate; lint; typecheck; format check; unit tests; build; migrate deploy; migration rehearsal; E2E including live PostgreSQL suites |
+| Required-gate status | No required CI gate was skipped or continued-on-error                                                                                                         |
 
 The configured backend CI job completed all of the repository's authoritative gates,
 including Prisma validation and generation, lint, typecheck, format check, unit tests,

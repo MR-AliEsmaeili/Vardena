@@ -39,6 +39,8 @@ export interface AccountingDocumentLineInput {
   /** 1-based, dense; assigned by the server, never trusted from a client. */
   lineNo: number;
   accountId: string;
+  /** Optional Detail item allocation (Task 30 — OD-29-03). */
+  detailId?: string | null | undefined;
   /** Non-negative `numeric(18,2)` decimal string. */
   debitAmount: string;
   /** Non-negative `numeric(18,2)` decimal string. */
@@ -72,7 +74,19 @@ export type VoucherLineProblem =
   /** The same `line_no` appears twice. */
   | 'duplicate_line_no'
   /** Line numbers are not exactly 1..n (dense numbering, §12.5). */
-  | 'gaps_in_line_numbers';
+  | 'gaps_in_line_numbers'
+  /** Detail required because account has a linked detail group (OD-29-03). */
+  | 'detail_required'
+  /** Detail not allowed because account has no linked detail group. */
+  | 'detail_not_allowed'
+  /** Detail record does not exist in organization. */
+  | 'detail_not_found'
+  /** Detail record is not postable. */
+  | 'detail_not_postable'
+  /** Detail record is disabled. */
+  | 'detail_disabled'
+  /** Detail record does not belong to the account's linked detail group. */
+  | 'detail_group_mismatch';
 
 export function voucherLineProblemMessage(problem: VoucherLineProblem): string {
   switch (problem) {
@@ -96,6 +110,18 @@ export function voucherLineProblemMessage(problem: VoucherLineProblem): string {
       return 'Line numbers must be unique within a document.';
     case 'gaps_in_line_numbers':
       return 'Line numbers must be dense: 1..n with no gaps.';
+    case 'detail_required':
+      return 'Detail allocation is required for accounts linked to a detail group (OD-29-03).';
+    case 'detail_not_allowed':
+      return 'Detail allocation is not allowed for accounts without a linked detail group.';
+    case 'detail_not_found':
+      return 'The allocated detail record does not exist in this organization.';
+    case 'detail_not_postable':
+      return 'The allocated detail record is not postable: only leaf details can post.';
+    case 'detail_disabled':
+      return 'The allocated detail record is disabled.';
+    case 'detail_group_mismatch':
+      return 'The allocated detail record does not belong to the account’s linked detail group.';
   }
 }
 

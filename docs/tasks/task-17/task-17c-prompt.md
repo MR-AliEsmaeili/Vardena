@@ -20,8 +20,8 @@
 > chat — the official project memory, and §4 requires the Arena agent to store
 > the received prompt in the task directory before implementation (the Task 17B
 > precedent: [`task-17b-prompt.md`](./task-17b-prompt.md)). Saving the received
-> text is what makes Q1–Q22 and the three invariants *Owner decisions with a
-> repository source* instead of an agent's interpretation.
+> text is what makes Q1–Q22 and the three invariants _Owner decisions with a
+> repository source_ instead of an agent's interpretation.
 >
 > **Session note (not part of the received text).** §14 suggests the branch
 > `arena/task-17c-accounting-decision-consolidation`. This Arena session is
@@ -41,12 +41,12 @@ repository's established governance rules.
 
 Your role in this task is strictly:
 
-* Repository analysis
-* Documentation consolidation
-* ADR creation/update
-* OQ synchronization
-* STATE/task-index synchronization where required
-* Consistency validation
+- Repository analysis
+- Documentation consolidation
+- ADR creation/update
+- OQ synchronization
+- STATE/task-index synchronization where required
+- Consistency validation
 
 You are **NOT authorized to implement production functionality in this task**.
 
@@ -63,18 +63,18 @@ decisions.
 
 The result must establish a clear repository-backed contract for:
 
-* Account identity
-* Account hierarchy
-* Posting vs Aggregation semantics
-* Account code history
-* Code migration
-* Fiscal-year opening identity
-* Historical reporting
-* Account Statement / Account Overview
-* Correction and immutability
-* Configurable Accounting structure
-* Dimensions
-* Legal reporting architecture
+- Account identity
+- Account hierarchy
+- Posting vs Aggregation semantics
+- Account code history
+- Code migration
+- Fiscal-year opening identity
+- Historical reporting
+- Account Statement / Account Overview
+- Correction and immutability
+- Configurable Accounting structure
+- Dimensions
+- Legal reporting architecture
 
 ---
 
@@ -84,16 +84,16 @@ Before changing anything:
 
 Read the current `main` branch and inspect at minimum:
 
-* `STATE.md`
-* `docs/open-questions.md`
-* `docs/accounting/domain-contract.md`
-* `docs/accounting/task-index.md`
-* `docs/reporting-strategy.md`
-* `docs/tasks/task-17/task-17b-brief.md`
-* `docs/tasks/task-17/task-17b-implementation-report.md`
-* all relevant Accounting ADRs under `docs/adr/`
-* `.vardena/agent-rules.md`
-* `docs/adr/README.md`
+- `STATE.md`
+- `docs/open-questions.md`
+- `docs/accounting/domain-contract.md`
+- `docs/accounting/task-index.md`
+- `docs/reporting-strategy.md`
+- `docs/tasks/task-17/task-17b-brief.md`
+- `docs/tasks/task-17/task-17b-implementation-report.md`
+- all relevant Accounting ADRs under `docs/adr/`
+- `.vardena/agent-rules.md`
+- `docs/adr/README.md`
 
 Also inspect existing Account/Accounting implementation only to ensure the
 documentation does not contradict the repository.
@@ -134,8 +134,8 @@ those roles.
 
 This is a hybrid model:
 
-* Vardena-defined accounting/control semantics
-* Organization-configurable account structure
+- Vardena-defined accounting/control semantics
+- Organization-configurable account structure
 
 ---
 
@@ -168,8 +168,8 @@ Organizations map their own accounts to those standard roles.
 
 Default behavior:
 
-* final/last configured level is postable
-* higher levels are not postable by default
+- final/last configured level is postable
+- higher levels are not postable by default
 
 Accounting configuration may allow posting at another level.
 
@@ -184,8 +184,8 @@ This decision must be reconciled with the Posting-vs-Aggregation invariant below
 
 Vardena must support both:
 
-* tree-based Detail Accounts
-* Floating Detail Accounts
+- tree-based Detail Accounts
+- Floating Detail Accounts
 
 The exact usage must be configurable.
 
@@ -197,17 +197,17 @@ Vardena must support a configurable general dimension model.
 
 Examples:
 
-* Cost Center
-* Project
-* Branch
+- Cost Center
+- Project
+- Branch
 
 The model must NOT become a giant EAV system or giant JSONB structure.
 
 An account/dimension relationship may be:
 
-* Required
-* Optional
-* Forbidden
+- Required
+- Optional
+- Forbidden
 
 depending on Accounting configuration.
 
@@ -247,12 +247,12 @@ Accounting data.
 
 Primary system language:
 
-* Persian
+- Persian
 
 Base monetary unit must be configurable, including:
 
-* Rial
-* Toman
+- Rial
+- Toman
 
 If appropriate, Rial input may be displayed with Toman conversion.
 
@@ -307,15 +307,15 @@ Decision: D.
 
 Use:
 
-* `Document Date` for financial reporting
-* `Posting Timestamp` for audit/event timing
+- `Document Date` for financial reporting
+- `Posting Timestamp` for audit/event timing
 
 Existing Accounting concepts such as:
 
-* Fiscal Year
-* Accounting Period
-* Document Date
-* Posting Timestamp
+- Fiscal Year
+- Accounting Period
+- Document Date
+- Posting Timestamp
 
 must remain distinct.
 
@@ -331,11 +331,11 @@ Account Statement is the unified concept for account performance/turnover.
 
 It includes at minimum:
 
-* Opening
-* Debit Turnover
-* Credit Turnover
-* Net
-* Closing
+- Opening
+- Debit Turnover
+- Credit Turnover
+- Net
+- Closing
 
 It should support drill-down to underlying source documents.
 
@@ -350,10 +350,10 @@ Decision: D.
 
 Account Overview is:
 
-* a more graphical/easier presentation
-* using the same underlying read source
-* using the same financial calculations
-* not a second independent accounting calculation engine
+- a more graphical/easier presentation
+- using the same underlying read source
+- using the same financial calculations
+- not a second independent accounting calculation engine
 
 Conceptually:
 
@@ -369,10 +369,10 @@ Account Statement   Account Overview
 
 Account Overview may provide:
 
-* KPIs
-* charts
-* summaries
-* drill-down
+- KPIs
+- charts
+- summaries
+- drill-down
 
 but must derive from the same authoritative Accounting read source.
 
@@ -556,10 +556,10 @@ identity.
 
 Therefore:
 
-* Ledger references Account identity
-* Opening logic references Account identity
-* Historical reporting resolves code by historical validity
-* integrations must not treat code as permanent identity unless explicitly
+- Ledger references Account identity
+- Opening logic references Account identity
+- Historical reporting resolves code by historical validity
+- integrations must not treat code as permanent identity unless explicitly
   designed as a controlled business reference
 
 Conceptually:
@@ -690,34 +690,34 @@ Preferred separation:
 
 Must document:
 
-* Account.id as permanent identity
-* code as business identifier
-* code history
-* historical resolution
-* opening implications
+- Account.id as permanent identity
+- code as business identifier
+- code history
+- historical resolution
+- opening implications
 
 ### ADR B — Posting vs Aggregation
 
 Must document:
 
-* POSTING XOR AGGREGATION
-* double-counting prevention
-* default final-level posting
-* configurable posting eligibility
-* prohibition of simultaneous semantics
+- POSTING XOR AGGREGATION
+- double-counting prevention
+- default final-level posting
+- configurable posting eligibility
+- prohibition of simultaneous semantics
 
 ### ADR C — Account Code Structure Migration
 
 Must document:
 
-* controlled Vardena service
-* licensed operation
-* preflight/dry-run/impact analysis
-* approval
-* reconciliation
-* auditability
-* no rewriting of economic Ledger history
-* current exclusion of level-count changes
+- controlled Vardena service
+- licensed operation
+- preflight/dry-run/impact analysis
+- approval
+- reconciliation
+- auditability
+- no rewriting of economic Ledger history
+- current exclusion of level-count changes
 
 ### ADR D — Legal Reporting Architecture
 
@@ -770,18 +770,18 @@ In particular:
 
 The following are now Owner Decisions:
 
-* configurable level count within supported structure
-* base Vardena structure + organization configuration
-* Control Role approach
-* posting default/configuration
-* tree + floating detail
-* configurable dimensions
-* Account.id identity
-* code history
-* historical code reporting
-* controlled code migration
-* current exclusion of level-count migration
-* account deletion/deactivation policy
+- configurable level count within supported structure
+- base Vardena structure + organization configuration
+- Control Role approach
+- posting default/configuration
+- tree + floating detail
+- configurable dimensions
+- Account.id identity
+- code history
+- historical code reporting
+- controlled code migration
+- current exclusion of level-count migration
+- account deletion/deactivation policy
 
 Remaining implementation-level details must stay open where not explicitly
 decided.
@@ -790,7 +790,7 @@ decided.
 
 The following is decided:
 
-* Legal Adapter/Profile architecture
+- Legal Adapter/Profile architecture
 
 But legal facts such as current Iranian statutory layouts, tax rules, retention
 requirements, electronic-book requirements, etc. remain subject to authoritative
@@ -806,25 +806,25 @@ This task is DOCUMENTATION ONLY.
 
 Absolutely prohibited:
 
-* production code changes
-* API changes
-* DTO changes
-* database schema changes
-* Prisma changes
-* migrations
-* seed changes
-* permission implementation
-* report implementation
-* UI implementation
-* new dependencies
-* refactoring
-* performance work
-* changing existing Accounting behavior
-* changing Task 17B implementation
-* implementing Code Migration Service
-* implementing Classification
-* implementing Trial Balance
-* implementing Legal Books
+- production code changes
+- API changes
+- DTO changes
+- database schema changes
+- Prisma changes
+- migrations
+- seed changes
+- permission implementation
+- report implementation
+- UI implementation
+- new dependencies
+- refactoring
+- performance work
+- changing existing Accounting behavior
+- changing Task 17B implementation
+- implementing Code Migration Service
+- implementing Classification
+- implementing Trial Balance
+- implementing Legal Books
 
 Do not create placeholder production code.
 
@@ -842,11 +842,11 @@ Run appropriate lightweight documentation validation if available.
 
 Also inspect the final diff and verify:
 
-* no production files changed
-* no schema/migration files changed
-* no tests changed
-* no dependency files changed
-* no generated artifacts changed
+- no production files changed
+- no schema/migration files changed
+- no tests changed
+- no dependency files changed
+- no generated artifacts changed
 
 If any such change appears, revert it before finalizing unless it is explicitly
 required by repository governance documentation.
@@ -913,11 +913,11 @@ At the end report:
 9. Validation performed
 10. Confirmation that:
 
-* no production code changed
-* no schema/migration changed
-* no tests changed
-* no API changed
-* no dependencies changed
+- no production code changed
+- no schema/migration changed
+- no tests changed
+- no API changed
+- no dependencies changed
 
 11. Any discrepancy discovered between the Owner Decisions and the current
     repository

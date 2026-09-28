@@ -31,7 +31,7 @@ non-statutory, ledger-native scope.
 
 > PROPOSED DESIGN — a candidate, not an authorization and not a new task number.
 
-**Slice name (proposed):** *Accounting Movement & Balance Read Contract*
+**Slice name (proposed):** _Accounting Movement & Balance Read Contract_
 (layer 1 only; no report UI, no export, no print, no statements).
 
 1. **Account movement contract** — extend the accepted Task 17A movement source
@@ -130,15 +130,15 @@ Out of scope for **any** slice derived from this brief:
 
 Derived one-to-one from the investigation's unresolved questions (§15):
 
-| # | Decision | Class |
-| --- | --- | --- |
-| D1 | Approve the nature-agnostic balance slice — `debitTurnover` / `creditTurnover` / exact `net`, plus intra-year derived opening/closing — as the **only** permitted balance semantics until OQ-25 (asset/liability/equity/revenue/expense presentation is excluded). | REQUIRES OWNER DECISION |
-| D2 | Sparse vs dense default for balance/trial-balance surfaces (absence = zero vs LEFT JOIN periods/accounts), per surface. | REQUIRES OWNER DECISION |
-| D3 | Offset vs keyset pagination for movement sources, and per-surface row-cap/timeout defaults. | REQUIRES OWNER DECISION |
-| D4 | Permission model for surfaced reports: reuse `Accounting.LedgerMovement.View` / `Accounting.Balance.View`, or introduce `Report.<id>.View` codes with the future Reporting module. | REQUIRES OWNER DECISION |
-| D5 | Whether any non-statutory report needs a “present net-of-reversal” and/or “include closed/sealed periods” switch, and the approved default. | REQUIRES OWNER DECISION |
-| D6 | Adopt the `ReportResponse<T>` envelope and the four-layer boundary (domain read contract / Reporting envelope / export formatting / legal profile) as the contract baseline for the future Reporting module. | REQUIRES OWNER DECISION |
-| D7 | Confirm the interim postures for OQ-25 and OQ-43 that allow the bounded non-statutory slice to proceed (Task 17 gate) — without closing either OQ. | BLOCKED BY OQ (until recorded) |
+| #   | Decision                                                                                                                                                                                                                                                           | Class                          |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------ |
+| D1  | Approve the nature-agnostic balance slice — `debitTurnover` / `creditTurnover` / exact `net`, plus intra-year derived opening/closing — as the **only** permitted balance semantics until OQ-25 (asset/liability/equity/revenue/expense presentation is excluded). | REQUIRES OWNER DECISION        |
+| D2  | Sparse vs dense default for balance/trial-balance surfaces (absence = zero vs LEFT JOIN periods/accounts), per surface.                                                                                                                                            | REQUIRES OWNER DECISION        |
+| D3  | Offset vs keyset pagination for movement sources, and per-surface row-cap/timeout defaults.                                                                                                                                                                        | REQUIRES OWNER DECISION        |
+| D4  | Permission model for surfaced reports: reuse `Accounting.LedgerMovement.View` / `Accounting.Balance.View`, or introduce `Report.<id>.View` codes with the future Reporting module.                                                                                 | REQUIRES OWNER DECISION        |
+| D5  | Whether any non-statutory report needs a “present net-of-reversal” and/or “include closed/sealed periods” switch, and the approved default.                                                                                                                        | REQUIRES OWNER DECISION        |
+| D6  | Adopt the `ReportResponse<T>` envelope and the four-layer boundary (domain read contract / Reporting envelope / export formatting / legal profile) as the contract baseline for the future Reporting module.                                                       | REQUIRES OWNER DECISION        |
+| D7  | Confirm the interim postures for OQ-25 and OQ-43 that allow the bounded non-statutory slice to proceed (Task 17 gate) — without closing either OQ.                                                                                                                 | BLOCKED BY OQ (until recorded) |
 
 ## 7. Dependencies
 
@@ -154,21 +154,21 @@ Derived one-to-one from the investigation's unresolved questions (§15):
 ## 8. Risks
 
 1. **Scope creep into Reporting/export/print** — the slice must stay layer-1;
-   the accepted Reporting architecture owns the pipeline. *(Mitigation: §5
-   out-of-scope list + gate re-check.)*
+   the accepted Reporting architecture owns the pipeline. _(Mitigation: §5
+   out-of-scope list + gate re-check.)_
 2. **Unscoped/unindexed queries** — no date-leading ledger index today; a
-   date-range-heavy source must be measured before enabling. *(Mitigation:
-   performance acceptance criterion + documented query plans.)*
-3. **Deep-paging external sorts** on tenant-wide scans. *(Mitigation:
-   keyset-pagination decision D3.)*
+   date-range-heavy source must be measured before enabling. _(Mitigation:
+   performance acceptance criterion + documented query plans.)_
+3. **Deep-paging external sorts** on tenant-wide scans. _(Mitigation:
+   keyset-pagination decision D3.)_
 4. **Classification-by-inference** — accounting staff may expect a grouped
    trial balance; without OQ-25 the source must not infer asset/liability
-   classes from codes or Persian level names. *(Mitigation: D1 + explicit
-   nature-agnostic semantics.)*
-5. **Drift between projection and ledger** being silently rendered. *(Mitigation:
-   reconciliation expectation in the contract; AC-I-19.)*
+   classes from codes or Persian level names. _(Mitigation: D1 + explicit
+   nature-agnostic semantics.)_
+5. **Drift between projection and ledger** being silently rendered. _(Mitigation:
+   reconciliation expectation in the contract; AC-I-19.)_
 6. **Mistaking this brief for authorization** — nothing here is implemented or
-   accepted. *(Mitigation: READY FOR REVIEW status and explicit non-goals.)*
+   accepted. _(Mitigation: READY FOR REVIEW status and explicit non-goals.)_
 
 ---
 

@@ -325,6 +325,8 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
       codingStructureVersionId: null,
       accountingConfigurationId: null,
       accountNature: 'debit',
+      accountType: 'BALANCE_SHEET',
+      detailGroupId: null,
       isPostable: false,
       isActive: true,
       createdAt: new Date('2026-01-01T00:00:00Z'),

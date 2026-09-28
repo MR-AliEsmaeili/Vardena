@@ -10,7 +10,7 @@
 
 > This report authorizes **no implementation** and invents **no accounting
 > content**. It is the output required by §19 of the received draft
-> (*“Before coding, inspect … Then report: 1…7”*), produced because the draft
+> (_“Before coding, inspect … Then report: 1…7”_), produced because the draft
 > itself records **“Implementation authorization: NOT GRANTED by this draft”**
 > (§22). It does not admit Task 23, accept Task 21, promote an ADR, close
 > OQ-25/OQ-36/OQ-41/OQ-43, reopen Task 19/Task 20, or self-accept anything.
@@ -33,20 +33,20 @@ Self-acceptance:        NOT PERFORMED
 
 ### 0.1 Task 21 is accepted — the dependency is satisfied, but it does not authorize implementation
 
-*Status corrected 2026-09-27 against current `main`. The original run of this report (baseline `b0d9337`) recorded Task 21 as “READY FOR REVIEW — NOT ACCEPTED”; that state has been superseded by the Owner acceptance recorded on `main`.*
+_Status corrected 2026-09-27 against current `main`. The original run of this report (baseline `b0d9337`) recorded Task 21 as “READY FOR REVIEW — NOT ACCEPTED”; that state has been superseded by the Owner acceptance recorded on `main`._
 
-| Source | Recorded status |
-|---|---|
-| `docs/tasks/task-21/task-21-acceptance-record.md` | **ACCEPTED (2026-09-26)** — Repository Owner, after final repository review **PASS**; *“Scope: Governance/design documentation only”* |
-| `docs/accounting/task-index.md` status header | **“Task 21: ACCEPTED (2026-09-26)”** — design/governance documentation only; **OQ-25 substantially narrowed but stays OPEN**; OQ-41/OQ-43 not closed; no ADR promoted |
-| `STATE.md` §7 row 21 + §8 | **ACCEPTED (2026-09-26)**; Task 21 is the current accepted work item; *“no implementation is authorized by this acceptance alone”* |
-| `docs/open-questions.md` OQ-25 | *“Task 21 note (2026-09-26) — **ACCEPTED GOVERNANCE BASELINE**; OQ-25 remains OPEN and substantially narrowed”* |
-| `docs/tasks/task-21/task-21-governance-baseline.md` header | **“Task status: ACCEPTED (2026-09-26)”** |
-| Acceptance boundaries (acceptance record) | Base Chart content **values not approved**; **no** control-role catalog/mandatory set approved; **OQ-25/OQ-36/OQ-41/OQ-43 remain OPEN**; ADR-0033…0037 remain **Proposed**; Task 19/Task 20 unchanged; *“no production implementation … is authorized by this acceptance alone”* |
+| Source                                                     | Recorded status                                                                                                                                                                                                                                                                  |
+| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/tasks/task-21/task-21-acceptance-record.md`          | **ACCEPTED (2026-09-26)** — Repository Owner, after final repository review **PASS**; _“Scope: Governance/design documentation only”_                                                                                                                                            |
+| `docs/accounting/task-index.md` status header              | **“Task 21: ACCEPTED (2026-09-26)”** — design/governance documentation only; **OQ-25 substantially narrowed but stays OPEN**; OQ-41/OQ-43 not closed; no ADR promoted                                                                                                            |
+| `STATE.md` §7 row 21 + §8                                  | **ACCEPTED (2026-09-26)**; Task 21 is the current accepted work item; _“no implementation is authorized by this acceptance alone”_                                                                                                                                               |
+| `docs/open-questions.md` OQ-25                             | _“Task 21 note (2026-09-26) — **ACCEPTED GOVERNANCE BASELINE**; OQ-25 remains OPEN and substantially narrowed”_                                                                                                                                                                  |
+| `docs/tasks/task-21/task-21-governance-baseline.md` header | **“Task status: ACCEPTED (2026-09-26)”**                                                                                                                                                                                                                                         |
+| Acceptance boundaries (acceptance record)                  | Base Chart content **values not approved**; **no** control-role catalog/mandatory set approved; **OQ-25/OQ-36/OQ-41/OQ-43 remain OPEN**; ADR-0033…0037 remain **Proposed**; Task 19/Task 20 unchanged; _“no production implementation … is authorized by this acceptance alone”_ |
 
 The draft declares `Depends on: … Accepted Task 21` and §22 `Primary dependency: Accepted Task 21 governance baseline`. That dependency is now **satisfied**. Task 21 §14.1 nevertheless states a two-limb gate:
 
-> *“Only after this governance baseline is accepted **and** the required content is explicitly approved by the Owner/accountant, and only through a task admitted to `docs/accounting/task-index.md` §7.”*
+> _“Only after this governance baseline is accepted **and** the required content is explicitly approved by the Owner/accountant, and only through a task admitted to `docs/accounting/task-index.md` §7.”_
 
 The **first limb is satisfied**; the **second limb is not** — Base Chart content remains unapproved (OQ-25 OPEN) — and the admission limb is covered by §0.2. Task 21's acceptance therefore ratifies the governance baseline that bounds Task 23; it is **not** an authorization to implement Task 23.
 
@@ -56,16 +56,16 @@ The **first limb is satisfied**; the **second limb is not** — Base Chart conte
 
 `docs/accounting/task-index.md` §7 (future task definition rule) lists eight conditions that must all exist in the repository before an implementation agent may implement:
 
-| §7 condition | State |
-|---|---|
-| 1. Objective defined | ✅ (draft §1) |
-| 2. Domain scope defined | ✅ (draft §3) |
-| 3. Non-goals defined | ✅ (draft §21) |
-| 4. Dependencies identified | ✅ (draft §2) — the Task 21 dependency is now **satisfied**; content approval and implementation authorization remain outstanding (§0.1) |
-| 5. Blocking Open Questions identified | ✅ (OQ-25/36/41/43) |
-| 6. Required ADR / domain decisions exist where necessary | ❌ — D-R-1, D-R-2 (§7 of this report) |
-| 7. Acceptance Criteria defined | ❌ — the draft has an *acceptance gate* (§20) but no acceptance criteria |
-| 8. Explicitly added to the §2 table | ❌ — §2 rows end at `21` (11, 12, 13, 14, 15, 16, 17, 17B, 17C, 18, 19, 20, 21) |
+| §7 condition                                             | State                                                                                                                                    |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Objective defined                                     | ✅ (draft §1)                                                                                                                            |
+| 2. Domain scope defined                                  | ✅ (draft §3)                                                                                                                            |
+| 3. Non-goals defined                                     | ✅ (draft §21)                                                                                                                           |
+| 4. Dependencies identified                               | ✅ (draft §2) — the Task 21 dependency is now **satisfied**; content approval and implementation authorization remain outstanding (§0.1) |
+| 5. Blocking Open Questions identified                    | ✅ (OQ-25/36/41/43)                                                                                                                      |
+| 6. Required ADR / domain decisions exist where necessary | ❌ — D-R-1, D-R-2 (§7 of this report)                                                                                                    |
+| 7. Acceptance Criteria defined                           | ❌ — the draft has an _acceptance gate_ (§20) but no acceptance criteria                                                                 |
+| 8. Explicitly added to the §2 table                      | ❌ — §2 rows end at `21` (11, 12, 13, 14, 15, 16, 17, 17B, 17C, 18, 19, 20, 21)                                                          |
 
 ### 0.3 Consequence
 
@@ -75,7 +75,7 @@ Per the draft's own §18/§19 and §22, the correct agent action is this report.
 
 ## 1. Implementation interpretation
 
-Task 23 is an **empty-container implementation**: a product-side versioned template store plus a one-way, organization-scoped **copy** operation. It implements *mechanism only*. Every value that would make the mechanism useful in production (codes, Persian titles, natures, the mandatory set, any control role) is **content**, and content is OQ-25-DEFERRED and expert-gated (Task 21 §2 “values DEFERRED”, §12 row *“Base Chart content values → Open → must be accountant-approved before build”*; draft §10).
+Task 23 is an **empty-container implementation**: a product-side versioned template store plus a one-way, organization-scoped **copy** operation. It implements _mechanism only_. Every value that would make the mechanism useful in production (codes, Persian titles, natures, the mandatory set, any control role) is **content**, and content is OQ-25-DEFERRED and expert-gated (Task 21 §2 “values DEFERRED”, §12 row _“Base Chart content values → Open → must be accountant-approved before build”_; draft §10).
 
 The identity chain is not negotiable and its lower two layers already exist:
 
@@ -89,16 +89,16 @@ accounting.accounts.id             (EXISTING table, organization-owned — shape
 accounting.ledger_entries.account_id → accounts.id   (EXISTING, untouched)
 ```
 
-| # | Interpretation | Basis |
-|---|---|---|
-| I-1 | Adoption writes **ordinary `accounting.accounts` rows** through the existing placement/coherence rules — no parallel account hierarchy, no new account table | draft §13; Task 21 §14.1; ODR-2 |
-| I-2 | **Full-version adoption only.** Ancestor-closure and mandatory-inclusion are implemented as *enforced validators*, but no subset-selection API is exposed, because any selection policy is the OPEN part of Task 21 §4.3 | draft §4 (*“stop at the smallest explicitly governed capability and report the unresolved boundary”*) |
-| I-3 | Adoption **option A** (reference an existing organization configuration); refuse fail-closed when no ACTIVE, coherent `(coding_structure_version, accounting_configuration)` pair exists. Option B (create one) is not implemented | Task 21 §3 (A/B DEFERRED to the implementation task, bounded by: never mutate an operationally frozen configuration — ADR-0028 §3 — and must produce an ODR-1-coherent pin pair) |
-| I-4 | Adoption is refused into a **non-empty chart** (any existing `accounts` row for that organization) — no merge, no upsert, no silent creation | `docs/tasks/task-20/accounting-chart-semantics-investigation.md` (*“never a seed that silently creates accounts in an existing organization”*); ADR-0037 §3. **Interim assumption — recorded as D-R-5** |
-| I-5 | `is_postable` on every produced row is **derived, never trusted**: a template node with children is written `false` regardless of its template default; a leaf takes the template default, itself seeded from the pinned configuration level's `default_is_postable` | OD-20-5; the `postable ⇒ leaf` invariant enforced on both write paths (`data/accounts.repository.ts`, `domain/account.ts` `planAccountPlacement`) |
-| I-6 | **No provenance column on `accounts`.** The adoption *record* references the published version; per-account template provenance stays OPEN | Task 21 §4.2, §8; AR-29 (no speculative columns) |
-| I-7 | **No `Account.control_role`, no role catalog, no role table.** The template's optional control-role reference field is **absent**, because no approved role exists | OD-20-2/OD-20-3; Task 21 §2 (*“Absent any approved role, the field is absent”*), §6 |
-| I-8 | Nothing is added to `LedgerEntry`, `AccountBalanceProjection`, the posting path or the Task 18 read surfaces | draft §5/§13; invariant I-3 of the owner-decision baseline (a chart change never rewrites ledger history) |
+| #   | Interpretation                                                                                                                                                                                                                                                       | Basis                                                                                                                                                                                                   |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I-1 | Adoption writes **ordinary `accounting.accounts` rows** through the existing placement/coherence rules — no parallel account hierarchy, no new account table                                                                                                         | draft §13; Task 21 §14.1; ODR-2                                                                                                                                                                         |
+| I-2 | **Full-version adoption only.** Ancestor-closure and mandatory-inclusion are implemented as _enforced validators_, but no subset-selection API is exposed, because any selection policy is the OPEN part of Task 21 §4.3                                             | draft §4 (_“stop at the smallest explicitly governed capability and report the unresolved boundary”_)                                                                                                   |
+| I-3 | Adoption **option A** (reference an existing organization configuration); refuse fail-closed when no ACTIVE, coherent `(coding_structure_version, accounting_configuration)` pair exists. Option B (create one) is not implemented                                   | Task 21 §3 (A/B DEFERRED to the implementation task, bounded by: never mutate an operationally frozen configuration — ADR-0028 §3 — and must produce an ODR-1-coherent pin pair)                        |
+| I-4 | Adoption is refused into a **non-empty chart** (any existing `accounts` row for that organization) — no merge, no upsert, no silent creation                                                                                                                         | `docs/tasks/task-20/accounting-chart-semantics-investigation.md` (_“never a seed that silently creates accounts in an existing organization”_); ADR-0037 §3. **Interim assumption — recorded as D-R-5** |
+| I-5 | `is_postable` on every produced row is **derived, never trusted**: a template node with children is written `false` regardless of its template default; a leaf takes the template default, itself seeded from the pinned configuration level's `default_is_postable` | OD-20-5; the `postable ⇒ leaf` invariant enforced on both write paths (`data/accounts.repository.ts`, `domain/account.ts` `planAccountPlacement`)                                                       |
+| I-6 | **No provenance column on `accounts`.** The adoption _record_ references the published version; per-account template provenance stays OPEN                                                                                                                           | Task 21 §4.2, §8; AR-29 (no speculative columns)                                                                                                                                                        |
+| I-7 | **No `Account.control_role`, no role catalog, no role table.** The template's optional control-role reference field is **absent**, because no approved role exists                                                                                                   | OD-20-2/OD-20-3; Task 21 §2 (_“Absent any approved role, the field is absent”_), §6                                                                                                                     |
+| I-8 | Nothing is added to `LedgerEntry`, `AccountBalanceProjection`, the posting path or the Task 18 read surfaces                                                                                                                                                         | draft §5/§13; invariant I-3 of the owner-decision baseline (a chart change never rewrites ledger history)                                                                                               |
 
 ---
 
@@ -108,27 +108,27 @@ All work confined to `backend/` and the Accounting module; no frontend file (dra
 
 **New — domain (`backend/src/modules/accounting/domain/`)**
 
-| File | Content |
-|---|---|
-| `base-chart-template.ts` | Version lifecycle status list + transition table (`draft → approved → published → superseded`), published-immutability predicate, template/version/node types + DTO mappers |
-| `base-chart-adoption.ts` | Pure planners: `planTemplateCompatibility` (level shape vs pinned coding structure), `planAdoptionSelection` (ancestor closure + mandatory inclusion), `deriveAdoptedPostability` (leaf-only), topological node ordering, `AdoptionProblem` union + message map |
-| `base-chart-template.spec.ts`, `base-chart-adoption.spec.ts` | Unit tests for the above |
+| File                                                         | Content                                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base-chart-template.ts`                                     | Version lifecycle status list + transition table (`draft → approved → published → superseded`), published-immutability predicate, template/version/node types + DTO mappers                                                                                     |
+| `base-chart-adoption.ts`                                     | Pure planners: `planTemplateCompatibility` (level shape vs pinned coding structure), `planAdoptionSelection` (ancestor closure + mandatory inclusion), `deriveAdoptedPostability` (leaf-only), topological node ordering, `AdoptionProblem` union + message map |
+| `base-chart-template.spec.ts`, `base-chart-adoption.spec.ts` | Unit tests for the above                                                                                                                                                                                                                                        |
 
 **New — data (`.../data/`)**
 
-| File | Content |
-|---|---|
-| `base-chart-templates.repository.ts` | Template/version/node/level reads and lifecycle writes under row locks |
-| `base-chart-adoptions.repository.ts` | The single adoption transaction (lock order + bulk `accounts` insert + adoption record) |
-| `base-chart-errors.ts` | `BaseChartVersionNotPublishedError`, `BaseChartVersionImmutableError`, `BaseChartIncompatibleWithConfigurationError`, `BaseChartAncestorClosureError`, `BaseChartMandatoryOmittedError`, `OrganizationChartNotEmptyError` — following `data/accounting-structure-errors.ts` conventions |
+| File                                 | Content                                                                                                                                                                                                                                                                                 |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `base-chart-templates.repository.ts` | Template/version/node/level reads and lifecycle writes under row locks                                                                                                                                                                                                                  |
+| `base-chart-adoptions.repository.ts` | The single adoption transaction (lock order + bulk `accounts` insert + adoption record)                                                                                                                                                                                                 |
+| `base-chart-errors.ts`               | `BaseChartVersionNotPublishedError`, `BaseChartVersionImmutableError`, `BaseChartIncompatibleWithConfigurationError`, `BaseChartAncestorClosureError`, `BaseChartMandatoryOmittedError`, `OrganizationChartNotEmptyError` — following `data/accounting-structure-errors.ts` conventions |
 
 **New — application (`.../application/`)**
 
-| File | Content |
-|---|---|
-| `base-chart-templates.service.ts` | Permission check → version read/lifecycle; **write surface blocked by D-R-2** |
-| `base-chart-adoption.service.ts` | `assertOrganizationInScope` → permission → configuration resolution → compatibility → repository transaction → events |
-| matching `*.spec.ts` | Application specs with in-memory fakes (existing pattern: `accounting-configurations.spec.ts`, `chart-tree.service.spec.ts`) |
+| File                              | Content                                                                                                                      |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `base-chart-templates.service.ts` | Permission check → version read/lifecycle; **write surface blocked by D-R-2**                                                |
+| `base-chart-adoption.service.ts`  | `assertOrganizationInScope` → permission → configuration resolution → compatibility → repository transaction → events        |
+| matching `*.spec.ts`              | Application specs with in-memory fakes (existing pattern: `accounting-configurations.spec.ts`, `chart-tree.service.spec.ts`) |
 
 **New — api (`.../api/`)**
 
@@ -136,14 +136,14 @@ All work confined to `backend/` and the Accounting module; no frontend file (dra
 
 **Modified (small, additive)**
 
-| File | Change |
-|---|---|
-| `backend/src/modules/accounting/accounting.module.ts` | register 2 repositories, 2 services, 2 controllers |
-| `backend/src/modules/accounting/domain/accounting-permissions.ts` | add the new permission constants + definitions (§4) |
-| `backend/prisma/schema/accounting.prisma` | add 4–5 models (§3) — **no change to `Account`, `LedgerEntry`, `AccountBalanceProjection`, `CodingStructure*`, `AccountingConfiguration*`** |
-| `backend/prisma/migrations/2026MMDD000000_accounting_base_chart_template/migration.sql` | one additive migration |
-| `backend/test/base-chart-adoption*.e2e-spec.ts` (+ `-live`) | new suites only; no existing suite edited |
-| `docs/` | task documents, `docs/accounting/task-index.md` §2/§9, `STATE.md` §7/§8, `docs/modules.md`, contract §28.2 pointer — **only after admission** |
+| File                                                                                    | Change                                                                                                                                        |
+| --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/src/modules/accounting/accounting.module.ts`                                   | register 2 repositories, 2 services, 2 controllers                                                                                            |
+| `backend/src/modules/accounting/domain/accounting-permissions.ts`                       | add the new permission constants + definitions (§4)                                                                                           |
+| `backend/prisma/schema/accounting.prisma`                                               | add 4–5 models (§3) — **no change to `Account`, `LedgerEntry`, `AccountBalanceProjection`, `CodingStructure*`, `AccountingConfiguration*`**   |
+| `backend/prisma/migrations/2026MMDD000000_accounting_base_chart_template/migration.sql` | one additive migration                                                                                                                        |
+| `backend/test/base-chart-adoption*.e2e-spec.ts` (+ `-live`)                             | new suites only; no existing suite edited                                                                                                     |
+| `docs/`                                                                                 | task documents, `docs/accounting/task-index.md` §2/§9, `STATE.md` §7/§8, `docs/modules.md`, contract §28.2 pointer — **only after admission** |
 
 **Explicitly NOT touched:** `posting.service.ts`, `ledger-entries.repository.ts`, `trial-balance.*`, `general-ledger.*`, `account-statements.*`, `accounting-balances.*`, `frontend/**`, any existing migration (AR-08/AR-10).
 
@@ -193,26 +193,26 @@ Migration name follows the date convention (latest applied: `20260926000000_orga
 
 ## 4. API / permission plan
 
-**Permissions** — registered only because an implemented surface enforces them (`docs/security.md` §3; `domain/accounting-permissions.ts`: *“any code not enforced by code must not exist”*, *“No wildcards, no superuser, no implicit bypass (OQ-21)”*):
+**Permissions** — registered only because an implemented surface enforces them (`docs/security.md` §3; `domain/accounting-permissions.ts`: _“any code not enforced by code must not exist”_, _“No wildcards, no superuser, no implicit bypass (OQ-21)”_):
 
-| Code | Enforced by |
-|---|---|
-| `Accounting.BaseChartTemplate.View` | template/version read endpoints |
+| Code                                     | Enforced by                                                                                                                                                                                  |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Accounting.BaseChartTemplate.View`      | template/version read endpoints                                                                                                                                                              |
 | `Accounting.BaseChartTemplate.Configure` | draft create/edit + lifecycle transitions — following the `Accounting.CodingStructure.{View,Configure}` precedent, which deliberately does not split draft/publish into separate authorities |
-| `Accounting.BaseChartAdoption.Adopt` | the adoption write endpoint |
-| `Accounting.BaseChartAdoption.View` | reading an organization's adoption record |
+| `Accounting.BaseChartAdoption.Adopt`     | the adoption write endpoint                                                                                                                                                                  |
+| `Accounting.BaseChartAdoption.View`      | reading an organization's adoption record                                                                                                                                                    |
 
-No `.Delete` code (freeze-over-delete, contract §8.6). No approval-specific authority is invented: *who* may approve/publish is **OWNER DECISION (pending)** per Task 21 §8 → D-R-2.
+No `.Delete` code (freeze-over-delete, contract §8.6). No approval-specific authority is invented: _who_ may approve/publish is **OWNER DECISION (pending)** per Task 21 §8 → D-R-2.
 
 **Endpoints** (REST/OpenAPI, `/api/v1`, transport-only controllers):
 
-| Method | Path | Permission | Scope |
-|---|---|---|---|
-| `GET` | `/api/v1/accounting/base-chart-templates` | `BaseChartTemplate.View` | product-global list |
-| `GET` | `/api/v1/accounting/base-chart-templates/:templateId/versions/:versionNumber` | `BaseChartTemplate.View` | version + level shape + nodes (paginated) |
-| `POST` | `/api/v1/accounting/base-chart-adoptions` | `BaseChartAdoption.Adopt` | body `{ organizationId, templateVersionId }` → `assertOrganizationInScope` first |
-| `GET` | `/api/v1/accounting/base-chart-adoptions?organizationId=…` | `BaseChartAdoption.View` | organization-scoped |
-| *(lifecycle writes)* | `POST …/versions/:id/{approve,publish,supersede}` | `BaseChartTemplate.Configure` | **NOT IMPLEMENTABLE TODAY — D-R-2** |
+| Method               | Path                                                                          | Permission                    | Scope                                                                            |
+| -------------------- | ----------------------------------------------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------- |
+| `GET`                | `/api/v1/accounting/base-chart-templates`                                     | `BaseChartTemplate.View`      | product-global list                                                              |
+| `GET`                | `/api/v1/accounting/base-chart-templates/:templateId/versions/:versionNumber` | `BaseChartTemplate.View`      | version + level shape + nodes (paginated)                                        |
+| `POST`               | `/api/v1/accounting/base-chart-adoptions`                                     | `BaseChartAdoption.Adopt`     | body `{ organizationId, templateVersionId }` → `assertOrganizationInScope` first |
+| `GET`                | `/api/v1/accounting/base-chart-adoptions?organizationId=…`                    | `BaseChartAdoption.View`      | organization-scoped                                                              |
+| _(lifecycle writes)_ | `POST …/versions/:id/{approve,publish,supersede}`                             | `BaseChartTemplate.Configure` | **NOT IMPLEMENTABLE TODAY — D-R-2**                                              |
 
 **Reading the resulting organization chart introduces no endpoint**: the accepted ODR-2 surface `GET /api/v1/accounting/chart-tree[/:id]` already returns it (draft §14's “Reading the resulting organization-owned chart” is already satisfied).
 
@@ -249,16 +249,16 @@ One `prisma.$transaction`, fail-closed, all-or-nothing.
 
 **Invariants asserted by construction:**
 
-| Invariant | Enforcement |
-|---|---|
-| Template id never becomes ledger identity | No FK from `ledger_entries`/`accounting_document_lines` to any template table; no template id column on `accounts` |
-| Copy, not reference | Adopted rows are plain `accounts` rows; no read path resolves an account through a template row |
-| No silent mutation on template change | Only the explicit adoption operation writes `accounts`; publishing/superseding a version touches template tables only |
-| Published immutability | Version row locked; any write to a `published`/`superseded` version → `BaseChartVersionImmutableError` |
-| `postable ⇒ leaf` | I-5 derivation + the existing repository invariant + `planAccountPlacement` |
-| ODR-1 coherence | `planPinCoherence` at both call sites |
-| Organization isolation | `assertOrganizationInScope` + `organization_id` on every insert |
-| Ledger unchanged | No write outside `accounts` and the new template/adoption tables |
+| Invariant                                 | Enforcement                                                                                                           |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Template id never becomes ledger identity | No FK from `ledger_entries`/`accounting_document_lines` to any template table; no template id column on `accounts`    |
+| Copy, not reference                       | Adopted rows are plain `accounts` rows; no read path resolves an account through a template row                       |
+| No silent mutation on template change     | Only the explicit adoption operation writes `accounts`; publishing/superseding a version touches template tables only |
+| Published immutability                    | Version row locked; any write to a `published`/`superseded` version → `BaseChartVersionImmutableError`                |
+| `postable ⇒ leaf`                         | I-5 derivation + the existing repository invariant + `planAccountPlacement`                                           |
+| ODR-1 coherence                           | `planPinCoherence` at both call sites                                                                                 |
+| Organization isolation                    | `assertOrganizationInScope` + `organization_id` on every insert                                                       |
+| Ledger unchanged                          | No write outside `accounts` and the new template/adoption tables                                                      |
 
 ---
 
@@ -297,15 +297,15 @@ Per `docs/testing/test-execution-policy.md` — local **FAST-LOCAL** gates only;
 
 Seven decision requests. **None may be resolved by the Agent** (draft §7/§11/§18; AR-31/AG-09; AG-15).
 
-| Id | Decision request | Class | Blocks |
-|---|---|---|---|
-| **D-R-1** | **Where does a product-global Accounting table live?** Every existing `accounting` model carries `organization_id` NOT NULL as the tenant/security boundary (AC-D-01/AC-I-01), yet the Base Chart template is by definition not organization data (OD-20-1; Task 21 §2a excludes organization ids). Four non-tenant tables in the `accounting` schema is a new cross-module data pattern → **AR-29 requires an ADR first (or in the same PR)**. Sub-questions: `accounting` schema or a new product/catalog schema? How does it interact with the ADR-0025 single-organization deployment pin (is the “product” template per-deployment data in a pinned deployment)? | ARCHITECTURE / PLATFORM — ADR-gated | §3 entirely |
-| **D-R-2** | **Who may author, approve and publish a template version?** Task 21 §8 classifies this as **OWNER DECISION (pending)** and states *“An agent may not approve content.”* Additionally the repository has **no authorization model for a non-organization-scoped write surface**: every Accounting service passes `assertOrganizationInScope`; there is no platform/product-admin scope, no wildcard, no superuser (OQ-21); and system context is explicitly *“not reachable from HTTP”* (`organizations.service.ts`). A `POST …/publish` endpoint has no principal model today. | SECURITY / OWNER DECISION (pending) | draft §3.2 lifecycle writes and the §14 template-management API (read + adoption unaffected) |
-| **D-R-3** | **May a content-less foundation be built at all?** Task 21 §14.1 permits implementation only after acceptance **and** explicit Owner/accountant approval of “the required content”; the acceptance limb is satisfied (§0.1) while content stays OQ-25-DEFERRED. Task 23 would therefore ship a mechanism with **no publishable production template**, exercisable only with the “minimal technical fixtures clearly identified as test data” of draft §10. | OWNER DECISION / ACCOUNTING DOMAIN | the value of the whole slice |
-| **D-R-4** | **Where does mandatoriness live after adoption?** Task 21 §5's mandatory **semantics** are ratified by the Task 21 acceptance (§0.1), while the mandatory **list** stays unapproved content (OQ-25) and their post-adoption **representation** was left undecided. Rule 1 (must exist at adoption) is enforceable in the adoption transaction; rules 2–3 (cannot delete, cannot deactivate while mandatory) are post-adoption guards on the existing `Account` disable path and require the adopted row to know it is mandatory. The only two mechanisms are (a) an `accounts.is_mandatory` column — a new column whose *representation* Task 21 did not decide (AR-29 speculative-column risk), or (b) account-level template provenance — explicitly **OPEN** (Task 21 §4.2/§8). | ACCOUNTING DOMAIN / ARCHITECTURE | draft §3.1's mandatory marker beyond the template side; enforcement of Task 21 §5 rules 2–3 |
-| **D-R-5** | **Adoption into a non-empty chart, and re-adoption.** Task 21 governs neither; `uq_accounts_organization_id_code` guarantees a collision and merge/upsert semantics would be an invented rule. The fail-closed interim assumption I-4 (refuse if any account exists; `uq(organization_id)` on the adoption record) is conservative and aligned with *“never a seed that silently creates accounts in an existing organization”* (Task 20 investigation; ADR-0037 §3) — but it forecloses “adopt a second template” and “upgrade to a newer version” without a further decision. | ACCOUNTING DOMAIN | the adoption precondition set; any future upgrade path |
-| **D-R-6** | **OQ-36 prerequisites that Task 21 itself declares due *before* implementation.** Task 21 §10 states verbatim *“Prerequisites Task 21 needs from OQ-36 **before Base Chart implementation**”* — (1) code-reuse policy for superseded codes and its interaction with `uq_accounts_organization_id_code`; (2) deletion eligibility for *unused adopted* accounts; (3) coexistence of a future code-history producer with the never-reuse rule. OQ-36 is OPEN and draft §6 forbids deciding it. The Owner must resolve them **or explicitly waive them for this bounded slice** (defensible: the minimal slice exposes no deletion, no code change and no reuse path). | DEFERRED (OQ-36) — governance gate | formal start of implementation |
-| **D-R-7** | **Partial adoption is not implemented; confirm the boundary.** Per draft §4 and I-2 the implementation stops at full-version adoption with both invariants enforced. Draft §4 requires this boundary to be reported — it is hereby reported; the Owner should confirm that “no subset-selection API” is the accepted reading rather than a gap. | OPEN QUESTION (Task 21 §4.3) | scope confirmation only |
+| Id        | Decision request                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Class                               | Blocks                                                                                       |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | -------------------------------------------------------------------------------------------- |
+| **D-R-1** | **Where does a product-global Accounting table live?** Every existing `accounting` model carries `organization_id` NOT NULL as the tenant/security boundary (AC-D-01/AC-I-01), yet the Base Chart template is by definition not organization data (OD-20-1; Task 21 §2a excludes organization ids). Four non-tenant tables in the `accounting` schema is a new cross-module data pattern → **AR-29 requires an ADR first (or in the same PR)**. Sub-questions: `accounting` schema or a new product/catalog schema? How does it interact with the ADR-0025 single-organization deployment pin (is the “product” template per-deployment data in a pinned deployment)?                                                                                                              | ARCHITECTURE / PLATFORM — ADR-gated | §3 entirely                                                                                  |
+| **D-R-2** | **Who may author, approve and publish a template version?** Task 21 §8 classifies this as **OWNER DECISION (pending)** and states _“An agent may not approve content.”_ Additionally the repository has **no authorization model for a non-organization-scoped write surface**: every Accounting service passes `assertOrganizationInScope`; there is no platform/product-admin scope, no wildcard, no superuser (OQ-21); and system context is explicitly _“not reachable from HTTP”_ (`organizations.service.ts`). A `POST …/publish` endpoint has no principal model today.                                                                                                                                                                                                     | SECURITY / OWNER DECISION (pending) | draft §3.2 lifecycle writes and the §14 template-management API (read + adoption unaffected) |
+| **D-R-3** | **May a content-less foundation be built at all?** Task 21 §14.1 permits implementation only after acceptance **and** explicit Owner/accountant approval of “the required content”; the acceptance limb is satisfied (§0.1) while content stays OQ-25-DEFERRED. Task 23 would therefore ship a mechanism with **no publishable production template**, exercisable only with the “minimal technical fixtures clearly identified as test data” of draft §10.                                                                                                                                                                                                                                                                                                                         | OWNER DECISION / ACCOUNTING DOMAIN  | the value of the whole slice                                                                 |
+| **D-R-4** | **Where does mandatoriness live after adoption?** Task 21 §5's mandatory **semantics** are ratified by the Task 21 acceptance (§0.1), while the mandatory **list** stays unapproved content (OQ-25) and their post-adoption **representation** was left undecided. Rule 1 (must exist at adoption) is enforceable in the adoption transaction; rules 2–3 (cannot delete, cannot deactivate while mandatory) are post-adoption guards on the existing `Account` disable path and require the adopted row to know it is mandatory. The only two mechanisms are (a) an `accounts.is_mandatory` column — a new column whose _representation_ Task 21 did not decide (AR-29 speculative-column risk), or (b) account-level template provenance — explicitly **OPEN** (Task 21 §4.2/§8). | ACCOUNTING DOMAIN / ARCHITECTURE    | draft §3.1's mandatory marker beyond the template side; enforcement of Task 21 §5 rules 2–3  |
+| **D-R-5** | **Adoption into a non-empty chart, and re-adoption.** Task 21 governs neither; `uq_accounts_organization_id_code` guarantees a collision and merge/upsert semantics would be an invented rule. The fail-closed interim assumption I-4 (refuse if any account exists; `uq(organization_id)` on the adoption record) is conservative and aligned with _“never a seed that silently creates accounts in an existing organization”_ (Task 20 investigation; ADR-0037 §3) — but it forecloses “adopt a second template” and “upgrade to a newer version” without a further decision.                                                                                                                                                                                                    | ACCOUNTING DOMAIN                   | the adoption precondition set; any future upgrade path                                       |
+| **D-R-6** | **OQ-36 prerequisites that Task 21 itself declares due _before_ implementation.** Task 21 §10 states verbatim _“Prerequisites Task 21 needs from OQ-36 **before Base Chart implementation**”_ — (1) code-reuse policy for superseded codes and its interaction with `uq_accounts_organization_id_code`; (2) deletion eligibility for _unused adopted_ accounts; (3) coexistence of a future code-history producer with the never-reuse rule. OQ-36 is OPEN and draft §6 forbids deciding it. The Owner must resolve them **or explicitly waive them for this bounded slice** (defensible: the minimal slice exposes no deletion, no code change and no reuse path).                                                                                                                | DEFERRED (OQ-36) — governance gate  | formal start of implementation                                                               |
+| **D-R-7** | **Partial adoption is not implemented; confirm the boundary.** Per draft §4 and I-2 the implementation stops at full-version adoption with both invariants enforced. Draft §4 requires this boundary to be reported — it is hereby reported; the Owner should confirm that “no subset-selection API” is the accepted reading rather than a gap.                                                                                                                                                                                                                                                                                                                                                                                                                                    | OPEN QUESTION (Task 21 §4.3)        | scope confirmation only                                                                      |
 
 **Scope-creep classification (draft §18):** template store → PLATFORM + ACCOUNTING DOMAIN (ADR-gated, D-R-1); lifecycle write surface → SECURITY (D-R-2, blocked); adoption operation → CORE; adoption record → CORE; mandatory post-adoption guards → ACCOUNTING DOMAIN (D-R-4, blocked); account provenance → DEFERRED (AR-29); control roles → DEFERRED (OD-20-2/3); dimensions → DEFERRED (OQ-41); statutory content → DEFERRED (OQ-43); content values → OPEN QUESTION (OQ-25).
 

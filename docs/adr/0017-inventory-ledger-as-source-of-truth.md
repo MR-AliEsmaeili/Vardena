@@ -19,7 +19,7 @@ choice must be explicit before the first inventory table exists.
    signed, in the item's base unit, typed by a closed `movement_type` enum, and linked
    logically to their originating document.
 2. **Balances are materialized** (one row per `item × warehouse × location × lot ×
-   serial` key) and updated **inside the same transaction** as the movement, under a
+serial` key) and updated **inside the same transaction** as the movement, under a
    row lock (`SELECT … FOR UPDATE`). They are derived data and **rebuildable** from the
    ledger; a reconciliation report detects drift.
 3. **Corrections are counter-movements**, never updates. Posted movements are never

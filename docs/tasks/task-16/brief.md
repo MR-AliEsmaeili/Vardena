@@ -2,15 +2,15 @@
 
 ## Status
 
-| Concern | Status |
-|---|---|
-| Owner Direction | **ESTABLISHED** — the directions in the Task 16 contract-finalization request are binding and are not reopened here. |
-| Accounting Foundations | **EXISTING** — organization scope, typed document identity, Decimal handling, RBAC, idempotency, transactions, immutable ledger/correction patterns and PostgreSQL test conventions were verified in the repository. |
-| Task 16 Contract | **FORMALIZED** — this brief and [`decision-reconciliation.md`](./decision-reconciliation.md). |
-| Contract finalization | **READY FOR REVIEW** — the documentation work is complete for review. |
-| Implementation authorization | **BLOCKED — OWNER CONFIRMATION REQUIRED** — the supported document/amount-authority boundary is unresolved. |
-| Production Implementation | **NOT AUTHORIZED**. |
-| Acceptance / production readiness | **NOT CLAIMED**. |
+| Concern                           | Status                                                                                                                                                                                                               |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner Direction                   | **ESTABLISHED** — the directions in the Task 16 contract-finalization request are binding and are not reopened here.                                                                                                 |
+| Accounting Foundations            | **EXISTING** — organization scope, typed document identity, Decimal handling, RBAC, idempotency, transactions, immutable ledger/correction patterns and PostgreSQL test conventions were verified in the repository. |
+| Task 16 Contract                  | **FORMALIZED** — this brief and [`decision-reconciliation.md`](./decision-reconciliation.md).                                                                                                                        |
+| Contract finalization             | **READY FOR REVIEW** — the documentation work is complete for review.                                                                                                                                                |
+| Implementation authorization      | **BLOCKED — OWNER CONFIRMATION REQUIRED** — the supported document/amount-authority boundary is unresolved.                                                                                                          |
+| Production Implementation         | **NOT AUTHORIZED**.                                                                                                                                                                                                  |
+| Acceptance / production readiness | **NOT CLAIMED**.                                                                                                                                                                                                     |
 
 This is a documentation-only domain contract. It authorizes no service, controller,
 repository, Prisma model, migration, endpoint, permission registration, event or
@@ -66,8 +66,8 @@ inside the existing Accounting module is not, by itself, a new architecture.
 An **Allocation** is one accepted, directional financial application event:
 
 > apply a positive amount from one eligible Source document to one eligible Target
-document within one Organization, subject to both endpoints' current availability,
-compatible currency and the transaction's idempotency/concurrency rules.
+> document within one Organization, subject to both endpoints' current availability,
+> compatible currency and the transaction's idempotency/concurrency rules.
 
 An allocation is a historical financial fact. It is not a mutable link, a workflow
 transition, a journal entry, an FX conversion, a general-purpose rule execution or a
@@ -285,12 +285,12 @@ Generated ids, server timestamps, resolved projections and other server-generate
 values must not be hashed as client intent. The resulting canonical request hash is
 compared under the existing operation ledger rules.
 
-| Replay case | Required result |
-|---|---|
+| Replay case                                                      | Required result                                                                                                                    |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | Same Organization + same `operationKey` + same canonical payload | Idempotent replay of the recorded/current result; no second allocation effect, no second consumption and no duplicate history row. |
-| Same Organization + same `operationKey` + different payload | Conflict; nothing is mutated. |
-| Same `operationKey` in a different Organization | Organization isolation applies; do not use another organization's operation row as a replay source. |
-| No valid `operationKey` | Reject before the effect transaction. |
+| Same Organization + same `operationKey` + different payload      | Conflict; nothing is mutated.                                                                                                      |
+| Same `operationKey` in a different Organization                  | Organization isolation applies; do not use another organization's operation row as a replay source.                                |
+| No valid `operationKey`                                          | Reject before the effect transaction.                                                                                              |
 
 The implementation must reuse the existing operation/idempotency repository pattern,
 not add a second allocation-key table with different semantics.
@@ -395,17 +395,17 @@ inspected runtime module/schema and the kernel event bus is in-memory. Therefore
 
 ### 9.1 Repository mechanisms to reuse
 
-| Need | Existing repository mechanism | Task 16 rule |
-|---|---|---|
-| Organization scope | `organizationId`, `OrganizationsService`, deployment-scope guard, service-level same-scope lookup | Reuse; do not create tenancy or membership infrastructure. |
-| Document identity | Documents Foundation logical endpoint shape and typed module-owned documents | Reuse identity only; validate endpoint existence/state through the owning service. |
-| Money | Accounting `Money`/Decimal conventions and PostgreSQL numeric handling | Reuse exact Decimal; do not use floats or invent precision. |
-| RBAC | `AuthorizationService`, route permission metadata and module permission registry | Reuse double enforcement and granular codes. |
-| Idempotency | Organization-scoped operation ledger, canonical request hash, replay-or-reject | Reuse semantics; same key/different payload is conflict. |
-| Transactions | Application service + Prisma repository `$transaction` boundaries | Keep allocation, state and evidence atomic. |
-| Locks | Accounting `FOR UPDATE`/`FOR SHARE` helpers and lock-order matrix | Extend deterministically; prove no cycle. |
-| Immutable history | Accounting final/ledger/reversal conventions and append-only history pattern | No direct edit/delete; corrections append compensating facts. |
-| Events/audit | Existing kernel event seam and documented Audit boundary | Reuse; no parallel infrastructure and no false durability claim. |
+| Need               | Existing repository mechanism                                                                     | Task 16 rule                                                                       |
+| ------------------ | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Organization scope | `organizationId`, `OrganizationsService`, deployment-scope guard, service-level same-scope lookup | Reuse; do not create tenancy or membership infrastructure.                         |
+| Document identity  | Documents Foundation logical endpoint shape and typed module-owned documents                      | Reuse identity only; validate endpoint existence/state through the owning service. |
+| Money              | Accounting `Money`/Decimal conventions and PostgreSQL numeric handling                            | Reuse exact Decimal; do not use floats or invent precision.                        |
+| RBAC               | `AuthorizationService`, route permission metadata and module permission registry                  | Reuse double enforcement and granular codes.                                       |
+| Idempotency        | Organization-scoped operation ledger, canonical request hash, replay-or-reject                    | Reuse semantics; same key/different payload is conflict.                           |
+| Transactions       | Application service + Prisma repository `$transaction` boundaries                                 | Keep allocation, state and evidence atomic.                                        |
+| Locks              | Accounting `FOR UPDATE`/`FOR SHARE` helpers and lock-order matrix                                 | Extend deterministically; prove no cycle.                                          |
+| Immutable history  | Accounting final/ledger/reversal conventions and append-only history pattern                      | No direct edit/delete; corrections append compensating facts.                      |
+| Events/audit       | Existing kernel event seam and documented Audit boundary                                          | Reuse; no parallel infrastructure and no false durability claim.                   |
 
 ### 9.2 Explicit exclusions
 

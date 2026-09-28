@@ -9,19 +9,19 @@
 
 ## Context
 
-Sibling of OQ-52 (which sets *numbers*). This OQ is about the *operational
-playbook*:
+Sibling of OQ-52 (which sets _numbers_). This OQ is about the _operational
+playbook_:
 
 1. **Disaster recovery beyond single-server recovery**: what happens when the
    customer's server hardware dies, the site is unusable, or the OS is
-   unrecoverable? Where does the recovery *happen* (customer's spare machine?
+   unrecoverable? Where does the recovery _happen_ (customer's spare machine?
    any machine with the installer?) and who does it?
 2. **Server replacement process**: is there a documented, rehearsed procedure
    to move an installation to new hardware (restore + license re-activation +
    verification)? Does license state (ADR-0030) survive the move without
    Vardena intervention?
 3. **Restore self-service degree**: the decided principle is "controlled
-   restore" (PB-BASELINE §23) — but *how controlled*? Options: Vardena performs
+   restore" (PB-BASELINE §23) — but _how controlled_? Options: Vardena performs
    all restores; customer-admin triggers guided restore in-product; customer IT
    runs a documented script.
 
@@ -49,11 +49,11 @@ playbook*:
 
 ## Options
 
-| Option | Advantages | Disadvantages |
-|---|---|---|
-| **A. Vardena-performed restores only** | Tight control; no risky self-service | Slow (depends on Vardena availability); scales badly |
-| **B. Guided in-product restore for customer-admin** (confirm flow, pre-restore automatic backup, audited) | Fast; good UX; auditable | Restore bugs are catastrophic events — needs hardened UX + tests |
-| **C. Documented script/runbook for customer IT** | Independent of Vardena availability | Requires skilled customer IT; risk of out-of-procedure restores |
+| Option                                                                                                    | Advantages                           | Disadvantages                                                    |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------ | ---------------------------------------------------------------- |
+| **A. Vardena-performed restores only**                                                                    | Tight control; no risky self-service | Slow (depends on Vardena availability); scales badly             |
+| **B. Guided in-product restore for customer-admin** (confirm flow, pre-restore automatic backup, audited) | Fast; good UX; auditable             | Restore bugs are catastrophic events — needs hardened UX + tests |
+| **C. Documented script/runbook for customer IT**                                                          | Independent of Vardena availability  | Requires skilled customer IT; risk of out-of-procedure restores  |
 
 ## Risks
 

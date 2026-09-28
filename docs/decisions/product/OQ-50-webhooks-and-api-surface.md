@@ -9,7 +9,7 @@
 
 ## Context
 
-ADR-0029 (proposed) resolves the *machine access foundation*: licensed API
+ADR-0029 (proposed) resolves the _machine access foundation_: licensed API
 access via API keys bound to a machine principal, permissions = the existing
 granular RBAC codes, rate limits configurable, OAuth2 and public API program
 explicitly deferred. That leaves a bounded set of API-surface questions
@@ -24,7 +24,7 @@ deliberately not decided:
    (integrations.md §3); do product-level webhook subscriptions ever exist?
 3. **API deprecation policy**: how long is a version supported after a new one
    appears (contract-continuity question for integrators)?
-4. **Public availability**: is there ever a *public* API program (self-serve
+4. **Public availability**: is there ever a _public_ API program (self-serve
    keys, docs portal), or does API access stay deal-driven per customer?
 
 ## Why this matters
@@ -45,11 +45,11 @@ deliberately not decided:
 
 ## Options
 
-| Option | Advantages | Disadvantages |
-|---|---|---|
-| **A. No webhooks; adapters only** | Zero new surface; inbound stays adapter-managed | Customers with bespoke integrations must poll |
+| Option                                                                                                                            | Advantages                                                | Disadvantages                                              |
+| --------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------- |
+| **A. No webhooks; adapters only**                                                                                                 | Zero new surface; inbound stays adapter-managed           | Customers with bespoke integrations must poll              |
 | **B. Outbound webhooks as an integration destination** (customer-configured endpoint + secret + event selection; outbox delivery) | Reuses ADR-0004 wholesale; high integrator value; bounded | Endpoint security guidance + delivery monitoring UI needed |
-| **C. Full webhook platform (in+out, subscriptions UI, retry dashboards)** | Platform story | Large; premature without integrator demand |
+| **C. Full webhook platform (in+out, subscriptions UI, retry dashboards)**                                                         | Platform story                                            | Large; premature without integrator demand                 |
 
 ## Risks
 

@@ -8,6 +8,7 @@ import type {
 } from '../domain/account.js';
 import {
   isAccountNature,
+  isAccountType,
   planAccountEdit,
   planAccountMovePin,
   planAccountPlacement,
@@ -226,6 +227,8 @@ export class AccountsRepository {
     title: string;
     parentId: string | null;
     accountNature: string;
+    accountType?: string | undefined;
+    detailGroupId?: string | null | undefined;
     isPostable: boolean;
     structure: AccountStructureSnapshot;
     now: Date;
@@ -319,6 +322,23 @@ export class AccountsRepository {
       // A brand-new account has no children, so `is_postable` cannot violate
       // the leaf rule here; the placement check covered the parent's side.
 
+      // Validate Detail Group if provided: must belong to organization and be level 1
+      if (input.detailGroupId !== null && input.detailGroupId !== undefined) {
+        const detailGroup = await tx.detail.findUnique({
+          where: { id: input.detailGroupId },
+        });
+        if (
+          detailGroup === null ||
+          detailGroup.organizationId !== input.organizationId ||
+          detailGroup.level !== 1 ||
+          !detailGroup.isActive
+        ) {
+          throw new Error(
+            `Detail group "${input.detailGroupId}" is invalid, inactive, or not a Level-1 Detail Group in this organization.`,
+          );
+        }
+      }
+
       const data: AccountCreate = {
         id: input.id,
         organizationId: input.organizationId,
@@ -329,6 +349,8 @@ export class AccountsRepository {
         codingStructureVersionId: input.structure.versionId,
         accountingConfigurationId: input.structure.accountingConfigurationId,
         accountNature: input.accountNature,
+        accountType: input.accountType ?? 'BALANCE_SHEET',
+        detailGroupId: input.detailGroupId ?? null,
         isPostable: input.isPostable,
         isActive: true,
         createdAt: input.now,
@@ -359,6 +381,8 @@ export class AccountsRepository {
     id: string;
     title?: string | undefined;
     accountNature?: string | undefined;
+    accountType?: string | undefined;
+    detailGroupId?: string | null | undefined;
     isPostable?: boolean | undefined;
     parentId?: string | null | undefined;
     /** Required for a move only (the code/prefix rules read the level rows). */
@@ -419,6 +443,27 @@ export class AccountsRepository {
       );
       if (refused.length > 0) {
         throw new AccountImmutableAfterUseError(refused);
+      }
+
+      // Validate Detail Group if changed and provided: must belong to organization and be level 1
+      if (
+        input.detailGroupId !== undefined &&
+        input.detailGroupId !== null &&
+        input.detailGroupId !== node.detailGroupId
+      ) {
+        const detailGroup = await tx.detail.findUnique({
+          where: { id: input.detailGroupId },
+        });
+        if (
+          detailGroup === null ||
+          detailGroup.organizationId !== node.organizationId ||
+          detailGroup.level !== 1 ||
+          !detailGroup.isActive
+        ) {
+          throw new Error(
+            `Detail group "${input.detailGroupId}" is invalid, inactive, or not a Level-1 Detail Group in this organization.`,
+          );
+        }
       }
 
       const children = await tx.account.findMany({
@@ -499,6 +544,12 @@ export class AccountsRepository {
       if (input.accountNature !== undefined) {
         patch.accountNature = input.accountNature;
       }
+      if (input.accountType !== undefined) {
+        patch.accountType = input.accountType;
+      }
+      if (input.detailGroupId !== undefined) {
+        patch.detailGroupId = input.detailGroupId;
+      }
       if (input.isPostable !== undefined) patch.isPostable = input.isPostable;
       if (parentChanged) {
         patch.parentId = requestedParentId ?? null;
@@ -507,6 +558,69 @@ export class AccountsRepository {
       return toDomain(
         await tx.account.update({ where: { id: node.id }, data: patch }),
       );
+    });
+  }
+
+  /**
+   * Controlled destructive unlinking of Account <-> Detail relationship (OD-29-03).
+   * Requires explicit confirmation, clears historical detail allocations atomically
+   * from document lines and ledger entries, preserves monetary account turnover,
+   * and produces data for an audit event.
+   */
+  async unlinkDetailGroupChecked(input: {
+    id: string;
+    confirmUnlink: boolean;
+    now: Date;
+    actorId: string | null;
+  }): Promise<{
+    account: Account;
+    unlinkedDocumentLinesCount: number;
+    unlinkedLedgerEntriesCount: number;
+    previousDetailGroupId: string;
+  }> {
+    if (!input.confirmUnlink) {
+      throw new Error(
+        'Explicit confirmation (confirmUnlink=true) is required to unlink Detail Group and clear historical detail allocations.',
+      );
+    }
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
+      const lockedRow = await lockAccountRow(tx, input.id);
+      if (lockedRow === null) {
+        throw new Error(`Account "${input.id}" no longer exists.`);
+      }
+      const node = toDomain(lockedRow);
+      if (!node.detailGroupId) {
+        throw new Error(
+          `Account "${input.id}" does not have a linked detail group.`,
+        );
+      }
+      const previousDetailGroupId = node.detailGroupId;
+
+      const updatedLines = await tx.accountingDocumentLine.updateMany({
+        where: { accountId: node.id, detailId: { not: null } },
+        data: { detailId: null },
+      });
+      const updatedEntries = await tx.ledgerEntry.updateMany({
+        where: { accountId: node.id, detailId: { not: null } },
+        data: { detailId: null },
+      });
+
+      const updatedAccountRow = await tx.account.update({
+        where: { id: node.id },
+        data: {
+          detailGroupId: null,
+          updatedAt: input.now,
+          updatedBy: input.actorId,
+        },
+      });
+
+      return {
+        account: toDomain(updatedAccountRow),
+        unlinkedDocumentLinesCount: updatedLines.count,
+        unlinkedLedgerEntriesCount: updatedEntries.count,
+        previousDetailGroupId,
+      };
     });
   }
 
@@ -530,6 +644,8 @@ export class AccountsRepository {
     input: {
       isPostable?: boolean | undefined;
       accountNature?: string | undefined;
+      accountType?: string | undefined;
+      detailGroupId?: string | null | undefined;
     },
     node: Account,
     parentChanged: boolean,
@@ -544,6 +660,12 @@ export class AccountsRepository {
         accountNature:
           input.accountNature !== undefined &&
           input.accountNature !== node.accountNature,
+        accountType:
+          input.accountType !== undefined &&
+          input.accountType !== node.accountType,
+        detailGroupId:
+          input.detailGroupId !== undefined &&
+          input.detailGroupId !== node.detailGroupId,
         isPostable:
           input.isPostable !== undefined &&
           input.isPostable !== node.isPostable,
@@ -643,6 +765,10 @@ function toDomain(row: AccountRow | LockedAccount): Account {
     accountNature: isAccountNature(row.accountNature)
       ? row.accountNature
       : 'debit',
+    accountType: isAccountType((row as any).accountType)
+      ? (row as any).accountType
+      : 'BALANCE_SHEET',
+    detailGroupId: row.detailGroupId ?? null,
     isPostable: row.isPostable,
     isActive: row.isActive,
     createdAt: row.createdAt,

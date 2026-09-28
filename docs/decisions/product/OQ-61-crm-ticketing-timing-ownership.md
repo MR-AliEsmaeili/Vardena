@@ -27,7 +27,7 @@ Undecided:
 
 ## Why this matters
 
-- License/contract/renewal tracking has *no home* today — ADR-0030 records
+- License/contract/renewal tracking has _no home_ today — ADR-0030 records
   license state in-product, but the commercial registry (who bought what, when
   does it renew) lives nowhere. This is an operational gap that bites at the
   first renewal.
@@ -45,11 +45,11 @@ Undecided:
 
 ## Options
 
-| Option | Advantages | Disadvantages |
-|---|---|---|
-| **A. Structured interim tool** (lightweight CRM SaaS or even disciplined spreadsheet; owner-maintained) | Near-zero cost; adequate for pilot volume | Manual discipline required; no integration |
-| **B. Off-the-shelf CRM + ticketing at Stage 8** (buy when going public) | Proven tooling; fast; integrates later via API (OQ-50) | Cost; data migration from interim tool |
-| **C. Build custom CRM/ticketing as Vardena-family products** | Full control; product-family bet (OQ-59 option B territory) | Classic distraction risk; delays ERP value |
+| Option                                                                                                  | Advantages                                                  | Disadvantages                              |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------------------------------------ |
+| **A. Structured interim tool** (lightweight CRM SaaS or even disciplined spreadsheet; owner-maintained) | Near-zero cost; adequate for pilot volume                   | Manual discipline required; no integration |
+| **B. Off-the-shelf CRM + ticketing at Stage 8** (buy when going public)                                 | Proven tooling; fast; integrates later via API (OQ-50)      | Cost; data migration from interim tool     |
+| **C. Build custom CRM/ticketing as Vardena-family products**                                            | Full control; product-family bet (OQ-59 option B territory) | Classic distraction risk; delays ERP value |
 
 ## Risks
 
@@ -69,7 +69,7 @@ C only as an outcome of OQ-59's strategic review.** **Recommendation only.**
 
 ## Questions requiring product owner confirmation
 
-1. What tool(s) track your customers/licenses/renewals *today*, and is that
+1. What tool(s) track your customers/licenses/renewals _today_, and is that
    adequate through pilot phase?
 2. What customer count or support load should trigger buying a real CRM?
 3. Do you want ticketing separated from CRM or combined in one tool?

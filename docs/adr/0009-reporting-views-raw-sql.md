@@ -30,7 +30,7 @@ A three-tier data-access policy for reports (full design in
 Supporting rules:
 
 - **Report definitions are code** (registry in the reporting module): id,
-  permission, source, columns, filter whitelist, limits. User *configurations*
+  permission, source, columns, filter whitelist, limits. User _configurations_
   (saved filters, dashboards) live in Customization — definitions ≠ user config.
 - One query pipeline (filter → group → sort → paginate → cap) serves UI,
   **Excel export** (via the Excel module), and **printable reports** (via the

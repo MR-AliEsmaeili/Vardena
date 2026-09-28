@@ -19,7 +19,7 @@
 ## 1. Objective
 
 Resolve the still-open **Base Chart governance/content decisions** inside **OQ-25**
-to the extent they can be decided *safely and explicitly*, so that a future
+to the extent they can be decided _safely and explicitly_, so that a future
 Base Chart implementation task can proceed **without inventing accounting
 semantics**.
 
@@ -29,16 +29,16 @@ Task 21 answers the governance questions:
 > governs it, how is it versioned, how is it adopted, what is copied into an
 > organization's chart, and which parts remain organization-configurable?
 
-Task 21 does **not** answer the *accounting-content* questions (the actual codes,
+Task 21 does **not** answer the _accounting-content_ questions (the actual codes,
 Persian titles, natures, mandatory list, role catalog). Those remain
 expert-gated under OQ-25.
 
 ## 2. Scope (in)
 
 Within OQ-25's remaining implementation-design surface, Task 21 works on
-items **1–3** and defines only the *boundary/dependency* for item **4**:
+items **1–3** and defines only the _boundary/dependency_ for item **4**:
 
-1. **Base Chart content model** — the authoritative *conceptual fields* a Base
+1. **Base Chart content model** — the authoritative _conceptual fields_ a Base
    Chart entry may/may not carry (not the values).
 2. **Control-role governance contract** — what qualifies as a control role, who
    may introduce one, evidence required, how consumers bind, how role-backed
@@ -87,10 +87,10 @@ those decisions. It is not permission to reinterpret them.
 
 ## 5. Deliverables
 
-| File | Purpose |
-|---|---|
-| `docs/tasks/task-21/task-21-brief.md` | This brief (scope/non-goals). |
-| `docs/tasks/task-21/task-21-investigation.md` | Repository reading + per-question findings, evidence-based. |
+| File                                                | Purpose                                                                                          |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `docs/tasks/task-21/task-21-brief.md`               | This brief (scope/non-goals).                                                                    |
+| `docs/tasks/task-21/task-21-investigation.md`       | Repository reading + per-question findings, evidence-based.                                      |
 | `docs/tasks/task-21/task-21-governance-baseline.md` | The governance conclusions, decision matrix, classification, and future-implementation contract. |
 
 Also updated (documentation only): `docs/open-questions.md` (OQ-25 row narrowed),

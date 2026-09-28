@@ -48,6 +48,7 @@
 import type { AccountCodeProblem } from './account-code.js';
 import { checkAccountCode } from './account-code.js';
 import type { BaseChartTemplateNode } from './base-chart-template.js';
+import type { AccountType } from './account.js';
 
 // ---------------------------------------------------------------------------
 // 1. Template ↔ organization configuration compatibility
@@ -167,6 +168,7 @@ export interface PlannedAdoptionNode {
   code: string;
   title: string;
   accountNature: string;
+  accountType: AccountType;
   /**
    * DERIVED, leaf-only (OD-20-5): `false` whenever the node has children in
    * the final adoption set, the template's authored default otherwise.
@@ -251,6 +253,7 @@ export function planAdoptionSelection(input: {
     code: node.code,
     title: node.title,
     accountNature: node.accountNature,
+    accountType: (node.accountType as AccountType) ?? 'BALANCE_SHEET',
     isPostable: withChildren.has(node.nodeKey) ? false : node.isPostable,
     isMandatory: node.isMandatory,
     defaultIsActive: node.defaultIsActive,

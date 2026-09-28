@@ -5,7 +5,7 @@
 - **Owner:** Ali Esmaeili (with accountant + tax expert input)
 - **Created:** 2026-09-22
 - **Priority:** Medium · Post-MVP · Requires separate analysis before any design
-- **Related docs:** PB-BASELINE §20 (two-book as "separately analyzed"), PD-24; OQ-22 (books/entities in one DB), OQ-31 (consolidation deferred), OQ-40 (financial areas — a *possible* mechanism), OQ-43 (statutory books); accounting contract §5.1/§24.2 (area ≠ company); roadmap post-MVP
+- **Related docs:** PB-BASELINE §20 (two-book as "separately analyzed"), PD-24; OQ-22 (books/entities in one DB), OQ-31 (consolidation deferred), OQ-40 (financial areas — a _possible_ mechanism), OQ-43 (statutory books); accounting contract §5.1/§24.2 (area ≠ company); roadmap post-MVP
 
 ## Context
 
@@ -14,11 +14,11 @@ parallel statutory vs management books) as a possible need. The baseline
 records it as "a separately analyzed capability or extension" — undecided, not
 in MVP.
 
-The repo already contains a mechanism *shaped* like parallel books: the
+The repo already contains a mechanism _shaped_ like parallel books: the
 **financial area** (حوزه مالی, `accounting.financial_areas`) — an
 Accounting-owned bookkeeping scope with its own numbering scope, area
 applicability on accounts/detail items, and n≥1 areas per organization
-(AC-D-02…AC-D-05). This makes two-book accounting *plausible* as
+(AC-D-02…AC-D-05). This makes two-book accounting _plausible_ as
 "two financial areas with different account structures" — but the contract
 deliberately stops short: areas share one organization-scoped chart, no
 consolidation, no `company_id`, and OQ-40 explicitly leaves "is an area ever a
@@ -48,15 +48,15 @@ separate legal book?" open.
 
 ## Options
 
-| Option | Advantages | Disadvantages |
-|---|---|---|
-| **A. Not in product; accountants maintain statutory books manually** | Zero cost; matches current manual practice | No differentiator; error-prone; competitors may offer it |
+| Option                                                                                          | Advantages                                                                                           | Disadvantages                                                                              |
+| ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| **A. Not in product; accountants maintain statutory books manually**                            | Zero cost; matches current manual practice                                                           | No differentiator; error-prone; competitors may offer it                                   |
 | **B. Financial areas as parallel books** (extend OQ-40: per-area charts, area-pinned documents) | Reuses the decided mechanism; one DB; familiar to Iranian accountants (حوزه مالی is a known concept) | Contract change (AC-D-04 shared-chart assumption); consolidation/elimination still missing |
-| **C. Separate organization/book entities with consolidation** | Cleanest legal separation | OQ-31/OQ-56 deferred complexity; effectively multi-company ADR territory |
+| **C. Separate organization/book entities with consolidation**                                   | Cleanest legal separation                                                                            | OQ-31/OQ-56 deferred complexity; effectively multi-company ADR territory                   |
 
 ## Risks
 
-- B needs a *contract change* to the accounting bounded context (AC-D-04) —
+- B needs a _contract change_ to the accounting bounded context (AC-D-04) —
   an ADR-level change, not configuration.
 - Statutory requirements differ per book type; OQ-43 must be answered per book.
 

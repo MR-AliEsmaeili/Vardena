@@ -1,13 +1,13 @@
 # Vardena — Backend MVP Roadmap
 
-| | |
-|---|---|
-| Status | **READY FOR REVIEW — NOT ACCEPTED** |
-| Date | 2026-09-27 |
-| Type | Roadmap / navigation map (documentation only) |
-| Inspection baseline | `main` @ `c654be916fe75e25ff2862900994c86aa1c20892` (merge of PR #68 — *docs: synchronize governance state after Task 24*; the last production-code change on `main` is PR #67 / Task 24, merged in `2aae5fba99671639fec4bffeb8877d3bcad09b6a`) |
-| Companion documents | [backend-mvp-dependency-matrix.md](./backend-mvp-dependency-matrix.md) · [future-task-candidates.md](./future-task-candidates.md) |
-| Production code changed by this roadmap | **NONE** |
+|                                         |                                                                                                                                                                                                                                                 |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Status                                  | **READY FOR REVIEW — NOT ACCEPTED**                                                                                                                                                                                                             |
+| Date                                    | 2026-09-27                                                                                                                                                                                                                                      |
+| Type                                    | Roadmap / navigation map (documentation only)                                                                                                                                                                                                   |
+| Inspection baseline                     | `main` @ `c654be916fe75e25ff2862900994c86aa1c20892` (merge of PR #68 — _docs: synchronize governance state after Task 24_; the last production-code change on `main` is PR #67 / Task 24, merged in `2aae5fba99671639fec4bffeb8877d3bcad09b6a`) |
+| Companion documents                     | [backend-mvp-dependency-matrix.md](./backend-mvp-dependency-matrix.md) · [future-task-candidates.md](./future-task-candidates.md)                                                                                                               |
+| Production code changed by this roadmap | **NONE**                                                                                                                                                                                                                                        |
 
 > **This roadmap describes the planned path from the current repository state to
 > Backend MVP. It does not itself authorize implementation or accept future
@@ -53,29 +53,29 @@
 
 Application modules registered in `app.module.ts`: 9 — `health` + `users, identity, rbac, organization, inventory, documents, workflow, accounting`. 46 controllers under `/api/v1`; 52 Prisma models; 17 migrations (`20260910000000_init` … `20260926010000_accounting_base_chart`); 134 registered permission codes (Accounting 41, Inventory 32, Organization 28, Workflow 10, Documents 9, RBAC 8, Users 6); 107 unit spec files; 34 E2E spec files.
 
-| Module | Classification | Verified state and evidence |
-|---|---|---|
-| `health` | **IMPLEMENTED** | Liveness/readiness probes; `/api/v1/health` (`health.controller.ts`) |
-| `identity` | **PARTIAL** | Login/logout/`me` with opaque Argon2id/session model (ADR-0007). **Not implemented:** session list/revoke (self/admin), self-service password change, forced-change-on-first-login — documented module surface vs implementation gap (audit §C.8, `modules.md` Identity entry) |
-| `users` | **IMPLEMENTED** | User CRUD, enable/disable, admin password-reset; no DELETE (OQ-18); 6 permissions |
-| `rbac` | **IMPLEMENTED** | Code registry → DB mirror, roles, user-role evaluation, fail-closed guard, no cache (ADR-0006/0016 Accepted), no wildcards (OQ-21) |
-| `organization` | **PARTIAL** | Structure (branches/departments/employees), party master (flat), **memberships + `assertOrganizationInScope` chokepoint (ODR-3, Task 19 ACCEPTED)**, deployment pin (ADR-0025). **Not implemented:** configuration half (tax definitions, custom fields) |
-| `inventory` | **PARTIAL** | Master data (items/units/conversions/groups/warehouses) **and** movement ledger, balances, reservations, transfers (ADR-0022 Accepted). **Not implemented:** costing/valuation method (OQ-24/OQ-11), ADR-0017 remains Proposed |
-| `documents` | **IMPLEMENTED** | Type configuration, numbering series + allocation ledger, typed relations (ADR-0023 Accepted) |
-| `workflow` | **IMPLEMENTED** | Versioned definitions/states/transitions, instances, single-level approvals, automation bindings (ADR-0024 Accepted) |
-| `accounting` | **PARTIAL** (deepest module) | Fiscal calendar, coding structures, chart of accounts + chart-tree read surface, configurations + operational freeze, vouchers, atomic posting, immutable `ledger_entries`, balance projection, reversal, period-close enforcement, ledger-movement/account-statement/general-ledger/trial-balance read surfaces, pin coherence (ODR-1), Base Chart template + adoption **mechanism** (Task 23, merged not accepted). **Not implemented:** posting rules/mapping, control roles, detail dimensions, cross-year opening carry-forward, statutory/legal books, exports, any source-module posting trigger |
-| `audit` | **NOT PRESENT** | No module, no schema, no table (`modules.md` map; audit §E of repository audit) |
-| `notifications` | **NOT PRESENT** | No module/schema/table |
-| `sales` | **NOT PRESENT** | No module/schema/table; `modules.md` "v1 core — not implemented" |
-| `purchasing` | **NOT PRESENT** | OQ-16 recorded posture: planned post-v1; manual receipts cover the gap |
-| `reporting` | **NOT PRESENT** | No module; Accounting owns bounded read surfaces instead (Task 18 D1–D20, ADR-0009 module-view policy) |
-| `excel` | **NOT PRESENT** | ADR-0011 (import workflow) is an Accepted *decision*; no implementation |
-| `print` | **NOT PRESENT** | ADR-0012 (print templates) is an Accepted *decision*; no implementation |
-| `customization` | **NOT PRESENT** | ADR-0013 Accepted decision; no implementation (frontend grid persistence therefore not available) |
-| `integration` | **NOT PRESENT** | No adapters (OQ-04/OQ-05; ADR-0003 is about the boundary) |
-| `sync` | **NOT PRESENT** | No outbox table, no dispatch loop |
-| `jobs` | **NOT PRESENT** | Kernel `JobsRegistry` stub only; no jobs table (ADR-0010 Accepted decision, unimplemented) |
-| **treasury** | **NOT PRESENT — DEFERRED, OUT OF MVP** | Explicit scope boundary (`.vardena/project-context.md`, `modules.md`, task-index §3; repository audit §E). No module, schema, migration, API, permission, or cash/bank semantics on `accounting.accounts` exists, and none may be added implicitly |
+| Module          | Classification                         | Verified state and evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| --------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `health`        | **IMPLEMENTED**                        | Liveness/readiness probes; `/api/v1/health` (`health.controller.ts`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `identity`      | **PARTIAL**                            | Login/logout/`me` with opaque Argon2id/session model (ADR-0007). **Not implemented:** session list/revoke (self/admin), self-service password change, forced-change-on-first-login — documented module surface vs implementation gap (audit §C.8, `modules.md` Identity entry)                                                                                                                                                                                                                                                                                                                          |
+| `users`         | **IMPLEMENTED**                        | User CRUD, enable/disable, admin password-reset; no DELETE (OQ-18); 6 permissions                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `rbac`          | **IMPLEMENTED**                        | Code registry → DB mirror, roles, user-role evaluation, fail-closed guard, no cache (ADR-0006/0016 Accepted), no wildcards (OQ-21)                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `organization`  | **PARTIAL**                            | Structure (branches/departments/employees), party master (flat), **memberships + `assertOrganizationInScope` chokepoint (ODR-3, Task 19 ACCEPTED)**, deployment pin (ADR-0025). **Not implemented:** configuration half (tax definitions, custom fields)                                                                                                                                                                                                                                                                                                                                                |
+| `inventory`     | **PARTIAL**                            | Master data (items/units/conversions/groups/warehouses) **and** movement ledger, balances, reservations, transfers (ADR-0022 Accepted). **Not implemented:** costing/valuation method (OQ-24/OQ-11), ADR-0017 remains Proposed                                                                                                                                                                                                                                                                                                                                                                          |
+| `documents`     | **IMPLEMENTED**                        | Type configuration, numbering series + allocation ledger, typed relations (ADR-0023 Accepted)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `workflow`      | **IMPLEMENTED**                        | Versioned definitions/states/transitions, instances, single-level approvals, automation bindings (ADR-0024 Accepted)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `accounting`    | **PARTIAL** (deepest module)           | Fiscal calendar, coding structures, chart of accounts + chart-tree read surface, configurations + operational freeze, vouchers, atomic posting, immutable `ledger_entries`, balance projection, reversal, period-close enforcement, ledger-movement/account-statement/general-ledger/trial-balance read surfaces, pin coherence (ODR-1), Base Chart template + adoption **mechanism** (Task 23, merged not accepted). **Not implemented:** posting rules/mapping, control roles, detail dimensions, cross-year opening carry-forward, statutory/legal books, exports, any source-module posting trigger |
+| `audit`         | **NOT PRESENT**                        | No module, no schema, no table (`modules.md` map; audit §E of repository audit)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `notifications` | **NOT PRESENT**                        | No module/schema/table                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `sales`         | **NOT PRESENT**                        | No module/schema/table; `modules.md` "v1 core — not implemented"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `purchasing`    | **NOT PRESENT**                        | OQ-16 recorded posture: planned post-v1; manual receipts cover the gap                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `reporting`     | **NOT PRESENT**                        | No module; Accounting owns bounded read surfaces instead (Task 18 D1–D20, ADR-0009 module-view policy)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `excel`         | **NOT PRESENT**                        | ADR-0011 (import workflow) is an Accepted _decision_; no implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `print`         | **NOT PRESENT**                        | ADR-0012 (print templates) is an Accepted _decision_; no implementation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `customization` | **NOT PRESENT**                        | ADR-0013 Accepted decision; no implementation (frontend grid persistence therefore not available)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `integration`   | **NOT PRESENT**                        | No adapters (OQ-04/OQ-05; ADR-0003 is about the boundary)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `sync`          | **NOT PRESENT**                        | No outbox table, no dispatch loop                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `jobs`          | **NOT PRESENT**                        | Kernel `JobsRegistry` stub only; no jobs table (ADR-0010 Accepted decision, unimplemented)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **treasury**    | **NOT PRESENT — DEFERRED, OUT OF MVP** | Explicit scope boundary (`.vardena/project-context.md`, `modules.md`, task-index §3; repository audit §E). No module, schema, migration, API, permission, or cash/bank semantics on `accounting.accounts` exists, and none may be added implicitly                                                                                                                                                                                                                                                                                                                                                      |
 
 ### 1.3 Infrastructure facts (VERIFIED IN MAIN — target ≠ implemented)
 
@@ -93,25 +93,25 @@ Implemented and accepted: login/session (`/auth/login`, `/auth/me`, `/auth/logou
 
 ### 1.5 Task status ledger (as recorded on `main`)
 
-| Work item | Implementation | Governance status |
-|---|---|---|
-| Tasks 1–9.6, 10.1–10.8 (foundation, organization, inventory, documents, workflow, accounting foundation/documents/posting/ledger) | MERGED | Mostly UNKNOWN review status (historical); ADR-0022/0023/0024/0025/0026/0028 Accepted |
-| Task 11 — Accounting Configuration Foundation | MERGED | **ACCEPTED 2026-09-22** |
-| Task 12 — Balance Projection | MERGED | **ACCEPTED WITH FOLLOW-UP 2026-09-23**; **P1 real-PostgreSQL concurrency verification OPEN**; ADR-0031 Proposed |
-| Task 13 — Operational Freeze (D4 marker) | MERGED (PR #31) | recorded **IN PROGRESS (self-review)** — NOT accepted |
-| Task 14 — Period Close Foundation | MERGED (PR #32) | **READY FOR REVIEW — NOT ACCEPTED**; ADR-0032 Proposed |
-| Task 15 — Document Reversal | MERGED (PR #33) | **UNKNOWN — no acceptance record found** |
-| Task 16 — Settlement/Allocation foundation | NONE | **Contract finalization READY FOR REVIEW; implementation authorization BLOCKED — Owner confirmation required**; Treasury boundary: no settlement/allocation engine may be built implicitly |
-| Task 17 (Reporting Foundation umbrella) | partial | **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS (OQ-25/OQ-43) — NOT complete** |
-| Task 17A / 17B / 17C | MERGED / MERGED / docs | **ACCEPTED 2026-09-25** (each) — bounded slices; close no OQ |
-| Task 18 — Accounting Reporting Read Foundation | MERGED (PR #46) | **ACCEPTED 2026-09-25** |
-| Task 19 — ODR-1/ODR-2/ODR-3 | MERGED (PR #54 + #55) | **ACCEPTED 2026-09-26** |
-| Task 20 — OD-20-1…OD-20-6 | docs only | **ACCEPTED 2026-09-26** |
-| Task 21 — Base Chart Governance & OQ-25 narrowing | docs only | **ACCEPTED 2026-09-26** (governance; OQ-25 stays OPEN, narrowed) |
-| Task 22 — Frontend Vertical Slice | MERGED (PR #62) | **ACCEPTED 2026-09-26** |
-| Bootstrap System Administrator (unnumbered) | MERGED (PR #64) | **READY FOR REVIEW — NOT ACCEPTED** |
-| Task 23 — Base Chart Template + Adoption **mechanism** | MERGED (PR #66) | **READY FOR REVIEW — NOT ACCEPTED**; supplies **no accounting content** |
-| Task 24 — R-2 Account-list organization scope | MERGED (PR #67) | **READY FOR REVIEW — NOT ACCEPTED**; records open findings F-2…F-6 / proposals R-1…R-6 |
+| Work item                                                                                                                         | Implementation         | Governance status                                                                                                                                                                          |
+| --------------------------------------------------------------------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Tasks 1–9.6, 10.1–10.8 (foundation, organization, inventory, documents, workflow, accounting foundation/documents/posting/ledger) | MERGED                 | Mostly UNKNOWN review status (historical); ADR-0022/0023/0024/0025/0026/0028 Accepted                                                                                                      |
+| Task 11 — Accounting Configuration Foundation                                                                                     | MERGED                 | **ACCEPTED 2026-09-22**                                                                                                                                                                    |
+| Task 12 — Balance Projection                                                                                                      | MERGED                 | **ACCEPTED WITH FOLLOW-UP 2026-09-23**; **P1 real-PostgreSQL concurrency verification OPEN**; ADR-0031 Proposed                                                                            |
+| Task 13 — Operational Freeze (D4 marker)                                                                                          | MERGED (PR #31)        | recorded **IN PROGRESS (self-review)** — NOT accepted                                                                                                                                      |
+| Task 14 — Period Close Foundation                                                                                                 | MERGED (PR #32)        | **READY FOR REVIEW — NOT ACCEPTED**; ADR-0032 Proposed                                                                                                                                     |
+| Task 15 — Document Reversal                                                                                                       | MERGED (PR #33)        | **UNKNOWN — no acceptance record found**                                                                                                                                                   |
+| Task 16 — Settlement/Allocation foundation                                                                                        | NONE                   | **Contract finalization READY FOR REVIEW; implementation authorization BLOCKED — Owner confirmation required**; Treasury boundary: no settlement/allocation engine may be built implicitly |
+| Task 17 (Reporting Foundation umbrella)                                                                                           | partial                | **FORMALIZED / IMPLEMENTATION BLOCKED BY OPEN QUESTIONS (OQ-25/OQ-43) — NOT complete**                                                                                                     |
+| Task 17A / 17B / 17C                                                                                                              | MERGED / MERGED / docs | **ACCEPTED 2026-09-25** (each) — bounded slices; close no OQ                                                                                                                               |
+| Task 18 — Accounting Reporting Read Foundation                                                                                    | MERGED (PR #46)        | **ACCEPTED 2026-09-25**                                                                                                                                                                    |
+| Task 19 — ODR-1/ODR-2/ODR-3                                                                                                       | MERGED (PR #54 + #55)  | **ACCEPTED 2026-09-26**                                                                                                                                                                    |
+| Task 20 — OD-20-1…OD-20-6                                                                                                         | docs only              | **ACCEPTED 2026-09-26**                                                                                                                                                                    |
+| Task 21 — Base Chart Governance & OQ-25 narrowing                                                                                 | docs only              | **ACCEPTED 2026-09-26** (governance; OQ-25 stays OPEN, narrowed)                                                                                                                           |
+| Task 22 — Frontend Vertical Slice                                                                                                 | MERGED (PR #62)        | **ACCEPTED 2026-09-26**                                                                                                                                                                    |
+| Bootstrap System Administrator (unnumbered)                                                                                       | MERGED (PR #64)        | **READY FOR REVIEW — NOT ACCEPTED**                                                                                                                                                        |
+| Task 23 — Base Chart Template + Adoption **mechanism**                                                                            | MERGED (PR #66)        | **READY FOR REVIEW — NOT ACCEPTED**; supplies **no accounting content**                                                                                                                    |
+| Task 24 — R-2 Account-list organization scope                                                                                     | MERGED (PR #67)        | **READY FOR REVIEW — NOT ACCEPTED**; records open findings F-2…F-6 / proposals R-1…R-6                                                                                                     |
 
 ### 1.6 ADR status summary (verified from `docs/adr/`)
 
@@ -122,7 +122,7 @@ Implemented and accepted: login/session (`/auth/login`, `/auth/me`, `/auth/logou
 
 ### 1.7 Load-bearing OQs (status from `docs/open-questions.md`)
 
-All remain **OPEN** in the registry: OQ-01 (tenancy — product question; the ODR-3 *invariant* is implemented, the *product* question is not answered), OQ-02 (UI language/Jalali), OQ-03 (currency), OQ-11 (opening balances/costing), OQ-12 (numbering policy), OQ-14 (occupational roles), OQ-15 (notification channels), OQ-16 (purchasing posture: post-v1), OQ-19 (administrator safety), OQ-22 (organizational scope/branches), OQ-23 (fiscal calendar policy), OQ-24 (inventory valuation), OQ-25 (chart content/control roles — **substantially narrowed by Tasks 20/21; content values and role catalog remain open**), OQ-27 (correction windows), OQ-30 (tax model), OQ-36 (master-data lifecycle: deletion/code reuse — **Task 21 records explicit prerequisites**), OQ-38 (party detail), OQ-39 (**durable integration semantics — gates all system posting**), OQ-40 (financial areas), OQ-41 (detail dimensions — line-level boundary decided by OD-20-6; count/defaults/binding open), OQ-42 (posting modes), OQ-43 (Iranian statutory — architecture decided as Proposed ADR-0036; **every legal fact requires validation**), OQ-49 (report builder depth), OQ-54 (finalized document policy), OQ-62/OQ-63 (pin divergence/legacy fallback — ODR-1 enforces coherence on writes; repair of existing rows undecided), and others. OQ-64 is RESOLVED (Task 13).
+All remain **OPEN** in the registry: OQ-01 (tenancy — product question; the ODR-3 _invariant_ is implemented, the _product_ question is not answered), OQ-02 (UI language/Jalali), OQ-03 (currency), OQ-11 (opening balances/costing), OQ-12 (numbering policy), OQ-14 (occupational roles), OQ-15 (notification channels), OQ-16 (purchasing posture: post-v1), OQ-19 (administrator safety), OQ-22 (organizational scope/branches), OQ-23 (fiscal calendar policy), OQ-24 (inventory valuation), OQ-25 (chart content/control roles — **substantially narrowed by Tasks 20/21; content values and role catalog remain open**), OQ-27 (correction windows), OQ-30 (tax model), OQ-36 (master-data lifecycle: deletion/code reuse — **Task 21 records explicit prerequisites**), OQ-38 (party detail), OQ-39 (**durable integration semantics — gates all system posting**), OQ-40 (financial areas), OQ-41 (detail dimensions — line-level boundary decided by OD-20-6; count/defaults/binding open), OQ-42 (posting modes), OQ-43 (Iranian statutory — architecture decided as Proposed ADR-0036; **every legal fact requires validation**), OQ-49 (report builder depth), OQ-54 (finalized document policy), OQ-62/OQ-63 (pin divergence/legacy fallback — ODR-1 enforces coherence on writes; repair of existing rows undecided), and others. OQ-64 is RESOLVED (Task 13).
 
 ---
 
@@ -144,13 +144,13 @@ The following capabilities are the required Backend MVP path. **Required does no
 
 ### 2.2 OUT OF CURRENT MVP / POST-MVP
 
-| Capability | MVP posture and boundary |
-|---|---|
-| **Purchasing** | **POST-MVP**: supplier purchasing flow, purchase documents/invoices, purchasing lifecycle and purchasing-specific behavior. OQ-16 remains open; no MVP dependency. |
-| **Purchasing → Accounting** | **POST-MVP**. It is not a condition of the MVP graph or Final Gate. |
-| **Purchasing Reports** | **POST-MVP**. Inventory reports remain MVP and are not purchasing reports. |
-| **Treasury** | **POST-MVP / DEFERRED**: cash, bank, Treasury Receipt/Payment, cheque, settlement, bank reconciliation and Treasury-native reports. |
-| External Taxpayer System Adapter | Separate integration boundary; not implied by Electronic Books / Tax Accounting. OQ-43 remains open. |
+| Capability                       | MVP posture and boundary                                                                                                                                           |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Purchasing**                   | **POST-MVP**: supplier purchasing flow, purchase documents/invoices, purchasing lifecycle and purchasing-specific behavior. OQ-16 remains open; no MVP dependency. |
+| **Purchasing → Accounting**      | **POST-MVP**. It is not a condition of the MVP graph or Final Gate.                                                                                                |
+| **Purchasing Reports**           | **POST-MVP**. Inventory reports remain MVP and are not purchasing reports.                                                                                         |
+| **Treasury**                     | **POST-MVP / DEFERRED**: cash, bank, Treasury Receipt/Payment, cheque, settlement, bank reconciliation and Treasury-native reports.                                |
+| External Taxpayer System Adapter | Separate integration boundary; not implied by Electronic Books / Tax Accounting. OQ-43 remains open.                                                               |
 
 **Terminology boundary:** Warehouse Receipt (quantity or rial) and Warehouse Issue are Inventory/Warehouse MVP documents. Treasury Receipt and Treasury Payment are Treasury capabilities and remain POST-MVP. Warehouse Receipt is not Purchasing; removing Purchasing does not remove Inventory Receipt or Issue.
 
@@ -160,14 +160,14 @@ Other post-MVP items remain as previously classified: payroll/HR, multi-currency
 
 **Inventory Core ≠ Full Inventory / Warehouse.** Inventory Core is the technical/domain foundation already present on `main` (movement ledger, balances, reservations and transfers). The Owner-directed MVP requires the complete operational subsystem built on that foundation, without changing its architecture.
 
-| Required MVP capability | Scope boundary / current classification |
-|---|---|
-| Warehouse master / coding | Warehouse coding, definition/management and required warehouse master information; implementation candidate, not present as a complete operational flow. |
-| Product / Item master | Product/item coding, definition, supported attributes, required units, barcode and required master data; no business rules invented beyond repository/Owner evidence. |
-| Opening balances | **Opening quantity** and **opening rial** are separate required capabilities; dependencies on Inventory and Accounting are distinct. |
-| Operational documents | Material Request; Warehouse Receipt — quantity and rial; Warehouse Issue — quantity and rial. Receipt/Issue remain Inventory documents, not Purchasing. |
-| Valuation / rial flows | Quantity stock and rial stock; unvalued receipts and unvalued issues. Valuation/accounting treatment is required in capability, but method and rules stay gated by OQ-24/OQ-11 and relevant ADRs. |
-| Reports | Current stock, quantity stock, rial stock, quantity Kardex, rial Kardex, unvalued receipts, unvalued issues, item movement, inventory analysis, inventory management and inventory settings. |
+| Required MVP capability   | Scope boundary / current classification                                                                                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Warehouse master / coding | Warehouse coding, definition/management and required warehouse master information; implementation candidate, not present as a complete operational flow.                                          |
+| Product / Item master     | Product/item coding, definition, supported attributes, required units, barcode and required master data; no business rules invented beyond repository/Owner evidence.                             |
+| Opening balances          | **Opening quantity** and **opening rial** are separate required capabilities; dependencies on Inventory and Accounting are distinct.                                                              |
+| Operational documents     | Material Request; Warehouse Receipt — quantity and rial; Warehouse Issue — quantity and rial. Receipt/Issue remain Inventory documents, not Purchasing.                                           |
+| Valuation / rial flows    | Quantity stock and rial stock; unvalued receipts and unvalued issues. Valuation/accounting treatment is required in capability, but method and rules stay gated by OQ-24/OQ-11 and relevant ADRs. |
+| Reports                   | Current stock, quantity stock, rial stock, quantity Kardex, rial Kardex, unvalued receipts, unvalued issues, item movement, inventory analysis, inventory management and inventory settings.      |
 
 Preserved architecture: `Inventory Movement → Inventory Balance`; where the existing contract applies, `Available = Quantity - Reserved`; immutable movement semantics, current negative-stock policy, organization isolation, module ownership and no direct cross-module Prisma access remain binding. Generic Report Builder is not admitted merely because Inventory reports are required.
 
@@ -229,14 +229,14 @@ Backend MVP Final Gate
 
 **Scope.**
 
-| # | Item | Dependencies | Repository evidence | Blocking OQ/ADR | Acceptance criteria |
-|---|---|---|---|---|---|
-| 0.1 | Owner acceptance decision — **Bootstrap System Administrator** (PR #64) | none | `docs/tasks/bootstrap-system-administrator/implementation-report.md`; STATE.md §7/§8 | OQ-14/OQ-19 remain OPEN regardless | Explicit ACCEPTED or CHANGES REQUIRED record; forced-password-change limitation either accepted or scheduled |
-| 0.2 | Owner acceptance decision — **Task 23** (Base Chart mechanism, PR #66) | none | `docs/tasks/task-23/task-23-implementation-report.md`; 5 tables + 3 permissions in `main` | OQ-25/OQ-36/OQ-41/OQ-43 remain OPEN regardless | Explicit acceptance record; the four invariants (Template identity ≠ Ledger identity; Adoption = Copy; Posting = Leaf-only; Aggregation = read-time) confirmed |
-| 0.3 | Owner acceptance decision — **Task 24 R-2** (PR #67) | none | `docs/tasks/task-24/task-24-implementation-report.md` | F-2…F-6 / R-1…R-6 remain recorded Owner decisions | Explicit acceptance record; F-2 disposition decided (see 6.1) |
-| 0.4 | Historical acceptance backlog: **Tasks 13, 14, 15** and **ADR-0017…0021, 0031, 0032** (Proposed while implemented) | none | STATE.md §7; audit §C.16/§D-3/§D-4; audit recommendations K.1/K.2 | — | Each ADR/task receives an explicit accept/reject/recorded-backlog decision; no silent normalization |
-| 0.5 | Comment-only correction of the stale authorization doc comment in `organization-permissions.ts` (contradicts the PR #55 rule) | a separately authorized change (production file) | audit D-7/G-2; recommendation K.3 | — | Comment matches shipped behavior; zero behavior change; CI green |
-| 0.6 | Documentation synchronization (continuous) | each merged task | AG-07; STATE.md §11 | — | `STATE.md`, `.vardena/project-context.md`, `docs/modules.md`, task index agree with `main` after every merge |
+| #   | Item                                                                                                                          | Dependencies                                     | Repository evidence                                                                       | Blocking OQ/ADR                                   | Acceptance criteria                                                                                                                                            |
+| --- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0.1 | Owner acceptance decision — **Bootstrap System Administrator** (PR #64)                                                       | none                                             | `docs/tasks/bootstrap-system-administrator/implementation-report.md`; STATE.md §7/§8      | OQ-14/OQ-19 remain OPEN regardless                | Explicit ACCEPTED or CHANGES REQUIRED record; forced-password-change limitation either accepted or scheduled                                                   |
+| 0.2 | Owner acceptance decision — **Task 23** (Base Chart mechanism, PR #66)                                                        | none                                             | `docs/tasks/task-23/task-23-implementation-report.md`; 5 tables + 3 permissions in `main` | OQ-25/OQ-36/OQ-41/OQ-43 remain OPEN regardless    | Explicit acceptance record; the four invariants (Template identity ≠ Ledger identity; Adoption = Copy; Posting = Leaf-only; Aggregation = read-time) confirmed |
+| 0.3 | Owner acceptance decision — **Task 24 R-2** (PR #67)                                                                          | none                                             | `docs/tasks/task-24/task-24-implementation-report.md`                                     | F-2…F-6 / R-1…R-6 remain recorded Owner decisions | Explicit acceptance record; F-2 disposition decided (see 6.1)                                                                                                  |
+| 0.4 | Historical acceptance backlog: **Tasks 13, 14, 15** and **ADR-0017…0021, 0031, 0032** (Proposed while implemented)            | none                                             | STATE.md §7; audit §C.16/§D-3/§D-4; audit recommendations K.1/K.2                         | —                                                 | Each ADR/task receives an explicit accept/reject/recorded-backlog decision; no silent normalization                                                            |
+| 0.5 | Comment-only correction of the stale authorization doc comment in `organization-permissions.ts` (contradicts the PR #55 rule) | a separately authorized change (production file) | audit D-7/G-2; recommendation K.3                                                         | —                                                 | Comment matches shipped behavior; zero behavior change; CI green                                                                                               |
+| 0.6 | Documentation synchronization (continuous)                                                                                    | each merged task                                 | AG-07; STATE.md §11                                                                       | —                                                 | `STATE.md`, `.vardena/project-context.md`, `docs/modules.md`, task index agree with `main` after every merge                                                   |
 
 **Non-goals.** No duplicate implementation task for already-merged work; no reopening of Task 19/20/21 decisions; no OQ closure; no ADR promotion (promotion is the Owner's act, not this roadmap's).
 
@@ -259,39 +259,46 @@ mechanism (exists — Task 23 merged)  ≠  content (OQ-25/OQ-36 — not approve
 ```
 
 **1A — Base Chart content approval + controlled content loading.**
-- *MVP boundary (OD-27-02, DECIDED 2026-09-27):* the MVP requires the Base Chart **mechanism** but **not** a concrete Base Chart content set. 1A is therefore a decision-gated optional work item, **not** an MVP requirement: no content may be introduced by implementation inference, and no migration or seed may introduce content unless a separately approved content artifact exists.
-- *Objective:* an Owner/accountant-approved Base Chart content artifact (codes, Persian titles, level shape, natures, postability defaults, mandatory-account list) loaded **through the Task 23 mechanism** (template → version → publish → explicit organization adoption).
-- *Non-goals:* inventing content (Task 23 deliberately supplied none); direct DB seeding that bypasses the adoption mechanism; statutory claims (OQ-43 is separate); upgrading already-adopted organizations silently (Task 21: no silent mutation on template upgrade).
-- *Dependencies:* Task 23 acceptance (0.2); **OQ-36 prerequisites recorded by Task 21 §10**: (1) code-reuse policy for superseded codes vs `uq_accounts_organization_id_code`; (2) deletion eligibility for unused adopted accounts; (3) code-history producer coexistence with the never-reuse rule.
-- *Blocking OQ/ADR:* OQ-25 (content values, role catalog interplay), OQ-36; ADR-0037 Proposed (configuration boundary) pending its adoption gate.
-- *Expected slices:* content decision pack → approval record → controlled loading through template/version/publish APIs → adoption rehearsal on a fixture organization.
-- *Acceptance criteria:* approved content artifact recorded in-repo; loading uses only the Task 23 mechanism; leaf-only posting and copy-not-reference invariants hold; live-PG E2E green in CI.
-- *Ownership/impact:* Accounting module; DB impact — rows via existing tables only (no new migration expected); API impact — none expected (existing template endpoints); events — none new; security — existing permissions + ODR-3; frontend dependency — chart tree already renders adopted accounts; testing — unit + live-DB E2E.
+
+- _MVP boundary (OD-27-02, DECIDED 2026-09-27):_ the MVP requires the Base Chart **mechanism** but **not** a concrete Base Chart content set. 1A is therefore a decision-gated optional work item, **not** an MVP requirement: no content may be introduced by implementation inference, and no migration or seed may introduce content unless a separately approved content artifact exists.
+- _Objective:_ an Owner/accountant-approved Base Chart content artifact (codes, Persian titles, level shape, natures, postability defaults, mandatory-account list) loaded **through the Task 23 mechanism** (template → version → publish → explicit organization adoption).
+- _Non-goals:_ inventing content (Task 23 deliberately supplied none); direct DB seeding that bypasses the adoption mechanism; statutory claims (OQ-43 is separate); upgrading already-adopted organizations silently (Task 21: no silent mutation on template upgrade).
+- _Dependencies:_ Task 23 acceptance (0.2); **OQ-36 prerequisites recorded by Task 21 §10**: (1) code-reuse policy for superseded codes vs `uq_accounts_organization_id_code`; (2) deletion eligibility for unused adopted accounts; (3) code-history producer coexistence with the never-reuse rule.
+- _Blocking OQ/ADR:_ OQ-25 (content values, role catalog interplay), OQ-36; ADR-0037 Proposed (configuration boundary) pending its adoption gate.
+- _Expected slices:_ content decision pack → approval record → controlled loading through template/version/publish APIs → adoption rehearsal on a fixture organization.
+- _Acceptance criteria:_ approved content artifact recorded in-repo; loading uses only the Task 23 mechanism; leaf-only posting and copy-not-reference invariants hold; live-PG E2E green in CI.
+- _Ownership/impact:_ Accounting module; DB impact — rows via existing tables only (no new migration expected); API impact — none expected (existing template endpoints); events — none new; security — existing permissions + ODR-3; frontend dependency — chart tree already renders adopted accounts; testing — unit + live-DB E2E.
 
 **1B — Account lifecycle / code history producer (pre-use correction).**
-- *Objective:* implement the OD-20-4 boundary — controlled pre-use code correction, post-use immutability — resolving the recorded D-2 discrepancy (repository is stricter today: code immutable from creation).
-- *Blocking OQ/ADR:* OQ-36 (reuse/deletion), ADR-0033 Proposed. *Non-goals:* the Code Structure Migration Service (ADR-0035 — explicitly not authorized); post-use code change of any kind.
-- *Expected slices:* decision on pre-use editability; history schema only when a real producer exists (no speculative schema — task-index §4).
+
+- _Objective:_ implement the OD-20-4 boundary — controlled pre-use code correction, post-use immutability — resolving the recorded D-2 discrepancy (repository is stricter today: code immutable from creation).
+- _Blocking OQ/ADR:_ OQ-36 (reuse/deletion), ADR-0033 Proposed. _Non-goals:_ the Code Structure Migration Service (ADR-0035 — explicitly not authorized); post-use code change of any kind.
+- _Expected slices:_ decision on pre-use editability; history schema only when a real producer exists (no speculative schema — task-index §4).
 
 **1C — Control Roles (consumer-first).**
-- *Objective:* the concrete control-role catalog and mandatory set, plus the effective-dated account→role mapping (OD-20-3), built only when a **consumer** exists (posting rules or reporting) — per OD-20-2 no speculative catalog.
-- *Blocking OQ/ADR:* OQ-25 (catalog/mandatory set); ADR-0037 Proposed. *Dependencies:* a consumer task (posting rules 1G or a reporting consumer).
+
+- _Objective:_ the concrete control-role catalog and mandatory set, plus the effective-dated account→role mapping (OD-20-3), built only when a **consumer** exists (posting rules or reporting) — per OD-20-2 no speculative catalog.
+- _Blocking OQ/ADR:_ OQ-25 (catalog/mandatory set); ADR-0037 Proposed. _Dependencies:_ a consumer task (posting rules 1G or a reporting consumer).
 
 **1D — Detail dimensions.**
-- *Objective:* line-level analytical dimensions per OD-20-6 (transaction-line assignments; read-layer aggregation when a concrete reporting consumer requires it; no ledger widening, no JSONB/EAV, no speculative projection).
-- *Blocking OQ/ADR:* OQ-41 (count, per-dimension requiredness, master-data binding, item governance, area applicability); ADR-0037 Proposed. Interim fail-closed assumption: every attached dimension required on a posting line.
+
+- _Objective:_ line-level analytical dimensions per OD-20-6 (transaction-line assignments; read-layer aggregation when a concrete reporting consumer requires it; no ledger widening, no JSONB/EAV, no speculative projection).
+- _Blocking OQ/ADR:_ OQ-41 (count, per-dimension requiredness, master-data binding, item governance, area applicability); ADR-0037 Proposed. Interim fail-closed assumption: every attached dimension required on a posting line.
 
 **1E — Corrections beyond reversal.**
-- *Objective:* the contract §15.4 correction/difference, replacement-pair and adjustment mechanisms (only reversal is implemented) plus decided correction windows.
-- *Blocking OQ/ADR:* OQ-27 (windows, cross-period corrections, uncorrectable documents); OQ-23 (period dating). Final-document immutability is settled (Q12/Q13) and must not be reopened.
+
+- _Objective:_ the contract §15.4 correction/difference, replacement-pair and adjustment mechanisms (only reversal is implemented) plus decided correction windows.
+- _Blocking OQ/ADR:_ OQ-27 (windows, cross-period corrections, uncorrectable documents); OQ-23 (period dating). Final-document immutability is settled (Q12/Q13) and must not be reopened.
 
 **1F — Year-transition / opening carry-forward.**
-- *Objective:* year-end closing/opening operations and cross-year opening carry-forward (currently explicitly out of scope: first-period opening = 0, no carry-forward — ADR-0031 §4/§9).
-- *Blocking OQ/ADR:* OQ-23 (calendar policy: year start, layout, adjustment period, close/reopen authority, year-end entries). *Non-goals:* automated statutory year-end postings until decided.
+
+- _Objective:_ year-end closing/opening operations and cross-year opening carry-forward (currently explicitly out of scope: first-period opening = 0, no carry-forward — ADR-0031 §4/§9).
+- _Blocking OQ/ADR:_ OQ-23 (calendar policy: year start, layout, adjustment period, close/reopen authority, year-end entries). _Non-goals:_ automated statutory year-end postings until decided.
 
 **1G — Posting rules / account mapping engine.**
-- *Objective:* the Accounting-owned mapping from source-module business events to journal entries (contract §20.2; referenced by roles, never free codes).
-- *Blocking OQ/ADR:* OQ-24, OQ-25, OQ-30 (mapping/tax/valuation inputs); activation is additionally gated by OQ-39/OQ-42 (Phase 4). *Non-goals:* any source-module trigger before Phase 4 decisions.
+
+- _Objective:_ the Accounting-owned mapping from source-module business events to journal entries (contract §20.2; referenced by roles, never free codes).
+- _Blocking OQ/ADR:_ OQ-24, OQ-25, OQ-30 (mapping/tax/valuation inputs); activation is additionally gated by OQ-39/OQ-42 (Phase 4). _Non-goals:_ any source-module trigger before Phase 4 decisions.
 
 **Also in Phase 1 (decision-only items):** OQ-40 financial-area grants/default area; OQ-42 posting-mode default (needed before any system posting); OQ-62/OQ-63 pin-divergence repair policy (ODR-1 rejects divergence on writes; existing divergent rows are not repaired).
 
@@ -302,21 +309,25 @@ mechanism (exists — Task 23 merged)  ≠  content (OQ-25/OQ-36 — not approve
 **Verified starting point (ACCEPTED):** `AccountingReadQueryRepository` + `GET /accounting/ledger-movements` (17A), `GET /accounting/account-statements` (17B), `GET /accounting/general-ledger` + `GET /accounting/trial-balance` (18), `GET /accounting/chart-tree` (19 ODR-2), balance projections (12). Pagination, 50,000-row hard bound, 5-second read timeout, allow-listed sorting, exact decimal strings, independent report permissions — all already established patterns.
 
 **2A — Reporting foundation design task (investigation gate).**
-- *Objective:* define the bounded MVP report set and the report-definition approach consistent with ADR-0009 (code-defined definitions, module-owned views, one pipeline).
-- *Required verification:* MVP reporting candidates verified against the accepted strategy — Account Statement, General Ledger, Trial Balance, ledger movements, balance/movement views (all exist as read APIs); the Journal Book, Iranian legal books and electronic-book outputs are **MVP-required capability**, but their exact legal facts, fields and formats remain blocked by OQ-43 and ADR-0036 Proposed; a minimal P&L is only a *proposed* interpretation (MVP-SCOPE D-04 — proposal, not accepted).
-- *Blocking OQ/ADR:* OQ-25/OQ-43 for any NEW layout; **OQ-49 for any builder** — a generic Report Builder is NOT admitted by default.
+
+- _Objective:_ define the bounded MVP report set and the report-definition approach consistent with ADR-0009 (code-defined definitions, module-owned views, one pipeline).
+- _Required verification:_ MVP reporting candidates verified against the accepted strategy — Account Statement, General Ledger, Trial Balance, ledger movements, balance/movement views (all exist as read APIs); the Journal Book, Iranian legal books and electronic-book outputs are **MVP-required capability**, but their exact legal facts, fields and formats remain blocked by OQ-43 and ADR-0036 Proposed; a minimal P&L is only a _proposed_ interpretation (MVP-SCOPE D-04 — proposal, not accepted).
+- _Blocking OQ/ADR:_ OQ-25/OQ-43 for any NEW layout; **OQ-49 for any builder** — a generic Report Builder is NOT admitted by default.
 
 **2B — Report definition + query pipeline (bounded slices).**
+
 - Report definitions in code registry over approved sources; permissions per report (`Module.Entity.Action`); filter/sort whitelists; row caps; read-only execution; view regression tests (fixture rows → expected output) per reporting-strategy §9.
-- *Module impact:* the bounded Reporting capability and its module-view architecture are documented by ADR-0009 (Accepted), but a `reporting` module is **NOT PRESENT** on `main` (§1.2). Under AR-29 a new module is ADR-gated: the implementation task must confirm the architectural decision and supply any required adoption record before creating it. DB impact — module-owned views only where needed (raw SQL scoped per AR-11); API impact — `/api/v1/reports/...` namespace per strategy; frontend dependency — the four read surfaces already have UI; new report screens follow after API/OpenAPI stability.
+- _Module impact:_ the bounded Reporting capability and its module-view architecture are documented by ADR-0009 (Accepted), but a `reporting` module is **NOT PRESENT** on `main` (§1.2). Under AR-29 a new module is ADR-gated: the implementation task must confirm the architectural decision and supply any required adoption record before creating it. DB impact — module-owned views only where needed (raw SQL scoped per AR-11); API impact — `/api/v1/reports/...` namespace per strategy; frontend dependency — the four read surfaces already have UI; new report screens follow after API/OpenAPI stability.
 
 **2C — XLSX/CSV export.**
-- *Objective:* export of admitted reports/lists through the Excel module (ADR-0011/Accepted decision; OQ-46 recorded posture: XLSX export of reports/lists is the confirmed channel).
-- *Dependencies:* 2B; heavy export may require the Jobs path (Phase 5 evaluation). *Non-goals:* full-fidelity database export (OQ-46: not promised).
+
+- _Objective:_ export of admitted reports/lists through the Excel module (ADR-0011/Accepted decision; OQ-46 recorded posture: XLSX export of reports/lists is the confirmed channel).
+- _Dependencies:_ 2B; heavy export may require the Jobs path (Phase 5 evaluation). _Non-goals:_ full-fidelity database export (OQ-46: not promised).
 
 **2D — Print/PDF.**
-- *Objective:* printable reports (and later documents) per ADR-0012 (templates + module-owned print data providers).
-- *Dependencies:* 2B; PDF rendering is worker/job work → Phase 5 admission; OQ-02 for labels/locale. *Non-goals:* batch PDF pipelines beyond admitted scope.
+
+- _Objective:_ printable reports (and later documents) per ADR-0012 (templates + module-owned print data providers).
+- _Dependencies:_ 2B; PDF rendering is worker/job work → Phase 5 admission; OQ-02 for labels/locale. _Non-goals:_ batch PDF pipelines beyond admitted scope.
 
 ### 5.3 Phase 3 — Operational ERP core
 
@@ -330,7 +341,6 @@ mechanism (exists — Task 23 merged)  ≠  content (OQ-25/OQ-36 — not approve
 - **3D — Purchasing**: POST-MVP per the OQ-16 recorded posture. This does not remove Warehouse Receipt or Warehouse Issue; no purchasing dependency is permitted in the Inventory MVP path.
 - **3E — Party / Customer foundation**: preserve the existing flat party master and complete the customer-facing foundation required by Sales; Supplier purchasing flow is not an MVP requirement.
 - **3F — AR/AP**: no accepted admission anywhere; not required to admit Sales. If later admitted, it must be separately designed.
-
 
 ### 5.4 Phase 4 — Cross-module Accounting integration
 
@@ -350,12 +360,12 @@ mechanism (exists — Task 23 merged)  ≠  content (OQ-25/OQ-36 — not approve
 
 **Admission rule.** Do not build infrastructure merely because an architecture diagram contains a box. Admit a slice only when an admitted MVP capability requires it:
 
-| Capability (if admitted) | Infrastructure it would require |
-|---|---|
-| OQ-39 resolves to durable queued delivery | `sync.outbox_events` + worker dispatch + retry/dead-letter (ADR-0004) |
-| Heavy/async report exports, PDF rendering | `jobs` DB-backed queue + worker pickup (ADR-0010) |
-| Audit consuming domain events durably | persisted `core.domain_events` (ADR-0005 target) |
-| Transactional in-process subscription chosen (OQ-39) | **none of the above** for Inventory→Accounting posting |
+| Capability (if admitted)                             | Infrastructure it would require                                       |
+| ---------------------------------------------------- | --------------------------------------------------------------------- |
+| OQ-39 resolves to durable queued delivery            | `sync.outbox_events` + worker dispatch + retry/dead-letter (ADR-0004) |
+| Heavy/async report exports, PDF rendering            | `jobs` DB-backed queue + worker pickup (ADR-0010)                     |
+| Audit consuming domain events durably                | persisted `core.domain_events` (ADR-0005 target)                      |
+| Transactional in-process subscription chosen (OQ-39) | **none of the above** for Inventory→Accounting posting                |
 
 Each admission carries: idempotency (AR-15), retry, failure recovery, observability. Any new module/schema is ADR-gated where it changes cross-module patterns (AR-29).
 
@@ -402,15 +412,15 @@ Backend capability → API/OpenAPI stable → frontend feature slice
 
 Currently consumed backend APIs (VERIFIED in `frontend/src/api/`): `POST /auth/login`, `GET /auth/me`, `POST /auth/logout`, `GET /permissions/effective`, `GET /organizations`, `GET /accounting/chart-tree`, `GET /accounting/account-statements`, `GET /accounting/general-ledger`, `GET /accounting/trial-balance`, plus supporting lists `GET /accounts`, `GET /financial-areas`, `GET /fiscal-years`, `GET /accounting-periods`.
 
-| Future frontend slice | Backend dependency | Status |
-|---|---|---|
-| Voucher create/edit/finalize UI | Accounting write APIs (exist) — needs Owner admission of the UI scope, not new backend rules | candidate |
-| Base Chart administration UI | Task 23 endpoints (exist, not accepted) | candidate — after Task 23 acceptance |
-| Inventory screens | Inventory APIs (exist) | candidate |
-| Report screens beyond the four read surfaces | Phase 2 reporting APIs | blocked by Phase 2 |
-| Sales screens | Phase 3 Sales APIs | blocked by Phase 3 implementation/domain gates |
-| Login-adjacent UX (password change, session management) | Phase 6 identity completion | blocked by 6.3 |
-| Jalali/Persian display | OQ-02 decision (architecture already isolates formatting in `lib/`) | blocked by OQ-02 |
+| Future frontend slice                                   | Backend dependency                                                                           | Status                                         |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Voucher create/edit/finalize UI                         | Accounting write APIs (exist) — needs Owner admission of the UI scope, not new backend rules | candidate                                      |
+| Base Chart administration UI                            | Task 23 endpoints (exist, not accepted)                                                      | candidate — after Task 23 acceptance           |
+| Inventory screens                                       | Inventory APIs (exist)                                                                       | candidate                                      |
+| Report screens beyond the four read surfaces            | Phase 2 reporting APIs                                                                       | blocked by Phase 2                             |
+| Sales screens                                           | Phase 3 Sales APIs                                                                           | blocked by Phase 3 implementation/domain gates |
+| Login-adjacent UX (password change, session management) | Phase 6 identity completion                                                                  | blocked by 6.3                                 |
+| Jalali/Persian display                                  | OQ-02 decision (architecture already isolates formatting in `lib/`)                          | blocked by OQ-02                               |
 
 **Rules:** frontend implementation must not silently define backend business rules (frontend checks are UX only — AR-21); grid-state persistence waits for the customization module (not admitted); the frontend is **not** required to be complete before declaring Backend MVP.
 
@@ -421,12 +431,14 @@ Currently consumed backend APIs (VERIFIED in `frontend/src/api/`): `POST /auth/l
 The gate verifies **capabilities**, not task existence. Backend MVP may be declared complete only when every item below is verifiably true on a single `main` head:
 
 ### Architecture
+
 - [ ] Modular monolith intact; no microservices, no second database, no external broker (AR-01).
 - [ ] No cross-module Prisma/table access (AR-07); cross-module effects only via events/public services.
 - [ ] All migrations valid and deployable to a clean PostgreSQL 16 (CI `migrate deploy` green); no edited applied migrations.
 - [ ] Module boundaries intact (controllers transport-only; kernel technical-only).
 
 ### Security
+
 - [ ] Principal-bound organization isolation on **every** organization-scoped surface (ODR-3) — including the F-2 list surfaces.
 - [ ] Permission enforcement on every endpoint; fail-closed guard; denial-path tests for every MVP endpoint.
 - [ ] No wildcard/superuser bypass anywhere; no permission-only cross-organization administration.
@@ -434,6 +446,7 @@ The gate verifies **capabilities**, not task existence. Backend MVP may be decla
 - [ ] Immutable accounting history intact (ledger insert-only; RESTRICT FKs; correction-by-counter-document only).
 
 ### Core ERP
+
 - [ ] Organization/master data, Inventory, Documents, Workflow, Accounting — per the verified inventory (§1.2), plus each Phase 1–5 item the Owner admitted.
 - [ ] Chart: Base Chart mechanism (OD-27-02, DECIDED 2026-09-27: mechanism **required for MVP**; concrete content **NOT required for MVP** — content only if a separately approved content artifact is admitted under Phase 1A); leaf-only posting; read-time aggregation.
 - [ ] Posting/ledger: atomic, idempotent, period-close-enforced.
@@ -444,11 +457,13 @@ The gate verifies **capabilities**, not task existence. Backend MVP may be decla
 - [ ] Purchasing, Purchasing → Accounting, Purchasing Reports and Treasury are not required by this gate.
 
 ### Required operational qualification flows
+
 - [ ] End-to-end: Master Data → Inventory/Warehouse → Sales → Inventory Effect → Accounting Effect → Reports → Electronic Books/Tax Accounting.
 - [ ] Inventory standalone: Warehouse → Product → Opening Quantity/Rial → Material Request → Receipt/Issue → Movement → Stock → Quantity/Rial Kardex and reports.
 - [ ] Purchasing is not a qualification prerequisite; Warehouse Receipt is explicitly qualified as Inventory, not Purchasing.
 
 ### Reliability
+
 - [ ] Idempotency where required (posting operations — exist; outbox consumers if admitted — AR-15).
 - [ ] Transactional consistency (posting transaction, projection maintenance, lock-order matrix respected).
 - [ ] Worker/outbox/jobs — implemented **if and only if** an admitted capability requires them; startup-gated worker otherwise documented.
@@ -456,15 +471,18 @@ The gate verifies **capabilities**, not task existence. Backend MVP may be decla
 - [ ] PostgreSQL verification: live-DB suites green in CI on the final head.
 
 ### API
+
 - [ ] OpenAPI consistent with implementation; generated types consumable (frontend flow works).
 - [ ] Permissions declared on every operation; error contract `{code,message,details?,correlationId}` stable; pagination/limits enforced on every list.
 
 ### Documentation
+
 - [ ] `docs/`, `STATE.md`, `.vardena/`, task index and ADR/OQ registries synchronized with `main`.
 - [ ] Task statuses accurate; ADR statuses accurate; OQ statuses accurate.
 - [ ] **No implementation falsely described as accepted** anywhere.
 
 ### Frontend dependency record
+
 - [ ] The list of Backend MVP APIs consumed by the current frontend (§6) remains functional (contract stability).
 - [ ] Future frontend slices dependent on Backend MVP completion are recorded with their blocking backend capability (§6 table) — frontend completeness itself is NOT a gate.
 

@@ -49,7 +49,7 @@
  */
 
 import { checkAccountCode, type AccountCodeProblem } from './account-code.js';
-import { isAccountNature } from './account.js';
+import { isAccountNature, type AccountType } from './account.js';
 import {
   MAX_ACCOUNT_CODE_LENGTH,
   MAX_CODING_STRUCTURE_DEPTH,
@@ -154,6 +154,7 @@ export interface BaseChartTemplateNode {
   code: string;
   title: string;
   accountNature: string;
+  accountType?: AccountType;
   /**
    * Authored postability default (Task 21 §7) — NEVER trusted: every write
    * of an `accounts` row derives postability leaf-only (OD-20-5).
@@ -233,6 +234,7 @@ export interface BaseChartTemplateNodeDto {
   code: string;
   title: string;
   accountNature: string;
+  accountType: AccountType;
   isPostable: boolean;
   isMandatory: boolean;
   defaultIsActive: boolean;
@@ -292,6 +294,7 @@ export function toBaseChartTemplateNodeDto(
     code: node.code,
     title: node.title,
     accountNature: node.accountNature,
+    accountType: node.accountType ?? 'BALANCE_SHEET',
     isPostable: node.isPostable,
     isMandatory: node.isMandatory,
     defaultIsActive: node.defaultIsActive,
@@ -367,6 +370,7 @@ export interface BaseChartNodeInput {
   code: string;
   title: string;
   accountNature: string;
+  accountType?: AccountType | undefined;
   isPostable?: boolean | undefined;
   isMandatory: boolean;
   defaultIsActive: boolean;
@@ -380,6 +384,7 @@ export interface DerivedBaseChartNode {
   code: string;
   title: string;
   accountNature: string;
+  accountType: AccountType;
   isPostable: boolean;
   isMandatory: boolean;
   defaultIsActive: boolean;
@@ -624,6 +629,7 @@ export function planBaseChartVersionContent(input: {
       code: node.code,
       title: node.title,
       accountNature: node.accountNature,
+      accountType: node.accountType ?? 'BALANCE_SHEET',
       isPostable:
         node.isPostable ??
         defaultIsPostableForTemplateLevel(input.levels, level),
@@ -687,7 +693,7 @@ export function baseChartContentProblemMessage(
     case 'node_title_invalid':
       return `Every node needs a non-blank title of at most ${MAX_TITLE_LENGTH} characters.`;
     case 'node_nature_invalid':
-      return 'Every node’s accountNature must be "debit" or "credit".';
+      return 'Every node’s accountNature must be "debit", "credit", or "dual".';
     case 'node_parent_postable':
       return 'A node that has children cannot be postable (posting stays leaf-only — OD-20-5).';
   }

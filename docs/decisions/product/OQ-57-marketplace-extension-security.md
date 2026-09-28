@@ -15,7 +15,7 @@ database access policy) as **directional/future**, and explicitly states the
 unresolved security policies (sandboxing, capability model, revocation,
 liability) must **not** be finalized now (PB-BASELINE §27).
 
-This OQ exists so the *deferral itself is governed*: it records what is known,
+This OQ exists so the _deferral itself is governed_: it records what is known,
 what is decided-adjacent, and the trigger conditions for reopening — so no one
 invents marketplace policy silently.
 
@@ -33,7 +33,7 @@ Adjacent decided facts it must respect:
 
 - Premature marketplace policy either blocks a future ecosystem (too strict)
   or creates a security hole (too loose) before there is anything to secure.
-- If a partner approaches early, the *process* for handling it should exist
+- If a partner approaches early, the _process_ for handling it should exist
   even though the policy doesn't.
 
 ## Exact decision required (when re-opened)
@@ -46,11 +46,11 @@ Adjacent decided facts it must respect:
 
 ## Options (recorded as future shapes, not decisions)
 
-| Option | Advantages | Disadvantages |
-|---|---|---|
-| **A. API-only ecosystem** (external services via licensed API + webhooks) | No in-process trust problem; uses ADR-0029/0004; safest | Less deep integration than native modules |
-| **B. Signed native extensions** (in-process modules with signature + review) | Deep integration; marketplace-grade | Major security/ADR program; requires runtime trust design |
-| **C. Curated first-party modules only** (no third-party code) | Simplest trust story | Not a marketplace |
+| Option                                                                       | Advantages                                              | Disadvantages                                             |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------------- |
+| **A. API-only ecosystem** (external services via licensed API + webhooks)    | No in-process trust problem; uses ADR-0029/0004; safest | Less deep integration than native modules                 |
+| **B. Signed native extensions** (in-process modules with signature + review) | Deep integration; marketplace-grade                     | Major security/ADR program; requires runtime trust design |
+| **C. Curated first-party modules only** (no third-party code)                | Simplest trust story                                    | Not a marketplace                                         |
 
 ## Risks
 

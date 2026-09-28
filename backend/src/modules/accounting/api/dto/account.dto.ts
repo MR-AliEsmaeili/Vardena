@@ -18,7 +18,7 @@ import {
   MAX_ACCOUNT_CODE_LENGTH,
   MAX_CODING_STRUCTURE_DEPTH,
 } from '../../domain/coding-structure.js';
-import { ACCOUNT_NATURES } from '../../domain/account.js';
+import { ACCOUNT_NATURES, ACCOUNT_TYPES } from '../../domain/account.js';
 import { MAX_TITLE_LENGTH } from '../../domain/master-data.js';
 
 /**
@@ -87,6 +87,25 @@ export class CreateAccountDto {
   accountNature!: (typeof ACCOUNT_NATURES)[number];
 
   @ApiPropertyOptional({
+    enum: ACCOUNT_TYPES,
+    description:
+      'Account type (OD-29-02: BALANCE_SHEET, INCOME_STATEMENT, MEMORANDUM). Immutable once operationally used.',
+  })
+  @IsOptional()
+  @IsIn([...ACCOUNT_TYPES])
+  accountType?: (typeof ACCOUNT_TYPES)[number];
+
+  @ApiPropertyOptional({
+    format: 'ulid',
+    nullable: true,
+    description:
+      'Level-1 Detail Group reference (OD-29-03). Account links to Level-1 group, not leaf details.',
+  })
+  @IsOptional()
+  @IsUlid()
+  detailGroupId?: string | null;
+
+  @ApiPropertyOptional({
     description:
       'Posting eligibility. Omitted = the coding structure default for the account’s level (§14 rule 4). A postable account must be a leaf (§14 rule 2).',
   })
@@ -108,6 +127,16 @@ export class UpdateAccountDto {
   @IsIn([...ACCOUNT_NATURES])
   accountNature?: (typeof ACCOUNT_NATURES)[number];
 
+  @ApiPropertyOptional({ enum: ACCOUNT_TYPES })
+  @IsOptional()
+  @IsIn([...ACCOUNT_TYPES])
+  accountType?: (typeof ACCOUNT_TYPES)[number];
+
+  @ApiPropertyOptional({ format: 'ulid', nullable: true })
+  @IsOptional()
+  @IsUlid()
+  detailGroupId?: string | null;
+
   @ApiPropertyOptional({
     description:
       'Posting eligibility. Refused when the account has children (a postable account is always a leaf, §14 rule 2).',
@@ -125,6 +154,15 @@ export class UpdateAccountDto {
   @IsOptional()
   @IsUlid()
   parentId?: string | null;
+}
+
+export class UnlinkDetailGroupDto {
+  @ApiProperty({
+    description:
+      'Explicit confirmation required to unlink Detail Group and atomically clear historical detail allocations (OD-29-03).',
+  })
+  @IsBoolean()
+  confirmUnlink!: boolean;
 }
 
 export class ListAccountsQueryDto extends PageQueryDto {
@@ -209,6 +247,12 @@ export class AccountResponseDto {
 
   @ApiProperty({ enum: ACCOUNT_NATURES })
   accountNature!: (typeof ACCOUNT_NATURES)[number];
+
+  @ApiProperty({ enum: ACCOUNT_TYPES })
+  accountType!: (typeof ACCOUNT_TYPES)[number];
+
+  @ApiProperty({ format: 'ulid', nullable: true })
+  detailGroupId!: string | null;
 
   @ApiProperty()
   isPostable!: boolean;

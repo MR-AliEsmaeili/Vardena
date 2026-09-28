@@ -87,6 +87,48 @@ export interface PrismaClient {
   numberingAllocation: Delegate;
   /** `documents.document_relations` — declared in prisma/schema/documents.prisma. */
   documentRelation: Delegate;
+  /** `accounting.financial_areas` — declared in prisma/schema/accounting.prisma. */
+  financialArea: Delegate;
+  /** `accounting.fiscal_years` — declared in prisma/schema/accounting.prisma. */
+  fiscalYear: Delegate;
+  /** `accounting.accounting_periods` — declared in prisma/schema/accounting.prisma. */
+  accountingPeriod: Delegate;
+  /** `accounting.coding_structure_versions` — declared in prisma/schema/accounting.prisma. */
+  codingStructureVersion: Delegate;
+  /** `accounting.coding_structure_levels` — declared in prisma/schema/accounting.prisma. */
+  codingStructureLevel: Delegate;
+  /** `accounting.accounting_configurations` — declared in prisma/schema/accounting.prisma. */
+  accountingConfiguration: Delegate;
+  /** `accounting.accounting_configuration_levels` — declared in prisma/schema/accounting.prisma. */
+  accountingConfigurationLevel: Delegate;
+  /** `accounting.accounts` — declared in prisma/schema/accounting.prisma. */
+  account: Delegate;
+  /** `accounting.accounting_documents` — declared in prisma/schema/accounting.prisma. */
+  accountingDocument: Delegate;
+  /** `accounting.accounting_document_lines` — declared in prisma/schema/accounting.prisma. */
+  accountingDocumentLine: Delegate;
+  /** `accounting.accounting_posting_operations` — declared in prisma/schema/accounting.prisma. */
+  accountingPostingOperation: Delegate;
+  /** `accounting.ledger_entries` — declared in prisma/schema/accounting.prisma. */
+  ledgerEntry: Delegate;
+  /** `accounting.account_balance_projections` — declared in prisma/schema/accounting.prisma. */
+  accountBalanceProjection: Delegate;
+  /** `accounting.base_chart_templates` — declared in prisma/schema/accounting.prisma. */
+  baseChartTemplate: Delegate;
+  /** `accounting.base_chart_template_versions` — declared in prisma/schema/accounting.prisma. */
+  baseChartTemplateVersion: Delegate;
+  /** `accounting.base_chart_template_levels` — declared in prisma/schema/accounting.prisma. */
+  baseChartTemplateLevel: Delegate;
+  /** `accounting.base_chart_template_nodes` — declared in prisma/schema/accounting.prisma. */
+  baseChartTemplateNode: Delegate;
+  /** `accounting.base_chart_adoptions` — declared in prisma/schema/accounting.prisma. */
+  baseChartAdoption: Delegate;
+  /** `accounting.detail_structure_versions` — declared in prisma/schema/accounting.prisma. */
+  detailStructureVersion: Delegate;
+  /** `accounting.detail_structure_levels` — declared in prisma/schema/accounting.prisma. */
+  detailStructureLevel: Delegate;
+  /** `accounting.details` — declared in prisma/schema/accounting.prisma. */
+  detail: Delegate;
 }
 
 const PrismaClientImpl = class {
@@ -176,6 +218,69 @@ const PrismaClientImpl = class {
     return this.delegate;
   }
   get documentRelation(): Delegate {
+    return this.delegate;
+  }
+  get financialArea(): Delegate {
+    return this.delegate;
+  }
+  get fiscalYear(): Delegate {
+    return this.delegate;
+  }
+  get accountingPeriod(): Delegate {
+    return this.delegate;
+  }
+  get codingStructureVersion(): Delegate {
+    return this.delegate;
+  }
+  get codingStructureLevel(): Delegate {
+    return this.delegate;
+  }
+  get accountingConfiguration(): Delegate {
+    return this.delegate;
+  }
+  get accountingConfigurationLevel(): Delegate {
+    return this.delegate;
+  }
+  get account(): Delegate {
+    return this.delegate;
+  }
+  get accountingDocument(): Delegate {
+    return this.delegate;
+  }
+  get accountingDocumentLine(): Delegate {
+    return this.delegate;
+  }
+  get accountingPostingOperation(): Delegate {
+    return this.delegate;
+  }
+  get ledgerEntry(): Delegate {
+    return this.delegate;
+  }
+  get accountBalanceProjection(): Delegate {
+    return this.delegate;
+  }
+  get baseChartTemplate(): Delegate {
+    return this.delegate;
+  }
+  get baseChartTemplateVersion(): Delegate {
+    return this.delegate;
+  }
+  get baseChartTemplateLevel(): Delegate {
+    return this.delegate;
+  }
+  get baseChartTemplateNode(): Delegate {
+    return this.delegate;
+  }
+  get baseChartAdoption(): Delegate {
+    return this.delegate;
+  }
+  get detailStructureVersion(): Delegate {
+    return this.delegate;
+  }
+  get detailStructureLevel(): Delegate {
+    return this.delegate;
+  }
+  get detail(): Delegate {
     return this.delegate;
   }
 } as unknown as { new (options: { adapter: unknown }): PrismaClient };

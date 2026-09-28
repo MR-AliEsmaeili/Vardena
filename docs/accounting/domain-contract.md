@@ -6,7 +6,7 @@ Produced by Task 10.1
 > **Implementation-status correction (2026-09-26 —
 > [`../repository-documentation-audit.md`](../repository-documentation-audit.md)).**
 > The original header and the boxed note below said "nothing is implemented"
-> and called ADR-0026 *Proposed*. Both statements are factually out of date:
+> and called ADR-0026 _Proposed_. Both statements are factually out of date:
 > **[ADR-0026](../adr/0026-accounting-bounded-context.md) was Accepted on
 > 2026-09-14**, and the contract's foundation (financial areas, fiscal years,
 > periods), coding structure + chart of accounts, accounting configurations,
@@ -19,22 +19,22 @@ Produced by Task 10.1
 > acceptance. The contract text below is unchanged and remains binding; its
 > DECIDED / EXPERT-GATED / DEFERRED markers and every open OQ keep their meaning.
 
-| | |
-|---|---|
-| Companion decision | [ADR-0026 — Accounting bounded context](../adr/0026-accounting-bounded-context.md) (**Accepted 2026-09-14**; this table said "Proposed" — corrected 2026-09-26) |
-| Refines | [`architecture/domain/accounting-domain-analysis.md`](../architecture/domain/accounting-domain-analysis.md) (options/analysis record — still valid), blueprint §9, D-03/D-11/D-12/D-19 |
-| Binds | every future Accounting schema, migration, service, API, report and integration |
-| Must not contradict | ADR-0021/0022/0023/0024/0025, AR-07/08/12/13/14/15/16/21/22, `docs/security.md`, `docs/database-strategy.md` |
-| Raises / updates | OQ-39 … OQ-43 (new); notes added to OQ-03, OQ-11, OQ-12, OQ-23, OQ-25, OQ-27, OQ-31 |
+|                     |                                                                                                                                                                                        |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Companion decision  | [ADR-0026 — Accounting bounded context](../adr/0026-accounting-bounded-context.md) (**Accepted 2026-09-14**; this table said "Proposed" — corrected 2026-09-26)                        |
+| Refines             | [`architecture/domain/accounting-domain-analysis.md`](../architecture/domain/accounting-domain-analysis.md) (options/analysis record — still valid), blueprint §9, D-03/D-11/D-12/D-19 |
+| Binds               | every future Accounting schema, migration, service, API, report and integration                                                                                                        |
+| Must not contradict | ADR-0021/0022/0023/0024/0025, AR-07/08/12/13/14/15/16/21/22, `docs/security.md`, `docs/database-strategy.md`                                                                           |
+| Raises / updates    | OQ-39 … OQ-43 (new); notes added to OQ-03, OQ-11, OQ-12, OQ-23, OQ-25, OQ-27, OQ-31                                                                                                    |
 
 > **This document authorizes no code.** There is no Accounting Prisma schema, no
 > migration, no controller, no service, no report and no frontend behind it. Every
-> "shape" below is *conceptual* — the vocabulary, the invariants and the boundaries
+> "shape" below is _conceptual_ — the vocabulary, the invariants and the boundaries
 > that a later task must respect. Where a decision needs an accountant, a tax
 > expert or the product owner, it is **not** made here; it is registered as an OQ.
 >
-> **Design goal (Task 10.1 §35):** make the Accounting model *difficult to get
-> wrong* before making it easy to code. A wrong accounting abstraction contaminates
+> **Design goal (Task 10.1 §35):** make the Accounting model _difficult to get
+> wrong_ before making it easy to code. A wrong accounting abstraction contaminates
 > Inventory, Sales, Purchasing, Treasury, Reporting, Tax, year closing and Audit.
 
 ---
@@ -43,11 +43,11 @@ Produced by Task 10.1
 
 Every normative statement carries one of three markers:
 
-| Marker | Meaning | Consequence |
-|---|---|---|
-| **DECIDED** (`AC-D-nn`) | An architecture/domain decision taken in this task, inside the existing architecture rules and precedents. It is *ours* to make (structure, ownership, boundaries, invariants) — it is not an accounting policy. | Binding on later tasks. Changing it needs a superseding ADR. |
-| **EXPERT-GATED** (`OQ-nn`) | A business/accounting/legal/tax policy that must not be invented (AR-31, AG-09). The contract fixes the *shape* so that any answer fits without a rewrite; the *answer* stays open. | Blocked until answered by the named owner. |
-| **DEFERRED** | Out of the current boundary on purpose, with the seam recorded so deferral does not become impossibility (e.g. multi-currency, consolidation). | No code, no columns; only a documented seam. |
+| Marker                     | Meaning                                                                                                                                                                                                          | Consequence                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| **DECIDED** (`AC-D-nn`)    | An architecture/domain decision taken in this task, inside the existing architecture rules and precedents. It is _ours_ to make (structure, ownership, boundaries, invariants) — it is not an accounting policy. | Binding on later tasks. Changing it needs a superseding ADR. |
+| **EXPERT-GATED** (`OQ-nn`) | A business/accounting/legal/tax policy that must not be invented (AR-31, AG-09). The contract fixes the _shape_ so that any answer fits without a rewrite; the _answer_ stays open.                              | Blocked until answered by the named owner.                   |
+| **DEFERRED**               | Out of the current boundary on purpose, with the seam recorded so deferral does not become impossibility (e.g. multi-currency, consolidation).                                                                   | No code, no columns; only a documented seam.                 |
 
 Identifiers:
 
@@ -105,45 +105,45 @@ Domain benchmarking was performed before modelling (Task 10.1 §3). Three kinds 
 input are kept **separate** throughout this contract, because conflating them is how
 amateur accounting models get built:
 
-| Class | What it means here | How it is used |
-|---|---|---|
-| **A. Established ERP / double-entry patterns** | Concepts that are structural consequences of double-entry bookkeeping and appear across serious ERP accounting designs (chart of accounts, account groups/number ranges, fiscal-year + posting-period control, subledger → ledger transfer, analytical dimensions, document reversal instead of edit). | May be adopted as **DECIDED** shape, because they are architecture, not jurisdiction. |
-| **B. Iranian ERP practice** | Concepts that Iranian accounting/ERP products converged on because Iranian businesses ask for them: `گروه / کل / معین / تفصیلی` account levels with user-defined code length per level, `تفصیلی شناور` (floating detail) with detail *groups*, `حوزه مالی` (financial area) distinct from `شعبه` (branch), `سند موقت → دائم` (temporary → final voucher), a review area for vouchers sent by other subsystems, `سند افتتاحیه / اختتامیه / بستن حساب‌های موقت / انتقال دوره`, cost allocation (`تسهیم`), currency/quantity columns on vouchers, electronic voucher attachments. | Adopted as **shape support** (the model must be able to express them), never as a mandated policy. |
-| **C. Iranian legal / tax / e-ledger requirements** | Statutory obligations reported by secondary sources: legal books under Article 95 of the Direct Taxes Act and the Commercial Code (`دفتر روزنامه`, `دفتر کل`, `دفتر مشترک`, `دفتر درآمد و هزینه`), book registration before use, journal-entry timing limits, books kept in Persian and in the Iranian currency, prohibition of deleting entries from electronic books, branch operations recorded in the head-office books, Article 169 seasonal transaction reports, the Taxpayer System / electronic invoice law, retention windows. | Treated as **external domain requirements to be validated** with an accountant and current authoritative sources (**OQ-43**). Nothing here is hardcoded as a rule, a column or a constant. The architecture only guarantees that such requirements remain *expressible and auditable* later. |
+| Class                                              | What it means here                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | How it is used                                                                                                                                                                                                                                                                               |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A. Established ERP / double-entry patterns**     | Concepts that are structural consequences of double-entry bookkeeping and appear across serious ERP accounting designs (chart of accounts, account groups/number ranges, fiscal-year + posting-period control, subledger → ledger transfer, analytical dimensions, document reversal instead of edit).                                                                                                                                                                                                                                                                         | May be adopted as **DECIDED** shape, because they are architecture, not jurisdiction.                                                                                                                                                                                                        |
+| **B. Iranian ERP practice**                        | Concepts that Iranian accounting/ERP products converged on because Iranian businesses ask for them: `گروه / کل / معین / تفصیلی` account levels with user-defined code length per level, `تفصیلی شناور` (floating detail) with detail _groups_, `حوزه مالی` (financial area) distinct from `شعبه` (branch), `سند موقت → دائم` (temporary → final voucher), a review area for vouchers sent by other subsystems, `سند افتتاحیه / اختتامیه / بستن حساب‌های موقت / انتقال دوره`, cost allocation (`تسهیم`), currency/quantity columns on vouchers, electronic voucher attachments. | Adopted as **shape support** (the model must be able to express them), never as a mandated policy.                                                                                                                                                                                           |
+| **C. Iranian legal / tax / e-ledger requirements** | Statutory obligations reported by secondary sources: legal books under Article 95 of the Direct Taxes Act and the Commercial Code (`دفتر روزنامه`, `دفتر کل`, `دفتر مشترک`, `دفتر درآمد و هزینه`), book registration before use, journal-entry timing limits, books kept in Persian and in the Iranian currency, prohibition of deleting entries from electronic books, branch operations recorded in the head-office books, Article 169 seasonal transaction reports, the Taxpayer System / electronic invoice law, retention windows.                                        | Treated as **external domain requirements to be validated** with an accountant and current authoritative sources (**OQ-43**). Nothing here is hardcoded as a rule, a column or a constant. The architecture only guarantees that such requirements remain _expressible and auditable_ later. |
 
 > **Honesty note on sources.** Class C items below were read on secondary
 > (commercial/legal-summary) pages, not on an official gazette. They are recorded as
-> *reported* requirements with their sources so an accountant can confirm, correct or
+> _reported_ requirements with their sources so an accountant can confirm, correct or
 > reject them. **No architectural constant in this contract depends on any of them.**
 
 ### 2.1 Class A — established ERP patterns observed
 
-| Pattern | Observed in | Contract use |
-|---|---|---|
-| Chart of accounts as its own object, assigned to the accounting entity; account master split into a chart-level segment (number, group, nature) and an entity-level segment (currency, posting controls) | SAP FI (chart of accounts + company-code segment) | §8: one account object, organization-scoped, with area applicability; §24 keeps the entity-level seam |
-| Account **groups** with number ranges and field/status control | SAP FI account groups | §9: coding structure + reserved ranges, code-defined |
-| Fiscal-year **variant** (12 normal periods + special/adjustment periods, shortened years, non-calendar years, year-shift) and a separate **posting-period variant** opened/closed per entity and account type | SAP OB29/OB52 | §6/§7: fiscal year + period rows with explicit dates and status; multiple simultaneously open periods supported; adjustment-period vocabulary deferred (OQ-23) |
-| Subledger documents produce **subledger journal account entries** through per-module **posting profiles**, which are then transferred to the ledger | Dynamics 365 Finance | §16/§20: the source-posting contract; posting rules are Accounting-owned configuration, never source-module code (AR-16) |
-| **Account structures** declare which financial dimensions are valid/required per main account; dimensions are typed values, validated at posting; fixed/derived dimension values exist | Dynamics 365 | §10: dimension compatibility per account + per-binding requirement (`required`/`optional`/`forbidden`), validated on the line |
-| One **ledger** per legal entity; up to N posting layers for parallel accounting standards | Dynamics 365 | §5: financial area is the ledger-scope analogue inside one organization; parallel posting layers are **DEFERRED** (not needed, seam noted) |
-| Reconciliation accounts: subledger (AR/AP/asset) posts are mirrored into a GL control account automatically | SAP FI | §10/§12: control **roles** (D-12) referenced by posting rules; detail dimensions carry the counterparty |
-| Reversal instead of edit; document change rules; balances carried forward by an explicit periodic program | SAP FB08/F.16/OB32 | §15: Final is immutable; correction = counter-document; §6: year transition is an explicit operation |
-| Immutability of posted ledger lines; corrections are counter-records | AR-13, `database-strategy.md` §7 (already binding in this repo) | §15, §25 |
+| Pattern                                                                                                                                                                                                       | Observed in                                                     | Contract use                                                                                                                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chart of accounts as its own object, assigned to the accounting entity; account master split into a chart-level segment (number, group, nature) and an entity-level segment (currency, posting controls)      | SAP FI (chart of accounts + company-code segment)               | §8: one account object, organization-scoped, with area applicability; §24 keeps the entity-level seam                                                          |
+| Account **groups** with number ranges and field/status control                                                                                                                                                | SAP FI account groups                                           | §9: coding structure + reserved ranges, code-defined                                                                                                           |
+| Fiscal-year **variant** (12 normal periods + special/adjustment periods, shortened years, non-calendar years, year-shift) and a separate **posting-period variant** opened/closed per entity and account type | SAP OB29/OB52                                                   | §6/§7: fiscal year + period rows with explicit dates and status; multiple simultaneously open periods supported; adjustment-period vocabulary deferred (OQ-23) |
+| Subledger documents produce **subledger journal account entries** through per-module **posting profiles**, which are then transferred to the ledger                                                           | Dynamics 365 Finance                                            | §16/§20: the source-posting contract; posting rules are Accounting-owned configuration, never source-module code (AR-16)                                       |
+| **Account structures** declare which financial dimensions are valid/required per main account; dimensions are typed values, validated at posting; fixed/derived dimension values exist                        | Dynamics 365                                                    | §10: dimension compatibility per account + per-binding requirement (`required`/`optional`/`forbidden`), validated on the line                                  |
+| One **ledger** per legal entity; up to N posting layers for parallel accounting standards                                                                                                                     | Dynamics 365                                                    | §5: financial area is the ledger-scope analogue inside one organization; parallel posting layers are **DEFERRED** (not needed, seam noted)                     |
+| Reconciliation accounts: subledger (AR/AP/asset) posts are mirrored into a GL control account automatically                                                                                                   | SAP FI                                                          | §10/§12: control **roles** (D-12) referenced by posting rules; detail dimensions carry the counterparty                                                        |
+| Reversal instead of edit; document change rules; balances carried forward by an explicit periodic program                                                                                                     | SAP FB08/F.16/OB32                                              | §15: Final is immutable; correction = counter-document; §6: year transition is an explicit operation                                                           |
+| Immutability of posted ledger lines; corrections are counter-records                                                                                                                                          | AR-13, `database-strategy.md` §7 (already binding in this repo) | §15, §25                                                                                                                                                       |
 
 ### 2.2 Class B — Iranian ERP practice observed
 
-| Concept | Reported shape | Contract use |
-|---|---|---|
-| Account coding as a tree with user-defined level titles and **code length per level** (up to 8 levels reported); codes generated automatically or entered manually | FaraPayam integrated ERP; System Group coding guide; several coding articles (2–4 digits per level typical) | §9: configurable coding structure (levels, digit lengths, separators as display-only, max depth), versioned and pinned per account |
-| Four **floating details** (`تفصیلی شناور`), each with its own tree (up to 5 levels reported), grouped by **detail groups** (`گروه تفصیلی`); the last layer of the account tree at any level can be linked to one or more detail groups; each detail item declares the **financial areas** where it is accessible | FaraPayam integrated ERP | §10/§11: dimensions are organization-configured (count not hardcoded to four), items are typed rows with area applicability, accounts attach via dimension groups |
-| **Financial area** (`حوزه مالی`) and **branch** (`شعبه`) as *separate* subsystems, plus aggregation/consolidation (`تجمیع و تلفیق`) for holdings | FaraPayam product overview | §5: financial area ≠ branch ≠ organization; consolidation DEFERRED |
-| Voucher (`سند حسابداری`) space with currency, quantity and reference-number columns; automatic balancing; voucher copy/templates (`سند الگو`); account/detail pickers as list, tree or last level; electronic attachment archive | FaraPayam | §12: reference numbers = source reference + document relations (ADR-0023); currency/quantity = reserved seams (§24.1, §12.6); templates/attachments DEFERRED |
-| A **pre-draft area** (`پیش نویس اسناد`) where vouchers sent from other subsystems are reviewed: approved → enters the voucher list; rejected → returned to the source subsystem | FaraPayam | §17: posting Mode B is this pattern, expressed with the existing Document Foundation (`draft_required` + entry states) and Workflow Foundation approval — no new mechanism |
-| Voucher lifecycle `موقت → دائم` (temporary → final), review before finalization, approval stages, numbering, making documents final (`قطعی کردن`) | Sepidar/Rahkaran course outlines and tutorials | §15: reuse the Foundation's `draft`/`temporary`/`final` vocabulary verbatim (ADR-0023, Task 8 §7) |
-| Period-end / year-end operations: close temporary accounts (`بستن حساب‌های موقت`, `خلاصه سود و زیان`), closing document (`سند اختتامیه`), period transfer (`انتقال دوره`), opening document (`سند افتتاحیه`) — manual or mechanized | Rayvarz, Orash, Parmis, FaraPayam | §6.6: year transition is an explicit, permission-gated operation producing ordinary accounting documents; automation is EXPERT-GATED (OQ-23) |
-| Fiscal periods of different kinds: normal, Gregorian-aligned, shorter than a year, 16-month; branches sharing the account/center tables; unlimited currencies and daily rates | Rayvarz | §6/§7: non-12-month years must be expressible; contiguity is not enforced, overlap is rejected; §24 multi-currency seam |
-| Cost allocation tables and bases (`تسهیم هزینه`), with the allocation voucher generated by the system | FaraPayam | DEFERRED (no allocation engine; it would be a rules engine — §3.3) |
-| Coding of the inventory↔accounting interface (account codes per warehouse / item group / receipt-issue type) and of the fixed-asset↔accounting interface | FaraPayam | §20: this *is* the posting-rule configuration, owned by Accounting (AR-16), expert-gated |
+| Concept                                                                                                                                                                                                                                                                                                          | Reported shape                                                                                              | Contract use                                                                                                                                                               |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Account coding as a tree with user-defined level titles and **code length per level** (up to 8 levels reported); codes generated automatically or entered manually                                                                                                                                               | FaraPayam integrated ERP; System Group coding guide; several coding articles (2–4 digits per level typical) | §9: configurable coding structure (levels, digit lengths, separators as display-only, max depth), versioned and pinned per account                                         |
+| Four **floating details** (`تفصیلی شناور`), each with its own tree (up to 5 levels reported), grouped by **detail groups** (`گروه تفصیلی`); the last layer of the account tree at any level can be linked to one or more detail groups; each detail item declares the **financial areas** where it is accessible | FaraPayam integrated ERP                                                                                    | §10/§11: dimensions are organization-configured (count not hardcoded to four), items are typed rows with area applicability, accounts attach via dimension groups          |
+| **Financial area** (`حوزه مالی`) and **branch** (`شعبه`) as _separate_ subsystems, plus aggregation/consolidation (`تجمیع و تلفیق`) for holdings                                                                                                                                                                 | FaraPayam product overview                                                                                  | §5: financial area ≠ branch ≠ organization; consolidation DEFERRED                                                                                                         |
+| Voucher (`سند حسابداری`) space with currency, quantity and reference-number columns; automatic balancing; voucher copy/templates (`سند الگو`); account/detail pickers as list, tree or last level; electronic attachment archive                                                                                 | FaraPayam                                                                                                   | §12: reference numbers = source reference + document relations (ADR-0023); currency/quantity = reserved seams (§24.1, §12.6); templates/attachments DEFERRED               |
+| A **pre-draft area** (`پیش نویس اسناد`) where vouchers sent from other subsystems are reviewed: approved → enters the voucher list; rejected → returned to the source subsystem                                                                                                                                  | FaraPayam                                                                                                   | §17: posting Mode B is this pattern, expressed with the existing Document Foundation (`draft_required` + entry states) and Workflow Foundation approval — no new mechanism |
+| Voucher lifecycle `موقت → دائم` (temporary → final), review before finalization, approval stages, numbering, making documents final (`قطعی کردن`)                                                                                                                                                                | Sepidar/Rahkaran course outlines and tutorials                                                              | §15: reuse the Foundation's `draft`/`temporary`/`final` vocabulary verbatim (ADR-0023, Task 8 §7)                                                                          |
+| Period-end / year-end operations: close temporary accounts (`بستن حساب‌های موقت`, `خلاصه سود و زیان`), closing document (`سند اختتامیه`), period transfer (`انتقال دوره`), opening document (`سند افتتاحیه`) — manual or mechanized                                                                              | Rayvarz, Orash, Parmis, FaraPayam                                                                           | §6.6: year transition is an explicit, permission-gated operation producing ordinary accounting documents; automation is EXPERT-GATED (OQ-23)                               |
+| Fiscal periods of different kinds: normal, Gregorian-aligned, shorter than a year, 16-month; branches sharing the account/center tables; unlimited currencies and daily rates                                                                                                                                    | Rayvarz                                                                                                     | §6/§7: non-12-month years must be expressible; contiguity is not enforced, overlap is rejected; §24 multi-currency seam                                                    |
+| Cost allocation tables and bases (`تسهیم هزینه`), with the allocation voucher generated by the system                                                                                                                                                                                                            | FaraPayam                                                                                                   | DEFERRED (no allocation engine; it would be a rules engine — §3.3)                                                                                                         |
+| Coding of the inventory↔accounting interface (account codes per warehouse / item group / receipt-issue type) and of the fixed-asset↔accounting interface                                                                                                                                                         | FaraPayam                                                                                                   | §20: this _is_ the posting-rule configuration, owned by Accounting (AR-16), expert-gated                                                                                   |
 
 ### 2.3 Class C — Iranian legal/tax inputs (EXTERNAL REQUIREMENTS → OQ-43)
 
@@ -151,19 +151,19 @@ Reported requirements that an accountant and current authoritative sources must
 confirm. Each row states **only** the architectural consequence the contract already
 provides, so that a confirmed requirement needs no redesign:
 
-| # | Reported requirement (secondary sources) | Architectural consequence already guaranteed |
-|---|---|---|
-| C1 | Legal books from a tax viewpoint: journal (`دفتر روزنامه`), general ledger (`دفتر کل`), combined journal+ledger, and an income/expense book for some taxpayer groups; taxpayers are classified into groups with different book duties (Art. 95 Direct Taxes Act + its executive regulation) | Journal = chronological listing of Final documents by `document_date` + number; general ledger = per-account rollup; both are **reporting projections** over the same immutable lines (§19). A taxpayer-group distinction is *report configuration*, not schema. |
-| C2 | Books must be registered/sealed before use (Commercial Code arts. 11–12 as summarized), pages/entries must not be missing | Numbering gaps are visible and auditable: the numbering **allocation ledger** (ADR-0023 §3) records every serial handed out; `reuse_policy = never` is the default. Gap *policy* stays OQ-12. |
-| C3 | Journal entries must be recorded chronologically and without undue delay (a 15-day delay limit is reported, beyond which book validity is at risk) | The line/header contract keeps **both** the business date (`document_date`) and the system timestamps (`created_at`, `finalized_at`), so any entry-timing rule is measurable and reportable later with no migration (§12.3). |
-| C4 | Books must be kept in Persian and in the Iranian currency; entries must not be deleted from electronic books | Persian titles are first-class attributes on accounts/detail items (§8, §10 — display localization itself is OQ-02); Final documents and lines are **never** updated or deleted (§15, AC-I-05/06); base currency is OQ-03. |
-| C5 | Branch operations must be recorded in the head-office books; mismatch between books and system data is a rejection cause | Branch is a scope column on the document (§12.4) inside **one** book set; financial area is the book selector (§5). Reports can be produced per branch and in total from the same lines. |
-| C6 | Article 169 / 169-مکرر seasonal transaction reports; electronic invoices registered in the Taxpayer System count as the Article 169 registration (Art. 7 of the Terminals & Taxpayer System Law); VAT invoice content requirements | These are **Sales/Treasury/Integration** concerns delivered through the outbox/adapters (ADR-0004, OQ-05, OQ-30). Accounting only needs the source reference and the immutable line detail to reconcile against them (§20.3). |
-| C7 | Retention/archival of books and vouchers | Retention is deployment policy (OQ-17); the contract guarantees nothing referenced by history is ever physically deleted (§8.6, §15). |
+| #   | Reported requirement (secondary sources)                                                                                                                                                                                                                                                    | Architectural consequence already guaranteed                                                                                                                                                                                                                     |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1  | Legal books from a tax viewpoint: journal (`دفتر روزنامه`), general ledger (`دفتر کل`), combined journal+ledger, and an income/expense book for some taxpayer groups; taxpayers are classified into groups with different book duties (Art. 95 Direct Taxes Act + its executive regulation) | Journal = chronological listing of Final documents by `document_date` + number; general ledger = per-account rollup; both are **reporting projections** over the same immutable lines (§19). A taxpayer-group distinction is _report configuration_, not schema. |
+| C2  | Books must be registered/sealed before use (Commercial Code arts. 11–12 as summarized), pages/entries must not be missing                                                                                                                                                                   | Numbering gaps are visible and auditable: the numbering **allocation ledger** (ADR-0023 §3) records every serial handed out; `reuse_policy = never` is the default. Gap _policy_ stays OQ-12.                                                                    |
+| C3  | Journal entries must be recorded chronologically and without undue delay (a 15-day delay limit is reported, beyond which book validity is at risk)                                                                                                                                          | The line/header contract keeps **both** the business date (`document_date`) and the system timestamps (`created_at`, `finalized_at`), so any entry-timing rule is measurable and reportable later with no migration (§12.3).                                     |
+| C4  | Books must be kept in Persian and in the Iranian currency; entries must not be deleted from electronic books                                                                                                                                                                                | Persian titles are first-class attributes on accounts/detail items (§8, §10 — display localization itself is OQ-02); Final documents and lines are **never** updated or deleted (§15, AC-I-05/06); base currency is OQ-03.                                       |
+| C5  | Branch operations must be recorded in the head-office books; mismatch between books and system data is a rejection cause                                                                                                                                                                    | Branch is a scope column on the document (§12.4) inside **one** book set; financial area is the book selector (§5). Reports can be produced per branch and in total from the same lines.                                                                         |
+| C6  | Article 169 / 169-مکرر seasonal transaction reports; electronic invoices registered in the Taxpayer System count as the Article 169 registration (Art. 7 of the Terminals & Taxpayer System Law); VAT invoice content requirements                                                          | These are **Sales/Treasury/Integration** concerns delivered through the outbox/adapters (ADR-0004, OQ-05, OQ-30). Accounting only needs the source reference and the immutable line detail to reconcile against them (§20.3).                                    |
+| C7  | Retention/archival of books and vouchers                                                                                                                                                                                                                                                    | Retention is deployment policy (OQ-17); the contract guarantees nothing referenced by history is ever physically deleted (§8.6, §15).                                                                                                                            |
 
 **Nothing in C1–C7 is implemented, asserted as law, or encoded as a constant.** They
 are the reason the contract insists on: immutable Final documents, stored period/year
-resolution, business date *and* system timestamps, allocation-ledger numbering, and
+resolution, business date _and_ system timestamps, allocation-ledger numbering, and
 typed Persian-capable titles.
 
 ### 2.4 Provenance
@@ -208,17 +208,17 @@ equivalence, VAT invoice content). **All Class C items are OQ-43 inputs, not rul
 
 ### 3.1 What Accounting owns — and what it must never own
 
-| Accounting owns (schema `accounting`, module `accounting`) | Accounting must never own |
-|---|---|
-| Financial areas (`حوزه مالی`) and area access data | Organization structure: organizations, branches, departments, employees (Organization module — ADR-0020/0021) |
-| Fiscal years, accounting periods, their status transitions | Party master data (Organization module — D-02) |
-| Coding structure, chart of accounts, accounts, control-role mapping | Stock quantities, movements, balances, valuation quantities (Inventory — ADR-0017/0022) |
-| Detail dimensions, dimension groups, detail items (floating details) | Operational document lifecycles (owning business modules) |
-| Accounting documents + lines, their lifecycle, corrections | Pricing, discounts, tax computation (Sales/Purchasing/Tax — OQ-30/OQ-34) |
-| The **event/payload → accounting document mapping** (posting rules as configuration) | Whether stock may go negative (Inventory policy — ADR-0022 §5) |
-| Account/period balance projections for reporting | Numbering *mechanics* (Documents module — ADR-0023); workflow *mechanics* (Workflow module — ADR-0024) |
-| Year-transition operations (closing/opening/period transfer) as explicit actions | Authentication, tenancy, principal identity (Identity/Users/RBAC) |
-| Its own RBAC permission registry (`Accounting.*`) | Audit *storage* (Audit module — AR-23); Accounting only emits facts |
+| Accounting owns (schema `accounting`, module `accounting`)                           | Accounting must never own                                                                                     |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| Financial areas (`حوزه مالی`) and area access data                                   | Organization structure: organizations, branches, departments, employees (Organization module — ADR-0020/0021) |
+| Fiscal years, accounting periods, their status transitions                           | Party master data (Organization module — D-02)                                                                |
+| Coding structure, chart of accounts, accounts, control-role mapping                  | Stock quantities, movements, balances, valuation quantities (Inventory — ADR-0017/0022)                       |
+| Detail dimensions, dimension groups, detail items (floating details)                 | Operational document lifecycles (owning business modules)                                                     |
+| Accounting documents + lines, their lifecycle, corrections                           | Pricing, discounts, tax computation (Sales/Purchasing/Tax — OQ-30/OQ-34)                                      |
+| The **event/payload → accounting document mapping** (posting rules as configuration) | Whether stock may go negative (Inventory policy — ADR-0022 §5)                                                |
+| Account/period balance projections for reporting                                     | Numbering _mechanics_ (Documents module — ADR-0023); workflow _mechanics_ (Workflow module — ADR-0024)        |
+| Year-transition operations (closing/opening/period transfer) as explicit actions     | Authentication, tenancy, principal identity (Identity/Users/RBAC)                                             |
+| Its own RBAC permission registry (`Accounting.*`)                                    | Audit _storage_ (Audit module — AR-23); Accounting only emits facts                                           |
 
 **Boundary rules that follow (AR-07/08/16, ADR-0005):** Accounting never reads
 `inventory.*`, `sales.*`, `organization.*` or `documents.*` tables; other modules
@@ -234,28 +234,28 @@ how it may be used.
 
 #### (a) Accounting concepts (owned by Accounting, persisted in `accounting`)
 
-| Concept | Persian | Owner | Status | § |
-|---|---|---|---|---|
-| Financial Area | حوزه مالی | Accounting | DECIDED shape / EXPERT-GATED multiplicity (OQ-40) | 5 |
-| Fiscal Year | سال مالی | Accounting | DECIDED shape / EXPERT-GATED policy (OQ-23) | 6 |
-| Accounting Period | دوره مالی | Accounting | DECIDED shape / EXPERT-GATED policy (OQ-23) | 7 |
-| Coding Structure (+ level definitions, versioning) | ساختار کدینگ | Accounting | DECIDED / lengths & depth = configuration (OQ-25) | 9 |
-| Chart of Accounts | کدینگ حساب‌ها / درخت حساب | Accounting | DECIDED shape / content EXPERT-GATED (OQ-25) | 8 |
-| Account (code, title, level, parent, nature, type, postable, active) | حساب (گروه/کل/معین/تفصیلی) | Accounting | DECIDED | 8 |
-| Control-role mapping (account ↔ code-defined role) | نگاشت حساب‌ها | Accounting | DECIDED mechanism (D-12) / roles+mapping EXPERT-GATED | 8.7 |
-| Detail Dimension | تفصیلی (بخش) | Accounting | DECIDED shape / count & requiredness EXPERT-GATED (OQ-41) | 10 |
-| Detail Dimension Group | گروه تفصیلی | Accounting | DECIDED | 10.4 |
-| Detail Item (floating detail) | تفصیلی شناور | Accounting | DECIDED shape / semantics EXPERT-GATED (OQ-41) | 11 |
-| Accounting Document (header) | سند حسابداری | Accounting | DECIDED | 12 |
-| Accounting Document Line | ردیف سند | Accounting | DECIDED | 12.5 |
-| Line dimension assignment | تفصیل ردیف | Accounting | DECIDED | 10.6 |
-| Debit / Credit amounts | بدهکار / بستانکار | Accounting | DECIDED representation | 13 |
-| Finalization / Posting | قطعی کردن سند | Accounting | DECIDED mechanism / policy EXPERT-GATED (OQ-42) | 15, 17 |
-| Reversal / Correction / Replacement | ابطال / اصلاح / جایگزینی | Accounting | DECIDED mechanisms / windows EXPERT-GATED (OQ-27) | 15.4 |
-| Posting rule (mapping configuration) | کدینگ رابط / قواعد سند | Accounting | DECIDED location / content EXPERT-GATED (OQ-24/25/30) | 20.2 |
-| Accounting configuration (switches: `accounting.enabled`, posting modes) | پیکربندی مالی | Accounting | DECIDED (D-19) | 17, 22 |
-| System-posting idempotency ledger | — | Accounting | DECIDED (ADR-0022 pattern) | 16.4 |
-| Account / period balance projection | مانده حساب | Accounting | DECIDED direction / mechanism deferred | 19.3 |
+| Concept                                                                  | Persian                    | Owner      | Status                                                    | §      |
+| ------------------------------------------------------------------------ | -------------------------- | ---------- | --------------------------------------------------------- | ------ |
+| Financial Area                                                           | حوزه مالی                  | Accounting | DECIDED shape / EXPERT-GATED multiplicity (OQ-40)         | 5      |
+| Fiscal Year                                                              | سال مالی                   | Accounting | DECIDED shape / EXPERT-GATED policy (OQ-23)               | 6      |
+| Accounting Period                                                        | دوره مالی                  | Accounting | DECIDED shape / EXPERT-GATED policy (OQ-23)               | 7      |
+| Coding Structure (+ level definitions, versioning)                       | ساختار کدینگ               | Accounting | DECIDED / lengths & depth = configuration (OQ-25)         | 9      |
+| Chart of Accounts                                                        | کدینگ حساب‌ها / درخت حساب  | Accounting | DECIDED shape / content EXPERT-GATED (OQ-25)              | 8      |
+| Account (code, title, level, parent, nature, type, postable, active)     | حساب (گروه/کل/معین/تفصیلی) | Accounting | DECIDED                                                   | 8      |
+| Control-role mapping (account ↔ code-defined role)                       | نگاشت حساب‌ها              | Accounting | DECIDED mechanism (D-12) / roles+mapping EXPERT-GATED     | 8.7    |
+| Detail Dimension                                                         | تفصیلی (بخش)               | Accounting | DECIDED shape / count & requiredness EXPERT-GATED (OQ-41) | 10     |
+| Detail Dimension Group                                                   | گروه تفصیلی                | Accounting | DECIDED                                                   | 10.4   |
+| Detail Item (floating detail)                                            | تفصیلی شناور               | Accounting | DECIDED shape / semantics EXPERT-GATED (OQ-41)            | 11     |
+| Accounting Document (header)                                             | سند حسابداری               | Accounting | DECIDED                                                   | 12     |
+| Accounting Document Line                                                 | ردیف سند                   | Accounting | DECIDED                                                   | 12.5   |
+| Line dimension assignment                                                | تفصیل ردیف                 | Accounting | DECIDED                                                   | 10.6   |
+| Debit / Credit amounts                                                   | بدهکار / بستانکار          | Accounting | DECIDED representation                                    | 13     |
+| Finalization / Posting                                                   | قطعی کردن سند              | Accounting | DECIDED mechanism / policy EXPERT-GATED (OQ-42)           | 15, 17 |
+| Reversal / Correction / Replacement                                      | ابطال / اصلاح / جایگزینی   | Accounting | DECIDED mechanisms / windows EXPERT-GATED (OQ-27)         | 15.4   |
+| Posting rule (mapping configuration)                                     | کدینگ رابط / قواعد سند     | Accounting | DECIDED location / content EXPERT-GATED (OQ-24/25/30)     | 20.2   |
+| Accounting configuration (switches: `accounting.enabled`, posting modes) | پیکربندی مالی              | Accounting | DECIDED (D-19)                                            | 17, 22 |
+| System-posting idempotency ledger                                        | —                          | Accounting | DECIDED (ADR-0022 pattern)                                | 16.4   |
+| Account / period balance projection                                      | مانده حساب                 | Accounting | DECIDED direction / mechanism deferred                    | 19.3   |
 
 #### (b) Operational document concepts (owned elsewhere; Accounting references them logically)
 
@@ -284,18 +284,18 @@ Accounting — ADR-0004), and the Inventory→Accounting boundary (§20).
 
 ### 3.3 Shapes explicitly rejected (and why)
 
-| Temptation | Verdict | Reason |
-|---|---|---|
-| One universal `documents` table with an accounting "type" | **Rejected** | ADR-0019/0023 §2 already rejected it; per-type validation, FKs and report shapes cannot live in one table. Accounting documents are typed tables in `accounting`. |
-| Generic rules/expression engine for posting rules | **Rejected** | D-23, ADR-0018 §4: bounded configuration + code-defined vocabulary. Posting rules are typed configuration rows interpreted by Accounting code, reviewed by the accountant — never a scripting surface. |
-| EAV for accounts, dimensions or line attributes | **Rejected** | Blueprint §17: no constraints, no indexes, reports become pivots. Dimensions are rows in typed tables (§10). |
-| JSONB "flexible line" / ledger-in-JSONB | **Rejected** | `configurability-architecture.md` §5.2: never for amounts, quantities, statuses or ledger dimensions. Only descriptive custom fields are eligible for JSONB, and **not** on accounting lines (OQ-28). |
-| One physical table per account level (`groups`, `generals`, `subsidiaries`, `details`) | **Rejected** | Depth is configuration (reported up to 8 levels, §2.2); four tables would freeze depth at four and make the tree, code-prefix validation and rollups four-way joins. One adjacency table + level definitions (§8.2). |
-| Fixed four detail columns `detail_1_id … detail_4_id` on the line | **Rejected as the contract shape** | Hardcodes N=4 (Task 10.1 §12 forbids it). A typed child table keeps N configurable, uniqueness enforceable and reporting indexable (§10.6). May be revisited *only* as a reporting projection with its own ADR. |
-| Signed single-amount lines with a direction flag | **Considered, not chosen** | §13.3 explains: two non-negative columns make the balance invariant and the statutory column layouts direct aggregates and remove a sign-convention error class. |
-| Accounting writes triggered by SQL from Inventory/Sales | **Rejected** | AR-16/ADR-0005 and AC-I-13. |
-| Second tenant system for financial areas | **Rejected** | §5.7: area access is authorization *data* under the existing RBAC + organization posture (ADR-0021/0025); no second identity/tenancy mechanism. |
-| Microservices / separate accounting database | **Rejected** | ADR-0001/0008: one deployable, one database, schema per module. |
+| Temptation                                                                             | Verdict                            | Reason                                                                                                                                                                                                               |
+| -------------------------------------------------------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One universal `documents` table with an accounting "type"                              | **Rejected**                       | ADR-0019/0023 §2 already rejected it; per-type validation, FKs and report shapes cannot live in one table. Accounting documents are typed tables in `accounting`.                                                    |
+| Generic rules/expression engine for posting rules                                      | **Rejected**                       | D-23, ADR-0018 §4: bounded configuration + code-defined vocabulary. Posting rules are typed configuration rows interpreted by Accounting code, reviewed by the accountant — never a scripting surface.               |
+| EAV for accounts, dimensions or line attributes                                        | **Rejected**                       | Blueprint §17: no constraints, no indexes, reports become pivots. Dimensions are rows in typed tables (§10).                                                                                                         |
+| JSONB "flexible line" / ledger-in-JSONB                                                | **Rejected**                       | `configurability-architecture.md` §5.2: never for amounts, quantities, statuses or ledger dimensions. Only descriptive custom fields are eligible for JSONB, and **not** on accounting lines (OQ-28).                |
+| One physical table per account level (`groups`, `generals`, `subsidiaries`, `details`) | **Rejected**                       | Depth is configuration (reported up to 8 levels, §2.2); four tables would freeze depth at four and make the tree, code-prefix validation and rollups four-way joins. One adjacency table + level definitions (§8.2). |
+| Fixed four detail columns `detail_1_id … detail_4_id` on the line                      | **Rejected as the contract shape** | Hardcodes N=4 (Task 10.1 §12 forbids it). A typed child table keeps N configurable, uniqueness enforceable and reporting indexable (§10.6). May be revisited _only_ as a reporting projection with its own ADR.      |
+| Signed single-amount lines with a direction flag                                       | **Considered, not chosen**         | §13.3 explains: two non-negative columns make the balance invariant and the statutory column layouts direct aggregates and remove a sign-convention error class.                                                     |
+| Accounting writes triggered by SQL from Inventory/Sales                                | **Rejected**                       | AR-16/ADR-0005 and AC-I-13.                                                                                                                                                                                          |
+| Second tenant system for financial areas                                               | **Rejected**                       | §5.7: area access is authorization _data_ under the existing RBAC + organization posture (ADR-0021/0025); no second identity/tenancy mechanism.                                                                      |
+| Microservices / separate accounting database                                           | **Rejected**                       | ADR-0001/0008: one deployable, one database, schema per module.                                                                                                                                                      |
 
 ---
 
@@ -353,18 +353,18 @@ scope is indistinguishable from one that does not exist (§5.7).
 
 **DECIDED (`AC-D-02`).** A **Financial Area** is an Accounting-owned,
 organization-scoped **bookkeeping scope**: the boundary of one set of books. It
-selects *which book* an accounting document is written into, and it is the scope for
+selects _which book_ an accounting document is written into, and it is the scope for
 fiscal years, periods, document numbering and balance projections.
 
 It is **not**:
 
-| Not | Why |
-|---|---|
-| the Organization | Organization is the tenant/security boundary and the legal-entity candidate (ADR-0021, OQ-22). One organization may need more than one book scope; multi-company remains a separate decision (OQ-31). |
-| a Branch | Branch is Organization-owned operational structure and a **scope column** on documents/ledgers (ADR-0020 §1, D-01). Branch answers "where did this happen"; area answers "which book does it belong to". Iranian practice keeps `حوزه مالی` and `شعبه` as separate subsystems (§2.2). |
-| a Department | Department is responsibility master data (ADR-0020 §1); whether it doubles as an accounting dimension is expert-gated (OQ-22). |
-| a legal entity / company | **DEFERRED.** Two legal entities in one database is OQ-22/OQ-31 and needs its own ADR. A financial area must not be used as a stealth company: no inter-area settlement, no consolidation, no separate statutory identity in this contract. |
-| a currency or a posting layer | Currency is OQ-03 (§24.1); parallel accounting layers (Dynamics "posting layers") are DEFERRED. |
+| Not                           | Why                                                                                                                                                                                                                                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| the Organization              | Organization is the tenant/security boundary and the legal-entity candidate (ADR-0021, OQ-22). One organization may need more than one book scope; multi-company remains a separate decision (OQ-31).                                                                                 |
+| a Branch                      | Branch is Organization-owned operational structure and a **scope column** on documents/ledgers (ADR-0020 §1, D-01). Branch answers "where did this happen"; area answers "which book does it belong to". Iranian practice keeps `حوزه مالی` and `شعبه` as separate subsystems (§2.2). |
+| a Department                  | Department is responsibility master data (ADR-0020 §1); whether it doubles as an accounting dimension is expert-gated (OQ-22).                                                                                                                                                        |
+| a legal entity / company      | **DEFERRED.** Two legal entities in one database is OQ-22/OQ-31 and needs its own ADR. A financial area must not be used as a stealth company: no inter-area settlement, no consolidation, no separate statutory identity in this contract.                                           |
+| a currency or a posting layer | Currency is OQ-03 (§24.1); parallel accounting layers (Dynamics "posting layers") are DEFERRED.                                                                                                                                                                                       |
 
 `AC-D-02` explicitly refuses the equation `Organization = Financial Area = Branch`
 (Task 10.1 §7). The three are independent axes; the contract keeps them separate so
@@ -390,7 +390,7 @@ areas, and it never belongs to "the organization" without an area.
 
 ### 5.3 Financial Area vs Branch
 
-- A branch is *operational* structure owned by Organization; a document may carry
+- A branch is _operational_ structure owned by Organization; a document may carry
   `branch_id` for reporting/scope (§12.4) **and** must carry `financial_area_id`.
 - No FK or derivation between branch and area exists. A branch may post into
   different areas over time (e.g. a branch whose activity is booked centrally, then
@@ -398,13 +398,13 @@ areas, and it never belongs to "the organization" without an area.
 - Reports: "per branch" = filter/group on `branch_id`; "per book" = filter/group on
   `financial_area_id`; "organization total" = all areas. This is what keeps
   `شعبه`-level reporting and `حوزه مالی`-level reporting both possible (Class C5).
-- Whether a *default* branch↔area association is convenient configuration is
+- Whether a _default_ branch↔area association is convenient configuration is
   EXPERT-GATED with OQ-40 (it must never be a derivation rule).
 
 ### 5.4 Chart of accounts, coding structure and fiscal years relative to the area
 
 **DECIDED (`AC-D-04`).** The **coding structure and the chart of accounts are
-organization-scoped**, with an *applicability* relationship to financial areas;
+organization-scoped**, with an _applicability_ relationship to financial areas;
 **fiscal years, periods, documents, numbering scopes and balances are area-scoped.**
 
 Rationale: Iranian practice reports one account tree with detail items declaring
@@ -425,7 +425,7 @@ all-areas, without moving tables.
   (many-to-many grant rows in `accounting`, with `created_by`/`created_at` and an
   explicit `is_default` per user).
 - Grants are **authorization data**, evaluated in the application service on top of
-  RBAC permissions. They are *not* roles, *not* a session claim, *not* a second
+  RBAC permissions. They are _not_ roles, _not_ a session claim, _not_ a second
   authentication system (§5.7).
 - A **default financial area** exists at two levels: (a) per user (UI preselection
   and the area used when a request omits one), and (b) per organization (at most one
@@ -462,15 +462,15 @@ untouched and remain the only tenancy decisions.
 
 ### 6.1 Conceptual shape
 
-| Attribute | Notes |
-|---|---|
-| `organization_id`, `financial_area_id` | scope (§4, §5.2) |
-| `code`, `title` | human identifiers, e.g. a Jalali year label or a name; localization is OQ-02. `code` unique per (organization, area) |
-| `start_date`, `end_date` | inclusive, date-only (calendar choice is OQ-23/OQ-02; the model stores dates, never a calendar system assumption) |
-| `status` | `open` \| `closed` \| `sealed` (closed list, code-defined) |
-| `is_active` | lifecycle flag (§6.5) |
-| `prior_year_id` | optional link to the previous year of the same (organization, area) — the year-transition chain |
-| audit columns | AR-12 |
+| Attribute                              | Notes                                                                                                                |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `organization_id`, `financial_area_id` | scope (§4, §5.2)                                                                                                     |
+| `code`, `title`                        | human identifiers, e.g. a Jalali year label or a name; localization is OQ-02. `code` unique per (organization, area) |
+| `start_date`, `end_date`               | inclusive, date-only (calendar choice is OQ-23/OQ-02; the model stores dates, never a calendar system assumption)    |
+| `status`                               | `open` \| `closed` \| `sealed` (closed list, code-defined)                                                           |
+| `is_active`                            | lifecycle flag (§6.5)                                                                                                |
+| `prior_year_id`                        | optional link to the previous year of the same (organization, area) — the year-transition chain                      |
+| audit columns                          | AR-12                                                                                                                |
 
 ### 6.2 Rules that are DECIDED
 
@@ -501,11 +501,11 @@ untouched and remain the only tenancy decisions.
    └─────────── reopen (unseal) ───────┘   ← distinct permission + reason + audit
 ```
 
-| Status | Meaning (DECIDED) | Posting | Corrections | Reopening |
-|---|---|---|---|---|
-| `open` | The year accepts documents in its **open** periods (§7) | allowed per period status | allowed per §15 | n/a |
-| `closed` | The year's ordinary activity is finished; the books are provisionally complete | rejected | only through an explicit, permission-gated period/year reopen, or by documents dated in another open year (policy = OQ-23/OQ-27) | `closed → open` requires `Accounting.FiscalYear.Reopen` + reason + audit |
-| `sealed` | The year is final: balances carried forward, statutory reporting basis frozen | rejected | rejected | `sealed → closed` requires a **distinct** permission (`Accounting.FiscalYear.Unseal`), a reason, and an audit record; whether it may ever be granted is OQ-23 |
+| Status   | Meaning (DECIDED)                                                              | Posting                   | Corrections                                                                                                                      | Reopening                                                                                                                                                     |
+| -------- | ------------------------------------------------------------------------------ | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `open`   | The year accepts documents in its **open** periods (§7)                        | allowed per period status | allowed per §15                                                                                                                  | n/a                                                                                                                                                           |
+| `closed` | The year's ordinary activity is finished; the books are provisionally complete | rejected                  | only through an explicit, permission-gated period/year reopen, or by documents dated in another open year (policy = OQ-23/OQ-27) | `closed → open` requires `Accounting.FiscalYear.Reopen` + reason + audit                                                                                      |
+| `sealed` | The year is final: balances carried forward, statutory reporting basis frozen  | rejected                  | rejected                                                                                                                         | `sealed → closed` requires a **distinct** permission (`Accounting.FiscalYear.Unseal`), a reason, and an audit record; whether it may ever be granted is OQ-23 |
 
 **There is no `initial` state and no `void` state** (Task 10.1 §8; the same rejection
 the Document Foundation made for documents — ADR-0023/Task 8 §7). Domain corrections
@@ -555,28 +555,28 @@ single "manage years" wildcard (OQ-21).
 
 ### 7.1 Conceptual shape
 
-| Attribute | Notes |
-|---|---|
-| `fiscal_year_id` (+ denormalized `organization_id`, `financial_area_id` for scope checks and indexing — ADR-0021 §3) | a period belongs to exactly one year |
-| `sequence` | 1-based ordinal inside the year; unique per (year, sequence) |
-| `title` | e.g. a month name; localization OQ-02 |
-| `start_date`, `end_date` | inclusive; must lie inside the year's range |
-| `status` | `open` \| `closed` \| `sealed` (closed list) |
-| `period_kind` | closed, code-defined list. **v1 vocabulary: `normal` only.** An `adjustment`/special period is an EXPERT-GATED addition (OQ-23, Class A SAP special periods) — the seam exists, the value does not. |
-| audit columns | AR-12 |
+| Attribute                                                                                                            | Notes                                                                                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fiscal_year_id` (+ denormalized `organization_id`, `financial_area_id` for scope checks and indexing — ADR-0021 §3) | a period belongs to exactly one year                                                                                                                                                                |
+| `sequence`                                                                                                           | 1-based ordinal inside the year; unique per (year, sequence)                                                                                                                                        |
+| `title`                                                                                                              | e.g. a month name; localization OQ-02                                                                                                                                                               |
+| `start_date`, `end_date`                                                                                             | inclusive; must lie inside the year's range                                                                                                                                                         |
+| `status`                                                                                                             | `open` \| `closed` \| `sealed` (closed list)                                                                                                                                                        |
+| `period_kind`                                                                                                        | closed, code-defined list. **v1 vocabulary: `normal` only.** An `adjustment`/special period is an EXPERT-GATED addition (OQ-23, Class A SAP special periods) — the seam exists, the value does not. |
+| audit columns                                                                                                        | AR-12                                                                                                                                                                                               |
 
 ### 7.2 DECIDED rules
 
 1. **Periods are rows, not computed months.** The layout (12 monthly periods,
    13 periods, 4-4-5, quarterly, a stub period) is data produced when the year is
-   created — the year's layout is configuration/EXPERT-GATED (OQ-23), the *mechanism*
+   created — the year's layout is configuration/EXPERT-GATED (OQ-23), the _mechanism_
    is period rows.
 2. **Periods inside one year do not overlap** and must lie within the year's dates.
    Gaps are refused at year creation time by the generator (a date that resolves to
    no period is refused at posting — §6.2 rule 3).
 3. **Multiple periods may be open simultaneously.** The architecture does **not**
    assume one open period (Task 10.1 §9). Consequences: posting validation checks the
-   *resolved* period's status only; "close all periods" is an explicit year-level
+   _resolved_ period's status only; "close all periods" is an explicit year-level
    action, not an implicit side effect; reports must state which periods they include
    rather than assuming "the open one".
 4. **Period locking:** `closed` refuses new documents and new corrections dated in
@@ -614,7 +614,7 @@ with these properties:
   tables and not a code constant;
 - depth is **configurable** (reported up to 8 levels — §2.2), so "Detail" may be
   level 4 in one organization and level 6 in another;
-- level *titles* are organization configuration (a customer may call level 3
+- level _titles_ are organization configuration (a customer may call level 3
   something else);
 - the **semantic** hooks the system needs (postability, temporary/permanent
   classification and future consumer-driven control-role assignments) are tied to
@@ -636,22 +636,22 @@ authority (same posture as materialized inventory balances, ADR-0017/0022 §1).
 
 ### 8.3 Account attributes (conceptual)
 
-| Attribute | Type/list | Notes |
-|---|---|---|
-| `organization_id` | scope | ADR-0021 |
-| `code` | digits-only text | canonical, unique per organization (§9.2); business-facing accounting address. Controlled pre-use correction is permitted by OD-20-4; after accounting use it is immutable. The current implementation is stricter until a producer exists. |
-| `title` (+ optional second-language title) | text | Persian is first-class (Class C4); display localization OQ-02 |
-| `level` | int | 1..max depth of the coding structure version |
-| `parent_id` | self-FK | null for roots; child code must extend parent code (§9.3) |
-| `account_nature` | closed list `debit` \| `credit` | balance direction (`ماهیت`) — drives report column semantics, **not** which side a line may use (§13.4) |
-| `account_type` | closed, code-defined list (asset / liability / equity / revenue / expense as the working vocabulary) | classification for statements and for the temporary-vs-permanent closing behaviour; **vocabulary is EXPERT-GATED (OQ-25)** |
-| `is_temporary` | derived from `account_type` by a code-defined function | temporary accounts are closed at year end (§6.4); the mapping is expert-gated |
-| `is_postable` | boolean | §14 |
-| `is_active` | boolean | lifecycle; accounts are never deleted (§8.6) |
-| `control_role_assignments` | future independent effective-dated relation | §8.7; **not** a nullable `Account.control_role` column (OD-20-3) |
-| `coding_structure_version_id` | pinned | §9.4 (D-21) |
-| `financial_area_applicability` | relation rows (all-areas default) | §5.4 |
-| audit columns | AR-12 | |
+| Attribute                                  | Type/list                                                                                            | Notes                                                                                                                                                                                                                                       |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `organization_id`                          | scope                                                                                                | ADR-0021                                                                                                                                                                                                                                    |
+| `code`                                     | digits-only text                                                                                     | canonical, unique per organization (§9.2); business-facing accounting address. Controlled pre-use correction is permitted by OD-20-4; after accounting use it is immutable. The current implementation is stricter until a producer exists. |
+| `title` (+ optional second-language title) | text                                                                                                 | Persian is first-class (Class C4); display localization OQ-02                                                                                                                                                                               |
+| `level`                                    | int                                                                                                  | 1..max depth of the coding structure version                                                                                                                                                                                                |
+| `parent_id`                                | self-FK                                                                                              | null for roots; child code must extend parent code (§9.3)                                                                                                                                                                                   |
+| `account_nature`                           | closed list `debit` \| `credit`                                                                      | balance direction (`ماهیت`) — drives report column semantics, **not** which side a line may use (§13.4)                                                                                                                                     |
+| `account_type`                             | closed, code-defined list (asset / liability / equity / revenue / expense as the working vocabulary) | classification for statements and for the temporary-vs-permanent closing behaviour; **vocabulary is EXPERT-GATED (OQ-25)**                                                                                                                  |
+| `is_temporary`                             | derived from `account_type` by a code-defined function                                               | temporary accounts are closed at year end (§6.4); the mapping is expert-gated                                                                                                                                                               |
+| `is_postable`                              | boolean                                                                                              | §14                                                                                                                                                                                                                                         |
+| `is_active`                                | boolean                                                                                              | lifecycle; accounts are never deleted (§8.6)                                                                                                                                                                                                |
+| `control_role_assignments`                 | future independent effective-dated relation                                                          | §8.7; **not** a nullable `Account.control_role` column (OD-20-3)                                                                                                                                                                            |
+| `coding_structure_version_id`              | pinned                                                                                               | §9.4 (D-21)                                                                                                                                                                                                                                 |
+| `financial_area_applicability`             | relation rows (all-areas default)                                                                    | §5.4                                                                                                                                                                                                                                        |
+| audit columns                              | AR-12                                                                                                |                                                                                                                                                                                                                                             |
 
 Reserved (DEFERRED, seams only — **no speculative columns in the current schema**):
 per-account currency constraint (§24.1), per-account dimension defaults, per-account
@@ -746,12 +746,12 @@ justifies the role's existence and meaning. Consequences:
 
 A **Coding Structure** is an organization-scoped, versioned configuration object:
 
-| Attribute | Notes |
-|---|---|
-| `max_depth` | number of levels (1..code-defined hard cap) |
-| per level: `level_index`, `title`, `digit_length`, `default_is_postable`, `level_kind` (`group`/`general`/`subsidiary`/`detail`-style label — informational) | the level vocabulary the organization sees |
-| `separator` (display only) | `-`, `/`, `.` or none — used for *rendering* codes, never stored in the code, never part of uniqueness (§9.2) |
-| `reserved_ranges` | code-defined reserved ranges (e.g. for template/control accounts and for the year-transition documents' accounts) |
+| Attribute                                                                                                                                                    | Notes                                                                                                             |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `max_depth`                                                                                                                                                  | number of levels (1..code-defined hard cap)                                                                       |
+| per level: `level_index`, `title`, `digit_length`, `default_is_postable`, `level_kind` (`group`/`general`/`subsidiary`/`detail`-style label — informational) | the level vocabulary the organization sees                                                                        |
+| `separator` (display only)                                                                                                                                   | `-`, `/`, `.` or none — used for _rendering_ codes, never stored in the code, never part of uniqueness (§9.2)     |
+| `reserved_ranges`                                                                                                                                            | code-defined reserved ranges (e.g. for template/control accounts and for the year-transition documents' accounts) |
 
 A **code-defined hard cap** on `max_depth` (working value: 8, matching the deepest
 structure reported in §2.2) and on total code length (working value: 32 characters,
@@ -806,12 +806,12 @@ possible configuration among many.
 
 ### 9.5 Reserved ranges, changes and reuse (DECIDED)
 
-| Question (Task 10.1 §11) | Contract answer |
-|---|---|
+| Question (Task 10.1 §11)  | Contract answer                                                                                                                                                                                                                                                                                |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | May account codes change? | **Before first accounting use:** permitted only through a future controlled code-change producer, with validation/audit/history designed in that task (OD-20-4). **After accounting use:** no ordinary change; only ADR-0035's controlled migration service. Titles change; used codes do not. |
-| May codes be reused? | **No** (§8.6, OQ-36 posture). |
-| Reserved ranges? | Supported as configuration (§9.1); a reserved range may only be used for its reserved purpose, enforced in the domain layer. The purpose vocabulary is code-defined. |
-| Historical integrity | Guaranteed by immutability + version pinning + freeze-over-delete; no rewrite path exists. |
+| May codes be reused?      | **No** (§8.6, OQ-36 posture).                                                                                                                                                                                                                                                                  |
+| Reserved ranges?          | Supported as configuration (§9.1); a reserved range may only be used for its reserved purpose, enforced in the domain layer. The purpose vocabulary is code-defined.                                                                                                                           |
+| Historical integrity      | Guaranteed by immutability + version pinning + freeze-over-delete; no rewrite path exists.                                                                                                                                                                                                     |
 
 ---
 
@@ -823,7 +823,7 @@ possible configuration among many.
 analytical axis that can be attached to accounts and assigned on document lines,
 **outside** the account tree. A **Detail Item** is a value of a dimension (§11).
 
-Dimensions are: code-defined in *number* by organization configuration (not hardcoded
+Dimensions are: code-defined in _number_ by organization configuration (not hardcoded
 to four — Task 10.1 §12), strongly typed (rows in typed tables with FKs), and
 reportable by `GROUP BY` (ADR-0009).
 
@@ -857,7 +857,7 @@ compatibility a **closed, inspectable configuration** — no expressions, no scr
 
 **DECIDED shape (`AC-D-13`), EXPERT-GATED default (OQ-41).** Each
 (account, dimension) link carries a `requirement` from the closed list
-`required` | `optional` | `forbidden`. The *mechanism* therefore supports both answers
+`required` | `optional` | `forbidden`. The _mechanism_ therefore supports both answers
 to Task 10.1 §12's question:
 
 > If an account has multiple attached detail dimensions, are all of them always
@@ -884,7 +884,7 @@ e.g. `organization/party`, `organization/branch`, `organization/employee`,
 - binding does **not** transfer ownership: the party stays Organization's, the
   warehouse stays Inventory's; Accounting stores the analytical value (§11.3).
 
-Whether specific dimensions *must* be bound (e.g. "counterparty detail must reference
+Whether specific dimensions _must_ be bound (e.g. "counterparty detail must reference
 a party") is EXPERT-GATED with OQ-41.
 
 ### 10.6 Line-level assignment (DECIDED — the shape that matters most; refined by OD-20-6)
@@ -942,45 +942,45 @@ A **floating detail** is a detail item that:
 
 1. lives **outside the account tree** (it is not an account and has no account code);
 2. has **one code and one identity** for the whole organization (`یونیک`), reused with
-   *any* account whose dimension compatibility allows it (`شناور` — it "floats" across
+   _any_ account whose dimension compatibility allows it (`شناور` — it "floats" across
    accounts);
 3. has **no nature of its own**: it takes the debit/credit direction of the line it
-   appears on (§2.2 sources state this explicitly), so its balance is always *derived
-   from* the lines, never declared;
+   appears on (§2.2 sources state this explicitly), so its balance is always _derived
+   from_ the lines, never declared;
 4. is **strongly typed**: a row in `accounting_detail_items` with FKs to its dimension
    (and optional parent item), an optional master-data binding (§10.5), area
    applicability (§11.4) and `is_active`.
 
 ### 11.2 Contrast with a static (fixed) detail
 
-| | Static/fixed detail (`تفصیلی ثابت`) | Floating detail (`تفصیلی شناور`) |
-|---|---|---|
-| Where it lives | A node in the account tree (the deepest level) | A dimension item outside the tree |
-| Code | Part of the account code (prefix rule, §9.3) | Its own code inside its dimension (§10.2) |
-| Combining with accounts | One account per combination → code explosion ("Mr. X – Project A", "Mr. X – Project B") | One item, many accounts/combinations |
-| Nature | Inherited from its account | None of its own; from the line |
-| Reporting | Tree rollup | `GROUP BY` on the assignment table |
+|                         | Static/fixed detail (`تفصیلی ثابت`)                                                     | Floating detail (`تفصیلی شناور`)          |
+| ----------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Where it lives          | A node in the account tree (the deepest level)                                          | A dimension item outside the tree         |
+| Code                    | Part of the account code (prefix rule, §9.3)                                            | Its own code inside its dimension (§10.2) |
+| Combining with accounts | One account per combination → code explosion ("Mr. X – Project A", "Mr. X – Project B") | One item, many accounts/combinations      |
+| Nature                  | Inherited from its account                                                              | None of its own; from the line            |
+| Reporting               | Tree rollup                                                                             | `GROUP BY` on the assignment table        |
 
 Both are supported: the account tree may have a detail level **and** dimensions may be
 attached to it. The contract does not force an organization to choose.
 
 ### 11.3 What floating detail is NOT
 
-| Not | Reason |
-|---|---|
-| Generic JSON on the line | §10.6 — forbidden for ledger dimensions |
-| The Party | A party is Organization-owned master data with capability flags (D-02, OQ-38). A dimension item may *bind* to a party; the analytical value on the line is the item. This keeps receivable/payable reporting per counterparty possible without making Accounting own parties. |
-| The Branch | Branch is a scope column (§5.3, §12.4); a dimension item may bind to a branch for analysis, but branch semantics (one branch ≠ separate books) stay Organization's. |
-| The Employee / Warehouse / Item | Same pattern: binding, not ownership (§10.5). |
-| A cost centre or project *by definition* | Cost centre and project are **uses** of dimensions. Whether they exist as master data in Vardena, and whether they must be bound, is EXPERT-GATED (OQ-41, and OQ-22 for departments as dimensions). |
-| An EAV attribute | Dimensions are a closed, configured, code-capped set (§10.1) with typed items and DB uniqueness. |
+| Not                                      | Reason                                                                                                                                                                                                                                                                        |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Generic JSON on the line                 | §10.6 — forbidden for ledger dimensions                                                                                                                                                                                                                                       |
+| The Party                                | A party is Organization-owned master data with capability flags (D-02, OQ-38). A dimension item may _bind_ to a party; the analytical value on the line is the item. This keeps receivable/payable reporting per counterparty possible without making Accounting own parties. |
+| The Branch                               | Branch is a scope column (§5.3, §12.4); a dimension item may bind to a branch for analysis, but branch semantics (one branch ≠ separate books) stay Organization's.                                                                                                           |
+| The Employee / Warehouse / Item          | Same pattern: binding, not ownership (§10.5).                                                                                                                                                                                                                                 |
+| A cost centre or project _by definition_ | Cost centre and project are **uses** of dimensions. Whether they exist as master data in Vardena, and whether they must be bound, is EXPERT-GATED (OQ-41, and OQ-22 for departments as dimensions).                                                                           |
+| An EAV attribute                         | Dimensions are a closed, configured, code-capped set (§10.1) with typed items and DB uniqueness.                                                                                                                                                                              |
 
 ### 11.4 Area applicability
 
 Reported Iranian practice gives each detail item a set of **accessible financial
 areas** (§2.2). The contract adopts this as an applicability relation
 (item ↔ area, default = all areas of the organization), validated at posting (§10.6
-rule 4). It is a *usability* filter, not an ownership split: the item stays
+rule 4). It is a _usability_ filter, not an ownership split: the item stays
 organization-scoped data.
 
 ---
@@ -1006,23 +1006,23 @@ their relations.
 
 ### 12.2 Header attributes (conceptual)
 
-| Attribute | Notes |
-|---|---|
-| `id` (ULID), `organization_id`, `financial_area_id` | §4, §5.2 (`AC-D-03`) |
-| `fiscal_year_id`, `accounting_period_id` | resolved from `document_date` at composition, re-validated at finalization (§6.2 rule 4) |
-| `document_number` | numeric-only serial from the Document Foundation (§18); allocated at issuance; immutable after Final |
-| `document_date` | business/occurrence date (date-only). Drives period resolution and chronological reporting (Class C3) |
-| `description` | header narration; **required, non-blank** (a voucher without a description is not defensible in any ledger) |
-| `state` | `temporary` \| `final` (Document Foundation vocabulary — §15.1); plus the optional `draft` phase |
-| `origin` | `manual` \| `system` (§16) |
-| `branch_id` | optional operational scope dimension (§12.4) |
-| `correction_kind` | nullable closed list `reversal` \| `correction` \| `replacement`; set only with a link (§15.4) |
-| `corrects_document_id` / `reverses_document_id` / `reversed_by_document_id` / `replaced_by_document_id` | typed self-links (§15.4) |
-| `correction_reason` | required when `correction_kind` is set (mirrors Inventory's adjustment-reason rule, ADR-0022) |
-| `source_module`, `source_entity_type`, `source_entity_id`, `source_operation` | system origin only (§16.3) |
-| `idempotency_reference`, `request_hash` | system origin only (§16.4) — stored on the posting-operation ledger, referenced from the document |
-| `finalized_at`, `finalized_by` | finalization evidence (§23); `created_*`/`updated_*` per AR-12 |
-| `correlation_id` | end-to-end traceability (`docs/architecture.md` §9, `docs/security.md` §5) |
+| Attribute                                                                                               | Notes                                                                                                       |
+| ------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `id` (ULID), `organization_id`, `financial_area_id`                                                     | §4, §5.2 (`AC-D-03`)                                                                                        |
+| `fiscal_year_id`, `accounting_period_id`                                                                | resolved from `document_date` at composition, re-validated at finalization (§6.2 rule 4)                    |
+| `document_number`                                                                                       | numeric-only serial from the Document Foundation (§18); allocated at issuance; immutable after Final        |
+| `document_date`                                                                                         | business/occurrence date (date-only). Drives period resolution and chronological reporting (Class C3)       |
+| `description`                                                                                           | header narration; **required, non-blank** (a voucher without a description is not defensible in any ledger) |
+| `state`                                                                                                 | `temporary` \| `final` (Document Foundation vocabulary — §15.1); plus the optional `draft` phase            |
+| `origin`                                                                                                | `manual` \| `system` (§16)                                                                                  |
+| `branch_id`                                                                                             | optional operational scope dimension (§12.4)                                                                |
+| `correction_kind`                                                                                       | nullable closed list `reversal` \| `correction` \| `replacement`; set only with a link (§15.4)              |
+| `corrects_document_id` / `reverses_document_id` / `reversed_by_document_id` / `replaced_by_document_id` | typed self-links (§15.4)                                                                                    |
+| `correction_reason`                                                                                     | required when `correction_kind` is set (mirrors Inventory's adjustment-reason rule, ADR-0022)               |
+| `source_module`, `source_entity_type`, `source_entity_id`, `source_operation`                           | system origin only (§16.3)                                                                                  |
+| `idempotency_reference`, `request_hash`                                                                 | system origin only (§16.4) — stored on the posting-operation ledger, referenced from the document           |
+| `finalized_at`, `finalized_by`                                                                          | finalization evidence (§23); `created_*`/`updated_*` per AR-12                                              |
+| `correlation_id`                                                                                        | end-to-end traceability (`docs/architecture.md` §9, `docs/security.md` §5)                                  |
 
 Reserved seams (DEFERRED, no columns now): currency/exchange-rate (§24.1), attachment
 archive (§2.2 electronic attachments → Print/Documents), posting-layer/parallel
@@ -1049,15 +1049,15 @@ branch rollups ambiguous when a line's branch differs from its document's.
 
 ### 12.5 Line attributes (conceptual)
 
-| Attribute | Notes |
-|---|---|
-| `id`, `document_id`, `line_no` | `line_no` is 1-based, unique per document, dense (no gaps) — the legal-book rendering order |
-| `organization_id`, `financial_area_id`, `fiscal_year_id`, `accounting_period_id` | denormalized scope for indexed queries and scope checks (ADR-0021 §3); always equal to the header's |
-| `account_id` | must be postable (§14), active, and applicable to the area (§5.4) |
-| `debit_amount`, `credit_amount` | non-negative exact decimals; exactly one is non-zero (§13) |
-| `description` | optional line narration |
-| dimension assignments | child table (§10.6) |
-| `source_line_reference` | optional logical reference `(module, entity_type, entity_id, line_id?)` for system origin (§16.3, §20.3) — the "شماره عطف" of §2.2 is this plus a document relation (ADR-0023 §5) |
+| Attribute                                                                        | Notes                                                                                                                                                                             |
+| -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`, `document_id`, `line_no`                                                   | `line_no` is 1-based, unique per document, dense (no gaps) — the legal-book rendering order                                                                                       |
+| `organization_id`, `financial_area_id`, `fiscal_year_id`, `accounting_period_id` | denormalized scope for indexed queries and scope checks (ADR-0021 §3); always equal to the header's                                                                               |
+| `account_id`                                                                     | must be postable (§14), active, and applicable to the area (§5.4)                                                                                                                 |
+| `debit_amount`, `credit_amount`                                                  | non-negative exact decimals; exactly one is non-zero (§13)                                                                                                                        |
+| `description`                                                                    | optional line narration                                                                                                                                                           |
+| dimension assignments                                                            | child table (§10.6)                                                                                                                                                               |
+| `source_line_reference`                                                          | optional logical reference `(module, entity_type, entity_id, line_id?)` for system origin (§16.3, §20.3) — the "شماره عطف" of §2.2 is this plus a document relation (ADR-0023 §5) |
 
 Lines are part of the document aggregate: they are created and replaced **only** while
 the document is editable (§15.2), in the same transaction as the header, and they are
@@ -1115,28 +1115,28 @@ re-explained per report; (b) the statutory/standard layouts the contract must se
 (4/6/8-column trial balances, journal, ledgers) are literally debit and credit
 columns, so two columns make them direct aggregates; (c) two non-negative columns make
 `Σ debit = Σ credit` and per-account balances expressible as pure SQL without
-`CASE`-sign logic (ADR-0009 view-first reporting). Inventory's *signed quantity with a
-typed movement type* (ADR-0022 §2) stays correct for its own domain: there the sign is
+`CASE`-sign logic (ADR-0009 view-first reporting). Inventory's _signed quantity with a
+typed movement type_ (ADR-0022 §2) stays correct for its own domain: there the sign is
 a property of the movement type; here the side is a property of the line.
 
 ### 13.4 Nature vs side (no confusion)
 
 `account_nature` (§8.3) is the account's **expected balance direction** for reporting
 (an asset normally carries a debit balance). It does **not** restrict which side a line
-may use: an asset account is credited when the asset decreases. Reports may *flag* a
+may use: an asset account is credited when the asset decreases. Reports may _flag_ a
 balance contrary to nature (a control/anomaly report); the contract does not reject it
 — rejecting it would be an unverified accounting assumption. Whether contrary-nature
 balances should warn or block is EXPERT-GATED (OQ-25).
 
 ### 13.5 Precision, rounding, totals
 
-| Concern | Contract position |
-|---|---|
-| Storage | `numeric(18,2)` (AR-12, `database-strategy.md` §6). Exact decimal, never float. Precision per currency is **OQ-03**; the contract forbids hardcoding display precision. |
-| Rounding | Any rounding happens **before** the document is composed — in the source module or in the posting rule — and the resulting document must already balance. **Accounting never rounds to force balance** and never distributes a residual silently. Residual-handling policy for system postings (which line absorbs a rounding remainder) is EXPERT-GATED with the posting rules (OQ-24/OQ-25/OQ-30). |
-| Line vs document totals | Totals are **derived** from lines. A client-supplied total is ignored/rejected; if a denormalized total is stored for list performance it is recomputed inside the same transaction and asserted equal to the derived value. |
-| Balancing validation | §13.1: at composition and again under lock at finalization. |
-| Zero-total documents | Impossible (≥1 debit line and ≥1 credit line, each non-zero). |
+| Concern                 | Contract position                                                                                                                                                                                                                                                                                                                                                                                    |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Storage                 | `numeric(18,2)` (AR-12, `database-strategy.md` §6). Exact decimal, never float. Precision per currency is **OQ-03**; the contract forbids hardcoding display precision.                                                                                                                                                                                                                              |
+| Rounding                | Any rounding happens **before** the document is composed — in the source module or in the posting rule — and the resulting document must already balance. **Accounting never rounds to force balance** and never distributes a residual silently. Residual-handling policy for system postings (which line absorbs a rounding remainder) is EXPERT-GATED with the posting rules (OQ-24/OQ-25/OQ-30). |
+| Line vs document totals | Totals are **derived** from lines. A client-supplied total is ignored/rejected; if a denormalized total is stored for list performance it is recomputed inside the same transaction and asserted equal to the derived value.                                                                                                                                                                         |
+| Balancing validation    | §13.1: at composition and again under lock at finalization.                                                                                                                                                                                                                                                                                                                                          |
+| Zero-total documents    | Impossible (≥1 debit line and ≥1 credit line, each non-zero).                                                                                                                                                                                                                                                                                                                                        |
 
 ### 13.6 Currency
 
@@ -1165,10 +1165,10 @@ multi-currency additive rather than transformative (§24.1).
    equivalent to "has children".
 4. The **default** postability per level comes from the coding structure's level
    definition (`default_is_postable`, §9.1) and may be overridden per account. The
-   *policy* — which levels a given business posts to (`معین` only? `معین` + `تفصیلی`?
+   _policy_ — which levels a given business posts to (`معین` only? `معین` + `تفصیلی`?
    configurable per organization?) — is EXPERT-GATED (**OQ-25**). The contract
    deliberately does **not** assert "Group/General non-postable, Subsidiary/Detail
-   postable" as a rule; it asserts the *mechanism* plus the leaf invariant that makes
+   postable" as a rule; it asserts the _mechanism_ plus the leaf invariant that makes
    any such policy safe.
 5. Postability is part of the account's immutable-after-use surface: changing
    `is_postable` on an account that has lines is refused (§8.4 rule 4) — otherwise a
@@ -1190,7 +1190,7 @@ draft (optional pre-issuance phase) ──submit──▶ temporary ──finali
 ```
 
 - `temporary` (`موقت`) and `final` (`دائم`/`قطعی`) are the only states.
-- **No `initial` state, no `void` state, no `deleted` state, no `draft` *state***
+- **No `initial` state, no `void` state, no `deleted` state, no `draft` _state_**
   (`draft` is a phase, not a state — the Foundation's own distinction).
 - Whether an accounting document starts in `draft` is configuration
   (`document_type_configs.draft_required`) — this is exactly the Mode A/Mode B seam of
@@ -1202,11 +1202,11 @@ draft (optional pre-issuance phase) ──submit──▶ temporary ──finali
 
 ### 15.2 Editability
 
-| Phase | Editable? | Notes |
-|---|---|---|
-| `draft` | yes | header, lines, dimension assignments; no number required yet |
-| `temporary` | yes | edits are audited; the number is allocated at issuance and never changes |
-| `final` | **no** | AC-I-05: no field edit, no line edit, no dimension edit, no re-numbering, no re-dating, no period re-resolution |
+| Phase       | Editable? | Notes                                                                                                           |
+| ----------- | --------- | --------------------------------------------------------------------------------------------------------------- |
+| `draft`     | yes       | header, lines, dimension assignments; no number required yet                                                    |
+| `temporary` | yes       | edits are audited; the number is allocated at issuance and never changes                                        |
+| `final`     | **no**    | AC-I-05: no field edit, no line edit, no dimension edit, no re-numbering, no re-dating, no period re-resolution |
 
 `final` protection is **structural** (no update route, no mutation path in the
 service), not merely validated — the posture ADR-0024 §"immutability is structural"
@@ -1228,7 +1228,7 @@ established for workflow history.
   acceptable, and whether a discarded voucher should instead be kept with a
   "discarded" marker, is EXPERT-GATED with numbering/legal policy (**OQ-12**, and
   Class C2 in **OQ-43**).
-- Cancellation *after* finalization does not exist as a state change: it is a
+- Cancellation _after_ finalization does not exist as a state change: it is a
   **reversal** or **replacement** (§15.4).
 
 ### 15.4 Correction mechanisms (four, typed, additive)
@@ -1237,12 +1237,12 @@ established for workflow history.
 a Final document; every mechanism produces **new documents** that are themselves
 Final, balanced, numbered and audited.
 
-| Mechanism | What it produces | Links | When it is the right tool (policy = OQ-27) |
-|---|---|---|---|
-| **Reversal** (`ابطال`/`معکوس`) | A mirror document: same lines, debit/credit swapped | `reverses_document_id` on the new document, `reversed_by_document_id` on the original; `correction_kind = 'reversal'`; reason required | The original should have no effect at all |
-| **Correction** (`اصلاح`) | A **difference** document adjusting the net effect of specific lines | `corrects_document_id`; `correction_kind = 'correction'`; reason required | Part of the original was wrong (amount, account, dimension) |
-| **Replacement** (`جایگزینی`) | An atomic **pair**: reversal + new document, committed together or not at all (ADR-0022's transfer-pair atomicity) | both links above + `replaced_by_document_id`; reason required | The original is wholly wrong and a correct version must exist |
-| **Adjustment** (`تعدیل`) | An ordinary new voucher reflecting a newly known fact | no correction link (it corrects nothing); reason/description required | Period-end adjustments, accruals, revaluations, new information |
+| Mechanism                      | What it produces                                                                                                   | Links                                                                                                                                  | When it is the right tool (policy = OQ-27)                      |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| **Reversal** (`ابطال`/`معکوس`) | A mirror document: same lines, debit/credit swapped                                                                | `reverses_document_id` on the new document, `reversed_by_document_id` on the original; `correction_kind = 'reversal'`; reason required | The original should have no effect at all                       |
+| **Correction** (`اصلاح`)       | A **difference** document adjusting the net effect of specific lines                                               | `corrects_document_id`; `correction_kind = 'correction'`; reason required                                                              | Part of the original was wrong (amount, account, dimension)     |
+| **Replacement** (`جایگزینی`)   | An atomic **pair**: reversal + new document, committed together or not at all (ADR-0022's transfer-pair atomicity) | both links above + `replaced_by_document_id`; reason required                                                                          | The original is wholly wrong and a correct version must exist   |
+| **Adjustment** (`تعدیل`)       | An ordinary new voucher reflecting a newly known fact                                                              | no correction link (it corrects nothing); reason/description required                                                                  | Period-end adjustments, accruals, revaluations, new information |
 
 Rules that are DECIDED:
 
@@ -1271,9 +1271,9 @@ Rules that are DECIDED:
 the books. Inside one transaction, under a row lock on the document:
 
 1. re-validate: balance (§13.1), lines ≥ 2 with both sides present, accounts postable
-   + active + area-applicable, dimension assignments complete and legal (§10.6),
-   year/period resolved from `document_date` and **open** (§7.2), organization/area
-   scope (§4), description present;
+   - active + area-applicable, dimension assignments complete and legal (§10.6),
+     year/period resolved from `document_date` and **open** (§7.2), organization/area
+     scope (§4), description present;
 2. allocate/confirm the document number (§18) — a Final document always has one;
 3. set `state = final`, `finalized_at`, `finalized_by`, and the workflow evidence if an
    approval was required (§17);
@@ -1293,15 +1293,15 @@ guarantee applied to accounting).
 
 **DECIDED (`AC-D-24`).** `origin ∈ {manual, system}` on the header (§12.2). Both
 origins produce the same document shape and satisfy the same invariants; they differ
-only in *who composes the lines* and *which evidence is stored*:
+only in _who composes the lines_ and _which evidence is stored_:
 
-| | Manual | System-generated |
-|---|---|---|
-| Composer | an accounting user through the Accounting API | a posting operation invoked by/for another module (§16.3) |
-| Authority | `Accounting.Document.Create` + the phase's action permissions | the *source* module's own permission for its business action, plus the posting contract's authorization (§16.5) |
-| Evidence | actor, correlation id, timestamps | + source module/entity/id/operation, idempotency reference, request hash, mapping/rule version |
-| Failure surface | 422 validation, 403 permission | + 409 idempotency conflict, retry/backoff semantics (§16.6) |
-| Lifecycle | draft?/temporary → final per configuration | per posting mode (§17): Mode A ⇒ final directly; Mode B ⇒ temporary/draft awaiting an accounting approval |
+|                 | Manual                                                        | System-generated                                                                                                |
+| --------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Composer        | an accounting user through the Accounting API                 | a posting operation invoked by/for another module (§16.3)                                                       |
+| Authority       | `Accounting.Document.Create` + the phase's action permissions | the _source_ module's own permission for its business action, plus the posting contract's authorization (§16.5) |
+| Evidence        | actor, correlation id, timestamps                             | + source module/entity/id/operation, idempotency reference, request hash, mapping/rule version                  |
+| Failure surface | 422 validation, 403 permission                                | + 409 idempotency conflict, retry/backoff semantics (§16.6)                                                     |
+| Lifecycle       | draft?/temporary → final per configuration                    | per posting mode (§17): Mode A ⇒ final directly; Mode B ⇒ temporary/draft awaiting an accounting approval       |
 
 ### 16.2 What "system-generated" never means
 
@@ -1347,10 +1347,10 @@ Notes:
   postable and applicable; dimensions must be legal for the account (§10.6); amounts
   must satisfy §13. A source module cannot push an unbalanced or non-postable
   document into the books.
-- Whether the *source* module composes lines at all, or sends business facts and lets
+- Whether the _source_ module composes lines at all, or sends business facts and lets
   an Accounting-owned **posting rule** compose them, is the distinction between
   "contract A" (facts + rule) and "contract B" (composed payload). **DECIDED:** the
-  contract supports both, and the *preferred* form is facts + Accounting-owned rule
+  contract supports both, and the _preferred_ form is facts + Accounting-owned rule
   (AR-16: mapping belongs to Accounting); a composed payload is allowed only where a
   rule cannot express the mapping, and then the mapping is still reviewed as
   Accounting configuration. Which form each source uses, and the rule content, are
@@ -1360,15 +1360,15 @@ Notes:
 
 An Accounting-owned **posting-operation ledger** (`accounting_posting_operations`):
 
-| Rule | Statement |
-|---|---|
-| Key | one row per completed posting operation, unique on `(organization_id, operation_key)` |
-| Atomicity | written in the **same transaction** as the document, its lines and any balance projection: a committed effect always has its key, a failed one never does |
-| Hash | `request_hash` = sha256 over the **canonical client intent only** — no generated ids, no server clocks, an omitted optional date hashed as explicit `null` (ADR-0022 §4, the Task 9.6 finding) |
-| Replay | same key + same hash ⇒ replay the stored result (re-reading current rows, never a stale snapshot) |
-| Conflict | same key + different hash ⇒ **409**, nothing applied |
-| Kinds | closed code-defined list, e.g. `document_finalize`, `document_reverse`, `document_correct`, `document_replace`, `system_post`, `year_close`, `year_seal` |
-| Event-derived | where posting is triggered by a domain event, the **event id** is the natural operation key (ADR-0005, AR-15) |
+| Rule          | Statement                                                                                                                                                                                      |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Key           | one row per completed posting operation, unique on `(organization_id, operation_key)`                                                                                                          |
+| Atomicity     | written in the **same transaction** as the document, its lines and any balance projection: a committed effect always has its key, a failed one never does                                      |
+| Hash          | `request_hash` = sha256 over the **canonical client intent only** — no generated ids, no server clocks, an omitted optional date hashed as explicit `null` (ADR-0022 §4, the Task 9.6 finding) |
+| Replay        | same key + same hash ⇒ replay the stored result (re-reading current rows, never a stale snapshot)                                                                                              |
+| Conflict      | same key + different hash ⇒ **409**, nothing applied                                                                                                                                           |
+| Kinds         | closed code-defined list, e.g. `document_finalize`, `document_reverse`, `document_correct`, `document_replace`, `system_post`, `year_close`, `year_seal`                                       |
+| Event-derived | where posting is triggered by a domain event, the **event id** is the natural operation key (ADR-0005, AR-15)                                                                                  |
 
 **AC-I-12:** system-generated posting must be idempotent — retries, double clicks,
 replayed events and worker restarts must not duplicate a document.
@@ -1387,12 +1387,12 @@ replayed events and worker restarts must not duplicate a document.
 
 Two delivery shapes are architecturally available, and the **choice is not made here**:
 
-| Shape | Semantics | Precedent |
-|---|---|---|
-| **Transactional subscription** | The accounting effect commits **with** the source business write; a posting failure fails the source operation ("safe for the books") | ADR-0005 (Accepted), AR-16 |
-| **Durable queue / outbox** | The source write commits; posting happens later, at-least-once, with retry and a dead-letter surface; the books lag the operation | AR-14, ADR-0004, `sync.outbox_events` |
+| Shape                          | Semantics                                                                                                                             | Precedent                             |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- |
+| **Transactional subscription** | The accounting effect commits **with** the source business write; a posting failure fails the source operation ("safe for the books") | ADR-0005 (Accepted), AR-16            |
+| **Durable queue / outbox**     | The source write commits; posting happens later, at-least-once, with retry and a dead-letter surface; the books lag the operation     | AR-14, ADR-0004, `sync.outbox_events` |
 
-**DECIDED (`AC-D-26`):** the posting *interface* (§16.3) is identical for both, so the
+**DECIDED (`AC-D-26`):** the posting _interface_ (§16.3) is identical for both, so the
 delivery choice is swappable without changing source modules. **EXPERT/ARCH-GATED
 (`OQ-39`):** which shape production uses, what happens to a source document whose
 posting is rejected near a period close, and — critically — the fact that **today the
@@ -1437,9 +1437,9 @@ made (D-19, ADR-0022's "no costing yet" gap).
 
 ### 17.2 Posting modes (DECIDED mechanism `AC-D-28`; EXPERT-GATED default OQ-42)
 
-| Mode | Behaviour | Expressed with |
-|---|---|---|
-| **A — direct** | The source operation creates an accounting document that goes **straight to `final`** | Document Foundation entry state `['final']` for the registered accounting type in that organization (`document_type_configs`, ADR-0023 §2) |
+| Mode           | Behaviour                                                                                                                                              | Expressed with                                                                                                                                                                                                      |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A — direct** | The source operation creates an accounting document that goes **straight to `final`**                                                                  | Document Foundation entry state `['final']` for the registered accounting type in that organization (`document_type_configs`, ADR-0023 §2)                                                                          |
 | **B — review** | The source operation creates an accounting **draft/temporary** document that an accounting authority must finalize; rejection returns it to the source | entry state `['temporary']` + `draft_required = true`, with the approval carried by the **Workflow Foundation** (ADR-0024: bounded transitions, single-level approvals, `require_different_actor`, pinned versions) |
 
 This is the reported Iranian `پیش نویس اسناد` pattern (§2.2) implemented with
@@ -1451,7 +1451,7 @@ reviewed.
 What is **not** decided (⇒ **OQ-42**): the default mode, which source types may use
 Mode A at all, who may finalize a Mode B document, whether the creator may approve
 their own (segregation of duties — the Workflow Foundation supports
-`require_different_actor`, but the *policy* is OQ-26), what "reject" means for the
+`require_different_actor`, but the _policy_ is OQ-26), what "reject" means for the
 source document (block it? leave it posted with an accounting exception queue?), and
 how a backlog of unapproved accounting drafts is governed.
 
@@ -1471,17 +1471,17 @@ how a backlog of unapproved accounting drafts is governed.
 **DECIDED (`AC-D-29`): Accounting consumes the Document Foundation numbering
 (ADR-0023). It builds no numbering mechanism of its own and does not redesign Task 8.**
 
-| Requirement (Task 10.1 §19) | How it is satisfied |
-|---|---|
-| Numeric-only | Inherited: a serial is digits only, no prefix/suffix/separator (ADR-0023, Task 8 §11). Accounting adds nothing to the serial itself. |
-| Financial-area component | `numbering_series.scope_key` — the Foundation's opaque series token that "splits the type's numbers into several independent runs". Accounting uses `scope_key = <financial area>` (plus source type where needed). |
+| Requirement (Task 10.1 §19)                                                   | How it is satisfied                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Numeric-only                                                                  | Inherited: a serial is digits only, no prefix/suffix/separator (ADR-0023, Task 8 §11). Accounting adds nothing to the serial itself.                                                                                                                                                                                                                                                                                                                                                                                          |
+| Financial-area component                                                      | `numbering_series.scope_key` — the Foundation's opaque series token that "splits the type's numbers into several independent runs". Accounting uses `scope_key = <financial area>` (plus source type where needed).                                                                                                                                                                                                                                                                                                           |
 | Fiscal-year component / per-year reset / numbering reset at the year boundary | **Not implemented today.** `strategy` is a closed list with `monotonic` only, and the Foundation documents the strategy column as "the seam for fiscal-year components, resets and recycling — expert-gated (OQ-12)". Contract position: if the accountant requires a year component, it is implemented as a **new numbering strategy in the Documents module**, never as an Accounting-side fork or a second counter table. Until then: one monotonic series per (organization, accounting document type, area). ⇒ **OQ-12** |
-| Sequence, concurrency, uniqueness | Inherited: `SELECT … FOR UPDATE` on the series row + `(series_id, number)` unique + append-only allocation ledger (ADR-0023 §3). |
-| Idempotent allocation | Inherited: `(series_id, allocation_key)`; a retry replays the stored serial, a reused key with different intent is rejected (ADR-0023 §4). Accounting passes its `operationKey` (§16.4) as the allocation key so one business action allocates one number however many times it is retried. |
-| Gaps | Inherited `reuse_policy` (default `never`): gaps are auditable, not hidden. Whether gaps are legally acceptable, and the discard policy for temporary vouchers, is EXPERT-GATED (OQ-12, Class C2 → OQ-43). |
-| Immutability after finalization | Inherited + reinforced: `assign_number` is refused for `final` (Foundation `planEdit`), and §15.2 makes Final structurally immutable. |
-| Prefix/suffix configuration | **Rejected** for accounting serials: it contradicts the Foundation's numeric-only decision and the reported legal expectation that books show plain sequential numbers. Presentation may add separators (§9.2). |
-| Permissions | Accounting registers **no** numbering permission: series configuration is `Document.NumberingSeries.{View,Create,Edit}` and allocation is an internal service call inside Accounting's own transaction (ADR-0023's explicit "no `Allocate` permission" reasoning). `Accounting.Document.View` covers reading a document's number. |
+| Sequence, concurrency, uniqueness                                             | Inherited: `SELECT … FOR UPDATE` on the series row + `(series_id, number)` unique + append-only allocation ledger (ADR-0023 §3).                                                                                                                                                                                                                                                                                                                                                                                              |
+| Idempotent allocation                                                         | Inherited: `(series_id, allocation_key)`; a retry replays the stored serial, a reused key with different intent is rejected (ADR-0023 §4). Accounting passes its `operationKey` (§16.4) as the allocation key so one business action allocates one number however many times it is retried.                                                                                                                                                                                                                                   |
+| Gaps                                                                          | Inherited `reuse_policy` (default `never`): gaps are auditable, not hidden. Whether gaps are legally acceptable, and the discard policy for temporary vouchers, is EXPERT-GATED (OQ-12, Class C2 → OQ-43).                                                                                                                                                                                                                                                                                                                    |
+| Immutability after finalization                                               | Inherited + reinforced: `assign_number` is refused for `final` (Foundation `planEdit`), and §15.2 makes Final structurally immutable.                                                                                                                                                                                                                                                                                                                                                                                         |
+| Prefix/suffix configuration                                                   | **Rejected** for accounting serials: it contradicts the Foundation's numeric-only decision and the reported legal expectation that books show plain sequential numbers. Presentation may add separators (§9.2).                                                                                                                                                                                                                                                                                                               |
+| Permissions                                                                   | Accounting registers **no** numbering permission: series configuration is `Document.NumberingSeries.{View,Create,Edit}` and allocation is an internal service call inside Accounting's own transaction (ADR-0023's explicit "no `Allocate` permission" reasoning). `Accounting.Document.View` covers reading a document's number.                                                                                                                                                                                             |
 
 ---
 
@@ -1513,7 +1513,7 @@ system documents, numbering gaps, balance-vs-lines reconciliation).
    pivot extraction, no JSONB traversal.
 5. **Column variants are layouts, not models.** A 4/6/8-column trial balance is the
    same aggregate (opening debit/credit, period debit/credit turnover, closing
-   debit/credit) rendered with different column sets; the *layout* is a report
+   debit/credit) rendered with different column sets; the _layout_ is a report
    definition concern, and statutory layouts are EXPERT-GATED (OQ-25, OQ-43).
 
 ### 19.3 Balance projections (direction DECIDED, mechanism deferred)
@@ -1560,16 +1560,16 @@ binding), calls Inventory's **public application service** (AR-07).
 
 ### 20.2 Where each concern belongs
 
-| Concern | Owner | Contract reference |
-|---|---|---|
-| Source reference (which movement/document caused the entry) | Accounting stores it as a **logical** reference `(source_module, source_entity_type, source_entity_id[, line])`; optionally a document relation created through the Documents module | §12.2, §12.5, ADR-0023 §5 |
-| Idempotency | Accounting's posting-operation ledger keyed by the source `operationKey` / event id | §16.4, AC-I-12 |
-| Posting policy (which accounts, which mode, whether enabled at all) | Accounting-owned **configuration** (posting rules + control-role mapping + D-19 switch + §17.2 mode) | §8.7, §17.2 |
-| Cost/valuation input | **Inventory ledger + valuation method (OQ-24)** — unresolved; until it is, inventory-driven postings cannot be activated (ADR-0022 records the ledger stores quantities, not money) | §20.4 |
-| Transaction boundary | OQ-39 (transactional subscription per ADR-0005 vs durable queue per AR-14) | §16.6 |
-| Retry behaviour | Only meaningful in the queued shape: at-least-once + idempotent consumer + dead-letter surfacing (ADR-0004, AR-15). Never a blind retry of a non-idempotent posting | §16.4, §16.6 |
-| Rounding/residual of a computed amount | Computed **before** composition, policy expert-gated; Accounting never rounds to balance | §13.5 |
-| Failure near a period close | Policy: OQ-23/OQ-27 + OQ-39 (what happens to the source document) | §16.6, §7.2 rule 8 |
+| Concern                                                             | Owner                                                                                                                                                                                | Contract reference        |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| Source reference (which movement/document caused the entry)         | Accounting stores it as a **logical** reference `(source_module, source_entity_type, source_entity_id[, line])`; optionally a document relation created through the Documents module | §12.2, §12.5, ADR-0023 §5 |
+| Idempotency                                                         | Accounting's posting-operation ledger keyed by the source `operationKey` / event id                                                                                                  | §16.4, AC-I-12            |
+| Posting policy (which accounts, which mode, whether enabled at all) | Accounting-owned **configuration** (posting rules + control-role mapping + D-19 switch + §17.2 mode)                                                                                 | §8.7, §17.2               |
+| Cost/valuation input                                                | **Inventory ledger + valuation method (OQ-24)** — unresolved; until it is, inventory-driven postings cannot be activated (ADR-0022 records the ledger stores quantities, not money)  | §20.4                     |
+| Transaction boundary                                                | OQ-39 (transactional subscription per ADR-0005 vs durable queue per AR-14)                                                                                                           | §16.6                     |
+| Retry behaviour                                                     | Only meaningful in the queued shape: at-least-once + idempotent consumer + dead-letter surfacing (ADR-0004, AR-15). Never a blind retry of a non-idempotent posting                  | §16.4, §16.6              |
+| Rounding/residual of a computed amount                              | Computed **before** composition, policy expert-gated; Accounting never rounds to balance                                                                                             | §13.5                     |
+| Failure near a period close                                         | Policy: OQ-23/OQ-27 + OQ-39 (what happens to the source document)                                                                                                                    | §16.6, §7.2 rule 8        |
 
 ### 20.3 Traceability requirement (DECIDED)
 
@@ -1604,16 +1604,16 @@ Proposed event vocabulary (`Entity.PastTenseVerb`, `docs/architecture.md` §5). 
 `AccountingPeriod.Closed` in `docs/modules.md`; the catalog is updated when the module
 is implemented (event schema changes are ADR-gated — AR-29):
 
-| Event | When | Main consumers |
-|---|---|---|
-| `FinancialArea.{Created,Updated,Enabled,Disabled}` | area lifecycle | Audit |
-| `FiscalYear.{Created,Closed,Reopened,Sealed,Unsealed}` | year operations | Audit, Notifications |
-| `AccountingPeriod.{Opened,Closed,Reopened,Sealed}` | period operations | Audit, Notifications |
-| `Account.{Created,Updated,Enabled,Disabled}` | chart maintenance | Audit |
-| `DetailDimension.*` / `DetailItem.{Created,Updated,Enabled,Disabled}` | dimension maintenance | Audit |
-| `AccountingDocument.{Created,Updated,Finalized,Deleted,Reversed,Corrected,Replaced}` | document lifecycle (`Updated`/`Deleted` only pre-final) | Audit, Notifications, Reporting cache invalidation |
-| `AccountingYearTransition.Executed` | closing/opening operation | Audit, Notifications |
-| `AccountingPosting.Rejected` | a system posting refused (scope, period closed, unbalanced, non-postable) | Audit, Notifications, source-module exception surface |
+| Event                                                                                | When                                                                      | Main consumers                                        |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `FinancialArea.{Created,Updated,Enabled,Disabled}`                                   | area lifecycle                                                            | Audit                                                 |
+| `FiscalYear.{Created,Closed,Reopened,Sealed,Unsealed}`                               | year operations                                                           | Audit, Notifications                                  |
+| `AccountingPeriod.{Opened,Closed,Reopened,Sealed}`                                   | period operations                                                         | Audit, Notifications                                  |
+| `Account.{Created,Updated,Enabled,Disabled}`                                         | chart maintenance                                                         | Audit                                                 |
+| `DetailDimension.*` / `DetailItem.{Created,Updated,Enabled,Disabled}`                | dimension maintenance                                                     | Audit                                                 |
+| `AccountingDocument.{Created,Updated,Finalized,Deleted,Reversed,Corrected,Replaced}` | document lifecycle (`Updated`/`Deleted` only pre-final)                   | Audit, Notifications, Reporting cache invalidation    |
+| `AccountingYearTransition.Executed`                                                  | closing/opening operation                                                 | Audit, Notifications                                  |
+| `AccountingPosting.Rejected`                                                         | a system posting refused (scope, period closed, unbalanced, non-postable) | Audit, Notifications, source-module exception surface |
 
 Payload convention follows the established one: `{id, organizationId, …}` +
 `correlationId` + `occurredAt`; no `*.Deleted` event for master data (nothing is
@@ -1637,28 +1637,28 @@ publisher's transaction. Therefore:
 **DECIDED (`AC-D-34`).** Accounting registers its own granular codes in its module
 registry (`Module.Entity.Action`, AR-22), mirrored into `rbac.permissions` at startup
 (ADR-0006/0016). **No wildcards, no `Accounting.*`, no "Accounting Manager" role**
-(role sets are OQ-14; wildcards are OQ-21). The vocabulary below is the *contract*;
+(role sets are OQ-14; wildcards are OQ-21). The vocabulary below is the _contract_;
 codes are registered by the implementing task and any code not enforced by code must
 not exist (`docs/security.md` §3).
 
-| Entity | Codes | Notes |
-|---|---|---|
-| `Accounting.FinancialArea` | `View, Create, Edit, Enable, Disable` | master-data pattern (Task 6) |
-| `Accounting.FinancialAreaAccess` | `View, Grant, Revoke` | user↔area grants (§5.5); separate from RBAC role assignment on purpose |
-| `Accounting.FiscalYear` | `View, Create, Edit, Close, Reopen, Seal, Unseal` | `Seal`/`Unseal` distinct from `Close`/`Reopen` (§6.3) |
-| `Accounting.AccountingPeriod` | `View, Open, Close, Reopen, Seal` | period operations are their own authorities (§7.2 rule 5) |
-| `Accounting.CodingStructure` | `View, Configure` | versioned configuration (§9.4); no free-text structure editing |
-| `Accounting.Account` | `View, Create, Edit, Enable, Disable` | **no `Delete`** — accounts are never deleted (§8.6). "Manage chart of accounts" is expressed as this granular set, never a wildcard |
-| `Accounting.ControlRole` | `View, Map` | role→account mapping (§8.7) |
-| `Accounting.DetailDimension` | `View, Create, Edit, Enable, Disable` | |
-| `Accounting.DetailItem` | `View, Create, Edit, Enable, Disable` | |
-| `Accounting.Document` | `View, Create, Edit, Delete, Print, Export, Finalize, Approve, Reverse, Correct, Replace` | `Delete` applies **only** to `draft`/`temporary` (§15.3) and must not exist for `final`; `Finalize` ≠ `Approve` (finalize makes it a book entry; approve is the Workflow decision that may precede it — §17.2); `Reverse`/`Correct`/`Replace` are separate authorities, because correcting posted history is an authority of its own (the ADR-0022 `Movement.Reverse` precedent) |
-| `Accounting.PostingRule` | `View, Configure` | mapping configuration (§20.2); content expert-gated |
-| `Accounting.YearTransition` | `View, Execute` | closing/opening/period-transfer operations (§6.4) |
-| `Accounting.Balance` | `View, Rebuild` | projection reads and the audited rebuild (§19.3) |
-| `Accounting.LedgerMovement` | `View` | non-statutory ledger-native read source (Task 17A ACCEPTED; read-only access to immutable posted ledger entries) |
-| `Accounting.AccountStatement` | `View` | bounded account statement read (Task 17B; one account + one fiscal year + optional period, opening/running/closing derived from the immutable ledger per request; read-only, no mutation code exists — Owner decision D6 authorized this addition to the §22 vocabulary) |
-| `Accounting.SystemPosting` | `View, Retry` | inspection and manual retry of rejected/failed system postings (§16.6, §21) — only meaningful once OQ-39 is resolved |
+| Entity                           | Codes                                                                                     | Notes                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Accounting.FinancialArea`       | `View, Create, Edit, Enable, Disable`                                                     | master-data pattern (Task 6)                                                                                                                                                                                                                                                                                                                                                     |
+| `Accounting.FinancialAreaAccess` | `View, Grant, Revoke`                                                                     | user↔area grants (§5.5); separate from RBAC role assignment on purpose                                                                                                                                                                                                                                                                                                           |
+| `Accounting.FiscalYear`          | `View, Create, Edit, Close, Reopen, Seal, Unseal`                                         | `Seal`/`Unseal` distinct from `Close`/`Reopen` (§6.3)                                                                                                                                                                                                                                                                                                                            |
+| `Accounting.AccountingPeriod`    | `View, Open, Close, Reopen, Seal`                                                         | period operations are their own authorities (§7.2 rule 5)                                                                                                                                                                                                                                                                                                                        |
+| `Accounting.CodingStructure`     | `View, Configure`                                                                         | versioned configuration (§9.4); no free-text structure editing                                                                                                                                                                                                                                                                                                                   |
+| `Accounting.Account`             | `View, Create, Edit, Enable, Disable`                                                     | **no `Delete`** — accounts are never deleted (§8.6). "Manage chart of accounts" is expressed as this granular set, never a wildcard                                                                                                                                                                                                                                              |
+| `Accounting.ControlRole`         | `View, Map`                                                                               | role→account mapping (§8.7)                                                                                                                                                                                                                                                                                                                                                      |
+| `Accounting.DetailDimension`     | `View, Create, Edit, Enable, Disable`                                                     |                                                                                                                                                                                                                                                                                                                                                                                  |
+| `Accounting.DetailItem`          | `View, Create, Edit, Enable, Disable`                                                     |                                                                                                                                                                                                                                                                                                                                                                                  |
+| `Accounting.Document`            | `View, Create, Edit, Delete, Print, Export, Finalize, Approve, Reverse, Correct, Replace` | `Delete` applies **only** to `draft`/`temporary` (§15.3) and must not exist for `final`; `Finalize` ≠ `Approve` (finalize makes it a book entry; approve is the Workflow decision that may precede it — §17.2); `Reverse`/`Correct`/`Replace` are separate authorities, because correcting posted history is an authority of its own (the ADR-0022 `Movement.Reverse` precedent) |
+| `Accounting.PostingRule`         | `View, Configure`                                                                         | mapping configuration (§20.2); content expert-gated                                                                                                                                                                                                                                                                                                                              |
+| `Accounting.YearTransition`      | `View, Execute`                                                                           | closing/opening/period-transfer operations (§6.4)                                                                                                                                                                                                                                                                                                                                |
+| `Accounting.Balance`             | `View, Rebuild`                                                                           | projection reads and the audited rebuild (§19.3)                                                                                                                                                                                                                                                                                                                                 |
+| `Accounting.LedgerMovement`      | `View`                                                                                    | non-statutory ledger-native read source (Task 17A ACCEPTED; read-only access to immutable posted ledger entries)                                                                                                                                                                                                                                                                 |
+| `Accounting.AccountStatement`    | `View`                                                                                    | bounded account statement read (Task 17B; one account + one fiscal year + optional period, opening/running/closing derived from the immutable ledger per request; read-only, no mutation code exists — Owner decision D6 authorized this addition to the §22 vocabulary)                                                                                                         |
+| `Accounting.SystemPosting`       | `View, Retry`                                                                             | inspection and manual retry of rejected/failed system postings (§16.6, §21) — only meaningful once OQ-39 is resolved                                                                                                                                                                                                                                                             |
 
 Reports use `Report.<id>.View` codes registered by the Reporting module
 (`reporting-strategy.md` §1 item 4); numbering configuration uses the Documents module's
@@ -1671,20 +1671,20 @@ scope violations are 404 per §4.
 
 **DECIDED requirements (`AC-D-35`).** The Audit module is **not** implemented in this
 task and persistent audit remains a separate concern (AR-23, `docs/security.md` §4);
-what the contract requires is that Accounting *produces and preserves* the facts audit
+what the contract requires is that Accounting _produces and preserves_ the facts audit
 needs, in-transaction:
 
-| Requirement | How the contract provides it |
-|---|---|
-| Who created / changed / finalized / approved, and when | AR-12 columns (`created_by/at`, `updated_by/at`) + `finalized_by/at` (§12.2) + Workflow approval history (ADR-0024 §6/§7: append-only `workflow_transition_history` + `workflow_approvals`) |
-| Source of a system document | `source_module/entity_type/entity_id/operation` + `operationKey` + `request_hash` + correlation id (§16.3/§16.4) |
-| Reversal / correction / replacement relationships | typed self-links + `correction_kind` + mandatory `correction_reason` (§15.4); both documents remain (AR-13) |
-| Period / year / area / organization context | stored on every document and line, resolved at composition and never recomputed (§6.2, §12.2, §12.5) |
-| Immutability of Final rows | structural: no update/delete route, no service mutation path (§15.2/§15.3) |
-| Numbering evidence | the Foundation's append-only allocation ledger (ADR-0023 §3) |
-| Period/year operations evidence | explicit operations with permission, reason, actor and events (§6.3, §7.2, §21) |
-| Balance rebuild evidence | permission-gated, audited maintenance operation (§19.3) |
-| Sensitive-write audit emission | Accounting calls the kernel audit port inside the business transaction for: document finalization, deletion of temporary documents, corrections/reversals, period and year operations, chart/dimension configuration changes, control-role mapping changes, posting-rule changes, balance rebuilds (`docs/security.md` §4 already lists "all accounting writes") |
+| Requirement                                            | How the contract provides it                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Who created / changed / finalized / approved, and when | AR-12 columns (`created_by/at`, `updated_by/at`) + `finalized_by/at` (§12.2) + Workflow approval history (ADR-0024 §6/§7: append-only `workflow_transition_history` + `workflow_approvals`)                                                                                                                                                                      |
+| Source of a system document                            | `source_module/entity_type/entity_id/operation` + `operationKey` + `request_hash` + correlation id (§16.3/§16.4)                                                                                                                                                                                                                                                 |
+| Reversal / correction / replacement relationships      | typed self-links + `correction_kind` + mandatory `correction_reason` (§15.4); both documents remain (AR-13)                                                                                                                                                                                                                                                      |
+| Period / year / area / organization context            | stored on every document and line, resolved at composition and never recomputed (§6.2, §12.2, §12.5)                                                                                                                                                                                                                                                             |
+| Immutability of Final rows                             | structural: no update/delete route, no service mutation path (§15.2/§15.3)                                                                                                                                                                                                                                                                                       |
+| Numbering evidence                                     | the Foundation's append-only allocation ledger (ADR-0023 §3)                                                                                                                                                                                                                                                                                                     |
+| Period/year operations evidence                        | explicit operations with permission, reason, actor and events (§6.3, §7.2, §21)                                                                                                                                                                                                                                                                                  |
+| Balance rebuild evidence                               | permission-gated, audited maintenance operation (§19.3)                                                                                                                                                                                                                                                                                                          |
+| Sensitive-write audit emission                         | Accounting calls the kernel audit port inside the business transaction for: document finalization, deletion of temporary documents, corrections/reversals, period and year operations, chart/dimension configuration changes, control-role mapping changes, posting-rule changes, balance rebuilds (`docs/security.md` §4 already lists "all accounting writes") |
 
 ---
 
@@ -1714,7 +1714,7 @@ pre-empted here:
 
 - no `company_id` column, no inter-company clearing accounts, no inter-area settlement
   documents, no consolidation reports in this contract;
-- what the contract *does* guarantee: every accounting fact carries
+- what the contract _does_ guarantee: every accounting fact carries
   (organization, financial area, fiscal year, period), so a future consolidation or a
   second legal entity is a scope question, not a data-model rewrite — and area-level
   aggregation (`تجمیع و تلفیق`, §2.2) can be built as a reporting projection over
@@ -1739,75 +1739,75 @@ Each invariant states the rule, where it is enforced, and the failure posture. L
 tasks must implement **all** of them; violating one is a defect (`.vardena/
 architecture-rules.md` preamble).
 
-| id | Invariant | Enforced at | Failure posture |
-|---|---|---|---|
-| **AC-I-01** | Every accounting row belongs to exactly one Organization scope; every by-id read/action is organization-qualified. | service (`mustFindInOrganization`-style) + global pin guard | **404** `EntityNotFound` (never 403) — ADR-0021 §4, ADR-0025 §3 |
-| **AC-I-02** | Every accounting document belongs to exactly one Financial Area of its organization, and to a Fiscal Year + Accounting Period of that area, resolved from `document_date`. | domain rule + service | 422 `businessRule` (unresolvable date), 404 (out-of-scope area/year) |
-| **AC-I-03** | Fiscal years of one (organization, area) never overlap; periods of one year never overlap and lie inside the year. | domain rule on create/edit | 422 |
-| **AC-I-04** | A document may be finalized only into an **open** period of an **open** fiscal year; closed/sealed periods and years reject posting. | finalization transaction (re-check under lock) | 422 `businessRule` (`period_closed` / `year_closed` / `year_sealed`) |
-| **AC-I-05** | A **Final** accounting document cannot be edited: no field, line, dimension, date, number or period change. | structural (no mutation path) + Foundation `planEdit` | 422 `final_protected` |
-| **AC-I-06** | A **Final** accounting document cannot be deleted, and its lines cannot be deleted. | structural + Foundation `planDelete` (no deletable final phase) | 422 `final_protected` |
-| **AC-I-07** | Σ debit = Σ credit **exactly**, with ≥2 lines and at least one debit and one credit line. | domain rule at composition + re-check in the finalization transaction | 422 `unbalanced_document` |
-| **AC-I-08** | Line amounts are non-negative; exactly one of debit/credit is non-zero; zero-value lines are rejected; negative amounts are rejected. | domain rule | 422 |
-| **AC-I-09** | Only **postable**, active, area-applicable accounts may receive lines; a postable account is always a leaf. | domain rule (posting) + chart maintenance rules (§14 rule 2) | 422 `account_not_postable` / `account_has_children` |
-| **AC-I-10** | The account hierarchy stays valid: level = parent level + 1, child code = parent code + the level's segment, no cycles, one root path. | domain rule on create/move | 422 |
-| **AC-I-11** | An account `code` is unique within its scope, digits-only, never changed after use and never reused; `parent_id`, `level`, `nature`, `type` and `is_postable` are immutable once the account has lines. | DB unique index + domain rule | 409 (unique violation) / 422 (immutable-after-use) |
-| **AC-I-12** | System-generated posting is **idempotent**: one posting-operation row per `(organization_id, operation_key)`, written in the same transaction as the document; same key + same hash replays, same key + different hash is refused. | posting-operation ledger (ADR-0022 §3/§4 pattern) | 200 replay / **409** conflict |
-| **AC-I-13** | No source module mutates or reads Accounting persistence; no Accounting query reads another module's tables. Cross-module effects go through the posting contract/events; cross-module reads through public services. | architecture review + module boundary (AR-07/16) | defect (rejected in review) |
-| **AC-I-14** | Historical accounting records remain interpretable without current master data: documents store resolved year/period/area, the pinned coding-structure version, and (for system origin) the source reference and rule/mapping identity. | composition rules (blueprint §12/§14, D-21) | defect |
-| **AC-I-15** | Corrections never mutate history: reversal/correction/replacement/adjustment produce **new** Final documents with typed links and a mandatory reason; each mechanism is idempotent per (original, mechanism, operation key). | domain rule + posting-operation ledger | 422 / 409 (`already_reversed`) |
-| **AC-I-16** | Cross-organization references are forbidden everywhere in Accounting (accounts, areas, years, dimensions, items, branches, parties, documents) and answer as not-found. | service reference resolution | **404** |
-| **AC-I-17** | A sealed fiscal year cannot be reopened without a distinct permission, a recorded reason and an audit entry; sealed periods cannot be reopened while the year is sealed. | service + permission check + audit | 403 (permission) / 422 (state) |
-| **AC-I-18** | Dimension assignments on a line are legal for the line's account: only attached dimensions, all `required` present, no `forbidden`, one item per dimension, item active and area-applicable. | domain rule + DB unique `(line_id, dimension_id)` | 422 / 409 |
-| **AC-I-19** | Balance projections are never the source of truth: they are rebuilt from Final lines by an explicit audited operation and must reconcile with them. | maintenance operation + reconciliation report | defect if divergence is not surfaced |
-| **AC-I-20** | No accounting write occurs while accounting is disabled for the organization (D-19), except the explicit, permission-gated enabling operation and chart/calendar configuration needed to turn it on. | service check on the configuration switch | 422 `accounting_disabled` |
-| **AC-I-21** | Every accounting action is authorized twice (route guard + application service) with granular codes; there is no wildcard, no superuser and no bypass permission. | AR-21/ADR-0016 | 401 / 403 |
-| **AC-I-22** | Document numbers are numeric-only, allocated at most once per business action, unique per series, never reused and never changed after Final. | Documents Foundation (ADR-0023) + §15.2 | 409 / 422 `final_protected` |
+| id          | Invariant                                                                                                                                                                                                                               | Enforced at                                                           | Failure posture                                                      |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| **AC-I-01** | Every accounting row belongs to exactly one Organization scope; every by-id read/action is organization-qualified.                                                                                                                      | service (`mustFindInOrganization`-style) + global pin guard           | **404** `EntityNotFound` (never 403) — ADR-0021 §4, ADR-0025 §3      |
+| **AC-I-02** | Every accounting document belongs to exactly one Financial Area of its organization, and to a Fiscal Year + Accounting Period of that area, resolved from `document_date`.                                                              | domain rule + service                                                 | 422 `businessRule` (unresolvable date), 404 (out-of-scope area/year) |
+| **AC-I-03** | Fiscal years of one (organization, area) never overlap; periods of one year never overlap and lie inside the year.                                                                                                                      | domain rule on create/edit                                            | 422                                                                  |
+| **AC-I-04** | A document may be finalized only into an **open** period of an **open** fiscal year; closed/sealed periods and years reject posting.                                                                                                    | finalization transaction (re-check under lock)                        | 422 `businessRule` (`period_closed` / `year_closed` / `year_sealed`) |
+| **AC-I-05** | A **Final** accounting document cannot be edited: no field, line, dimension, date, number or period change.                                                                                                                             | structural (no mutation path) + Foundation `planEdit`                 | 422 `final_protected`                                                |
+| **AC-I-06** | A **Final** accounting document cannot be deleted, and its lines cannot be deleted.                                                                                                                                                     | structural + Foundation `planDelete` (no deletable final phase)       | 422 `final_protected`                                                |
+| **AC-I-07** | Σ debit = Σ credit **exactly**, with ≥2 lines and at least one debit and one credit line.                                                                                                                                               | domain rule at composition + re-check in the finalization transaction | 422 `unbalanced_document`                                            |
+| **AC-I-08** | Line amounts are non-negative; exactly one of debit/credit is non-zero; zero-value lines are rejected; negative amounts are rejected.                                                                                                   | domain rule                                                           | 422                                                                  |
+| **AC-I-09** | Only **postable**, active, area-applicable accounts may receive lines; a postable account is always a leaf.                                                                                                                             | domain rule (posting) + chart maintenance rules (§14 rule 2)          | 422 `account_not_postable` / `account_has_children`                  |
+| **AC-I-10** | The account hierarchy stays valid: level = parent level + 1, child code = parent code + the level's segment, no cycles, one root path.                                                                                                  | domain rule on create/move                                            | 422                                                                  |
+| **AC-I-11** | An account `code` is unique within its scope, digits-only, never changed after use and never reused; `parent_id`, `level`, `nature`, `type` and `is_postable` are immutable once the account has lines.                                 | DB unique index + domain rule                                         | 409 (unique violation) / 422 (immutable-after-use)                   |
+| **AC-I-12** | System-generated posting is **idempotent**: one posting-operation row per `(organization_id, operation_key)`, written in the same transaction as the document; same key + same hash replays, same key + different hash is refused.      | posting-operation ledger (ADR-0022 §3/§4 pattern)                     | 200 replay / **409** conflict                                        |
+| **AC-I-13** | No source module mutates or reads Accounting persistence; no Accounting query reads another module's tables. Cross-module effects go through the posting contract/events; cross-module reads through public services.                   | architecture review + module boundary (AR-07/16)                      | defect (rejected in review)                                          |
+| **AC-I-14** | Historical accounting records remain interpretable without current master data: documents store resolved year/period/area, the pinned coding-structure version, and (for system origin) the source reference and rule/mapping identity. | composition rules (blueprint §12/§14, D-21)                           | defect                                                               |
+| **AC-I-15** | Corrections never mutate history: reversal/correction/replacement/adjustment produce **new** Final documents with typed links and a mandatory reason; each mechanism is idempotent per (original, mechanism, operation key).            | domain rule + posting-operation ledger                                | 422 / 409 (`already_reversed`)                                       |
+| **AC-I-16** | Cross-organization references are forbidden everywhere in Accounting (accounts, areas, years, dimensions, items, branches, parties, documents) and answer as not-found.                                                                 | service reference resolution                                          | **404**                                                              |
+| **AC-I-17** | A sealed fiscal year cannot be reopened without a distinct permission, a recorded reason and an audit entry; sealed periods cannot be reopened while the year is sealed.                                                                | service + permission check + audit                                    | 403 (permission) / 422 (state)                                       |
+| **AC-I-18** | Dimension assignments on a line are legal for the line's account: only attached dimensions, all `required` present, no `forbidden`, one item per dimension, item active and area-applicable.                                            | domain rule + DB unique `(line_id, dimension_id)`                     | 422 / 409                                                            |
+| **AC-I-19** | Balance projections are never the source of truth: they are rebuilt from Final lines by an explicit audited operation and must reconcile with them.                                                                                     | maintenance operation + reconciliation report                         | defect if divergence is not surfaced                                 |
+| **AC-I-20** | No accounting write occurs while accounting is disabled for the organization (D-19), except the explicit, permission-gated enabling operation and chart/calendar configuration needed to turn it on.                                    | service check on the configuration switch                             | 422 `accounting_disabled`                                            |
+| **AC-I-21** | Every accounting action is authorized twice (route guard + application service) with granular codes; there is no wildcard, no superuser and no bypass permission.                                                                       | AR-21/ADR-0016                                                        | 401 / 403                                                            |
+| **AC-I-22** | Document numbers are numeric-only, allocated at most once per business action, unique per series, never reused and never changed after Final.                                                                                           | Documents Foundation (ADR-0023) + §15.2                               | 409 / 422 `final_protected`                                          |
 
 ---
 
 ## 26. Decision register (this contract)
 
-| id | Decision | § | Class |
-|---|---|---|---|
-| AC-D-01 | Accounting inherits the Task 9.6 organization security posture unchanged; no second tenant mechanism | 4 | A |
-| AC-D-02 | Financial Area = Accounting-owned, organization-scoped bookkeeping scope; ≠ organization, ≠ branch, ≠ department, ≠ company | 5.1 | B |
-| AC-D-03 | An accounting document belongs directly to exactly one financial area | 5.2 | B |
-| AC-D-04 | Chart + coding structure are organization-scoped with area applicability; years/periods/documents/numbering/balances are area-scoped | 5.4 | B |
-| AC-D-05 | User↔area is a many-to-many grant with per-user and per-organization defaults; interim posture is structural (caller-supplied) like `organizationId` today | 5.5 | A |
-| AC-D-06 | One account tree per organization; `group/general/subsidiary/detail` are configurable level labels, not tables or constants | 8.1 | B |
-| AC-D-07 | Accounts = one table, adjacency (`parent_id`) + integer `level` (+ optional rebuildable `path` projection) | 8.2 | A |
-| AC-D-08 | Accounts are never deleted, codes never reused; deactivation blocks new usage only | 8.6 | A |
-| AC-D-09 | Control roles are code-defined; organizations map accounts to roles once; posting rules reference roles (D-12 hybrid chart) | 8.7 | A |
-| AC-D-10 | Coding structure is versioned organization configuration: levels, digit lengths, display separators, max depth, reserved ranges; code-defined hard caps | 9.1 | B |
-| AC-D-11 | Detail dimensions are organization-configured (count not hardcoded), typed, capped, reportable | 10.1 | B |
-| AC-D-12 | Account↔dimension compatibility is expressed through dimension groups | 10.3 | B |
-| AC-D-13 | Per-(account, dimension) `requirement` ∈ {required, optional, forbidden}; the *default policy* is OQ-41 | 10.4 | B |
-| AC-D-14 | Line dimension assignments live in a typed child table (not columns, not EAV, not JSONB) | 10.6 | A |
-| AC-D-15 | Floating detail = a typed, code-unique, nature-less item outside the account tree, combinable with any compatible account | 11 | B |
-| AC-D-16 | One registered accounting document type in v1 (`accounting_voucher`) with two origins (`manual`, `system`); year-transition types are planned, not invented | 12.1 | A |
-| AC-D-17 | `branch_id` is a header attribute; a document has at most one branch | 12.4 | A |
-| AC-D-18 | Σ debit = Σ credit exactly, ≥2 lines, both sides present; checked at composition and under lock at finalization | 13.1 | A |
-| AC-D-19 | Posting eligibility is a validated account attribute; postable ⇒ leaf; the per-level default policy is OQ-25 | 14 | A |
-| AC-D-20 | Lifecycle reuses the Foundation verbatim: `draft` phase + `temporary`/`final` states; no `initial`, no `void`, no `deleted` state | 15.1 | A |
-| AC-D-21 | `deletablePhases = [draft, temporary]`; Final is never deletable; a discarded numbered voucher leaves an auditable gap | 15.3 | B |
-| AC-D-22 | Four additive correction mechanisms (reversal, correction, replacement, adjustment), typed links, mandatory reason, idempotent; `reopen` refused for accounting documents | 15.4 | A |
-| AC-D-23 | Finalization is one locked transaction: re-validate, number, state, projections, idempotency row, events, audit | 15.5 | A |
-| AC-D-24 | Manual and system origins share one aggregate and one invariant set; they differ in composer and evidence | 16.1 | A |
-| AC-D-25 | One source-posting contract for every source module (scope, source identity, operation, idempotency key, date, payload with accounts-or-roles) | 16.3 | A |
-| AC-D-26 | The posting interface is delivery-agnostic; transactional-vs-durable delivery is OQ-39 and no production integration is enabled before it is resolved | 16.6 | A |
-| AC-D-27 | An operational document produces an accounting document only when accounting is enabled, a rule/contract exists, and the posting mode says so | 17.1 | A |
-| AC-D-28 | Posting Mode A (direct final) / Mode B (review then finalize) are configuration over the existing Foundation entry states + Workflow approvals | 17.2 | B |
-| AC-D-29 | Accounting consumes Document Foundation numbering; a fiscal-year component would be a new Foundation strategy, never an Accounting fork | 18 | A |
-| AC-D-30 | Reports read Final lines via Accounting-owned views consumed by Reporting; period filters are stored-column predicates; column variants are layouts | 19.2 | A |
-| AC-D-31 | Balances are a rebuildable projection, never the ledger; materialization mechanism deferred to the balance task | 19.3 | A |
-| AC-D-32 | Inventory→Accounting is contract/event-only both ways; traceability without cross-module SQL; activation gated on OQ-24/25/30/39 | 20 | A |
-| AC-D-33 | Accounting reuses the kernel event bus + `core.domain_events`; no second event architecture; durability is OQ-39 | 21 | A |
-| AC-D-34 | Granular `Accounting.*` permission vocabulary; no wildcards; `Finalize` ≠ `Approve`; corrections are their own authorities | 22 | A |
-| AC-D-35 | Accounting produces and preserves all audit facts in-transaction; persistent audit stays the Audit module's concern | 23 | A |
+| id      | Decision                                                                                                                                                                  | §    | Class |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ----- |
+| AC-D-01 | Accounting inherits the Task 9.6 organization security posture unchanged; no second tenant mechanism                                                                      | 4    | A     |
+| AC-D-02 | Financial Area = Accounting-owned, organization-scoped bookkeeping scope; ≠ organization, ≠ branch, ≠ department, ≠ company                                               | 5.1  | B     |
+| AC-D-03 | An accounting document belongs directly to exactly one financial area                                                                                                     | 5.2  | B     |
+| AC-D-04 | Chart + coding structure are organization-scoped with area applicability; years/periods/documents/numbering/balances are area-scoped                                      | 5.4  | B     |
+| AC-D-05 | User↔area is a many-to-many grant with per-user and per-organization defaults; interim posture is structural (caller-supplied) like `organizationId` today                | 5.5  | A     |
+| AC-D-06 | One account tree per organization; `group/general/subsidiary/detail` are configurable level labels, not tables or constants                                               | 8.1  | B     |
+| AC-D-07 | Accounts = one table, adjacency (`parent_id`) + integer `level` (+ optional rebuildable `path` projection)                                                                | 8.2  | A     |
+| AC-D-08 | Accounts are never deleted, codes never reused; deactivation blocks new usage only                                                                                        | 8.6  | A     |
+| AC-D-09 | Control roles are code-defined; organizations map accounts to roles once; posting rules reference roles (D-12 hybrid chart)                                               | 8.7  | A     |
+| AC-D-10 | Coding structure is versioned organization configuration: levels, digit lengths, display separators, max depth, reserved ranges; code-defined hard caps                   | 9.1  | B     |
+| AC-D-11 | Detail dimensions are organization-configured (count not hardcoded), typed, capped, reportable                                                                            | 10.1 | B     |
+| AC-D-12 | Account↔dimension compatibility is expressed through dimension groups                                                                                                     | 10.3 | B     |
+| AC-D-13 | Per-(account, dimension) `requirement` ∈ {required, optional, forbidden}; the _default policy_ is OQ-41                                                                   | 10.4 | B     |
+| AC-D-14 | Line dimension assignments live in a typed child table (not columns, not EAV, not JSONB)                                                                                  | 10.6 | A     |
+| AC-D-15 | Floating detail = a typed, code-unique, nature-less item outside the account tree, combinable with any compatible account                                                 | 11   | B     |
+| AC-D-16 | One registered accounting document type in v1 (`accounting_voucher`) with two origins (`manual`, `system`); year-transition types are planned, not invented               | 12.1 | A     |
+| AC-D-17 | `branch_id` is a header attribute; a document has at most one branch                                                                                                      | 12.4 | A     |
+| AC-D-18 | Σ debit = Σ credit exactly, ≥2 lines, both sides present; checked at composition and under lock at finalization                                                           | 13.1 | A     |
+| AC-D-19 | Posting eligibility is a validated account attribute; postable ⇒ leaf; the per-level default policy is OQ-25                                                              | 14   | A     |
+| AC-D-20 | Lifecycle reuses the Foundation verbatim: `draft` phase + `temporary`/`final` states; no `initial`, no `void`, no `deleted` state                                         | 15.1 | A     |
+| AC-D-21 | `deletablePhases = [draft, temporary]`; Final is never deletable; a discarded numbered voucher leaves an auditable gap                                                    | 15.3 | B     |
+| AC-D-22 | Four additive correction mechanisms (reversal, correction, replacement, adjustment), typed links, mandatory reason, idempotent; `reopen` refused for accounting documents | 15.4 | A     |
+| AC-D-23 | Finalization is one locked transaction: re-validate, number, state, projections, idempotency row, events, audit                                                           | 15.5 | A     |
+| AC-D-24 | Manual and system origins share one aggregate and one invariant set; they differ in composer and evidence                                                                 | 16.1 | A     |
+| AC-D-25 | One source-posting contract for every source module (scope, source identity, operation, idempotency key, date, payload with accounts-or-roles)                            | 16.3 | A     |
+| AC-D-26 | The posting interface is delivery-agnostic; transactional-vs-durable delivery is OQ-39 and no production integration is enabled before it is resolved                     | 16.6 | A     |
+| AC-D-27 | An operational document produces an accounting document only when accounting is enabled, a rule/contract exists, and the posting mode says so                             | 17.1 | A     |
+| AC-D-28 | Posting Mode A (direct final) / Mode B (review then finalize) are configuration over the existing Foundation entry states + Workflow approvals                            | 17.2 | B     |
+| AC-D-29 | Accounting consumes Document Foundation numbering; a fiscal-year component would be a new Foundation strategy, never an Accounting fork                                   | 18   | A     |
+| AC-D-30 | Reports read Final lines via Accounting-owned views consumed by Reporting; period filters are stored-column predicates; column variants are layouts                       | 19.2 | A     |
+| AC-D-31 | Balances are a rebuildable projection, never the ledger; materialization mechanism deferred to the balance task                                                           | 19.3 | A     |
+| AC-D-32 | Inventory→Accounting is contract/event-only both ways; traceability without cross-module SQL; activation gated on OQ-24/25/30/39                                          | 20   | A     |
+| AC-D-33 | Accounting reuses the kernel event bus + `core.domain_events`; no second event architecture; durability is OQ-39                                                          | 21   | A     |
+| AC-D-34 | Granular `Accounting.*` permission vocabulary; no wildcards; `Finalize` ≠ `Approve`; corrections are their own authorities                                                | 22   | A     |
+| AC-D-35 | Accounting produces and preserves all audit facts in-transaction; persistent audit stays the Audit module's concern                                                       | 23   | A     |
 
-*Class = the benchmarking class (§2) that motivated the decision; it does not weaken
-it — every row is a Vardena architecture decision.*
+_Class = the benchmarking class (§2) that motivated the decision; it does not weaken
+it — every row is a Vardena architecture decision._
 
 ---
 
@@ -1815,25 +1815,25 @@ it — every row is a Vardena architecture decision.*
 
 New (**full text in [`../open-questions.md`](../open-questions.md)**):
 
-| id | Area | One-line question |
-|---|---|---|
-| **OQ-39** | Accounting / Events | Durable event & outbox semantics for system-generated posting: transactional subscription (ADR-0005) or durable queue (AR-14), and what happens to a source document whose posting is rejected? |
-| **OQ-40** | Accounting | Financial Area semantics: how many per organization, separate charts?, user access grants in v1?, default area, consolidation/aggregation? |
-| **OQ-41** | Accounting | Detail dimensions: how many, are attached dimensions independently optional/required, which dimensions must bind to master data, item governance? |
-| **OQ-42** | Accounting | System-posting mode: default Mode A vs Mode B per source type, who may finalize/approve, what rejection means for the source document? |
-| **OQ-43** | Accounting / Legal | Which Iranian statutory requirements (legal books, entry timing, language/currency, no deletion from electronic books, e-invoice/Art. 169, retention) constrain the accounting model? Validate with an accountant + current authoritative sources. |
+| id        | Area                | One-line question                                                                                                                                                                                                                                  |
+| --------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **OQ-39** | Accounting / Events | Durable event & outbox semantics for system-generated posting: transactional subscription (ADR-0005) or durable queue (AR-14), and what happens to a source document whose posting is rejected?                                                    |
+| **OQ-40** | Accounting          | Financial Area semantics: how many per organization, separate charts?, user access grants in v1?, default area, consolidation/aggregation?                                                                                                         |
+| **OQ-41** | Accounting          | Detail dimensions: how many, are attached dimensions independently optional/required, which dimensions must bind to master data, item governance?                                                                                                  |
+| **OQ-42** | Accounting          | System-posting mode: default Mode A vs Mode B per source type, who may finalize/approve, what rejection means for the source document?                                                                                                             |
+| **OQ-43** | Accounting / Legal  | Which Iranian statutory requirements (legal books, entry timing, language/currency, no deletion from electronic books, e-invoice/Art. 169, retention) constrain the accounting model? Validate with an accountant + current authoritative sources. |
 
 Updated with Task 10.1 notes (no new OQ, to avoid duplicating settled scope):
 
-| id | Note added |
-|---|---|
-| OQ-03 | base-currency invariant + the reserved per-line currency/rate seam (§13.6, §24.1) |
-| OQ-11 | the contract now fixes the *shape* (immutable balanced documents, stored period resolution); what remains open is policy |
-| OQ-12 | accounting numbering consumes the Foundation; a fiscal-year component would be a new `strategy` (§18) |
-| OQ-23 | multiple simultaneously open periods, `sealed` year state, year-transition operations, reopen authority (§6, §7) |
-| OQ-25 | coding-structure configurability, posting eligibility per level, account freeze guards, control-role list (§8, §9, §14) |
-| OQ-27 | the four correction mechanisms and their windows/period rules (§15.4) |
-| OQ-31 | financial area ≠ company; consolidation stays deferred (§5.1, §24.2) |
+| id    | Note added                                                                                                               |
+| ----- | ------------------------------------------------------------------------------------------------------------------------ |
+| OQ-03 | base-currency invariant + the reserved per-line currency/rate seam (§13.6, §24.1)                                        |
+| OQ-11 | the contract now fixes the _shape_ (immutable balanced documents, stored period resolution); what remains open is policy |
+| OQ-12 | accounting numbering consumes the Foundation; a fiscal-year component would be a new `strategy` (§18)                    |
+| OQ-23 | multiple simultaneously open periods, `sealed` year state, year-transition operations, reopen authority (§6, §7)         |
+| OQ-25 | coding-structure configurability, posting eligibility per level, account freeze guards, control-role list (§8, §9, §14)  |
+| OQ-27 | the four correction mechanisms and their windows/period rules (§15.4)                                                    |
+| OQ-31 | financial area ≠ company; consolidation stays deferred (§5.1, §24.2)                                                     |
 
 Explicitly **not** raised (already settled by existing architecture, per Task 10.1 §28):
 organization scoping and the 404 posture (ADR-0021/0022/0025), idempotency mechanics
@@ -1849,29 +1849,29 @@ no-deletion master-data lifecycle (OQ-36).
 
 ### 28.1 Gate for Task 10.2 — Fiscal Year + Financial Area Foundation
 
-| Precondition | State |
-|---|---|
-| ADR-0026 (bounded context, calendar/area ownership) accepted | **Proposed** — needs accept/reject |
-| Financial-area multiplicity & chart-scope assumption recorded | recorded as the OQ-40 interim assumption (one area by default, model permits more, one organization-scoped chart, no consolidation) |
-| Fiscal-year/period *policy* (open/close/seal/reopen authority, layout) | **not** required for the shape: statuses, transitions and permissions are defined here; the *policy* stays OQ-23 and only gates closing automation |
-| Organization security posture | already accepted (ADR-0021/0022/0025) — inherit verbatim |
+| Precondition                                                           | State                                                                                                                                              |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ADR-0026 (bounded context, calendar/area ownership) accepted           | **Proposed** — needs accept/reject                                                                                                                 |
+| Financial-area multiplicity & chart-scope assumption recorded          | recorded as the OQ-40 interim assumption (one area by default, model permits more, one organization-scoped chart, no consolidation)                |
+| Fiscal-year/period _policy_ (open/close/seal/reopen authority, layout) | **not** required for the shape: statuses, transitions and permissions are defined here; the _policy_ stays OQ-23 and only gates closing automation |
+| Organization security posture                                          | already accepted (ADR-0021/0022/0025) — inherit verbatim                                                                                           |
 
 ⇒ **Task 10.2 is not blocked** by an accounting-policy OQ, provided it implements the
 shape of §5, §6, §7 (plus §4 scoping) and no posting/closing automation.
 
 ### 28.2 Gates for later tasks
 
-| Task (indicative) | Hard gate |
-|---|---|
-| Chart of accounts + coding structure | OQ-25 (levels, code lengths, eligibility policy, control-role list) — the *mechanism* (§8, §9) may be built first with configuration empty |
-| Detail dimensions + items | OQ-41 (count, requiredness default, binding policy) |
-| Accounting documents + finalization | OQ-12 (numbering year component, gaps), OQ-03 (precision/currency), OQ-23 (period policy for posting), OQ-27 (correction windows) |
-| Reporting (ledgers, trial balances) | OQ-25/OQ-43 (statutory layouts); ADR-0009 mechanics already accepted |
-| Inventory → Accounting posting | OQ-24 (valuation), OQ-25/OQ-30 (mappings/tax), **OQ-39 (delivery durability)** |
-| Any production system-generated posting | **OQ-39** (AC-D-26) |
-| Statutory/e-ledger features | **OQ-43** validation with an accountant and current authoritative sources |
+| Task (indicative)                       | Hard gate                                                                                                                                  |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Chart of accounts + coding structure    | OQ-25 (levels, code lengths, eligibility policy, control-role list) — the _mechanism_ (§8, §9) may be built first with configuration empty |
+| Detail dimensions + items               | OQ-41 (count, requiredness default, binding policy)                                                                                        |
+| Accounting documents + finalization     | OQ-12 (numbering year component, gaps), OQ-03 (precision/currency), OQ-23 (period policy for posting), OQ-27 (correction windows)          |
+| Reporting (ledgers, trial balances)     | OQ-25/OQ-43 (statutory layouts); ADR-0009 mechanics already accepted                                                                       |
+| Inventory → Accounting posting          | OQ-24 (valuation), OQ-25/OQ-30 (mappings/tax), **OQ-39 (delivery durability)**                                                             |
+| Any production system-generated posting | **OQ-39** (AC-D-26)                                                                                                                        |
+| Statutory/e-ledger features             | **OQ-43** validation with an accountant and current authoritative sources                                                                  |
 
-### 28.3 What must be true before *any* Accounting migration
+### 28.3 What must be true before _any_ Accounting migration
 
 1. ADR-0026 accepted (or superseded) — it moves fiscal-calendar ownership out of
    ADR-0020 §2 and must not be contradicted silently (AG-17).
@@ -1885,64 +1885,64 @@ shape of §5, §6, §7 (plus §4 scoping) and no posting/closing automation.
 
 ## 29. Traceability — Task 10.1 brief → this contract
 
-| Brief § | Contract § | Outcome |
-|---|---|---|
-| 1 objective, 35 principle | 0, 1 | contract established; no code |
-| 2 do not implement | 1.2, 1.3, 28.3 | non-goals + scope compliance |
-| 3 research requirement | 2 (A/B/C classes + provenance) | benchmarking separated from legal assumptions; OQ-43 |
-| 4 architecture constraints | 3.1, 4, 16.2, 20.1 | Modular Monolith, vertical slices, contracts, events, outbox boundary preserved |
-| 5 boundaries | 3.2 (four categories + concept inventory) | accounting vs operational vs reporting vs integration |
-| 6 organization scope | 4 | 8 explicit statements inherited from Task 9.6 |
-| 7 financial area | 5 | ≠ organization/branch; users, defaults, lifecycle, area↔document |
-| 8 fiscal year | 6 | Open/Closed/Sealed; no `initial`, no `void`; transition mechanics |
-| 9 accounting period | 7 | period rows; multiple open periods; locks; policy → OQ-23 |
-| 10 chart of accounts | 8 | one tree, configurable levels, nature/type/postable, freeze rules |
-| 11 configurable coding | 9 | levels, digits, separators, depth, uniqueness, reserved ranges, immutability, versioning |
-| 12 detail dimensions | 10 | configurable count, groups, compatibility, line assignment, requiredness → OQ-41 |
-| 13 floating detail | 11 | defined; distinguished from hierarchy/party/cost centre/branch/employee; not JSON |
-| 14 manual vs system | 16 | source contract fields; idempotency; authorization |
-| 15 operational vs accounting document | 17 | chain + Mode A/B configurable |
-| 16 document lifecycle | 15.1–15.3 | Temporary/Final; no Draft/Void/Deleted states; Final protected |
-| 17 debit/credit model | 13 | invariant, positivity, precision, rounding, totals, currency boundary |
-| 18 posting eligibility | 14 | attribute + leaf invariant; policy → OQ-25 |
-| 19 numbering | 18 | Foundation reuse; fiscal-year component path; immutability |
-| 20 reporting boundary | 19 | report inventory; views/projections; layouts vs models |
-| 21 Inventory boundary | 20 | contract/event only; where each concern belongs; activation gate |
-| 22 event/outbox decision | 21, 16.6 | OQ-39; in-memory bus explicitly not durable |
-| 23 security/RBAC | 22 | granular vocabulary, no wildcards, no single role assumption |
-| 24 auditability | 23 | requirements; Audit module not implemented |
-| 25 multi-currency | 24.1 | deferred with an explicit seam |
-| 26 multi-company | 24.2 | deferred; OQ-22/OQ-31 remain owners |
-| 27 invariants | 25 | AC-I-01 … AC-I-22 |
-| 28 open questions | 27 | 5 new, 7 annotated, settled items explicitly not re-raised |
-| 29 ADR requirement | ADR-0026 (Proposed) | one ADR for one real decision; nothing else invented |
-| 30 required documents | this file + ADR-0026 + index updates | §28.3 lists the doc-sync obligation |
-| 31 no DB changes | 1.3 | Prisma schema unchanged, no migration |
-| 32 no frontend changes | 1.3 | no frontend file touched |
-| 33 verification | 30 (below) | contradiction check + link check; no fabricated test results |
+| Brief §                               | Contract §                                | Outcome                                                                                  |
+| ------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------- |
+| 1 objective, 35 principle             | 0, 1                                      | contract established; no code                                                            |
+| 2 do not implement                    | 1.2, 1.3, 28.3                            | non-goals + scope compliance                                                             |
+| 3 research requirement                | 2 (A/B/C classes + provenance)            | benchmarking separated from legal assumptions; OQ-43                                     |
+| 4 architecture constraints            | 3.1, 4, 16.2, 20.1                        | Modular Monolith, vertical slices, contracts, events, outbox boundary preserved          |
+| 5 boundaries                          | 3.2 (four categories + concept inventory) | accounting vs operational vs reporting vs integration                                    |
+| 6 organization scope                  | 4                                         | 8 explicit statements inherited from Task 9.6                                            |
+| 7 financial area                      | 5                                         | ≠ organization/branch; users, defaults, lifecycle, area↔document                         |
+| 8 fiscal year                         | 6                                         | Open/Closed/Sealed; no `initial`, no `void`; transition mechanics                        |
+| 9 accounting period                   | 7                                         | period rows; multiple open periods; locks; policy → OQ-23                                |
+| 10 chart of accounts                  | 8                                         | one tree, configurable levels, nature/type/postable, freeze rules                        |
+| 11 configurable coding                | 9                                         | levels, digits, separators, depth, uniqueness, reserved ranges, immutability, versioning |
+| 12 detail dimensions                  | 10                                        | configurable count, groups, compatibility, line assignment, requiredness → OQ-41         |
+| 13 floating detail                    | 11                                        | defined; distinguished from hierarchy/party/cost centre/branch/employee; not JSON        |
+| 14 manual vs system                   | 16                                        | source contract fields; idempotency; authorization                                       |
+| 15 operational vs accounting document | 17                                        | chain + Mode A/B configurable                                                            |
+| 16 document lifecycle                 | 15.1–15.3                                 | Temporary/Final; no Draft/Void/Deleted states; Final protected                           |
+| 17 debit/credit model                 | 13                                        | invariant, positivity, precision, rounding, totals, currency boundary                    |
+| 18 posting eligibility                | 14                                        | attribute + leaf invariant; policy → OQ-25                                               |
+| 19 numbering                          | 18                                        | Foundation reuse; fiscal-year component path; immutability                               |
+| 20 reporting boundary                 | 19                                        | report inventory; views/projections; layouts vs models                                   |
+| 21 Inventory boundary                 | 20                                        | contract/event only; where each concern belongs; activation gate                         |
+| 22 event/outbox decision              | 21, 16.6                                  | OQ-39; in-memory bus explicitly not durable                                              |
+| 23 security/RBAC                      | 22                                        | granular vocabulary, no wildcards, no single role assumption                             |
+| 24 auditability                       | 23                                        | requirements; Audit module not implemented                                               |
+| 25 multi-currency                     | 24.1                                      | deferred with an explicit seam                                                           |
+| 26 multi-company                      | 24.2                                      | deferred; OQ-22/OQ-31 remain owners                                                      |
+| 27 invariants                         | 25                                        | AC-I-01 … AC-I-22                                                                        |
+| 28 open questions                     | 27                                        | 5 new, 7 annotated, settled items explicitly not re-raised                               |
+| 29 ADR requirement                    | ADR-0026 (Proposed)                       | one ADR for one real decision; nothing else invented                                     |
+| 30 required documents                 | this file + ADR-0026 + index updates      | §28.3 lists the doc-sync obligation                                                      |
+| 31 no DB changes                      | 1.3                                       | Prisma schema unchanged, no migration                                                    |
+| 32 no frontend changes                | 1.3                                       | no frontend file touched                                                                 |
+| 33 verification                       | 30 (below)                                | contradiction check + link check; no fabricated test results                             |
 
 ---
 
 ## 30. Verification performed in Task 10.1
 
-| Check | Result |
-|---|---|
-| Prisma schema unchanged (`backend/prisma/schema/*.prisma`) | ✅ no change |
-| No migration added (`backend/prisma/migrations/`) | ✅ no change |
-| No backend/frontend source change | ✅ docs only |
-| No contradiction with Task 9.6 (ADR-0022 §8, ADR-0025) | ✅ §4 inherits the posture verbatim, including the 404-not-403 rule and the pin guard |
-| No contradiction with ADR-0022 | ✅ idempotency ledger, hash-only-client-intent, freeze-over-delete and in-transaction policy evaluation are reused, not redefined |
-| No contradiction with ADR-0023 | ✅ numbering, type registry, logical references, phase vocabulary reused; no accounting numbering fork |
-| No contradiction with ADR-0024 | ✅ approvals/version pinning/in-memory-bus gap reused; Mode B is workflow configuration |
-| No contradiction with the organization security model | ✅ §4, AC-I-01/16/21 |
-| No contradiction with the Document Foundation | ✅ §15.1, §18 |
-| No contradiction with the Workflow Foundation | ✅ §17.2 |
-| No direct Inventory → Accounting table dependency proposed | ✅ §20.1, AC-I-13 |
-| No universal document table introduced | ✅ §3.3, §12.1 |
-| No EAV accounting model introduced | ✅ §10.6 |
-| No generic JSONB accounting model introduced | ✅ §3.3, §10.6, §12.6 |
-| Existing tests unchanged / no fabricated results | ✅ no test was run or added: this is a documentation/domain-analysis task |
-| Documentation link consistency | ✅ relative links in the new/updated docs resolve (checked mechanically) |
+| Check                                                      | Result                                                                                                                            |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Prisma schema unchanged (`backend/prisma/schema/*.prisma`) | ✅ no change                                                                                                                      |
+| No migration added (`backend/prisma/migrations/`)          | ✅ no change                                                                                                                      |
+| No backend/frontend source change                          | ✅ docs only                                                                                                                      |
+| No contradiction with Task 9.6 (ADR-0022 §8, ADR-0025)     | ✅ §4 inherits the posture verbatim, including the 404-not-403 rule and the pin guard                                             |
+| No contradiction with ADR-0022                             | ✅ idempotency ledger, hash-only-client-intent, freeze-over-delete and in-transaction policy evaluation are reused, not redefined |
+| No contradiction with ADR-0023                             | ✅ numbering, type registry, logical references, phase vocabulary reused; no accounting numbering fork                            |
+| No contradiction with ADR-0024                             | ✅ approvals/version pinning/in-memory-bus gap reused; Mode B is workflow configuration                                           |
+| No contradiction with the organization security model      | ✅ §4, AC-I-01/16/21                                                                                                              |
+| No contradiction with the Document Foundation              | ✅ §15.1, §18                                                                                                                     |
+| No contradiction with the Workflow Foundation              | ✅ §17.2                                                                                                                          |
+| No direct Inventory → Accounting table dependency proposed | ✅ §20.1, AC-I-13                                                                                                                 |
+| No universal document table introduced                     | ✅ §3.3, §12.1                                                                                                                    |
+| No EAV accounting model introduced                         | ✅ §10.6                                                                                                                          |
+| No generic JSONB accounting model introduced               | ✅ §3.3, §10.6, §12.6                                                                                                             |
+| Existing tests unchanged / no fabricated results           | ✅ no test was run or added: this is a documentation/domain-analysis task                                                         |
+| Documentation link consistency                             | ✅ relative links in the new/updated docs resolve (checked mechanically)                                                          |
 
 **Known documentation contradictions found and flagged (AG-17), not silently resolved:**
 
@@ -1987,20 +1987,20 @@ Contract sections those ADRs **refine** (the contract text below is untouched; p
 DECIDED row changes only through a superseding ADR, and per `docs/accounting/task-index.md`
 §7 an implementation needs its own defined task):
 
-| Contract section | Owner decision | Effect |
-|---|---|---|
-| §8.3 `code` "immutable once created", §8.4 rule 4, §9.5 | Q3 + OD-20-4 | A code change **before first accounting use** is permitted-in-principle through a future controlled producer (the repository is stricter today: no code-edit path exists). After use, ordinary code change is forbidden; only ADR-0035's controlled migration can change representation/history. Baseline discrepancy **D-2** remains implementation-only. |
-| §8.5 rollup, §14 rule 2 (AC-D-19), §25 AC-I-09 (postable ⇒ leaf) | Q5 + I-2 + OD-20-5 | **D-1 resolved:** `POSTING = leaf-only`; `AGGREGATION = reporting/read-time roll-up`. The existing leaf rule is the product rule, not merely a temporary stricter implementation. Non-leaf posting, own-vs-descendant measures and double-counting workarounds are not authorized; a future exception requires a new explicit architecture decision. |
-| §8.6 (AC-D-08) freeze-over-delete | Q21 | Deletion becomes permitted-in-principle for an account with **no** historical accounting usage and no blocking reference; used accounts are deactivated, never deleted; a zero balance is **not** proof of no usage. The repository implements the stricter half only. Baseline discrepancy **D-4**. |
-| §8.7 control roles (AC-D-09), §1.2 non-goal 1 | Q2 + Q4 + OD-20-1…OD-20-3 | Vardena's Base Chart is a versioned Accounting-owned product/database template adopted explicitly into an organization, creating organization-owned Account identities; its content stays EXPERT-GATED (OQ-25). Control roles are consumer-first, not a speculative catalog, and the account↔role artifact is an independent effective-dated mapping — not `Account.control_role`. Nothing exists in code. Baseline discrepancy **D-5** remains implementation-only. |
-| §9.4 "any migration of existing accounts is an explicit, permission-gated, audited operation (OQ-25)" | Q8 + Q19 + I-3 | That operation is now named and shaped: the **Accounting Code Structure Migration Service** (controlled, licensed, preflight → impact → dry run → plan → approval → license → backup point → migration → reconciliation → audit). Level-count changes are **excluded** (Q20). Not implemented; ADR-0030/OQ-45 licensing is a prerequisite. |
-| §8.3/§9.2 code as one value per account | Q18 + I-1 | `Account.id` is the permanent identity; a code is a **time-scoped** business identifier with history, and historical reports resolve the code valid in the reported context. Needs an additive schema task. Baseline discrepancy **D-3**. |
-| §12.3 two dates, §19.2 rule 3 stored-column filters | Q14 | Confirmed and elevated to an explicit reporting rule: `document_date` = financial-reporting axis, `posting_timestamp` = audit/event-timing axis; Fiscal Year, Accounting Period, Document Date and Posting Timestamp stay four distinct concepts. |
-| §19.1 report inventory, §19.4 | Q10 + Q15 + Q16 | The journal (`دفتر روزنامه`) and the general ledger (`دفتر کل`) are **independent** report definitions over one read source; **Account Statement** is the unified account performance/turnover concept (Task 17B's surface); **Account Overview** («مرور حساب») is a presentation over the same read source and calculations — never a second engine. |
-| §2.3 Class C, §19.4 "no statutory layout hardcoded before OQ-43 validation" | Q9 + Q11 + Q22 | Architecture decided: `Accounting Core → Legal Adapter / Legal Profile → {Iran, future}` (ADR-0036). Persian is the primary language; the base monetary unit is configurable (Rial/Toman) with conversion as presentation only. **No legal fact is decided or claimed** — OQ-43 stays OPEN. |
-| §10/§11 dimensions and floating detail (AC-D-11…AC-D-15) | Q6 + Q7 + OD-20-6 | Confirmed and refined: tree-based **and** floating details, a configurable typed dimension model with per-(account, dimension) `required`/`optional`/`forbidden`, never EAV/JSONB. Initial dimension assignments are transaction-line-level analytical assignments; aggregation is through Accounting/read logic when a concrete reporting consumer requires it. No ledger-column widening or speculative projection. Still unimplemented; OQ-41 stays OPEN for content/governance. |
-| §15 lifecycle/corrections (AC-D-20/21/22, AC-I-05/06/15) | Q12 + Q13 | Confirmed: non-final documents may be edited/discarded under permissions; Final/Posted documents are immutable and corrected only by counter-documents; Final/legal history is never physically deleted. OQ-27 (windows) and OQ-54 (non-accounting documents) stay OPEN; only `reversal` is implemented today. |
-| §25 invariants, §22 permissions, §4 organization scope | Q17 | Configurability principle: high configurability, never unrestricted — configuration may not violate the AC-I invariants, authorization, auditability, tenant isolation or data integrity (ADR-0037 §8). |
+| Contract section                                                                                      | Owner decision            | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ----------------------------------------------------------------------------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| §8.3 `code` "immutable once created", §8.4 rule 4, §9.5                                               | Q3 + OD-20-4              | A code change **before first accounting use** is permitted-in-principle through a future controlled producer (the repository is stricter today: no code-edit path exists). After use, ordinary code change is forbidden; only ADR-0035's controlled migration can change representation/history. Baseline discrepancy **D-2** remains implementation-only.                                                                                                                          |
+| §8.5 rollup, §14 rule 2 (AC-D-19), §25 AC-I-09 (postable ⇒ leaf)                                      | Q5 + I-2 + OD-20-5        | **D-1 resolved:** `POSTING = leaf-only`; `AGGREGATION = reporting/read-time roll-up`. The existing leaf rule is the product rule, not merely a temporary stricter implementation. Non-leaf posting, own-vs-descendant measures and double-counting workarounds are not authorized; a future exception requires a new explicit architecture decision.                                                                                                                                |
+| §8.6 (AC-D-08) freeze-over-delete                                                                     | Q21                       | Deletion becomes permitted-in-principle for an account with **no** historical accounting usage and no blocking reference; used accounts are deactivated, never deleted; a zero balance is **not** proof of no usage. The repository implements the stricter half only. Baseline discrepancy **D-4**.                                                                                                                                                                                |
+| §8.7 control roles (AC-D-09), §1.2 non-goal 1                                                         | Q2 + Q4 + OD-20-1…OD-20-3 | Vardena's Base Chart is a versioned Accounting-owned product/database template adopted explicitly into an organization, creating organization-owned Account identities; its content stays EXPERT-GATED (OQ-25). Control roles are consumer-first, not a speculative catalog, and the account↔role artifact is an independent effective-dated mapping — not `Account.control_role`. Nothing exists in code. Baseline discrepancy **D-5** remains implementation-only.                |
+| §9.4 "any migration of existing accounts is an explicit, permission-gated, audited operation (OQ-25)" | Q8 + Q19 + I-3            | That operation is now named and shaped: the **Accounting Code Structure Migration Service** (controlled, licensed, preflight → impact → dry run → plan → approval → license → backup point → migration → reconciliation → audit). Level-count changes are **excluded** (Q20). Not implemented; ADR-0030/OQ-45 licensing is a prerequisite.                                                                                                                                          |
+| §8.3/§9.2 code as one value per account                                                               | Q18 + I-1                 | `Account.id` is the permanent identity; a code is a **time-scoped** business identifier with history, and historical reports resolve the code valid in the reported context. Needs an additive schema task. Baseline discrepancy **D-3**.                                                                                                                                                                                                                                           |
+| §12.3 two dates, §19.2 rule 3 stored-column filters                                                   | Q14                       | Confirmed and elevated to an explicit reporting rule: `document_date` = financial-reporting axis, `posting_timestamp` = audit/event-timing axis; Fiscal Year, Accounting Period, Document Date and Posting Timestamp stay four distinct concepts.                                                                                                                                                                                                                                   |
+| §19.1 report inventory, §19.4                                                                         | Q10 + Q15 + Q16           | The journal (`دفتر روزنامه`) and the general ledger (`دفتر کل`) are **independent** report definitions over one read source; **Account Statement** is the unified account performance/turnover concept (Task 17B's surface); **Account Overview** («مرور حساب») is a presentation over the same read source and calculations — never a second engine.                                                                                                                               |
+| §2.3 Class C, §19.4 "no statutory layout hardcoded before OQ-43 validation"                           | Q9 + Q11 + Q22            | Architecture decided: `Accounting Core → Legal Adapter / Legal Profile → {Iran, future}` (ADR-0036). Persian is the primary language; the base monetary unit is configurable (Rial/Toman) with conversion as presentation only. **No legal fact is decided or claimed** — OQ-43 stays OPEN.                                                                                                                                                                                         |
+| §10/§11 dimensions and floating detail (AC-D-11…AC-D-15)                                              | Q6 + Q7 + OD-20-6         | Confirmed and refined: tree-based **and** floating details, a configurable typed dimension model with per-(account, dimension) `required`/`optional`/`forbidden`, never EAV/JSONB. Initial dimension assignments are transaction-line-level analytical assignments; aggregation is through Accounting/read logic when a concrete reporting consumer requires it. No ledger-column widening or speculative projection. Still unimplemented; OQ-41 stays OPEN for content/governance. |
+| §15 lifecycle/corrections (AC-D-20/21/22, AC-I-05/06/15)                                              | Q12 + Q13                 | Confirmed: non-final documents may be edited/discarded under permissions; Final/Posted documents are immutable and corrected only by counter-documents; Final/legal history is never physically deleted. OQ-27 (windows) and OQ-54 (non-accounting documents) stay OPEN; only `reversal` is implemented today.                                                                                                                                                                      |
+| §25 invariants, §22 permissions, §4 organization scope                                                | Q17                       | Configurability principle: high configurability, never unrestricted — configuration may not violate the AC-I invariants, authorization, auditability, tenant isolation or data integrity (ADR-0037 §8).                                                                                                                                                                                                                                                                             |
 
 **Open Questions are unaffected in status:** OQ-25 and OQ-43 remain **OPEN** in
 [`docs/open-questions.md`](../open-questions.md) (annotated with what is now Owner
@@ -2015,14 +2015,14 @@ Task 20 resolved the six Owner Decisions originally proposed by the Task 20
 investigation. This addendum records the resolution boundary; it does not authorize
 production implementation and does not reopen Task 19.
 
-| Decision | Original question | Owner decision | Architectural consequence | Implementation status |
-|---|---|---|---|---|
-| OD-20-1 | What is the Base Chart artifact and adoption model? | Versioned Base Accounting Chart template, Accounting-owned as a database/product asset; explicit adoption into an organization creates organization-owned `Account` identities. Template identities never become ledger references. | Future adoption must create coherent ODR-1 pin pairs and pass ODR-3 authorization. Actual account content is not invented by agents and requires explicit accounting approval. | Deferred; no template tables, seed data, adoption service or API. |
-| OD-20-2 | Should control roles be catalog-first or consumer-first? | Consumer-first. Do not create a speculative generic catalog. | A control role is introduced only with a concrete approved consumer that justifies the role and semantics. | Deferred; no role table/enum/seed/API/service. |
-| OD-20-3 | Is role association a column or mapping? | Independent effective-dated Account↔Control Role assignment. | `Account.control_role` is rejected as the primary architecture; future mapping must support history, reassignment, auditability and identity preservation. | Deferred until a real consumer requires roles. |
-| OD-20-4 | How do Account identity, code edits and code history interact? | `Account.id` is permanent identity; `Account.code` is the business-facing address. Controlled pre-use code correction is permitted; after accounting use code is immutable. | History is designed with the code-change producer so permitted transitions are auditable/reconstructable; no producer means no speculative history table. | Deferred; no code-change operation or history schema. |
-| OD-20-5 | Is posting allowed on non-leaf nodes? | **POSTING = leaf-only**; **AGGREGATION = reporting/read-time roll-up**. | D-1 is resolved. Existing ADR-0034/read models remain valid; no non-leaf posting, no duplicate parent postings, no own-vs-descendant workaround. | No implementation required. Future non-leaf posting would need a new explicit decision. |
-| OD-20-6 | Where do dimensions live initially? | Transaction-line-level analytical assignments with aggregation through the Accounting/read layer for concrete reporting consumers. | Dimensions are not `LedgerEntry` identity; no arbitrary ledger dimension columns, no generic JSONB, no speculative projection. | Deferred; no dimensions schema/API/UI/report endpoint/projection. |
+| Decision | Original question                                              | Owner decision                                                                                                                                                                                                                      | Architectural consequence                                                                                                                                                      | Implementation status                                                                   |
+| -------- | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| OD-20-1  | What is the Base Chart artifact and adoption model?            | Versioned Base Accounting Chart template, Accounting-owned as a database/product asset; explicit adoption into an organization creates organization-owned `Account` identities. Template identities never become ledger references. | Future adoption must create coherent ODR-1 pin pairs and pass ODR-3 authorization. Actual account content is not invented by agents and requires explicit accounting approval. | Deferred; no template tables, seed data, adoption service or API.                       |
+| OD-20-2  | Should control roles be catalog-first or consumer-first?       | Consumer-first. Do not create a speculative generic catalog.                                                                                                                                                                        | A control role is introduced only with a concrete approved consumer that justifies the role and semantics.                                                                     | Deferred; no role table/enum/seed/API/service.                                          |
+| OD-20-3  | Is role association a column or mapping?                       | Independent effective-dated Account↔Control Role assignment.                                                                                                                                                                        | `Account.control_role` is rejected as the primary architecture; future mapping must support history, reassignment, auditability and identity preservation.                     | Deferred until a real consumer requires roles.                                          |
+| OD-20-4  | How do Account identity, code edits and code history interact? | `Account.id` is permanent identity; `Account.code` is the business-facing address. Controlled pre-use code correction is permitted; after accounting use code is immutable.                                                         | History is designed with the code-change producer so permitted transitions are auditable/reconstructable; no producer means no speculative history table.                      | Deferred; no code-change operation or history schema.                                   |
+| OD-20-5  | Is posting allowed on non-leaf nodes?                          | **POSTING = leaf-only**; **AGGREGATION = reporting/read-time roll-up**.                                                                                                                                                             | D-1 is resolved. Existing ADR-0034/read models remain valid; no non-leaf posting, no duplicate parent postings, no own-vs-descendant workaround.                               | No implementation required. Future non-leaf posting would need a new explicit decision. |
+| OD-20-6  | Where do dimensions live initially?                            | Transaction-line-level analytical assignments with aggregation through the Accounting/read layer for concrete reporting consumers.                                                                                                  | Dimensions are not `LedgerEntry` identity; no arbitrary ledger dimension columns, no generic JSONB, no speculative projection.                                                 | Deferred; no dimensions schema/API/UI/report endpoint/projection.                       |
 
 Task 19 integrity is unchanged: ODR-1, ODR-2 and ODR-3 remain exactly as accepted.
 Future Base Chart adoption/configuration must produce a coherent

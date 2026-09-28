@@ -8,7 +8,7 @@ Date: 2026-09-10
 ADR-0006 fixed the model (users → roles → permissions, code registry as the
 source of truth, backend-only enforcement) and said evaluation is "cached per
 session and invalidated on RBAC changes". The first RBAC implementation must pin
-how *every* endpoint is enforced, what happens when an endpoint forgets to
+how _every_ endpoint is enforced, what happens when an endpoint forgets to
 declare a permission, how multiple permissions are combined, and how revocation
 behaves — before several modules start consuming the authorization service.
 
@@ -28,10 +28,10 @@ behaves — before several modules start consuming the authorization service.
    route, no permission expressions, no role inheritance and no wildcards
    (wildcard/superuser semantics are OQ-21).
 5. **No permission cache in v1.** Evaluation reads `rbac.user_roles →
-   rbac.role_permissions → rbac.permissions` on every authenticated request.
+rbac.role_permissions → rbac.permissions` on every authenticated request.
    Correctness and immediate revocation beat a premature optimization: with no
    cache there is nothing to invalidate, and "remove a permission" takes effect
-   on the requester's *current* session (proven by e2e tests). If a cache is ever
+   on the requester's _current_ session (proven by e2e tests). If a cache is ever
    added it must be invalidated on `Role.Updated`, `RolePermission.*`,
    `UserRole.*` **and** on session revocation/disable, and a shared store (e.g.
    Redis) is new infrastructure — a new ADR, not a config flag.
@@ -41,7 +41,7 @@ behaves — before several modules start consuming the authorization service.
    authenticated principal the service throws 401. HTTP paths are therefore
    never silently authorized.
 7. **Self-scoped reads are the documented exception.** `GET
-   /api/v1/permissions/effective` is authenticated but declares no permission
+/api/v1/permissions/effective` is authenticated but declares no permission
    code: it returns the caller's own effective codes for UI bootstrapping
    (AR-21 exception, recorded in the route docs).
 

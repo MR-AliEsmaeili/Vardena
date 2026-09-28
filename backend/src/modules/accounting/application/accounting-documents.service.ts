@@ -250,6 +250,7 @@ export class AccountingDocumentsService {
       sourceOperation: source?.operation ?? null,
       lines: lines.map((line) => ({
         accountId: line.accountId,
+        detailId: line.detailId ?? null,
         debitAmount: line.debitAmount,
         creditAmount: line.creditAmount,
         description: line.description,
@@ -950,6 +951,7 @@ function currentLines(
     .map((line) => ({
       lineNo: line.lineNo,
       accountId: line.accountId,
+      detailId: line.detailId ?? null,
       debitAmount: line.debitAmount,
       creditAmount: line.creditAmount,
       description: line.description,

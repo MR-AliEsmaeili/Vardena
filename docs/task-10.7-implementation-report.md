@@ -35,26 +35,26 @@ no permission, no event (§10).
 Nothing structural is invented here; every element is derived from the accepted
 documents:
 
-| Root | What it fixes for this task |
-| --- | --- |
-| contract **§15.5 (AC-D-23)** | Finalization IS the act that makes a voucher part of the books. The transaction boundary is therefore finalization's own: state + entries + evidence commit together or not at all. |
+| Root                                         | What it fixes for this task                                                                                                                                                                                                                    |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| contract **§15.5 (AC-D-23)**                 | Finalization IS the act that makes a voucher part of the books. The transaction boundary is therefore finalization's own: state + entries + evidence commit together or not at all.                                                            |
 | Task 10.6 atomic model (`posting.ts` header) | The accepted boundary this task implements: readiness → fixed lock order → re-validate inside tx → state/evidenced `final` → N entries → idempotency row LAST → commit → `Finalized` event. No separated model, no second durable transaction. |
-| Task 10.6 correction (§4, `PostingResult`) | `accounting_posting_operations` is idempotency/evidence infrastructure, NOT a Posting entity and NOT the ledger identity. The entry identity is the row's own ULID; the operation kind stays `document_finalize`. |
-| contract **§12.5 / §19.2** | One voucher → N entries; one voucher line → exactly ONE entry (1:1 via `voucher_line_id` + `line_no` + account). |
-| contract **§13 / AC-I-07/08** | Exact `Σ debit = Σ credit`, non-negative `numeric(18,2)`, exactly one side non-zero per entry — re-asserted at materialization, amounts as decimal strings, never floats (AR-12). |
-| contract **§18 / AC-I-22** | The number snapshot (`voucher_number`) is immutable evidence carried on every entry. |
-| contract **§16.4 / AC-I-12, ADR-0022 §3/§4** | Idempotency reuse: same key + same hash replays (re-reading current rows), same key + different hash 409s, nothing applied. The operation row stays the LAST statement. |
-| contract **§15.2/§15.3, AC-I-05/06** | Structural immutability: no update path, no delete path, no unscoped read. Corrections are future counter-documents with NEW entries (AC-D-22). |
-| contract **§16.1/§16.3, AC-D-24/25** | Origin + logical source identity snapshots (`manual` carries none, `system` carries all). |
-| contract **AC-D-17 / AC-I-14** | Branch (header-level scope, Class C5) + the STORED area/year/period resolution on every entry — reports never recompute. |
-| contract **§12.3, §15.5 (Class C3)** | BOTH business date (`document_date`) and system timestamp (`posting_timestamp` = `finalizedAt`) on every entry. |
-| contract **§19.3 (AC-D-31/AC-I-19)** | Entries are truth; balances are a future rebuildable projection — no balance state is maintained here. |
-| contract **AC-D-20** | No `posted` state exists nor is added; `AccountingDocument.Finalized` stays the posting evidence, no new event. |
-| **ADR-0026** (Accepted) | Accounting owns its ledger; the materialization is in-module (`data/`), behind the existing `finalizeChecked` boundary (AR-07/AR-02). |
-| Task 10.4 implementation | The lock order (area → year → period → accounts `FOR SHARE` → document), the single-decision-table posture (`checkVoucherLines`, `checkOriginEvidence`), the insert-LAST rule and the fake-parity pattern this task extends. |
+| Task 10.6 correction (§4, `PostingResult`)   | `accounting_posting_operations` is idempotency/evidence infrastructure, NOT a Posting entity and NOT the ledger identity. The entry identity is the row's own ULID; the operation kind stays `document_finalize`.                              |
+| contract **§12.5 / §19.2**                   | One voucher → N entries; one voucher line → exactly ONE entry (1:1 via `voucher_line_id` + `line_no` + account).                                                                                                                               |
+| contract **§13 / AC-I-07/08**                | Exact `Σ debit = Σ credit`, non-negative `numeric(18,2)`, exactly one side non-zero per entry — re-asserted at materialization, amounts as decimal strings, never floats (AR-12).                                                              |
+| contract **§18 / AC-I-22**                   | The number snapshot (`voucher_number`) is immutable evidence carried on every entry.                                                                                                                                                           |
+| contract **§16.4 / AC-I-12, ADR-0022 §3/§4** | Idempotency reuse: same key + same hash replays (re-reading current rows), same key + different hash 409s, nothing applied. The operation row stays the LAST statement.                                                                        |
+| contract **§15.2/§15.3, AC-I-05/06**         | Structural immutability: no update path, no delete path, no unscoped read. Corrections are future counter-documents with NEW entries (AC-D-22).                                                                                                |
+| contract **§16.1/§16.3, AC-D-24/25**         | Origin + logical source identity snapshots (`manual` carries none, `system` carries all).                                                                                                                                                      |
+| contract **AC-D-17 / AC-I-14**               | Branch (header-level scope, Class C5) + the STORED area/year/period resolution on every entry — reports never recompute.                                                                                                                       |
+| contract **§12.3, §15.5 (Class C3)**         | BOTH business date (`document_date`) and system timestamp (`posting_timestamp` = `finalizedAt`) on every entry.                                                                                                                                |
+| contract **§19.3 (AC-D-31/AC-I-19)**         | Entries are truth; balances are a future rebuildable projection — no balance state is maintained here.                                                                                                                                         |
+| contract **AC-D-20**                         | No `posted` state exists nor is added; `AccountingDocument.Finalized` stays the posting evidence, no new event.                                                                                                                                |
+| **ADR-0026** (Accepted)                      | Accounting owns its ledger; the materialization is in-module (`data/`), behind the existing `finalizeChecked` boundary (AR-07/AR-02).                                                                                                          |
+| Task 10.4 implementation                     | The lock order (area → year → period → accounts `FOR SHARE` → document), the single-decision-table posture (`checkVoucherLines`, `checkOriginEvidence`), the insert-LAST rule and the fake-parity pattern this task extends.                   |
 
 **No STOP condition was reached**: every persisted element is defined by the
-contract above; the OQ-gated elements (OQ-39…OQ-43) are *excluded* with their
+contract above; the OQ-gated elements (OQ-39…OQ-43) are _excluded_ with their
 seams preserved, not resolved (§7).
 
 ## 3. Design
@@ -162,27 +162,27 @@ The migration is **purely additive**: one new table + virtual back-relations
 
 **Created (4)**
 
-| File | Why |
-| --- | --- |
-| `backend/prisma/migrations/20260916000000_accounting_ledger/migration.sql` | The `ledger_entries` table: PK, 8 RESTRICT FKs, the 1:1 UNIQUE backstop, 3 org-scoped read indexes. Header records the full design rationale (see §6). |
-| `backend/src/modules/accounting/data/ledger-entries.repository.ts` | Insert-only evidence access: scoped `findByVoucher` + in-tx `insertLedgerEntries` (count-asserted, empty-set refused). Strict row→domain mapping (origin narrowing, Decimal→canonical string, `dimensionAssignments: []`). |
-| `backend/test/ledger-entries-live.e2e-spec.ts` | 6 live-database tests: materialization snapshot, atomicity, 1:1 backstop, FKs, index names, race (§8). |
-| `docs/task-10.7-implementation-report.md` | This report. |
+| File                                                                       | Why                                                                                                                                                                                                                        |
+| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/prisma/migrations/20260916000000_accounting_ledger/migration.sql` | The `ledger_entries` table: PK, 8 RESTRICT FKs, the 1:1 UNIQUE backstop, 3 org-scoped read indexes. Header records the full design rationale (see §6).                                                                     |
+| `backend/src/modules/accounting/data/ledger-entries.repository.ts`         | Insert-only evidence access: scoped `findByVoucher` + in-tx `insertLedgerEntries` (count-asserted, empty-set refused). Strict row→domain mapping (origin narrowing, Decimal→canonical string, `dimensionAssignments: []`). |
+| `backend/test/ledger-entries-live.e2e-spec.ts`                             | 6 live-database tests: materialization snapshot, atomicity, 1:1 backstop, FKs, index names, race (§8).                                                                                                                     |
+| `docs/task-10.7-implementation-report.md`                                  | This report.                                                                                                                                                                                                               |
 
 **Modified (10)**
 
-| File | What changed |
-| --- | --- |
-| `backend/prisma/schema/accounting.prisma` | `LedgerEntry` model + back-relations on area/year/period/account/document/line (1:1 virtual side on the line); header NOT-here comment updated (documents/operations shipped 10.4, ledger 10.7). |
-| `backend/prisma/schema/organization.prisma` | Virtual `ledgerEntries` back-relations on `Organization` + `Branch` (no migration impact). |
-| `backend/src/modules/accounting/data/accounting-rows.ts` | `LedgerEntryRow`/`Where`/`Create`/`Delegate` (findMany + createMany only — no update/delete surface exists) + `ledgerEntry: Pick<…, 'createMany'>` on `AccountingTxClient`. |
+| File                                                                     | What changed                                                                                                                                                                                                                                                                          |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backend/prisma/schema/accounting.prisma`                                | `LedgerEntry` model + back-relations on area/year/period/account/document/line (1:1 virtual side on the line); header NOT-here comment updated (documents/operations shipped 10.4, ledger 10.7).                                                                                      |
+| `backend/prisma/schema/organization.prisma`                              | Virtual `ledgerEntries` back-relations on `Organization` + `Branch` (no migration impact).                                                                                                                                                                                            |
+| `backend/src/modules/accounting/data/accounting-rows.ts`                 | `LedgerEntryRow`/`Where`/`Create`/`Delegate` (findMany + createMany only — no update/delete surface exists) + `ledgerEntry: Pick<…, 'createMany'>` on `AccountingTxClient`.                                                                                                           |
 | `backend/src/modules/accounting/data/accounting-documents.repository.ts` | `finalizeChecked` materializes via `toPostingInput` → `toLedgerEntries(…, generateId)` → `insertLedgerEntries` between the state update and the still-LAST op row; `toLedgerEntryCreate` flattens the audit clock/actor from the finalization. Doc comment updated. No guard touched. |
-| `backend/src/modules/accounting/data/accounting-locks.ts` | Task 10.7 note: no new lock/order, why INSERTs-under-held-lock cannot deadlock, backstop as the cross-tx half. |
-| `backend/src/modules/accounting/accounting.module.ts` | Header note + `LedgerEntriesRepository` in `providers` (not `exports` — in-module evidence reads). |
-| `backend/test/support/accounting-document-repositories.ts` | `ledgerEntries` table + 1:1 backstop, fake materialization through the same contract, `InMemoryLedgerEntriesRepository.findByVoucher`, `withRollback` atomicity for `createChecked`/`finalizeChecked` (closes the pre-existing patch-then-insert gap). |
-| `backend/test/accounting-documents.e2e-spec.ts` | Provider override + 1 new journey (materialization snapshot, replay/second-key/single-set, org isolation); readiness read-only snapshot extended with `ledgerEntries`. No existing assertion weakened. |
-| `backend/test/accounting-documents-live.e2e-spec.ts` | `ledgerEntry` client shape, cleanup order (ledger FIRST — RESTRICT), +2 entry-count assertions on the existing lifecycle/race tests. |
-| `docs/modules.md` | Accounting entry: 10.4 facts restored (it still claimed documents were contract-only — the staleness Task 10.5 §12.1 flagged), 10.6/10.7 status, 29 permissions, document API routes, shipped events, catalog row (AG-07). |
+| `backend/src/modules/accounting/data/accounting-locks.ts`                | Task 10.7 note: no new lock/order, why INSERTs-under-held-lock cannot deadlock, backstop as the cross-tx half.                                                                                                                                                                        |
+| `backend/src/modules/accounting/accounting.module.ts`                    | Header note + `LedgerEntriesRepository` in `providers` (not `exports` — in-module evidence reads).                                                                                                                                                                                    |
+| `backend/test/support/accounting-document-repositories.ts`               | `ledgerEntries` table + 1:1 backstop, fake materialization through the same contract, `InMemoryLedgerEntriesRepository.findByVoucher`, `withRollback` atomicity for `createChecked`/`finalizeChecked` (closes the pre-existing patch-then-insert gap).                                |
+| `backend/test/accounting-documents.e2e-spec.ts`                          | Provider override + 1 new journey (materialization snapshot, replay/second-key/single-set, org isolation); readiness read-only snapshot extended with `ledgerEntries`. No existing assertion weakened.                                                                                |
+| `backend/test/accounting-documents-live.e2e-spec.ts`                     | `ledgerEntry` client shape, cleanup order (ledger FIRST — RESTRICT), +2 entry-count assertions on the existing lifecycle/race tests.                                                                                                                                                  |
+| `docs/modules.md`                                                        | Accounting entry: 10.4 facts restored (it still claimed documents were contract-only — the staleness Task 10.5 §12.1 flagged), 10.6/10.7 status, 29 permissions, document API routes, shipped events, catalog row (AG-07).                                                            |
 
 No ADR, no `docs/open-questions.md` change (byte-identical), no controller/DTO,
 no other module, no frontend, no new dependency.
@@ -206,13 +206,13 @@ before merge.**
 
 ## 7. Open questions
 
-| OQ | Status after this task |
-| --- | --- |
-| OQ-39 (durable cross-module delivery) | **unchanged** — no outbox/queue, no durable delivery, no system-posting caller; the atomic model reuses the existing `document_finalize` evidence, and any future separated boundary stays OQ-39 dependent (10.6 wording kept). |
-| OQ-40 (financial-area applicability) | **unchanged** — no applicability table; the entry carries `financialAreaId` as the book scope and nothing more. |
-| OQ-41 (dimensions) | **unchanged** — no dimension tables/columns/EAV/JSONB; `dimensionAssignments: []` on every read, the typed child table arrives with the dimension task. |
-| OQ-42 (posting mode / approval authority) | **unchanged** — no approval state, no mode configuration; `Finalize` ≠ `Approve`, the lifecycle is untouched. |
-| OQ-43 (Iranian statutory/e-ledger) | **unchanged** — no statutory rule hardcoded; business date + posting timestamp + number evidence + branch scope keep every Class C3/C5 requirement expressible. |
+| OQ                                        | Status after this task                                                                                                                                                                                                          |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OQ-39 (durable cross-module delivery)     | **unchanged** — no outbox/queue, no durable delivery, no system-posting caller; the atomic model reuses the existing `document_finalize` evidence, and any future separated boundary stays OQ-39 dependent (10.6 wording kept). |
+| OQ-40 (financial-area applicability)      | **unchanged** — no applicability table; the entry carries `financialAreaId` as the book scope and nothing more.                                                                                                                 |
+| OQ-41 (dimensions)                        | **unchanged** — no dimension tables/columns/EAV/JSONB; `dimensionAssignments: []` on every read, the typed child table arrives with the dimension task.                                                                         |
+| OQ-42 (posting mode / approval authority) | **unchanged** — no approval state, no mode configuration; `Finalize` ≠ `Approve`, the lifecycle is untouched.                                                                                                                   |
+| OQ-43 (Iranian statutory/e-ledger)        | **unchanged** — no statutory rule hardcoded; business date + posting timestamp + number evidence + branch scope keep every Class C3/C5 requirement expressible.                                                                 |
 
 `docs/open-questions.md` is byte-identical to the base commit.
 
@@ -226,16 +226,16 @@ no-id-conflation rule are already covered by the Task 10.6 suites
 since the 10.5 report), and a duplicate suite would violate the
 one-decision-table rule.
 
-| Gate | Command | Result |
-| --- | --- | --- |
-| Format | `npm run format:check` | **PASSED** (exit 0) |
-| Lint | `npm run lint` (`oxlint .`) | **PASSED** (0 warnings / 0 errors, 426 files) |
-| Typecheck | `npm run typecheck` | **PASSED** (exit 0) |
-| Build | `npm run build` | **PASSED** (exit 0) |
-| Unit tests | `npm test` | **PASSED** — 70 files / 866 tests (was 68/816 at 10.5; +50 is Task 10.6's specs, +0 this task by design) |
-| E2E tests | `npm run test:e2e` | **PASSED** — 189 passed / 37 skipped over 22 files (was 188/31 over 21; +1 journey, +6 live skips) |
-| Live PostgreSQL suites | `VARDENA_TEST_DATABASE_URL` | **SKIPPED** — no PostgreSQL in this sandbox; 6 new + 7 sibling tests wired for CI, not counted as passing |
-| Prisma CLI gates | `npx prisma validate/format/generate`, `migrate dev` | **BLOCKED** — sandbox egress denies `binaries.prisma.sh` (unchanged since 10.4); schema + migration hand-verified, CI must run these |
+| Gate                   | Command                                              | Result                                                                                                                               |
+| ---------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Format                 | `npm run format:check`                               | **PASSED** (exit 0)                                                                                                                  |
+| Lint                   | `npm run lint` (`oxlint .`)                          | **PASSED** (0 warnings / 0 errors, 426 files)                                                                                        |
+| Typecheck              | `npm run typecheck`                                  | **PASSED** (exit 0)                                                                                                                  |
+| Build                  | `npm run build`                                      | **PASSED** (exit 0)                                                                                                                  |
+| Unit tests             | `npm test`                                           | **PASSED** — 70 files / 866 tests (was 68/816 at 10.5; +50 is Task 10.6's specs, +0 this task by design)                             |
+| E2E tests              | `npm run test:e2e`                                   | **PASSED** — 189 passed / 37 skipped over 22 files (was 188/31 over 21; +1 journey, +6 live skips)                                   |
+| Live PostgreSQL suites | `VARDENA_TEST_DATABASE_URL`                          | **SKIPPED** — no PostgreSQL in this sandbox; 6 new + 7 sibling tests wired for CI, not counted as passing                            |
+| Prisma CLI gates       | `npx prisma validate/format/generate`, `migrate dev` | **BLOCKED** — sandbox egress denies `binaries.prisma.sh` (unchanged since 10.4); schema + migration hand-verified, CI must run these |
 
 Case coverage (task §22 + §15.5): pre-final voucher has no entries;
 finalization writes exactly N entries (N = stored lines) with the full
@@ -348,15 +348,15 @@ duplicate members and `typecheck` passes. No change made.
 The application guarantees the seven equalities by single-source construction
 inside the locked finalization transaction (`finalizeChecked`):
 
-| Required equality | Mechanism (verified in source) |
-| --- | --- |
-| `ledger.organizationId == voucher.organizationId` | One source row: the locked + updated header → `toDomain` → `toPostingInput` (copies scope from `document`, `posting.ts:574-578`) → `toLedgerEntries` (copies input scope onto **every** entry, `posting.ts:627-631`). Equal by construction. |
-| `ledger.financialAreaId == voucher.financialAreaId` | Same single-source copy. |
-| `ledger.fiscalYearId == voucher.fiscalYearId` | Same single-source copy. |
-| `ledger.accountingPeriodId == voucher.accountingPeriodId` | Same single-source copy. |
-| `ledger.voucherId == source voucher` | `voucherId = document.id` where the document is `toDomain` of the updated locked row; the locked row is `input.id` in `input.organizationId` (`lockDocumentInTx` org check). |
-| `ledger.voucherLineId` belongs to `ledger.voucherId` | Lines come from `readLinesInTx(tx, input.id)` — `WHERE document_id = input.id` (`:937`) — and `voucherLineId = line.id`. Stability: the document `FOR UPDATE` lock serializes against `updateChecked`/`deleteChecked` (the only line writers besides create-on-a-new-id; all four take `lockDocumentInTx`), and the `sameIds` stale check covers the pre-lock read window. |
-| `ledger.accountId == source line accountId` | `accountId = line.accountId` from the same stored rows, whose accounts were locked `FOR SHARE` and revalidated (in-organization, postable, active) in the same transaction. |
+| Required equality                                         | Mechanism (verified in source)                                                                                                                                                                                                                                                                                                                                             |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ledger.organizationId == voucher.organizationId`         | One source row: the locked + updated header → `toDomain` → `toPostingInput` (copies scope from `document`, `posting.ts:574-578`) → `toLedgerEntries` (copies input scope onto **every** entry, `posting.ts:627-631`). Equal by construction.                                                                                                                               |
+| `ledger.financialAreaId == voucher.financialAreaId`       | Same single-source copy.                                                                                                                                                                                                                                                                                                                                                   |
+| `ledger.fiscalYearId == voucher.fiscalYearId`             | Same single-source copy.                                                                                                                                                                                                                                                                                                                                                   |
+| `ledger.accountingPeriodId == voucher.accountingPeriodId` | Same single-source copy.                                                                                                                                                                                                                                                                                                                                                   |
+| `ledger.voucherId == source voucher`                      | `voucherId = document.id` where the document is `toDomain` of the updated locked row; the locked row is `input.id` in `input.organizationId` (`lockDocumentInTx` org check).                                                                                                                                                                                               |
+| `ledger.voucherLineId` belongs to `ledger.voucherId`      | Lines come from `readLinesInTx(tx, input.id)` — `WHERE document_id = input.id` (`:937`) — and `voucherLineId = line.id`. Stability: the document `FOR UPDATE` lock serializes against `updateChecked`/`deleteChecked` (the only line writers besides create-on-a-new-id; all four take `lockDocumentInTx`), and the `sameIds` stale check covers the pre-lock read window. |
+| `ledger.accountId == source line accountId`               | `accountId = line.accountId` from the same stored rows, whose accounts were locked `FOR SHARE` and revalidated (in-organization, postable, active) in the same transaction.                                                                                                                                                                                                |
 
 The database intentionally does **not** enforce cross-row co-ownership: the 8
 single-column RESTRICT FKs prove each referenced row **exists**, not that
@@ -370,7 +370,7 @@ FK, trigger, CHECK or new mechanism is introduced, because:
    scope with independent FKs and no composite proof (period ∈ year) — the
    identical shape, accepted.
 3. **A composite FK would need speculative schema**: `(voucher_id,
-   voucher_line_id) → lines(document_id, id)` requires a redundant composite
+voucher_line_id) → lines(document_id, id)` requires a redundant composite
    unique on `(document_id, id)` where `id` is already the PK (AR-29).
 4. **Architecture rule**: concurrency guards live in locked `data/`
    transactions, never in Prisma-invisible DB mechanisms.
@@ -422,16 +422,16 @@ state, new key scheme, or OQ-39 resolution was introduced.
 
 ### 13.6 Atomicity coverage (review item 6) — ONE E2E PIN ADDED
 
-| Case | Coverage (all still passing, none weakened) |
-| --- | --- |
-| 1. Entry-insert failure after state update → full rollback | Live `refuses a second entry…`: `P2002` inside `createMany` ⇒ voucher stays `temporary`, zero new rows. |
-| 2. Partial insertion → full rollback | Same test (`count == 1`, the hand row only): entries go in via ONE `createMany` statement (statement-atomic), and Prisma `$transaction` rolls back the state update with it; the fake's `withRollback` mirrors this for its loop write. |
-| 3. Evidence failure → full rollback | Live `rolls the whole finalization back…` (lost key ⇒ temporary + zero entries + one key row). |
-| 4. Same-key same-hash replay → no duplicates | E2E ledger journey: replayed finalization ⇒ still exactly 2 entries. |
-| 5. Same-key different-hash → conflict, no mutation | **Pinned in this pass**: second voucher finalized with the first voucher's key ⇒ `409 Conflict`, voucher stays `temporary`, zero entries for it, first voucher still exactly 2. Structural backstop: `replayOrReject` throws before any transaction opens (shared branch already e2e-pinned via composition). |
-| 6. Fresh second finalization → no second set | E2E: fresh key on a final voucher ⇒ `422`, still exactly 2 entries. |
-| 7. `voucher_line_id` collision → full rollback | Live test of case 1 (the same mechanism). |
-| 8. Same-key concurrency → one of each | Live `finalizes once under concurrent attempts` + sibling race entry-count (CI; skipped locally, §13.8). |
+| Case                                                       | Coverage (all still passing, none weakened)                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Entry-insert failure after state update → full rollback | Live `refuses a second entry…`: `P2002` inside `createMany` ⇒ voucher stays `temporary`, zero new rows.                                                                                                                                                                                                       |
+| 2. Partial insertion → full rollback                       | Same test (`count == 1`, the hand row only): entries go in via ONE `createMany` statement (statement-atomic), and Prisma `$transaction` rolls back the state update with it; the fake's `withRollback` mirrors this for its loop write.                                                                       |
+| 3. Evidence failure → full rollback                        | Live `rolls the whole finalization back…` (lost key ⇒ temporary + zero entries + one key row).                                                                                                                                                                                                                |
+| 4. Same-key same-hash replay → no duplicates               | E2E ledger journey: replayed finalization ⇒ still exactly 2 entries.                                                                                                                                                                                                                                          |
+| 5. Same-key different-hash → conflict, no mutation         | **Pinned in this pass**: second voucher finalized with the first voucher's key ⇒ `409 Conflict`, voucher stays `temporary`, zero entries for it, first voucher still exactly 2. Structural backstop: `replayOrReject` throws before any transaction opens (shared branch already e2e-pinned via composition). |
+| 6. Fresh second finalization → no second set               | E2E: fresh key on a final voucher ⇒ `422`, still exactly 2 entries.                                                                                                                                                                                                                                           |
+| 7. `voucher_line_id` collision → full rollback             | Live test of case 1 (the same mechanism).                                                                                                                                                                                                                                                                     |
+| 8. Same-key concurrency → one of each                      | Live `finalizes once under concurrent attempts` + sibling race entry-count (CI; skipped locally, §13.8).                                                                                                                                                                                                      |
 
 The case-5 pin adds assertions to the existing ledger journey test (no new
 `it` block, no existing assertion touched).

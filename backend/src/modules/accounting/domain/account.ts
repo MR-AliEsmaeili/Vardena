@@ -35,13 +35,66 @@ import {
 } from './account-code.js';
 import type { CodingStructureLevel } from './coding-structure.js';
 
-/** Balance direction (`ماهیت`) — a closed DECIDED list (§8.3). */
-export const ACCOUNT_NATURES = ['debit', 'credit'] as const;
+/** Balance direction (`ماهیت`) — a closed DECIDED list (§8.3, OD-29-01). */
+export const ACCOUNT_NATURES = [
+  'debit',
+  'credit',
+  'dual',
+  'DEBIT',
+  'CREDIT',
+  'DUAL',
+] as const;
+
+export const CANONICAL_ACCOUNT_NATURES = ['debit', 'credit', 'dual'] as const;
 
 export type AccountNature = (typeof ACCOUNT_NATURES)[number];
 
 export function isAccountNature(value: string): value is AccountNature {
   return (ACCOUNT_NATURES as readonly string[]).includes(value);
+}
+
+export function normalizeAccountNature(
+  value: string,
+): 'debit' | 'credit' | 'dual' {
+  const lower = value.toLowerCase();
+  if (lower === 'debit' || lower === 'credit' || lower === 'dual') {
+    return lower;
+  }
+  throw new Error(`Invalid account nature: ${value}`);
+}
+
+/** Account Type (`نوع حساب`) — fixed three global types (OD-29-02). */
+export const ACCOUNT_TYPES = [
+  'BALANCE_SHEET',
+  'INCOME_STATEMENT',
+  'MEMORANDUM',
+  'balance_sheet',
+  'income_statement',
+  'memorandum',
+] as const;
+
+export const CANONICAL_ACCOUNT_TYPES = [
+  'BALANCE_SHEET',
+  'INCOME_STATEMENT',
+  'MEMORANDUM',
+] as const;
+
+export type AccountType = 'BALANCE_SHEET' | 'INCOME_STATEMENT' | 'MEMORANDUM';
+
+export function isAccountType(value: string): boolean {
+  return (ACCOUNT_TYPES as readonly string[]).includes(value);
+}
+
+export function normalizeAccountType(value: string): AccountType {
+  const upper = value.toUpperCase();
+  if (
+    upper === 'BALANCE_SHEET' ||
+    upper === 'INCOME_STATEMENT' ||
+    upper === 'MEMORANDUM'
+  ) {
+    return upper as AccountType;
+  }
+  throw new Error(`Invalid account type: ${value}`);
 }
 
 /** One node of the chart of accounts. */
@@ -59,6 +112,10 @@ export interface Account {
   /** The accounting configuration version this account belongs to — sole configuration scope (Task 11 D1, NOT NULL after D3). Nullable in legacy in-memory fixtures (posting-readiness). */
   accountingConfigurationId: string | null;
   accountNature: AccountNature;
+  /** Account Type (OD-29-02): BALANCE_SHEET | INCOME_STATEMENT | MEMORANDUM */
+  accountType: AccountType;
+  /** Optional link to Level-1 Detail Group (OD-29-03) */
+  detailGroupId: string | null;
   isPostable: boolean;
   isActive: boolean;
   createdAt: Date;
@@ -75,6 +132,8 @@ export interface AccountDto {
   codingStructureVersionId: string | null;
   accountingConfigurationId: string | null;
   accountNature: AccountNature;
+  accountType: AccountType;
+  detailGroupId: string | null;
   isPostable: boolean;
   isActive: boolean;
   createdAt: string;
@@ -92,6 +151,8 @@ export function toAccountDto(account: Account): AccountDto {
     codingStructureVersionId: account.codingStructureVersionId,
     accountingConfigurationId: account.accountingConfigurationId,
     accountNature: account.accountNature,
+    accountType: account.accountType ?? 'BALANCE_SHEET',
+    detailGroupId: account.detailGroupId ?? null,
     isPostable: account.isPostable,
     isActive: account.isActive,
     createdAt: account.createdAt.toISOString(),
@@ -116,11 +177,13 @@ export function toAccountDto(account: Account): AccountDto {
  * purpose: the lines ARE the evidence, and a denormalized flag could drift.
  */
 
-/** The fields AC-I-11 freezes for a referenced account (§8.4 rule 4). */
+/** The fields AC-I-11 freezes for a referenced account (§8.4 rule 4, OD-29-02, OD-29-03). */
 export const ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS = [
   'parentId',
   'level',
   'accountNature',
+  'accountType',
+  'detailGroupId',
   'isPostable',
 ] as const;
 

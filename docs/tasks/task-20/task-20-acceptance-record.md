@@ -43,14 +43,14 @@ The following six Owner Decisions were resolved and are authoritative as recorde
 `owner-decision-baseline.md` §12. This acceptance records them without reinterpreting
 or expanding them.
 
-| Decision | Accepted authoritative outcome | Implementation boundary preserved |
-|---|---|---|
-| **OD-20-1 — Base Chart** | The Base Chart is a versioned, Accounting-owned database/product asset adopted explicitly into an organization. Template identity never becomes organization ledger/account identity. | Actual account codes, Persian titles, natures, mandatory accounts, statutory structure, and other chart content remain **OPEN**; no template, adoption, seed, API, or schema was implemented. |
-| **OD-20-2 — Control Roles** | Control roles are consumer-first: a role is justified only by a concrete approved consumer. | The concrete role catalog and mandatory set remain **OPEN**; no generic role catalog was invented or implemented. |
-| **OD-20-3 — Control Role Association** | The future Account↔Control Role association is an independent effective-dated mapping. | It is not `Account.control_role`; no mapping, schema, table, or API was implemented. |
-| **OD-20-4 — Account Code History** | Controlled correction may occur before accounting use; after accounting use, `Account.code` is immutable. History is producer-bound. | No speculative code-history implementation, history table, or code-edit producer was created. Code reuse/validity questions remain under existing OQ-25/OQ-36 governance. |
-| **OD-20-5 — POSTING vs AGGREGATION** | `POSTING = leaf-only`; `AGGREGATION = reporting/read-time roll-up`. Parent nodes do not receive duplicate activity; Task 18 hierarchy roll-up remains valid. | No mixed semantics or four-level hierarchy was introduced. The existing configurable-level architecture remains authoritative. **D-1 is resolved** by this decision. |
-| **OD-20-6 — Dimensions** | Dimensions are transaction-line-level analytical assignments, with Accounting/read-layer aggregation when a concrete reporting consumer requires it. | Dimensions are not `LedgerEntry` identity, arbitrary ledger columns, generic JSONB, EAV, or a speculative projection. No dimension capability was implemented. |
+| Decision                               | Accepted authoritative outcome                                                                                                                                                        | Implementation boundary preserved                                                                                                                                                             |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **OD-20-1 — Base Chart**               | The Base Chart is a versioned, Accounting-owned database/product asset adopted explicitly into an organization. Template identity never becomes organization ledger/account identity. | Actual account codes, Persian titles, natures, mandatory accounts, statutory structure, and other chart content remain **OPEN**; no template, adoption, seed, API, or schema was implemented. |
+| **OD-20-2 — Control Roles**            | Control roles are consumer-first: a role is justified only by a concrete approved consumer.                                                                                           | The concrete role catalog and mandatory set remain **OPEN**; no generic role catalog was invented or implemented.                                                                             |
+| **OD-20-3 — Control Role Association** | The future Account↔Control Role association is an independent effective-dated mapping.                                                                                                | It is not `Account.control_role`; no mapping, schema, table, or API was implemented.                                                                                                          |
+| **OD-20-4 — Account Code History**     | Controlled correction may occur before accounting use; after accounting use, `Account.code` is immutable. History is producer-bound.                                                  | No speculative code-history implementation, history table, or code-edit producer was created. Code reuse/validity questions remain under existing OQ-25/OQ-36 governance.                     |
+| **OD-20-5 — POSTING vs AGGREGATION**   | `POSTING = leaf-only`; `AGGREGATION = reporting/read-time roll-up`. Parent nodes do not receive duplicate activity; Task 18 hierarchy roll-up remains valid.                          | No mixed semantics or four-level hierarchy was introduced. The existing configurable-level architecture remains authoritative. **D-1 is resolved** by this decision.                          |
+| **OD-20-6 — Dimensions**               | Dimensions are transaction-line-level analytical assignments, with Accounting/read-layer aggregation when a concrete reporting consumer requires it.                                  | Dimensions are not `LedgerEntry` identity, arbitrary ledger columns, generic JSONB, EAV, or a speculative projection. No dimension capability was implemented.                                |
 
 ---
 
@@ -114,15 +114,15 @@ not modify the Chart Tree implementation.
 
 Lightweight documentation-only verification was performed for this synchronization:
 
-| Check | Result |
-|---|---|
-| `git diff --check` | **PASS** |
-| Task 20 source and acceptance paths | **PASS** — investigation, gate, and this acceptance record exist. |
-| OD-20-1…OD-20-6 references | **PASS** — each is consistently recorded as authoritative/decided; D-1 is resolved by OD-20-5. |
-| Deferred-capability claims | **PASS** — no positive implementation or content-decision claim for `Account.control_role`, dimensions, or the Base Chart. |
-| Task 19 integrity | **PASS** — Task 19 remains accepted; ODR-1/ODR-2/ODR-3 are unchanged. |
-| Production-path audit | **PASS** — this acceptance-sync diff is documentation/governance files only. |
-| Heavy E2E / live PostgreSQL suite | **NOT RUN** — intentionally out of scope for this documentation-only acceptance; CI remains the authority for production execution where applicable. |
+| Check                               | Result                                                                                                                                               |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `git diff --check`                  | **PASS**                                                                                                                                             |
+| Task 20 source and acceptance paths | **PASS** — investigation, gate, and this acceptance record exist.                                                                                    |
+| OD-20-1…OD-20-6 references          | **PASS** — each is consistently recorded as authoritative/decided; D-1 is resolved by OD-20-5.                                                       |
+| Deferred-capability claims          | **PASS** — no positive implementation or content-decision claim for `Account.control_role`, dimensions, or the Base Chart.                           |
+| Task 19 integrity                   | **PASS** — Task 19 remains accepted; ODR-1/ODR-2/ODR-3 are unchanged.                                                                                |
+| Production-path audit               | **PASS** — this acceptance-sync diff is documentation/governance files only.                                                                         |
+| Heavy E2E / live PostgreSQL suite   | **NOT RUN** — intentionally out of scope for this documentation-only acceptance; CI remains the authority for production execution where applicable. |
 
 ---
 

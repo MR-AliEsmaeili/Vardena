@@ -52,6 +52,16 @@ export class AccountingDocumentLineInputDto {
   @IsUlid()
   accountId!: string;
 
+  @ApiPropertyOptional({
+    format: 'ulid',
+    nullable: true,
+    description:
+      'Detail reference (OD-29-03). Required if account is linked to a detail group.',
+  })
+  @IsOptional()
+  @IsUlid()
+  detailId?: string | null;
+
   @ApiProperty({ example: '1250.00', description: AMOUNT_DESCRIPTION })
   @IsString()
   @Matches(MONEY_INPUT_PATTERN, {
@@ -315,6 +325,9 @@ export class AccountingDocumentLineResponseDto {
 
   @ApiProperty({ format: 'ulid' })
   accountId!: string;
+
+  @ApiPropertyOptional({ format: 'ulid', nullable: true })
+  detailId!: string | null;
 
   @ApiProperty({ example: '1250.00', description: 'Canonical decimal string.' })
   debitAmount!: string;

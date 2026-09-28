@@ -27,34 +27,34 @@ flowchart TB
   REP -.-> L2
 ```
 
-| Layer | What changes here | Who changes it | Versioning |
-|---|---|---|---|
-| L1 Core | Business facts (item, movement, journal, document, party) | Code + migration (AR-10), ADR when structural | Schema migrations + ADRs |
-| L2 Configuration | Values and definitions that parameterize behaviour | Organization admins (permission-gated) | Effective-dated rows; immutable history where it affects interpretation |
-| L3 Workflow | Which code-defined transitions are enabled, approvals, automation bindings | Organization admins | Versioned + published (ADR-0018) |
-| L4 Events | — (facts) | Nobody | Event schemas versioned with code |
-| L5 Automation | Binding a registered action to a trigger with typed parameters | Organization admins | Stored in the workflow/config version |
-| L6 Extensions | New modules, providers, adapters | Developers (code + ADR) | Application releases |
+| Layer            | What changes here                                                          | Who changes it                                | Versioning                                                              |
+| ---------------- | -------------------------------------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------- |
+| L1 Core          | Business facts (item, movement, journal, document, party)                  | Code + migration (AR-10), ADR when structural | Schema migrations + ADRs                                                |
+| L2 Configuration | Values and definitions that parameterize behaviour                         | Organization admins (permission-gated)        | Effective-dated rows; immutable history where it affects interpretation |
+| L3 Workflow      | Which code-defined transitions are enabled, approvals, automation bindings | Organization admins                           | Versioned + published (ADR-0018)                                        |
+| L4 Events        | — (facts)                                                                  | Nobody                                        | Event schemas versioned with code                                       |
+| L5 Automation    | Binding a registered action to a trigger with typed parameters             | Organization admins                           | Stored in the workflow/config version                                   |
+| L6 Extensions    | New modules, providers, adapters                                           | Developers (code + ADR)                       | Application releases                                                    |
 
 The layers are ordered by **change frequency and audience**: the deeper the layer, the
 more engineering control it requires. This is how "configurable without a codebase per
-customer" is achieved *and bounded*.
+customer" is achieved _and bounded_.
 
 ---
 
 ## 2. Configuration taxonomy
 
-| Kind | Examples | Storage shape | Effective dating? |
-|---|---|---|---|
-| **Scalar settings** | negative-stock policy default, default branch, tax-inclusive display, accounting enabled | key/value-per-organization settings row (typed columns for known keys, not free JSON) | No (immediate, audited) |
-| **Numbering series** | invoice/order/receipt number formats, scopes | rows per (document type, scope, series) | `valid_from` (a series change must not renumber history) |
-| **Tax definitions** | tax groups, rates, exemptions | rows + `valid_from/valid_to` | Yes |
-| **Account mapping** | control role → account per organization | mapping rows, versioned when used by posted entries | Effective-dated; posted entries store the mapping version |
-| **Price lists** | item prices per customer group/branch | rows + `valid_from/valid_to` | Yes |
-| **Templates** (print/letterhead) | document layouts | Print module tables (ADR-0012) | Versioned templates |
-| **Custom-field definitions** | extra descriptive fields per entity | definition registry rows | Definitions versioned; values stored per record |
-| **Workflow definitions** | transitions/approvals/automations | definition + version tables | Yes (ADR-0018) |
-| **Required-field policy** | which *code-supported* fields are mandatory per document type | rows per document type/field | Effective-dated with the workflow version |
+| Kind                             | Examples                                                                                 | Storage shape                                                                         | Effective dating?                                         |
+| -------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| **Scalar settings**              | negative-stock policy default, default branch, tax-inclusive display, accounting enabled | key/value-per-organization settings row (typed columns for known keys, not free JSON) | No (immediate, audited)                                   |
+| **Numbering series**             | invoice/order/receipt number formats, scopes                                             | rows per (document type, scope, series)                                               | `valid_from` (a series change must not renumber history)  |
+| **Tax definitions**              | tax groups, rates, exemptions                                                            | rows + `valid_from/valid_to`                                                          | Yes                                                       |
+| **Account mapping**              | control role → account per organization                                                  | mapping rows, versioned when used by posted entries                                   | Effective-dated; posted entries store the mapping version |
+| **Price lists**                  | item prices per customer group/branch                                                    | rows + `valid_from/valid_to`                                                          | Yes                                                       |
+| **Templates** (print/letterhead) | document layouts                                                                         | Print module tables (ADR-0012)                                                        | Versioned templates                                       |
+| **Custom-field definitions**     | extra descriptive fields per entity                                                      | definition registry rows                                                              | Definitions versioned; values stored per record           |
+| **Workflow definitions**         | transitions/approvals/automations                                                        | definition + version tables                                                           | Yes (ADR-0018)                                            |
+| **Required-field policy**        | which _code-supported_ fields are mandatory per document type                            | rows per document type/field                                                          | Effective-dated with the workflow version                 |
 
 **Anti-pattern guard:** configuration never stores **free-form business logic**
 (scripts, SQL, conditions beyond the supported vocabulary). If a business needs a rule
@@ -72,7 +72,7 @@ Vardena cannot express, that is a product gap to design — not a hole to open.
   (ADR-0013) and are explicitly **not** business configuration.
 - Some configuration is intrinsically module-owned and stays there: print templates
   (Print), report saved views (Customization), integration destinations (Integration).
-  The Organization module holds *cross-module* configuration only.
+  The Organization module holds _cross-module_ configuration only.
 
 ---
 
@@ -153,15 +153,15 @@ just the column.
 
 ## 6. Business-rule categories and where they are implemented
 
-| Category | Nature | Implementation | Configurable? |
-|---|---|---|---|
-| **Domain invariants** | Meaning of the data (balanced entries, immutability, positive quantities where required) | Code + DB constraints | No |
-| **Organization configuration** | Values (calendar, policies, defaults, feature switches) | Configuration tables + Organization service | Yes |
-| **Workflow rules** | Which enabled transitions require what | Workflow definition versions | Yes |
-| **Validation rules** | Field/DTO validation, capability constraints, required-ness | DTO/domain code + required-field policy | Partly (required-ness over code-supported fields) |
-| **Automation rules** | Reactions to transitions/events | Action catalogue (code) + bindings (config) | Yes (within catalogue) |
-| **Accounting rules** | Event → journal mapping, recognition, valuation | Accounting mapping data + expert-approved code | Organization mapping yes; rules expert-gated |
-| **Integration rules** | Destinations, retry, payload versions | Integration configuration | Yes |
+| Category                       | Nature                                                                                   | Implementation                                 | Configurable?                                     |
+| ------------------------------ | ---------------------------------------------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------- |
+| **Domain invariants**          | Meaning of the data (balanced entries, immutability, positive quantities where required) | Code + DB constraints                          | No                                                |
+| **Organization configuration** | Values (calendar, policies, defaults, feature switches)                                  | Configuration tables + Organization service    | Yes                                               |
+| **Workflow rules**             | Which enabled transitions require what                                                   | Workflow definition versions                   | Yes                                               |
+| **Validation rules**           | Field/DTO validation, capability constraints, required-ness                              | DTO/domain code + required-field policy        | Partly (required-ness over code-supported fields) |
+| **Automation rules**           | Reactions to transitions/events                                                          | Action catalogue (code) + bindings (config)    | Yes (within catalogue)                            |
+| **Accounting rules**           | Event → journal mapping, recognition, valuation                                          | Accounting mapping data + expert-approved code | Organization mapping yes; rules expert-gated      |
+| **Integration rules**          | Destinations, retry, payload versions                                                    | Integration configuration                      | Yes                                               |
 
 **No universal rules engine.** A general expression language or user-authored scripts
 is rejected because it is unreviewable, untestable, a security surface, and it makes
@@ -178,21 +178,21 @@ read-set, action-set and validation before exposure.
   possible without reconstructing historical configuration from logs.
 - Custom fields never become reporting dimensions by accident (§5.2); a field that
   must be reported on goes through promotion.
-- Report definitions stay code (ADR-0009); configuration may save *views/filters*
+- Report definitions stay code (ADR-0009); configuration may save _views/filters_
   (Customization) but never SQL.
 
 ---
 
 ## 8. Risks specific to configurability
 
-| Risk | Mitigation |
-|---|---|
-| Configuration becomes an unversioned "settings soup" | Every kind in §2 has a defined shape, owner and versioning rule |
-| Environment drift (dev vs prod configuration) | Configuration export/import + reviewed configuration change (deployment tooling, R3) |
-| Over-configuration (every business rule as a config knob) | Each new knob needs a design: read-set, action-set, validation, reporting consequence |
-| Custom fields used as a shadow schema | Registry + whitelist + promotion path + review gate |
-| Historical documents reinterpreted | Version references + effective dating + pinning (§4) |
-| Users bypassing permissions on configuration endpoints | Standard AR-21/AR-22 guard + application-service checks; configuration changes emit audit events |
+| Risk                                                      | Mitigation                                                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Configuration becomes an unversioned "settings soup"      | Every kind in §2 has a defined shape, owner and versioning rule                                  |
+| Environment drift (dev vs prod configuration)             | Configuration export/import + reviewed configuration change (deployment tooling, R3)             |
+| Over-configuration (every business rule as a config knob) | Each new knob needs a design: read-set, action-set, validation, reporting consequence            |
+| Custom fields used as a shadow schema                     | Registry + whitelist + promotion path + review gate                                              |
+| Historical documents reinterpreted                        | Version references + effective dating + pinning (§4)                                             |
+| Users bypassing permissions on configuration endpoints    | Standard AR-21/AR-22 guard + application-service checks; configuration changes emit audit events |
 
 ## 9. Decisions introduced here
 

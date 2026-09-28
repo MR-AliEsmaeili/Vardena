@@ -19,10 +19,10 @@ governance inaccuracy was found **by this pass** and fixed (§A).
 
 ## A. Exact files changed during this verification pass
 
-| File | Change | Why |
-|---|---|---|
-| `.vardena/project-context.md` | Corrected the module inventory: the repository has **nine** module directories (`health` + eight domain modules), not eight; the repository map line now says "health + the eight domain modules". | **Found by this pass**: the claim written during remediation was checkable and wrong (`ls backend/src/modules` = 9, `app.module.ts` registers `HealthModule`). A governance artifact must not state repository facts inaccurately. |
-| `docs/task-11-final-verification-report.md` | New: this report. | Deliverable of the verification pass. |
+| File                                        | Change                                                                                                                                                                                             | Why                                                                                                                                                                                                                                |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.vardena/project-context.md`               | Corrected the module inventory: the repository has **nine** module directories (`health` + eight domain modules), not eight; the repository map line now says "health + the eight domain modules". | **Found by this pass**: the claim written during remediation was checkable and wrong (`ls backend/src/modules` = 9, `app.module.ts` registers `HealthModule`). A governance artifact must not state repository facts inaccurately. |
+| `docs/task-11-final-verification-report.md` | New: this report.                                                                                                                                                                                  | Deliverable of the verification pass.                                                                                                                                                                                              |
 
 **No production code, test, migration, schema or configuration file was changed
 in this pass.** The verification used mutation testing only, and every mutated
@@ -109,13 +109,13 @@ REHEARSAL PASSED: migration completed and every verification check passed.
 Required fixture coverage — **VERIFIED**, both by the runner and by independent
 SQL probes executed against the retained database:
 
-| Required case | Fixture | Executed evidence (independent probe) |
-|---|---|---|
-| **a) three-level coding structure** | `org-multi` (active `csv-multi-v2`, 2+3+3) | config levels `1:2 2:3 3:3` = ACTIVE version's 3 rows; symmetric difference with `csv-multi-v2` = 0 rows; 3 accounts preserved |
-| **b) one-level coding structure** | `org-one-level` (`csv-one-v1`, one level, 4 digits) | config levels `1:4` — exactly ONE row, **no `level_index = 2`** |
-| **c) no coding structure** | `org-no-config` | no configuration, no accounts, no versions, no levels created (`[PASS] org-no-config untouched`). A fixture with accounts but *no* coding version is **unrepresentable** in the pre-Task-11 schema — VERIFIED by execution: the insert is refused with `23502` (NULL) and `23503` (unknown id); that case is therefore covered by (e) |
-| **d) draft configuration** | `org-draft-version` (active 3+2 + unpublished 2+2 draft) | config levels `1:3 2:2` = the ACTIVE version's set; the draft's 2+2 shape was **not** copied (`level1_not_2digits = true`) |
-| **e) superseded-only coding versions** | `org-superseded-only` (only version is `superseded`) | config levels `1:2 2:3` — the documented default fallback, reported as `OBSERVED` (OQ-63), never as a silent assumption |
+| Required case                          | Fixture                                                  | Executed evidence (independent probe)                                                                                                                                                                                                                                                                                                 |
+| -------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **a) three-level coding structure**    | `org-multi` (active `csv-multi-v2`, 2+3+3)               | config levels `1:2 2:3 3:3` = ACTIVE version's 3 rows; symmetric difference with `csv-multi-v2` = 0 rows; 3 accounts preserved                                                                                                                                                                                                        |
+| **b) one-level coding structure**      | `org-one-level` (`csv-one-v1`, one level, 4 digits)      | config levels `1:4` — exactly ONE row, **no `level_index = 2`**                                                                                                                                                                                                                                                                       |
+| **c) no coding structure**             | `org-no-config`                                          | no configuration, no accounts, no versions, no levels created (`[PASS] org-no-config untouched`). A fixture with accounts but _no_ coding version is **unrepresentable** in the pre-Task-11 schema — VERIFIED by execution: the insert is refused with `23502` (NULL) and `23503` (unknown id); that case is therefore covered by (e) |
+| **d) draft configuration**             | `org-draft-version` (active 3+2 + unpublished 2+2 draft) | config levels `1:3 2:2` = the ACTIVE version's set; the draft's 2+2 shape was **not** copied (`level1_not_2digits = true`)                                                                                                                                                                                                            |
+| **e) superseded-only coding versions** | `org-superseded-only` (only version is `superseded`)     | config levels `1:2 2:3` — the documented default fallback, reported as `OBSERVED` (OQ-63), never as a silent assumption                                                                                                                                                                                                               |
 
 ### Check 2 — level structure preservation (especially the one-level case)
 
@@ -149,47 +149,47 @@ rolls back (the negative probes insert/delete nothing permanently).
 
 Executed results — one line per assertion (verbatim from the run):
 
-| # | Assertion (fails the run when violated) | Result |
-|---|---|---|
-| 1 | accounts / versions / levels row counts unchanged vs `snapshot_pre` | **PASS** accounts=9, versions=6, levels=12 |
-| 2 | per-organization account counts unchanged | **PASS** |
-| 3 | every account row identical to the pre-migration snapshot (id, code, title, parent, level, nature, coding version) | **PASS** |
-| 4 | no NULL `accounting_configuration_id`, column is `NOT NULL`, every pin same-organization | **PASS** |
-| 5 | orphan handling: exactly one LEGACY ACTIVE v1 per organization with accounts; `org-no-config` untouched; every created configuration referenced by ≥1 account and having ≥1 level; `operationally_used_at` set on legacy rows | **PASS** |
-| 6 | level preservation: copied sets equal the ACTIVE coding structure (3 / 1 / ACTIVE 3+2); the draft shape was not copied | **PASS** |
-| 7 | (OBSERVED, not an assertion of correctness) superseded-only org received the documented 2+3 default | **OBSERVED** — OQ-63 |
-| 8 | NULL `accounting_configuration_id` rejected | **PASS** 23502 |
-| 9 | unknown `accounting_configuration_id` rejected (FK) | **PASS** 23503 |
-| 10 | unknown `coding_structure_version_id` rejected (FK) | **PASS** 23503 |
-| 11 | re-pinning an account to an unknown configuration rejected **and** the pin unchanged | **PASS** |
-| 12 | deleting a referenced configuration refused (RESTRICT) | **PASS** |
-| 13 | deleting a referenced coding version refused (RESTRICT) | **PASS** |
-| 14 | partial unique index exists and is `UNIQUE … WHERE … ACTIVE` | **PASS** (indexdef quoted) |
-| 15 | a second ACTIVE configuration for one organization rejected; ACTIVE count unchanged | **PASS** 23505 |
-| 16 | exactly one ACTIVE configuration per organization | **PASS** |
-| 17 | `level_kind` column is 20 wide; a 20-character value is stored verbatim | **PASS** |
-| 18 | a 21-character `level_kind` is rejected (22001) — never truncated | **PASS** |
-| 19 | migration completion: tables, indexes and foreign keys all exist | **PASS** |
-| — | rehearsal summary (5 orgs, 9 accounts, 4 configurations, 8 configuration levels) | **PASS** |
+| #   | Assertion (fails the run when violated)                                                                                                                                                                                       | Result                                     |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
+| 1   | accounts / versions / levels row counts unchanged vs `snapshot_pre`                                                                                                                                                           | **PASS** accounts=9, versions=6, levels=12 |
+| 2   | per-organization account counts unchanged                                                                                                                                                                                     | **PASS**                                   |
+| 3   | every account row identical to the pre-migration snapshot (id, code, title, parent, level, nature, coding version)                                                                                                            | **PASS**                                   |
+| 4   | no NULL `accounting_configuration_id`, column is `NOT NULL`, every pin same-organization                                                                                                                                      | **PASS**                                   |
+| 5   | orphan handling: exactly one LEGACY ACTIVE v1 per organization with accounts; `org-no-config` untouched; every created configuration referenced by ≥1 account and having ≥1 level; `operationally_used_at` set on legacy rows | **PASS**                                   |
+| 6   | level preservation: copied sets equal the ACTIVE coding structure (3 / 1 / ACTIVE 3+2); the draft shape was not copied                                                                                                        | **PASS**                                   |
+| 7   | (OBSERVED, not an assertion of correctness) superseded-only org received the documented 2+3 default                                                                                                                           | **OBSERVED** — OQ-63                       |
+| 8   | NULL `accounting_configuration_id` rejected                                                                                                                                                                                   | **PASS** 23502                             |
+| 9   | unknown `accounting_configuration_id` rejected (FK)                                                                                                                                                                           | **PASS** 23503                             |
+| 10  | unknown `coding_structure_version_id` rejected (FK)                                                                                                                                                                           | **PASS** 23503                             |
+| 11  | re-pinning an account to an unknown configuration rejected **and** the pin unchanged                                                                                                                                          | **PASS**                                   |
+| 12  | deleting a referenced configuration refused (RESTRICT)                                                                                                                                                                        | **PASS**                                   |
+| 13  | deleting a referenced coding version refused (RESTRICT)                                                                                                                                                                       | **PASS**                                   |
+| 14  | partial unique index exists and is `UNIQUE … WHERE … ACTIVE`                                                                                                                                                                  | **PASS** (indexdef quoted)                 |
+| 15  | a second ACTIVE configuration for one organization rejected; ACTIVE count unchanged                                                                                                                                           | **PASS** 23505                             |
+| 16  | exactly one ACTIVE configuration per organization                                                                                                                                                                             | **PASS**                                   |
+| 17  | `level_kind` column is 20 wide; a 20-character value is stored verbatim                                                                                                                                                       | **PASS**                                   |
+| 18  | a 21-character `level_kind` is rejected (22001) — never truncated                                                                                                                                                             | **PASS**                                   |
+| 19  | migration completion: tables, indexes and foreign keys all exist                                                                                                                                                              | **PASS**                                   |
+| —   | rehearsal summary (5 orgs, 9 accounts, 4 configurations, 8 configuration levels)                                                                                                                                              | **PASS**                                   |
 
 **Non-vacuity of the database probes (mutation-verified):**
 
-| Mutation (restored after) | Expected | Executed result |
-|---|---|---|
-| **M6** — migration without `fk_accounts_accounting_configuration` | rehearsal FAILS | `REHEARSAL FAILED: expected FK rejection: inserting an account with a non-existent accounting_configuration_id succeeded` |
-| **M7** — migration without `uq_accounting_configurations_org_active` | rehearsal FAILS | `REHEARSAL FAILED: partial unique index uq_accounting_configurations_org_active does not exist` |
+| Mutation (restored after)                                            | Expected        | Executed result                                                                                                           |
+| -------------------------------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| **M6** — migration without `fk_accounts_accounting_configuration`    | rehearsal FAILS | `REHEARSAL FAILED: expected FK rejection: inserting an account with a non-existent accounting_configuration_id succeeded` |
+| **M7** — migration without `uq_accounting_configurations_org_active` | rehearsal FAILS | `REHEARSAL FAILED: partial unique index uq_accounting_configurations_org_active does not exist`                           |
 
 ### Check 4 — the listed review areas
 
-| Area | Evidence | Verdict |
-|---|---|---|
-| **configuration-specific level validation** | Mutation **M5** (domain `planAccountMovePin` always accepts): `coding-structure-accounts.spec.ts` + `account-placement.spec.ts` → **1 failed**, restored → **62 passed** | **VERIFIED**, non-vacuous |
-| **account/configuration compatibility** | Enumerated: no code or constraint compares the two pins; the rehearsal produced a real divergence. Executed consequence (real domain function, temp probe deleted): under the pinned version the sibling code `1001` is accepted; under the LEGACY configuration `1001` → `level_length_mismatch` and only `10001` is accepted | **VERIFIED as unenforced**; registered as **OQ-62** (existing account codes can no longer be used as a child-create template in that organization — materially observable, not cosmetic) |
-| **authoritative active coding-version validation** | Mutation **M4** (remove `version.status !== 'active'` from `planRootAccountPin`): `account-placement.spec.ts` → **1 failed**; restored → **31 passed**. Live suite test `item 3: the ROOT write boundary refuses a coding version that is no longer active` calls the real `AccountsRepository.createChecked` with a superseded version and asserts the typed error **and** that no row exists (CI-executed, see Check 8) | **VERIFIED** |
-| **levelKind length consistency (API/domain/Prisma/SQL)** | Cross-layer spec + mutations **M9** (migration `VARCHAR(30)`) → `level-kind-contract.spec.ts` **1 failed**; **M10** (`MAX_LEVEL_KIND_LENGTH = 25`) → **2 failed**; **M2** (DTO `@MaxLength(64)`) → DTO spec **2 failed**. Live suite asserts `information_schema` width = 20 and a raw 21-char insert rejected | **VERIFIED**, non-vacuous at every layer |
-| **FK-negative tests** | Rehearsal probes #8–#13 above, mutation-verified by **M6**; the repaired live test uses a **control insert** (valid FK id accepted) + the **database state** as the oracle (row must not exist). Executed locally: rehearsal only; live test is CI-executed | **VERIFIED** (DB layer here; app layer by CI) |
-| **orphan backfill tests** | 9/9 accounts backfilled, 4 LEGACY configurations created, `org-no-config` untouched, counts/references preserved (rehearsal #1–#5 + independent probes). Mutation **M1b** (invalid splice, discarded) and **M1c** show the harness bites | **VERIFIED** |
-| **partial unique-index tests** | Rehearsal #14–#16 executed; mutation **M7** proves the check fails when the index is absent. The repaired live test asserts `pg_indexes.indexdef` **and** attempts a violating raw INSERT with a DRAFT control | **VERIFIED** |
+| Area                                                     | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                  | Verdict                                                                                                                                                                                  |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **configuration-specific level validation**              | Mutation **M5** (domain `planAccountMovePin` always accepts): `coding-structure-accounts.spec.ts` + `account-placement.spec.ts` → **1 failed**, restored → **62 passed**                                                                                                                                                                                                                                                  | **VERIFIED**, non-vacuous                                                                                                                                                                |
+| **account/configuration compatibility**                  | Enumerated: no code or constraint compares the two pins; the rehearsal produced a real divergence. Executed consequence (real domain function, temp probe deleted): under the pinned version the sibling code `1001` is accepted; under the LEGACY configuration `1001` → `level_length_mismatch` and only `10001` is accepted                                                                                            | **VERIFIED as unenforced**; registered as **OQ-62** (existing account codes can no longer be used as a child-create template in that organization — materially observable, not cosmetic) |
+| **authoritative active coding-version validation**       | Mutation **M4** (remove `version.status !== 'active'` from `planRootAccountPin`): `account-placement.spec.ts` → **1 failed**; restored → **31 passed**. Live suite test `item 3: the ROOT write boundary refuses a coding version that is no longer active` calls the real `AccountsRepository.createChecked` with a superseded version and asserts the typed error **and** that no row exists (CI-executed, see Check 8) | **VERIFIED**                                                                                                                                                                             |
+| **levelKind length consistency (API/domain/Prisma/SQL)** | Cross-layer spec + mutations **M9** (migration `VARCHAR(30)`) → `level-kind-contract.spec.ts` **1 failed**; **M10** (`MAX_LEVEL_KIND_LENGTH = 25`) → **2 failed**; **M2** (DTO `@MaxLength(64)`) → DTO spec **2 failed**. Live suite asserts `information_schema` width = 20 and a raw 21-char insert rejected                                                                                                            | **VERIFIED**, non-vacuous at every layer                                                                                                                                                 |
+| **FK-negative tests**                                    | Rehearsal probes #8–#13 above, mutation-verified by **M6**; the repaired live test uses a **control insert** (valid FK id accepted) + the **database state** as the oracle (row must not exist). Executed locally: rehearsal only; live test is CI-executed                                                                                                                                                               | **VERIFIED** (DB layer here; app layer by CI)                                                                                                                                            |
+| **orphan backfill tests**                                | 9/9 accounts backfilled, 4 LEGACY configurations created, `org-no-config` untouched, counts/references preserved (rehearsal #1–#5 + independent probes). Mutation **M1b** (invalid splice, discarded) and **M1c** show the harness bites                                                                                                                                                                                  | **VERIFIED**                                                                                                                                                                             |
+| **partial unique-index tests**                           | Rehearsal #14–#16 executed; mutation **M7** proves the check fails when the index is absent. The repaired live test asserts `pg_indexes.indexdef` **and** attempts a violating raw INSERT with a DRAFT control                                                                                                                                                                                                            | **VERIFIED**                                                                                                                                                                             |
 
 ### Check 5 — misleading or vacuous tests
 
@@ -199,20 +199,20 @@ positive control plus a database-state oracle (an error message is never the sol
 evidence). Mutation battery — every one of these **failed for the wrong behavior
 and passed for the correct behavior**:
 
-| Mutation (all restored) | Test target | Wrong behavior | Correct behavior |
-|---|---|---|---|
-| M1c original `COUNT(*)=1` level append | rehearsal | `REHEARSAL FAILED: org-one-level … has 2 level(s)` | PASSED |
-| M2 DTO `@MaxLength(64)` | DTO spec | 2 failed / 5 | 5 passed |
-| M3 domain `level_kind_too_long` removed | domain spec | 1 failed / 15 | 15 passed |
-| M4 `planRootAccountPin` version-status check removed | placement spec | 1 failed / 31 | 31 passed |
-| M5 `planAccountMovePin` always accepts | placement + app-level specs | 1 failed / 62 | 62 passed |
-| M6 migration without the configuration FK | rehearsal | FK probe FAILED | PASSED |
-| M7 migration without the partial unique index | rehearsal | index probe FAILED | PASSED |
-| M9 migration `VARCHAR(30)` | level-kind contract spec | 1 failed / 3 | 3 passed |
-| M10 `MAX_LEVEL_KIND_LENGTH = 25` | contract + DTO specs | 2 failed / 8 | 8 passed |
+| Mutation (all restored)                              | Test target                 | Wrong behavior                                     | Correct behavior |
+| ---------------------------------------------------- | --------------------------- | -------------------------------------------------- | ---------------- |
+| M1c original `COUNT(*)=1` level append               | rehearsal                   | `REHEARSAL FAILED: org-one-level … has 2 level(s)` | PASSED           |
+| M2 DTO `@MaxLength(64)`                              | DTO spec                    | 2 failed / 5                                       | 5 passed         |
+| M3 domain `level_kind_too_long` removed              | domain spec                 | 1 failed / 15                                      | 15 passed        |
+| M4 `planRootAccountPin` version-status check removed | placement spec              | 1 failed / 31                                      | 31 passed        |
+| M5 `planAccountMovePin` always accepts               | placement + app-level specs | 1 failed / 62                                      | 62 passed        |
+| M6 migration without the configuration FK            | rehearsal                   | FK probe FAILED                                    | PASSED           |
+| M7 migration without the partial unique index        | rehearsal                   | index probe FAILED                                 | PASSED           |
+| M9 migration `VARCHAR(30)`                           | level-kind contract spec    | 1 failed / 3                                       | 3 passed         |
+| M10 `MAX_LEVEL_KIND_LENGTH = 25`                     | contract + DTO specs        | 2 failed / 8                                       | 8 passed         |
 
 **Gap G1 (reported, not repaired — repairing needs a Prisma double):** mutation
-**M8** deleted the move-pin refusal from the *real*
+**M8** deleted the move-pin refusal from the _real_
 `AccountsRepository.updateChecked` and **all 22 accounting unit files / 364 tests
 still passed**. The invariant is demonstrated at three other points (domain
 function unit tests, the in-memory repository twin used by the app-level
@@ -257,27 +257,27 @@ HARMLESS and honestly documented — not architecturally misleading.**
 
 **VERIFIED**, claim by claim against repository facts (script + runtime probe):
 
-| Artifact | Checks | Result |
-|---|---|---|
-| `docs/accounting/task-index.md` | Task 11 row (PR #25 + remediation), §3 architecture block, §6 status, §8 follow-ups OQ-62/63/64, §9 history 2026-09-22 | all **PASS** |
-| `docs/modules.md` | catalog row, Task 11 section, "Permissions (implemented, 31 codes)" vs **runtime count = 31 with no duplicates**, Task 11 API block, rehearsal reference | all **PASS** |
-| `.vardena/project-context.md` | no longer claims "documentation-only"; describes the implemented backend; governance pointers; module inventory | **1 FAIL found and fixed by this pass** (§A), then **PASS** |
-| `docs/task-11-implementation-report.md` | sections A–J present; its numbers re-run today: unit 76/926, e2e 15 pass + 8 skip / 189 pass + 45 skip, lint 4 warnings, typecheck clean, format clean; fixture counts 5/6/12/9; rehearsal "PASSED" | all **PASS** (numbers match exactly) |
-| ADR / decision references | ADR-0028 remediation addendum present; decision note exists and is referenced from `configuration.md` and ADR-0028; OQ-62…64 registered with assumptions and owners; max OQ id = OQ-64 | all **PASS** |
-| factual claims | "13 migrations" = actual 13; "nine modules" = actual 9 module directories | **PASS** after the fix |
+| Artifact                                | Checks                                                                                                                                                                                              | Result                                                      |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| `docs/accounting/task-index.md`         | Task 11 row (PR #25 + remediation), §3 architecture block, §6 status, §8 follow-ups OQ-62/63/64, §9 history 2026-09-22                                                                              | all **PASS**                                                |
+| `docs/modules.md`                       | catalog row, Task 11 section, "Permissions (implemented, 31 codes)" vs **runtime count = 31 with no duplicates**, Task 11 API block, rehearsal reference                                            | all **PASS**                                                |
+| `.vardena/project-context.md`           | no longer claims "documentation-only"; describes the implemented backend; governance pointers; module inventory                                                                                     | **1 FAIL found and fixed by this pass** (§A), then **PASS** |
+| `docs/task-11-implementation-report.md` | sections A–J present; its numbers re-run today: unit 76/926, e2e 15 pass + 8 skip / 189 pass + 45 skip, lint 4 warnings, typecheck clean, format clean; fixture counts 5/6/12/9; rehearsal "PASSED" | all **PASS** (numbers match exactly)                        |
+| ADR / decision references               | ADR-0028 remediation addendum present; decision note exists and is referenced from `configuration.md` and ADR-0028; OQ-62…64 registered with assumptions and owners; max OQ id = OQ-64              | all **PASS**                                                |
+| factual claims                          | "13 migrations" = actual 13; "nine modules" = actual 9 module directories                                                                                                                           | **PASS** after the fix                                      |
 
 ### Check 8 — test execution with explicit classification
 
-| Suite | Command | Result | Classification |
-|---|---|---|---|
-| Unit | `npm test` | 76 files / **926 tests passed** (28.6 s) | **PASS** (executed locally) |
-| E2E (non-live) | `npm run test:e2e` | 15 files passed / 8 skipped; **189 passed / 45 skipped** (43.3 s) | **PASS** (executed locally) |
-| Migration rehearsal | `npm run test:migration-rehearsal` (KEEP=1) | 19 PASS + 1 OBSERVED notices, exit 0 | **PASS** (executed locally, PostgreSQL 17.10) |
-| Live-PostgreSQL e2e (`test/accounting-configuration-live.e2e-spec.ts`, 8 tests) | with `VARDENA_TEST_DATABASE_URL` → fully migrated DB | `Error: Prisma Client has not been generated`; 8 tests skipped; file exit 1 | **NOT EXECUTED** (environment: no Prisma engines; `binaries.prisma.sh` HTTP 000) — and **PASS in CI** (below) |
-| Live-DB e2e in the default e2e run | `npm run test:e2e` | 8 live files listed as `↓ skipped` | **SKIPPED** (by design: opt-in via `VARDENA_TEST_DATABASE_URL`) |
-| `prisma validate` / `generate` | `DATABASE_URL=… npm run prisma:validate` | `request to https://binaries.prisma.sh/… failed` | **NOT EXECUTED** (environment) — **PASS in CI** |
-| Typecheck / lint / format | `npm run typecheck`, `npm run lint`, `npm run format:check` | clean / 0 errors 4 warnings / clean | **PASS** (executed locally) |
-| CI | runs `35727571225` (`6ff4f48`, code), `35728013047` (`f39f1bb`, report) and `35732135269` (`72df242`, this verification pass) | `conclusion=success` each; **all 15 steps success**, including `Prisma validate`, `Prisma generate`, `Migrate test database`, `E2E tests (incl. live-DB suites)` | **PASS — verifiable CI evidence** (`gh api …/actions/runs/<id>/jobs`) |
+| Suite                                                                           | Command                                                                                                                       | Result                                                                                                                                                           | Classification                                                                                                |
+| ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Unit                                                                            | `npm test`                                                                                                                    | 76 files / **926 tests passed** (28.6 s)                                                                                                                         | **PASS** (executed locally)                                                                                   |
+| E2E (non-live)                                                                  | `npm run test:e2e`                                                                                                            | 15 files passed / 8 skipped; **189 passed / 45 skipped** (43.3 s)                                                                                                | **PASS** (executed locally)                                                                                   |
+| Migration rehearsal                                                             | `npm run test:migration-rehearsal` (KEEP=1)                                                                                   | 19 PASS + 1 OBSERVED notices, exit 0                                                                                                                             | **PASS** (executed locally, PostgreSQL 17.10)                                                                 |
+| Live-PostgreSQL e2e (`test/accounting-configuration-live.e2e-spec.ts`, 8 tests) | with `VARDENA_TEST_DATABASE_URL` → fully migrated DB                                                                          | `Error: Prisma Client has not been generated`; 8 tests skipped; file exit 1                                                                                      | **NOT EXECUTED** (environment: no Prisma engines; `binaries.prisma.sh` HTTP 000) — and **PASS in CI** (below) |
+| Live-DB e2e in the default e2e run                                              | `npm run test:e2e`                                                                                                            | 8 live files listed as `↓ skipped`                                                                                                                               | **SKIPPED** (by design: opt-in via `VARDENA_TEST_DATABASE_URL`)                                               |
+| `prisma validate` / `generate`                                                  | `DATABASE_URL=… npm run prisma:validate`                                                                                      | `request to https://binaries.prisma.sh/… failed`                                                                                                                 | **NOT EXECUTED** (environment) — **PASS in CI**                                                               |
+| Typecheck / lint / format                                                       | `npm run typecheck`, `npm run lint`, `npm run format:check`                                                                   | clean / 0 errors 4 warnings / clean                                                                                                                              | **PASS** (executed locally)                                                                                   |
+| CI                                                                              | runs `35727571225` (`6ff4f48`, code), `35728013047` (`f39f1bb`, report) and `35732135269` (`72df242`, this verification pass) | `conclusion=success` each; **all 15 steps success**, including `Prisma validate`, `Prisma generate`, `Migrate test database`, `E2E tests (incl. live-DB suites)` | **PASS — verifiable CI evidence** (`gh api …/actions/runs/<id>/jobs`)                                         |
 
 CI evidence is quoted from the GitHub API (not from memory), and its limitation is
 stated: the per-test stdout of the e2e step could not be retrieved in this sandbox
@@ -366,13 +366,13 @@ test file, one CI step, documentation).
 
 ### F1 — G1 closed: the repository PIN refusals are now tested at their real call sites
 
-| Item | Detail |
-|---|---|
-| New file | `backend/src/modules/accounting/data/accounts.repository.spec.ts` — **7 tests** against the REAL `AccountsRepository` through a minimal fake transactional client (the surface the two paths touch: `$transaction`, `$queryRaw` locks, `account.create/findMany/update`, `accountingDocumentLine.count`) |
-| Move path (item 1) | refuses a snapshot naming **another configuration**, refuses one naming **another coding version** (both `AccountPlacementRejectedError` / `version_mismatch`, **and** asserts `account.update` was never called), refuses a move with **no** snapshot, plus a **CONTROL** that the account's own pair passes and the move is applied |
-| Root path (D1 + §9.4) | refuses a coding version that is no longer `active`, refuses a configuration that is not `ACTIVE` (both write nothing), plus a **CONTROL** that the ACTIVE pair is accepted and the row is created |
-| Mutation re-check | **M8** (move refusal deleted from the real repository): accounting unit suite → **2 failed / 371**, restored → **371 passed**. **M8b** (root coding-version re-check deleted): → **1 failed / 371**, restored → **371 passed**. Both mutations previously passed silently; the gap is closed |
-| Honest note | the first version of this spec was itself caught being vacuous: the fake row was already a root, so `parentChanged` was false and the move tests never reached the pin check (4 failed). Fixed by giving the locked row a parent, and the reason is documented in the spec |
+| Item                  | Detail                                                                                                                                                                                                                                                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New file              | `backend/src/modules/accounting/data/accounts.repository.spec.ts` — **7 tests** against the REAL `AccountsRepository` through a minimal fake transactional client (the surface the two paths touch: `$transaction`, `$queryRaw` locks, `account.create/findMany/update`, `accountingDocumentLine.count`)                              |
+| Move path (item 1)    | refuses a snapshot naming **another configuration**, refuses one naming **another coding version** (both `AccountPlacementRejectedError` / `version_mismatch`, **and** asserts `account.update` was never called), refuses a move with **no** snapshot, plus a **CONTROL** that the account's own pair passes and the move is applied |
+| Root path (D1 + §9.4) | refuses a coding version that is no longer `active`, refuses a configuration that is not `ACTIVE` (both write nothing), plus a **CONTROL** that the ACTIVE pair is accepted and the row is created                                                                                                                                    |
+| Mutation re-check     | **M8** (move refusal deleted from the real repository): accounting unit suite → **2 failed / 371**, restored → **371 passed**. **M8b** (root coding-version re-check deleted): → **1 failed / 371**, restored → **371 passed**. Both mutations previously passed silently; the gap is closed                                          |
+| Honest note           | the first version of this spec was itself caught being vacuous: the fake row was already a root, so `parentChanged` was false and the move tests never reached the pin check (4 failed). Fixed by giving the locked row a parent, and the reason is documented in the spec                                                            |
 
 ### F2 — G6 closed: the migration rehearsal runs in CI
 
@@ -380,11 +380,11 @@ test file, one CI step, documentation).
 `E2E tests (incl. live-DB suites)` (14 steps total, workflow validated as YAML):
 
 ```yaml
-      - name: Migration rehearsal (populated pre-Task-11 data)
-        working-directory: backend
-        env:
-          VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
-        run: npm run test:migration-rehearsal
+- name: Migration rehearsal (populated pre-Task-11 data)
+  working-directory: backend
+  env:
+    VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
+  run: npm run test:migration-rehearsal
 ```
 
 - The `postgres:16` service's `POSTGRES_USER: vardena` is a superuser, so
@@ -398,13 +398,13 @@ test file, one CI step, documentation).
 
 ### F3 — Re-verification after the closure (executed)
 
-| Suite | Result |
-|---|---|
-| `npm test` | **76 → 77 files / 926 → 933 tests passed** |
-| `npm run test:e2e` | 15 files passed + 8 skipped; 189 passed + 45 skipped |
-| `npm run typecheck` · `lint` · `format:check` | clean · 0 errors / 4 warnings · clean |
-| `npm run test:migration-rehearsal` | PASSED (19 PASS + 1 OBSERVED) |
-| CI | run **35736248152** (`5d580f0`, PR #28) — `conclusion=success`, all steps green, including the **new step 15 `Migration rehearsal (populated pre-Task-11 data): success`**: the wiring is **VERIFIED in the pipeline**, not just by layout |
+| Suite                                         | Result                                                                                                                                                                                                                                     |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `npm test`                                    | **76 → 77 files / 926 → 933 tests passed**                                                                                                                                                                                                 |
+| `npm run test:e2e`                            | 15 files passed + 8 skipped; 189 passed + 45 skipped                                                                                                                                                                                       |
+| `npm run typecheck` · `lint` · `format:check` | clean · 0 errors / 4 warnings · clean                                                                                                                                                                                                      |
+| `npm run test:migration-rehearsal`            | PASSED (19 PASS + 1 OBSERVED)                                                                                                                                                                                                              |
+| CI                                            | run **35736248152** (`5d580f0`, PR #28) — `conclusion=success`, all steps green, including the **new step 15 `Migration rehearsal (populated pre-Task-11 data): success`**: the wiring is **VERIFIED in the pipeline**, not just by layout |
 
 Documents updated in this pass: this report (§D G1/G6, §F),
 `docs/task-11-implementation-report.md` (§I item 8 — the "not wired into CI"

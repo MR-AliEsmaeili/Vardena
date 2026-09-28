@@ -69,12 +69,12 @@ Cancellation changes nothing. Confirmation requires the future approved operatio
 
 ## 6. Fit-Gap and Implementation Boundary
 
-| Area | Decided Domain Requirement | Current State | Classification |
-|---|---|---|---|
-| Detail hierarchy | First-class, Account-independent, organization-configurable hierarchy | Not implemented | **MODEL GAP / IMPLEMENTATION REQUIRED** |
-| Account relationship | Relationship to first Detail level, not every leaf | Not implemented | **MODEL GAP / IMPLEMENTATION REQUIRED** |
-| Posting requirement | Backend-enforced required Detail/Dimension values | Not implemented | **MODEL GAP / IMPLEMENTATION REQUIRED** |
-| Relationship removal | Explicitly confirmed, atomic, audited destructive operation preserving Account turnover | Not implemented | **DESIGN + IMPLEMENTATION REQUIRED** |
-| Physical allocation model | Not decided by OD-29-03 | Not implemented | **OPEN IMPLEMENTATION DESIGN** |
+| Area                      | Decided Domain Requirement                                                              | Current State   | Classification                          |
+| ------------------------- | --------------------------------------------------------------------------------------- | --------------- | --------------------------------------- |
+| Detail hierarchy          | First-class, Account-independent, organization-configurable hierarchy                   | Not implemented | **MODEL GAP / IMPLEMENTATION REQUIRED** |
+| Account relationship      | Relationship to first Detail level, not every leaf                                      | Not implemented | **MODEL GAP / IMPLEMENTATION REQUIRED** |
+| Posting requirement       | Backend-enforced required Detail/Dimension values                                       | Not implemented | **MODEL GAP / IMPLEMENTATION REQUIRED** |
+| Relationship removal      | Explicitly confirmed, atomic, audited destructive operation preserving Account turnover | Not implemented | **DESIGN + IMPLEMENTATION REQUIRED**    |
+| Physical allocation model | Not decided by OD-29-03                                                                 | Not implemented | **OPEN IMPLEMENTATION DESIGN**          |
 
 OD-29-03 decides the generic domain architecture and safeguards. It does **not** choose a physical database schema, allocation storage model, endpoint, permission, UI flow, transaction implementation, or deletion algorithm. It also does not authorize Task 30 or a Detail implementation task. ADR-0037 and any future architecture record must be reconciled during a separately authorized design/implementation gate.

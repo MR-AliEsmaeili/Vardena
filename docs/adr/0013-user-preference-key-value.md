@@ -9,7 +9,7 @@ Vardena must support user customization: table column visibility/order, saved
 filters, dashboard layouts, themes, UI preferences, print preferences, report
 preferences. A table per preference type is over-engineered for v1; an
 unvalidated free-form KV store invites corruption and unbounded growth.
-Requirements: extensible, not over-engineered, and *preference ≠ business data*.
+Requirements: extensible, not over-engineered, and _preference ≠ business data_.
 
 ## Decision
 
@@ -24,7 +24,7 @@ Requirements: extensible, not over-engineered, and *preference ≠ business data
 - **v1 scope:** per-user only. Organization defaults and shared (role/team)
   saved filters are deferred (OQ-09) — the schema already tolerates a later
   `scope` column without breaking existing rows.
-- **Boundary rule:** a preference must never change *business* behavior. If a
+- **Boundary rule:** a preference must never change _business_ behavior. If a
   setting changes what the system does (not just how it looks/behaves in the
   UI), it is a business rule and belongs in the business module (and likely an
   OQ). Examples of legitimate preferences: column order, saved filter presets,
@@ -35,7 +35,7 @@ Requirements: extensible, not over-engineered, and *preference ≠ business data
 - New preference types = registry entry + schema (one small PR), no new tables.
 - The server-side registry makes preferences safe for the UI to write blindly
   (client writes → server validates).
-- Dashboard layouts, saved filters, and grid state are all *data* in this store
+- Dashboard layouts, saved filters, and grid state are all _data_ in this store
   (referencing report ids / entity filters) — the reporting strategy builds on
   it directly (reporting-strategy §5).
 - Export/import of a user's preferences (machine migration) is a later

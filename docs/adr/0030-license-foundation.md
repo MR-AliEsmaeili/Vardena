@@ -13,14 +13,14 @@ The commercial structure is decided (setup fee + base license + support
 subscription + modules + custom development; modules sellable separately;
 API/licensing-gated capabilities per PD-35). Licensing is a decided **MVP
 platform capability** (PD-17: "License foundation"). But two things are
-explicitly undecided: the *enforcement mechanism details* (PD-08) and the
-*expiry behavior* (PD-09/OQ-45 — including during internet outages). Building
+explicitly undecided: the _enforcement mechanism details_ (PD-08) and the
+_expiry behavior_ (PD-09/OQ-45 — including during internet outages). Building
 punitive enforcement before OQ-45 resolves would bake in behavior the owner
 hasn't chosen (risk R-02).
 
 ## Problem statement
 
-What is the *minimum* in-product licensing capability the MVP must contain —
+What is the _minimum_ in-product licensing capability the MVP must contain —
 recorded honestly as a foundation — such that (a) the MVP capability list is
 satisfied, (b) later enforcement (post-OQ-45) needs no re-architecture, and
 (c) no customer-visible blocking behavior exists before the owner decides it?
@@ -40,11 +40,11 @@ satisfied, (b) later enforcement (post-OQ-45) needs no re-architecture, and
 
 ## Considered options & trade-offs
 
-| Option | Trade-offs |
-|---|---|
-| **A. Foundation-only: license record + module enablement, enforcement-off** *(recommended)* | Satisfies MVP capability list; zero customer risk; preserves all future options. Provides no revenue protection until enforcement is decided. |
-| B. Foundation + offline-signed license file enforcement now | Revenue protection early; but bakes in expiry behavior before OQ-45; signing infra (key management, per-customer keys) is real work. |
-| C. Online license validation service | Strongest control; contradicts the offline/no-mandatory-internet principle; needs internet infra the product explicitly doesn't require. |
+| Option                                                                                      | Trade-offs                                                                                                                                    |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A. Foundation-only: license record + module enablement, enforcement-off** _(recommended)_ | Satisfies MVP capability list; zero customer risk; preserves all future options. Provides no revenue protection until enforcement is decided. |
+| B. Foundation + offline-signed license file enforcement now                                 | Revenue protection early; but bakes in expiry behavior before OQ-45; signing infra (key management, per-customer keys) is real work.          |
+| C. Online license validation service                                                        | Strongest control; contradicts the offline/no-mandatory-internet principle; needs internet infra the product explicitly doesn't require.      |
 
 ## Recommended decision
 
@@ -58,11 +58,11 @@ satisfied, (b) later enforcement (post-OQ-45) needs no re-architecture, and
 2. **Read APIs + admin UI** to view license state; **module enablement reads
    the license** so unlicensed modules are hidden (UX-level gating only —
    backend permission enforcement stays AR-21 as-is).
-3. **No expiry enforcement**: `valid_to` is recorded and *displayed* (warning
+3. **No expiry enforcement**: `valid_to` is recorded and _displayed_ (warning
    banner after expiry is acceptable) — no lockout, no feature time-bomb,
    no read-only flips. All enforcement semantics are OQ-45's to decide.
 4. **License payload format** (signed file, verification keys) is designed but
-   *implementation is deferred* to the enforcement task; the record schema
+   _implementation is deferred_ to the enforcement task; the record schema
    stores the payload verbatim so signed licenses can be introduced without
    migration pain.
 5. **Operator-settable**: initial licenses are installed by the operator

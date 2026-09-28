@@ -17,8 +17,8 @@ backups, customer-triggered backup, controlled restore, backup before every
 migration) but **no numeric targets** and explicitly no RPO-zero claim
 (PB-BASELINE §23: "RPO zero is NOT claimed as technically guaranteed").
 
-Pilot customers will ask a simple question: *"if the server dies at 5pm, how
-much do I lose and how long am I down?"* Today the product cannot answer.
+Pilot customers will ask a simple question: _"if the server dies at 5pm, how
+much do I lose and how long am I down?"_ Today the product cannot answer.
 
 ## Why this matters
 
@@ -41,11 +41,11 @@ much do I lose and how long am I down?"* Today the product cannot answer.
 
 ## Options
 
-| Option | Advantages | Disadvantages |
-|---|---|---|
-| **A. Daily logical backup** (RPO ≤ 24h) | Matches current strategy; simple; adequate for many SMBs | A day of data loss possible; unacceptable to some buyers |
-| **B. Daily dump + WAL archiving** (RPO ≤ 15–60m) | Strong story; PITR capability; still single-node | Operational complexity per deployment; monitoring; disk growth management |
-| **C. RPO ≈ 0 (synchronous replica)** | Near-zero loss | Second server requirement at customer sites; new architecture; contradicts single-server simplicity; cost |
+| Option                                           | Advantages                                               | Disadvantages                                                                                             |
+| ------------------------------------------------ | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| **A. Daily logical backup** (RPO ≤ 24h)          | Matches current strategy; simple; adequate for many SMBs | A day of data loss possible; unacceptable to some buyers                                                  |
+| **B. Daily dump + WAL archiving** (RPO ≤ 15–60m) | Strong story; PITR capability; still single-node         | Operational complexity per deployment; monitoring; disk growth management                                 |
+| **C. RPO ≈ 0 (synchronous replica)**             | Near-zero loss                                           | Second server requirement at customer sites; new architecture; contradicts single-server simplicity; cost |
 
 ## Risks
 
@@ -64,12 +64,12 @@ much do I lose and how long am I down?"* Today the product cannot answer.
 
 **B as the standard offer (RPO ≤ 1h, RTO ≤ 4h on customer-provided hardware,
 both validated by drill), A as the minimal tier, C explicitly rejected for
-v1.** All numbers are *proposals for the owner to ratify or change*. RPO-zero
+v1.** All numbers are _proposals for the owner to ratify or change_. RPO-zero
 remains rejected until a customer demands it with an ADR-level change.
 
 ## Questions requiring product owner confirmation
 
-1. What RPO/RTO do you want to *promise* (not aspire to) at each commercial
+1. What RPO/RTO do you want to _promise_ (not aspire to) at each commercial
    tier?
 2. Is WAL archiving standard or enterprise-tier?
 3. What hardware assumption backs the RTO (customer spare machine? installed

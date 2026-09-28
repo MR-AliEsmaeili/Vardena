@@ -39,5 +39,5 @@ at this scale.
   respect module boundaries (cross-module references are logical, documented).
 - Single-node operations remain simple (one backup unit — though OQ-17 RPO/RTO
   still needs business targets).
-- Cross-module *reports* join views inside the reporting module's queries,
+- Cross-module _reports_ join views inside the reporting module's queries,
   keeping joins out of business code (ADR-0009).

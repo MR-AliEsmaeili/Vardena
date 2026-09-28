@@ -37,7 +37,7 @@ flows must also vary per customer without hard-coding one process.
    with `reverse` and are never edited (AR-13). The policy details (window, approval,
    cross-period rules) are expert-gated (OQ-27).
 6. **Which relations exist automatically is configuration** (ADR-0018 automation
-   bindings); which relations are *legal* is code.
+   bindings); which relations are _legal_ is code.
 
 ## Consequences
 

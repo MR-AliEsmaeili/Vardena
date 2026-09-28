@@ -7,7 +7,7 @@ Date: 2026-09-10
 
 A FaraPayam-style legacy ERP web service exists in the target environment. The
 temptation (and a historical pattern in the region) is to build the new system
-*on top of* the legacy service — using it as the backend. That would make
+_on top of_ the legacy service — using it as the backend. That would make
 Vardena dependent on the legacy system's availability, data model, security, and
 roadmap, and would defeat the purpose of a modern, independent ERP.
 
@@ -35,7 +35,7 @@ runtime dependency.
 - Legacy outages/contract changes are contained in one adapter + mappings.
 - Two systems of record during migration: mapping config (Integration module)
   defines ownership per field; conflict policy per destination (see
-  integrations.md §6); business rules about *which* fields are externally owned
+  integrations.md §6); business rules about _which_ fields are externally owned
   are OQ-04 until the contract is known.
 - Slightly more moving parts than "wrap the legacy" (outbox, worker, adapters) —
   accepted as the price of independence.

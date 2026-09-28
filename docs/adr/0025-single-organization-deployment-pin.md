@@ -7,7 +7,7 @@ Date: 2026-09-13
 
 ADR-0021 gives every master-data and ledger row an `organization_id` and
 scopes every by-id route to it (structural isolation), but `organizationId`
-remains a *caller-supplied parameter*: nothing binds the authenticated
+remains a _caller-supplied parameter_: nothing binds the authenticated
 principal to an organization. OQ-01/OQ-22 assume "one organization per
 deployment" for v1 while deferring real multi-tenancy and inter-company
 settlement. Until the principal binding exists, a deployment that serves

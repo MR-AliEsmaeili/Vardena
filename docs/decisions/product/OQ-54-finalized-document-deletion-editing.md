@@ -15,7 +15,7 @@ OQ-27 governs correction windows); transactional documents are **canceled by
 state transition, never soft-deleted** (database-strategy §7); the accounting
 contract refuses reopen for final documents. What is **not decided is the
 product policy for finalized operational documents** — sales invoices, warehouse
-receipts/issues *before* they become accounting entries, and the interplay when
+receipts/issues _before_ they become accounting entries, and the interplay when
 they already have:
 
 1. May a finalized (but not yet posted) sales invoice be edited? deleted?
@@ -36,7 +36,7 @@ they already have:
 - Cancellation semantics touch audit integrity (documents disappearing vs
   canceled-and-visible) and statutory expectations (OQ-43: no deletion from
   legal books).
-- It decides the *default posture* the MVP scenario assumes: the §16 scenario
+- It decides the _default posture_ the MVP scenario assumes: the §16 scenario
   says "register warehouse receipt … register sale" without stating what happens
   on a mistake.
 
@@ -45,24 +45,24 @@ they already have:
 1. Single unified policy or per-document-type policy (receipt vs issue vs
    invoice)?
 2. Allowed transitions for finalized documents: `cancel` only? `edit-until-
-   posted`? none (correction documents only)?
+posted`? none (correction documents only)?
 3. Visibility of canceled documents; numbering-gap acceptance (OQ-12 link).
 4. Permission model for cancel/edit and any supervisor/approval coupling
    (OQ-13/OQ-26).
 
 ## Options
 
-| Option | Advantages | Disadvantages |
-|---|---|---|
-| **A. Cancel-only, never edit, canceled stay visible** (accounting-style discipline everywhere) | Uniform; audit-clean; matches immutability culture; simplest to reason about | Users expect edit-before-post; stricter than some competitors |
-| **B. Edit allowed until posted/canceled, then cancel-only** | Familiar UX; fewer canceled-document noise | "Until posted" boundary must be enforced cross-module (Sales ↔ Accounting timing); riskier inventory arithmetic |
-| **C. Per-type policy configured per organization** | Flexibility | Most complex; config surface + validation matrix; errors likely |
+| Option                                                                                         | Advantages                                                                   | Disadvantages                                                                                                   |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **A. Cancel-only, never edit, canceled stay visible** (accounting-style discipline everywhere) | Uniform; audit-clean; matches immutability culture; simplest to reason about | Users expect edit-before-post; stricter than some competitors                                                   |
+| **B. Edit allowed until posted/canceled, then cancel-only**                                    | Familiar UX; fewer canceled-document noise                                   | "Until posted" boundary must be enforced cross-module (Sales ↔ Accounting timing); riskier inventory arithmetic |
+| **C. Per-type policy configured per organization**                                             | Flexibility                                                                  | Most complex; config surface + validation matrix; errors likely                                                 |
 
 ## Risks
 
 - Option B's cross-module timing boundary ("posted?") is exactly the kind of
   hidden coupling AR-07 forbids unless expressed via document states + events.
-- Statutory exposure if cancellation is allowed to *hide* records that belong in
+- Statutory exposure if cancellation is allowed to _hide_ records that belong in
   legal books (OQ-43).
 
 ## Dependencies

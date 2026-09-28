@@ -12,24 +12,24 @@ APIs, or screens. The binding implementation order is set by
 
 ## Documents
 
-| Document | Answers |
-|---|---|
-| [`domain-blueprint.md`](./domain-blueprint.md) | What the domain is, the core/configurable/extensible split, module map, anti-patterns, the final review, and the pre-migration gate |
-| [`domain-glossary.md`](./domain-glossary.md) | The vocabulary (one definition per term, English/Persian aliases, what a term is *not*) |
-| [`master-data-strategy.md`](./master-data-strategy.md) | Organization/branch scope, Item & product model, units, partners, lifecycle, effective dating |
-| [`document-architecture.md`](./document-architecture.md) | The document foundation, document types, relationships, partial conversion, cancellation/reversal, numbering |
-| [`workflow-architecture.md`](./workflow-architecture.md) | Status vs transition vs permission vs approval vs automation, the minimum viable workflow model, versioning |
-| [`inventory-domain-analysis.md`](./inventory-domain-analysis.md) | Source of truth (movement ledger vs balance), stock balance materialization, lot/serial/expiry, valuation hooks, negative stock |
-| [`accounting-domain-analysis.md`](./accounting-domain-analysis.md) | Chart of accounts options, fiscal calendar, journals, posting/reversal/closing, inventory & sales & purchasing accounting effects (expert-gated). **Conceptual options only — the binding contract is [`docs/accounting/domain-contract.md`](../../accounting/domain-contract.md)** |
-| [`configurability-architecture.md`](./configurability-architecture.md) | The flexibility layers, configuration storage & versioning, custom fields (JSONB) policy, business-rule categories, reporting implications |
-| [`domain-decisions.md`](./domain-decisions.md) | The decision register: problem, options, pros, cons, recommendation, consequences, expert-validation flag |
+| Document                                                               | Answers                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`domain-blueprint.md`](./domain-blueprint.md)                         | What the domain is, the core/configurable/extensible split, module map, anti-patterns, the final review, and the pre-migration gate                                                                                                                                                 |
+| [`domain-glossary.md`](./domain-glossary.md)                           | The vocabulary (one definition per term, English/Persian aliases, what a term is _not_)                                                                                                                                                                                             |
+| [`master-data-strategy.md`](./master-data-strategy.md)                 | Organization/branch scope, Item & product model, units, partners, lifecycle, effective dating                                                                                                                                                                                       |
+| [`document-architecture.md`](./document-architecture.md)               | The document foundation, document types, relationships, partial conversion, cancellation/reversal, numbering                                                                                                                                                                        |
+| [`workflow-architecture.md`](./workflow-architecture.md)               | Status vs transition vs permission vs approval vs automation, the minimum viable workflow model, versioning                                                                                                                                                                         |
+| [`inventory-domain-analysis.md`](./inventory-domain-analysis.md)       | Source of truth (movement ledger vs balance), stock balance materialization, lot/serial/expiry, valuation hooks, negative stock                                                                                                                                                     |
+| [`accounting-domain-analysis.md`](./accounting-domain-analysis.md)     | Chart of accounts options, fiscal calendar, journals, posting/reversal/closing, inventory & sales & purchasing accounting effects (expert-gated). **Conceptual options only — the binding contract is [`docs/accounting/domain-contract.md`](../../accounting/domain-contract.md)** |
+| [`configurability-architecture.md`](./configurability-architecture.md) | The flexibility layers, configuration storage & versioning, custom fields (JSONB) policy, business-rule categories, reporting implications                                                                                                                                          |
+| [`domain-decisions.md`](./domain-decisions.md)                         | The decision register: problem, options, pros, cons, recommendation, consequences, expert-validation flag                                                                                                                                                                           |
 
 ## Relationship to the existing architecture
 
 - `docs/architecture.md`, `docs/modules.md`, `docs/database-strategy.md`,
   `docs/security.md`, `docs/reporting-strategy.md`, `docs/integrations.md` remain
   normative. This folder **adds domain-level decisions** on top of them; where it
-  recommends a structural change it does so through a *Proposed* ADR:
+  recommends a structural change it does so through a _Proposed_ ADR:
   - [ADR-0017](../../adr/0017-inventory-ledger-as-source-of-truth.md) — inventory ledger as
     source of truth + materialized balances (Proposed)
   - [ADR-0018](../../adr/0018-bounded-versioned-workflow.md) — bounded, versioned workflow
@@ -41,7 +41,7 @@ APIs, or screens. The binding implementation order is set by
 - New open questions are registered in [`../open-questions.md`](../../open-questions.md)
   (OQ-22 … OQ-35). **Unresolved business rules always win**: nothing in this folder
   overrides an open question, and every accounting/tax/legal statement is marked
-  *Requires domain-expert validation* (§19 of the blueprint).
+  _Requires domain-expert validation_ (§19 of the blueprint).
 - **Task 10.1 (2026-09-14) moved Accounting from analysis to contract.** The binding
   Accounting domain contract — bounded context, financial area, fiscal year/period,
   configurable coding structure, detail dimensions/floating detail, document shape and
@@ -67,8 +67,8 @@ APIs, or screens. The binding implementation order is set by
   points.** No system-wide EAV, no "everything JSONB", no universal document or
   workflow engine (evaluated and rejected in `domain-blueprint.md` §6, §8, §17).
 - **No invented business rules** (AR-31): numbering, tax, ledger behavior,
-  approval flows, valuation and retention appear here as *options + a
-  recommendation + an expert-validation flag*, never as silent assumptions.
+  approval flows, valuation and retention appear here as _options + a
+  recommendation + an expert-validation flag_, never as silent assumptions.
 - **Reporting is a first-class constraint** (ADR-0009): a design that makes common
   ERP reports hard is rejected, even if it is flexible.
 - **Historical integrity** (AR-13 + `database-strategy.md` §7): posted documents,

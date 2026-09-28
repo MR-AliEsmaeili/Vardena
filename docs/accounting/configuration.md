@@ -5,6 +5,7 @@
 ## Scope (Task 11 Final Round 2)
 
 **Foundation (Task 11 Final D1-D7):**
+
 - Configuration root: `accounting_configurations` + `accounting_configuration_levels`
 - Real versioning: `version_number` monotonic per `(organization_id, code)`
 - Status: `DRAFT` → `ACTIVE` → `SUPERSEDED`, exactly one ACTIVE per org (FOR UPDATE lock primary + partial unique index backstop)
@@ -14,6 +15,7 @@
 - D5 single migration, D6 typed errors only, D7 live DB test
 
 **Non-Goals (NOT in Task 11 Final):**
+
 - Posting Rules, Dimensions/Detail Structure, Control Roles, System Posting, Balances/Projections, Reports, Tax/Costing/Numbering/Closing Policies (seams only)
 - Frontend, Workflow, Outbox/Queue/Redis, Microservices
 - Refactor CodingStructuresService Task 10.3, change CodingStructureVersion lifecycle, LedgerEntry, PostingService, AccountingDocuments
@@ -36,6 +38,7 @@
 - **NOT** `coding_structure_version_id` (per D2 — no column, no touch coding_structure_versions)
 
 Constraints:
+
 - `UNIQUE (organization_id, code, version_number)` → `uq_accounting_configurations_org_code_version`
 - `INDEX (organization_id, status)` → `idx_accounting_configurations_org_status`
 - `INDEX (organization_id, code)` → `idx_accounting_configurations_org_code`
@@ -52,6 +55,7 @@ Constraints:
 - Audit
 
 Constraints:
+
 - `UNIQUE (configuration_id, level_index)` → `uq_accounting_configuration_levels_config_level`
 - `INDEX (organization_id, configuration_id)` → `idx_accounting_configuration_levels_org_config`
 
@@ -67,6 +71,7 @@ Levels belong to VERSION, immutable after publish. MAX depth 8 architecture cap.
   - Old rows backfilled: first from ACTIVE, then legacy LEGACY ACTIVE config created for orphan orgs per D3, second backfill, then SET NOT NULL
 
 Indexes:
+
 - `uq_accounts_organization_id_code` (existing)
 - `idx_accounts_accounting_configuration_id` (new)
 - `idx_accounts_coding_structure_version_id` (existing, remains NOT NULL per D2)
@@ -96,6 +101,7 @@ Single ACTIVE per org: primary FOR UPDATE lock, backstop partial unique index.
 > هر Accounting Configuration که بر Transaction، Posting یا Reporting اثر می‌گذارد، قبل از اولین استفاده عملیاتی قابل تغییر است؛ پس از شروع استفاده عملیاتی، تغییر مخرب ممنوع است و تغییرات آینده باید از طریق Version جدید یا Migration کنترل‌شده انجام شوند.
 
 **Task 11 Final Round 2 per D4:**
+
 - Implements `operationally_used_at` marker + domain guards `canDestructivelyMutate`, `canDeleteConfiguration`, `assertConfigurationMutable`, `resolveFreezeState`
 - **D4 — deferred by Task 11, WIRED by Task 13 (2026-09-23):** the marker is written inside `finalizeChecked`, after the line accounts are resolved and before they are locked, for the DISTINCT set of `accounts.accounting_configuration_id` values the voucher's lines actually used (resolved by the same transaction, never by reading "the ACTIVE configuration"). Account creation/activation still marks nothing — D4's caller is Posting, not the chart, and a `pending`/`temporary` voucher freezes nothing. `AccountingConfigurationsService.markOperationallyUsed` stays endpoint-free (no route, no permission): it is the transactional seam the data layer uses, now organization-scoped and first-use-wins.
 - Does NOT yet enforce freeze based on posting/ledger/dimensions — future tasks will call same marker
@@ -204,7 +210,7 @@ Permissions: `Accounting.AccountingConfiguration.View`, `Accounting.AccountingCo
 3. **Migration semantics corrected**: deterministic single-ACTIVE-version level copy, and the "no level rows" fallback guard (no silent widening of a ONE-level copy). Verified by the rehearsal.
 4. **`levelKind` contract aligned**: domain `MAX_LEVEL_KIND_LENGTH = 20` = Prisma `@db.VarChar(20)` = SQL `VARCHAR(20)` = API `@MaxLength(20)`; 21/64-character values are refused, never truncated.
 5. **Live e2e tests repaired** (FK-negative test now fails when the FK is missing; the partial-index test challenges the index itself instead of counting ACTIVE rows) and the populated-backfill claim moved to the rehearsal.
-6. **Deferred D4 documented, not implemented**: `docs/accounting/task-11-mark-operationally-used-decision-note.md` (OQ-64). — *status 2026-09-23: implemented; the note's decision (mark on finalization from Posting, never from the chart) is what Task 13 wired.*
+6. **Deferred D4 documented, not implemented**: `docs/accounting/task-11-mark-operationally-used-decision-note.md` (OQ-64). — _status 2026-09-23: implemented; the note's decision (mark on finalization from Posting, never from the chart) is what Task 13 wired._
 
 ## Migration (Final per D5 + D3)
 

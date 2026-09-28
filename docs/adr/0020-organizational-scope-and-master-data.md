@@ -31,8 +31,8 @@ the kernel must stay technical (AR-06).
      (governed JSONB, `docs/architecture/domain/configurability-architecture.md` §5);
    - **party master data** (customers/suppliers as one party with capability flags,
      plus contacts, addresses, bank accounts).
-   Other modules read this data **only** through the module's public application
-   services (AR-07) and never read its tables.
+     Other modules read this data **only** through the module's public application
+     services (AR-07) and never read its tables.
 3. **Commercial ownership stays with the operational modules:** Sales owns price lists,
    sales documents and customer-specific commercial settings; Purchasing owns supplier
    price lists and purchasing documents; both reference `party_id`. The corresponding

@@ -358,10 +358,17 @@ model Account {
   /// Task 11 — canonical configuration scope, sole scope per D1.
   /// NOT NULL after D3 backfill (orphan handling). See migration 20260920.
   accountingConfigurationId String @map("accounting_configuration_id")
-  /// Balance direction (`ماهیت`), `debit` | `credit` (§8.3). Reporting
+  /// Balance direction (`ماهیت`), `debit` | `credit` | `dual` (§8.3, OD-29-01). Reporting
   /// semantics only — it does NOT restrict which side a future line uses
   /// (§13.4).
   accountNature  String   @map("account_nature") @db.VarChar(8)
+  /// Account Type (Task 30 — OD-29-02): `BALANCE_SHEET` | `INCOME_STATEMENT` | `MEMORANDUM`.
+  /// Governs fiscal-period closing, opening balance carry-forward, and statement classification.
+  /// Immutable after first operational use / posting.
+  accountType    String   @default("BALANCE_SHEET") @map("account_type") @db.VarChar(32)
+  /// Optional link to Level-1 Detail Group (Task 30 — OD-29-03).
+  /// Required detail items on posting lines must belong to this Detail Group hierarchy.
+  detailGroupId  String?  @map("detail_group_id")
   /// §14 (`AC-D-19`): a validated attribute, not a level-name inference.
   /// Invariant: postable ⇒ leaf, enforced on BOTH write paths (see
   /// `AccountsRepository`).
@@ -379,6 +386,7 @@ model Account {
   children     Account[]              @relation("AccountTree")
   codingStructureVersion CodingStructureVersion @relation(fields: [codingStructureVersionId], references: [id], onDelete: Restrict)
   accountingConfiguration AccountingConfiguration @relation("AccountAccountingConfiguration", fields: [accountingConfigurationId], references: [id], onDelete: Restrict)
+  detailGroup  Detail?                @relation("AccountDetailGroup", fields: [detailGroupId], references: [id], onDelete: Restrict)
   /// The document lines that reference this account (Task 10.4). The real FK is
   /// `accounting_document_lines.account_id` (RESTRICT); this is the virtual side.
   documentLines AccountingDocumentLine[]
@@ -399,6 +407,7 @@ model Account {
   @@index([organizationId, parentId], map: "idx_accounts_organization_id_parent_id")
   @@index([organizationId, level], map: "idx_accounts_organization_id_level")
   @@index([organizationId, isActive], map: "idx_accounts_organization_id_is_active")
+  @@index([organizationId, detailGroupId], map: "idx_accounts_organization_id_detail_group_id")
   /// "which accounts pin this version" — the query a structure-version
   /// retirement and (later) a structure migration must answer.
   @@index([codingStructureVersionId], map: "idx_accounts_coding_structure_version_id")
@@ -673,6 +682,9 @@ model AccountingDocumentLine {
   accountId          String   @map("account_id")
   debitAmount        Decimal  @default(0) @map("debit_amount") @db.Decimal(18, 2)
   creditAmount       Decimal  @default(0) @map("credit_amount") @db.Decimal(18, 2)
+  /// Optional Detail item allocation (Task 30 — OD-29-03).
+  /// Required when the line's account links to a Level-1 Detail Group.
+  detailId           String?  @map("detail_id")
   description        String?  @db.VarChar(500)
   sourceLineReference String? @map("source_line_reference") @db.VarChar(128)
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -691,6 +703,7 @@ model AccountingDocumentLine {
   /// RESTRICT: an account with lines can never disappear (nothing is deleted,
   /// and §8.6 freezes an account that has been used).
   account        Account            @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  detail         Detail?            @relation(fields: [detailId], references: [id], onDelete: Restrict)
   /// The immutable ledger entry materialized from this line at finalization
   /// (Task 10.7, 1 → 1). The real FK is `ledger_entries.voucher_line_id`
   /// (RESTRICT + UNIQUE); this is the virtual side.
@@ -698,6 +711,7 @@ model AccountingDocumentLine {
 
   @@unique([documentId, lineNo], map: "uq_accounting_document_lines_document_id_line_no")
   @@index([organizationId, accountId], map: "idx_accounting_document_lines_org_account")
+  @@index([organizationId, detailId], map: "idx_accounting_document_lines_org_detail")
   @@map("accounting_document_lines")
   @@schema("accounting")
 }
@@ -808,6 +822,8 @@ model LedgerEntry {
   /// 1-based dense rendering order snapshot (§12.5, legal-book order).
   lineNo             Int      @map("line_no")
   accountId          String   @map("account_id")
+  /// Detail item allocation snapshot (Task 30 — OD-29-03).
+  detailId           String?  @map("detail_id")
   /// `numeric(18,2)` (AR-12): non-negative exact decimals, exactly one
   /// non-zero per entry (§13.2, AC-I-08). Carried as decimal STRINGS through
   /// the domain, never floats, never rounded (§13.1/§13.5, AC-I-07).
@@ -853,6 +869,7 @@ model LedgerEntry {
   voucherLine      AccountingDocumentLine @relation(fields: [voucherLineId], references: [id], onDelete: Restrict)
   /// RESTRICT: an account with ledger entries can never disappear (§8.6).
   account          Account                @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  detail           Detail?                @relation(fields: [detailId], references: [id], onDelete: Restrict)
   branch           Branch?                @relation(fields: [branchId], references: [id], onDelete: Restrict)
 
   /// The 1:1 backstop (VoucherLine → LedgerEntry): a second entry for the
@@ -862,6 +879,7 @@ model LedgerEntry {
   @@index([organizationId, voucherId], map: "idx_ledger_entries_org_voucher")
   @@index([organizationId, accountId], map: "idx_ledger_entries_org_account")
   @@index([organizationId, accountingPeriodId], map: "idx_ledger_entries_org_period")
+  @@index([organizationId, detailId], map: "idx_ledger_entries_org_detail")
   @@map("ledger_entries")
   @@schema("accounting")
 }
@@ -1076,8 +1094,10 @@ model BaseChartTemplateNode {
   code          String  @db.VarChar(32)
   /// Persian-capable title (content; authored, never seeded).
   title         String  @db.VarChar(200)
-  /// `debit` | `credit` — the decided closed list (§8.3).
+  /// `debit` | `credit` | `dual` — the decided closed list (§8.3, OD-29-01).
   accountNature String  @map("account_nature") @db.VarChar(8)
+  /// Account Type (Task 30 — OD-29-02): `BALANCE_SHEET` | `INCOME_STATEMENT` | `MEMORANDUM`.
+  accountType   String  @default("BALANCE_SHEET") @map("account_type") @db.VarChar(32)
   /// Per-node postability default (Task 21 §7), seeded from the level's
   /// `default_is_postable` at authoring; HARD-BOUNDED by leaf-only: the
   /// publish gate refuses a postable parent and the adoption derivation
@@ -1143,5 +1163,113 @@ model BaseChartAdoption {
   /// "which organizations adopted this version" — the reverse lookup.
   @@index([templateVersionId], map: "idx_base_chart_adoptions_template_version_id")
   @@map("base_chart_adoptions")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Detail Hierarchy & Detail Accounts (Task 30, OD-29-03)
+// ---------------------------------------------------------------------------
+
+/// One revision of an organization's detail coding structure (Task 30, OD-29-03).
+///
+/// An organization can define Detail hierarchy levels with configurable
+/// level count, level names, and digit/code lengths.
+/// Exactly ONE version per organization is `active`.
+model DetailStructureVersion {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  /// Structure identity inside the organization (e.g. DEFAULT).
+  code           String   @db.VarChar(64)
+  /// 1-based ordinal per (organization, code).
+  versionNumber  Int      @map("version_number")
+  /// `draft` | `active` | `superseded`
+  status         String   @default("draft") @db.VarChar(16)
+  /// Number of levels: 1..MAX_DETAIL_STRUCTURE_DEPTH (8).
+  maxDepth       Int      @map("max_depth")
+  /// DISPLAY ONLY: display separator (`-`, `/`, `.`, or empty).
+  separator      String   @default("") @db.VarChar(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  levels       DetailStructureLevel[]
+  details      Detail[]
+
+  @@unique([organizationId, code, versionNumber], map: "uq_detail_structure_versions_org_code_version")
+  @@index([organizationId, status], map: "idx_detail_structure_versions_org_status")
+  @@index([organizationId, code], map: "idx_detail_structure_versions_org_code")
+  @@map("detail_structure_versions")
+  @@schema("accounting")
+}
+
+/// One level of one detail-structure version (Task 30, OD-29-03).
+model DetailStructureLevel {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  versionId      String   @map("detail_structure_version_id")
+  /// 1-based ordinal inside the version (1..maxDepth).
+  levelIndex     Int      @map("level_index")
+  /// Configurable level title (e.g. "Detail Group", "Detail Account", "Sub-detail", etc.).
+  title          String   @db.VarChar(200)
+  /// Digits this level contributes (≥ 1; total across levels ≤ 32).
+  digitLength    Int      @map("digit_length")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  version      DetailStructureVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@unique([versionId, levelIndex], map: "uq_detail_structure_levels_version_level")
+  @@index([organizationId, versionId], map: "idx_detail_structure_levels_org_version")
+  @@map("detail_structure_levels")
+  @@schema("accounting")
+}
+
+/// One node of the organization's detail hierarchy (Task 30, OD-29-03).
+///
+/// Level 1 nodes are Level-1 Detail Groups (`گروه تفصیلی`).
+/// Level 2+ nodes are child Details under their respective Level-1 group.
+/// Accounts link to Level-1 Detail Groups (`Account.detailGroupId`), and posting
+/// lines on such accounts must allocate to a valid descendant Detail under that group.
+model Detail {
+  id                       String   @id
+  organizationId           String   @map("organization_id")
+  /// Canonical code: digits only. Unique per organization.
+  code                     String   @db.VarChar(32)
+  /// Detail title (Persian-capable).
+  title                    String   @db.VarChar(200)
+  /// Null for Level-1 Detail Groups. RESTRICT for child details.
+  parentId                 String?  @map("parent_id")
+  /// 1-based depth: 1 for Detail Groups, parent.level + 1 for children.
+  level                    Int
+  detailStructureVersionId String   @map("detail_structure_version_id")
+  isActive                 Boolean  @default(true) @map("is_active")
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy                String?  @map("created_by")
+  updatedBy                String?  @map("updated_by")
+
+  organization           Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parent                 Detail?                @relation("DetailTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children               Detail[]               @relation("DetailTree")
+  detailStructureVersion DetailStructureVersion @relation(fields: [detailStructureVersionId], references: [id], onDelete: Restrict)
+
+  /// Accounts that link to this Detail as their Level-1 Detail Group
+  linkedAccounts         Account[]              @relation("AccountDetailGroup")
+
+  /// Document lines and Ledger entries with detail allocation
+  documentLines          AccountingDocumentLine[]
+  ledgerEntries          LedgerEntry[]
+
+  @@unique([organizationId, code], map: "uq_details_organization_id_code")
+  @@index([organizationId, parentId], map: "idx_details_organization_id_parent_id")
+  @@index([organizationId, level], map: "idx_details_organization_id_level")
+  @@index([organizationId, isActive], map: "idx_details_organization_id_is_active")
+  @@index([detailStructureVersionId], map: "idx_details_detail_structure_version_id")
+  @@map("details")
   @@schema("accounting")
 }

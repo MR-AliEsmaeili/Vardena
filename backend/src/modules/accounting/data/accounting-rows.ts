@@ -487,6 +487,8 @@ export type AccountRow = {
   codingStructureVersionId: string;
   accountingConfigurationId: string;
   accountNature: string;
+  accountType: string;
+  detailGroupId: string | null;
   isPostable: boolean;
   isActive: boolean;
 } & AuditColumns;
@@ -501,6 +503,7 @@ export interface AccountWhere {
   isPostable?: boolean;
   codingStructureVersionId?: string;
   accountingConfigurationId?: string;
+  detailGroupId?: string | null;
   OR?: Array<{
     code?: { contains: string; mode: 'insensitive' };
     title?: { contains: string; mode: 'insensitive' };
@@ -517,6 +520,8 @@ export interface AccountCreate {
   codingStructureVersionId: string;
   accountingConfigurationId: string;
   accountNature: string;
+  accountType?: string | undefined;
+  detailGroupId?: string | null | undefined;
   isPostable: boolean;
   isActive: boolean;
   createdAt: Date;
@@ -529,6 +534,8 @@ export interface AccountUpdate {
   parentId?: string | null | undefined;
   level?: number | undefined;
   accountNature?: string | undefined;
+  accountType?: string | undefined;
+  detailGroupId?: string | null | undefined;
   isPostable?: boolean | undefined;
   isActive?: boolean | undefined;
   updatedAt: Date;
@@ -686,6 +693,7 @@ export type AccountingDocumentLineRow = {
   accountingPeriodId: string;
   lineNo: number;
   accountId: string;
+  detailId: string | null;
   /** Prisma `Decimal` at runtime; the repository maps it to a string. */
   debitAmount: unknown;
   creditAmount: unknown;
@@ -698,6 +706,7 @@ export interface AccountingDocumentLineWhere {
   documentId?: string | { in: string[] };
   organizationId?: string;
   accountId?: string;
+  detailId?: string | null | { not: null };
 }
 
 export interface AccountingDocumentLineCreate {
@@ -709,6 +718,7 @@ export interface AccountingDocumentLineCreate {
   accountingPeriodId: string;
   lineNo: number;
   accountId: string;
+  detailId?: string | null | undefined;
   debitAmount: string;
   creditAmount: string;
   description: string | null;
@@ -728,6 +738,10 @@ export interface AccountingDocumentLineDelegate {
   }): Promise<AccountingDocumentLineRow>;
   createMany(args: {
     data: AccountingDocumentLineCreate[];
+  }): Promise<{ count: number }>;
+  updateMany(args: {
+    where: AccountingDocumentLineWhere;
+    data: { detailId?: string | null };
   }): Promise<{ count: number }>;
   deleteMany(args: {
     where: AccountingDocumentLineWhere;
@@ -873,6 +887,7 @@ export type LedgerEntryRow = {
   voucherLineId: string;
   lineNo: number;
   accountId: string;
+  detailId: string | null;
   /** Prisma `Decimal` at runtime; the repository maps it to a string. */
   debitAmount: unknown;
   creditAmount: unknown;
@@ -904,6 +919,7 @@ export interface LedgerEntryWhere {
   fiscalYearId?: string;
   accountingPeriodId?: string;
   accountId?: string;
+  detailId?: string | null | { not: null };
   voucherNumber?: string;
   /** Inclusive business-date bounds (`DATE` semantics, §12.3). */
   documentDate?: { gte?: Date; lte?: Date };
@@ -920,6 +936,7 @@ export interface LedgerEntryCreate {
   voucherLineId: string;
   lineNo: number;
   accountId: string;
+  detailId?: string | null | undefined;
   debitAmount: string;
   creditAmount: string;
   description: string | null;
@@ -955,6 +972,10 @@ export interface LedgerEntryDelegate {
   }): Promise<LedgerEntryRow[]>;
   count(args: { where: LedgerEntryWhere }): Promise<number>;
   createMany(args: { data: LedgerEntryCreate[] }): Promise<{ count: number }>;
+  updateMany(args: {
+    where: LedgerEntryWhere;
+    data: { detailId?: string | null };
+  }): Promise<{ count: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1115,6 +1136,7 @@ export type BaseChartTemplateNodeRow = {
   code: string;
   title: string;
   accountNature: string;
+  accountType: string;
   isPostable: boolean;
   isMandatory: boolean;
   defaultIsActive: boolean;
@@ -1130,6 +1152,7 @@ export interface BaseChartTemplateNodeCreate {
   code: string;
   title: string;
   accountNature: string;
+  accountType?: string | undefined;
   isPostable: boolean;
   isMandatory: boolean;
   defaultIsActive: boolean;
@@ -1202,6 +1225,182 @@ export interface BaseChartAdoptionDelegate {
 }
 
 // ---------------------------------------------------------------------------
+// Detail Hierarchy & Detail Coding Structures (Task 30, OD-29-03)
+// ---------------------------------------------------------------------------
+
+export type DetailStructureVersionRow = {
+  id: string;
+  organizationId: string;
+  versionNumber: number;
+  status: string;
+  title: string | null;
+  maxDepth: number;
+} & AuditColumns;
+
+export interface DetailStructureVersionWhere {
+  id?: string;
+  organizationId?: string;
+  status?: string;
+  versionNumber?: number;
+}
+
+export interface DetailStructureVersionCreate {
+  id: string;
+  organizationId: string;
+  versionNumber: number;
+  status: string;
+  title?: string | null | undefined;
+  maxDepth: number;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface DetailStructureVersionUpdate {
+  status?: string | undefined;
+  title?: string | null | undefined;
+  maxDepth?: number | undefined;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+export interface DetailStructureVersionDelegate {
+  findUnique(args: {
+    where: { id: string };
+  }): Promise<DetailStructureVersionRow | null>;
+  findFirst(args: {
+    where: DetailStructureVersionWhere;
+  }): Promise<DetailStructureVersionRow | null>;
+  findMany(args: {
+    where: DetailStructureVersionWhere;
+    orderBy?: OrderBy;
+    skip?: number;
+    take?: number;
+  }): Promise<DetailStructureVersionRow[]>;
+  create(args: {
+    data: DetailStructureVersionCreate;
+  }): Promise<DetailStructureVersionRow>;
+  update(args: {
+    where: { id: string };
+    data: DetailStructureVersionUpdate;
+  }): Promise<DetailStructureVersionRow>;
+  count(args: { where: DetailStructureVersionWhere }): Promise<number>;
+}
+
+export type DetailStructureLevelRow = {
+  id: string;
+  organizationId: string;
+  versionId: string;
+  levelIndex: number;
+  title: string;
+  digitLength: number;
+} & AuditColumns;
+
+export interface DetailStructureLevelWhere {
+  id?: string;
+  organizationId?: string;
+  versionId?: string;
+  levelIndex?: number;
+}
+
+export interface DetailStructureLevelCreate {
+  id: string;
+  organizationId: string;
+  versionId: string;
+  levelIndex: number;
+  title: string;
+  digitLength: number;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface DetailStructureLevelDelegate {
+  findMany(args: {
+    where: DetailStructureLevelWhere;
+    orderBy?: OrderBy;
+  }): Promise<DetailStructureLevelRow[]>;
+  create(args: {
+    data: DetailStructureLevelCreate;
+  }): Promise<DetailStructureLevelRow>;
+  createMany(args: {
+    data: DetailStructureLevelCreate[];
+  }): Promise<{ count: number }>;
+  deleteMany(args: {
+    where: DetailStructureLevelWhere;
+  }): Promise<{ count: number }>;
+}
+
+export type DetailRow = {
+  id: string;
+  organizationId: string;
+  code: string;
+  title: string;
+  parentId: string | null;
+  level: number;
+  detailStructureVersionId: string;
+  isPostable: boolean;
+  isActive: boolean;
+} & AuditColumns;
+
+export interface DetailWhere {
+  id?: string;
+  organizationId?: string;
+  code?: string;
+  parentId?: string | null;
+  level?: number;
+  detailStructureVersionId?: string;
+  isPostable?: boolean;
+  isActive?: boolean;
+  OR?: Array<{
+    code?: { contains: string; mode: 'insensitive' };
+    title?: { contains: string; mode: 'insensitive' };
+  }>;
+}
+
+export interface DetailCreate {
+  id: string;
+  organizationId: string;
+  code: string;
+  title: string;
+  parentId: string | null;
+  level: number;
+  detailStructureVersionId: string;
+  isPostable: boolean;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface DetailUpdate {
+  title?: string | undefined;
+  parentId?: string | null | undefined;
+  level?: number | undefined;
+  isPostable?: boolean | undefined;
+  isActive?: boolean | undefined;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+export interface DetailDelegate {
+  findUnique(args: { where: { id: string } }): Promise<DetailRow | null>;
+  findFirst(args: { where: DetailWhere }): Promise<DetailRow | null>;
+  findMany(args: {
+    where: DetailWhere;
+    orderBy?: OrderBy;
+    skip?: number;
+    take?: number;
+  }): Promise<DetailRow[]>;
+  create(args: { data: DetailCreate }): Promise<DetailRow>;
+  update(args: {
+    where: { id: string };
+    data: DetailUpdate;
+  }): Promise<DetailRow>;
+  count(args: { where: DetailWhere }): Promise<number>;
+}
+
+// ---------------------------------------------------------------------------
 // Transaction client
 // ---------------------------------------------------------------------------
 
@@ -1271,7 +1470,7 @@ export interface AccountingTxClient {
    */
   accountingDocumentLine: Pick<
     AccountingDocumentLineDelegate,
-    'findMany' | 'createMany' | 'deleteMany' | 'count'
+    'findMany' | 'createMany' | 'updateMany' | 'deleteMany' | 'count'
   >;
   /**
    * Task 10.4: the posting-operation ledger. The insert happens LAST inside
@@ -1287,7 +1486,10 @@ export interface AccountingTxClient {
    * insert — a plain `createMany` (never `skipDuplicates`: a second entry for
    * one line must fail the transaction, not vanish silently).
    */
-  ledgerEntry: Pick<LedgerEntryDelegate, 'createMany' | 'findMany'>;
+  ledgerEntry: Pick<
+    LedgerEntryDelegate,
+    'createMany' | 'findMany' | 'updateMany'
+  >;
   /**
    * Task 12: turnover projection rows, written transactionally by
    * `finalizeChecked` (UPSERT per key, or DELETE when Σ=0) and by the
@@ -1318,6 +1520,18 @@ export interface AccountingTxClient {
   baseChartAdoption: Pick<
     BaseChartAdoptionDelegate,
     'findFirst' | 'create' | 'count'
+  >;
+  detailStructureVersion: Pick<
+    DetailStructureVersionDelegate,
+    'findMany' | 'findFirst' | 'create' | 'update'
+  >;
+  detailStructureLevel: Pick<
+    DetailStructureLevelDelegate,
+    'findMany' | 'create' | 'deleteMany'
+  >;
+  detail: Pick<
+    DetailDelegate,
+    'findUnique' | 'findFirst' | 'findMany' | 'create' | 'update' | 'count'
   >;
 }
 

@@ -19,16 +19,16 @@ domain specification explicitly permits it".
 The existing domain specification **does** permit two of those four, through
 operations that already ship:
 
-- `docs/accounting/domain-contract.md` §7.2 rule 4 — *"`closed` refuses new
+- `docs/accounting/domain-contract.md` §7.2 rule 4 — _"`closed` refuses new
   documents and new corrections dated in the period. `sealed` refuses
   everything, including a period reopen, **unless the year is unsealed first**
-  (§6.3)"*;
-- §7.2 rule 5 — *"Status transitions are explicit operations with their own
+  (§6.3)"_;
+- §7.2 rule 5 — _"Status transitions are explicit operations with their own
   permissions (`Accounting.AccountingPeriod.{Open, Close, Reopen, Seal}`),
-  reasons and audit records — never inferred from document activity"*;
-- AC-I-17 — *"A sealed fiscal year cannot be reopened without a distinct
+  reasons and audit records — never inferred from document activity"_;
+- AC-I-17 — _"A sealed fiscal year cannot be reopened without a distinct
   permission, a recorded reason and an audit entry; sealed periods cannot be
-  reopened while the year is sealed"*.
+  reopened while the year is sealed"_.
 
 So `CLOSED → OPEN` (period reopen) and `SEALED → OPEN` (period reopen after the
 year was unsealed by its own audited operation) are **contract-sanctioned
@@ -45,7 +45,7 @@ calendar scope, locked it (`financial_area → fiscal_year → accounting_period
 re-read the document under its own lock and asserted the open scope **inside the
 same transaction** that writes `state = final`, the ledger entries, the balance
 projection and the posting-operation row. What the task therefore had to settle
-is *not* whether enforcement exists but **where exactly in that transaction the
+is _not_ whether enforcement exists but **where exactly in that transaction the
 locked status is judged**, **which row is authoritative**, and **how the
 contract's reopen exception is recorded** so a future reader does not mistake the
 `closed → open` endpoint for a missing guard.
@@ -75,18 +75,18 @@ contract's reopen exception is recorded** so a future reader does not mistake th
    `lockScopeInTx` — before the Task 13 operational-freeze marker, before the
    account `FOR SHARE` locks, before the balance-projection `FOR UPDATE` locks
    and before any write. A refusal therefore holds only the `area → year →
-   period` locks that **every** posting takes, touches no configuration/account/
+period` locks that **every** posting takes, touches no configuration/account/
    projection/document row, and cannot queue behind a committing sibling that
    holds those rows. The pre-existing re-assertion **after** the document lock is
    kept: it is the authoritative verdict on the re-read, stored scope (Task 10.7
-   staleness check, §15.5). The gate's *predicate* is unchanged (AC-I-04); only
-   its *position* moved earlier within the same lock order — **no lock was added,
+   staleness check, §15.5). The gate's _predicate_ is unchanged (AC-I-04); only
+   its _position_ moved earlier within the same lock order — **no lock was added,
    removed, moved or split** by this ADR.
 
 4. **Rejection is total: no trace.** Because the refusal happens inside the
-   finalization transaction, a rejected finalization leaves *no* ledger entry,
-   *no* `state = final`, *no* `accounting_posting_operations` row, *no*
-   projection change, *no* `operationally_used_at` marker and no domain event.
+   finalization transaction, a rejected finalization leaves _no_ ledger entry,
+   _no_ `state = final`, _no_ `accounting_posting_operations` row, _no_
+   projection change, _no_ `operationally_used_at` marker and no domain event.
    This is verified on real PostgreSQL (not asserted from a rollback in a mock):
    `backend/test/accounting-period-lifecycle-live.e2e-spec.ts`.
 
@@ -136,8 +136,8 @@ contract's reopen exception is recorded** so a future reader does not mistake th
   the transaction).** Rejected: it validates a status that can change before the
   transaction opens — precisely the "posting after close" window Task 14 exists
   to close, and it contradicts §15.5's "inside the transaction" language.
-- **Judge the scope *after* the freeze marker / account locks (the pre-Task-14
-  order).** Rejected as the *primary* gate: it is correct (the transaction rolls
+- **Judge the scope _after_ the freeze marker / account locks (the pre-Task-14
+  order).** Rejected as the _primary_ gate: it is correct (the transaction rolls
   back) but it makes a refusal wait on configuration, account, projection and
   document rows it never needed, and it blurs the observable difference between
   "rejected" and "blocked". Kept only as the secondary stored-scope verdict.

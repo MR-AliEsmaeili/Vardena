@@ -3,6 +3,7 @@
 ## 1. Architectural Readiness vs Production Implementation Readiness
 
 To maintain rigorous governance, this analysis distinguishes between:
+
 - **Architecture Ready:** The foundational design, domain boundaries, invariants, and algorithms exist and can support the requirement without structural redesign.
 - **Production Implementation Ready:** The database schemas, migrations, runtime domain models, validators, and DTOs are fully in place to immediately ingest and execute the capability in production.
 
@@ -10,18 +11,18 @@ To maintain rigorous governance, this analysis distinguishes between:
 
 ## 2. Comprehensive Implementation Readiness Matrix
 
-| Area | Architecture Ready? | Production Implementation Ready? | Blocker / Missing Element | Future Work / Proposed Task |
-|---|---|---|---|---|
-| **1. Coding Structure** | **YES** | **YES** | None. Supports depth 8, width 32, dynamic levels ($1+2+3$). | None needed for coding structure. |
-| **2. Base Chart Template Mechanism** | **YES** | **YES** | None. Task 23 mechanism implemented and verified on `main`. | None needed for mechanism. |
-| **3. Base Chart Content Loading** | **YES** | **NO** | Blocked by missing domain fields (`AccountType`, `DUAL` nature). | Proposed Task 31 (Base Chart Content Loading; blocked on Task 30). |
-| **4. Account Type** | **YES** | **NO** | Missing `type` column in Prisma schema, DTOs, and domain models. | Proposed Task 30 (Schema migration & domain enum addition; OD-29-02). |
-| **5. Balance Nature** | **YES** | **NO** | Domain validator `isAccountNature` rejects `'dual'`. | Proposed Task 30 (Expand `ACCOUNT_NATURES` to include `dual`; OD-29-01). |
-| **6. Statement Classification** | **YES — domain direction only (OD-29-05 Option C)** | **NO** | Independent Organization-configurable concept is decided, but no taxonomy, schema, API, UI, report behavior, or implementation model is approved. | Separate Reporting Foundation / Statement Classification design and implementation authorization required. |
-| **7. Detail Requirement / Hierarchy** | **YES — domain baseline** | **NO** | OD-29-03 decided hierarchy, first-level relationship, backend enforcement, and controlled removal constraints; physical model is not decided. | Separate architecture and implementation authorization required. |
-| **8. System Account** | **NOT APPLICABLE IN MVP** | **YES (by absence)** | OD-29-06 excludes `isSystem` and equivalent concepts from MVP. | No implementation; future need requires a new Owner Decision. |
-| **9. Base Chart Adoption** | **YES** | **YES** | None. Atomic copy adoption planner verified. | Unblocked once template version is published. |
-| **10. Ledger Identity Separation** | **YES** | **YES** | None. Invariant 1 verified (`Template.nodeKey ≠ Account.id`). | Fully operational. |
+| Area                                  | Architecture Ready?                                 | Production Implementation Ready? | Blocker / Missing Element                                                                                                                         | Future Work / Proposed Task                                                                                |
+| ------------------------------------- | --------------------------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| **1. Coding Structure**               | **YES**                                             | **YES**                          | None. Supports depth 8, width 32, dynamic levels ($1+2+3$).                                                                                       | None needed for coding structure.                                                                          |
+| **2. Base Chart Template Mechanism**  | **YES**                                             | **YES**                          | None. Task 23 mechanism implemented and verified on `main`.                                                                                       | None needed for mechanism.                                                                                 |
+| **3. Base Chart Content Loading**     | **YES**                                             | **NO**                           | Blocked by missing domain fields (`AccountType`, `DUAL` nature).                                                                                  | Proposed Task 31 (Base Chart Content Loading; blocked on Task 30).                                         |
+| **4. Account Type**                   | **YES**                                             | **NO**                           | Missing `type` column in Prisma schema, DTOs, and domain models.                                                                                  | Proposed Task 30 (Schema migration & domain enum addition; OD-29-02).                                      |
+| **5. Balance Nature**                 | **YES**                                             | **NO**                           | Domain validator `isAccountNature` rejects `'dual'`.                                                                                              | Proposed Task 30 (Expand `ACCOUNT_NATURES` to include `dual`; OD-29-01).                                   |
+| **6. Statement Classification**       | **YES — domain direction only (OD-29-05 Option C)** | **NO**                           | Independent Organization-configurable concept is decided, but no taxonomy, schema, API, UI, report behavior, or implementation model is approved. | Separate Reporting Foundation / Statement Classification design and implementation authorization required. |
+| **7. Detail Requirement / Hierarchy** | **YES — domain baseline**                           | **NO**                           | OD-29-03 decided hierarchy, first-level relationship, backend enforcement, and controlled removal constraints; physical model is not decided.     | Separate architecture and implementation authorization required.                                           |
+| **8. System Account**                 | **NOT APPLICABLE IN MVP**                           | **YES (by absence)**             | OD-29-06 excludes `isSystem` and equivalent concepts from MVP.                                                                                    | No implementation; future need requires a new Owner Decision.                                              |
+| **9. Base Chart Adoption**            | **YES**                                             | **YES**                          | None. Atomic copy adoption planner verified.                                                                                                      | Unblocked once template version is published.                                                              |
+| **10. Ledger Identity Separation**    | **YES**                                             | **YES**                          | None. Invariant 1 verified (`Template.nodeKey ≠ Account.id`).                                                                                     | Fully operational.                                                                                         |
 
 ---
 
@@ -30,6 +31,7 @@ To maintain rigorous governance, this analysis distinguishes between:
 Task 29 clearly distinguishes between **immediate content-loading blockers** and **future detail/dimension architecture**:
 
 ### 3.1 Immediate Content-Loading Blockers (Proposed Task 30)
+
 Because the canonical 264-account dataset actively contains 15 `DUAL` accounts in Group 9 and 3 distinct Account Types (152 Balance Sheet, 97 Income Statement, 15 Memorandum), the repository **CANNOT** safely ingest and persist the dataset until the domain model and schema are expanded:
 
 1. **Implementation of decided OD-29-01 (Account Nature):**
@@ -38,6 +40,7 @@ Because the canonical 264-account dataset actively contains 15 `DUAL` accounts i
    - Add `AccountType` enum (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) to Prisma schema (`Account`, `BaseChartTemplateNode`) and DTOs via a rehearsed migration.
 
 ### 3.2 Decided Detail Domain Baseline; Implementation Still Gated
+
 - In the canonical source artifact, **100% of the 264 rows have `ACLTafsil1..4 = 0`** (no mandatory Detail requirement).
 - OD-29-03 is **`DECIDED`**: first-class organization-configurable Detail hierarchy, first-level Account relationships, backend Posting enforcement, and controlled destructive relationship removal are required.
 - This does not decide the physical persistence/allocation model and does not authorize Detail implementation. The missing runtime capability does **not** block structural ingestion of this specific all-zero dataset once OD-29-01/02 runtime gaps are separately authorized and implemented.
@@ -73,7 +76,7 @@ The required implementation sequence follows a strict dependency chain:
 └──────────────────────────────────────────────────────────────┘
 ```
 
-*(Note: None of these future tasks are authorized by Task 29. Task 29 is a decision gate only).*
+_(Note: None of these future tasks are authorized by Task 29. Task 29 is a decision gate only)._
 
 ---
 

@@ -8,32 +8,32 @@ ADR-0008 (single DB, schemas per module) · ADR-0004 (outbox) · ADR-0005 (domai
 - **PostgreSQL 16** (minimum 15) — single node for v1.
 - **One database: `vardena`. One schema per module** (ADR-0008):
 
-| Schema | Owner module |
-|---|---|
-| `core` | kernel (domain event log) |
-| `identity` | Identity |
-| `users` | Users |
-| `rbac` | RBAC |
-| `organization` | Organization (planned — ADR-0020, Proposed) |
-| `audit` | Audit |
-| `notifications` | Notifications |
-| `accounting` | Accounting |
-| `purchasing` | Purchasing (when scoped) |
-| `inventory` | Inventory |
-| `sales` | Sales |
-| `excel` | Excel |
-| `print` | Print |
-| `customization` | Customization |
-| `integration` | Integration (adapters, credentials, mappings) |
-| `sync` | Sync (outbox, sync state) |
-| `jobs` | Jobs |
+| Schema          | Owner module                                  |
+| --------------- | --------------------------------------------- |
+| `core`          | kernel (domain event log)                     |
+| `identity`      | Identity                                      |
+| `users`         | Users                                         |
+| `rbac`          | RBAC                                          |
+| `organization`  | Organization (planned — ADR-0020, Proposed)   |
+| `audit`         | Audit                                         |
+| `notifications` | Notifications                                 |
+| `accounting`    | Accounting                                    |
+| `purchasing`    | Purchasing (when scoped)                      |
+| `inventory`     | Inventory                                     |
+| `sales`         | Sales                                         |
+| `excel`         | Excel                                         |
+| `print`         | Print                                         |
+| `customization` | Customization                                 |
+| `integration`   | Integration (adapters, credentials, mappings) |
+| `sync`          | Sync (outbox, sync state)                     |
+| `jobs`          | Jobs                                          |
 
 - The Reporting module owns **no tables** in v1 (definitions in code); it reads
   module-owned views.
 - Connection pooling: app-managed pool (Prisma) in v1; PgBouncer/sidecar only
   if scale requires (note for cloud path).
 - **Ownership rule (AR-07/08):** a schema is written only by its owning module.
-  Cross-schema reads are allowed *only* as module-owned views consumed by
+  Cross-schema reads are allowed _only_ as module-owned views consumed by
   Reporting (and, for debugging, by admins with DB access). Cross-schema writes
   never (except the kernel writing `core.domain_events` in any transaction —
   this is the single documented exception, part of the event mechanism).
@@ -42,7 +42,7 @@ ADR-0008 (single DB, schemas per module) · ADR-0004 (outbox) · ADR-0005 (domai
 
 - Prisma is the ORM of record for module data. **One schema file per module**
   under `backend/prisma/schema/<module>.prisma` (single provider, schema
-  directory), mirroring the DB schema split — the file boundary *is* the module
+  directory), mirroring the DB schema split — the file boundary _is_ the module
   boundary on disk.
 - **Migrations are the only schema change path (AR-10):**
   - `prisma migrate dev` in development; every migration committed with the code
@@ -56,15 +56,15 @@ ADR-0008 (single DB, schemas per module) · ADR-0004 (outbox) · ADR-0005 (domai
 
 ## 3. Naming Conventions
 
-| Object | Convention | Example |
-|---|---|---|
-| Table | plural, snake_case | `inventory.receipt_lines` |
-| Column | snake_case | `created_at`, `unit_cost` |
-| Foreign key | `<singular_entity>_id` | `receipt_id` |
-| Primary key | `id` (ULID, see §4) | — |
-| Unique index | `uq_<table>_<cols>` | `uq_users_username` |
-| Regular index | `idx_<table>_<cols>` | `idx_receipts_warehouse_id_created_at` |
-| View | `vw_<domain>_<name>` | `inventory.vw_stock_on_hand` |
+| Object        | Convention                      | Example                                      |
+| ------------- | ------------------------------- | -------------------------------------------- |
+| Table         | plural, snake_case              | `inventory.receipt_lines`                    |
+| Column        | snake_case                      | `created_at`, `unit_cost`                    |
+| Foreign key   | `<singular_entity>_id`          | `receipt_id`                                 |
+| Primary key   | `id` (ULID, see §4)             | —                                            |
+| Unique index  | `uq_<table>_<cols>`             | `uq_users_username`                          |
+| Regular index | `idx_<table>_<cols>`            | `idx_receipts_warehouse_id_created_at`       |
+| View          | `vw_<domain>_<name>`            | `inventory.vw_stock_on_hand`                 |
 | Enum (Prisma) | PascalCase, prefixed by purpose | `MovementType` → PG `inventory.MovementType` |
 
 Prisma convention mapping: `@@map("receipt_lines")` etc. so Prisma model names
@@ -79,7 +79,7 @@ stay PascalCase while the database stays snake_case.
   sharding later. Generated in the kernel (`kernel/ids`), client-side in the
   application layer (never DB defaults — keeps generated ids consistent across
   API and worker).
-- Business **document numbers** (invoice no., receipt no., …) are *not* primary
+- Business **document numbers** (invoice no., receipt no., …) are _not_ primary
   keys and are **business rules — do not invent them (OQ-12)**. Technical note
   for when the rule is decided: if sequence-based, use a dedicated sequence or a
   numbering table with per-scope uniqueness constraints; numbers are assigned
@@ -89,13 +89,13 @@ stay PascalCase while the database stays snake_case.
 
 Every entity table has:
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | `text(26)` ULID | PK |
-| `created_at` | `timestamptz` | UTC, set on insert |
-| `updated_at` | `timestamptz` | UTC, set on update |
+| Column       | Type            | Notes                           |
+| ------------ | --------------- | ------------------------------- |
+| `id`         | `text(26)` ULID | PK                              |
+| `created_at` | `timestamptz`   | UTC, set on insert              |
+| `updated_at` | `timestamptz`   | UTC, set on update              |
 | `created_by` | `text(26) NULL` | user id; NULL for system events |
-| `updated_by` | `text(26) NULL` | same |
+| `updated_by` | `text(26) NULL` | same                            |
 
 - **Timestamps are always `timestamptz` stored in UTC.** Display conversion
   (timezone/Jalali) is a frontend concern (OQ-02); no business logic uses
@@ -107,28 +107,28 @@ Every entity table has:
 
 ## 6. Data Types
 
-| Concern | Convention |
-|---|---|
-| Money | `numeric(18,2)` default. Currency handling: ledger tables carry an explicit currency; whether IRR/RMT precision differs is **OQ-03** — do not hardcode display precision. |
-| Quantity | `numeric(18,4)` default per unit; per-warehouse decimal settings later if needed (module-level decision). |
-| Rates/ratios | `numeric(18,6)` where required. |
-| IDs in API | ULID strings; no client-generated ids accepted except correlation ids (validated format). |
-| JSONB | payloads (outbox, event log, preferences, import rows, audit before/after). Always written by the owning module; queried with GIN indexes only when a query pattern demands (no speculative GIN). |
-| Booleans | explicit `boolean`, not int. |
-| Strings | `text` + length check in validation layer (prefer validation over DB length), `varchar(n)` only for protocol constraints (e.g. username 64). |
+| Concern      | Convention                                                                                                                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Money        | `numeric(18,2)` default. Currency handling: ledger tables carry an explicit currency; whether IRR/RMT precision differs is **OQ-03** — do not hardcode display precision.                         |
+| Quantity     | `numeric(18,4)` default per unit; per-warehouse decimal settings later if needed (module-level decision).                                                                                         |
+| Rates/ratios | `numeric(18,6)` where required.                                                                                                                                                                   |
+| IDs in API   | ULID strings; no client-generated ids accepted except correlation ids (validated format).                                                                                                         |
+| JSONB        | payloads (outbox, event log, preferences, import rows, audit before/after). Always written by the owning module; queried with GIN indexes only when a query pattern demands (no speculative GIN). |
+| Booleans     | explicit `boolean`, not int.                                                                                                                                                                      |
+| Strings      | `text` + length check in validation layer (prefer validation over DB length), `varchar(n)` only for protocol constraints (e.g. username 64).                                                      |
 
 ## 7. Immutability & Soft Delete (AR-13)
 
 - **Immutable by nature:** accounting journal entries & lines, inventory
   movements, audit logs, outbox rows (append-only; status columns are the only
   updates), domain event log, import rows (after apply). Corrections are
-  *counter-records* (reversing entries, adjustment movements), never edits.
+  _counter-records_ (reversing entries, adjustment movements), never edits.
 - **Soft delete:** only for reference/master data where history matters
   (items, warehouses, customers, suppliers, roles, users, accounts). Pattern:
   `deleted_at timestamptz NULL`, `deleted_by text(26) NULL`; unique constraints
   use partial indexes (`WHERE deleted_at IS NULL`) so re-creating with the same
   business key works. Transactional documents (invoices, receipts) are **not**
-  soft-deleted; they are *canceled* by a state transition (per-module state
+  soft-deleted; they are _canceled_ by a state transition (per-module state
   machine, documented in the module section).
 - Every module documents per entity: immutable / soft-delete / state machine.
 
@@ -136,15 +136,15 @@ Every entity table has:
 
 Append-only log of internal domain events (ADR-0005):
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | `text(26)` | event id (ULID) — also the consumer dedup key |
-| `type` | `text` | `InventoryReceipt.Created` … |
-| `aggregate_type` | `text` | `InventoryReceipt` |
-| `aggregate_id` | `text(26)` | source entity id |
-| `payload` | `jsonb` | full event body (versioned by type) |
-| `correlation_id` | `text` | request correlation |
-| `created_at` | `timestamptz` | |
+| Column           | Type          | Notes                                         |
+| ---------------- | ------------- | --------------------------------------------- |
+| `id`             | `text(26)`    | event id (ULID) — also the consumer dedup key |
+| `type`           | `text`        | `InventoryReceipt.Created` …                  |
+| `aggregate_type` | `text`        | `InventoryReceipt`                            |
+| `aggregate_id`   | `text(26)`    | source entity id                              |
+| `payload`        | `jsonb`       | full event body (versioned by type)           |
+| `correlation_id` | `text`        | request correlation                           |
+| `created_at`     | `timestamptz` |                                               |
 
 Written in the publisher's transaction; dispatched in-process immediately (v1).
 Consumers keep their own dedup tables (event ids they processed) — the log is
@@ -154,24 +154,24 @@ for audit, replay, and the future async migration, not a broker queue.
 
 The user-proposed structure is **used and extended** (decision — ADR-0004):
 
-| Column | Type | From proposal? | Rationale |
-|---|---|---|---|
-| `id` | `text(26)` | yes (Id) | PK, ULID |
-| `destination` | `text` | **added** | one row per (event, destination) fan-out; required to route to the right adapter and scope retries/policies per system |
-| `operation` | `text` | yes (Operation) | canonical operation id = domain event name (e.g. `InventoryReceipt.Created`) |
-| `entity_type` | `text` | yes (EntityType) | source entity (e.g. `InventoryReceipt`) |
-| `entity_id` | `text(26)` | yes (EntityId) | source entity id |
-| `payload` | `jsonb` | yes (Payload) | stable, idempotency-safe payload; includes idempotency key + payload version field |
-| `dedup_key` | `text` (unique) | **added** | stable business idempotency key (e.g. `InventoryReceipt:<id>:Created`); protects against double-append and duplicate delivery (AR-15) |
-| `status` | enum | yes (Status) | `pending \| processing \| succeeded \| failed \| dead_letter` — adds `processing` (claimed by a worker) and `dead_letter` (terminal, manual handling) |
-| `retry_count` | `int` | yes (RetryCount) | attempts made |
-| `max_retries` | `int` | **added** | policy snapshot at write time (default 6) — history-safe if policy changes |
-| `next_attempt_at` | `timestamptz` | **added** | backoff scheduling; `NULL` = due now. Without it the worker would need to compute backoff from `last_attempt_at`+`retry_count` per poll |
-| `last_attempt_at` | `timestamptz` | yes (LastAttemptAt) | |
-| `error_message` | `text` | yes (ErrorMessage) | last error, truncated to 4000 chars; full details in worker logs via correlation id |
-| `correlation_id` | `text` | **added** | traces API request → business write → outbox → external call (security §5) |
-| `created_at` | `timestamptz` | yes (CreatedAt) | |
-| `processed_at` | `timestamptz` | yes (ProcessedAt) | set on terminal states (`succeeded`, `dead_letter`) |
+| Column            | Type            | From proposal?      | Rationale                                                                                                                                             |
+| ----------------- | --------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`              | `text(26)`      | yes (Id)            | PK, ULID                                                                                                                                              |
+| `destination`     | `text`          | **added**           | one row per (event, destination) fan-out; required to route to the right adapter and scope retries/policies per system                                |
+| `operation`       | `text`          | yes (Operation)     | canonical operation id = domain event name (e.g. `InventoryReceipt.Created`)                                                                          |
+| `entity_type`     | `text`          | yes (EntityType)    | source entity (e.g. `InventoryReceipt`)                                                                                                               |
+| `entity_id`       | `text(26)`      | yes (EntityId)      | source entity id                                                                                                                                      |
+| `payload`         | `jsonb`         | yes (Payload)       | stable, idempotency-safe payload; includes idempotency key + payload version field                                                                    |
+| `dedup_key`       | `text` (unique) | **added**           | stable business idempotency key (e.g. `InventoryReceipt:<id>:Created`); protects against double-append and duplicate delivery (AR-15)                 |
+| `status`          | enum            | yes (Status)        | `pending \| processing \| succeeded \| failed \| dead_letter` — adds `processing` (claimed by a worker) and `dead_letter` (terminal, manual handling) |
+| `retry_count`     | `int`           | yes (RetryCount)    | attempts made                                                                                                                                         |
+| `max_retries`     | `int`           | **added**           | policy snapshot at write time (default 6) — history-safe if policy changes                                                                            |
+| `next_attempt_at` | `timestamptz`   | **added**           | backoff scheduling; `NULL` = due now. Without it the worker would need to compute backoff from `last_attempt_at`+`retry_count` per poll               |
+| `last_attempt_at` | `timestamptz`   | yes (LastAttemptAt) |                                                                                                                                                       |
+| `error_message`   | `text`          | yes (ErrorMessage)  | last error, truncated to 4000 chars; full details in worker logs via correlation id                                                                   |
+| `correlation_id`  | `text`          | **added**           | traces API request → business write → outbox → external call (security §5)                                                                            |
+| `created_at`      | `timestamptz`   | yes (CreatedAt)     |                                                                                                                                                       |
+| `processed_at`    | `timestamptz`   | yes (ProcessedAt)   | set on terminal states (`succeeded`, `dead_letter`)                                                                                                   |
 
 Indexes: `uq_outbox_dedup_key` (unique), `(status, next_attempt_at)` for
 worker claim, `(entity_type, entity_id)` for per-entity sync history.
@@ -215,14 +215,14 @@ guarantee. Manual retry from dead-letter starts a new attempt generation
 - GIN on JSONB **only** for a concrete query (none planned in v1).
 - Partial indexes for soft-delete uniques and active-only lists.
 - Review: after any performance incident, update the module's documented query
-  patterns *and* the index in the same change.
+  patterns _and_ the index in the same change.
 
 ## 12. Raw SQL Policy (AR-11)
 
 Allowed, in exactly these places:
 
 1. **Module-owned views** — defined in the owning module's `data/` (SQL) and
-   exposed to Reporting; a view may join *within its own schema* (and `core`
+   exposed to Reporting; a view may join _within its own schema_ (and `core`
    event log if needed for audit-joined reports — documented per view).
 2. **Reporting module** — parameterized queries composing module views for
    cross-module reports (see `docs/reporting-strategy.md`).
@@ -239,7 +239,7 @@ through the module's data layer, never from `api/`.
   `Conflict` error with 409.
 - **Pessimistic row locks** inside short transactions for stock balance updates
   (Inventory), number sequences, and the Accounting guards — `SELECT …
-  FOR UPDATE` on the parent area/year row inside the module's guarded `data/`
+FOR UPDATE` on the parent area/year row inside the module's guarded `data/`
   transactions (lock order area → year → period, never reversed; the unique
   indexes stay the backstop for identity races). Task 10.3 extends the same rule
   to the chart: order `coding-structure version → account`, publish locks every
@@ -259,7 +259,7 @@ through the module's data layer, never from `api/`.
   archiving is recommended but deployment-specific.
 - **RPO/RTO targets are business/deployment decisions — OQ-17** (do not assume).
 - Migration deploy order: `prisma migrate deploy` before app start; migrations
-  must be backward-compatible with the *previous* app version during the deploy
+  must be backward-compatible with the _previous_ app version during the deploy
   window (expand → migrate → contract pattern for risky changes, ADR if needed).
 - Database user: app role with least privilege (no `pg_dump`-equivalent admin
   from the app); backups use a separate role.

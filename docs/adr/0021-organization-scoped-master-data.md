@@ -15,7 +15,7 @@ Every one of them carries an `organization_id` column, a unique business key
 scoped by organization, an index on `(organization_id, …)` for every list query,
 and a foreign key to `organization.organizations`.
 
-That shape contradicts two *open* questions:
+That shape contradicts two _open_ questions:
 
 - **OQ-22** assumes "one organization per deployment" as the interim position,
   with branch as a scope dimension of the same books, and says multi-company is
@@ -36,7 +36,7 @@ rewrites every table later.
 2. Business keys are unique **per organization**:
    `UNIQUE (organization_id, code)` — with the exception of
    `organization.organizations.code`, which is unique deployment-wide because it
-   *is* the organization identity.
+   _is_ the organization identity.
 3. Every list endpoint requires an explicit `organizationId`. There is no
    endpoint that returns master data across organizations, and no query that
    omits the scope.
@@ -54,7 +54,7 @@ rewrites every table later.
   one database correct: shared chart of accounts, separate books, consolidation
   and inter-company settlement (OQ-22, OQ-31) are all still open.
 - It does **not** implement tenant isolation. There is no principal→organization
-  binding anywhere in the system, so no request is *restricted* to one
+  binding anywhere in the system, so no request is _restricted_ to one
   organization. Isolation here is **structural**: the scope is an explicit,
   mandatory parameter, and references cannot cross it. Enforcement — deriving the
   caller's organization from the principal and rejecting anything else — is a

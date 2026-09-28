@@ -219,6 +219,7 @@ export function toLedgerEntryFromRow(row: LedgerEntryRow): LedgerEntry {
     voucherLineId: row.voucherLineId,
     lineNo: row.lineNo,
     accountId: row.accountId,
+    detailId: row.detailId ?? null,
     debitAmount: canonicalizeAmount(storedAmountToString(row.debitAmount)),
     creditAmount: canonicalizeAmount(storedAmountToString(row.creditAmount)),
     description: row.description,

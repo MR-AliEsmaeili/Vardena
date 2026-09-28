@@ -694,6 +694,8 @@ export class InMemoryBaseChartAdoptionsRepository {
         codingStructureVersionId: input.codingStructureVersionId,
         accountingConfigurationId: input.accountingConfigurationId,
         accountNature: planned.accountNature,
+        accountType: planned.accountType ?? 'BALANCE_SHEET',
+        detailGroupId: null,
         isPostable: planned.isPostable,
         isActive: planned.defaultIsActive,
         createdAt: input.now,

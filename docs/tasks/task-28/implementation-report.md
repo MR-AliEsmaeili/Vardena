@@ -29,18 +29,18 @@ After the original Task 28 audit, the Owner provided an **explicit Owner Decisio
 
 ### Files Changed by This Follow-up (and why)
 
-| File | Why changed |
-|---|---|
-| `docs/tasks/task-28/owner-decision-matrix.md` | Record OD-27-02 as `DECIDED` (2026-09-27) with the decision text; update decision-state summary (1 decided / 9 pending). |
-| `docs/tasks/task-28/owner-decision-record.md` | Record the full OD-27-02 decision in Decision 1 (mechanism list, MVP boundary, mechanism-vs-content distinction, OQ-25 handling, Task 21/23 treatment) and its consequence; update the decision summary. |
-| `docs/tasks/task-28/oq-reconciliation.md` | Add the OD-27-02 decision note to the Base Chart gate analysis; correct the "affects MVP?" answer (mechanism only, content not MVP-required); annotate the OQ-25 row as still OPEN with the MVP-scope sub-question decided; extend the summary. |
-| `docs/tasks/task-28/implementation-report.md` | This follow-up record (decision text, changed-file list, verification). |
-| `docs/tasks/task-28/mvp-implementation-readiness-matrix.md` | Annotate the Base Chart Content row and Track 1 summary: content not MVP-required per OD-27-02; still blocked by OQ-25 content decisions. |
-| `docs/tasks/task-28/next-implementation-gate.md` | Annotate Track 1 / OD-27-02 references: MVP boundary decided; Track 1 still gated by a separately approved content artifact. |
-| `docs/open-questions.md` | Append a dated "Task 28 follow-up" note to the OQ-25 row recording OD-27-02; row remains OPEN; all prior notes preserved. |
-| `STATE.md` | §7 Task 28 row, §8 Current Task and §9 OQ-25 row updated with the dated OD-27-02 decision record. |
-| `docs/roadmap/backend-mvp-roadmap.md` | Reconcile statements that tied concrete Base Chart content to the MVP: Phase 1A item, §2.6 blocked-path list, and the Phase 8 gate checklist line now cite OD-27-02 (mechanism required; content not MVP-required). |
-| `docs/roadmap/backend-mvp-dependency-matrix.md` | Reconcile the OQ-25 row ("Required before Backend MVP?") with OD-27-02: the concrete content set is not required before Backend MVP; Phase 1A loading remains decision-gated. |
+| File                                                        | Why changed                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs/tasks/task-28/owner-decision-matrix.md`               | Record OD-27-02 as `DECIDED` (2026-09-27) with the decision text; update decision-state summary (1 decided / 9 pending).                                                                                                                        |
+| `docs/tasks/task-28/owner-decision-record.md`               | Record the full OD-27-02 decision in Decision 1 (mechanism list, MVP boundary, mechanism-vs-content distinction, OQ-25 handling, Task 21/23 treatment) and its consequence; update the decision summary.                                        |
+| `docs/tasks/task-28/oq-reconciliation.md`                   | Add the OD-27-02 decision note to the Base Chart gate analysis; correct the "affects MVP?" answer (mechanism only, content not MVP-required); annotate the OQ-25 row as still OPEN with the MVP-scope sub-question decided; extend the summary. |
+| `docs/tasks/task-28/implementation-report.md`               | This follow-up record (decision text, changed-file list, verification).                                                                                                                                                                         |
+| `docs/tasks/task-28/mvp-implementation-readiness-matrix.md` | Annotate the Base Chart Content row and Track 1 summary: content not MVP-required per OD-27-02; still blocked by OQ-25 content decisions.                                                                                                       |
+| `docs/tasks/task-28/next-implementation-gate.md`            | Annotate Track 1 / OD-27-02 references: MVP boundary decided; Track 1 still gated by a separately approved content artifact.                                                                                                                    |
+| `docs/open-questions.md`                                    | Append a dated "Task 28 follow-up" note to the OQ-25 row recording OD-27-02; row remains OPEN; all prior notes preserved.                                                                                                                       |
+| `STATE.md`                                                  | §7 Task 28 row, §8 Current Task and §9 OQ-25 row updated with the dated OD-27-02 decision record.                                                                                                                                               |
+| `docs/roadmap/backend-mvp-roadmap.md`                       | Reconcile statements that tied concrete Base Chart content to the MVP: Phase 1A item, §2.6 blocked-path list, and the Phase 8 gate checklist line now cite OD-27-02 (mechanism required; content not MVP-required).                             |
+| `docs/roadmap/backend-mvp-dependency-matrix.md`             | Reconcile the OQ-25 row ("Required before Backend MVP?") with OD-27-02: the concrete content set is not required before Backend MVP; Phase 1A loading remains decision-gated.                                                                   |
 
 **No other file was changed.** Historical inputs (`docs/tasks/task-28/brief.md`, `prompt.md`, `task-acceptance-matrix.md`, `adr-reconciliation.md` and all Task 21/23/27 artifacts) are preserved unchanged as historical records; the authoritative decision state now lives in the decision artifacts above.
 
@@ -49,6 +49,7 @@ After the original Task 28 audit, the Owner provided an **explicit Owner Decisio
 ## Task 27 Verification
 
 Task 27 was merged into `main` via PR #73 at commit `ff4b9f24d1c3797712c88fcd61432c3c315dbf4f`.
+
 - **CI Run 36341552469:** SUCCESS (`frontend` in 56s, `backend` in 3m48s covering Prisma validate/generate, lint, typecheck, format check, unit tests, build, migrate deploy, bootstrap system administrator, migration rehearsal, and all live-PostgreSQL E2E suites).
 - **Security Baseline:** Confirmed that all 37 organization-scoped read surfaces enforce `assertOrganizationInScope` following `requireAllPermissions`, global `DeploymentOrganizationScopeGuard` is active as `APP_GUARD`, and default system administrator (`مدیر`) has verified ODR-3 membership in the pinned deployment organization.
 - **Scope Verification:** Treasury, Purchasing, Purchasing $\rightarrow$ Accounting, and Purchasing Reports remain strictly outside MVP.
@@ -58,6 +59,7 @@ Task 27 was merged into `main` via PR #73 at commit `ff4b9f24d1c3797712c88fcd614
 ## Owner Decisions
 
 All four core Owner Decision areas identified in Task 27 (OD-27-01 through OD-27-04), as well as supporting domain decisions (OD-28-01 through OD-28-06), were reconciled:
+
 - **OD-27-01 (Acceptance Backlog):** `PENDING OWNER DECISION` (Bootstrap Admin, Tasks 23–27 remain `MERGED / READY FOR REVIEW — NOT ACCEPTED`).
 - **OD-27-02 (Base Chart Content / OQ-25):** `DECIDED (2026-09-27, Task 28 follow-up)` — **MVP requires the Base Chart mechanism, but does not require a concrete Base Chart content set.** The decision records the MVP mechanism scope, the explicit do-not-invent content boundary, and the mechanism-vs-content distinction. It authorizes no implementation, closes no OQ, and leaves the OQ-25 content decisions open. (See the follow-up section above and `owner-decision-record.md` Decision 1.)
 - **OD-27-03 (Next Implementation Direction):** `PENDING OWNER DECISION` (Four candidate tracks evaluated).
@@ -69,12 +71,12 @@ All four core Owner Decision areas identified in Task 27 (OD-27-01 through OD-27
 ## OQ-25
 
 - **Status:** **OPEN — CONTENT DECISIONS STILL REQUIRED; MVP-scope sub-question DECIDED (OD-27-02, 2026-09-27)**.
-- **Reconciliation:** The Base Chart *mechanism* (Task 23) is verified complete and operational on `main` and is confirmed MVP scope per OD-27-02. Concrete chart *content* (codes, titles, levels, natures, postability flags, control roles) is **NOT MVP-required**, has 0 rows in migrations or seeds, and must not be introduced by implementation inference — only a separately approved content artifact may introduce it. OQ-25 is therefore **not fully resolved**: the MVP-scope question is decided, while the content-level decisions (content values, account codes, Persian titles, natures, mandatory-account set, control-role catalog/mandatory set, other Task 21 unresolved content items) remain explicitly open.
+- **Reconciliation:** The Base Chart _mechanism_ (Task 23) is verified complete and operational on `main` and is confirmed MVP scope per OD-27-02. Concrete chart _content_ (codes, titles, levels, natures, postability flags, control roles) is **NOT MVP-required**, has 0 rows in migrations or seeds, and must not be introduced by implementation inference — only a separately approved content artifact may introduce it. OQ-25 is therefore **not fully resolved**: the MVP-scope question is decided, while the content-level decisions (content values, account codes, Persian titles, natures, mandatory-account set, control-role catalog/mandatory set, other Task 21 unresolved content items) remain explicitly open.
 - **Invariants Preserved:**
-  1. *Template identity ≠ Ledger identity* (Verified)
-  2. *Adoption = Copy* (Verified)
-  3. *Posting = Leaf-only* (Verified)
-  4. *Aggregation = Read-time* (Verified)
+  1. _Template identity ≠ Ledger identity_ (Verified)
+  2. _Adoption = Copy_ (Verified)
+  3. _Posting = Leaf-only_ (Verified)
+  4. _Aggregation = Read-time_ (Verified)
 - Direct Base Chart content implementation (Phase 1A) remains **BLOCKED** until a separately approved chart content artifact exists. All prior OQ-25 history is preserved.
 
 ---
@@ -103,10 +105,10 @@ All four core Owner Decision areas identified in Task 27 (OD-27-01 through OD-27
 
 - **Gate Outcome:** **`IMPLEMENTATION BLOCKED — OWNER DECISION REQUIRED`**.
 - **Candidate Tracks Prepared for Owner Selection:**
-  1. **Track 1 (Phase 1A — Accounting Base Chart Content):** JSON/fixture loader for approved chart nodes through Task 23 API. *(Still gated: OD-27-02 (DECIDED 2026-09-27) settled only the MVP boundary — mechanism in MVP, content not MVP-required; Track 1 is unblocked only when a separately approved content artifact is provided under OQ-25)*.
-  2. **Track 2 (Phase 3A/3C — Full Inventory / Warehouse Operational Flow):** Investigation gate for warehouse coding, Material Requests, and quantity Receipt/Issue flows. *(Unblocked if Owner selects Track 2 under OD-27-03)*.
-  3. **Track 3 (Phase 2A — Reporting Foundation Design Gate):** Code-defined report registry and pipeline over existing Accounting read queries. *(Unblocked if Owner selects Track 3 under OD-27-03)*.
-  4. **Track 4 (Phase 6.2/6.3 — Audit & Identity Session Completion):** Specification gate for persistent audit logs and session management endpoints. *(Unblocked if Owner selects Track 4 under OD-27-03)*.
+  1. **Track 1 (Phase 1A — Accounting Base Chart Content):** JSON/fixture loader for approved chart nodes through Task 23 API. _(Still gated: OD-27-02 (DECIDED 2026-09-27) settled only the MVP boundary — mechanism in MVP, content not MVP-required; Track 1 is unblocked only when a separately approved content artifact is provided under OQ-25)_.
+  2. **Track 2 (Phase 3A/3C — Full Inventory / Warehouse Operational Flow):** Investigation gate for warehouse coding, Material Requests, and quantity Receipt/Issue flows. _(Unblocked if Owner selects Track 2 under OD-27-03)_.
+  3. **Track 3 (Phase 2A — Reporting Foundation Design Gate):** Code-defined report registry and pipeline over existing Accounting read queries. _(Unblocked if Owner selects Track 3 under OD-27-03)_.
+  4. **Track 4 (Phase 6.2/6.3 — Audit & Identity Session Completion):** Specification gate for persistent audit logs and session management endpoints. _(Unblocked if Owner selects Track 4 under OD-27-03)_.
 
 ---
 

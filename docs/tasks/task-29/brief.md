@@ -2,16 +2,16 @@
 
 ## 0. Task Identity
 
-| Attribute | Value |
-|---|---|
-| **Task** | 29 |
-| **Title** | VARDENA Base Chart Reconciliation & Accounting Domain Decision Gate |
-| **Type** | Governance / Domain Reconciliation / Fit-Gap Analysis / Decision Gate |
-| **Status** | **READY FOR REVIEW — NOT ACCEPTED** |
-| **Audited `main` HEAD (original Task 29)** | `862c85da7aa1fb86cb16d53341fcfd9c39dfa50a` |
-| **OD-29-05 Follow-up `main` Baseline** | `280e07e2cbf3f031a4ec178341e5c617576d1189` |
-| **Target Branch** | `main` (follow-up work on `arena/01a0e8fd-vardena`; original work on `arena/01a0e4d1-vardena`) |
-| **Date** | 2026-09-28 |
+| Attribute                                  | Value                                                                                          |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| **Task**                                   | 29                                                                                             |
+| **Title**                                  | VARDENA Base Chart Reconciliation & Accounting Domain Decision Gate                            |
+| **Type**                                   | Governance / Domain Reconciliation / Fit-Gap Analysis / Decision Gate                          |
+| **Status**                                 | **READY FOR REVIEW — NOT ACCEPTED**                                                            |
+| **Audited `main` HEAD (original Task 29)** | `862c85da7aa1fb86cb16d53341fcfd9c39dfa50a`                                                     |
+| **OD-29-05 Follow-up `main` Baseline**     | `280e07e2cbf3f031a4ec178341e5c617576d1189`                                                     |
+| **Target Branch**                          | `main` (follow-up work on `arena/01a0e8fd-vardena`; original work on `arena/01a0e4d1-vardena`) |
+| **Date**                                   | 2026-09-28                                                                                     |
 
 **Owner Decision Closure (2026-09-28):** OD-29-01, OD-29-02, OD-29-03, OD-29-04, OD-29-05, and OD-29-06 are now **`DECIDED`**. OD-29-05 is **`DECIDED — OPTION C`**: Statement Classification is an independent, Organization-configurable reporting/presentation concept. Task 29 remains a non-implementation governance task and is not self-accepted. See `owner-decision-closure.md`.
 
@@ -22,6 +22,7 @@
 Task 29 is a **governance, domain-reconciliation, fit-gap analysis, and implementation-readiness decision gate** operating on the Vardena repository.
 
 The primary objective is to reconcile the real owner-provided VARDENA Base Chart source artifact with the current Vardena Accounting architecture and determine:
+
 1. What capabilities are already supported by the current Vardena architecture.
 2. What represents a pure data/content mapping.
 3. What constitutes a domain-model gap.
@@ -37,6 +38,7 @@ The final deliverable of this task is an authoritative **decision gate**, NOT a 
 ## 2. Critical Scope Rules
 
 ### 2.1 Allowed
+
 - Inspect repository baseline, schema, migrations, domain models, services, repositories, DTOs, controllers, frontend, ADRs, OQs, and roadmap documents.
 - Profile and validate the VARDENA Base Chart source specification and structure.
 - Perform fit-gap analysis across Coding Structure, Account Type, Balance Nature, Statement Class, System Account, and Detail Flags.
@@ -44,6 +46,7 @@ The final deliverable of this task is an authoritative **decision gate**, NOT a 
 - Update repository governance files (`STATE.md`) to reflect the Task 29 baseline.
 
 ### 2.2 Strictly Prohibited
+
 - NO modification of Prisma schemas or database migrations.
 - NO database schema changes, table creation, or DDL execution.
 - NO seeding of production database rows or creation of concrete chart accounts.

@@ -188,6 +188,8 @@ function seedScope(fx: Fixture): void {
       codingStructureVersionId: '01STRUCTAAAAAAAAAAAAAAAAA01',
       accountingConfigurationId: CONFIGURATION,
       accountNature: 'debit',
+      accountType: 'BALANCE_SHEET',
+      detailGroupId: null,
       isPostable: true,
       isActive: true,
       createdAt: now,

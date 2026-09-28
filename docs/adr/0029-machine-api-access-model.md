@@ -35,12 +35,12 @@ program) the product does not need yet?
 
 ## Considered options & trade-offs
 
-| Option | Trade-offs |
-|---|---|
-| **A. API keys bound to a machine principal** *(recommended)* | Simple, revocable, auditable; maps cleanly onto users→roles→permissions (machine principal holds roles); offline-safe. Weaker than mTLS/OAuth2 for high-security scenarios — acceptable for on-premise LAN. |
-| B. JWT-based machine tokens | Stateless but loses server-side revocation (the exact reason ADR-0007 rejected JWT for users); token expiry semantics awkward offline. |
-| C. OAuth2 client-credentials now | Standards-rich; heavyweight for v1; no external IdP exists on customer LANs; deferrable without schema cost if keys are designed as a credential *type*. |
-| D. mTLS per client | Strongest transport-level identity; cert distribution/rotation on customer LANs is operationally heavy for v1. |
+| Option                                                       | Trade-offs                                                                                                                                                                                                  |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A. API keys bound to a machine principal** _(recommended)_ | Simple, revocable, auditable; maps cleanly onto users→roles→permissions (machine principal holds roles); offline-safe. Weaker than mTLS/OAuth2 for high-security scenarios — acceptable for on-premise LAN. |
+| B. JWT-based machine tokens                                  | Stateless but loses server-side revocation (the exact reason ADR-0007 rejected JWT for users); token expiry semantics awkward offline.                                                                      |
+| C. OAuth2 client-credentials now                             | Standards-rich; heavyweight for v1; no external IdP exists on customer LANs; deferrable without schema cost if keys are designed as a credential _type_.                                                    |
+| D. mTLS per client                                           | Strongest transport-level identity; cert distribution/rotation on customer LANs is operationally heavy for v1.                                                                                              |
 
 ## Recommended decision
 

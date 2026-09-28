@@ -22,6 +22,7 @@ No production implementation capability is authorized to proceed without explici
 ## Decision 1 — Base Chart / OQ-25
 
 ### Current Evidence
+
 1. The **Base Chart mechanism** is fully implemented and tested in `main` (Task 23, PR #66). It provides complete versioning, template hierarchy, and explicit organization adoption via `POST /api/v1/accounting/adopt-base-chart`.
 2. The **Base Chart content** contains **0 rows** across all 17 migrations and repository seeds. No default chart accounts (Asset, Liability, Equity, Revenue, Expense) or account codes are packaged in the codebase.
 3. The four structural invariants are preserved:
@@ -33,12 +34,14 @@ No production implementation capability is authorized to proceed without explici
 5. Task 21 §10 records three OQ-36 prerequisites for adoption: code reuse policy, deletion eligibility for unused adopted accounts, and code history coexistence.
 
 ### Decision Required
+
 Owner and accounting domain authorization of:
+
 1. Standard Iranian SME chart account structure (Level 1 Group, Level 2 General/Kol, Level 3 Subsidiary/Moein, Level 4 Detail/Tafsili).
 2. The specific account codes, Persian titles, account natures (DEBIT / CREDIT / EITHER), and default leaf postability flags.
 3. Authorization to load this content artifact into template tables through the Task 23 API mechanism (Phase 1A).
 
-*(Historical note: items 1–3 above remain undecided — the 2026-09-27 decision below decides only the MVP scope boundary between mechanism and content.)*
+_(Historical note: items 1–3 above remain undecided — the 2026-09-27 decision below decides only the MVP scope boundary between mechanism and content.)_
 
 ### Owner Decision
 
@@ -47,6 +50,7 @@ Owner and accounting domain authorization of:
 > **DECIDED — MVP requires the Base Chart mechanism, but does not require a concrete Base Chart content set.**
 
 **1. The MVP shall provide and retain the Base Chart mechanism**, including:
+
 - Base Chart template model
 - versioned template lifecycle
 - Draft → Approved → Published → Superseded lifecycle
@@ -63,6 +67,7 @@ Owner and accounting domain authorization of:
 - read-time/report-time aggregation
 
 **2. Explicit MVP boundary.** For MVP, DO NOT introduce a concrete standard Base Chart content set merely by implementation inference. Specifically, do NOT invent or seed:
+
 - standard account codes
 - Persian account titles
 - account natures
@@ -80,6 +85,7 @@ No migration or seed should introduce such content unless a separately approved 
 **5. Task 23 / Task 21 treatment.** This decision does NOT reinterpret Task 23 or Task 21. Task 23 remains the implementation of the Base Chart mechanism. Task 21 remains the accepted governance baseline for Base Chart structure and adoption semantics. This decision only establishes the MVP boundary between (1) mechanism/capability and (2) concrete accounting content.
 
 ### Consequence
+
 - Base Chart **mechanism** is confirmed as MVP scope (implemented and merged via Task 23; its formal acceptance remains a separate matter under OD-27-01).
 - Base Chart **content** loading (Phase 1A) remains **BLOCKED** until a separately approved content artifact exists; no content may be introduced by implementation inference, and no migration or seed may introduce content without such an artifact.
 - **OQ-25 remains OPEN** — only its MVP-scope sub-question is decided; all content-level decisions (codes, Persian titles, natures, mandatory-account set, control-role catalog/mandatory set, other Task 21 unresolved content items) remain open.
@@ -91,6 +97,7 @@ No migration or seed should introduce such content unless a separately approved 
 ## Decision 2 — Next Implementation Direction
 
 ### Current Evidence
+
 1. **Foundation & Security:** Fully established on `main`. Task 26 / PR #71 remediated SEC-01 across all 37 organization-scoped read surfaces. PR #72 provisioned the default system administrator organization membership (ADR-0038 Proposed). Global `DeploymentOrganizationScopeGuard` is verified active as `APP_GUARD`.
 2. **Accounting Core:** Fully established on `main`. Vouchers, atomic posting, immutable ledger entries, turnover balance projection (Task 12), period close enforcement (Task 14), document reversal (Task 15), four bounded read queries (Tasks 17A, 17B, 18), configuration coherence (Task 19 ODR-1), chart tree (Task 19 ODR-2), and Base Chart adoption mechanism (Task 23) are all merged and green in CI.
 3. **Inventory Core:** Movement ledger, balances, reservations, and transfers are established (ADR-0022). Operational warehouse documents (Material Request, Receipt, Issue) and valuation flows remain pending.
@@ -102,12 +109,15 @@ No migration or seed should introduce such content unless a separately approved 
    - **Candidate Track 4 (Phase 6.2/6.3):** Audit Module & Identity Session Management Specification Gate.
 
 ### Decision Required
+
 Owner selection and explicit authorization of which candidate track shall form the next active task brief.
 
 ### Owner Decision
+
 `PENDING OWNER DECISION`
 
 ### Consequence
+
 - The repository state remains in **`IMPLEMENTATION BLOCKED — OWNER DECISION REQUIRED`**.
 - No Agent is authorized to implement production code on any candidate track until the Owner selects the track and issues the approved prompt.
 
@@ -116,6 +126,7 @@ Owner selection and explicit authorization of which candidate track shall form t
 ## Decision 3 — ADR Status
 
 ### Current Evidence
+
 1. There are **37 ADR files** in `docs/adr/` (ADR-0027 is a deliberate non-existent gap).
 2. **22 ADRs are Accepted:** ADR-0001 through ADR-0016, ADR-0022, ADR-0023, ADR-0024, ADR-0025, ADR-0026, ADR-0028.
 3. **8 ADRs are Proposed but Implemented on `main`:**
@@ -130,12 +141,15 @@ Owner selection and explicit authorization of which candidate track shall form t
 4. **7 ADRs are Proposed and Not Yet Implemented:** ADR-0029, 0030, 0033, 0034, 0035, 0036, 0037.
 
 ### Decision Required
+
 Owner decision whether to formally promote the 8 implemented ADRs to `Accepted` in repository documentation.
 
 ### Owner Decision
+
 `PENDING OWNER DECISION`
 
 ### Consequence
+
 - ADR statuses in `docs/adr/` remain verbatim `Proposed`.
 - Task reconciliation documents record that the underlying capabilities are implemented and tested, without altering ADR registry files ahead of Owner action.
 
@@ -144,6 +158,7 @@ Owner decision whether to formally promote the 8 implemented ADRs to `Accepted` 
 ## Decision 4 — Other Blocking Decisions
 
 ### Current Evidence
+
 1. **Durable Integration Semantics (OQ-39):** In-memory event bus exists, but cross-module transactions and durable outbox persistence (`sync.outbox_events`, worker dispatch) are not implemented.
 2. **Posting Mode Policy (OQ-42):** Voucher lifecycle supports `draft`, `temporary`, and `final`, but default posting mode for automated source events is undecided.
 3. **Inventory Costing & Valuation (OQ-24 / OQ-11):** No valuation engine (FIFO, Moving Average) exists on `main`.
@@ -151,10 +166,13 @@ Owner decision whether to formally promote the 8 implemented ADRs to `Accepted` 
 5. **Iranian Statutory Book Specifications (OQ-43):** Statutory Journal Book and General Ledger formats are not yet finalized.
 
 ### Decision Required
+
 Owner and domain decisions for each respective area prior to opening their implementation gates.
 
 ### Owner Decision
+
 `PENDING OWNER DECISION`
 
 ### Consequence
+
 - Cross-module system posting (Phase 4), Sales module implementation (Phase 3B), and Electronic Books (Phase 2B / C-37) remain gated behind their respective domain decisions.

@@ -40,6 +40,7 @@ describe('document reversal invert (Task 15, AC-D-22)', () => {
     expect(inverted).toEqual({
       lineNo: 1,
       accountId: 'cash',
+      detailId: null,
       debitAmount: '0',
       creditAmount: '1250.5',
       description: 'Cash',

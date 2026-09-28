@@ -2,15 +2,15 @@
 
 ## 0. Task Identity
 
-| Attribute | Value |
-|---|---|
-| **Task** | 27 |
-| **Title** | Main Governance Reconciliation & MVP Gate |
-| **Type** | Governance / Repository Audit / Documentation Reconciliation / MVP Readiness Gate |
-| **Status** | **READY FOR REVIEW — NOT ACCEPTED** |
-| **Audited `main` HEAD** | `cb521f4ba2662f4a4cdac7864cf0c712b6bba816` |
-| **Target Branch** | `main` (work on `arena/01a0e41a-vardena`) |
-| **Date** | 2026-09-27 |
+| Attribute               | Value                                                                             |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| **Task**                | 27                                                                                |
+| **Title**               | Main Governance Reconciliation & MVP Gate                                         |
+| **Type**                | Governance / Repository Audit / Documentation Reconciliation / MVP Readiness Gate |
+| **Status**              | **READY FOR REVIEW — NOT ACCEPTED**                                               |
+| **Audited `main` HEAD** | `cb521f4ba2662f4a4cdac7864cf0c712b6bba816`                                        |
+| **Target Branch**       | `main` (work on `arena/01a0e41a-vardena`)                                         |
+| **Date**                | 2026-09-27                                                                        |
 
 ---
 
@@ -66,7 +66,7 @@ This task is **NOT a feature implementation task**. The primary source of truth 
 
 1. **Task 26 ODR-3 Read-Scope Completion (SEC-01 Remediated):** All 37 surfaces (28 list + 9 detail methods) identified in Task 25 SEC-01 now explicitly enforce `OrganizationsService.assertOrganizationInScope` immediately following their `requireAllPermissions` check. Permission-first ordering is 100% verified.
 2. **Global Deployment Organization Scope Guard (SEC-02 Clarified):** Confirmed active as `APP_GUARD` in `backend/src/modules/organization/organization.module.ts:81`. Task 24's finding F-3 was factually erroneous and is formally retracted.
-3. **Base Chart Distinction:** Base Chart *mechanism* (templates, versions, publish, adoption copy, leaf-only posting, read-time aggregation) is fully implemented and tested (Task 23); Base Chart *content* is NOT approved/implemented (0 seed rows in 17 migrations; OQ-25 remains OPEN).
+3. **Base Chart Distinction:** Base Chart _mechanism_ (templates, versions, publish, adoption copy, leaf-only posting, read-time aggregation) is fully implemented and tested (Task 23); Base Chart _content_ is NOT approved/implemented (0 seed rows in 17 migrations; OQ-25 remains OPEN).
 4. **MVP Scope Boundary:** Treasury and Purchasing remain strictly outside MVP. No microservices, no workflow designer, no EAV, no generic cross-module DB access, no wildcard bypass.
 5. **Governance State:** 22 ADRs Accepted, 15 ADRs Proposed. OQ-01..OQ-63 OPEN, OQ-64 RESOLVED. Tasks 23, 24, 25, 26 and Bootstrap Admin are MERGED / READY FOR REVIEW — NOT ACCEPTED.
 
@@ -88,6 +88,7 @@ docs/tasks/task-27/
 ```
 
 Also updated:
+
 - `STATE.md`
 - `docs/roadmap/backend-mvp-roadmap.md`
 - `docs/roadmap/future-task-candidates.md`
