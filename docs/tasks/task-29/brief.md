@@ -8,11 +8,12 @@
 | **Title** | VARDENA Base Chart Reconciliation & Accounting Domain Decision Gate |
 | **Type** | Governance / Domain Reconciliation / Fit-Gap Analysis / Decision Gate |
 | **Status** | **READY FOR REVIEW — NOT ACCEPTED** |
-| **Audited `main` HEAD** | `862c85da7aa1fb86cb16d53341fcfd9c39dfa50a` |
-| **Target Branch** | `main` (work on `arena/01a0e4d1-vardena`) |
+| **Audited `main` HEAD (original Task 29)** | `862c85da7aa1fb86cb16d53341fcfd9c39dfa50a` |
+| **OD-29-05 Follow-up `main` Baseline** | `280e07e2cbf3f031a4ec178341e5c617576d1189` |
+| **Target Branch** | `main` (follow-up work on `arena/01a0e8fd-vardena`; original work on `arena/01a0e4d1-vardena`) |
 | **Date** | 2026-09-28 |
 
-**Owner Decision Closure (2026-09-28):** OD-29-01, OD-29-02, OD-29-03, OD-29-04, and OD-29-06 are now **`DECIDED`**; OD-29-05 remains **`PENDING OWNER DECISION`**. Task 29 remains a non-implementation governance task and is not self-accepted. See `owner-decision-closure.md`.
+**Owner Decision Closure (2026-09-28):** OD-29-01, OD-29-02, OD-29-03, OD-29-04, OD-29-05, and OD-29-06 are now **`DECIDED`**. OD-29-05 is **`DECIDED — OPTION C`**: Statement Classification is an independent, Organization-configurable reporting/presentation concept. Task 29 remains a non-implementation governance task and is not self-accepted. See `owner-decision-closure.md`.
 
 ---
 
@@ -56,7 +57,8 @@ The final deliverable of this task is an authoritative **decision gate**, NOT a 
 
 ## 3. Repository Baseline Verification
 
-- **Current `main` HEAD SHA:** `862c85da7aa1fb86cb16d53341fcfd9c39dfa50a` (Merge of PR #75).
+- **Original Task 29 audited `main` HEAD SHA:** `862c85da7aa1fb86cb16d53341fcfd9c39dfa50a` (Merge of PR #75).
+- **OD-29-05 follow-up `main` baseline SHA:** `280e07e2cbf3f031a4ec178341e5c617576d1189` (`origin/main` at follow-up start).
 - **Latest Merged Governance Baseline:**
   - Task 27 (PR #73): Main Governance Reconciliation & MVP Gate.
   - Task 28 (PR #74): Owner Decision Closure & MVP Implementation Selection Gate.
@@ -65,7 +67,7 @@ The final deliverable of this task is an authoritative **decision gate**, NOT a 
 
 ---
 
-## 4. Key Findings & Proposals Summary
+## 4. Key Findings & Decisions Summary
 
 1. **Coding Structure Compatibility (Finding / Proposition A & I):**
    - The VARDENA hierarchical coding structure ($1$ digit Group + $2$ digits General + $3$ digits Subsidiary $\rightarrow$ cumulative lengths 1, 3, 6; 8 Level 1 roots, 38 Level 2, 218 Level 3) is **DIRECTLY COMPATIBLE** with Vardena's configurable coding engine ($MAX\_DEPTH = 8, MAX\_CODE\_LENGTH = 32$).
@@ -81,9 +83,9 @@ The final deliverable of this task is an authoritative **decision gate**, NOT a 
    - Current Vardena model: Lacks an `AccountType` concept on `Account` and `BaseChartTemplateNode`.
    - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. OD-29-02 now establishes exactly 3 fixed global types (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) (`DECIDED`), independent from Nature and immutable after first Posting; runtime support and enforcement remain implementation gaps.
 
-4. **Statement Class Separation (Proposal OD-29-05):**
-   - Purpose: Organization-configurable presentation layout for financial statements.
-   - **Conclusion:** **OPEN / NO FINAL MODEL**. OD-29-05 remains `PENDING OWNER DECISION`; no Statement Classification field, organization configuration, or implementation is authorized.
+4. **Statement Classification Direction (OD-29-05):**
+   - Purpose: Organization-configurable classification/presentation layout for financial reporting outputs without making Chart of Accounts hierarchy the sole source of financial-statement presentation.
+   - **Conclusion:** **DECIDED — OPTION C**. Statement Classification is independent from Account Type, Account Nature, Account Hierarchy / Chart of Accounts, Detail / Detail Hierarchy, System Account, and Base Chart Coding Structure. No field, Prisma model, schema, taxonomy, reporting behavior, organization configuration UI, seed data, or implementation is authorized by this decision alone.
 
 5. **System Account Scope (Decision OD-29-06):**
    - **Conclusion:** **NO SYSTEM ACCOUNT CONCEPT IN MVP**. Do not add `isSystem` or equivalent flags, roles, categories, or special Account treatment. Any future need requires a separate Owner Decision and architecture task.

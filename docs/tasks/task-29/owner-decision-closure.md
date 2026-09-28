@@ -1,10 +1,10 @@
 # Task 29 — Owner Decision Closure Record
 
 **Date:** 2026-09-28  
-**Scope:** OD-29-01, OD-29-02, OD-29-03, OD-29-04, OD-29-06
-**Status:** Five decisions recorded as `DECIDED`; OD-29-05 remains `PENDING OWNER DECISION`.
+**Scope:** OD-29-01, OD-29-02, OD-29-03, OD-29-04, OD-29-05, OD-29-06
+**Status:** All six OD-29-01..OD-29-06 decisions recorded as `DECIDED`; OD-29-05 is `DECIDED — OPTION C`.
 
-> This record preserves the Owner's explicit decisions. It establishes the domain baseline for later implementation work, but does not itself change runtime behavior, approve the 264-account artifact for production loading, accept Task 29, close OQ-25 wholesale, or authorize Task 30 or any other implementation task.
+> This record preserves the Owner's explicit decisions. It establishes the domain baseline for later implementation work, but does not itself change runtime behavior, approve the 264-account artifact for production loading, accept Task 29, close OQ-25 wholesale, promote an ADR, or authorize Task 30, Statement Classification implementation, Reporting Foundation implementation, or any other implementation task.
 
 ---
 
@@ -162,18 +162,90 @@ This decision does not prevent future Accounting Engine features from being desi
 
 ---
 
-## Decision Remaining Open
+## OD-29-05 — Statement Classification
 
-### OD-29-05 — Statement Classification
+**Status:** **`DECIDED`**
+**Selected Option:** **Option C — Organization-configurable Statement Classification**
 
-**Status:** **`PENDING OWNER DECISION`**
+The Owner explicitly selected **Option C**.
 
-No final Statement Classification model is established. This closure does not add Statement Classification to Account, authorize organization-configurable Statement Classification, or promote the earlier Task 29 proposal to a decision.
+Statement Classification is an independent accounting/reporting concept that is configurable per Organization. It is separate from:
 
-OQ-25 remains **OPEN** because approval of the concrete Base Chart artifact, concrete mandatory-account/control-role content, and other previously recorded content and lifecycle questions remain unresolved. OQ-41 is narrowed by OD-29-03 but remains open for physical persistence, authorization, operational safeguards, and implementation design. OQ-43, OQ-36, and OQ-62 retain their recorded statuses.
+- Account Type;
+- Account Nature;
+- Account Hierarchy / Chart of Accounts;
+- Detail / Detail Hierarchy;
+- System Account; and
+- Base Chart Coding Structure.
+
+The purpose of Statement Classification is to allow an Organization to define how accounts are classified and presented for financial reporting without making the Chart of Accounts hierarchy itself the sole source of financial-statement presentation.
+
+### OD-29-05 Scope Boundary
+
+This decision records only the architectural direction: **Statement Classification is an independent, Organization-configurable concept**.
+
+It does **not** decide or authorize any default classification taxonomy, default classification names, statutory classification rules, Iranian statutory reporting requirements, number of classification levels, classification hierarchy/versioning, effective dating, mapping cardinality, whether one Account may have multiple classifications, behavior of unclassified accounts, mandatory-vs-optional organization policy, permissions, admin workflow, database schema, Prisma model, API contract, frontend/UI, reporting implementation, migration/seed data, Base Chart content, FaraPayam compatibility, legal/regulatory profile, or production runtime behavior.
+
+### Accounting Core Boundary
+
+Statement Classification is **not required** for the basic operation of Accounting Core. The following remain conceptually independent from Statement Classification:
+
+- Chart of Accounts;
+- voucher creation;
+- Posting;
+- General Ledger;
+- Account Turnover;
+- Trial Balance; and
+- basic accounting operations.
+
+No Organization may be treated as unable to use Accounting Core merely because Statement Classification has not yet been configured. The exact runtime behavior of future financial reports when no classification exists remains a future Reporting Foundation decision.
+
+### Relationship to Financial Statements
+
+Statement Classification is primarily relevant to classified/presentational financial statements, including concepts such as Balance Sheet / Statement of Financial Position and Income Statement.
+
+This decision does **not** claim that Statement Classification alone solves Cash Flow reporting or any other advanced reporting requirement. Cash Flow and other advanced reporting logic remain separate future design concerns.
+
+### Illustrative Example Only — Not Vardena Taxonomy
+
+```text
+Chart of Accounts
+
+101001  Cash
+101002  Bank
+101003  Accounts Receivable
+102001  Equipment
+201001  Accounts Payable
+301001  Capital
+401001  Service Revenue
+501001  Salary Expense
+```
+
+Separately, an Organization may define a reporting classification such as:
+
+```text
+Statement Classification
+
+Statement of Financial Position
+├── Current Assets
+├── Non-Current Assets
+├── Current Liabilities
+├── Non-Current Liabilities
+└── Equity
+
+Income Statement
+├── Operating Revenue
+└── Operating Expense
+```
+
+This example is illustrative only. It is **not** Vardena's official/default taxonomy, does not approve any Base Chart content, and must not be converted into seed data or production records.
+
+OQ-25 remains **OPEN** because approval of the concrete Base Chart artifact, concrete mandatory-account/control-role content, concrete Statement Classification taxonomy/content, and other previously recorded content and lifecycle questions remain unresolved. OQ-41 is narrowed by OD-29-03 but remains open for physical persistence, authorization, operational safeguards, and implementation design. OQ-43, OQ-36, and OQ-62 retain their recorded statuses.
 
 ## Implementation Authorization Boundary
 
-This is a governance/documentation closure only. It records authoritative domain decisions but makes **zero** production code, Prisma schema, migration, seed, permission, guard, API, Accounting Engine, Posting, reporting, destructive data-operation, or UI changes.
+This is a governance/documentation closure only. It records authoritative domain decisions but makes **zero** production code, Prisma schema, migration, seed, permission, guard, API, Accounting Engine, Posting, reporting, destructive data-operation, Base Chart content, FaraPayam loading, or UI changes.
 
-**Task 30 is NOT authorized by these decisions.** The decisions remove Owner Decision blockers only. Task 30, Detail implementation, and every other production change require their own explicit implementation authorization/gate.
+**Task 30 is NOT authorized by these decisions.** The decisions remove Owner Decision blockers only. Task 30, Detail implementation, Statement Classification implementation, Reporting Foundation implementation, Base Chart content loading, and every other production change require their own explicit implementation authorization/gate.
+
+OD-29-05 does not introduce a System Account concept (OD-29-06 remains unchanged) and does not introduce an English Account Title field (OD-29-04 remains unchanged).

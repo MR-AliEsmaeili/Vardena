@@ -9,7 +9,7 @@
 | **OD-29-02** | Accounting Domain | Account Type: exactly `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`; immutable after first Posting | **DECIDED** (2026-09-28) | Runtime schema and immutability enforcement remain implementation prerequisites |
 | **OD-29-03** | Accounting / Detail | First-class organization-configurable Detail hierarchy; first-level Account relationship; backend requirement enforcement; controlled destructive removal | **DECIDED** (2026-09-28) | Domain baseline fixed; physical model and implementation still require a separate gate |
 | **OD-29-04** | Master Data / i18n | English Account Title is not required for MVP and its absence blocks no account lifecycle operation | **DECIDED** (2026-09-28) | English title is not an MVP or Base Chart blocker |
-| **OD-29-05** | Reporting / Presentation | Statement Class: Define Statement Class as Configurable Post-MVP Capability | **PENDING OWNER DECISION** | Decouples reporting presentation from Account Type |
+| **OD-29-05** | Reporting / Presentation | Statement Classification: independent, Organization-configurable reporting presentation concept (**Option C**) | **DECIDED** (2026-09-28) | Decouples reporting presentation from Chart of Accounts, Account Type, Account Nature, Detail, System Account and Base Chart Coding Structure; implementation and taxonomy remain separately gated |
 | **OD-29-06** | Accounting Domain | MVP has no System Account concept or system-owned Account flags | **DECIDED** (2026-09-28) | `isSystem` and equivalent concepts are excluded from MVP |
 
 ---
@@ -45,11 +45,12 @@
 - **Decision:** English Account Title is not required in MVP. A Base Chart without it is valid, and its absence must not block account creation, template publication, adoption, or Posting. Any future addition requires a separate decision.
 - **Consequences:** No English-title field or validation is required or authorized for MVP; this decision does not itself approve concrete Base Chart content.
 
-### OD-29-05: Statement Class Scope Boundary
-- **Status:** **`PENDING OWNER DECISION`**
-- **Proposal:** Maintain `Statement Class` as an organization-configurable reporting presentation concept separate from `AccountType`, and defer its implementation to the post-MVP Reporting Foundation phase.
-- **Rationale:** Avoids conflating presentation layouts with ledger closing rules.
-- **Decision Pack (2026-09-28):** `od-29-05-statement-classification-decision-pack.md` — full option analysis (A / B / C), fit/gap, qualitative decision matrix, and a non-binding architectural recommendation. Status: **READY FOR OWNER DECISION**; the pack decides nothing.
+### OD-29-05: Statement Classification Scope Boundary
+- **Status:** **`DECIDED`** (2026-09-28; Option C; see `owner-decision-closure.md` and `od-29-05-statement-classification-decision-pack.md`)
+- **Decision:** Statement Classification is an independent accounting/reporting concept that is configurable per Organization. It is separate from Account Type, Account Nature, Account Hierarchy / Chart of Accounts, Detail / Detail Hierarchy, System Account, and Base Chart Coding Structure.
+- **Purpose:** Allows an Organization to define how accounts are classified and presented for financial reporting without making the Chart of Accounts hierarchy itself the sole source of financial-statement presentation.
+- **Accounting Core boundary:** Statement Classification is not required for Chart of Accounts, voucher creation, Posting, General Ledger, Account Turnover, Trial Balance, or basic accounting operations. An Organization must not be blocked from Accounting Core merely because Statement Classification is not configured.
+- **Boundary:** No default taxonomy, classification names, statutory rules, Iranian legal reporting content, hierarchy depth, versioning/effective-dating, mapping cardinality, unclassified-account behavior, mandatory/optional policy, permission/admin workflow, schema, Prisma model, API, UI, report implementation, migration/seed data, Base Chart content, FaraPayam content, legal/regulatory profile, or production runtime behavior is approved by this decision. Cash Flow and other advanced reporting logic remain separate future design concerns. OQ-25 remains open for concrete content and related unresolved items.
 
 ### OD-29-06: System Account
 - **Status:** **`DECIDED`** (2026-09-28; see `owner-decision-closure.md`)
