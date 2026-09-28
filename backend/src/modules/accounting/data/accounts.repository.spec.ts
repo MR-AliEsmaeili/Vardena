@@ -3,6 +3,7 @@ import type { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import type { AccountStructureSnapshot } from './accounts.repository.js';
 import { AccountsRepository } from './accounts.repository.js';
 import {
+  AccountImmutableAfterUseError,
   AccountPinsIncoherentError,
   AccountPlacementRejectedError,
 } from './accounting-structure-errors.js';
@@ -78,6 +79,7 @@ interface FakeOptions {
   children?: readonly unknown[];
   hierarchy?: readonly unknown[];
   referencedByDocumentLine?: boolean;
+  postedLedgerEntriesCount?: number;
 }
 
 function fakeClient(options: FakeOptions = {}) {
@@ -134,11 +136,16 @@ function fakeClient(options: FakeOptions = {}) {
     accountingDocumentLine: {
       count: () => Promise.resolve(options.referencedByDocumentLine ? 1 : 0),
     },
+    ledgerEntry: {
+      count: () => Promise.resolve(options.postedLedgerEntriesCount ?? 0),
+    },
   };
 
   const client = {
     $transaction: <T>(fn: (txArg: typeof tx) => Promise<T>): Promise<T> =>
       fn(tx),
+    account: tx.account,
+    ledgerEntry: tx.ledgerEntry,
   };
   return { client, tx, calls };
 }
@@ -421,6 +428,72 @@ describe('AccountsRepository — move validation uses ONLY the account’s own p
         ),
       ),
     ).rejects.toBeInstanceOf(AccountPinsIncoherentError);
+    expect(calls.updates).toHaveLength(0);
+  });
+});
+
+describe('AccountsRepository — OD-29-02 Account Type immutability timing at write boundary', () => {
+  const updateAccountInput = (overrides: Record<string, unknown> = {}) => ({
+    id: 'acc-1',
+    structure: null,
+    now: new Date('2026-01-02T00:00:00Z'),
+    actorId: null,
+    ...overrides,
+  });
+
+  it('Case 1: allows updating accountType when account is completely unused', async () => {
+    const { repository, calls } = repositoryWith({
+      referencedByDocumentLine: false,
+      postedLedgerEntriesCount: 0,
+    });
+
+    const updated = await repository.updateChecked(
+      updateAccountInput({ accountType: 'INCOME_STATEMENT' }),
+    );
+    expect(updated.id).toBe('acc-1');
+    expect(calls.updates).toHaveLength(1);
+    expect(calls.updates[0]?.['accountType']).toBe('INCOME_STATEMENT');
+  });
+
+  it('Case 2 & 3: allows updating accountType when account is referenced in document lines (draft/temporary) but has NO posted ledger entries', async () => {
+    const { repository, calls } = repositoryWith({
+      referencedByDocumentLine: true,
+      postedLedgerEntriesCount: 0,
+    });
+
+    // accountType update succeeds
+    const updated = await repository.updateChecked(
+      updateAccountInput({ accountType: 'INCOME_STATEMENT' }),
+    );
+    expect(updated.id).toBe('acc-1');
+    expect(calls.updates).toHaveLength(1);
+    expect(calls.updates[0]?.['accountType']).toBe('INCOME_STATEMENT');
+
+    // but structural fields (nature/isPostable) fail due to document line reference
+    await expect(
+      repository.updateChecked(updateAccountInput({ accountNature: 'CREDIT' })),
+    ).rejects.toBeInstanceOf(AccountImmutableAfterUseError);
+  });
+
+  it('Case 4: blocks updating accountType when account is referenced in posted ledger entries', async () => {
+    const { repository, calls } = repositoryWith({
+      referencedByDocumentLine: true,
+      postedLedgerEntriesCount: 1,
+    });
+
+    let rejection: unknown = null;
+    try {
+      await repository.updateChecked(
+        updateAccountInput({ accountType: 'INCOME_STATEMENT' }),
+      );
+    } catch (error) {
+      rejection = error;
+    }
+
+    expect(rejection).toBeInstanceOf(AccountImmutableAfterUseError);
+    expect((rejection as AccountImmutableAfterUseError).refused).toEqual([
+      'accountType',
+    ]);
     expect(calls.updates).toHaveLength(0);
   });
 });

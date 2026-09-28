@@ -2129,86 +2129,159 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
       expect(memo.accountType).toBe('MEMORANDUM');
     });
 
-    it('allows changing accountType when referenced by draft/temporary document lines, and blocks it only after posted ledger entry', async () => {
+    describe('OD-29-02 Account Type immutability timing', () => {
+      let customFixture: Fixture;
+      let customOrg: string;
       const referencedAccountIds = new Set<string>();
       const postedAccountIds = new Set<string>();
 
-      const customFixture = await buildFixture(
-        UNPINNED_APP_CONFIG,
-        createStructureStores({
-          lineUsage: {
-            countForAccount: (id) => (referencedAccountIds.has(id) ? 1 : 0),
-          },
-          ledgerUsage: {
-            countForAccount: (id) => (postedAccountIds.has(id) ? 1 : 0),
-          },
-        }),
-      );
-      const customOrg = (
-        await asSystem(() =>
-          customFixture.organizations.createOrganization({
-            code: 'CUSTOM_ORG',
-            name: 'Custom Org',
+      beforeEach(async () => {
+        referencedAccountIds.clear();
+        postedAccountIds.clear();
+
+        customFixture = await buildFixture(
+          UNPINNED_APP_CONFIG,
+          createStructureStores({
+            lineUsage: {
+              countForAccount: (id) => (referencedAccountIds.has(id) ? 1 : 0),
+            },
+            ledgerUsage: {
+              countForAccount: (id) => (postedAccountIds.has(id) ? 1 : 0),
+            },
           }),
-        )
-      ).id;
-      await customFixture.grant(ACTOR, Object.values(ACCOUNT_PERMISSIONS));
-      customFixture.member(ACTOR, customOrg);
+        );
+        customOrg = (
+          await asSystem(() =>
+            customFixture.organizations.createOrganization({
+              code: 'CUSTOM_ORG',
+              name: 'Custom Org',
+            }),
+          )
+        ).id;
+        await customFixture.grant(ACTOR, Object.values(ACCOUNT_PERMISSIONS));
+        customFixture.member(ACTOR, customOrg);
+        await publishBoth(customFixture, customOrg, TWO_LEVELS);
+      });
 
-      await publishBoth(customFixture, customOrg, TWO_LEVELS);
-
-      const acc = await asActor(ACTOR, () =>
-        customFixture.accounts.createAccount({
-          organizationId: customOrg,
-          code: '31',
-          title: 'Dynamic Type Account',
-          accountNature: 'DEBIT',
-          accountType: 'BALANCE_SHEET',
-        }),
-      );
-      expect(acc.accountType).toBe('BALANCE_SHEET');
-
-      // 1. Simulate account referenced in draft / temporary document lines (lineUsage > 0, ledgerUsage = 0)
-      referencedAccountIds.add(acc.id);
-
-      // accountType change SUCCEEDS (OD-29-02)
-      const updatedType = await asActor(ACTOR, () =>
-        customFixture.accounts.updateAccount(customOrg, acc.id, {
-          accountType: 'INCOME_STATEMENT',
-        }),
-      );
-      expect(updatedType.accountType).toBe('INCOME_STATEMENT');
-
-      // But other structural fields (nature, postability) are blocked by line reference
-      const blockedNature = await failure(
-        asActor(ACTOR, () =>
-          customFixture.accounts.updateAccount(customOrg, acc.id, {
-            accountNature: 'CREDIT',
-          }),
-        ),
-      );
-      expect(blockedNature.code).toBe('BusinessRuleViolation');
-
-      // 2. Simulate account referenced in finalized / posted ledger entries (ledgerUsage > 0)
-      postedAccountIds.add(acc.id);
-
-      // Now accountType change is BLOCKED (OD-29-02)
-      const blockedType = await failure(
-        asActor(ACTOR, () =>
-          customFixture.accounts.updateAccount(customOrg, acc.id, {
+      it('Case 1 — unused account allows changing accountType', async () => {
+        const acc = await asActor(ACTOR, () =>
+          customFixture.accounts.createAccount({
+            organizationId: customOrg,
+            code: '31',
+            title: 'Unused Account',
+            accountNature: 'DEBIT',
             accountType: 'BALANCE_SHEET',
           }),
-        ),
-      );
-      expect(blockedType.code).toBe('BusinessRuleViolation');
+        );
+        expect(acc.accountType).toBe('BALANCE_SHEET');
 
-      // Title update always still succeeds
-      const updatedTitle = await asActor(ACTOR, () =>
-        customFixture.accounts.updateAccount(customOrg, acc.id, {
-          title: 'Updated Title After Posting',
-        }),
-      );
-      expect(updatedTitle.title).toBe('Updated Title After Posting');
+        const updated = await asActor(ACTOR, () =>
+          customFixture.accounts.updateAccount(customOrg, acc.id, {
+            accountType: 'INCOME_STATEMENT',
+          }),
+        );
+        expect(updated.accountType).toBe('INCOME_STATEMENT');
+      });
+
+      it('Case 2 — Draft document line allows changing accountType while freezing other structural fields', async () => {
+        const acc = await asActor(ACTOR, () =>
+          customFixture.accounts.createAccount({
+            organizationId: customOrg,
+            code: '32',
+            title: 'Draft Referenced Account',
+            accountNature: 'DEBIT',
+            accountType: 'BALANCE_SHEET',
+          }),
+        );
+
+        // Account referenced in Draft document line (lines exist, 0 posted ledger entries)
+        referencedAccountIds.add(acc.id);
+
+        // accountType change SUCCEEDS (OD-29-02)
+        const updated = await asActor(ACTOR, () =>
+          customFixture.accounts.updateAccount(customOrg, acc.id, {
+            accountType: 'MEMORANDUM',
+          }),
+        );
+        expect(updated.accountType).toBe('MEMORANDUM');
+
+        // Other structural fields are frozen by document line reference
+        const blockedNature = await failure(
+          asActor(ACTOR, () =>
+            customFixture.accounts.updateAccount(customOrg, acc.id, {
+              accountNature: 'CREDIT',
+            }),
+          ),
+        );
+        expect(blockedNature.code).toBe('BusinessRuleViolation');
+      });
+
+      it('Case 3 — Temporary document line allows changing accountType while freezing other structural fields', async () => {
+        const acc = await asActor(ACTOR, () =>
+          customFixture.accounts.createAccount({
+            organizationId: customOrg,
+            code: '33',
+            title: 'Temporary Referenced Account',
+            accountNature: 'DEBIT',
+            accountType: 'BALANCE_SHEET',
+          }),
+        );
+
+        // Account referenced in Temporary document line (lines exist, 0 posted ledger entries)
+        referencedAccountIds.add(acc.id);
+
+        // accountType change SUCCEEDS (OD-29-02)
+        const updated = await asActor(ACTOR, () =>
+          customFixture.accounts.updateAccount(customOrg, acc.id, {
+            accountType: 'INCOME_STATEMENT',
+          }),
+        );
+        expect(updated.accountType).toBe('INCOME_STATEMENT');
+
+        // Other structural fields (e.g. isPostable) are frozen
+        const blockedPostable = await failure(
+          asActor(ACTOR, () =>
+            customFixture.accounts.updateAccount(customOrg, acc.id, {
+              isPostable: false,
+            }),
+          ),
+        );
+        expect(blockedPostable.code).toBe('BusinessRuleViolation');
+      });
+
+      it('Case 4 — Posted ledger entry blocks changing accountType and preserves title editability', async () => {
+        const acc = await asActor(ACTOR, () =>
+          customFixture.accounts.createAccount({
+            organizationId: customOrg,
+            code: '34',
+            title: 'Posted Account',
+            accountNature: 'DEBIT',
+            accountType: 'BALANCE_SHEET',
+          }),
+        );
+
+        // Account referenced in finalized / posted ledger entries
+        referencedAccountIds.add(acc.id);
+        postedAccountIds.add(acc.id);
+
+        // accountType change is BLOCKED (OD-29-02)
+        const blockedType = await failure(
+          asActor(ACTOR, () =>
+            customFixture.accounts.updateAccount(customOrg, acc.id, {
+              accountType: 'INCOME_STATEMENT',
+            }),
+          ),
+        );
+        expect(blockedType.code).toBe('BusinessRuleViolation');
+
+        // Title update always still succeeds
+        const updatedTitle = await asActor(ACTOR, () =>
+          customFixture.accounts.updateAccount(customOrg, acc.id, {
+            title: 'Posted Account Renamed',
+          }),
+        );
+        expect(updatedTitle.title).toBe('Posted Account Renamed');
+      });
     });
   });
 });

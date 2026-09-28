@@ -590,11 +590,18 @@ export class AccountsService {
       });
     }
 
+    const hasPostedLedgerEntry =
+      input.accountType !== undefined &&
+      input.accountType !== current.accountType
+        ? (await this.repository.countPostedLedgerEntries(current.id)) > 0
+        : false;
+
     const refused = planAccountEditFor(
       input,
       current,
       parentChanging,
       (await this.documentLines.countForAccount(current.id)) > 0,
+      hasPostedLedgerEntry,
     );
     if (refused.length > 0) {
       throw AppException.businessRule(
@@ -918,9 +925,11 @@ function planAccountEditFor(
   current: Account,
   parentChanging: boolean,
   referencedByDocumentLine: boolean,
+  hasPostedLedgerEntry: boolean = false,
 ): readonly AccountImmutableField[] {
   return planAccountEdit({
     referencedByDocumentLine,
+    hasPostedLedgerEntry,
     changes: {
       parentId: parentChanging,
       level: parentChanging,

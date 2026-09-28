@@ -45,7 +45,8 @@ Task 30 brings the owner decisions from Task 29 into production across schema, m
 
 - `AccountsRepository` & `AccountsService`:
   - Creation and update enforce validated uppercase `accountNature`, `accountType`, and `detailGroupId`.
-  - Immutability check under transaction and row locks uses `countReferencingLinesInTx` and `countPostedLedgerEntriesInTx`.
+  - Service pre-flight fast check distinguishes document-line references from posted ledger entries using `countPostedLedgerEntries`.
+  - Authoritative write-boundary immutability check under transaction and row locks uses `countReferencingLinesInTx` and `countPostedLedgerEntriesInTx`.
   - Implemented `unlinkDetailGroupChecked`: Requires explicit `confirmUnlink = true`, atomically executes `UPDATE accounting_document_lines SET detail_id = NULL WHERE account_id = $id`, `UPDATE ledger_entries SET detail_id = NULL WHERE account_id = $id`, and `UPDATE accounts SET detail_group_id = NULL WHERE id = $id`. Preserves account monetary turnover and emits `ACCOUNT_DETAIL_UNLINKED_EVENT` with full audit metadata.
 - `DetailStructuresRepository` & `DetailStructuresService`:
   - Full draft/edit/publish lifecycle guaranteeing exactly one active version per organization.
@@ -62,6 +63,7 @@ Task 30 brings the owner decisions from Task 29 into production across schema, m
 - Dedicated test suites added/updated:
   - `backend/src/modules/accounting/domain/detail-structure.spec.ts`
   - `backend/src/modules/accounting/domain/detail.spec.ts`
-  - `backend/src/modules/accounting/domain/account-placement.spec.ts` (draft line vs posted ledger immutability)
-  - `backend/src/modules/accounting/application/coding-structure-accounts.spec.ts` (OD-29-01 & OD-29-02 regression suites)
+  - `backend/src/modules/accounting/domain/account-placement.spec.ts` (`AC-I-11 immutability after use and OD-29-02 accountType immutability`)
+  - `backend/src/modules/accounting/data/accounts.repository.spec.ts` (`AccountsRepository — OD-29-02 Account Type immutability timing at write boundary`: Case 1 unused, Cases 2 & 3 draft/temporary lines, Case 4 posted ledger entries)
+  - `backend/src/modules/accounting/application/coding-structure-accounts.spec.ts` (`OD-29-02 Account Type immutability timing`: Case 1 unused, Case 2 draft document lines, Case 3 temporary document lines, Case 4 posted ledger entries)
   - `backend/src/modules/accounting/application/account-detail-unlink.spec.ts` (atomic unlink, audit event, turnover preservation)

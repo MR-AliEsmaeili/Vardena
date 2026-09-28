@@ -643,6 +643,15 @@ export class AccountsRepository {
   }
 
   /**
+   * OD-29-02: count posted ledger entries for fast pre-flight check in service.
+   * Authoritative check is performed under transaction row lock in updateChecked.
+   */
+  async countPostedLedgerEntries(accountId: string): Promise<number> {
+    const { ledgerEntry } = await this.client();
+    return ledgerEntry.count({ where: { accountId } });
+  }
+
+  /**
    * Which requested changes AC-I-11 freezes for a referenced account. The
    * caller passes the line count's verdict (Task 10.4 wires it to
    * `accounting_document_lines`); the decision itself stays in the domain.

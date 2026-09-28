@@ -47,9 +47,9 @@ export function isAccountNature(value: string): value is AccountNature {
 }
 
 export function normalizeAccountNature(value: string): AccountNature {
-  const upper = value.trim().toUpperCase();
-  if (isAccountNature(upper)) {
-    return upper;
+  const trimmed = value.trim();
+  if (isAccountNature(trimmed)) {
+    return trimmed;
   }
   throw new Error(`Invalid account nature: ${value}`);
 }

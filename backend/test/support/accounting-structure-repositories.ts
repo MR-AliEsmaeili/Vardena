@@ -1201,6 +1201,10 @@ export class InMemoryAccountsRepository {
     };
   }
 
+  async countPostedLedgerEntries(accountId: string): Promise<number> {
+    return this.ledgerUsage.countForAccount(accountId);
+  }
+
   async update(
     id: string,
     patch: Record<string, unknown>,
