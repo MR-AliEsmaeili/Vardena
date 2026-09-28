@@ -61,3 +61,9 @@ While **`Account Type`** determines period-end closing and carry-forward physics
 ### Fit-Gap Classification & Governance Status:
 - **Classification:** `DOMAIN/MODEL GAP — FUTURE IMPLEMENTATION REQUIRED` (Post-MVP / Reporting Foundation Phase).
 - **Owner Decision:** OD-29-05 (`PENDING OWNER DECISION`).
+
+---
+
+## 5. Owner Decision Closure Boundary (2026-09-28)
+
+OD-29-05 remains **`PENDING OWNER DECISION`**. The categories and organization-configurable model above remain historical Task 29 analysis/proposal only. No final Statement Classification model, Account field, organization configuration, or implementation is authorized.

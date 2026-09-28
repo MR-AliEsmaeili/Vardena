@@ -1,46 +1,35 @@
-# System Account (`isSystem`) Domain Analysis
+# System Account Domain Analysis and Owner Decision (OD-29-06)
 
-## 1. Domain Concept & Definition
+## 1. Historical Task 29 Analysis
 
-**`System Account`** (حساب سیستمی / کنترل سیستمی) is an independent domain attribute (`isSystem: boolean`) that answers:
-> **Is this account controlled and managed by automated system processes, rather than being freely available for ordinary manual user posting?**
+Task 29 originally analyzed a possible `System Account` / `isSystem` concept as a classification for accounts controlled by automated processes. The analysis was explicitly illustrative, was not derived from the 264-account source artifact, and was submitted as OD-29-06 pending Owner decision.
 
-*(Note: The automated ledger operation examples listed below represent illustrative domain analysis; they are not source-artifact facts and not Owner-approved Vardena requirements).*
+Repository inspection confirmed that neither `Account` nor `BaseChartTemplateNode` has an `isSystem` field and current Posting validation has no System Account rule.
 
-### Illustrative Automated Ledger Roles (Domain Analysis)
-1. **Fiscal Year-End Closing & Summary:** e.g. Income Summary Accounts.
-2. **Retained Earnings Accumulator:** e.g. Retained Earnings Accounts.
-3. **Opening / Closing Balance Transitory:** e.g. Opening/Closing Balance Offset Accounts.
-4. **Automated Subsystem Integration Clearing:** e.g. Inventory Valuation Clearing, FX Clearing.
+This historical analysis is preserved as evidence of the considered proposal; it is not the selected MVP model.
 
 ---
 
-## 2. Orthogonality & Separation of Concerns (Proposition F)
+## 2. Owner Decision Closure
 
-The `isSystem` flag is completely orthogonal to other account concepts:
+**OD-29-06 Status:** **`DECIDED`** (2026-09-28)
 
-```text
-Account
-├── type: AccountType (Proposed: BALANCE_SHEET | INCOME_STATEMENT | MEMORANDUM)
-├── balanceNature: AccountNature (Proposed: DEBIT | CREDIT | DUAL)
-├── statementClass: StatementClass? (Configurable Presentation Node)
-└── isSystem: boolean (System Control Restriction Flag)
-```
+Vardena MVP will **not** have a System Account concept.
 
-### Prohibited Inferences:
-- **DO NOT infer system status from account titles:** System behavior must never be keyed off Persian strings such as `"بستن حساب"` or `"افتتاحیه"`.
-- **DO NOT conflate with Account Type:** A system account can be `BALANCE_SHEET` (e.g. Opening Balance Offset) or `INCOME_STATEMENT` (e.g. Income Summary).
-- **DO NOT invent system accounts in Task 29:** Concrete system account identities belong to the specific subsystems that require them (Fiscal Closing, Subsystem Posting Integrations).
+The MVP must not add:
+
+- `isSystem`;
+- `systemAccount`;
+- System Account roles;
+- System Account categories; or
+- system-owned Account flags.
+
+No Account is treated as a special System Account in the current MVP architecture. System status must not be inferred from an Account title, Account Type, Account Nature, control role, or any other existing property.
 
 ---
 
-## 3. Current Vardena Inspection & Fit-Gap Status
+## 3. Future Boundary
 
-- **Prisma Schema (`accounting.prisma`):**
-  - `Account`: Has `isPostable`, `isActive`, but **NO** `isSystem` column.
-  - `BaseChartTemplateNode`: Has `isPostable`, `isMandatory`, `defaultIsActive`, but **NO** `isSystem` column.
-- **Posting Validation:** The current posting service (`posting.service.ts`) validates that an account is active, postable, and a leaf, but does not enforce system-account manual posting locks.
+If a future Accounting Engine capability demonstrates a concrete need for system-managed accounts, that capability requires a separate Owner Decision and architecture task. OD-29-06 does not pre-authorize such a concept and does not permit adding a placeholder flag now.
 
-### Fit-Gap Classification & Governance Status:
-- **Classification:** `FUTURE MODEL GAP` (Deferred to Future Subsystem Integration / Year-End Closing Task).
-- **Owner Decision:** OD-29-06 (`PENDING OWNER DECISION`).
+This record changes governance only. It removes the earlier `isSystem` proposal from the MVP direction and makes no production schema, API, Posting, permission, or UI change.

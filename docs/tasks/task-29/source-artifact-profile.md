@@ -24,7 +24,7 @@ The source artifact provides ten (10) structured columns for each account record
 | 2 | `عنوان حساب` | Account Title | Unicode Text | Persian string ($\le 200$ chars) | `Account.title` / `BaseChartTemplateNode.title` |
 | 3 | `ماهيت حساب` | Account Nature | Closed List (3 values) | `بدهکار` (171), `بستانکار` (78), `هردو` (15) | `Account.accountNature` (`debit`, `credit`, `dual`) |
 | 4 | `نوع حساب` | Account Type | Closed List (3 values) | `ترازنامه ای` (152), `سود و زیان` (97), `انتظامی` (15) | `Account.type` (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) |
-| 5 | `عنوان انگليسي حساب` | English Title | ASCII/Latin Text | Blank in this dataset | Non-MVP Metadata (Deferred) |
+| 5 | `عنوان انگليسي حساب` | English Title | ASCII/Latin Text | Blank in this dataset | Not required for MVP (OD-29-04 `DECIDED`) |
 | 6 | `ACLTafsil1` | Detail Requirement Flag 1 | Boolean Flag | `0` (100% `0` in source) | Line-level Detail Requirement Rule |
 | 7 | `ACLTafsil2` | Detail Requirement Flag 2 | Boolean Flag | `0` (100% `0` in source) | Line-level Detail Requirement Rule |
 | 8 | `ACLTafsil3` | Detail Requirement Flag 3 | Boolean Flag | `0` (100% `0` in source) | Line-level Detail Requirement Rule |

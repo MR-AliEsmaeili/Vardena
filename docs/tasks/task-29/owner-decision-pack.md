@@ -5,12 +5,12 @@
 | Decision ID | Area | Subject | Status | Gating Effect |
 |---|---|---|---|---|
 | **OD-27-02** | Accounting / Base Chart | Base Chart MVP Scope Boundary (Mechanism = MVP, Concrete Content = Non-MVP) | **DECIDED** (Task 28 Follow-up) | Mechanism unblocked; concrete content gated by separate approval |
-| **OD-29-01** | Accounting Domain | Account Nature: Expand `ACCOUNT_NATURES` to include `DUAL` (`هردو`) | **PENDING OWNER DECISION** | Blocks loading accounts with `ماهیت = هردو` (15 accounts in Group 9) |
-| **OD-29-02** | Accounting Domain | Account Type: Introduce 3 Fixed Global Types (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) | **PENDING OWNER DECISION** | Blocks schema support for `نوع حساب` (152 BS, 97 IS, 15 Memo) |
-| **OD-29-03** | Accounting / Dimensions | Detail Flags: Map `ACLTafsil1..4` to Generic Line-Level Dimension Requirements | **PENDING OWNER DECISION** | Prevents anti-pattern of hardcoding numbered columns |
-| **OD-29-04** | Master Data / i18n | English Account Title: Treat `عنوان انگلیسی حساب` as Deferred Non-MVP Metadata | **PENDING OWNER DECISION** | Eliminates English title blocker for MVP |
+| **OD-29-01** | Accounting Domain | Account Nature: exactly `DEBIT`, `CREDIT`, `DUAL`; `DUAL` is independent; Nature does not prohibit opposite-side entries | **DECIDED** (2026-09-28) | Runtime support remains an implementation prerequisite for `DUAL` content |
+| **OD-29-02** | Accounting Domain | Account Type: exactly `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`; immutable after first Posting | **DECIDED** (2026-09-28) | Runtime schema and immutability enforcement remain implementation prerequisites |
+| **OD-29-03** | Accounting / Detail | First-class organization-configurable Detail hierarchy; first-level Account relationship; backend requirement enforcement; controlled destructive removal | **DECIDED** (2026-09-28) | Domain baseline fixed; physical model and implementation still require a separate gate |
+| **OD-29-04** | Master Data / i18n | English Account Title is not required for MVP and its absence blocks no account lifecycle operation | **DECIDED** (2026-09-28) | English title is not an MVP or Base Chart blocker |
 | **OD-29-05** | Reporting / Presentation | Statement Class: Define Statement Class as Configurable Post-MVP Capability | **PENDING OWNER DECISION** | Decouples reporting presentation from Account Type |
-| **OD-29-06** | Accounting / Closing | System Account: Defer `isSystem` Flag to Year-End Closing & Integration Tasks | **PENDING OWNER DECISION** | Prevents premature system-account lock engineering |
+| **OD-29-06** | Accounting Domain | MVP has no System Account concept or system-owned Account flags | **DECIDED** (2026-09-28) | `isSystem` and equivalent concepts are excluded from MVP |
 
 ---
 
@@ -22,38 +22,35 @@
 
 ---
 
-## 3. Pending Owner Decisions (Proposals Requiring Owner Approval)
+## 3. Task 29 Decision Details
 
-### OD-29-01: Account Nature DUAL Extension
-- **Status:** **`PENDING OWNER DECISION`**
-- **Proposal:** Expand `ACCOUNT_NATURES` in `domain/account.ts` and related DTOs from `['debit', 'credit']` to `['debit', 'credit', 'dual']`.
-- **Rationale:** The authoritative VARDENA Base Chart contains 15 accounts with nature `هردو` (all in Group 9: Memorandum) which exhibit bi-directional normal balance behavior.
-- **Consequences:** Unblocks validation for bi-directional accounts without altering core double-entry arithmetic (proposed for implementation in Task 30).
+### OD-29-01: Account Nature
+- **Status:** **`DECIDED`** (2026-09-28; see `owner-decision-closure.md`)
+- **Decision:** Account Nature has exactly three independent values: `DEBIT`, `CREDIT`, and `DUAL`. `DUAL` must not be mapped to another Nature. Nature expresses natural balance orientation and may be consumed by balance display, contrary-balance detection, reporting, and controls. It does not absolutely prohibit an entry on the opposite document side.
+- **Boundary:** Exact Posting, balance, and contrary-nature policies remain for a later Accounting Engine task. Runtime support for `DUAL` is still not implemented.
 
 ### OD-29-02: Fixed Three Global Account Types
-- **Status:** **`PENDING OWNER DECISION`**
-- **Proposal:** Adopt the 3-value global account type model: `BALANCE_SHEET` (`ترازنامه‌ای`, 152 accounts), `INCOME_STATEMENT` (`سود و زیان`, 97 accounts), and `MEMORANDUM` (`انتظامی`, 15 accounts). Add `type` column to `Account` and `BaseChartTemplateNode` models.
-- **Rationale:** Necessary to support period-end fiscal closing physics, carry-forward logic, and separation of off-balance-sheet memorandum entries.
-- **Consequences:** Requires a Prisma migration and DTO updates in a dedicated implementation task (proposed Task 30) before content loading (proposed Task 31).
+- **Status:** **`DECIDED`** (2026-09-28; see `owner-decision-closure.md`)
+- **Decision:** Account Type has exactly three values: `BALANCE_SHEET`, `INCOME_STATEMENT`, and `MEMORANDUM`. Type is independent of Nature. It governs the relevant reporting, fiscal-closing, opening, carry-forward, and period-transition lifecycle. Account Type is immutable after the account's first Posting.
+- **Boundary:** Runtime schema support, a precise persisted first-Posting test, and transactional immutability enforcement require a separately authorized implementation task. Closing and carry-forward engines are not implemented by this decision.
 
-### OD-29-03: Detail Flags Generic Mapping
-- **Status:** **`PENDING OWNER DECISION`**
-- **Proposal:** Preserve the source boolean detail-requirement semantics (`0` = no requirement, `1` = required detail code) while mapping them to Vardena's generic line-level dimension requirement model (ADR-0037) rather than creating numbered `requiresDetail1..4` Account columns.
-- **Rationale:** Preserves architectural configurability (up to 8 dimensions) and aligns with ADR-0037.
-- **Consequences:** Base chart loading will store requirement metadata without polluting the core `Account` table with rigid numbered columns (proposed for implementation in Task 32).
+### OD-29-03: Detail Requirement / Detail Hierarchy
+- **Status:** **`DECIDED`** (2026-09-28; see `owner-decision-closure.md`)
+- **Decision:** Detail is a first-class hierarchy independent from Account, with organization-configurable level count, names, digit lengths, hierarchy, validation, and uniqueness. An Account relates at the first Detail level rather than to every descendant. Required Detail/Dimension values must ultimately be enforced by backend Posting validation.
+- **Controlled removal:** Removing a used Account-to-Detail relationship is an explicitly confirmed, atomic, auditable destructive operation that removes affected historical Detail allocations while preserving Account-level turnover. The Owner-provided Persian warning is preserved in the closure record and `detail-flag-mapping.md`.
+- **Boundary:** No physical database model, permission, endpoint, UI, allocation storage, or deletion algorithm is decided or implemented here. Generic slots receive no hard-coded business names. Implementation requires a separate authorization gate.
 
 ### OD-29-04: English Account Title Scope Boundary
-- **Status:** **`PENDING OWNER DECISION`**
-- **Proposal:** Treat `عنوان انگليسي حساب` as non-MVP source metadata. Do not create an English title column on the MVP `Account` model.
-- **Rationale:** Persian is the primary system language (ADR-0036 / Q11); English translation is non-MVP.
-- **Consequences:** Eliminates unnecessary schema width and translation overhead for MVP.
+- **Status:** **`DECIDED`** (2026-09-28; see `owner-decision-closure.md`)
+- **Decision:** English Account Title is not required in MVP. A Base Chart without it is valid, and its absence must not block account creation, template publication, adoption, or Posting. Any future addition requires a separate decision.
+- **Consequences:** No English-title field or validation is required or authorized for MVP; this decision does not itself approve concrete Base Chart content.
 
 ### OD-29-05: Statement Class Scope Boundary
 - **Status:** **`PENDING OWNER DECISION`**
 - **Proposal:** Maintain `Statement Class` as an organization-configurable reporting presentation concept separate from `AccountType`, and defer its implementation to the post-MVP Reporting Foundation phase.
 - **Rationale:** Avoids conflating presentation layouts with ledger closing rules.
 
-### OD-29-06: System Account Scope Boundary
-- **Status:** **`PENDING OWNER DECISION`**
-- **Proposal:** Defer `isSystem` account locking to the future Fiscal Year-End Closing and Subsystem Integration tasks.
-- **Rationale:** Prevents speculative system-account locks before closing algorithms are built.
+### OD-29-06: System Account
+- **Status:** **`DECIDED`** (2026-09-28; see `owner-decision-closure.md`)
+- **Decision:** Vardena MVP has no System Account concept. Do not add `isSystem`, `systemAccount`, System Account roles/categories, or system-owned Account flags, and do not treat any Account as a special System Account.
+- **Boundary:** A demonstrated future need requires a separate Owner Decision and architecture task. No placeholder field or runtime behavior is authorized now.

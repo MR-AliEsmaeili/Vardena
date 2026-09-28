@@ -11,12 +11,12 @@ This task evaluated the authoritative owner-provided VARDENA Base Chart artifact
 2. **Domain Model Gaps Identified (Blocking Content Loading):**
    - **Account Nature:** Source includes 15 accounts with `ماهیت = هردو` (`DUAL`, all in Group 9: Memorandum). Current domain validation is strictly binary (`['debit', 'credit']`) and rejects `'dual'`.
    - **Account Type:** Source includes three fixed global types: `BALANCE_SHEET` (152 accounts across Groups 1–5), `INCOME_STATEMENT` (97 accounts across Groups 6–7), and `MEMORANDUM` (15 accounts in Group 9). Vardena currently has NO `AccountType` concept in its schema or domain.
-   - **Detail Requirements:** Source includes `ACLTafsil1..4` requirement flags (all `0` in base template). Maps conceptually to generic line-level dimension requirement rules (ADR-0037).
+   - **Detail Requirements:** Source includes `ACLTafsil1..4` requirement flags (all `0` in base template). OD-29-03 now decides a first-class organization-configurable Detail hierarchy, first-level Account relationships, backend Posting enforcement, and controlled removal constraints; runtime support remains absent.
 3. **Hierarchy & Leaf Posting Verification:**
    - Posting is strictly leaf-only (`postable ⇒ leaf`).
    - 222 leaf accounts (218 Level 3 accounts + 4 childless Level 2 accounts: `307`, `602`, `703`, `704`) derive as postable leaves (`isPostable = true`).
    - 42 non-leaf accounts (8 Level 1 roots + 34 Level 2 parents) derive as non-postable aggregates (`isPostable = false`).
-4. **Scope Governance:** English titles are classified as non-MVP metadata. Statement Class is classified as post-MVP presentation configuration. System account flags are deferred to future closing/integration tasks.
+4. **Scope Governance:** OD-29-04 decides English titles are not required for MVP and their absence is non-blocking. OD-29-06 decides MVP has no System Account concept. Statement Classification remains open under OD-29-05.
 5. **Production Code Modifications:** **ZERO (0)** lines of production code, migrations, schemas, or seed data were modified.
 6. **Task Status:** **`READY FOR REVIEW — NOT ACCEPTED`**.
 
@@ -101,10 +101,11 @@ To ensure complete governance integrity, this report distinguishes four categori
 - Prisma schema (`Account`, `BaseChartTemplateNode`) and domain models completely lack an `AccountType` concept.
 - The 3 observed types (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) must be added to the schema and domain under OD-29-02.
 
-### 4.4 Detail Requirement Flags: MODEL GAP
-- `ACLTafsil1..4` are source boolean flags (`0`/`1`).
-- The source does not assign business concepts (Party, Cost Center, etc.) to these flags.
-- Hardcoding `requiresDetail1..4` columns on `Account` is an anti-pattern; mapping to generic line-level dimension rules per ADR-0037 is required under OD-29-03.
+### 4.4 Detail Requirement / Detail Hierarchy: MODEL GAP
+- `ACLTafsil1..4` are source boolean flags (`0`/`1`), and the source assigns no fixed business semantics to them.
+- OD-29-03 decides that Detail is a first-class organization-configurable hierarchy independent from Account. Account relationships target the first Detail level; required Detail/Dimension values are backend-enforced at Posting.
+- Removal of a used relationship is a confirmed, atomic, auditable destructive operation that removes affected historical Detail allocations while preserving Account-level turnover.
+- Physical persistence, authorization, and deletion algorithms remain open implementation design and are not implemented here.
 
 ---
 
@@ -113,41 +114,41 @@ To ensure complete governance integrity, this report distinguishes four categori
 | Decision ID | Subject | Proposal / Decision Summary | Official Status | Category |
 |---|---|---|---|---|
 | **OD-27-02** | Base Chart MVP Scope Boundary | MVP requires Base Chart mechanism; concrete chart content is NOT MVP-required | **`DECIDED`** (Task 28 Follow-up) | **OWNER DECISION** |
-| **OD-29-01** | Account Nature DUAL Extension | Expand `ACCOUNT_NATURES` to include `DUAL` (`هردو`) | **`PENDING OWNER DECISION`** | **PROPOSAL** |
-| **OD-29-02** | Three Global Account Types | Introduce `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM` enum and column | **`PENDING OWNER DECISION`** | **PROPOSAL** |
-| **OD-29-03** | Detail Flags Generic Mapping | Map `ACLTafsil1..4` to generic line-level dimension rules (ADR-0037) | **`PENDING OWNER DECISION`** | **PROPOSAL** |
-| **OD-29-04** | English Account Title Scope Boundary | Treat `عنوان انگلیسی حساب` as non-MVP source metadata | **`PENDING OWNER DECISION`** | **PROPOSAL** |
+| **OD-29-01** | Account Nature | Exactly `DEBIT`, `CREDIT`, `DUAL`; Nature is orientation, not an opposite-side prohibition | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
+| **OD-29-02** | Three Global Account Types | Exactly `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`; immutable after first Posting | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
+| **OD-29-03** | Detail Requirement / Hierarchy | First-class configurable Detail hierarchy, first-level Account relationship, backend requirement enforcement, controlled removal | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
+| **OD-29-04** | English Account Title Scope Boundary | Not required for MVP; absence blocks no account lifecycle operation | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
 | **OD-29-05** | Statement Class Scope Boundary | Separate from AccountType; defer to post-MVP reporting phase | **`PENDING OWNER DECISION`** | **PROPOSAL** |
-| **OD-29-06** | System Account Scope Boundary | Separate from AccountType; defer `isSystem` to closing/integration tasks | **`PENDING OWNER DECISION`** | **PROPOSAL** |
+| **OD-29-06** | System Account Scope Boundary | MVP has no System Account concept or system-owned Account flags | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
 
 ---
 
 ## 6. Open Questions Status Preservation
 
-- **OQ-25 (Chart of Accounts Scope):** **`REMAINS OPEN`**. Coding compatibility is proven, but content adoption and domain enum extensions require Owner Decision ratification.
-- **OQ-41 (Detail Dimensions):** **`REMAINS OPEN`**. Detail requirement mapping strategy proposed; dimension configuration engine pending.
+- **OQ-25 (Chart of Accounts Scope):** **`REMAINS OPEN`**. OD-29-01/02/03/04/06 are decided, but production implementation, concrete content approval, control roles, and other recorded sub-questions remain outstanding.
+- **OQ-41 (Detail Dimensions):** **`REMAINS OPEN`**, narrowed by OD-29-03. Generic hierarchy, relationship, enforcement, and removal constraints are decided; physical persistence, authorization, safeguards, and implementation design remain open.
 - **OQ-43 (Statutory Requirements):** **`REMAINS OPEN`**.
 - **OQ-36 (Master Data Freeze vs Delete):** **`REMAINS OPEN`**.
 - **OQ-62 (Configuration Pin Coherence):** **`REMAINS OPEN`**.
 
 ---
 
-## 7. Proposed Technical Implementation Roadmap (Task 30 ➔ Task 31 ➔ Task 32 — PROPOSALS ONLY)
+## 7. Proposed Technical Dependency Sequence — NO TASK AUTHORIZED
 
-*(Note: None of these tasks are authorized or executed by Task 29; they represent the recommended technical dependency sequence for Owner decision and scheduling)*:
+*(Note: None of these tasks are authorized or executed by Task 29; they preserve historical dependency analysis only)*:
 
 ```text
 Task 30 (Proposed): Accounting Domain Model Expansion (AccountType & DUAL Nature)
-└── Prerequisite: Owner approval of OD-29-01 and OD-29-02.
+└── Prerequisite: OD-29-01 and OD-29-02 are decided; implementation still requires separate authorization.
 └── Scope: Add AccountType enum & column; expand ACCOUNT_NATURES to include 'dual'.
 
 Task 31 (Proposed): VARDENA Base Chart Content Ingestion & Template Publication
 └── Prerequisite: Task 30 completed and merged.
 └── Scope: Ingest 264-row VARDENA Base Chart into versioned template and publish.
 
-Task 32 (Proposed): Detail Dimension Requirement Rules & Document Line Validation
-└── Prerequisite: Owner approval of OD-29-03.
-└── Scope: Implement AccountDimensionRule for ACLTafsil1..4 mapping and line validation.
+Future Detail design/implementation gate (NOT AUTHORIZED)
+└── Prerequisite: OD-29-03 is decided; architecture and implementation still require separate authorization.
+└── Scope is not approved here; physical allocation and destructive-operation design remain open.
 ```
 
 ---
@@ -165,15 +166,15 @@ Task 32 (Proposed): Detail Dimension Requirement Rules & Document Line Validatio
 2. Domain Model Gaps: THREE (3) GAPS
    ├── Gap 1: ACCOUNT NATURE lacks 'DUAL' ('هردو') in domain types & validators (15 accounts in Group 9).
    ├── Gap 2: ACCOUNT TYPE ('ترازنامه‌ای', 'سود و زیان', 'انتظامی') is absent from schema & models.
-   └── Gap 3: DETAIL FLAGS ('ACLTafsil1..4') require mapping to dimension requirement rules.
+   └── Gap 3: DETAIL hierarchy/requirements/removal constraints from OD-29-03 lack a physical model and runtime implementation.
 
 3. Implementation Requirement: DEDICATED PRODUCTION TASK
    └── A migration & domain update task (Proposed Task 30) must add AccountType and DUAL
        nature before content loading is executed.
 
 4. Content Loading Readiness: BLOCKED ON DOMAIN MODEL GAPS
-   └── Once the domain model gaps are implemented, the 264 accounts can be
-       loaded and adopted immediately in Proposed Task 31.
+   └── Once separately authorized domain-model work is complete, the artifact is technically representable;
+       production loading/publication still requires its own explicit content approval and implementation gate.
 ```
 
 ---
@@ -196,3 +197,9 @@ Task 32 (Proposed): Detail Dimension Requirement Rules & Document Line Validatio
 
 **READY FOR REVIEW — NOT ACCEPTED**
 *(This task is a decision gate and does not self-accept or authorize subsequent implementation automatically).*
+
+---
+
+## Owner Decision Closure Follow-up (2026-09-28)
+
+The Owner explicitly closed **OD-29-01**, **OD-29-02**, **OD-29-03**, **OD-29-04**, and **OD-29-06**. The authoritative wording and implementation boundaries are recorded in `owner-decision-closure.md`. OD-29-05 alone remains pending among OD-29-01..06. This follow-up changes governance status only: no production code, schema, migration, seed, permission, guard, API, Posting, reporting, or UI behavior changed; Task 29 remains `READY FOR REVIEW — NOT ACCEPTED`; OQ-25 remains open; and no future implementation task—including Task 30—or concrete chart publication is authorized.

@@ -1,4 +1,4 @@
-# Account Nature Domain Proposal: DEBIT, CREDIT, and DUAL (OD-29-01)
+# Account Nature Domain Decision: DEBIT, CREDIT, and DUAL (OD-29-01)
 
 ## 1. Domain Background & Source Semantics
 
@@ -86,10 +86,10 @@ export function isAccountNature(value: string): value is AccountNature {
 
 | Dimension | Current State | Proposed State | Fit-Gap Classification | Owner Decision Status |
 |---|---|---|---|---|
-| **Account Nature Domain Values** | `['debit', 'credit']` | `['debit', 'credit', 'dual']` | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-01 (`PENDING OWNER DECISION`) |
+| **Account Nature Domain Values** | `['debit', 'credit']` | `['debit', 'credit', 'dual']` | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-01 (`DECIDED` 2026-09-28) |
 | **Prisma Schema (`VarChar(8)`)** | `VarChar(8)` | `VarChar(8)` | **DIRECTLY COMPATIBLE** | Fits `'dual'` |
-| **Validation Rules** | Rejects anything $\ne$ debit/credit | Accepts `'dual'` | **IMPLEMENTATION REQUIRED** | OD-29-01 (`PENDING OWNER DECISION`) |
-| **DTO Enums / Swagger** | `['debit', 'credit']` | `['debit', 'credit', 'dual']` | **IMPLEMENTATION REQUIRED** | OD-29-01 (`PENDING OWNER DECISION`) |
+| **Validation Rules** | Rejects anything $\ne$ debit/credit | Accepts `'dual'` | **IMPLEMENTATION REQUIRED** | OD-29-01 (`DECIDED`; implementation pending) |
+| **DTO Enums / Swagger** | `['debit', 'credit']` | `['debit', 'credit', 'dual']` | **IMPLEMENTATION REQUIRED** | OD-29-01 (`DECIDED`; implementation pending) |
 | **Frontend UI Rendering** | Binary Dr/Cr badge | Tri-state (Dr/Cr/Dual) badge | **IMPLEMENTATION REQUIRED** | Proposed Task 30 |
 
 ---
@@ -101,11 +101,17 @@ Account Nature and Account Type are orthogonal, non-interchangeable concepts:
 ```text
 Account Nature (ماهیت)
 ├── Answers: "What normal debit/credit orientation is expected?"
-└── Proposed Values: DEBIT | CREDIT | DUAL (OD-29-01)
+└── Official Values: DEBIT | CREDIT | DUAL (OD-29-01)
 
 Account Type (نوع حساب)
 ├── Answers: "What is the accounting period/reporting/closing behavior?"
-└── Proposed Values: BALANCE_SHEET | INCOME_STATEMENT | MEMORANDUM (OD-29-02)
+└── Official Values: BALANCE_SHEET | INCOME_STATEMENT | MEMORANDUM (OD-29-02)
 ```
 
 An account with `AccountType = BALANCE_SHEET` can have Nature `DEBIT` (Assets), `CREDIT` (Liabilities/Equity), or `DUAL` (Clearing/Transit). They must remain distinct fields.
+
+---
+
+## 6. Owner Decision Closure (2026-09-28)
+
+OD-29-01 is **`DECIDED`**. Account Nature has exactly `DEBIT`, `CREDIT`, and `DUAL`; `DUAL` is independent and must not be converted to another Nature. Nature describes natural balance orientation and does not by itself prohibit posting on the opposite side. Exact balance, contrary-nature, reporting, and Posting-control policies remain future Accounting Engine work. See `owner-decision-closure.md`.

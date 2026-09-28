@@ -1,4 +1,4 @@
-# Account Type Domain Proposal: Three Global Account Types (OD-29-02)
+# Account Type Domain Decision: Three Global Account Types (OD-29-02)
 
 ## 1. Domain Background & Source Reconciliation
 
@@ -7,10 +7,10 @@ In the canonical VARDENA Base Chart artifact (`Pasted markdown(20260927-203801).
 - `سود و زیان` (97 accounts across Groups 6, 7)
 - `انتظامی` (15 accounts in Group 9)
 
-Based on this source artifact, **Task 29 reconciles and proposes three fixed global account types** under **OD-29-02** (`PENDING OWNER DECISION`):
+Based on this source artifact, **OD-29-02 establishes exactly three fixed global account types** (`DECIDED` 2026-09-28):
 
 ```text
-AccountType (Proposed Enum)
+AccountType (Official Enum)
 ├── BALANCE_SHEET   (ترازنامه‌ای)
 ├── INCOME_STATEMENT (سود و زیان)
 └── MEMORANDUM       (انتظامی)
@@ -18,9 +18,9 @@ AccountType (Proposed Enum)
 
 ---
 
-## 2. Detailed Semantics of the Proposed Account Types
+## 2. Account Type Semantics and Remaining Design Detail
 
-*(Note: The lifecycle descriptions below represent illustrative domain analysis and design proposals; they are not direct source-artifact text and not Owner-approved Vardena requirements until OD-29-02 is ratified).*
+OD-29-02 decides the three value names and the high-level lifecycle semantics stated in `owner-decision-closure.md`. Any more specific behavior in the bullets below is retained as Task 29 analysis/proposal, not promoted to an Owner decision. Detailed closing, opening, carry-forward, reporting, and period-transition policies still require separate Accounting Engine design and implementation.
 
 ### 2.1 `BALANCE_SHEET` (`ترازنامه‌ای`)
 - **Nature of Account:** Permanent / Real Accounts.
@@ -69,8 +69,8 @@ To maintain clean architectural boundaries and avoid domain conflation, Task 29 
 │ Statement Class │       │ System Account  │
 │ (طبقه صورت مالی)│  ≠    │ (حساب سیستمی)   │
 │                 │       │                 │
-│ • Org-defined   │       │ • isSystem      │
-│ • Configurable  │       │   (boolean)     │
+│ • OD-29-05 OPEN │       │ • Not in MVP    │
+│ • Not decided   │       │   (OD-29-06)    │
 └─────────────────┘       └─────────────────┘
 ```
 
@@ -80,8 +80,8 @@ To maintain clean architectural boundaries and avoid domain conflation, Task 29 
 |---|---|---|---|
 | **Account Type** | *What is the period/closing/reporting lifecycle of this account?* | Fixed Global Enum (Core Domain) | `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM` (OD-29-02) |
 | **Balance Nature** | *What is the normal debit/credit orientation of this account?* | Fixed Global Enum (Core Domain) | `DEBIT`, `CREDIT`, `DUAL` (OD-29-01) |
-| **Statement Class** | *Where does this account appear in financial statement presentation?* | Organization-Configurable (Presentation) | Illustrative: Current Assets, Operating Expenses (OD-29-05) |
-| **System Account** | *Is this account reserved/controlled for automated system posting?* | Core System Flag | `isSystem: boolean` (OD-29-06) |
+| **Statement Classification** | *Where does this account appear in financial statement presentation?* | **UNDECIDED** — OD-29-05 remains open | No final model or Account field authorized |
+| **System Account** | *Should an account be specially system-owned?* | Excluded from MVP by OD-29-06 | No `isSystem` or equivalent MVP concept |
 
 ---
 
@@ -98,8 +98,14 @@ An audit of the current codebase confirms:
 
 | Concept | Current Vardena State | Proposed State | Fit-Gap Classification | Owner Decision Status / Future Task |
 |---|---|---|---|---|
-| **Account Type Model** | Absent | 3 fixed global values (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) / Proposed Task 30 |
-| **Prisma Schema** | Absent on `Account` & `BaseChartTemplateNode` | Add `type AccountType` enum or `VarChar(32)` column | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) / Proposed Task 30 |
-| **Base Chart Validation** | No type validation | Validate `type` presence on template authoring | **IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) / Proposed Task 30 |
-| **API DTOs** | Absent | Add `type` field to creation/view DTOs | **IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) / Proposed Task 30 |
+| **Account Type Model** | Absent | 3 fixed global values (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-02 (`DECIDED` 2026-09-28) / implementation pending |
+| **Prisma Schema** | Absent on `Account` & `BaseChartTemplateNode` | Persist Account Type with exactly the decided values | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-02 (`DECIDED`) / implementation pending |
+| **Base Chart Validation** | No type validation | Validate `type` presence on template authoring | **IMPLEMENTATION REQUIRED** | OD-29-02 (`DECIDED`) / implementation pending |
+| **API DTOs** | Absent | Add `type` field to creation/view DTOs | **IMPLEMENTATION REQUIRED** | OD-29-02 (`DECIDED`) / implementation pending |
 | **Closing Engine** | Not implemented | Future closing logic consumes `AccountType` | **DEFERRED / FUTURE CAPABILITY** | Post-MVP / Future Task |
+
+---
+
+## 6. Owner Decision Closure (2026-09-28)
+
+OD-29-02 is **`DECIDED`**. Account Type has exactly `BALANCE_SHEET`, `INCOME_STATEMENT`, and `MEMORANDUM`; it is independent of Account Nature and is immutable after the account's first Posting. A later implementation task must define and transactionally enforce the precise persisted first-Posting test. This decision does not itself implement closing, opening, carry-forward, reporting, or period-transition behavior. See `owner-decision-closure.md`.
