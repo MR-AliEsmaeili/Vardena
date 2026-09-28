@@ -16,7 +16,7 @@ This task evaluated the authoritative owner-provided VARDENA Base Chart artifact
    - Posting is strictly leaf-only (`postable ⇒ leaf`).
    - 222 leaf accounts (218 Level 3 accounts + 4 childless Level 2 accounts: `307`, `602`, `703`, `704`) derive as postable leaves (`isPostable = true`).
    - 42 non-leaf accounts (8 Level 1 roots + 34 Level 2 parents) derive as non-postable aggregates (`isPostable = false`).
-4. **Scope Governance:** OD-29-04 decides English titles are not required for MVP and their absence is non-blocking. OD-29-06 decides MVP has no System Account concept. Statement Classification remains open under OD-29-05.
+4. **Scope Governance:** OD-29-04 decides English titles are not required for MVP and their absence is non-blocking. OD-29-06 decides MVP has no System Account concept. OD-29-05 is now decided as **Option C**: Statement Classification is an independent, Organization-configurable reporting/presentation concept; implementation, taxonomy, reporting behavior, Base Chart content, and FaraPayam content remain unauthorized and undecided.
 5. **Production Code Modifications:** **ZERO (0)** lines of production code, migrations, schemas, or seed data were modified.
 6. **Task Status:** **`READY FOR REVIEW — NOT ACCEPTED`**.
 
@@ -118,14 +118,14 @@ To ensure complete governance integrity, this report distinguishes four categori
 | **OD-29-02** | Three Global Account Types | Exactly `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`; immutable after first Posting | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
 | **OD-29-03** | Detail Requirement / Hierarchy | First-class configurable Detail hierarchy, first-level Account relationship, backend requirement enforcement, controlled removal | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
 | **OD-29-04** | English Account Title Scope Boundary | Not required for MVP; absence blocks no account lifecycle operation | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
-| **OD-29-05** | Statement Class Scope Boundary | Separate from AccountType; defer to post-MVP reporting phase | **`PENDING OWNER DECISION`** | **PROPOSAL** |
+| **OD-29-05** | Statement Classification Scope Boundary | Independent, Organization-configurable Statement Classification (**Option C**), separate from Account Type/Nature/Hierarchy/Detail/System Account/Base Chart Coding Structure | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
 | **OD-29-06** | System Account Scope Boundary | MVP has no System Account concept or system-owned Account flags | **`DECIDED`** (2026-09-28) | **OWNER DECISION** |
 
 ---
 
 ## 6. Open Questions Status Preservation
 
-- **OQ-25 (Chart of Accounts Scope):** **`REMAINS OPEN`**. OD-29-01/02/03/04/06 are decided, but production implementation, concrete content approval, control roles, and other recorded sub-questions remain outstanding.
+- **OQ-25 (Chart of Accounts Scope):** **`REMAINS OPEN`**. OD-29-01/02/03/04/05/06 are decided, including OD-29-05 Option C for independent Organization-configurable Statement Classification, but production implementation, concrete Base Chart content approval, concrete Statement Classification taxonomy/content, control roles, Reporting Foundation behavior, and other recorded sub-questions remain outstanding.
 - **OQ-41 (Detail Dimensions):** **`REMAINS OPEN`**, narrowed by OD-29-03. Generic hierarchy, relationship, enforcement, and removal constraints are decided; physical persistence, authorization, safeguards, and implementation design remain open.
 - **OQ-43 (Statutory Requirements):** **`REMAINS OPEN`**.
 - **OQ-36 (Master Data Freeze vs Delete):** **`REMAINS OPEN`**.
@@ -202,4 +202,29 @@ Future Detail design/implementation gate (NOT AUTHORIZED)
 
 ## Owner Decision Closure Follow-up (2026-09-28)
 
-The Owner explicitly closed **OD-29-01**, **OD-29-02**, **OD-29-03**, **OD-29-04**, and **OD-29-06**. The authoritative wording and implementation boundaries are recorded in `owner-decision-closure.md`. OD-29-05 alone remains pending among OD-29-01..06. This follow-up changes governance status only: no production code, schema, migration, seed, permission, guard, API, Posting, reporting, or UI behavior changed; Task 29 remains `READY FOR REVIEW — NOT ACCEPTED`; OQ-25 remains open; and no future implementation task—including Task 30—or concrete chart publication is authorized.
+The Owner explicitly closed **OD-29-01**, **OD-29-02**, **OD-29-03**, **OD-29-04**, and **OD-29-06**. The authoritative wording and implementation boundaries are recorded in `owner-decision-closure.md`.
+
+## OD-29-05 Owner Decision Follow-up (2026-09-28)
+
+The Owner explicitly selected **Option C — Organization-configurable Statement Classification** for **OD-29-05**.
+
+Officially recorded decision:
+
+```text
+OD-29-05
+    ↓
+DECIDED
+    ↓
+OPTION C
+    ↓
+Statement Classification
+    = independent
+    = Organization-configurable
+    = separate from Chart of Accounts
+    = separate from Account Type
+    = separate from Account Nature
+```
+
+This follow-up changes governance status only. It introduces no production code, schema, Prisma model, migration, seed, permission, guard, API, DTO, Posting behavior, reporting implementation, UI, Base Chart content, FaraPayam loading, System Account concept, or English Account Title field. It does not authorize Task 30, Statement Classification implementation, Reporting Foundation implementation, Detail implementation, or concrete chart publication.
+
+Concrete classification taxonomy/content, statutory/legal classification rules, classification levels, hierarchy/versioning/effective dating, mapping cardinality, unclassified-account behavior, mandatory-vs-optional policy, permissions/admin workflow, and report runtime behavior remain future design/decision work. Statement Classification is not required for basic Accounting Core operation (Chart of Accounts, voucher creation, Posting, General Ledger, Account Turnover, Trial Balance, and basic accounting operations). OQ-25 remains **OPEN**; OQ-41/OQ-43/OQ-36/OQ-62 retain their recorded statuses. Task 29 remains `READY FOR REVIEW — NOT ACCEPTED`.

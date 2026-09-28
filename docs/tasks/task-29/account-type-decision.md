@@ -53,7 +53,7 @@ OD-29-02 decides the three value names and the high-level lifecycle semantics st
 
 ## 3. Four-Way Domain Separation (Proposition D, E, F)
 
-To maintain clean architectural boundaries and avoid domain conflation, Task 29 proposes keeping the following four concepts strictly distinct:
+To maintain clean architectural boundaries and avoid domain conflation, the Task 29 Owner decisions keep the following four concepts strictly distinct:
 
 ```text
 ┌─────────────────┐       ┌─────────────────┐
@@ -69,8 +69,8 @@ To maintain clean architectural boundaries and avoid domain conflation, Task 29 
 │ Statement Class │       │ System Account  │
 │ (طبقه صورت مالی)│  ≠    │ (حساب سیستمی)   │
 │                 │       │                 │
-│ • OD-29-05 OPEN │       │ • Not in MVP    │
-│ • Not decided   │       │   (OD-29-06)    │
+│ • OD-29-05 C    │       │ • Not in MVP    │
+│ • Org-config.   │       │   (OD-29-06)    │
 └─────────────────┘       └─────────────────┘
 ```
 
@@ -80,7 +80,7 @@ To maintain clean architectural boundaries and avoid domain conflation, Task 29 
 |---|---|---|---|
 | **Account Type** | *What is the period/closing/reporting lifecycle of this account?* | Fixed Global Enum (Core Domain) | `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM` (OD-29-02) |
 | **Balance Nature** | *What is the normal debit/credit orientation of this account?* | Fixed Global Enum (Core Domain) | `DEBIT`, `CREDIT`, `DUAL` (OD-29-01) |
-| **Statement Classification** | *Where does this account appear in financial statement presentation?* | **UNDECIDED** — OD-29-05 remains open | No final model or Account field authorized |
+| **Statement Classification** | *Where does this account appear in financial statement presentation?* | **DECIDED — OPTION C**: independent, Organization-configurable concept | Domain direction only; no Account field, taxonomy, schema, API, report behavior, or implementation authorized |
 | **System Account** | *Should an account be specially system-owned?* | Excluded from MVP by OD-29-06 | No `isSystem` or equivalent MVP concept |
 
 ---

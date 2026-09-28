@@ -22,12 +22,14 @@ Per repository rule **AG-09**:
   - **Nature Domain Scope (DECIDED — OD-29-01):** Account Nature has exactly `DEBIT`, `CREDIT`, and independent `DUAL`. Nature expresses natural balance orientation and does not by itself prohibit opposite-side entries. Detailed Accounting Engine policies remain future work.
   - **Account Type Scope (DECIDED — OD-29-02):** Account Type has exactly `BALANCE_SHEET`, `INCOME_STATEMENT`, and `MEMORANDUM`, independent from Nature, and is immutable after first Posting. Runtime persistence and enforcement remain unimplemented.
   - **English Title Scope (DECIDED — OD-29-04):** English Account Title is not required for MVP; a Base Chart without it is valid, and its absence blocks neither creation, publication, adoption, nor Posting.
+  - **Statement Classification Direction (DECIDED — OD-29-05 / Option C):** Statement Classification is an independent, Organization-configurable accounting/reporting concept, separate from Account Type, Account Nature, Account Hierarchy / Chart of Accounts, Detail / Detail Hierarchy, System Account, and Base Chart Coding Structure. It supports classified/presentational financial reporting outputs, but is not required for Accounting Core operation.
 - **Sub-Questions Remaining OPEN:**
   - Formal Owner approval of the VARDENA 264-account dataset as an approved template.
   - Production implementation of the decided `AccountType` and `DUAL` nature model in Prisma schema and domain services, including transactional Account Type immutability after first Posting (future separately authorized task).
+  - Concrete Statement Classification taxonomy/content, classification levels, hierarchy/versioning/effective dating, mapping cardinality, unclassified-account behavior, mandatory-vs-optional organization policy, and Reporting Foundation runtime behavior.
   - Mandatory control-role catalog and statutory account lists.
   - Deletion vs deactivation guards for unused accounts (OQ-36).
-- **Final OQ-25 Status:** **`REMAINS OPEN`** (Preserved as Open; not closed).
+- **Final OQ-25 Status:** **`REMAINS OPEN`** (Preserved as Open; OD-29-05 narrows only the Statement Classification direction and does not close OQ-25 wholesale).
 
 ---
 
@@ -46,9 +48,10 @@ Per repository rule **AG-09**:
 
 ### 2.3 OQ-43: Iranian Statutory Requirements & Reporting
 - **Recorded Status:** **`OPEN`**
-- **Task 29 Findings & Proposals:**
+- **Task 29 Findings and Decision Boundaries:**
   - English account title is Owner-decided as not required for MVP (OD-29-04); its absence is not a statutory or lifecycle blocker.
   - Statutory book layouts (`دفتر روزنامه`, `دفتر کل`) remain decoupled from core Base Chart loading and reside in the Legal Profile layer (ADR-0036).
+  - OD-29-05 decides only that Statement Classification is an independent, Organization-configurable concept. It does not decide Iranian statutory classification rules, statutory layouts, Legal Profile content, Cash Flow reporting, or other advanced reporting logic.
 - **Final OQ-43 Status:** **`REMAINS OPEN`**.
 
 ---
@@ -72,10 +75,10 @@ Per repository rule **AG-09**:
 
 ## 3. Conclusion
 
-Task 29 provides concrete findings and proposals for **OQ-25** and **OQ-41** while strictly maintaining their open governance status. All Open Questions remain faithfully tracked as **`OPEN`** in `docs/open-questions.md`.
+Task 29 provides concrete findings and recorded Owner decisions for **OQ-25** and **OQ-41** while strictly maintaining their open governance status. All Open Questions remain faithfully tracked as **`OPEN`** in `docs/open-questions.md`.
 
 ---
 
 ## 4. Closure Note
 
-The 2026-09-28 Owner closure decides OD-29-01, OD-29-02, OD-29-03, OD-29-04, and OD-29-06. OD-29-05 remains pending. OQ-25 remains open for concrete artifact/content and other recorded sub-questions. OQ-41 is narrowed, not closed, because physical persistence, authorization, destructive-operation design, and implementation remain unresolved. Task 30 and Detail implementation remain unauthorized.
+The 2026-09-28 Owner closure decides OD-29-01, OD-29-02, OD-29-03, OD-29-04, OD-29-05, and OD-29-06. OD-29-05 is **DECIDED — OPTION C** (Organization-configurable Statement Classification), but OQ-25 remains open for concrete artifact/content, classification taxonomy/content, Reporting Foundation behavior, and other recorded sub-questions. OQ-41 is narrowed, not closed, because physical persistence, authorization, destructive-operation design, and implementation remain unresolved. Task 30, Detail implementation, Statement Classification implementation, Reporting Foundation implementation, and Base Chart content loading remain unauthorized.
