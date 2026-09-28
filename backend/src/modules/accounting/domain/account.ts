@@ -172,9 +172,9 @@ export const ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS = [
   'parentId',
   'level',
   'accountNature',
-  'accountType',
   'detailGroupId',
   'isPostable',
+  'accountType',
 ] as const;
 
 export type AccountImmutableField =

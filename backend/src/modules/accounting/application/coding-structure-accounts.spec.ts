@@ -2144,14 +2144,22 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
           },
         }),
       );
+      const customOrg = (
+        await asSystem(() =>
+          customFixture.organizations.createOrganization({
+            code: 'CUSTOM_ORG',
+            name: 'Custom Org',
+          }),
+        )
+      ).id;
       await customFixture.grant(ACTOR, Object.values(ACCOUNT_PERMISSIONS));
-      customFixture.member(ACTOR, orgA);
+      customFixture.member(ACTOR, customOrg);
 
-      await publishBoth(customFixture, orgA, TWO_LEVELS);
+      await publishBoth(customFixture, customOrg, TWO_LEVELS);
 
       const acc = await asActor(ACTOR, () =>
         customFixture.accounts.createAccount({
-          organizationId: orgA,
+          organizationId: customOrg,
           code: '31',
           title: 'Dynamic Type Account',
           accountNature: 'DEBIT',
@@ -2165,7 +2173,7 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
 
       // accountType change SUCCEEDS (OD-29-02)
       const updatedType = await asActor(ACTOR, () =>
-        customFixture.accounts.updateAccount(orgA, acc.id, {
+        customFixture.accounts.updateAccount(customOrg, acc.id, {
           accountType: 'INCOME_STATEMENT',
         }),
       );
@@ -2174,7 +2182,7 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
       // But other structural fields (nature, postability) are blocked by line reference
       const blockedNature = await failure(
         asActor(ACTOR, () =>
-          customFixture.accounts.updateAccount(orgA, acc.id, {
+          customFixture.accounts.updateAccount(customOrg, acc.id, {
             accountNature: 'CREDIT',
           }),
         ),
@@ -2187,7 +2195,7 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
       // Now accountType change is BLOCKED (OD-29-02)
       const blockedType = await failure(
         asActor(ACTOR, () =>
-          customFixture.accounts.updateAccount(orgA, acc.id, {
+          customFixture.accounts.updateAccount(customOrg, acc.id, {
             accountType: 'BALANCE_SHEET',
           }),
         ),
@@ -2196,7 +2204,7 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
 
       // Title update always still succeeds
       const updatedTitle = await asActor(ACTOR, () =>
-        customFixture.accounts.updateAccount(orgA, acc.id, {
+        customFixture.accounts.updateAccount(customOrg, acc.id, {
           title: 'Updated Title After Posting',
         }),
       );

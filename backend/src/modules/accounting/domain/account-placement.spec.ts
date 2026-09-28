@@ -577,13 +577,13 @@ describe('root pin write boundary (D1 + §9.4)', () => {
 });
 
 describe('account nature list', () => {
-  it('is exactly debit|credit|dual (case-insensitive accepted) and nothing else is accepted', () => {
-    expect(isAccountNature('debit')).toBe(true);
-    expect(isAccountNature('credit')).toBe(true);
-    expect(isAccountNature('dual')).toBe(true);
+  it('is exactly DEBIT, CREDIT, DUAL and lowercase/invalid values are rejected', () => {
     expect(isAccountNature('DEBIT')).toBe(true);
     expect(isAccountNature('CREDIT')).toBe(true);
     expect(isAccountNature('DUAL')).toBe(true);
+    expect(isAccountNature('debit')).toBe(false);
+    expect(isAccountNature('credit')).toBe(false);
+    expect(isAccountNature('dual')).toBe(false);
     // `natural`/`contra`/`asset` are not natures (type is OQ-25, not nature).
     expect(isAccountNature('asset')).toBe(false);
   });
