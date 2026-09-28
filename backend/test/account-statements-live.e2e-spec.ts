@@ -330,7 +330,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         await db.$queryRaw`INSERT INTO accounting.accounts (
           id, organization_id, code, title, account_nature, is_postable, is_active,
           level, coding_structure_version_id, accounting_configuration_id, created_at, updated_at
-        ) VALUES (${id}, ${book.organizationId}, ${accountCode}, ${title}, 'debit', true, true, 1,
+        ) VALUES (${id}, ${book.organizationId}, ${accountCode}, ${title}, 'DEBIT', true, true, 1,
           ${book.codingStructureVersionId}, ${book.accountingConfigurationId}, now(), now())`;
       }
 

@@ -332,7 +332,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(root).toMatchObject({
         parent_id: null,
         level: 1,
-        account_nature: 'debit',
+        account_nature: 'DEBIT',
       });
       expect(child).toMatchObject({ parent_id: root.id, level: 2 });
       expect(leaf).toMatchObject({ parent_id: child.id, level: 3 });

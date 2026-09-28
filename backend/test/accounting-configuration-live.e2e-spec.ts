@@ -295,7 +295,7 @@ describe.skipIf(DATABASE_URL === undefined)(
            "coding_structure_version_id", "accounting_configuration_id",
            "account_nature", "is_postable", "is_active", "created_at", "updated_at")
         VALUES (${controlId}, ${orgId}, '50', 'Control', NULL, 1,
-                ${validVersionId}, ${published.id}, 'debit', false, true, NOW(), NOW())`;
+                ${validVersionId}, ${published.id}, 'DEBIT', false, true, NOW(), NOW())`;
       const control = await client.$queryRaw<{ id: string }>`
         SELECT "id" FROM "accounting"."accounts" WHERE "id" = ${controlId}`;
       expect(control).toHaveLength(1);
@@ -311,7 +311,7 @@ describe.skipIf(DATABASE_URL === undefined)(
              "coding_structure_version_id", "accounting_configuration_id",
              "account_nature", "is_postable", "is_active", "created_at", "updated_at")
           VALUES (${probeId}, ${orgId}, '51', 'Fake', NULL, 1,
-                  ${published.id}, ${published.id}, 'debit', false, true, NOW(), NOW())`;
+                  ${published.id}, ${published.id}, 'DEBIT', false, true, NOW(), NOW())`;
       } catch (error) {
         rejection = error;
       }
