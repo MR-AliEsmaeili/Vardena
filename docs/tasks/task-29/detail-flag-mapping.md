@@ -8,56 +8,55 @@ The VARDENA source artifact contains four boolean flag columns:
 - `ACLTafsil3`
 - `ACLTafsil4`
 
-### Clarified Semantics:
-- **`0`**: No detail account relation / no requirement. When posting to this account, detail entry is not required.
-- **`1`**: Relation / requirement exists. When this account is referenced on an accounting document line, the corresponding analytical detail (Tafsil / Dimension) **MUST** be supplied.
+### Verified Source Value & Meaning:
+- In the canonical 264-row source artifact (`Pasted markdown(20260927-203801).md`), **100% of rows have value `'0'`** for `ACLTafsil1`, `ACLTafsil2`, `ACLTafsil3`, and `ACLTafsil4`.
+- **`0`**: No corresponding detail requirement. When posting to this account, detail entry is not required.
+- **`1`**: A corresponding detail code is required whenever the account is used in an accounting document/turnover line.
 
-These flags are **active posting constraints**, not merely informational text comments.
-
----
-
-## 2. Iranian SME Detail Architecture vs Vardena Architecture
-
-In traditional Iranian legacy systems (e.g., FaraPayam, Rayvarz, Sepidar), accounts are linked to multi-level floating detail accounts (`تفصیلی شناور` / `تفصیلی سطوح ۱ تا ۴`):
-- **سطح ۱ (Level 1 Detail):** Parties (Customers, Vendors, Employees, Shareholder accounts).
-- **سطح ۲ (Level 2 Detail):** Cost Centers / Operational Departments.
-- **سطح ۳ (Level 3 Detail):** Projects / Work Orders / Contracts.
-- **سطح ۴ (Level 4 Detail):** Bank Accounts / Treasury Funds / Cash Desks / Analytical Tags.
+These fields represent **source-level boolean detail-requirement constraints**, not merely informational text comments.
 
 ---
 
-## 3. Vardena Architecture Alignment (ADR-0037 & Domain Contract)
+## 2. Source Scope Boundary & Reclassification of Legacy Inferences
 
-### 3.1 Architectural Principles (ADR-0037 §8, §9)
-1. **No Rigid Numbered Columns (Anti-Pattern):** Vardena **MUST NOT** add columns like `requiresDetail1`, `requiresDetail2`, `requiresDetail3`, `requiresDetail4` to `Account` or `BaseChartTemplateNode`.
-2. **Generic Dimension Architecture:** Vardena models analytical detail through **Accounting Detail Dimensions** (up to 8 configurable dimensions per contract §10/§11) and **Account-Dimension Requirement Rules**:
+### Critical Governance Boundary:
+The source artifact establishes strictly that `ACLTafsil1..4` are numbered boolean detail-requirement flags (`0` or `1`). **The source artifact does NOT establish fixed business identities** (such as Party, Cost Center, Project, or Bank) for flags 1 through 4.
+
+Any legacy industry conventions (e.g. associating level 1 with parties or level 2 with cost centers in specific legacy software products) are external conventions and are **NOT part of the authoritative VARDENA Base Chart specification**.
+
+### Task 29 Core Finding:
+> `ACLTafsil1..4` are source-level boolean detail-requirement flags. Their runtime mapping to Vardena's generic Accounting Detail / Dimension / Control Role architecture requires a separate domain decision and implementation design.
+
+---
+
+## 3. Vardena Architecture Alignment (ADR-0037 & Proposed OD-29-03)
+
+### 3.1 Architectural Principles
+1. **No Rigid Numbered Columns (Anti-Pattern):** Vardena **MUST NOT** add rigid schema columns like `requiresDetail1`, `requiresDetail2`, `requiresDetail3`, `requiresDetail4` to `Account` or `BaseChartTemplateNode`.
+2. **Generic Configurable Dimension Architecture:** Vardena models analytical detail through **Accounting Detail Dimensions** (up to 8 configurable dimensions per ADR-0037) and **Account-Dimension Requirement Rules**:
    ```text
    AccountDetailRequirement (or AccountDimensionRule)
    ├── accountId (FK -> Account)
    ├── dimensionId (FK -> AccountingDimension)
    └── requirementLevel: REQUIRED | OPTIONAL | FORBIDDEN
    ```
-3. **Consumer-First Control Roles (OD-20-2 / OD-20-3):** Control roles attach to accounts via independent effective-dated mappings rather than fixed schema fields.
-4. **Line-Level Assignments:** Document lines capture dimension assignments in typed child structures (`AccountingDocumentLineDimension`), validated at posting time.
+3. **Line-Level Validation:** Document lines capture dimension assignments in typed child structures (`AccountingDocumentLineDimension`), validated at posting time against active rules.
 
 ---
 
 ## 4. Fit-Gap & Mapping Strategy
 
-| Source Column | Conceptual Domain Meaning | Target Vardena Representation | Fit-Gap Classification |
-|---|---|---|---|
-| **`ACLTafsil1`** | Party / Customer / Vendor Detail Required | Dimension 1 Requirement (`REQUIRED`) | **MODEL GAP / IMPLEMENTATION REQUIRED** |
-| **`ACLTafsil2`** | Cost Center / Department Detail Required | Dimension 2 Requirement (`REQUIRED`) | **MODEL GAP / IMPLEMENTATION REQUIRED** |
-| **`ACLTafsil3`** | Project / Contract Detail Required | Dimension 3 Requirement (`REQUIRED`) | **MODEL GAP / IMPLEMENTATION REQUIRED** |
-| **`ACLTafsil4`** | Bank / Sub-item Detail Required | Dimension 4 Requirement (`REQUIRED`) | **MODEL GAP / IMPLEMENTATION REQUIRED** |
+| Source Column | Source Definition | Target Vardena Representation (Proposed) | Fit-Gap Classification | Owner Decision Status |
+|---|---|---|---|---|
+| **`ACLTafsil1`** | Boolean Detail Requirement 1 (`0`/`1`) | Generic Account-Dimension Requirement Rule (`REQUIRED`/`OPTIONAL`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-03 (`PENDING OWNER DECISION`) |
+| **`ACLTafsil2`** | Boolean Detail Requirement 2 (`0`/`1`) | Generic Account-Dimension Requirement Rule (`REQUIRED`/`OPTIONAL`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-03 (`PENDING OWNER DECISION`) |
+| **`ACLTafsil3`** | Boolean Detail Requirement 3 (`0`/`1`) | Generic Account-Dimension Requirement Rule (`REQUIRED`/`OPTIONAL`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-03 (`PENDING OWNER DECISION`) |
+| **`ACLTafsil4`** | Boolean Detail Requirement 4 (`0`/`1`) | Generic Account-Dimension Requirement Rule (`REQUIRED`/`OPTIONAL`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-03 (`PENDING OWNER DECISION`) |
 
 ---
 
-## 5. Implementation Roadmap for Detail Validation
+## 5. Implementation Recommendations (Future Task 32)
 
-1. **Base Chart Loading Phase:**
-   - Template authoring / loading should ingest `ACLTafsil1..4` as template node dimension requirement metadata or retain it in a structured requirement payload.
-2. **Adoption Phase:**
-   - When an organization adopts the template, the adoption planner maps these flags to organization-scoped `AccountDimensionRequirement` rules based on the organization's active dimension configuration.
-3. **Posting Phase:**
-   - Document finalization validates that document lines provide the mandatory dimension entries before committing to the ledger.
+1. **Base Template Storage:** Ingest `ACLTafsil1..4` boolean flags as raw template node metadata or unassigned requirement slots.
+2. **Adoption-Time Mapping:** When an organization adopts the template, map template requirement slots to organization-specific active dimensions (e.g., Dimension 1 $\rightarrow$ Dimension Slot 1).
+3. **Posting-Time Enforcement:** Document line validation verifies that any mandatory dimensions for an account are populated on document lines prior to posting.

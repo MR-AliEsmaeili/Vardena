@@ -5,8 +5,8 @@
 | Decision ID | Area | Subject | Status | Gating Effect |
 |---|---|---|---|---|
 | **OD-27-02** | Accounting / Base Chart | Base Chart MVP Scope Boundary (Mechanism = MVP, Concrete Content = Non-MVP) | **DECIDED** (Task 28 Follow-up) | Mechanism unblocked; concrete content gated by separate approval |
-| **OD-29-01** | Accounting Domain | Account Nature: Expand `ACCOUNT_NATURES` to include `DUAL` (`هردو`) | **PENDING OWNER DECISION** | Blocks loading accounts with `ماهیت = هردو` |
-| **OD-29-02** | Accounting Domain | Account Type: Introduce 3 Fixed Global Types (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) | **PENDING OWNER DECISION** | Blocks schema support for `نوع حساب` |
+| **OD-29-01** | Accounting Domain | Account Nature: Expand `ACCOUNT_NATURES` to include `DUAL` (`هردو`) | **PENDING OWNER DECISION** | Blocks loading accounts with `ماهیت = هردو` (15 accounts in Group 9) |
+| **OD-29-02** | Accounting Domain | Account Type: Introduce 3 Fixed Global Types (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) | **PENDING OWNER DECISION** | Blocks schema support for `نوع حساب` (152 BS, 97 IS, 15 Memo) |
 | **OD-29-03** | Accounting / Dimensions | Detail Flags: Map `ACLTafsil1..4` to Generic Line-Level Dimension Requirements | **PENDING OWNER DECISION** | Prevents anti-pattern of hardcoding numbered columns |
 | **OD-29-04** | Master Data / i18n | English Account Title: Treat `عنوان انگلیسی حساب` as Deferred Non-MVP Metadata | **PENDING OWNER DECISION** | Eliminates English title blocker for MVP |
 | **OD-29-05** | Reporting / Presentation | Statement Class: Define Statement Class as Configurable Post-MVP Capability | **PENDING OWNER DECISION** | Decouples reporting presentation from Account Type |
@@ -22,25 +22,25 @@
 
 ---
 
-## 3. Pending Owner Decisions (Requiring Owner Approval)
+## 3. Pending Owner Decisions (Proposals Requiring Owner Approval)
 
 ### OD-29-01: Account Nature DUAL Extension
 - **Status:** **`PENDING OWNER DECISION`**
 - **Proposal:** Expand `ACCOUNT_NATURES` in `domain/account.ts` and related DTOs from `['debit', 'credit']` to `['debit', 'credit', 'dual']`.
-- **Rationale:** The real VARDENA Base Chart contains accounts with nature `هردو` (e.g. current accounts with partners, bank clearing, transit accounts) which can swing between debit and credit balances.
+- **Rationale:** The authoritative VARDENA Base Chart contains 15 accounts with nature `هردو` (all in Group 9: Memorandum) which exhibit bi-directional normal balance behavior.
 - **Consequences:** Unblocks validation for bi-directional accounts without altering core double-entry arithmetic.
 
 ### OD-29-02: Fixed Three Global Account Types
 - **Status:** **`PENDING OWNER DECISION`**
-- **Proposal:** Adopt the 3-value global account type model: `BALANCE_SHEET` (`ترازنامه‌ای`), `INCOME_STATEMENT` (`سود و زیان`), and `MEMORANDUM` (`انتظامی`). Add `type` column to `Account` and `BaseChartTemplateNode` models.
+- **Proposal:** Adopt the 3-value global account type model: `BALANCE_SHEET` (`ترازنامه‌ای`, 152 accounts), `INCOME_STATEMENT` (`سود و زیان`, 97 accounts), and `MEMORANDUM` (`انتظامی`, 15 accounts). Add `type` column to `Account` and `BaseChartTemplateNode` models.
 - **Rationale:** Necessary to support period-end fiscal closing physics, carry-forward logic, and separation of off-balance-sheet memorandum entries.
 - **Consequences:** Requires a Prisma migration and DTO updates in a dedicated implementation task before content loading.
 
 ### OD-29-03: Detail Flags Generic Mapping
 - **Status:** **`PENDING OWNER DECISION`**
-- **Proposal:** Map `ACLTafsil1..4` conceptually to Vardena's generic line-level dimension requirement rules (ADR-0037) rather than creating rigid `requiresDetail1..4` columns.
+- **Proposal:** Preserve the source boolean detail-requirement semantics (`0` = no requirement, `1` = required detail code) while mapping them to Vardena's generic line-level dimension requirement model (ADR-0037) rather than creating numbered `requiresDetail1..4` Account columns.
 - **Rationale:** Preserves architectural configurability (up to 8 dimensions) and aligns with ADR-0037.
-- **Consequences:** Base chart loading will store requirement metadata without polluting the core `Account` table with numbered columns.
+- **Consequences:** Base chart loading will store requirement metadata without polluting the core `Account` table with rigid numbered columns.
 
 ### OD-29-04: English Account Title Scope Boundary
 - **Status:** **`PENDING OWNER DECISION`**

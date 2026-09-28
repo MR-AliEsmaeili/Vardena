@@ -28,21 +28,21 @@ Vardena's existing configurable coding engine natively supports the VARDENA 3-ti
 Vardena validates account codes using pure domain functions in `account-code.ts`:
 
 ### 3.1 Cumulative Length Validation (`checkAccountCode`)
-- **Level 1 (Group):**
-  - Expected Cumulative Length: $1$ digit
+- **Level 1 (Group / گروه):**
+  - Expected Cumulative Length: $1$ digit (8 root codes: `1, 2, 3, 4, 5, 6, 7, 9`)
   - Sample Code: `1`
   - Suffix Width: $1$ digit
   - Parent: `null` (Root)
   - Result: **VALID**
 - **Level 2 (General / کل):**
-  - Expected Cumulative Length: $1 + 2 = 3$ digits
+  - Expected Cumulative Length: $1 + 2 = 3$ digits (38 codes)
   - Sample Code: `101`
   - Suffix Width: $2$ digits
   - Parent: `1`
   - Suffix check: `101` starts with `1`, length diff $3 - 1 = 2$.
   - Result: **VALID**
 - **Level 3 (Subsidiary / معین):**
-  - Expected Cumulative Length: $1 + 2 + 3 = 6$ digits
+  - Expected Cumulative Length: $1 + 2 + 3 = 6$ digits (218 codes)
   - Sample Code: `101001`
   - Suffix Width: $3$ digits
   - Parent: `101`
@@ -71,12 +71,13 @@ When an organization adopts a Base Chart Template version, `planTemplateCompatib
 Under Vardena's Invariant 2 (OD-20-5 / ADR-0034):
 > **Posting = Leaf-only** (`postable ⇒ leaf`).
 
-In `deriveAdoptedPostability`:
+Crucially, **leaf status is determined solely by the structural absence of child nodes, NOT by level number or code length alone**:
 - Any node that possesses child accounts in the adoption set is automatically forced to `isPostable = false`, regardless of template default.
-- Level 1 (`Group`) nodes have Level 2 children $\rightarrow$ `isPostable = false`.
-- Level 2 (`General`) nodes have Level 3 children $\rightarrow$ `isPostable = false`.
-- Level 3 (`Subsidiary`) leaf nodes have NO children $\rightarrow$ `isPostable = true`.
-- This ensures zero risk of non-leaf postings or aggregate double-counting.
+- **Level 1 Nodes (8 roots):** All have children $\rightarrow$ `isPostable = false` (8 accounts).
+- **Level 2 Nodes with children (34 accounts):** Have Level 3 children $\rightarrow$ `isPostable = false` (34 accounts).
+- **Level 2 Nodes without children (4 accounts):** `307`, `602`, `703`, `704` have no children in the dataset $\rightarrow$ `isPostable = true` (4 accounts).
+- **Level 3 Nodes (218 accounts):** Have no children $\rightarrow$ `isPostable = true` (218 accounts).
+- **Summary:** Exactly **222 postable leaves** ($218 + 4$) and **42 non-postable aggregate nodes** ($8 + 34$).
 
 ### 4.3 Adoption By Copy (`planAdoptionSelection`)
 - Template nodes are sorted topologically (Level 1 ascending, then code ascending).
@@ -95,7 +96,7 @@ In `deriveAdoptedPostability`:
 | **Prefix / Hierarchy Enforcement** | Implemented (fails if prefix mismatch) | Strict hierarchical prefixes | **DIRECTLY COMPATIBLE** |
 | **Account Uniqueness** | Implemented (`organizationId + code`) | Unique codes per organization | **DIRECTLY COMPATIBLE** |
 | **Derived Level Depth** | Implemented (`root = 1, child = parent.level + 1`) | Derived depths 1, 2, 3 | **DIRECTLY COMPATIBLE** |
-| **Leaf-Only Posting Enforcement** | Implemented (parents non-postable) | Level 3 postable leaves | **DIRECTLY COMPATIBLE** |
+| **Leaf-Only Posting Enforcement** | Implemented (`postable ⇒ leaf` derived) | 222 postable leaves (218 L3 + 4 L2) | **DIRECTLY COMPATIBLE** |
 | **Template Publication Lifecycle** | Implemented (Draft $\rightarrow$ Approved $\rightarrow$ Published) | Versioned template | **DIRECTLY COMPATIBLE** |
 | **Explicit Adoption by Copy** | Implemented (Atomic transactional copy) | Organization adoption | **DIRECTLY COMPATIBLE** |
 
