@@ -2238,15 +2238,15 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
         );
         expect(updated.accountType).toBe('INCOME_STATEMENT');
 
-        // Other structural fields (e.g. isPostable) are frozen
-        const blockedPostable = await failure(
+        // Other structural fields (e.g. accountNature) are frozen
+        const blockedNature = await failure(
           asActor(ACTOR, () =>
             customFixture.accounts.updateAccount(customOrg, acc.id, {
-              isPostable: false,
+              accountNature: 'CREDIT',
             }),
           ),
         );
-        expect(blockedPostable.code).toBe('BusinessRuleViolation');
+        expect(blockedNature.code).toBe('BusinessRuleViolation');
       });
 
       it('Case 4 — Posted ledger entry blocks changing accountType and preserves title editability', async () => {
