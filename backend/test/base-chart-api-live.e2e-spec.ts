@@ -179,7 +179,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         organizationId: orgNonEmpty,
         code: '99',
         title: 'Pre-existing account',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         isPostable: true,
       });
     }, 60_000);
@@ -451,7 +451,7 @@ function templateNode(
     parentNodeKey,
     code,
     title: `Node ${nodeKey}`,
-    accountNature: 'debit',
+    accountNature: 'DEBIT',
     isPostable,
     isMandatory: false,
     defaultIsActive: true,

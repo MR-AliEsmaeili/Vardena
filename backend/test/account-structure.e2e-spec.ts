@@ -332,7 +332,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgA,
         code: '99',
         title: 'Nope',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       })
       .expect(403);
     expect(deniedCreate.body.code).toBe('PermissionDenied');
@@ -377,7 +377,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgA,
         code: '2-01',
         title: 'Dashed',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       })
       .expect(400);
     expect(nonDigitCode.body.code).toBe('BadRequest');
@@ -389,7 +389,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgA,
         code: '99',
         title: 'Extra',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         level: 7,
       })
       .expect(400);
@@ -571,7 +571,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgA,
         code: '  02  ',
         title: '  Current   Assets  ',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       })
       .expect(201);
     state.rootAccountId = rootAccount.body.id as string;
@@ -582,7 +582,7 @@ describe('Accounting chart foundation (e2e)', () => {
       level: 1,
       parentId: null,
       isPostable: false,
-      accountNature: 'debit',
+      accountNature: 'DEBIT',
       isActive: true,
     });
     expect(rootAccount.body.codingStructureVersionId).toBe(newDefault.body.id);
@@ -594,7 +594,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgA,
         code: '02003',
         title: 'Cash',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         parentId: state.rootAccountId,
       })
       .expect(201);
@@ -622,7 +622,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgA,
         code: '0203',
         title: 'Short',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         parentId: state.rootAccountId,
       })
       .expect(422);
@@ -635,7 +635,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgA,
         code: '03003',
         title: 'Elsewhere',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         parentId: state.rootAccountId,
       })
       .expect(422);
@@ -650,7 +650,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgA,
         code: '02',
         title: 'Duplicate',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       })
       .expect(409);
     expect(duplicate.body.code).toBe('Conflict');
@@ -668,7 +668,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgA,
         code: '02003004',
         title: 'Too deep',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         parentId: state.childAccountId,
       })
       .expect(422);
@@ -681,7 +681,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgA,
         code: '03',
         title: 'Payable',
-        accountNature: 'credit',
+        accountNature: 'CREDIT',
         isPostable: true,
       })
       .expect(201);
@@ -696,7 +696,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgA,
         code: '03001',
         title: 'Under a postable parent',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         parentId: postableId,
       })
       .expect(422);
@@ -743,7 +743,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgA,
         code: '02004',
         title: 'Blocked child',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         parentId: state.rootAccountId,
       })
       .expect(422);
@@ -836,7 +836,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgB,
         code: '20001',
         title: 'B: level 2 under a 1-digit root',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       })
       .expect(422);
     // Org B's structure wants a level-1 code FIRST: the same digits that are a
@@ -849,7 +849,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgB,
         code: '2',
         title: 'B root',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       })
       .expect(201);
     const childB = await root
@@ -858,7 +858,7 @@ describe('Accounting chart foundation (e2e)', () => {
         organizationId: state.orgB,
         code: '20001',
         title: 'B child',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         parentId: rootB.body.id,
       })
       .expect(201);

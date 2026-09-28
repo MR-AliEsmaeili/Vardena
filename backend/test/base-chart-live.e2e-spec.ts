@@ -472,7 +472,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         organizationId: target.organizationId,
         code: '99',
         title: 'Existing account',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         isPostable: true,
       });
       const { version } = await publish();
@@ -574,7 +574,7 @@ function node(
     parentNodeKey,
     code,
     title: `Node ${nodeKey}`,
-    accountNature: 'debit' as const,
+    accountNature: 'DEBIT' as const,
     isPostable,
     isMandatory: false,
     defaultIsActive: true,

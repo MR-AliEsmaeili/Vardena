@@ -1247,6 +1247,7 @@ model Detail {
   /// 1-based depth: 1 for Detail Groups, parent.level + 1 for children.
   level                    Int
   detailStructureVersionId String   @map("detail_structure_version_id")
+  isPostable               Boolean  @default(true) @map("is_postable")
   isActive                 Boolean  @default(true) @map("is_active")
   createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt                DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
@@ -1269,6 +1270,7 @@ model Detail {
   @@index([organizationId, parentId], map: "idx_details_organization_id_parent_id")
   @@index([organizationId, level], map: "idx_details_organization_id_level")
   @@index([organizationId, isActive], map: "idx_details_organization_id_is_active")
+  @@index([organizationId, isPostable], map: "idx_details_organization_id_is_postable")
   @@index([detailStructureVersionId], map: "idx_details_detail_structure_version_id")
   @@map("details")
   @@schema("accounting")

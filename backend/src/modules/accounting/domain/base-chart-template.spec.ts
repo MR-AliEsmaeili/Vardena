@@ -31,7 +31,7 @@ function node(partial: Partial<BaseChartNodeInput>): BaseChartNodeInput {
     parentNodeKey: null,
     code: '10',
     title: 'Node',
-    accountNature: 'debit',
+    accountNature: 'DEBIT',
     isMandatory: false,
     defaultIsActive: true,
     ...partial,

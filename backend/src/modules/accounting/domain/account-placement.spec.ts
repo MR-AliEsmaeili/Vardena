@@ -398,60 +398,12 @@ describe('one subtree, one coding-structure version (§9.4) — now accounting c
   });
 });
 
-describe('AC-I-11 immutability after use', () => {
+describe('AC-I-11 immutability after use and OD-29-02 accountType immutability', () => {
   it('allows every structural change while the account is unreferenced', () => {
     expect(
       planAccountEdit({
         referencedByDocumentLine: false,
-        changes: {
-          parentId: true,
-          level: true,
-          accountNature: true,
-          isPostable: true,
-        },
-      }).refused,
-    ).toEqual([]);
-  });
-
-  it('refuses the structural fields once a document line references the account', () => {
-    const plan = planAccountEdit({
-      referencedByDocumentLine: true,
-      changes: {
-        parentId: true,
-        level: true,
-        accountNature: true,
-        accountType: true,
-        detailGroupId: true,
-        isPostable: true,
-      },
-    });
-    expect(plan.refused).toEqual([...ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS]);
-  });
-
-  it('never refuses a title change, and refuses nothing when no structural field moves', () => {
-    expect(
-      planAccountEdit({ referencedByDocumentLine: true, changes: {} }).refused,
-    ).toEqual([]);
-    expect(
-      planAccountEdit({
-        referencedByDocumentLine: true,
-        changes: { isPostable: false, parentId: false },
-      }).refused,
-    ).toEqual([]);
-  });
-
-  it('freezes exactly the structural fields once a line references the account', () => {
-    // The after-use PREDICATE is data, not a domain fact: Task 10.4 wires it to
-    // `accounting_document_lines` (`AccountingDocumentLinesRepository.countForAccount`
-    // for the pre-check, `countReferencingLinesInTx` under the account row's
-    // `FOR UPDATE` lock inside the guard transaction). What the domain owns —
-    // and what is pinned here — is the DECISION the predicate feeds.
-    expect(
-      planAccountEdit({ referencedByDocumentLine: true, changes: {} }).refused,
-    ).toEqual([]);
-    expect(
-      planAccountEdit({
-        referencedByDocumentLine: true,
+        hasPostedLedgerEntry: false,
         changes: {
           parentId: true,
           level: true,
@@ -461,7 +413,89 @@ describe('AC-I-11 immutability after use', () => {
           isPostable: true,
         },
       }).refused,
-    ).toEqual([...ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS]);
+    ).toEqual([]);
+  });
+
+  it('refuses structural fields once a document line references the account, but keeps accountType mutable until posted', () => {
+    const planDraftLine = planAccountEdit({
+      referencedByDocumentLine: true,
+      hasPostedLedgerEntry: false,
+      changes: {
+        parentId: true,
+        level: true,
+        accountNature: true,
+        accountType: true,
+        detailGroupId: true,
+        isPostable: true,
+      },
+    });
+    expect(planDraftLine.refused).toEqual([
+      'parentId',
+      'level',
+      'accountNature',
+      'detailGroupId',
+      'isPostable',
+    ]);
+
+    const planPosted = planAccountEdit({
+      referencedByDocumentLine: true,
+      hasPostedLedgerEntry: true,
+      changes: {
+        parentId: true,
+        level: true,
+        accountNature: true,
+        accountType: true,
+        detailGroupId: true,
+        isPostable: true,
+      },
+    });
+    expect(planPosted.refused).toEqual([...ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS]);
+  });
+
+  it('never refuses a title change, and refuses nothing when no structural field moves', () => {
+    expect(
+      planAccountEdit({
+        referencedByDocumentLine: true,
+        hasPostedLedgerEntry: true,
+        changes: {},
+      }).refused,
+    ).toEqual([]);
+    expect(
+      planAccountEdit({
+        referencedByDocumentLine: true,
+        hasPostedLedgerEntry: true,
+        changes: { isPostable: false, parentId: false },
+      }).refused,
+    ).toEqual([]);
+  });
+
+  it('freezes accountType only when hasPostedLedgerEntry is true', () => {
+    // 1. Unreferenced: accountType can change
+    expect(
+      planAccountEdit({
+        referencedByDocumentLine: false,
+        hasPostedLedgerEntry: false,
+        changes: { accountType: true },
+      }).refused,
+    ).toEqual([]);
+
+    // 2. Draft/temporary document line: accountType can STILL change (OD-29-02)
+    expect(
+      planAccountEdit({
+        referencedByDocumentLine: true,
+        hasPostedLedgerEntry: false,
+        changes: { accountType: true },
+      }).refused,
+    ).toEqual([]);
+
+    // 3. Posted ledger entry: accountType is frozen
+    expect(
+      planAccountEdit({
+        referencedByDocumentLine: true,
+        hasPostedLedgerEntry: true,
+        changes: { accountType: true },
+      }).refused,
+    ).toEqual(['accountType']);
   });
 });
 

@@ -75,7 +75,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         organizationId,
         code,
         title: extra.title ?? `Live ${code}`,
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       };
       if (extra.parentId !== undefined) input.parentId = extra.parentId;
       if (extra.isPostable !== undefined) input.isPostable = extra.isPostable;
@@ -455,13 +455,13 @@ describe.skipIf(DATABASE_URL === undefined)(
           organizationId,
           code: '70',
           title: 'Race root A',
-          accountNature: 'debit',
+          accountNature: 'DEBIT',
         }),
         accounts.createAccount({
           organizationId,
           code: '71',
           title: 'Race root B',
-          accountNature: 'debit',
+          accountNature: 'DEBIT',
         }),
       ]);
       for (const outcome of outcomes) {

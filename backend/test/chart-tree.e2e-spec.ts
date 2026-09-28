@@ -286,7 +286,7 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
         organizationId: state.orgA,
         code: '20',
         title: 'Receivables',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       })
       .expect(201);
     const cash = await root
@@ -295,7 +295,7 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
         organizationId: state.orgA,
         code: '10',
         title: 'Cash',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       })
       .expect(201);
     state.cashId = cash.body.id as string;
@@ -305,7 +305,7 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
         organizationId: state.orgA,
         code: '10101',
         title: 'Cash — bank',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         parentId: state.cashId,
       })
       .expect(201);
@@ -324,7 +324,7 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
       level: 1,
       codingStructureVersionId: null,
       accountingConfigurationId: null,
-      accountNature: 'debit',
+      accountNature: 'DEBIT',
       accountType: 'BALANCE_SHEET',
       detailGroupId: null,
       isPostable: false,
@@ -374,7 +374,7 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
       level: 2,
       isPostable: true,
       isActive: true,
-      accountNature: 'debit',
+      accountNature: 'DEBIT',
     });
     // The two configuration pins are part of the node (ODR-1 surface).
     expect(bank.codingStructureVersionId).toBeTruthy();
@@ -498,7 +498,7 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
         organizationId: state.orgB,
         code: '30',
         title: 'Equity',
-        accountNature: 'credit',
+        accountNature: 'CREDIT',
       })
       .expect(201);
     expect(created.body).toMatchObject({ code: '30', level: 1 });
@@ -535,7 +535,7 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
         organizationId: state.orgB,
         code: '31',
         title: 'Equity — retained',
-        accountNature: 'credit',
+        accountNature: 'CREDIT',
       })
       .expect(422);
     expect(refused.body.code).toBe('BusinessRuleViolation');

@@ -693,7 +693,7 @@ export function baseChartContentProblemMessage(
     case 'node_title_invalid':
       return `Every node needs a non-blank title of at most ${MAX_TITLE_LENGTH} characters.`;
     case 'node_nature_invalid':
-      return 'Every node’s accountNature must be "debit", "credit", or "dual".';
+      return 'Every node’s accountNature must be DEBIT, CREDIT, or DUAL.';
     case 'node_parent_postable':
       return 'A node that has children cannot be postable (posting stays leaf-only — OD-20-5).';
   }

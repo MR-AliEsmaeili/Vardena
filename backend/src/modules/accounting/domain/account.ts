@@ -35,17 +35,10 @@ import {
 } from './account-code.js';
 import type { CodingStructureLevel } from './coding-structure.js';
 
-/** Balance direction (`ماهیت`) — a closed DECIDED list (§8.3, OD-29-01). */
-export const ACCOUNT_NATURES = [
-  'debit',
-  'credit',
-  'dual',
-  'DEBIT',
-  'CREDIT',
-  'DUAL',
-] as const;
+/** Balance direction (`ماهیت`) — a closed DECIDED list (§8.3, OD-29-01). Exactly three canonical values. */
+export const ACCOUNT_NATURES = ['DEBIT', 'CREDIT', 'DUAL'] as const;
 
-export const CANONICAL_ACCOUNT_NATURES = ['debit', 'credit', 'dual'] as const;
+export const CANONICAL_ACCOUNT_NATURES = ['DEBIT', 'CREDIT', 'DUAL'] as const;
 
 export type AccountNature = (typeof ACCOUNT_NATURES)[number];
 
@@ -53,12 +46,10 @@ export function isAccountNature(value: string): value is AccountNature {
   return (ACCOUNT_NATURES as readonly string[]).includes(value);
 }
 
-export function normalizeAccountNature(
-  value: string,
-): 'debit' | 'credit' | 'dual' {
-  const lower = value.toLowerCase();
-  if (lower === 'debit' || lower === 'credit' || lower === 'dual') {
-    return lower;
+export function normalizeAccountNature(value: string): AccountNature {
+  const upper = value.trim().toUpperCase();
+  if (isAccountNature(upper)) {
+    return upper;
   }
   throw new Error(`Invalid account nature: ${value}`);
 }
@@ -68,9 +59,6 @@ export const ACCOUNT_TYPES = [
   'BALANCE_SHEET',
   'INCOME_STATEMENT',
   'MEMORANDUM',
-  'balance_sheet',
-  'income_statement',
-  'memorandum',
 ] as const;
 
 export const CANONICAL_ACCOUNT_TYPES = [
@@ -79,23 +67,25 @@ export const CANONICAL_ACCOUNT_TYPES = [
   'MEMORANDUM',
 ] as const;
 
-export type AccountType = 'BALANCE_SHEET' | 'INCOME_STATEMENT' | 'MEMORANDUM';
+export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
-export function isAccountType(value: string): boolean {
+export function isAccountType(value: string): value is AccountType {
   return (ACCOUNT_TYPES as readonly string[]).includes(value);
 }
 
 export function normalizeAccountType(value: string): AccountType {
-  const upper = value.toUpperCase();
-  if (
-    upper === 'BALANCE_SHEET' ||
-    upper === 'INCOME_STATEMENT' ||
-    upper === 'MEMORANDUM'
-  ) {
-    return upper as AccountType;
+  const upper = value.trim().toUpperCase();
+  if (isAccountType(upper)) {
+    return upper;
   }
   throw new Error(`Invalid account type: ${value}`);
 }
+
+/**
+ * OD-29-03 mandatory exact warning for destructive unlinking of Account <-> Detail Group.
+ */
+export const ACCOUNT_DETAIL_UNLINK_WARNING =
+  'این تغییر باعث حذف ارتباط بین تفصیلی و کد حساب می‌شود و تمامی گردش‌های تفصیلی در سندهایی که کدحساب مدنظر گردش داشته باشد حذف خواهد شد . قبل از انجام این کار از دیتا بیس بکاپ بگیرید';
 
 /** One node of the chart of accounts. */
 export interface Account {
@@ -199,15 +189,40 @@ export interface AccountEditPlan {
  * Decide an account edit: `title` (and lifecycle) always pass; the structural
  * fields pass only while the account is unreferenced. `code` never appears —
  * it is immutable from creation (§8.3), so the API has no field to send.
+ *
+ * Immutability timing rules:
+ * - `parentId`, `level`, `accountNature`, `detailGroupId`, `isPostable` freeze
+ *   once any document line references the account (§8.4 rule 4, OD-29-03).
+ * - `accountType` freezes ONLY after the account is referenced in at least one
+ *   immutable posted ledger entry (OD-29-02). Draft/temporary document lines
+ *   do not freeze `accountType`.
  */
 export function planAccountEdit(input: {
   referencedByDocumentLine: boolean;
+  hasPostedLedgerEntry?: boolean;
   changes: Partial<Record<AccountImmutableField, boolean>>;
 }): AccountEditPlan {
-  if (!input.referencedByDocumentLine) return { refused: [] };
-  const refused = ACCOUNT_IMMUTABLE_AFTER_USE_FIELDS.filter(
-    (field) => input.changes[field] === true,
-  );
+  const refused: AccountImmutableField[] = [];
+
+  const docLineFrozenFields: AccountImmutableField[] = [
+    'parentId',
+    'level',
+    'accountNature',
+    'detailGroupId',
+    'isPostable',
+  ];
+  if (input.referencedByDocumentLine) {
+    for (const field of docLineFrozenFields) {
+      if (input.changes[field] === true) {
+        refused.push(field);
+      }
+    }
+  }
+
+  if (input.hasPostedLedgerEntry && input.changes.accountType === true) {
+    refused.push('accountType');
+  }
+
   return { refused };
 }
 

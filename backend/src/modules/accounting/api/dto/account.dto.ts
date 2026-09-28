@@ -18,7 +18,11 @@ import {
   MAX_ACCOUNT_CODE_LENGTH,
   MAX_CODING_STRUCTURE_DEPTH,
 } from '../../domain/coding-structure.js';
-import { ACCOUNT_NATURES, ACCOUNT_TYPES } from '../../domain/account.js';
+import {
+  ACCOUNT_DETAIL_UNLINK_WARNING,
+  ACCOUNT_NATURES,
+  ACCOUNT_TYPES,
+} from '../../domain/account.js';
 import { MAX_TITLE_LENGTH } from '../../domain/master-data.js';
 
 /**
@@ -158,8 +162,8 @@ export class UpdateAccountDto {
 
 export class UnlinkDetailGroupDto {
   @ApiProperty({
-    description:
-      'Explicit confirmation required to unlink Detail Group and atomically clear historical detail allocations (OD-29-03).',
+    description: `Explicit confirmation required to unlink Detail Group and atomically clear historical detail allocations (OD-29-03). Warning: "${ACCOUNT_DETAIL_UNLINK_WARNING}"`,
+    example: true,
   })
   @IsBoolean()
   confirmUnlink!: boolean;

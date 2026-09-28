@@ -270,3 +270,15 @@ export function storedAmountToString(value: unknown): string {
     `Cannot map a ledger amount of type "${typeof value}" to a decimal string without float semantics.`,
   );
 }
+
+/**
+ * Count posted ledger entries referencing an account under the active transaction.
+ * Used for OD-29-02: Account Type becomes immutable only after the account is
+ * referenced in at least one finalized/posted ledger entry.
+ */
+export async function countPostedLedgerEntriesInTx(
+  tx: AccountingTxClient,
+  accountId: string,
+): Promise<number> {
+  return tx.ledgerEntry.count({ where: { accountId } });
+}

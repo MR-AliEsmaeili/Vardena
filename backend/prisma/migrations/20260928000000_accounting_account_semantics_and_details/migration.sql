@@ -7,14 +7,22 @@
 --   * Level-1 Detail Group link (`accounting.accounts.detail_group_id`)
 --   * Line & Ledger Detail allocations (`accounting.accounting_document_lines.detail_id`, `accounting.ledger_entries.detail_id`)
 
--- 1. Alter accounting.accounts to add account_type and detail_group_id
+-- 1. Alter accounting.accounts to add account_type and detail_group_id, and normalize account_nature
 ALTER TABLE "accounting"."accounts"
     ADD COLUMN "account_type" VARCHAR(32) NOT NULL DEFAULT 'BALANCE_SHEET',
     ADD COLUMN "detail_group_id" TEXT;
 
--- 2. Alter accounting.base_chart_template_nodes to add account_type
+UPDATE "accounting"."accounts"
+    SET "account_nature" = UPPER("account_nature")
+    WHERE "account_nature" IN ('debit', 'credit', 'dual');
+
+-- 2. Alter accounting.base_chart_template_nodes to add account_type, and normalize account_nature
 ALTER TABLE "accounting"."base_chart_template_nodes"
     ADD COLUMN "account_type" VARCHAR(32) NOT NULL DEFAULT 'BALANCE_SHEET';
+
+UPDATE "accounting"."base_chart_template_nodes"
+    SET "account_nature" = UPPER("account_nature")
+    WHERE "account_nature" IN ('debit', 'credit', 'dual');
 
 -- 3. Detail Structure Versions (configurable detail coding structure)
 CREATE TABLE "accounting"."detail_structure_versions" (
@@ -83,6 +91,7 @@ CREATE TABLE "accounting"."details" (
     "parent_id"                   TEXT,
     "level"                       INTEGER         NOT NULL,
     "detail_structure_version_id" TEXT            NOT NULL,
+    "is_postable"                 BOOLEAN         NOT NULL DEFAULT TRUE,
     "is_active"                   BOOLEAN         NOT NULL DEFAULT TRUE,
     "created_at"                  TIMESTAMPTZ(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at"                  TIMESTAMPTZ(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -114,6 +123,9 @@ CREATE INDEX "idx_details_organization_id_level"
 
 CREATE INDEX "idx_details_organization_id_is_active"
     ON "accounting"."details" ("organization_id", "is_active");
+
+CREATE INDEX "idx_details_organization_id_is_postable"
+    ON "accounting"."details" ("organization_id", "is_postable");
 
 CREATE INDEX "idx_details_detail_structure_version_id"
     ON "accounting"."details" ("detail_structure_version_id");

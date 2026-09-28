@@ -60,7 +60,7 @@ function accountRow(overrides: Record<string, unknown> = {}) {
     level: 1,
     codingStructureVersionId: VERSION_ACTIVE,
     accountingConfigurationId: CONFIG_ACTIVE,
-    accountNature: 'debit',
+    accountNature: 'DEBIT',
     isPostable: false,
     isActive: true,
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -176,7 +176,7 @@ describe('AccountsRepository — root pin (D1 + §9.4) at the write boundary', (
     code: '20',
     title: 'Receivables',
     parentId: null,
-    accountNature: 'debit',
+    accountNature: 'DEBIT',
     isPostable: false,
     structure,
     now: new Date('2026-01-02T00:00:00Z'),
@@ -286,7 +286,7 @@ describe('AccountsRepository — root pin (D1 + §9.4) at the write boundary', (
         code: '20101',
         title: 'Receivables — EU',
         parentId: 'acc-parent',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         isPostable: true,
         structure: snapshot({
           codingLevels: [

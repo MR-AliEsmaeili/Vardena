@@ -404,7 +404,7 @@ describe('Accounting documents (e2e)', () => {
             organizationId: state.orgA,
             code,
             title,
-            accountNature: 'debit',
+            accountNature: 'DEBIT',
             isPostable,
           })
           .expect(201)

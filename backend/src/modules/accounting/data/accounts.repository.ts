@@ -33,6 +33,7 @@ import {
   lockCodingStructureVersionRow,
 } from './accounting-locks.js';
 import { countReferencingLinesInTx } from './accounting-document-lines.repository.js';
+import { countPostedLedgerEntriesInTx } from './ledger-entries.repository.js';
 import type { LockedAccount } from './accounting-locks.js';
 import type {
   AccountingTransactionalClient,
@@ -435,11 +436,17 @@ export class AccountsRepository {
       // sees the committed lines or waits until they are committed.
       const referencedByDocumentLine =
         (await countReferencingLinesInTx(tx, node.id)) > 0;
+      const hasPostedLedgerEntry =
+        input.accountType !== undefined &&
+        input.accountType !== node.accountType
+          ? (await countPostedLedgerEntriesInTx(tx, node.id)) > 0
+          : false;
       const refused = this.immutableRefusals(
         input,
         node,
         parentChanged,
         referencedByDocumentLine,
+        hasPostedLedgerEntry,
       );
       if (refused.length > 0) {
         throw new AccountImmutableAfterUseError(refused);
@@ -650,9 +657,11 @@ export class AccountsRepository {
     node: Account,
     parentChanged: boolean,
     referencedByDocumentLine: boolean,
+    hasPostedLedgerEntry: boolean,
   ): AccountImmutableField[] {
     return planAccountEdit({
       referencedByDocumentLine,
+      hasPostedLedgerEntry,
       changes: {
         parentId: parentChanged,
         // `level` moves with the parent; it is never an independent input.
@@ -764,7 +773,7 @@ function toDomain(row: AccountRow | LockedAccount): Account {
     // fallback picks the reading no report should silently treat as credit.
     accountNature: isAccountNature(row.accountNature)
       ? row.accountNature
-      : 'debit',
+      : 'DEBIT',
     accountType: isAccountType((row as any).accountType)
       ? (row as any).accountType
       : 'BALANCE_SHEET',

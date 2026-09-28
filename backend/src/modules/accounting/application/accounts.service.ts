@@ -38,6 +38,7 @@ import type {
   AccountType,
 } from '../domain/account.js';
 import {
+  ACCOUNT_DETAIL_UNLINK_WARNING,
   accountPlacementProblemMessage,
   defaultIsPostableForLevel,
   isAccountNature,
@@ -427,7 +428,7 @@ export class AccountsService {
       !isAccountNature(input.accountNature)
     ) {
       throw AppException.badRequest(
-        'accountNature must be "debit", "credit", or "dual".',
+        'accountNature must be "DEBIT", "CREDIT", or "DUAL".',
       );
     }
     if (input.accountType !== undefined && !isAccountType(input.accountType)) {
@@ -642,7 +643,7 @@ export class AccountsService {
     const current = await this.mustFindInOrganization(organizationId, id);
     if (!confirmUnlink) {
       throw AppException.badRequest(
-        'Explicit confirmation (confirmUnlink=true) is required to unlink Detail Group.',
+        `Explicit confirmation (confirmUnlink=true) is required to unlink Detail Group. Warning: ${ACCOUNT_DETAIL_UNLINK_WARNING}`,
       );
     }
     if (!current.detailGroupId) {
@@ -759,10 +760,10 @@ export class AccountsService {
     };
   }
 
-  private assertNature(nature: string): void {
+  private assertNature(nature: string): asserts nature is AccountNature {
     if (!isAccountNature(nature)) {
       throw AppException.badRequest(
-        'accountNature must be "debit", "credit", or "dual".',
+        'accountNature must be "DEBIT", "CREDIT", or "DUAL".',
       );
     }
   }

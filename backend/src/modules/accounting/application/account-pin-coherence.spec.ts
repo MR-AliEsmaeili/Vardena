@@ -305,7 +305,7 @@ function seedAccountRow(
     level: row.level,
     codingStructureVersionId: row.codingStructureVersionId,
     accountingConfigurationId: row.accountingConfigurationId,
-    accountNature: 'debit',
+    accountNature: 'DEBIT',
     accountType: 'BALANCE_SHEET',
     detailGroupId: null,
     isPostable: row.isPostable ?? false,
@@ -351,7 +351,7 @@ describe('AccountsService — ODR-1 pin coherence (Explicit Configuration Cohere
         organizationId: org,
         code: '10',
         title: 'Cash',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       }),
     );
     const child = await asActor(ACTOR, () =>
@@ -359,7 +359,7 @@ describe('AccountsService — ODR-1 pin coherence (Explicit Configuration Cohere
         organizationId: org,
         code: '10101',
         title: 'Cash — local',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         parentId: root.id,
       }),
     );
@@ -380,7 +380,7 @@ describe('AccountsService — ODR-1 pin coherence (Explicit Configuration Cohere
           organizationId: org,
           code: '20',
           title: 'Receivables',
-          accountNature: 'debit',
+          accountNature: 'DEBIT',
         }),
       ),
     );
@@ -406,7 +406,7 @@ describe('AccountsService — ODR-1 pin coherence (Explicit Configuration Cohere
           organizationId: org,
           code: '20',
           title: 'Receivables',
-          accountNature: 'debit',
+          accountNature: 'DEBIT',
         }),
       ),
     );
@@ -442,7 +442,7 @@ describe('AccountsService — ODR-1 pin coherence (Explicit Configuration Cohere
           organizationId: org,
           code: '20101',
           title: 'Receivables — EU',
-          accountNature: 'debit',
+          accountNature: 'DEBIT',
           parentId: 'legacy-root-00000000000001',
         }),
       ),
@@ -461,7 +461,7 @@ describe('AccountsService — ODR-1 pin coherence (Explicit Configuration Cohere
         organizationId: org,
         code: '10',
         title: 'Cash',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       }),
     );
     const narrowCodingId = await publishCoding(
@@ -500,7 +500,7 @@ describe('AccountsService — ODR-1 pin coherence (Explicit Configuration Cohere
         organizationId: org,
         code: '10',
         title: 'Cash',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
       }),
     );
     const bank = await asActor(ACTOR, () =>
@@ -508,7 +508,7 @@ describe('AccountsService — ODR-1 pin coherence (Explicit Configuration Cohere
         organizationId: org,
         code: '10101',
         title: 'Cash — bank',
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         parentId: cash.id,
       }),
     );
@@ -566,7 +566,7 @@ describe('AccountsService — ODR-1 pin coherence (Explicit Configuration Cohere
           organizationId: org,
           code: '30',
           title: 'Equity',
-          accountNature: 'credit',
+          accountNature: 'CREDIT',
         }),
       ),
     );

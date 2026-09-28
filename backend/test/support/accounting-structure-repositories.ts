@@ -823,10 +823,19 @@ const NO_LINE_USAGE: AccountLineUsage = {
   countForAccount: () => 0,
 };
 
+export interface AccountLedgerUsage {
+  countForAccount(accountId: string): number;
+}
+
+const NO_LEDGER_USAGE: AccountLedgerUsage = {
+  countForAccount: () => 0,
+};
+
 export class InMemoryAccountsRepository {
   constructor(
     private readonly state: StructureState,
     private readonly lineUsage: AccountLineUsage = NO_LINE_USAGE,
+    private readonly ledgerUsage: AccountLedgerUsage = NO_LEDGER_USAGE,
   ) {}
 
   async findById(id: string): Promise<Account | null> {
@@ -1041,6 +1050,7 @@ export class InMemoryAccountsRepository {
 
     const refused = planAccountEdit({
       referencedByDocumentLine: this.lineUsage.countForAccount(node.id) > 0,
+      hasPostedLedgerEntry: this.ledgerUsage.countForAccount(node.id) > 0,
       changes: {
         parentId: parentChanged,
         level: parentChanged,
@@ -1050,6 +1060,9 @@ export class InMemoryAccountsRepository {
         accountType:
           input.accountType !== undefined &&
           input.accountType !== node.accountType,
+        detailGroupId:
+          input.detailGroupId !== undefined &&
+          input.detailGroupId !== node.detailGroupId,
         isPostable:
           input.isPostable !== undefined &&
           input.isPostable !== node.isPostable,
@@ -1293,7 +1306,10 @@ export interface StructureStores {
 }
 
 export function createStructureStores(
-  options: { lineUsage?: AccountLineUsage } = {},
+  options: {
+    lineUsage?: AccountLineUsage;
+    ledgerUsage?: AccountLedgerUsage;
+  } = {},
 ): StructureStores {
   const state = createStructureState();
   const structures = new InMemoryCodingStructuresRepository(state);
@@ -1301,6 +1317,7 @@ export function createStructureStores(
   const accounts = new InMemoryAccountsRepository(
     state,
     options.lineUsage ?? NO_LINE_USAGE,
+    options.ledgerUsage ?? NO_LEDGER_USAGE,
   );
   return {
     structures: structures as unknown as CodingStructuresRepository,

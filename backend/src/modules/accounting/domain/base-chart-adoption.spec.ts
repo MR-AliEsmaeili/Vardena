@@ -40,7 +40,7 @@ function node(
     parentId: parentNodeKey === null ? null : `id-${parentNodeKey}`,
     code,
     title: `Node ${nodeKey}`,
-    accountNature: flags.accountNature ?? 'debit',
+    accountNature: flags.accountNature ?? 'DEBIT',
     isPostable: flags.isPostable ?? false,
     isMandatory: flags.isMandatory ?? false,
     defaultIsActive: flags.defaultIsActive ?? true,
