@@ -33,12 +33,14 @@ Per repository rule **AG-09**:
 
 ### 2.2 OQ-41: Detail Dimensions (`تفصیلی`)
 - **Recorded Status:** **`OPEN`**
-- **Task 29 Findings & Proposals (Owner Approval Pending):**
-  - The source artifact's `ACLTafsil1..4` boolean flags are identified as source-level boolean detail-requirement constraints (`0` = no requirement, `1` = required detail code).
-  - Task 29 proposes mapping these flags conceptually to generic line-level dimension requirement rules (`REQUIRED` / `FORBIDDEN` / `OPTIONAL`) per ADR-0037 rather than creating numbered columns (`requiresDetail1..4`); submitted as proposal **OD-29-03** (`PENDING OWNER DECISION`).
+- **Owner Decision Closure (OD-29-03 — `DECIDED`):**
+  - Detail is a first-class hierarchy independent from Account, with organization-configurable level count, names, digit lengths, parent/child hierarchy, validation, and uniqueness.
+  - Accounts relate to first-level Detail groups, not every descendant. Required Detail/Dimension values are ultimately enforced by backend Posting validation.
+  - Removing a used relationship is an explicitly confirmed, atomic, auditable destructive operation that removes affected historical Detail allocations while preserving Account-level turnover.
+  - Generic Detail slots receive no hard-coded business names.
 - **Sub-Questions Remaining OPEN:**
-  - Exact dimension count per organization, UI dimension picker, dimension master-data bindings, and posting validation engine.
-- **Final OQ-41 Status:** **`REMAINS OPEN`**.
+  - Physical persistence/allocation model, exact authorization and permission model, endpoint/UI design, audit persistence, transaction/deletion algorithm, recovery safeguards, and reconciliation with ADR-0037.
+- **Final OQ-41 Status:** **`REMAINS OPEN`**, substantially narrowed by OD-29-03.
 
 ---
 
@@ -76,4 +78,4 @@ Task 29 provides concrete findings and proposals for **OQ-25** and **OQ-41** whi
 
 ## 4. Closure Note
 
-The 2026-09-28 Owner decision closes only OD-29-01, OD-29-02, and OD-29-04. It narrows OQ-25 but does not close it: concrete artifact approval, mandatory/control-role content, and other recorded sub-questions remain open. OD-29-03 remains pending, so OQ-41 is unchanged.
+The 2026-09-28 Owner closure decides OD-29-01, OD-29-02, OD-29-03, OD-29-04, and OD-29-06. OD-29-05 remains pending. OQ-25 remains open for concrete artifact/content and other recorded sub-questions. OQ-41 is narrowed, not closed, because physical persistence, authorization, destructive-operation design, and implementation remain unresolved. Task 30 and Detail implementation remain unauthorized.

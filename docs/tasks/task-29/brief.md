@@ -12,7 +12,7 @@
 | **Target Branch** | `main` (work on `arena/01a0e4d1-vardena`) |
 | **Date** | 2026-09-28 |
 
-**Owner Decision Closure (2026-09-28):** OD-29-01, OD-29-02, and OD-29-04 are now **`DECIDED`**. Task 29 remains a non-implementation governance task and is not self-accepted. See `owner-decision-closure.md`.
+**Owner Decision Closure (2026-09-28):** OD-29-01, OD-29-02, OD-29-03, OD-29-04, and OD-29-06 are now **`DECIDED`**; OD-29-05 remains **`PENDING OWNER DECISION`**. Task 29 remains a non-implementation governance task and is not self-accepted. See `owner-decision-closure.md`.
 
 ---
 
@@ -83,15 +83,14 @@ The final deliverable of this task is an authoritative **decision gate**, NOT a 
 
 4. **Statement Class Separation (Proposal OD-29-05):**
    - Purpose: Organization-configurable presentation layout for financial statements.
-   - **Conclusion:** **DOMAIN/MODEL GAP — FUTURE IMPLEMENTATION REQUIRED** (post-MVP). Preserves strict separation from `AccountType` under **OD-29-05** (`PENDING OWNER DECISION`).
+   - **Conclusion:** **OPEN / NO FINAL MODEL**. OD-29-05 remains `PENDING OWNER DECISION`; no Statement Classification field, organization configuration, or implementation is authorized.
 
-5. **System Account Separation (Proposal OD-29-06):**
-   - Purpose: Distinguish system-controlled accounts (`isSystem`) from user-postable accounts.
-   - **Conclusion:** **FUTURE MODEL GAP**. Deferred to future closing/integration tasks under **OD-29-06** (`PENDING OWNER DECISION`).
+5. **System Account Scope (Decision OD-29-06):**
+   - **Conclusion:** **NO SYSTEM ACCOUNT CONCEPT IN MVP**. Do not add `isSystem` or equivalent flags, roles, categories, or special Account treatment. Any future need requires a separate Owner Decision and architecture task.
 
-6. **Detail Flags (`ACLTafsil1..4`) Mapping (Proposal OD-29-03):**
+6. **Detail Requirement / Detail Hierarchy (Decision OD-29-03):**
    - Source values: Boolean requirement flags (all `0` in source).
-   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. Task 29 proposes mapping to generic line-level dimension requirement rules (ADR-0037) under **OD-29-03** (`PENDING OWNER DECISION`).
+   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. Detail is a first-class organization-configurable hierarchy independent from Account; Accounts relate at the first Detail level; backend Posting validation enforces required values; used relationship removal is controlled, confirmed, atomic, and audited. Physical persistence and destructive-operation design remain for a separately authorized task.
 
 7. **English Account Title (Decision OD-29-04):**
    - Source field: `عنوان انگليسي حساب`.

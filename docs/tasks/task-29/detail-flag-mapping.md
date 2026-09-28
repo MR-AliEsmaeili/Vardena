@@ -1,62 +1,80 @@
-# Detail Requirement Flags (`ACLTafsil1..4`) Mapping & Semantics
+# Detail Requirement / Detail Hierarchy Decision (OD-29-03)
 
-## 1. Source Artifact Semantics
+## 1. Historical Source Finding
 
-The VARDENA source artifact contains four boolean flag columns:
-- `ACLTafsil1`
-- `ACLTafsil2`
-- `ACLTafsil3`
-- `ACLTafsil4`
+The VARDENA source artifact contains four boolean flag columns: `ACLTafsil1`, `ACLTafsil2`, `ACLTafsil3`, and `ACLTafsil4`. In the canonical 264-row source artifact, every value is `0`.
 
-### Verified Source Value & Meaning:
-- In the canonical 264-row source artifact (`Pasted markdown(20260927-203801).md`), **100% of rows have value `'0'`** for `ACLTafsil1`, `ACLTafsil2`, `ACLTafsil3`, and `ACLTafsil4`.
-- **`0`**: No corresponding detail requirement. When posting to this account, detail entry is not required.
-- **`1`**: A corresponding detail code is required whenever the account is used in an accounting document/turnover line.
-
-These fields represent **source-level boolean detail-requirement constraints**, not merely informational text comments.
+Task 29 originally established only that these are source-level numbered Detail-requirement flags. The artifact does not assign fixed business identities such as Party, Cost Center, Project, Bank, Customer, or Vendor to those flags. Earlier mapping text was therefore a proposal pending a domain decision.
 
 ---
 
-## 2. Source Scope Boundary & Reclassification of Legacy Inferences
+## 2. Owner Decision Closure
 
-### Critical Governance Boundary:
-The source artifact establishes strictly that `ACLTafsil1..4` are numbered boolean detail-requirement flags (`0` or `1`). **The source artifact does NOT establish fixed business identities** (such as Party, Cost Center, Project, or Bank) for flags 1 through 4.
+**OD-29-03 Status:** **`DECIDED`** (2026-09-28)
 
-Any legacy industry conventions (e.g. associating level 1 with parties or level 2 with cost centers in specific legacy software products) are external conventions and are **NOT part of the authoritative VARDENA Base Chart specification**.
+Vardena must support a first-class Detail hierarchy independent from the Account hierarchy. Its coding structure is configurable by Organization and supports:
 
-### Task 29 Core Finding:
-> `ACLTafsil1..4` are source-level boolean detail-requirement flags. Their runtime mapping to Vardena's generic Accounting Detail / Dimension / Control Role architecture requires a separate domain decision and implementation design.
+- configurable Detail-level count;
+- configurable digit length per level;
+- configurable name per level;
+- hierarchical parent/child relationships; and
+- code validation and uniqueness consistent with the configured structure.
 
----
-
-## 3. Vardena Architecture Alignment (ADR-0037 & Proposed OD-29-03)
-
-### 3.1 Architectural Principles
-1. **No Rigid Numbered Columns (Anti-Pattern):** Vardena **MUST NOT** add rigid schema columns like `requiresDetail1`, `requiresDetail2`, `requiresDetail3`, `requiresDetail4` to `Account` or `BaseChartTemplateNode`.
-2. **Generic Configurable Dimension Architecture:** Vardena models analytical detail through **Accounting Detail Dimensions** (up to 8 configurable dimensions per ADR-0037) and **Account-Dimension Requirement Rules**:
-   ```text
-   AccountDetailRequirement (or AccountDimensionRule)
-   ├── accountId (FK -> Account)
-   ├── dimensionId (FK -> AccountingDimension)
-   └── requirementLevel: REQUIRED | OPTIONAL | FORBIDDEN
-   ```
-3. **Line-Level Validation:** Document lines capture dimension assignments in typed child structures (`AccountingDocumentLineDimension`), validated at posting time against active rules.
+The example `01 = اشخاص` with child codes such as `01001 = علی` is illustrative only. It is not product seed content and must not be hard-coded.
 
 ---
 
-## 4. Fit-Gap & Mapping Strategy
+## 3. Account-to-Detail Relationship
 
-| Source Column | Source Definition | Target Vardena Representation (Proposed) | Fit-Gap Classification | Owner Decision Status |
-|---|---|---|---|---|
-| **`ACLTafsil1`** | Boolean Detail Requirement 1 (`0`/`1`) | Generic Account-Dimension Requirement Rule (`REQUIRED`/`OPTIONAL`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-03 (`PENDING OWNER DECISION`) |
-| **`ACLTafsil2`** | Boolean Detail Requirement 2 (`0`/`1`) | Generic Account-Dimension Requirement Rule (`REQUIRED`/`OPTIONAL`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-03 (`PENDING OWNER DECISION`) |
-| **`ACLTafsil3`** | Boolean Detail Requirement 3 (`0`/`1`) | Generic Account-Dimension Requirement Rule (`REQUIRED`/`OPTIONAL`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-03 (`PENDING OWNER DECISION`) |
-| **`ACLTafsil4`** | Boolean Detail Requirement 4 (`0`/`1`) | Generic Account-Dimension Requirement Rule (`REQUIRED`/`OPTIONAL`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-03 (`PENDING OWNER DECISION`) |
+An Account relates to a Detail at the **first Detail level**. It does not require one relationship row for every descendant Detail.
+
+```text
+Account
+└── first-level Detail group
+    ├── child Detail
+    ├── child Detail
+    └── child Detail
+```
+
+When an Account is related to a first-level Detail group, valid descendants under that group are available for that Account subject to applicable Detail rules. A future separately approved requirement would be needed before introducing per-leaf Account relationships.
 
 ---
 
-## 5. Implementation Recommendations (Future Task 32)
+## 4. Posting Requirement
 
-1. **Base Template Storage:** Ingest `ACLTafsil1..4` boolean flags as raw template node metadata or unassigned requirement slots.
-2. **Adoption-Time Mapping:** When an organization adopts the template, map template requirement slots to organization-specific active dimensions (e.g., Dimension 1 $\rightarrow$ Dimension Slot 1).
-3. **Posting-Time Enforcement:** Document line validation verifies that any mandatory dimensions for an account are populated on document lines prior to posting.
+An Account may require one or more Detail/Dimension values when used in an accounting document. Required values must ultimately be enforced by Accounting Domain/backend Posting validation. UI validation may assist but must not be the only enforcement boundary; direct API/backend calls must not bypass the rule.
+
+No generic Detail slot is assigned a hard-coded semantic name by OD-29-03.
+
+---
+
+## 5. Controlled Relationship Removal
+
+The system must eventually support explicit removal of an Account-to-Detail relationship. When historical documents contain affected Detail allocations, this is a controlled destructive data operation rather than a simple configuration deletion.
+
+The user must receive an explicit confirmation warning with this source meaning:
+
+> این تغییر باعث حذف ارتباط بین تفصیلی و کد حساب می‌شود و تمامی گردش‌های تفصیلی در سندهایی که کدحساب مدنظر گردش داشته باشد حذف خواهد شد . قبل از انجام این کار از دیتا بیس بکاپ بگیرید
+
+Cancellation changes nothing. Confirmation requires the future approved operation to:
+
+1. remove the Account-to-Detail relationship;
+2. remove affected historical Detail allocations according to the approved domain operation;
+3. handle all affected references consistently;
+4. preserve Account-level accounting turnover;
+5. execute atomically with no partial destructive result; and
+6. record an audit trail including actor, timestamp, Account, Detail relationship, and operation.
+
+---
+
+## 6. Fit-Gap and Implementation Boundary
+
+| Area | Decided Domain Requirement | Current State | Classification |
+|---|---|---|---|
+| Detail hierarchy | First-class, Account-independent, organization-configurable hierarchy | Not implemented | **MODEL GAP / IMPLEMENTATION REQUIRED** |
+| Account relationship | Relationship to first Detail level, not every leaf | Not implemented | **MODEL GAP / IMPLEMENTATION REQUIRED** |
+| Posting requirement | Backend-enforced required Detail/Dimension values | Not implemented | **MODEL GAP / IMPLEMENTATION REQUIRED** |
+| Relationship removal | Explicitly confirmed, atomic, audited destructive operation preserving Account turnover | Not implemented | **DESIGN + IMPLEMENTATION REQUIRED** |
+| Physical allocation model | Not decided by OD-29-03 | Not implemented | **OPEN IMPLEMENTATION DESIGN** |
+
+OD-29-03 decides the generic domain architecture and safeguards. It does **not** choose a physical database schema, allocation storage model, endpoint, permission, UI flow, transaction implementation, or deletion algorithm. It also does not authorize Task 30 or a Detail implementation task. ADR-0037 and any future architecture record must be reconciled during a separately authorized design/implementation gate.

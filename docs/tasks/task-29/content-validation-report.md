@@ -95,5 +95,5 @@ This report details the structural, hierarchical, and domain validation of the c
 | **Uniqueness of Keys** | PASS | 264 unique codes | None |
 | **Nature Domain Coverage** | MODEL GAP | 15 `DUAL` accounts | Expand domain enum to admit `DUAL` (Proposed Task 30) |
 | **Type Domain Coverage** | MODEL GAP | 3 distinct types | Add `AccountType` model & schema column (Proposed Task 30) |
-| **Detail Requirement Flags** | MODEL GAP | 264 flags (`0`) | Retain generic dimension mapping architecture (Proposed Task 32) |
+| **Detail Requirement / Hierarchy** | MODEL GAP | 264 source flags (`0`) | OD-29-03 domain baseline decided; physical model and implementation require a separate gate |
 | **Active Lifecycle Status** | PASS | 264 / 264 Active | Direct mapping to `defaultIsActive` |

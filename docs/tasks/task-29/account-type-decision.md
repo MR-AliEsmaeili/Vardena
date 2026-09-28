@@ -69,8 +69,8 @@ To maintain clean architectural boundaries and avoid domain conflation, Task 29 
 │ Statement Class │       │ System Account  │
 │ (طبقه صورت مالی)│  ≠    │ (حساب سیستمی)   │
 │                 │       │                 │
-│ • Org-defined   │       │ • isSystem      │
-│ • Configurable  │       │   (boolean)     │
+│ • OD-29-05 OPEN │       │ • Not in MVP    │
+│ • Not decided   │       │   (OD-29-06)    │
 └─────────────────┘       └─────────────────┘
 ```
 
@@ -80,8 +80,8 @@ To maintain clean architectural boundaries and avoid domain conflation, Task 29 
 |---|---|---|---|
 | **Account Type** | *What is the period/closing/reporting lifecycle of this account?* | Fixed Global Enum (Core Domain) | `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM` (OD-29-02) |
 | **Balance Nature** | *What is the normal debit/credit orientation of this account?* | Fixed Global Enum (Core Domain) | `DEBIT`, `CREDIT`, `DUAL` (OD-29-01) |
-| **Statement Class** | *Where does this account appear in financial statement presentation?* | Organization-Configurable (Presentation) | Illustrative: Current Assets, Operating Expenses (OD-29-05) |
-| **System Account** | *Is this account reserved/controlled for automated system posting?* | Core System Flag | `isSystem: boolean` (OD-29-06) |
+| **Statement Classification** | *Where does this account appear in financial statement presentation?* | **UNDECIDED** — OD-29-05 remains open | No final model or Account field authorized |
+| **System Account** | *Should an account be specially system-owned?* | Excluded from MVP by OD-29-06 | No `isSystem` or equivalent MVP concept |
 
 ---
 

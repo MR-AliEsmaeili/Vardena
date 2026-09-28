@@ -12,14 +12,14 @@
 | **AC-08** | Balance Nature reconciled as Debit/Credit/Dual | Reconciled `بدهکار` $\rightarrow$ `DEBIT`, `بستانکار` $\rightarrow$ `CREDIT`, `هردو` $\rightarrow$ `DUAL` in `account-nature-decision.md`. | **PASS** |
 | **AC-09** | Account Type and Balance Nature explicitly separated | Verified orthogonality: Type (closing/period behavior) vs Nature (balance orientation). | **PASS** |
 | **AC-10** | Statement Class analyzed separately | Defined presentation mapping role in `statement-class-analysis.md`; separated from Account Type. | **PASS** |
-| **AC-11** | System Account analyzed separately | Defined `isSystem` restriction role in `system-account-analysis.md`; separated from Account Type and Nature. | **PASS** |
-| **AC-12** | `ACLTafsil1..4` semantics reconciled | Reconciled boolean requirement flags to generic line-level dimension rules (ADR-0037) in `detail-flag-mapping.md`. | **PASS** |
+| **AC-11** | System Account decision reconciled | Preserved the historical analysis and recorded OD-29-06: MVP has no `isSystem` or equivalent System Account concept. | **PASS** |
+| **AC-12** | Detail hierarchy and requirements reconciled | Recorded OD-29-03 hierarchy, first-level Account relationship, backend enforcement, and controlled-removal constraints while leaving physical design unimplemented. | **PASS** |
 | **AC-13** | English Title classified as non-MVP | Recorded the Owner decision that `عنوان انگلیسی حساب` is not required for MVP and its absence blocks no lifecycle operation (OD-29-04). | **PASS** |
 | **AC-14** | No production implementation performed | Verified 0 production code/schema/migration/API/guard/test modifications in git diff. | **PASS** |
 | **AC-15** | OQ-25 not incorrectly closed | Recorded Task 29 findings and proposals; OQ-25 officially remains **OPEN** in `oq-reconciliation.md`. | **PASS** |
 | **AC-16** | Relevant ADRs reconciled | Audited ADR-0026..ADR-0038 in `adr-reconciliation.md`; no ADR promoted without Owner approval. | **PASS** |
-| **AC-17** | Owner decisions clearly marked | Cataloged decisions accurately: OD-27-02 and OD-29-01/02/04 `DECIDED`; OD-29-03/05/06 remain `PENDING`, with closure in `owner-decision-closure.md`. | **PASS** |
-| **AC-18** | Future implementation dependencies identified | Specified exact prerequisites for schema, DTOs, and content loading (Task 30 $\rightarrow$ Task 31 $\rightarrow$ Task 32 sequence) in `implementation-readiness.md`. | **PASS** |
+| **AC-17** | Owner decisions clearly marked | Cataloged decisions accurately: OD-27-02 and OD-29-01/02/03/04/06 `DECIDED`; OD-29-05 remains `PENDING`, with closure in `owner-decision-closure.md`. | **PASS** |
+| **AC-18** | Future implementation dependencies identified | Recorded future dependencies without authorization; Task 30 and Detail implementation each retain a separate gate in `implementation-readiness.md`. | **PASS** |
 | **AC-19** | No invented chart content | No synthetic codes, Persian titles, or statutory rules invented; source artifact used as truth. | **PASS** |
 | **AC-20** | Task is ready for human review | All documentation complete, internally consistent, and formatted for human review. | **PASS** |
 
