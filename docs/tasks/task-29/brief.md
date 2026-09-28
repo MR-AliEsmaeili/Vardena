@@ -1,0 +1,100 @@
+# Task 29 — VARDENA Base Chart Reconciliation & Accounting Domain Decision Gate
+
+## 0. Task Identity
+
+| Attribute | Value |
+|---|---|
+| **Task** | 29 |
+| **Title** | VARDENA Base Chart Reconciliation & Accounting Domain Decision Gate |
+| **Type** | Governance / Domain Reconciliation / Fit-Gap Analysis / Decision Gate |
+| **Status** | **READY FOR REVIEW — NOT ACCEPTED** |
+| **Audited `main` HEAD** | `862c85da7aa1fb86cb16d53341fcfd9c39dfa50a` |
+| **Target Branch** | `main` (work on `arena/01a0e4d1-vardena`) |
+| **Date** | 2026-09-28 |
+
+---
+
+## 1. Mission and Purpose
+
+Task 29 is a **governance, domain-reconciliation, fit-gap analysis, and implementation-readiness decision gate** operating on the Vardena repository.
+
+The primary objective is to reconcile the real owner-provided VARDENA Base Chart source artifact with the current Vardena Accounting architecture and determine:
+1. What capabilities are already supported by the current Vardena architecture.
+2. What represents a pure data/content mapping.
+3. What constitutes a domain-model gap.
+4. What requires an explicit Owner Decision.
+5. What must be deferred to a later implementation task.
+6. Whether the existing Base Chart and Coding Structure architecture can support the VARDENA chart without architectural redesign.
+7. Whether the repository is ready for a later controlled Base Chart Content Loading & Adoption task.
+
+The final deliverable of this task is an authoritative **decision gate**, NOT a production implementation.
+
+---
+
+## 2. Critical Scope Rules
+
+### 2.1 Allowed
+- Inspect repository baseline, schema, migrations, domain models, services, repositories, DTOs, controllers, frontend, ADRs, OQs, and roadmap documents.
+- Profile and validate the VARDENA Base Chart source specification and structure.
+- Perform fit-gap analysis across Coding Structure, Account Type, Balance Nature, Statement Class, System Account, and Detail Flags.
+- Prepare governance decision packs, ADR reconciliations, OQ reconciliations, and implementation readiness matrices.
+- Update repository governance files (`STATE.md`) to reflect the Task 29 baseline.
+
+### 2.2 Strictly Prohibited
+- NO modification of Prisma schemas or database migrations.
+- NO database schema changes, table creation, or DDL execution.
+- NO seeding of production database rows or creation of concrete chart accounts.
+- NO modification of production domain models, application services, controllers, or DTOs.
+- NO changes to permissions, guards, authentication, or organization isolation chokepoints.
+- NO changes to runtime posting, accounting, closing, reporting, or document validation behavior.
+- NO self-acceptance of Task 29 or ungranted Owner approval fabrication.
+- NO implementation of future capabilities (Closing, Carry-Forward, Financial Statements, Memorandum Engine, Detail Validation, etc.).
+
+---
+
+## 3. Repository Baseline Verification
+
+- **Current `main` HEAD SHA:** `862c85da7aa1fb86cb16d53341fcfd9c39dfa50a` (Merge of PR #75).
+- **Latest Merged Governance Baseline:**
+  - Task 27 (PR #73): Main Governance Reconciliation & MVP Gate.
+  - Task 28 (PR #74): Owner Decision Closure & MVP Implementation Selection Gate.
+  - Task 28 Follow-up (PR #75): Formal recording of Owner Decision **OD-27-02** (Base Chart MVP scope boundary: mechanism = MVP, concrete content = NOT MVP-required).
+- **Baseline Invariant OD-27-02 Preserved:** The Base Chart mechanism is an MVP capability, while concrete chart-of-accounts content is NOT MVP-required unless separately approved.
+
+---
+
+## 4. Key Findings & Proposals Summary
+
+1. **Coding Structure Compatibility (Finding / Proposition A & I):**
+   - The VARDENA hierarchical coding structure ($1$ digit Group + $2$ digits General + $3$ digits Subsidiary $\rightarrow$ cumulative lengths 1, 3, 6; 8 Level 1 roots, 38 Level 2, 218 Level 3) is **DIRECTLY COMPATIBLE** with Vardena's configurable coding engine ($MAX\_DEPTH = 8, MAX\_CODE\_LENGTH = 32$).
+   - Posting derives dynamically via `postable ⇒ leaf` (222 leaves including childless Level 2 nodes `307`, `602`, `703`, `704`; 42 non-leaf parents).
+
+2. **Balance Nature / Account Nature (`ماهیت حساب`) Gap (Proposal OD-29-01):**
+   - Source values observed: `بدهکار` (DEBIT, 171), `بستانکار` (CREDIT, 78), `هردو` (DUAL, 15 in Group 9).
+   - Current Vardena model: Restricted to `ACCOUNT_NATURES = ['debit', 'credit']` in `domain/account.ts`.
+   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. Task 29 proposes admitting `DUAL` under **OD-29-01** (`PENDING OWNER DECISION`).
+
+3. **Account Type (`نوع حساب`) Gap (Proposal OD-29-02):**
+   - Source values observed: `ترازنامه ای` (152), `سود و زیان` (97), `انتظامی` (15).
+   - Current Vardena model: Lacks an `AccountType` concept on `Account` and `BaseChartTemplateNode`.
+   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. Task 29 proposes introducing 3 fixed global types (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) under **OD-29-02** (`PENDING OWNER DECISION`).
+
+4. **Statement Class Separation (Proposal OD-29-05):**
+   - Purpose: Organization-configurable presentation layout for financial statements.
+   - **Conclusion:** **DOMAIN/MODEL GAP — FUTURE IMPLEMENTATION REQUIRED** (post-MVP). Preserves strict separation from `AccountType` under **OD-29-05** (`PENDING OWNER DECISION`).
+
+5. **System Account Separation (Proposal OD-29-06):**
+   - Purpose: Distinguish system-controlled accounts (`isSystem`) from user-postable accounts.
+   - **Conclusion:** **FUTURE MODEL GAP**. Deferred to future closing/integration tasks under **OD-29-06** (`PENDING OWNER DECISION`).
+
+6. **Detail Flags (`ACLTafsil1..4`) Mapping (Proposal OD-29-03):**
+   - Source values: Boolean requirement flags (all `0` in source).
+   - **Conclusion:** **MODEL GAP / IMPLEMENTATION REQUIRED**. Task 29 proposes mapping to generic line-level dimension requirement rules (ADR-0037) under **OD-29-03** (`PENDING OWNER DECISION`).
+
+7. **English Account Title (Proposal OD-29-04):**
+   - Source field: `عنوان انگليسي حساب`.
+   - **Conclusion:** **DEFERRED / NON-MVP**. Retained as source-only metadata under **OD-29-04** (`PENDING OWNER DECISION`).
+
+8. **Readiness Gate Conclusion:**
+   - **Architecture Ready:** YES (Coding Structure, Base Chart Mechanism, Adoption by Copy, Hierarchy, Leaf Posting).
+   - **Content Loading Ready:** NO (Blocked by missing domain model gaps: `DUAL` nature OD-29-01 and `AccountType` enum OD-29-02).
