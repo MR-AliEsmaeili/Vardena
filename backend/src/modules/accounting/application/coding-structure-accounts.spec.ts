@@ -121,10 +121,11 @@ interface Fixture {
 
 async function buildFixture(
   config: AppConfig = UNPINNED_APP_CONFIG,
+  customStores?: StructureStores,
 ): Promise<Fixture> {
   const rbacStores = createInMemoryStores();
   const masterStores = createMasterDataStores();
-  const stores = createStructureStores();
+  const stores = customStores ?? createStructureStores();
   const bus = new DomainEventBus();
   const events: DomainEvent[] = [];
   for (const type of [
@@ -2133,7 +2134,7 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
       const postedAccountIds = new Set<string>();
 
       const customFixture = await buildFixture(
-        testAppConfig(),
+        UNPINNED_APP_CONFIG,
         createStructureStores({
           lineUsage: {
             countForAccount: (id) => (referencedAccountIds.has(id) ? 1 : 0),
@@ -2146,11 +2147,7 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
       await customFixture.grant(ACTOR, Object.values(ACCOUNT_PERMISSIONS));
       customFixture.member(ACTOR, orgA);
 
-      await setupCodingAndConfiguration(
-        customFixture,
-        orgA,
-        standardTwoLevelConfiguration(),
-      );
+      await publishBoth(customFixture, orgA, TWO_LEVELS);
 
       const acc = await asActor(ACTOR, () =>
         customFixture.accounts.createAccount({

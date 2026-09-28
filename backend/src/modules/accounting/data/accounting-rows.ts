@@ -1488,7 +1488,7 @@ export interface AccountingTxClient {
    */
   ledgerEntry: Pick<
     LedgerEntryDelegate,
-    'createMany' | 'findMany' | 'updateMany'
+    'createMany' | 'findMany' | 'updateMany' | 'count'
   >;
   /**
    * Task 12: turnover projection rows, written transactionally by

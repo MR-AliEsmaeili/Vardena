@@ -33,6 +33,7 @@ import { AccountingDocumentLinesRepository } from '../data/accounting-document-l
 import type {
   Account,
   AccountDto,
+  AccountNature,
   AccountPlacementParent,
   AccountPlacementProblem,
   AccountType,
