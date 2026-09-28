@@ -115,6 +115,13 @@ model Organization {
   // TEMPLATE tables carry no organization relation by design (product data).
   baseChartAdoptions BaseChartAdoption[]
 
+  // Back-relations for Detail Structure & Details (Task 30, OD-29-03).
+  // Virtual side only — the real FK columns stay
+  // `accounting.*.organization_id`.
+  detailStructureVersions DetailStructureVersion[]
+  detailStructureLevels   DetailStructureLevel[]
+  details                 Detail[]
+
   // Back-relation for the principal → organization binding (Task 19, ODR-3).
   // Unlike the virtual-only back-relations above, this one is REAL: the
   // membership rows live in THIS schema (`organization.organization_memberships`)
