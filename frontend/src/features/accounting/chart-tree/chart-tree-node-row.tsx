@@ -2,7 +2,25 @@ import { ChevronDown, ChevronLeft } from 'lucide-react';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/ui/badge';
+import type { ChartTreeNode } from '@/api/contracts';
 import type { ChartTreeItem } from './build-chart-tree';
+
+/**
+ * Badge variant and label for every account nature the API contract
+ * declares (OD-29-01: DEBIT | CREDIT | DUAL).
+ *
+ * The mapping is a `Record` over the contract union, so the compiler fails
+ * the build if the backend vocabulary ever changes — no silent fallthrough
+ * that could mislabel an account's balance direction.
+ */
+const NATURE_BADGE: Record<
+  ChartTreeNode['accountNature'],
+  { variant: 'info' | 'warning' | 'neutral'; label: string }
+> = {
+  DEBIT: { variant: 'info', label: t.chartTree.natureDebit },
+  CREDIT: { variant: 'warning', label: t.chartTree.natureCredit },
+  DUAL: { variant: 'neutral', label: t.chartTree.natureDual },
+};
 
 export interface ChartTreeNodeRowProps {
   item: ChartTreeItem;
@@ -26,6 +44,7 @@ export function ChartTreeNodeRow({
   const { node, children } = item;
   const hasChildren = children.length > 0;
   const isExpanded = expandedIds.has(node.id);
+  const nature = NATURE_BADGE[node.accountNature];
 
   return (
     <li>
@@ -67,11 +86,7 @@ export function ChartTreeNodeRow({
           <Badge variant="neutral">
             {t.chartTree.level} <span className="num">{node.level}</span>
           </Badge>
-          <Badge variant={node.accountNature === 'debit' ? 'info' : 'warning'}>
-            {node.accountNature === 'debit'
-              ? t.chartTree.natureDebit
-              : t.chartTree.natureCredit}
-          </Badge>
+          <Badge variant={nature.variant}>{nature.label}</Badge>
           <Badge variant={node.isPostable ? 'success' : 'neutral'}>
             {node.isPostable ? t.chartTree.postable : t.chartTree.aggregation}
           </Badge>

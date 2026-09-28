@@ -73,7 +73,7 @@ beforeEach(() => {
         level: 2,
         isPostable: true,
         isActive: true,
-        accountNature: 'debit',
+        accountNature: 'DEBIT',
         codingStructureVersionId: null,
         accountingConfigurationId: null,
         createdAt: '2026-01-01T08:00:00.000Z',

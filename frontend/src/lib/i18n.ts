@@ -140,6 +140,7 @@ export const fa = {
     nature: 'ماهیت',
     natureDebit: 'بدهکار',
     natureCredit: 'بستانکار',
+    natureDual: 'دوگانه',
     nodesLoaded: 'حساب بارگذاری‌شده',
     truncatedNotice:
       'به دلیل حجم زیاد، همه حساب‌ها بارگذاری نشدند؛ صفحه‌های بعدی در این نما نمایش داده نمی‌شوند.',
