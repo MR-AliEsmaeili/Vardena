@@ -2020,7 +2020,7 @@ describe('ODR-3 organization scope on the account list (Task 24 / R-2)', () => {
     // Same data, a deployment pinned to orgA: the list path must refuse a
     // non-pinned organization too, not answer an empty page.
     const pinned = await buildFixture(pinnedAppConfig(orgA));
-    await pinned.grant(ACTOR, [...Object.values(ACCOUNT_PERMISSIONS)]);
+    await pinned.grant(ACTOR, Object.values(ACCOUNT_PERMISSIONS));
     pinned.member(ACTOR, orgA);
     pinned.member(ACTOR, orgB);
     const refused = await failure(

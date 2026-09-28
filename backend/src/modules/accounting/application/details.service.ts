@@ -26,10 +26,8 @@ import type {
 import {
   detailPlacementProblemMessage,
   planDetailPlacement,
-  planDetailPostabilityChange,
   toDetailDto,
 } from '../domain/detail.js';
-import { collectDescendantIds } from '../domain/hierarchy.js';
 import { DETAIL_PERMISSIONS } from '../domain/accounting-permissions.js';
 import { normalizeCode, normalizeTitle } from '../domain/master-data.js';
 import {
@@ -250,7 +248,6 @@ export class DetailsService {
     const parentChanging =
       input.parentId !== undefined &&
       (input.parentId ?? null) !== current.parentId;
-    let parent: DetailPlacementParent | null = null;
     let structureForMove: DetailStructureSnapshot | null = null;
 
     if (parentChanging) {
@@ -264,19 +261,10 @@ export class DetailsService {
         levels: version.levels,
       };
       if (input.parentId !== null && input.parentId !== undefined) {
-        const parentDetail = await this.mustFindInOrganization(
+        await this.mustFindInOrganization(
           current.organizationId,
           input.parentId,
         );
-        parent = {
-          id: parentDetail.id,
-          organizationId: parentDetail.organizationId,
-          code: parentDetail.code,
-          level: parentDetail.level,
-          isPostable: parentDetail.isPostable,
-          isActive: parentDetail.isActive,
-          detailStructureVersionId: parentDetail.detailStructureVersionId,
-        };
       }
     }
 

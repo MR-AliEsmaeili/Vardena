@@ -226,7 +226,7 @@ export class AccountingDocumentAlreadyReversedError extends Error {
 
   constructor(originalDocumentId: string) {
     super(
-      `Accounting document \"${originalDocumentId}\" has already been reversed.`,
+      `Accounting document "${originalDocumentId}" has already been reversed.`,
     );
     this.name = 'AccountingDocumentAlreadyReversedError';
     this.originalDocumentId = originalDocumentId;

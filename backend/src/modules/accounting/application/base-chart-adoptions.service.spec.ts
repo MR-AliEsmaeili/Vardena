@@ -11,7 +11,6 @@ import {
 } from '../../../../test/support/in-memory-repositories.js';
 import { createMasterDataStores } from '../../../../test/support/master-data-repositories.js';
 import {
-  createStructureState,
   createStructureStores,
   type StructureState,
   type StructureStores,

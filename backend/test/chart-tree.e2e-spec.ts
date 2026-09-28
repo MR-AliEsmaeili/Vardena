@@ -379,9 +379,9 @@ describe('Chart Tree read surface and pin coherence (e2e, Task 19)', () => {
     // The two configuration pins are part of the node (ODR-1 surface).
     expect(bank.codingStructureVersionId).toBeTruthy();
     expect(bank.accountingConfigurationId).toBeTruthy();
-    // No financial figures, no invented classification (ODR-2).
+    // No financial figures (ODR-2).
     expect(bank).not.toHaveProperty('balance');
-    expect(bank).not.toHaveProperty('accountType');
+    expect(bank.accountType).toBe('BALANCE_SHEET');
 
     const cashRoot = res.body.items.find(
       (item: { code: string }) => item.code === '10',

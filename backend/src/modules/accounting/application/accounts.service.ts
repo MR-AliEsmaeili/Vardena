@@ -50,7 +50,6 @@ import {
 } from '../domain/account.js';
 import type { AccountImmutableField } from '../domain/account.js';
 import { collectDescendantIds } from '../domain/hierarchy.js';
-import type { CodingStructureVersion } from '../domain/coding-structure.js';
 import { ACCOUNT_PERMISSIONS } from '../domain/accounting-permissions.js';
 import { normalizeCode, normalizeTitle } from '../domain/master-data.js';
 import {
