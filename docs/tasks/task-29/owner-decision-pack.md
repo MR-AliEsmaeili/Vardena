@@ -28,19 +28,19 @@
 - **Status:** **`PENDING OWNER DECISION`**
 - **Proposal:** Expand `ACCOUNT_NATURES` in `domain/account.ts` and related DTOs from `['debit', 'credit']` to `['debit', 'credit', 'dual']`.
 - **Rationale:** The authoritative VARDENA Base Chart contains 15 accounts with nature `هردو` (all in Group 9: Memorandum) which exhibit bi-directional normal balance behavior.
-- **Consequences:** Unblocks validation for bi-directional accounts without altering core double-entry arithmetic.
+- **Consequences:** Unblocks validation for bi-directional accounts without altering core double-entry arithmetic (proposed for implementation in Task 30).
 
 ### OD-29-02: Fixed Three Global Account Types
 - **Status:** **`PENDING OWNER DECISION`**
 - **Proposal:** Adopt the 3-value global account type model: `BALANCE_SHEET` (`ترازنامه‌ای`, 152 accounts), `INCOME_STATEMENT` (`سود و زیان`, 97 accounts), and `MEMORANDUM` (`انتظامی`, 15 accounts). Add `type` column to `Account` and `BaseChartTemplateNode` models.
 - **Rationale:** Necessary to support period-end fiscal closing physics, carry-forward logic, and separation of off-balance-sheet memorandum entries.
-- **Consequences:** Requires a Prisma migration and DTO updates in a dedicated implementation task before content loading.
+- **Consequences:** Requires a Prisma migration and DTO updates in a dedicated implementation task (proposed Task 30) before content loading (proposed Task 31).
 
 ### OD-29-03: Detail Flags Generic Mapping
 - **Status:** **`PENDING OWNER DECISION`**
 - **Proposal:** Preserve the source boolean detail-requirement semantics (`0` = no requirement, `1` = required detail code) while mapping them to Vardena's generic line-level dimension requirement model (ADR-0037) rather than creating numbered `requiresDetail1..4` Account columns.
 - **Rationale:** Preserves architectural configurability (up to 8 dimensions) and aligns with ADR-0037.
-- **Consequences:** Base chart loading will store requirement metadata without polluting the core `Account` table with rigid numbered columns.
+- **Consequences:** Base chart loading will store requirement metadata without polluting the core `Account` table with rigid numbered columns (proposed for implementation in Task 32).
 
 ### OD-29-04: English Account Title Scope Boundary
 - **Status:** **`PENDING OWNER DECISION`**

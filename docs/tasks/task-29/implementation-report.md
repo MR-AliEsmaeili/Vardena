@@ -99,12 +99,12 @@ To ensure complete governance integrity, this report distinguishes four categori
 
 ### 4.3 Account Type: MODEL GAP
 - Prisma schema (`Account`, `BaseChartTemplateNode`) and domain models completely lack an `AccountType` concept.
-- The 3 fixed global types (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) must be added to the schema and domain.
+- The 3 observed types (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) must be added to the schema and domain under OD-29-02.
 
 ### 4.4 Detail Requirement Flags: MODEL GAP
 - `ACLTafsil1..4` are source boolean flags (`0`/`1`).
 - The source does not assign business concepts (Party, Cost Center, etc.) to these flags.
-- Hardcoding `requiresDetail1..4` columns on `Account` is an anti-pattern; mapping to generic line-level dimension rules per ADR-0037 is required.
+- Hardcoding `requiresDetail1..4` columns on `Account` is an anti-pattern; mapping to generic line-level dimension rules per ADR-0037 is required under OD-29-03.
 
 ---
 
@@ -114,7 +114,7 @@ To ensure complete governance integrity, this report distinguishes four categori
 |---|---|---|---|---|
 | **OD-27-02** | Base Chart MVP Scope Boundary | MVP requires Base Chart mechanism; concrete chart content is NOT MVP-required | **`DECIDED`** (Task 28 Follow-up) | **OWNER DECISION** |
 | **OD-29-01** | Account Nature DUAL Extension | Expand `ACCOUNT_NATURES` to include `DUAL` (`هردو`) | **`PENDING OWNER DECISION`** | **PROPOSAL** |
-| **OD-29-02** | Fixed Three Global Account Types | Introduce `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM` enum and column | **`PENDING OWNER DECISION`** | **PROPOSAL** |
+| **OD-29-02** | Three Global Account Types | Introduce `BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM` enum and column | **`PENDING OWNER DECISION`** | **PROPOSAL** |
 | **OD-29-03** | Detail Flags Generic Mapping | Map `ACLTafsil1..4` to generic line-level dimension rules (ADR-0037) | **`PENDING OWNER DECISION`** | **PROPOSAL** |
 | **OD-29-04** | English Account Title Scope Boundary | Treat `عنوان انگلیسی حساب` as non-MVP source metadata | **`PENDING OWNER DECISION`** | **PROPOSAL** |
 | **OD-29-05** | Statement Class Scope Boundary | Separate from AccountType; defer to post-MVP reporting phase | **`PENDING OWNER DECISION`** | **PROPOSAL** |
@@ -132,17 +132,23 @@ To ensure complete governance integrity, this report distinguishes four categori
 
 ---
 
-## 7. Concrete Next Implementation Tasks (PROPOSAL)
+## 7. Proposed Technical Implementation Roadmap (Task 30 ➔ Task 31 ➔ Task 32 — PROPOSALS ONLY)
 
-1. **Task 30 (Proposed): Accounting Domain Model Expansion (AccountType & DUAL Nature):**
-   - Add `AccountType` enum (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) to Prisma schema (`Account`, `BaseChartTemplateNode`) and DTOs.
-   - Expand `ACCOUNT_NATURES` to `['debit', 'credit', 'dual']` in `domain/account.ts`, DTOs, domain validators, and frontend badges.
-   - Rehearse migration.
-2. **Task 31 (Proposed): VARDENA Base Chart Content Ingestion & Template Publication:**
-   - Ingest the 264 accounts into a versioned Base Chart Template.
-   - Validate and publish the template version.
-3. **Task 32 (Proposed): Detail Dimension Requirement Rules & Document Line Validation:**
-   - Implement account-dimension requirement rules mapping `ACLTafsil1..4` to line validation.
+*(Note: None of these tasks are authorized or executed by Task 29; they represent the recommended technical dependency sequence for Owner decision and scheduling)*:
+
+```text
+Task 30 (Proposed): Accounting Domain Model Expansion (AccountType & DUAL Nature)
+└── Prerequisite: Owner approval of OD-29-01 and OD-29-02.
+└── Scope: Add AccountType enum & column; expand ACCOUNT_NATURES to include 'dual'.
+
+Task 31 (Proposed): VARDENA Base Chart Content Ingestion & Template Publication
+└── Prerequisite: Task 30 completed and merged.
+└── Scope: Ingest 264-row VARDENA Base Chart into versioned template and publish.
+
+Task 32 (Proposed): Detail Dimension Requirement Rules & Document Line Validation
+└── Prerequisite: Owner approval of OD-29-03.
+└── Scope: Implement AccountDimensionRule for ACLTafsil1..4 mapping and line validation.
+```
 
 ---
 
@@ -167,7 +173,7 @@ To ensure complete governance integrity, this report distinguishes four categori
 
 4. Content Loading Readiness: BLOCKED ON DOMAIN MODEL GAPS
    └── Once the domain model gaps are implemented, the 264 accounts can be
-       loaded and adopted immediately.
+       loaded and adopted immediately in Proposed Task 31.
 ```
 
 ---

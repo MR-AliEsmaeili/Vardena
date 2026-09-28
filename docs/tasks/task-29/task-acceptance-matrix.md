@@ -19,7 +19,7 @@
 | **AC-15** | OQ-25 not incorrectly closed | Recorded Task 29 findings and proposals; OQ-25 officially remains **OPEN** in `oq-reconciliation.md`. | **PASS** |
 | **AC-16** | Relevant ADRs reconciled | Audited ADR-0026..ADR-0038 in `adr-reconciliation.md`; no ADR promoted without Owner approval. | **PASS** |
 | **AC-17** | Owner decisions clearly marked | Cataloged established vs pending decisions (OD-27-02 `DECIDED`, OD-29-01..06 `PENDING`) in `owner-decision-pack.md`. | **PASS** |
-| **AC-18** | Future implementation dependencies identified | Specified exact prerequisites for schema, DTOs, and content loading in `implementation-readiness.md`. | **PASS** |
+| **AC-18** | Future implementation dependencies identified | Specified exact prerequisites for schema, DTOs, and content loading (Task 30 $\rightarrow$ Task 31 $\rightarrow$ Task 32 sequence) in `implementation-readiness.md`. | **PASS** |
 | **AC-19** | No invented chart content | No synthetic codes, Persian titles, or statutory rules invented; source artifact used as truth. | **PASS** |
 | **AC-20** | Task is ready for human review | All documentation complete, internally consistent, and formatted for human review. | **PASS** |
 

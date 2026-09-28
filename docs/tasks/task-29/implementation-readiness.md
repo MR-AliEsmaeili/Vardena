@@ -10,11 +10,11 @@ To maintain rigorous governance, this analysis distinguishes between:
 
 ## 2. Comprehensive Implementation Readiness Matrix
 
-| Area | Architecture Ready? | Production Implementation Ready? | Blocker / Missing Element | Future Work / Implementation Task |
+| Area | Architecture Ready? | Production Implementation Ready? | Blocker / Missing Element | Future Work / Proposed Task |
 |---|---|---|---|---|
 | **1. Coding Structure** | **YES** | **YES** | None. Supports depth 8, width 32, dynamic levels ($1+2+3$). | None needed for coding structure. |
 | **2. Base Chart Template Mechanism** | **YES** | **YES** | None. Task 23 mechanism implemented and verified on `main`. | None needed for mechanism. |
-| **3. Base Chart Content Loading** | **YES** | **NO** | Blocked by missing domain fields (`AccountType`, `DUAL` nature). | Proposed Task 31 (Base Chart Content Loading). |
+| **3. Base Chart Content Loading** | **YES** | **NO** | Blocked by missing domain fields (`AccountType`, `DUAL` nature). | Proposed Task 31 (Base Chart Content Loading; blocked on Task 30). |
 | **4. Account Type** | **YES** | **NO** | Missing `type` column in Prisma schema, DTOs, and domain models. | Proposed Task 30 (Schema migration & domain enum addition; OD-29-02). |
 | **5. Balance Nature** | **YES** | **NO** | Domain validator `isAccountNature` rejects `'dual'`. | Proposed Task 30 (Expand `ACCOUNT_NATURES` to include `dual`; OD-29-01). |
 | **6. Statement Class** | **YES** | **NO** | Statement Class model and presentation engine not built. | Future Reporting Foundation Task (Post-MVP; OD-29-05). |
@@ -44,7 +44,40 @@ Because the canonical 264-account dataset actively contains 15 `DUAL` accounts i
 
 ---
 
-## 4. Final Verdict
+## 4. Proposed Technical Implementation Roadmap
+
+The required implementation sequence follows a strict dependency chain:
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│ Task 30 (Proposed): Domain Model & Schema Expansion           │
+│ • Add AccountType enum & column                              │
+│ • Expand ACCOUNT_NATURES to include 'dual'                   │
+│ • Prerequisite: Owner Decisions OD-29-01 and OD-29-02         │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Task 31 (Proposed): Base Chart Content Ingestion & Template  │
+│ • Ingest 264-row VARDENA Base Chart into Template Version    │
+│ • Publish template version for organization adoptions        │
+│ • Prerequisite: Task 30 completed and merged                 │
+└──────────────────────────────┬───────────────────────────────┘
+                               │
+                               ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Task 32 (Proposed): Detail Dimension Rules & Line Validation │
+│ • Implement AccountDimensionRule for ACLTafsil1..4 mapping   │
+│ • Enforce mandatory dimension validation on document lines   │
+│ • Prerequisite: Owner Decision OD-29-03                      │
+└──────────────────────────────────────────────────────────────┘
+```
+
+*(Note: None of these future tasks are authorized by Task 29. Task 29 is a decision gate only).*
+
+---
+
+## 5. Final Verdict
 
 1. **Architecture:** **100% COMPATIBLE** (No architectural redesign required).
 2. **Content Ingestion:** **BLOCKED** on Domain Model Gaps (OD-29-01 and OD-29-02) requiring Proposed Task 30.

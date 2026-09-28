@@ -96,10 +96,10 @@ An audit of the current codebase confirms:
 
 ## 5. Fit-Gap Classification & Governance Status
 
-| Concept | Current Vardena State | Proposed State | Fit-Gap Classification | Owner Decision Status |
+| Concept | Current Vardena State | Proposed State | Fit-Gap Classification | Owner Decision Status / Future Task |
 |---|---|---|---|---|
-| **Account Type Model** | Absent | 3 fixed global values (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) |
-| **Prisma Schema** | Absent on `Account` & `BaseChartTemplateNode` | Add `type AccountType` enum or `VarChar(32)` column | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) |
-| **Base Chart Validation** | No type validation | Validate `type` presence on template authoring | **IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) |
-| **API DTOs** | Absent | Add `type` field to creation/view DTOs | **IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) |
+| **Account Type Model** | Absent | 3 fixed global values (`BALANCE_SHEET`, `INCOME_STATEMENT`, `MEMORANDUM`) | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) / Proposed Task 30 |
+| **Prisma Schema** | Absent on `Account` & `BaseChartTemplateNode` | Add `type AccountType` enum or `VarChar(32)` column | **MODEL GAP / IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) / Proposed Task 30 |
+| **Base Chart Validation** | No type validation | Validate `type` presence on template authoring | **IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) / Proposed Task 30 |
+| **API DTOs** | Absent | Add `type` field to creation/view DTOs | **IMPLEMENTATION REQUIRED** | OD-29-02 (`PENDING OWNER DECISION`) / Proposed Task 30 |
 | **Closing Engine** | Not implemented | Future closing logic consumes `AccountType` | **DEFERRED / FUTURE CAPABILITY** | Post-MVP / Future Task |
