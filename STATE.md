@@ -648,3 +648,27 @@ The following pre-existing documentation files were inventoried and preserved un
 - `docs/task-14-implementation-report.md`
 - `docs/task-6-implementation-report.md`
 - `docs/task-9-implementation-report.md`
+
+## 12. Frontend Standards v2.1 Governance Update
+
+This addendum records the frontend governance task without rewriting or removing any historical project state above. The official frontend/UI rulebook is `docs/frontend/standards.md`; before any frontend/UI implementation, modification, refactor, component creation, page creation, frontend dependency decision, or UI review, the complete standard must be read and treated as an engineering contract.
+
+### UI Open Questions
+
+UI: OQ-1 — Jalali DatePicker
+UI: OQ-2 — Dark mode
+UI: OQ-3 — Default density
+UI: OQ-4 — OpenAPI type generator
+UI: OQ-5 — Unauthorized capability behavior
+UI: OQ-6 — Device target
+UI: OQ-7 — Token transport
+UI: OQ-8 — Error monitoring / Web Vitals
+UI: OQ-9 — React Compiler
+
+These frontend Open Questions remain open and require the owner's decision through the appropriate ADR/decision process. No ADR or implementation decision is created by this task.
+
+### Task State
+
+Task: docs/frontend-standards (v2.1)
+Status: ACCEPTED-PENDING-OWNER
+Owner Behavioral Verification: PENDING
