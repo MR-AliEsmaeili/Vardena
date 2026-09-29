@@ -36,8 +36,10 @@ export const fa = {
     submitting: 'در حال ورود…',
     logout: 'خروج',
     loggingOut: 'در حال خروج…',
-    sessionExpired: 'نشست شما منقضی شده است. دوباره وارد شوید.',
+    sessionExpired: 'نشست شما منقضی شده است. لطفاً دوباره وارد شوید.',
     invalidCredentials: 'نام کاربری یا گذرواژه نادرست است.',
+    invalidCredentialsHelp:
+      'نام کاربری و گذرواژه را بررسی کنید و دوباره تلاش کنید.',
     usernameRequired: 'نام کاربری الزامی است.',
     passwordRequired: 'گذرواژه الزامی است.',
     checkingSession: 'در حال بررسی نشست…',
@@ -301,7 +303,7 @@ export const fa = {
   errors: {
     title: 'خطا',
     network: 'ارتباط با سرور برقرار نشد. اتصال شبکه را بررسی کنید.',
-    unauthorized: 'برای انجام این عملیات باید وارد شوید.',
+    unauthorized: 'برای ادامه باید وارد شوید.',
     forbidden: 'مجوز لازم برای این عملیات را ندارید.',
     notFound: 'مورد درخواست‌شده یافت نشد یا در دامنه دسترسی شما نیست.',
     validation: 'اطلاعات ارسالی معتبر نیست.',

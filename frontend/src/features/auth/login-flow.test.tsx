@@ -137,6 +137,26 @@ describe('login flow', () => {
     expect(screen.getByText(/corr-login/)).toBeInTheDocument();
   });
 
+  it('clears the password but keeps the username after a rejected login', async () => {
+    vi.mocked(identityApi.login).mockRejectedValue(unauthorized);
+    const user = userEvent.setup();
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/login'] });
+
+    const usernameInput = await screen.findByLabelText(t.auth.username);
+    const passwordInput = screen.getByLabelText(t.auth.password);
+    await user.type(usernameInput, 'accountant');
+    await user.type(passwordInput, 'wrong-password');
+    await user.click(screen.getByRole('button', { name: t.auth.submit }));
+
+    expect(
+      await screen.findByText(t.auth.invalidCredentials),
+    ).toBeInTheDocument();
+    // The rejected secret must not be left in the field; the username stays so
+    // the user only re-enters the password (FE-UX-02 §9).
+    expect(passwordInput).toHaveValue('');
+    expect(usernameInput).toHaveValue('accountant');
+  });
+
   it('enters the application shell after a successful login', async () => {
     vi.mocked(identityApi.login).mockResolvedValue(testUser);
     const user = userEvent.setup();

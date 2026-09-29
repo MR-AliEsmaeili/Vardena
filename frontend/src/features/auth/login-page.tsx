@@ -48,12 +48,20 @@ export function LoginPage() {
     try {
       await session.login(values);
     } catch {
-      // The mutation error is rendered below; nothing to do here. The
-      // password is never logged, stored or echoed back into the form.
+      // The mutation error is rendered below; nothing to do here besides
+      // clearing the password so a rejected secret is never left sitting in
+      // the field (FE-UX-02 §9). The username is kept so the user only has to
+      // re-type the secret, and focus returns to it.
+      form.resetField('password');
+      form.setFocus('password');
     }
   });
 
   const loginError = session.loginError;
+  const isCredentialError =
+    loginError !== null &&
+    loginError !== undefined &&
+    normalizeApiError(loginError).isUnauthorized;
   const usernameError = form.formState.errors.username?.message;
   const passwordError = form.formState.errors.password?.message;
 
@@ -116,9 +124,14 @@ export function LoginPage() {
                 <ApiErrorAlert
                   error={loginError}
                   title={
-                    normalizeApiError(loginError).isUnauthorized
+                    isCredentialError
                       ? t.auth.invalidCredentials
                       : t.errors.title
+                  }
+                  description={
+                    isCredentialError
+                      ? t.auth.invalidCredentialsHelp
+                      : undefined
                   }
                 />
               )}
