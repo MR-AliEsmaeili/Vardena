@@ -42,19 +42,19 @@ Account create/edit/enable/disable/unlink is **PARTIALLY SUPPORTED**: backend AP
 
 ## 8. Permissions
 
-Actual identifiers used:
+Actual independent endpoint/surface mapping used:
 
-- `Accounting.FinancialArea.View`
-- `Accounting.FiscalYear.View`
-- `Accounting.AccountingPeriod.View`
-- `Accounting.Account.View`
-- `Accounting.AccountStatement.View`
-- `Accounting.GeneralLedger.View`
-- `Accounting.TrialBalance.View`
-- `Accounting.Document.View` (existing dashboard)
-- `Organization.Organization.View` (existing organization resolution)
+- Financial Areas → `Accounting.FinancialArea.View`
+- Fiscal Years → `Accounting.FiscalYear.View`
+- Accounting Periods → `Accounting.AccountingPeriod.View`
+- Chart, Accounts and Account Detail → `Accounting.Account.View`
+- Account Statement and its Account Detail action → `Accounting.AccountStatement.View`
+- General Ledger → `Accounting.GeneralLedger.View`
+- Trial Balance → `Accounting.TrialBalance.View`
+- Existing dashboard → `Accounting.Document.View`
+- Existing organization resolution → `Organization.Organization.View`
 
-Frontend checks are route/navigation UX gates only; backend authorization remains authoritative.
+Fiscal Year and Accounting Period routes/navigation do not require cumulative Accounting permissions. Frontend checks are route/navigation UX gates only; backend authorization remains authoritative.
 
 ## 9. Organization Isolation
 
@@ -84,17 +84,21 @@ New:
   - organization-scoped Financial Area success
   - explicit empty state
   - semantic error copy, raw backend-message suppression and retry
+- `frontend/src/features/accounting/master-data/account-filters-url.test.tsx`
+  - deep-link initialization, Apply/Clear synchronization, and Back/Forward restoration
+- `frontend/src/features/accounting/master-data/account-detail-page.test.tsx`
+  - Account Statement action gating by postability and `Accounting.AccountStatement.View`
 
-Existing relevant coverage retained:
+Existing relevant coverage retained/updated:
 
 - `frontend/src/app/layouts/app-shell.test.tsx` — navigation gating and organization switching/cache eviction
-- `frontend/src/app/routes/protected-routing.test.tsx` — protected/permission routes
+- `frontend/src/app/routes/protected-routing.test.tsx` — independent Financial Area, Fiscal Year, Accounting Period and Account route permissions
 - `frontend/src/features/accounting/chart-tree/build-chart-tree.test.ts` — hierarchy, missing parent, arbitrary depth, empty
 - `frontend/src/features/accounting/chart-tree/chart-tree-node-row.test.tsx` — rendered account semantics
 - `frontend/src/features/accounting/account-statement/account-statement-page.test.tsx` — required scope and server-computed output
 - `frontend/src/features/accounting/shared/report-query.test.ts` — exact query contracts and organization ownership
 
-Local full suite result after the final navigation coverage: 25 files, 141 tests passed.
+Local full suite result after required PR corrections: 27 files, 153 tests passed.
 
 ## 13. CI
 

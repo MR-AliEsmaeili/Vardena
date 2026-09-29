@@ -89,6 +89,7 @@ export function AccountingPeriodsPage() {
         {t.masterData.contextHint}
       </p>
       <MasterFilters
+        synchronizationKey={`${state.status}:${state.scopeId}`}
         status={state.status}
         scope={state.scopeId}
         scopeLabel={t.masterData.fiscalYear}

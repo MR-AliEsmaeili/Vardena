@@ -29,6 +29,35 @@ vi.mock('@/api/accounting.api', () => ({
     total: 0,
     truncated: false,
   }),
+  listFinancialAreasPage: vi
+    .fn()
+    .mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 }),
+  listFiscalYearsPage: vi
+    .fn()
+    .mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 }),
+  listAccountingPeriodsPage: vi
+    .fn()
+    .mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 }),
+  listAccounts: vi
+    .fn()
+    .mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 50 }),
+  getAccount: vi.fn().mockResolvedValue({
+    id: 'acc-1',
+    organizationId: 'org-1',
+    code: '10',
+    title: 'دارایی‌ها',
+    parentId: null,
+    level: 1,
+    codingStructureVersionId: null,
+    accountingConfigurationId: null,
+    accountNature: 'DEBIT',
+    accountType: 'BALANCE_SHEET',
+    detailGroupId: null,
+    isPostable: false,
+    isActive: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  }),
   listFinancialAreas: vi.fn(),
   listFiscalYears: vi.fn(),
   listAccountingPeriods: vi.fn(),
@@ -77,6 +106,53 @@ describe('protected routing', () => {
       await screen.findByRole('heading', { name: t.chartTree.title }),
     ).toBeInTheDocument();
   });
+
+  it.each([
+    [
+      '/app/accounting/financial-areas',
+      'Accounting.FinancialArea.View',
+      t.masterData.financialAreas,
+    ],
+    [
+      '/app/accounting/fiscal-years',
+      'Accounting.FiscalYear.View',
+      t.masterData.fiscalYears,
+    ],
+    [
+      '/app/accounting/periods',
+      'Accounting.AccountingPeriod.View',
+      t.masterData.periods,
+    ],
+    ['/app/accounting/chart', 'Accounting.Account.View', t.chartTree.title],
+    [
+      '/app/accounting/accounts',
+      'Accounting.Account.View',
+      t.masterData.accounts,
+    ],
+    [
+      '/app/accounting/accounts/acc-1',
+      'Accounting.Account.View',
+      t.masterData.accountDetail,
+    ],
+  ])(
+    'allows %s with only its endpoint permission',
+    async (path, permission, heading) => {
+      vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
+      vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+        userId: testUser.id,
+        permissions: ['Organization.Organization.View', permission],
+      });
+
+      renderWithProviders(<AppRoutes />, { initialEntries: [path] });
+
+      expect(
+        await screen.findByRole('heading', { name: heading }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByText(t.permissions.forbiddenTitle),
+      ).not.toBeInTheDocument();
+    },
+  );
 
   it('explains the missing permission instead of rendering the report', async () => {
     vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);

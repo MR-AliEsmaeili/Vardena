@@ -69,20 +69,13 @@ export const navigationSections: readonly NavigationSection[] = [
         to: '/app/accounting/fiscal-years',
         label: t.masterData.fiscalYears,
         icon: CalendarDays,
-        permissions: [
-          PERMISSIONS.accounting.financialAreaView,
-          PERMISSIONS.accounting.fiscalYearView,
-        ],
+        permissions: [PERMISSIONS.accounting.fiscalYearView],
       },
       {
         to: '/app/accounting/periods',
         label: t.masterData.periods,
         icon: CalendarDays,
-        permissions: [
-          PERMISSIONS.accounting.financialAreaView,
-          PERMISSIONS.accounting.fiscalYearView,
-          PERMISSIONS.accounting.accountingPeriodView,
-        ],
+        permissions: [PERMISSIONS.accounting.accountingPeriodView],
       },
       {
         to: '/app/accounting/chart',

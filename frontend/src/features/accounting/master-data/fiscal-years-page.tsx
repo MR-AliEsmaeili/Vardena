@@ -55,6 +55,7 @@ export function FiscalYearsPage() {
         {t.masterData.contextHint}
       </p>
       <MasterFilters
+        synchronizationKey={`${state.search}:${state.status}:${state.scopeId}`}
         search={state.search}
         status={state.status}
         scope={state.scopeId}

@@ -1,5 +1,7 @@
 import { Link, useParams } from 'react-router-dom';
 import { useOrganizationId } from '@/features/organization/use-organization';
+import { PermissionGate } from '@/features/permissions/permission-gate';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
@@ -42,13 +44,17 @@ export function AccountDetailPage() {
         description={`${account.code} — ${account.title}`}
         actions={
           account.isPostable ? (
-            <Button asChild variant="outline" size="sm">
-              <Link
-                to={`/app/accounting/account-statements?accountId=${encodeURIComponent(account.id)}`}
-              >
-                {t.masterData.viewStatement}
-              </Link>
-            </Button>
+            <PermissionGate
+              permission={PERMISSIONS.accounting.accountStatementView}
+            >
+              <Button asChild variant="outline" size="sm">
+                <Link
+                  to={`/app/accounting/account-statements?accountId=${encodeURIComponent(account.id)}`}
+                >
+                  {t.masterData.viewStatement}
+                </Link>
+              </Button>
+            </PermissionGate>
           ) : undefined
         }
       />

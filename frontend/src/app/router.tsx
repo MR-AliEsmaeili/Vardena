@@ -58,10 +58,7 @@ export function AppRoutes() {
             <Route
               element={
                 <RequirePermission
-                  permissions={[
-                    PERMISSIONS.accounting.financialAreaView,
-                    PERMISSIONS.accounting.fiscalYearView,
-                  ]}
+                  permissions={[PERMISSIONS.accounting.fiscalYearView]}
                 />
               }
             >
@@ -71,11 +68,7 @@ export function AppRoutes() {
             <Route
               element={
                 <RequirePermission
-                  permissions={[
-                    PERMISSIONS.accounting.financialAreaView,
-                    PERMISSIONS.accounting.fiscalYearView,
-                    PERMISSIONS.accounting.accountingPeriodView,
-                  ]}
+                  permissions={[PERMISSIONS.accounting.accountingPeriodView]}
                 />
               }
             >

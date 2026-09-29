@@ -103,6 +103,7 @@ export function AccountsPage() {
         description={t.masterData.accountsDescription}
       />
       <MasterFilters
+        synchronizationKey={`${state.search}:${level ?? ''}:${postableParam ?? ''}`}
         search={state.search}
         status=""
         onApply={(values) =>

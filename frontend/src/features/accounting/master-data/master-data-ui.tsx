@@ -34,6 +34,7 @@ export function MasterFilters({
   scopeLabel,
   onApply,
   onClear,
+  synchronizationKey,
   children,
 }: {
   search?: string;
@@ -50,6 +51,8 @@ export function MasterFilters({
     postable: string;
   }) => void;
   onClear: () => void;
+  /** Remounts the uncontrolled draft form whenever its URL-owned state changes. */
+  synchronizationKey: string;
   children?: ReactNode;
 }) {
   const submit = (event: FormEvent<HTMLFormElement>) => {
@@ -65,6 +68,7 @@ export function MasterFilters({
   };
   return (
     <form
+      key={synchronizationKey}
       className="flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-white p-3"
       onSubmit={submit}
     >

@@ -16,18 +16,11 @@ describe('accounting information architecture', () => {
         }),
         expect.objectContaining({
           to: '/app/accounting/fiscal-years',
-          permissions: [
-            PERMISSIONS.accounting.financialAreaView,
-            PERMISSIONS.accounting.fiscalYearView,
-          ],
+          permissions: [PERMISSIONS.accounting.fiscalYearView],
         }),
         expect.objectContaining({
           to: '/app/accounting/periods',
-          permissions: [
-            PERMISSIONS.accounting.financialAreaView,
-            PERMISSIONS.accounting.fiscalYearView,
-            PERMISSIONS.accounting.accountingPeriodView,
-          ],
+          permissions: [PERMISSIONS.accounting.accountingPeriodView],
         }),
         expect.objectContaining({
           to: '/app/accounting/chart',

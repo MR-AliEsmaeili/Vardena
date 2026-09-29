@@ -48,6 +48,7 @@ export function FinancialAreasPage() {
         description={`${t.masterData.financialAreasDescription} ${t.masterData.organizationScope}: ${organization.organization?.name ?? t.app.none}`}
       />
       <MasterFilters
+        synchronizationKey={`${state.search}:${state.status}`}
         search={state.search}
         status={state.status}
         statusOptions={[
