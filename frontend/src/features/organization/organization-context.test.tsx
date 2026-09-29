@@ -1,6 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/api/errors';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
@@ -39,6 +40,15 @@ function OrganizationProbe() {
       <span data-testid="can-switch">
         {organization.canSwitch ? 'yes' : 'no'}
       </span>
+      <button type="button" onClick={() => organization.refresh()}>
+        refresh
+      </button>
+      <button
+        type="button"
+        onClick={() => organization.selectOrganization('org-2')}
+      >
+        select-second
+      </button>
       <OrganizationSwitcher />
     </div>
   );
@@ -71,7 +81,23 @@ describe('organization context', () => {
     expect(screen.getByText(testOrganization.name)).toBeInTheDocument();
   });
 
-  it('offers a switcher only when the API returns several organizations', async () => {
+  it('requires an explicit selection while several organizations exist', async () => {
+    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
+      paginated([testOrganization, secondOrganization]),
+    );
+
+    renderWithProviders(<OrganizationProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('selecting');
+    });
+    // No organization scope is active before the user confirms a choice, so
+    // no organization-scoped request can be sent with the wrong scope.
+    expect(screen.getByTestId('organization-id')).toHaveTextContent('none');
+    expect(screen.getByTestId('can-switch')).toHaveTextContent('yes');
+  });
+
+  it('activates the confirmed organization and then allows switching', async () => {
     vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
       paginated([testOrganization, secondOrganization]),
     );
@@ -79,16 +105,72 @@ describe('organization context', () => {
 
     renderWithProviders(<OrganizationProbe />);
 
-    const switcher = await screen.findByRole('combobox', {
+    // Wait until the list has actually arrived (the probe buttons exist from
+    // the first paint, but selecting before the list resolves is a no-op by
+    // design — only API-returned ids can ever be selected).
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('selecting');
+    });
+
+    await user.click(screen.getByText('select-second'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('ready');
+    });
+    expect(screen.getByTestId('organization-id')).toHaveTextContent('org-2');
+
+    const switcher = screen.getByRole('combobox', {
       name: t.organization.switcher,
     });
-    expect(screen.getByTestId('organization-id')).toHaveTextContent('org-1');
+    expect(switcher).toHaveValue('org-2');
 
-    await user.selectOptions(switcher, 'org-2');
+    await user.selectOptions(switcher, 'org-1');
+    await waitFor(() => {
+      expect(screen.getByTestId('organization-id')).toHaveTextContent('org-1');
+    });
+  });
 
+  it('drops an organization selection that is no longer in the API list', async () => {
+    vi.mocked(organizationApi.listOrganizations)
+      .mockResolvedValueOnce(paginated([testOrganization, secondOrganization]))
+      .mockResolvedValueOnce(paginated([testOrganization]));
+    const user = userEvent.setup();
+
+    renderWithProviders(<OrganizationProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('selecting');
+    });
+    await user.click(screen.getByText('select-second'));
     await waitFor(() => {
       expect(screen.getByTestId('organization-id')).toHaveTextContent('org-2');
     });
+
+    // The list is refreshed and the selected organization is gone.
+    await user.click(screen.getByText('refresh'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('invalid');
+    });
+    expect(screen.getByTestId('organization-id')).toHaveTextContent('none');
+  });
+
+  it('reports an error state when the organization list cannot be fetched', async () => {
+    vi.mocked(organizationApi.listOrganizations).mockRejectedValue(
+      new ApiError({
+        code: 'InternalError',
+        message: 'x',
+        status: 500,
+        correlationId: 'corr-org',
+      }),
+    );
+
+    renderWithProviders(<OrganizationProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('error');
+    });
+    expect(screen.getByTestId('organization-id')).toHaveTextContent('none');
   });
 
   it('reports a forbidden context and sends no request when the view permission is missing', async () => {

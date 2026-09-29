@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { SortingState } from '@tanstack/react-table';
 import { listTrialBalance } from '@/api/accounting.api';
 import type { TrialBalanceQuery } from '@/api/contracts';
-import { queryKeys } from '@/api/query-keys';
+import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import {
   optionalParam,
   type LedgerScopeValues,
@@ -66,6 +66,16 @@ export function useTrialBalance({
     queryFn: ({ signal }) =>
       listTrialBalance(query as TrialBalanceQuery, signal),
     enabled,
-    placeholderData: (previous) => previous,
+    // Keep the previous page only within the SAME organization (see the
+    // general ledger hook): a switch must not display the old organization's
+    // rows while the new one loads.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery !== undefined &&
+      !isOtherOrganizationScope(
+        previousQuery.queryKey,
+        organizationId ?? 'none',
+      )
+        ? previous
+        : undefined,
   });
 }

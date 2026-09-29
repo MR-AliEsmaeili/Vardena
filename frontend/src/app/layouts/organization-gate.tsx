@@ -1,0 +1,125 @@
+import { LogOut } from 'lucide-react';
+import { useSession } from '@/features/auth/use-session';
+import { OrganizationSelection } from '@/features/organization/organization-selection';
+import { useOrganization } from '@/features/organization/use-organization';
+import { t } from '@/lib/i18n';
+import { Button } from '@/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/ui/card';
+import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
+
+/** Centered resolving state while the organization scope is being determined. */
+function ResolvingState() {
+  return (
+    <output
+      className="flex flex-col items-center gap-3 py-16"
+      aria-live="polite"
+    >
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600" />
+      <p className="text-sm text-slate-600">{t.organization.resolving}</p>
+    </output>
+  );
+}
+
+/** The logout affordance every blocked state shares. */
+function LogoutButton() {
+  const session = useSession();
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      disabled={session.isLoggingOut}
+      onClick={() => {
+        void session.logout();
+      }}
+    >
+      <LogOut className="h-4 w-4" aria-hidden />
+      {session.isLoggingOut ? t.auth.loggingOut : t.auth.logout}
+    </Button>
+  );
+}
+
+/**
+ * Terminal blocked state (no organization / no permission to read the list).
+ *
+ * The workspace is never entered: no fake default organization is selected
+ * and no organization-scoped request is sent. The only recovery paths the
+ * contract actually offers are contacting an administrator and logging out.
+ */
+function BlockedState({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <LogoutButton />
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * The organization gate of the application shell (FE-UX-04).
+ *
+ * Everything the organization context reports besides `ready` replaces the
+ * workspace instead of rendering beside it — the dashboard must never load
+ * "around" an unresolved, failed or missing organization scope, and no state
+ * may degrade silently:
+ *
+ * - `loading` / `forbidden` / `empty` / `error` — explicit explainer above;
+ * - `selecting` / `invalid` — the explicit organization selection step.
+ */
+export function OrganizationGate() {
+  const { status, error, refresh } = useOrganization();
+
+  if (status === 'loading') {
+    return <ResolvingState />;
+  }
+
+  if (status === 'forbidden') {
+    return (
+      <BlockedState
+        title={t.organization.errorTitle}
+        description={t.organization.permissionHint}
+      />
+    );
+  }
+
+  if (status === 'empty') {
+    return (
+      <BlockedState
+        title={t.organization.emptyTitle}
+        description={t.organization.emptyBody}
+      />
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="space-y-4">
+        <ApiErrorAlert
+          error={error}
+          title={t.organization.errorTitle}
+          onRetry={refresh}
+        />
+        <LogoutButton />
+      </div>
+    );
+  }
+
+  return <OrganizationSelection invalid={status === 'invalid'} />;
+}

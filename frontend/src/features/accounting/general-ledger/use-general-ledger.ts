@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { SortingState } from '@tanstack/react-table';
 import { listGeneralLedger } from '@/api/accounting.api';
 import type { GeneralLedgerQuery } from '@/api/contracts';
-import { queryKeys } from '@/api/query-keys';
+import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import {
   optionalParam,
   type LedgerScopeValues,
@@ -72,6 +72,16 @@ export function useGeneralLedger({
     queryFn: ({ signal }) =>
       listGeneralLedger(query as GeneralLedgerQuery, signal),
     enabled,
-    placeholderData: (previous) => previous,
+    // Keep the previous page only within the SAME organization: on an
+    // organization switch the old rows must disappear instead of being shown
+    // as if they belonged to the new organization.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery !== undefined &&
+      !isOtherOrganizationScope(
+        previousQuery.queryKey,
+        organizationId ?? 'none',
+      )
+        ? previous
+        : undefined,
   });
 }

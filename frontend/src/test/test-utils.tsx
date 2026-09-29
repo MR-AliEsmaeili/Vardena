@@ -5,7 +5,7 @@ import {
   type RenderResult,
 } from '@testing-library/react';
 import type { ReactElement, ReactNode } from 'react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, type InitialEntry } from 'react-router-dom';
 import { SessionProvider } from '@/features/auth/session-context';
 import { OrganizationProvider } from '@/features/organization/organization-context';
 
@@ -27,7 +27,8 @@ export function createTestQueryClient(): QueryClient {
 
 export interface RenderAppOptions extends Omit<RenderOptions, 'wrapper'> {
   queryClient?: QueryClient;
-  initialEntries?: string[];
+  /** Router entry strings or objects (path + pre-seeded `location.state`). */
+  initialEntries?: InitialEntry[];
   /** Include the session + organization providers (default: true). */
   withProviders?: boolean;
 }

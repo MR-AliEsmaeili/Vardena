@@ -7,10 +7,10 @@ import { useOrganization } from '@/features/organization/use-organization';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
-import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Button } from '@/ui/button';
-import { TopbarSearch } from './topbar-search';
+import { AppBreadcrumb } from '../breadcrumb';
 import { navigationSections } from '../navigation';
+import { OrganizationGate } from './organization-gate';
 
 /**
  * The authenticated application shell.
@@ -19,6 +19,17 @@ import { navigationSections } from '../navigation';
  * overlay drawer on small screens (no duplicated mobile pages), a top bar
  * carrying the organization context, the current user and logout, and a
  * single `<main>` outlet for the feature pages.
+ *
+ * The workspace below the top bar exists only once the organization scope is
+ * `ready` (FE-UX-04): while it is being resolved, blocked (no organization /
+ * no permission) or awaiting an explicit choice, the `OrganizationGate`
+ * replaces the sidebar and the routed content — the application never enters
+ * the dashboard around an unresolved organization, and no organization data
+ * can render without a confirmed scope.
+ *
+ * There is deliberately no search field in the top bar: the API exposes no
+ * global search contract, and an input that cannot search would be a fake
+ * capability (recorded as a CONTRACT GAP in the UX docs).
  */
 export function AppShell() {
   const session = useSession();
@@ -37,6 +48,8 @@ export function AppShell() {
     }))
     .filter((section) => section.items.length > 0);
 
+  const isWorkspaceReady = organization.status === 'ready';
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <a
@@ -52,7 +65,7 @@ export function AppShell() {
             type="button"
             variant="ghost"
             size="icon"
-            className="lg:hidden"
+            className={isWorkspaceReady ? 'lg:hidden' : 'hidden'}
             aria-label={menuOpen ? t.nav.closeMenu : t.nav.openMenu}
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
@@ -72,8 +85,6 @@ export function AppShell() {
               {t.app.tagline}
             </span>
           </div>
-
-          <TopbarSearch />
 
           <div className="ms-auto flex items-center gap-3">
             <OrganizationSwitcher />
@@ -99,80 +110,78 @@ export function AppShell() {
         </div>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[1600px]">
-        {menuOpen && (
-          <button
-            type="button"
-            className="fixed inset-0 z-20 bg-slate-900/30 lg:hidden"
-            aria-label={t.nav.closeMenu}
-            onClick={() => setMenuOpen(false)}
-          />
-        )}
-
-        <nav
-          aria-label={t.nav.mainMenu}
-          className={cn(
-            'fixed inset-y-0 start-0 z-30 mt-14 w-64 shrink-0 overflow-y-auto border-e border-slate-200 bg-white p-3 transition-transform lg:static lg:mt-0 lg:translate-x-0',
-            menuOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0',
-            !menuOpen && 'hidden lg:block',
+      {isWorkspaceReady ? (
+        <div className="mx-auto flex w-full max-w-[1600px]">
+          {menuOpen && (
+            <button
+              type="button"
+              className="fixed inset-0 z-20 bg-slate-900/30 lg:hidden"
+              aria-label={t.nav.closeMenu}
+              onClick={() => setMenuOpen(false)}
+            />
           )}
-        >
-          <ul className="space-y-4">
-            {visibleSections.map((section) => (
-              <li key={section.id}>
-                <p className="px-2 pb-1 text-xs font-semibold text-slate-400">
-                  {section.label}
-                </p>
-                <ul className="space-y-1">
-                  {section.items.map((item) => (
-                    <li key={item.to}>
-                      <NavLink
-                        to={item.to}
-                        end={item.end ?? false}
-                        onClick={() => setMenuOpen(false)}
-                        className={({ isActive }) =>
-                          cn(
-                            'flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors',
-                            isActive
-                              ? 'bg-indigo-50 font-medium text-indigo-700'
-                              : 'text-slate-700 hover:bg-slate-100',
-                          )
-                        }
-                      >
-                        <item.icon className="h-4 w-4 shrink-0" aria-hidden />
-                        <span className="truncate">{item.label}</span>
-                      </NavLink>
-                    </li>
-                  ))}
-                </ul>
-              </li>
-            ))}
-          </ul>
-        </nav>
 
+          <nav
+            aria-label={t.nav.mainMenu}
+            className={cn(
+              'fixed inset-y-0 start-0 z-30 mt-14 w-64 shrink-0 overflow-y-auto border-e border-slate-200 bg-white p-3 transition-transform lg:static lg:mt-0 lg:translate-x-0',
+              menuOpen ? 'translate-x-0' : 'translate-x-full lg:translate-x-0',
+              !menuOpen && 'hidden lg:block',
+            )}
+          >
+            <ul className="space-y-4">
+              {visibleSections.map((section) => (
+                <li key={section.id}>
+                  <p className="px-2 pb-1 text-xs font-semibold text-slate-400">
+                    {section.label}
+                  </p>
+                  <ul className="space-y-1">
+                    {section.items.map((item) => (
+                      <li key={item.to}>
+                        <NavLink
+                          to={item.to}
+                          end={item.end ?? false}
+                          onClick={() => setMenuOpen(false)}
+                          className={({ isActive }) =>
+                            cn(
+                              'flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors',
+                              isActive
+                                ? 'bg-indigo-50 font-medium text-indigo-700'
+                                : 'text-slate-700 hover:bg-slate-100',
+                            )
+                          }
+                        >
+                          <item.icon className="h-4 w-4 shrink-0" aria-hidden />
+                          <span className="truncate">{item.label}</span>
+                        </NavLink>
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <main
+            id="main-content"
+            className="min-w-0 flex-1 space-y-4 p-3 sm:p-5"
+            dir="rtl"
+          >
+            <AppBreadcrumb />
+            <Outlet />
+          </main>
+        </div>
+      ) : (
         <main
           id="main-content"
-          className="min-w-0 flex-1 space-y-4 p-3 sm:p-5"
+          className="mx-auto flex min-h-[calc(100vh-3.5rem)] w-full max-w-lg items-center px-4 py-10"
           dir="rtl"
         >
-          {organization.status === 'forbidden' && (
-            <Alert variant="warning">
-              <AlertTitle>{t.organization.emptyTitle}</AlertTitle>
-              <AlertBody>
-                <p>{t.organization.emptyBody}</p>
-                <p className="mt-1 text-xs">{t.organization.permissionHint}</p>
-              </AlertBody>
-            </Alert>
-          )}
-          {organization.status === 'empty' && (
-            <Alert variant="warning">
-              <AlertTitle>{t.organization.emptyTitle}</AlertTitle>
-              <AlertBody>{t.organization.emptyBody}</AlertBody>
-            </Alert>
-          )}
-          <Outlet />
+          <div className="w-full">
+            <OrganizationGate />
+          </div>
         </main>
-      </div>
+      )}
     </div>
   );
 }
