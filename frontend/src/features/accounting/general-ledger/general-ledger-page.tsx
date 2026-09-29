@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { SortingState } from '@tanstack/react-table';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
@@ -15,6 +15,7 @@ import {
   emptyLedgerScope,
   ledgerScopeSchema,
   type LedgerScopeValues,
+  ledgerUrlCodec,
 } from '../shared/report-filters';
 import { useReportQueryState } from '../shared/use-report-query-state';
 import { buildGeneralLedgerColumns } from './general-ledger-columns';
@@ -39,6 +40,16 @@ export function GeneralLedgerPage() {
   );
   const state = useReportQueryState<LedgerScopeValues>({
     defaultSorting: DEFAULT_SORTING,
+    allowedSortFields: [
+      'documentDate',
+      'postingTimestamp',
+      'documentId',
+      'ledgerLineId',
+      'accountCode',
+      'accountName',
+      'accountId',
+    ],
+    codec: ledgerUrlCodec,
   });
 
   const form = useForm<LedgerScopeValues>({
@@ -46,6 +57,10 @@ export function GeneralLedgerPage() {
     defaultValues: emptyLedgerScope,
     mode: 'onSubmit',
   });
+
+  useEffect(() => {
+    form.reset(state.urlFilters ?? emptyLedgerScope);
+  }, [form, state.urlFilters]);
 
   const ledgerQuery = useGeneralLedger({
     organizationId,

@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { buildAccountStatementQuery } from '../account-statement/use-account-statement';
 import { buildGeneralLedgerQuery } from '../general-ledger/use-general-ledger';
@@ -130,7 +131,18 @@ describe('sortingToParam', () => {
 
 describe('useReportQueryState', () => {
   it('returns to page 1 whenever filters, sort or page size change', () => {
-    const { result } = renderHook(() => useReportQueryState<{ a: string }>());
+    const { result } = renderHook(
+      () =>
+        useReportQueryState<{ a: string }>({
+          codec: {
+            keys: ['a'],
+            parse: (params) =>
+              params.has('a') ? { a: params.get('a') ?? '' } : null,
+            serialize: (filters, params) => params.set('a', filters.a),
+          },
+        }),
+      { wrapper: MemoryRouter },
+    );
 
     act(() => result.current.setPage(4));
     expect(result.current.page).toBe(4);

@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { SortingState } from '@tanstack/react-table';
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
@@ -12,6 +13,7 @@ import {
   emptyLedgerScope,
   ledgerScopeSchema,
   type LedgerScopeValues,
+  ledgerUrlCodec,
 } from '../shared/report-filters';
 import { useReportQueryState } from '../shared/use-report-query-state';
 import { trialBalanceColumns } from './trial-balance-columns';
@@ -25,6 +27,17 @@ export function TrialBalancePage() {
   const organizationId = useOrganizationId();
   const state = useReportQueryState<LedgerScopeValues>({
     defaultSorting: DEFAULT_SORTING,
+    allowedSortFields: [
+      'accountCode',
+      'accountName',
+      'accountId',
+      'opening',
+      'debit',
+      'credit',
+      'periodNet',
+      'closing',
+    ],
+    codec: ledgerUrlCodec,
   });
 
   const form = useForm<LedgerScopeValues>({
@@ -32,6 +45,10 @@ export function TrialBalancePage() {
     defaultValues: emptyLedgerScope,
     mode: 'onSubmit',
   });
+
+  useEffect(() => {
+    form.reset(state.urlFilters ?? emptyLedgerScope);
+  }, [form, state.urlFilters]);
 
   const trialBalanceQuery = useTrialBalance({
     organizationId,

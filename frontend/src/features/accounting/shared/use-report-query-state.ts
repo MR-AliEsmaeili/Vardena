@@ -1,5 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
-import { useInRouterContext } from 'react-router-dom';
+import { useCallback, useMemo } from 'react';
 import type { SortingState } from '@tanstack/react-table';
 import { useSearchParams } from 'react-router-dom';
 import { sortingFromParam, sortingToParam } from '@/lib/sort-param';
@@ -10,7 +9,6 @@ const DEFAULT_PAGE_SIZE = 50;
 
 export interface ReportQueryState<TFilters> {
   applied: TFilters | null;
-  /** Filters reconstructed from the current URL, for controlled form hydration. */
   urlFilters: TFilters | null;
   page: number;
   pageSize: number;
@@ -22,112 +20,64 @@ export interface ReportQueryState<TFilters> {
   setSorting: (sorting: SortingState) => void;
 }
 
-/**
- * URL is the navigation-owned source of truth for report execution state.
- * Report-specific parsers deliberately live with the screen because the API
- * contracts have different filter surfaces.
- */
-export function useReportQueryState<TFilters>(
-  options: {
-    defaultSorting?: SortingState;
-    defaultPageSize?: number;
-    parseFilters?: (params: URLSearchParams) => TFilters | null;
-    serializeFilters?: (filters: TFilters, params: URLSearchParams) => void;
-    clearKeys?: readonly string[];
-  } = {},
-): ReportQueryState<TFilters> {
+export interface ReportUrlCodec<TFilters> {
+  parse: (params: URLSearchParams) => TFilters | null;
+  serialize: (filters: TFilters, params: URLSearchParams) => void;
+  keys: readonly string[];
+}
+
+export function createReportUrlCodec<T extends Record<string, string>>(
+  keys: readonly (keyof T & string)[],
+  defaults: T,
+): ReportUrlCodec<T> {
+  return {
+    keys,
+    parse: (params) => {
+      const hasFilter = keys.some((key) => params.has(key));
+      if (!hasFilter) return null;
+      return Object.fromEntries(
+        keys.map((key) => [key, params.get(key) ?? defaults[key]]),
+      ) as T;
+    },
+    serialize: (filters, params) => {
+      keys.forEach((key) => {
+        const value = filters[key];
+        if (value) params.set(key, value);
+      });
+    },
+  };
+}
+
+export function useReportQueryState<TFilters>(options: {
+  defaultSorting?: SortingState;
+  allowedSortFields?: readonly string[];
+  defaultPageSize?: number;
+  codec: ReportUrlCodec<TFilters>;
+}): ReportQueryState<TFilters> {
   const defaultSorting = options.defaultSorting ?? NO_SORTING;
-  const parseFilters =
-    options.parseFilters ??
-    ((params: URLSearchParams) => {
-      const keys = [
-        'financialAreaId',
-        'fiscalYearId',
-        'accountingPeriodId',
-        'accountId',
-        'accountHierarchyId',
-        'accountCode',
-        'accountName',
-        'dateFrom',
-        'dateTo',
-      ];
-      const value = Object.fromEntries(
-        keys
-          .filter((key) => params.has(key))
-          .map((key) => [key, params.get(key) ?? '']),
-      );
-      return Object.keys(value).length ? (value as TFilters) : null;
-    });
-  const serializeFilters =
-    options.serializeFilters ??
-    ((filters: TFilters, params: URLSearchParams) => {
-      Object.entries(filters as Record<string, unknown>).forEach(
-        ([key, value]) => {
-          if (typeof value === 'string' && value) params.set(key, value);
-        },
-      );
-    });
-  const clearKeys = options.clearKeys ?? [
-    'financialAreaId',
-    'fiscalYearId',
-    'accountingPeriodId',
-    'accountId',
-    'accountHierarchyId',
-    'accountCode',
-    'accountName',
-    'dateFrom',
-    'dateTo',
-  ];
   const defaultPageSize = options.defaultPageSize ?? DEFAULT_PAGE_SIZE;
-  const inRouter = useInRouterContext();
-  const [localApplied, setLocalApplied] = useState<TFilters | null>(null);
-  const [localPage, setLocalPage] = useState(1);
-  const [localPageSize, setLocalPageSize] = useState(defaultPageSize);
-  const [localSorting, setLocalSorting] =
-    useState<SortingState>(defaultSorting);
-  if (!inRouter) {
-    return {
-      applied: localApplied,
-      urlFilters: localApplied,
-      page: localPage,
-      pageSize: localPageSize,
-      sorting: localSorting,
-      apply: (filters) => {
-        setLocalApplied(filters);
-        setLocalPage(1);
-      },
-      clear: () => {
-        setLocalApplied(null);
-        setLocalPage(1);
-        setLocalSorting(defaultSorting);
-      },
-      setPage: (next) => setLocalPage(next),
-      setPageSize: (next) => {
-        setLocalPageSize(next);
-        setLocalPage(1);
-      },
-      setSorting: (next) => {
-        setLocalSorting(next);
-        setLocalPage(1);
-      },
-    };
-  }
   const [searchParams, setSearchParams] = useSearchParams();
   const urlFilters = useMemo(
-    () => parseFilters(searchParams),
-    [parseFilters, searchParams],
+    () => options.codec.parse(searchParams),
+    [options.codec, searchParams],
   );
-  const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
-  const pageSize = Math.max(
-    1,
-    Number(searchParams.get('pageSize') ?? String(defaultPageSize)) ||
-      defaultPageSize,
-  );
-  const sorting = sortingFromParam(
+  const pageValue = searchParams.get('page');
+  const pageSizeValue = searchParams.get('pageSize');
+  const page =
+    pageValue !== null && /^\d+$/.test(pageValue) && Number(pageValue) > 0
+      ? Number(pageValue)
+      : 1;
+  const pageSize =
+    pageSizeValue !== null &&
+    /^\d+$/.test(pageSizeValue) &&
+    Number(pageSizeValue) > 0
+      ? Number(pageSizeValue)
+      : defaultPageSize;
+  const parsedSorting = sortingFromParam(
     searchParams.get('sort'),
-    defaultSorting.map((item) => item.id),
+    options.allowedSortFields ?? defaultSorting.map((item) => item.id),
   );
-  const applied = urlFilters;
+  const sorting = parsedSorting.length > 0 ? parsedSorting : defaultSorting;
 
   const update = useCallback(
     (mutate: (params: URLSearchParams) => void) => {
@@ -137,40 +87,42 @@ export function useReportQueryState<TFilters>(
     },
     [searchParams, setSearchParams],
   );
-
   const apply = useCallback(
     (filters: TFilters) =>
       update((params) => {
-        clearKeys.forEach((key) => params.delete(key));
-        serializeFilters(filters, params);
+        options.codec.keys.forEach((key) => params.delete(key));
+        options.codec.serialize(filters, params);
         params.delete('page');
       }),
-    [clearKeys, serializeFilters, update],
+    [options.codec, update],
   );
   const clear = useCallback(
     () =>
       update((params) => {
-        clearKeys.forEach((key) => params.delete(key));
+        options.codec.keys.forEach((key) => params.delete(key));
         params.delete('page');
         params.delete('pageSize');
         params.delete('sort');
       }),
-    [clearKeys, update],
+    [options.codec, update],
   );
   const setPage = useCallback(
     (next: number) =>
       update((params) => {
-        params.set('page', String(Math.max(1, next)));
+        params.set('page', String(Math.max(1, Math.trunc(next) || 1)));
       }),
     [update],
   );
   const setPageSize = useCallback(
     (next: number) =>
       update((params) => {
-        params.set('pageSize', String(Math.max(1, next)));
+        params.set(
+          'pageSize',
+          String(Math.max(1, Math.trunc(next) || defaultPageSize)),
+        );
         params.delete('page');
       }),
-    [update],
+    [defaultPageSize, update],
   );
   const setSorting = useCallback(
     (next: SortingState) =>
@@ -184,7 +136,7 @@ export function useReportQueryState<TFilters>(
   );
 
   return {
-    applied,
+    applied: urlFilters,
     urlFilters,
     page,
     pageSize,
