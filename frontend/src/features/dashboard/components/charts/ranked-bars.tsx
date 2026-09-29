@@ -41,9 +41,7 @@ export function RankedBars({
     <figure className="m-0 space-y-3">
       <figcaption className="sr-only">{description}</figcaption>
       {items.length === 0 ? (
-        <p className="py-8 text-center text-xs text-slate-500">
-          {description}
-        </p>
+        <p className="py-8 text-center text-xs text-slate-500">{description}</p>
       ) : (
         <ul className="space-y-3">
           {items.map((item, index) => {
@@ -56,7 +54,10 @@ export function RankedBars({
                   <span className="truncate font-medium text-slate-700">
                     {item.label}
                   </span>
-                  <span className="num font-semibold text-slate-700" title={item.value}>
+                  <span
+                    className="num font-semibold text-slate-700"
+                    title={item.value}
+                  >
                     {formatAmount(item.value)}
                   </span>
                 </div>

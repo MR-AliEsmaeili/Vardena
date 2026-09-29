@@ -1,14 +1,10 @@
 import type { ReactElement } from 'react';
-import {
-  Boxes,
-  ClipboardCheck,
-  FileLock2,
-  ShieldQuestion,
-} from 'lucide-react';
+import { Boxes, ClipboardCheck, FileLock2, ShieldQuestion } from 'lucide-react';
 import type { InventoryBalance, WorkflowInstance } from '@/api/contracts';
 import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/ui/card';
+import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { EmptyState } from '@/ui/patterns/states';
 import { formatCount, formatDateTime, formatQuantity } from '@/lib/format';
 
@@ -20,24 +16,30 @@ import { formatCount, formatDateTime, formatQuantity } from '@/lib/format';
  *   inline buttons are not reproduced because deciding an approval is a
  *   separate backend capability (POST /workflow/approvals/:id/decide is not
  *   wired to a dashboard surface). The gap is documented, not faked.
- * - **Inventory alerts**: real balances endpoint; `available` is the
- *   backend-derived field — the frontend never recomputes stock.
+ * - **Lowest on-hand inventory**: real balances ordered by the backend's
+ *   supported `onHand` field. Availability is not presented as the ranking.
  * - **Fiscal period status**: real periods of the scoped fiscal year.
  */
 export function WorkflowWidget({
   instances,
   isLoading,
   isPermitted,
+  error,
+  onRetry,
 }: {
   instances: WorkflowInstance[] | undefined;
   isLoading: boolean;
   isPermitted: boolean;
+  error?: unknown;
+  onRetry: () => void;
 }): ReactElement {
   const count = instances?.length ?? 0;
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between">
-        <CardTitle className="text-sm font-bold">{t.dashboard.approvalsTitle}</CardTitle>
+        <CardTitle className="text-sm font-bold">
+          {t.dashboard.approvalsTitle}
+        </CardTitle>
         {!isLoading && count > 0 && (
           <Badge variant="warning" className="num">
             {formatCount(count)} {t.dashboard.approvalsBadge}
@@ -52,12 +54,27 @@ export function WorkflowWidget({
         ) : isLoading ? (
           <ul className="space-y-3" aria-busy="true">
             {[0, 1, 2].map((index) => (
-              <li key={index} className="flex items-center gap-3 py-1 text-sm text-slate-400">
-                <span className="h-8 w-8 animate-pulse rounded-lg bg-slate-200" aria-hidden />
-                <span className="h-3 w-2/3 animate-pulse rounded bg-slate-200" aria-hidden />
+              <li
+                key={index}
+                className="flex items-center gap-3 py-1 text-sm text-slate-400"
+              >
+                <span
+                  className="h-8 w-8 animate-pulse rounded-lg bg-slate-200"
+                  aria-hidden
+                />
+                <span
+                  className="h-3 w-2/3 animate-pulse rounded bg-slate-200"
+                  aria-hidden
+                />
               </li>
             ))}
           </ul>
+        ) : error !== undefined ? (
+          <ApiErrorAlert
+            error={error}
+            title={t.dashboardErrors.workflow}
+            onRetry={onRetry}
+          />
         ) : instances === undefined || instances.length === 0 ? (
           <EmptyState
             title={t.dashboard.approvalsEmptyTitle}
@@ -103,16 +120,24 @@ export function InventoryAlertWidget({
   balances,
   isLoading,
   isPermitted,
+  error,
+  onRetry,
 }: {
   balances: InventoryBalance[] | undefined;
   isLoading: boolean;
   isPermitted: boolean;
+  error?: unknown;
+  onRetry: () => void;
 }): ReactElement {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-bold">{t.dashboard.inventoryTitle}</CardTitle>
-        <CardDescription className="text-[11px]">{t.dashboard.inventorySubtitle}</CardDescription>
+        <CardTitle className="text-sm font-bold">
+          {t.dashboard.inventoryTitle}
+        </CardTitle>
+        <CardDescription className="text-[11px]">
+          {t.dashboard.inventorySubtitle}
+        </CardDescription>
       </CardHeader>
       <div className="px-4 pb-3 pt-2">
         {!isPermitted ? (
@@ -122,9 +147,19 @@ export function InventoryAlertWidget({
         ) : isLoading ? (
           <ul className="space-y-3" aria-busy="true">
             {[0, 1, 2].map((index) => (
-              <li key={index} className="h-10 animate-pulse rounded bg-slate-100" aria-hidden />
+              <li
+                key={index}
+                className="h-10 animate-pulse rounded bg-slate-100"
+                aria-hidden
+              />
             ))}
           </ul>
+        ) : error !== undefined ? (
+          <ApiErrorAlert
+            error={error}
+            title={t.dashboardErrors.inventory}
+            onRetry={onRetry}
+          />
         ) : balances === undefined || balances.length === 0 ? (
           <EmptyState
             title={t.dashboard.inventoryEmptyTitle}
@@ -147,17 +182,14 @@ export function InventoryAlertWidget({
                     <span className="code">{balance.itemId}</span>
                   </span>
                   <span className="mt-0.5 block text-[11px] text-slate-400">
-                    {t.dashboard.inventoryAvailable}:{' '}
-                    <strong
-                      className={`num ${
-                        Number(balance.available) <= 0 ? 'text-rose-600' : 'text-amber-600'
-                      }`}
-                    >
-                      {formatQuantity(balance.available)}
+                    {t.dashboard.inventoryOnHand}:{' '}
+                    <strong className="num text-slate-700">
+                      {formatQuantity(balance.onHand)}
                     </strong>
                   </span>
                 </div>
-                <Badge variant={Number(balance.available) <= 0 ? 'danger' : 'warning'}>
+                <Badge variant="neutral">
+                  {t.dashboard.inventoryReserved}:{' '}
                   {formatQuantity(balance.reserved)}
                 </Badge>
               </li>
@@ -174,17 +206,23 @@ export function PeriodStatusWidget({
   isLoading,
   isPermitted = true,
   scopeMissing = false,
+  error,
+  onRetry,
 }: {
-  periods: Array<{
-    id: string;
-    sequence: number;
-    title: string;
-    status: 'open' | 'closed' | 'sealed';
-    isCurrent: boolean;
-  }> | undefined;
+  periods:
+    | Array<{
+        id: string;
+        sequence: number;
+        title: string;
+        status: 'open' | 'closed' | 'sealed';
+        isCurrent: boolean;
+      }>
+    | undefined;
   isLoading: boolean;
   isPermitted?: boolean;
   scopeMissing?: boolean;
+  error?: unknown;
+  onRetry: () => void;
 }): ReactElement {
   const statusPresentation = {
     open: { label: t.dashboard.periodOpen, variant: 'success' },
@@ -195,19 +233,33 @@ export function PeriodStatusWidget({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm font-bold">{t.dashboard.periodTitle}</CardTitle>
+        <CardTitle className="text-sm font-bold">
+          {t.dashboard.periodTitle}
+        </CardTitle>
       </CardHeader>
       <div className="px-4 pb-3 pt-2">
         {!isPermitted || scopeMissing ? (
           <p className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-6 text-center text-xs text-slate-500">
-            {scopeMissing ? t.dashboard.scopeMissingShort : t.dashboard.noPermission}
+            {scopeMissing
+              ? t.dashboard.scopeMissingShort
+              : t.dashboard.noPermission}
           </p>
         ) : isLoading ? (
           <div className="space-y-2" aria-busy="true">
             {[0, 1, 2].map((index) => (
-              <div key={index} className="h-8 animate-pulse rounded bg-slate-100" aria-hidden />
+              <div
+                key={index}
+                className="h-8 animate-pulse rounded bg-slate-100"
+                aria-hidden
+              />
             ))}
           </div>
+        ) : error !== undefined ? (
+          <ApiErrorAlert
+            error={error}
+            title={t.dashboardErrors.periods}
+            onRetry={onRetry}
+          />
         ) : periods === undefined || periods.length === 0 ? (
           <EmptyState
             title={t.dashboard.periodEmptyTitle}
@@ -226,7 +278,10 @@ export function PeriodStatusWidget({
                   <span className="font-medium text-slate-700">
                     {period.title}
                     {period.isCurrent && (
-                      <span className="text-[11px] text-slate-400"> {t.dashboard.periodCurrent}</span>
+                      <span className="text-[11px] text-slate-400">
+                        {' '}
+                        {t.dashboard.periodCurrent}
+                      </span>
                     )}
                   </span>
                   <Badge variant={presentation.variant} className="ms-auto">

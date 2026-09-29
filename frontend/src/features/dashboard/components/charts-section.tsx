@@ -5,9 +5,7 @@ import { Badge } from '@/ui/badge';
 import { Card, CardDescription, CardHeader, CardTitle } from '@/ui/card';
 import { Skeleton } from '@/ui/skeleton';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-import {
-  buildTurnoverSeries,
-} from '../lib/chart-series';
+import { buildTurnoverSeries } from '../lib/chart-series';
 import { formatAmount } from '@/lib/format';
 import { aggregateKpis, topAccountsByTurnover } from '../lib/kpis';
 
@@ -23,14 +21,16 @@ import { aggregateKpis, topAccountsByTurnover } from '../lib/kpis';
  * Charts are lazy-loaded so the dashboard's first paint stays within budget
  * (FR-14: نمودارها فقط lazy). The primitives are dependency-free SVG.
  */
-const GroupedBarChart = lazy(
-  () => import('./charts/grouped-bar-chart').then((m) => ({ default: m.GroupedBarChart })),
+const GroupedBarChart = lazy(() =>
+  import('./charts/grouped-bar-chart').then((m) => ({
+    default: m.GroupedBarChart,
+  })),
 );
-const RankedBars = lazy(
-  () => import('./charts/ranked-bars').then((m) => ({ default: m.RankedBars })),
+const RankedBars = lazy(() =>
+  import('./charts/ranked-bars').then((m) => ({ default: m.RankedBars })),
 );
-const ShareBars = lazy(
-  () => import('./charts/ranked-bars').then((m) => ({ default: m.ShareBars })),
+const ShareBars = lazy(() =>
+  import('./charts/ranked-bars').then((m) => ({ default: m.ShareBars })),
 );
 
 function ChartSkeleton(): ReactElement {
@@ -66,20 +66,22 @@ export function ChartsSection({
   balances,
   error,
   onRetry,
+  isPermitted = true,
   scopeMissing = false,
 }: {
   balances: AccountBalance[] | undefined;
   error?: unknown;
   onRetry?: () => void;
+  isPermitted?: boolean;
   scopeMissing?: boolean;
 }): ReactElement {
-  if (scopeMissing) {
+  if (!isPermitted || scopeMissing) {
     return (
       <div
         className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-6 text-center text-xs text-slate-500"
         aria-label={t.dashboard.chartsSectionLabel}
       >
-        {t.dashboard.scopeMissing}
+        {scopeMissing ? t.dashboard.scopeMissing : t.dashboard.noPermission}
       </div>
     );
   }
@@ -101,19 +103,31 @@ export function ChartsSection({
       <div className="space-y-4" aria-busy="true">
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <ChartCard title={t.dashboard.chartTurnoverTitle} subtitle={t.dashboard.chartTurnoverSubtitle}>
+            <ChartCard
+              title={t.dashboard.chartTurnoverTitle}
+              subtitle={t.dashboard.chartTurnoverSubtitle}
+            >
               <ChartSkeleton />
             </ChartCard>
           </div>
-          <ChartCard title={t.dashboard.chartNetTitle} subtitle={t.dashboard.chartNetSubtitle}>
+          <ChartCard
+            title={t.dashboard.chartNetTitle}
+            subtitle={t.dashboard.chartNetSubtitle}
+          >
             <ChartSkeleton />
           </ChartCard>
         </div>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <ChartCard title={t.dashboard.chartMovementsTitle} subtitle={t.dashboard.chartMovementsSubtitle}>
+          <ChartCard
+            title={t.dashboard.chartMovementsTitle}
+            subtitle={t.dashboard.chartMovementsSubtitle}
+          >
             <ChartSkeleton />
           </ChartCard>
-          <ChartCard title={t.dashboard.chartTopAccountsTitle} subtitle={t.dashboard.chartTopAccountsSubtitle}>
+          <ChartCard
+            title={t.dashboard.chartTopAccountsTitle}
+            subtitle={t.dashboard.chartTopAccountsSubtitle}
+          >
             <ChartSkeleton />
           </ChartCard>
         </div>
@@ -153,8 +167,14 @@ export function ChartsSection({
                 </p>
               ) : (
                 <GroupedBarChart
-                  seriesA={series.debit.map((value, index) => ({ label: periodLabels[index] ?? '', value }))}
-                  seriesB={series.credit.map((value, index) => ({ label: periodLabels[index] ?? '', value }))}
+                  seriesA={series.debit.map((value, index) => ({
+                    label: periodLabels[index] ?? '',
+                    value,
+                  }))}
+                  seriesB={series.credit.map((value, index) => ({
+                    label: periodLabels[index] ?? '',
+                    value,
+                  }))}
                   labelA={t.dashboard.chartTurnoverDebit}
                   labelB={t.dashboard.chartTurnoverCredit}
                   description={`${t.dashboard.chartAriaPrefix} ${t.dashboard.chartTurnoverTitle}`}
@@ -186,7 +206,10 @@ export function ChartsSection({
           </Suspense>
         </ChartCard>
       </div>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2" aria-label={t.dashboard.chartsOperationalLabel}>
+      <div
+        className="grid grid-cols-1 gap-4 lg:grid-cols-2"
+        aria-label={t.dashboard.chartsOperationalLabel}
+      >
         <ChartCard
           title={t.dashboard.chartMovementsTitle}
           subtitle={t.dashboard.chartMovementsSubtitle}
@@ -198,8 +221,22 @@ export function ChartsSection({
               </p>
             ) : (
               <GroupedBarChart
-                seriesA={kpis.periodTurnover.map((entry) => ({ label: periodLabels[series.sequences.indexOf(entry.periodSequence)] ?? `${t.dashboard.chartPeriodShort} ${entry.periodSequence}`, value: entry.debit }))}
-                seriesB={kpis.periodTurnover.map((entry) => ({ label: periodLabels[series.sequences.indexOf(entry.periodSequence)] ?? `${t.dashboard.chartPeriodShort} ${entry.periodSequence}`, value: entry.credit }))}
+                seriesA={kpis.periodTurnover.map((entry) => ({
+                  label:
+                    periodLabels[
+                      series.sequences.indexOf(entry.periodSequence)
+                    ] ??
+                    `${t.dashboard.chartPeriodShort} ${entry.periodSequence}`,
+                  value: entry.debit,
+                }))}
+                seriesB={kpis.periodTurnover.map((entry) => ({
+                  label:
+                    periodLabels[
+                      series.sequences.indexOf(entry.periodSequence)
+                    ] ??
+                    `${t.dashboard.chartPeriodShort} ${entry.periodSequence}`,
+                  value: entry.credit,
+                }))}
                 labelA={t.dashboard.chartTurnoverDebit}
                 labelB={t.dashboard.chartTurnoverCredit}
                 description={`${t.dashboard.chartAriaPrefix} ${t.dashboard.chartMovementsTitle}`}

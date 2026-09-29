@@ -15,7 +15,9 @@ export function SparkLine({
   const width = 84;
   const height = 28;
   if (points.length < 2) {
-    return <svg width={width} height={height} aria-hidden className={className} />;
+    return (
+      <svg width={width} height={height} aria-hidden className={className} />
+    );
   }
   const min = Math.min(...points);
   const max = Math.max(...points);

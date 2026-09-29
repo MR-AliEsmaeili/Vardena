@@ -35,7 +35,9 @@ describe('dashboard documents table', () => {
 
   it('delegates pagination to the callback instead of slicing local data', () => {
     const onPageChange = vi.fn();
-    render(<DocumentsTable {...baseProps} total={20} onPageChange={onPageChange} />);
+    render(
+      <DocumentsTable {...baseProps} total={20} onPageChange={onPageChange} />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: t.table.next }));
     expect(onPageChange).toHaveBeenCalledWith(2);

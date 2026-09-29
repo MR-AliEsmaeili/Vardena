@@ -25,7 +25,11 @@ const statePresentation = {
   final: { label: t.dashboard.stateFinal, variant: 'success' },
 } as const;
 
-function DocumentStateCell({ value }: { value: AccountingDocument['state'] }): ReactElement {
+function DocumentStateCell({
+  value,
+}: {
+  value: AccountingDocument['state'];
+}): ReactElement {
   const presentation = statePresentation[value];
   return <Badge variant={presentation.variant}>{presentation.label}</Badge>;
 }
@@ -40,7 +44,10 @@ export const documentColumns: ColumnDef<AccountingDocument, unknown>[] = [
     header: t.dashboard.colDocumentNumber,
     enableSorting: true,
     cell: ({ row }) => (
-      <span className="code font-semibold" title={row.original.documentNumber ?? undefined}>
+      <span
+        className="code font-semibold"
+        title={row.original.documentNumber ?? undefined}
+      >
         {row.original.documentNumber ?? t.app.none}
       </span>
     ),
@@ -59,7 +66,10 @@ export const documentColumns: ColumnDef<AccountingDocument, unknown>[] = [
     header: t.dashboard.colDescription,
     enableSorting: false,
     cell: ({ row }) => (
-      <span className="block max-w-[21rem] truncate" title={row.original.description}>
+      <span
+        className="block max-w-[21rem] truncate"
+        title={row.original.description}
+      >
         {row.original.description}
       </span>
     ),
@@ -105,6 +115,7 @@ export function DocumentsTable({
   onPageSizeChange,
   onSortingChange,
   hasFilter,
+  isPermitted = true,
 }: {
   documents: AccountingDocument[];
   total: number;
@@ -119,6 +130,7 @@ export function DocumentsTable({
   onPageSizeChange: (pageSize: number) => void;
   onSortingChange: (sorting: SortingState) => void;
   hasFilter: boolean;
+  isPermitted?: boolean;
 }): ReactElement {
   return (
     <Card>
@@ -134,35 +146,41 @@ export function DocumentsTable({
           </CardDescription>
         </div>
       </CardHeader>
-      <DataTable
-        columns={documentColumns}
-        data={documents}
-        getRowId={(row) => row.id}
-        caption={t.dashboard.documentsSectionLabel}
-        isLoading={isLoading}
-        isFetching={isFetching}
-        error={error}
-        onRetry={onRetry}
-        emptyTitle={
-          hasFilter
-            ? t.dashboard.documentsFilteredEmptyTitle
-            : t.dashboard.documentsEmptyTitle
-        }
-        emptyDescription={
-          hasFilter
-            ? t.dashboard.documentsFilteredEmptyBody
-            : t.dashboard.documentsEmptyBody
-        }
-        sorting={sorting}
-        onSortingChange={onSortingChange}
-        pagination={{
-          page,
-          pageSize,
-          total,
-          onPageChange,
-          onPageSizeChange,
-        }}
-      />
+      {!isPermitted ? (
+        <p className="m-4 rounded-lg border border-dashed border-slate-300 bg-white px-6 py-6 text-center text-xs text-slate-500">
+          {t.dashboard.noPermission}
+        </p>
+      ) : (
+        <DataTable
+          columns={documentColumns}
+          data={documents}
+          getRowId={(row) => row.id}
+          caption={t.dashboard.documentsSectionLabel}
+          isLoading={isLoading}
+          isFetching={isFetching}
+          error={error}
+          onRetry={onRetry}
+          emptyTitle={
+            hasFilter
+              ? t.dashboard.documentsFilteredEmptyTitle
+              : t.dashboard.documentsEmptyTitle
+          }
+          emptyDescription={
+            hasFilter
+              ? t.dashboard.documentsFilteredEmptyBody
+              : t.dashboard.documentsEmptyBody
+          }
+          sorting={sorting}
+          onSortingChange={onSortingChange}
+          pagination={{
+            page,
+            pageSize,
+            total,
+            onPageChange,
+            onPageSizeChange,
+          }}
+        />
+      )}
     </Card>
   );
 }

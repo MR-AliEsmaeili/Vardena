@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { aggregateKpis, sumDecimalStrings, topAccountsByTurnover } from './kpis';
+import {
+  aggregateKpis,
+  sumDecimalStrings,
+  topAccountsByTurnover,
+} from './kpis';
 import { testAccountBalances } from '@/test/fixtures';
 
 /**
@@ -13,13 +17,27 @@ describe('sumDecimalStrings', () => {
 
   it('never loses precision where a float would round', () => {
     expect(sumDecimalStrings('0.1', '0.2')).toBe('0.3');
-    expect(sumDecimalStrings('9007199254740993', '0')).toBe(
-      '9007199254740993',
-    );
+    expect(sumDecimalStrings('9007199254740993', '0')).toBe('9007199254740993');
   });
 
   it('keeps the wider fraction length', () => {
     expect(sumDecimalStrings('1.5', '2.25')).toBe('3.75');
+    expect(sumDecimalStrings('-1.005', '0.5')).toBe('-0.505');
+  });
+
+  it('normalizes signed fractional results with a leading zero', () => {
+    expect(sumDecimalStrings('-1.00', '0.50')).toBe('-0.50');
+    expect(sumDecimalStrings('-0.50', '0.25')).toBe('-0.25');
+  });
+
+  it('normalizes exact cancellation to unsigned zero', () => {
+    expect(sumDecimalStrings('-0.25', '0.25')).toBe('0.00');
+  });
+
+  it('adds zero, integers, and negative values without losing precision', () => {
+    expect(sumDecimalStrings('0.00', '0.50')).toBe('0.50');
+    expect(sumDecimalStrings('2', '0.75')).toBe('2.75');
+    expect(sumDecimalStrings('-1.20', '-2.30')).toBe('-3.50');
   });
 });
 

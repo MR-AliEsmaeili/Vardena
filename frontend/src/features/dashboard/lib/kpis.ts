@@ -14,17 +14,38 @@ import type { AccountBalance } from '@/api/contracts';
  * authority over every balance.
  */
 
-/** Add two non-negative decimal strings digit-exactly (no float parsing). */
+/** Add two signed decimal strings digit-exactly (no float parsing). */
 export function sumDecimalStrings(a: string, b: string): string {
-  const [aInt = '0', aFrac = ''] = a.split('.');
-  const [bInt = '0', bFrac = ''] = b.split('.');
-  const fracLen = Math.max(aFrac.length, bFrac.length);
-  const aScaled = BigInt((aInt + aFrac.padEnd(fracLen, '0')) || '0');
-  const bScaled = BigInt((bInt + bFrac.padEnd(fracLen, '0')) || '0');
-  const sum = (aScaled + bScaled).toString().padStart(fracLen + 1, '0');
-  const intPart = sum.slice(0, sum.length - fracLen) || '0';
-  const fracPart = fracLen > 0 ? `.${sum.slice(sum.length - fracLen)}` : '';
-  return fracLen > 0 ? `${intPart}${fracPart}` : intPart;
+  const parse = (value: string) => {
+    const trimmed = value.trim();
+    const negative = trimmed.startsWith('-');
+    const unsigned = trimmed.replace(/^[+-]/, '');
+    const [integer = '0', fraction = ''] = unsigned.split('.');
+    return { negative, integer: integer || '0', fraction };
+  };
+
+  const left = parse(a);
+  const right = parse(b);
+  const fractionLength = Math.max(left.fraction.length, right.fraction.length);
+  const scale = (value: ReturnType<typeof parse>) => {
+    const digits = value.integer + value.fraction.padEnd(fractionLength, '0');
+    const magnitude = BigInt(digits || '0');
+    return value.negative ? -magnitude : magnitude;
+  };
+
+  const scaledSum = scale(left) + scale(right);
+  const negative = scaledSum < 0n;
+  const magnitude = (negative ? -scaledSum : scaledSum)
+    .toString()
+    .padStart(fractionLength + 1, '0');
+  const integer =
+    fractionLength === 0
+      ? magnitude
+      : magnitude.slice(0, -fractionLength) || '0';
+  const fraction =
+    fractionLength === 0 ? '' : `.${magnitude.slice(-fractionLength)}`;
+
+  return `${negative ? '-' : ''}${integer}${fraction}`;
 }
 
 export interface DashboardKpis {
@@ -117,14 +138,27 @@ export function topAccountsByTurnover(
     const debit = row.periodDebitAmount === '' ? '0' : row.periodDebitAmount;
     const credit = row.periodCreditAmount === '' ? '0' : row.periodCreditAmount;
     const current = byAccount.get(row.accountId) ?? '0';
-    byAccount.set(row.accountId, addDecimal(debit, addDecimal(credit, current)));
+    byAccount.set(
+      row.accountId,
+      addDecimal(debit, addDecimal(credit, current)),
+    );
   }
   return [...byAccount.entries()]
     .sort((a, b) => {
-      const diff = BigInt(
-        b[1].replace('.', '').replace('-', '') || '0',
-      ) - BigInt(a[1].replace('.', '').replace('-', '') || '0');
-      return diff === 0n ? 0 : diff > 0n ? 1 : -1;
+      const [aInteger = '0', aFraction = ''] = a[1]
+        .replace(/^[+-]/, '')
+        .split('.');
+      const [bInteger = '0', bFraction = ''] = b[1]
+        .replace(/^[+-]/, '')
+        .split('.');
+      const fractionLength = Math.max(aFraction.length, bFraction.length);
+      const aMagnitude = BigInt(
+        aInteger + aFraction.padEnd(fractionLength, '0'),
+      );
+      const bMagnitude = BigInt(
+        bInteger + bFraction.padEnd(fractionLength, '0'),
+      );
+      return aMagnitude === bMagnitude ? 0 : aMagnitude > bMagnitude ? -1 : 1;
     })
     .slice(0, limit)
     .map(([accountId, total]) => ({ accountId, total }));

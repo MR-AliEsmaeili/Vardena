@@ -8,7 +8,7 @@ Native implementation of the `docs/frontend/reference/simpledashboard.html` visu
 
 | Reference element | Production mapping |
 | --- | --- |
-| KPI row (4 cards) | `GET /accounting/balances` aggregates of the dashboard scope (debit/credit/net/movement count) |
+| KPI row (4 cards) | Complete paginated `GET /accounting/balances` scope (debit/credit/net/periods with non-zero turnover) |
 | Income vs expense trend | Debit/credit turnover per period (`GroupedBarChart`, lazy SVG) |
 | Branch sales donut | Net turnover share per period (`ShareBars`, lazy SVG) |
 | Weekly cash flow | Net per period grouped bars (debit/credit) |
@@ -16,7 +16,7 @@ Native implementation of the `docs/frontend/reference/simpledashboard.html` visu
 | Period-close banner | Real fiscal-period state (non-open periods), dismissible view state |
 | Recent documents table | `GET /accounting-documents`, TanStack Table, URL-backed page/pageSize/sort (`?page=&pageSize=&sort=`), allow-listed sort fields only |
 | Approvals widget | `GET /workflow/instances`, DISPLAY ONLY — decide action intentionally not reproduced (documented gap) |
-| Inventory alerts | `GET /inventory/balances` (`available` is backend-derived; never recomputed) |
+| Lowest on-hand inventory | `GET /inventory/balances`, ordered and displayed by backend-supported `onHand`; it does not claim availability-alert ordering |
 | Fiscal period status | Real periods of the scoped fiscal year |
 | Reconciliation card | Empty state + CTA to `/app/accounting/trial-balance` (permissioned) |
 | Topbar search / Alt+D | Additive topbar search field (Ctrl K hint); Alt+D intentionally inert (dashboard is its own page); Alt+N not bound (no document-creation surface exists) |
@@ -42,7 +42,7 @@ Modified: `src/api/contracts.ts`, `src/api/query-keys.ts`, `src/lib/i18n.ts`, `s
 
 - `npm run typecheck` — clean.
 - `npm run lint` (oxlint) — 0 warnings, 0 errors.
-- `npx vitest run` — **15 files / 84 tests passed** (17 new dashboard tests: KPI aggregation/formatting, sort param round-trip, table columns & states, page loading/empty/error/success, permission gating, URL state).
+- `npx vitest run` — **19 files / 111 tests passed** (dashboard coverage includes exact signed decimals, complete balance pagination and cancellation, KPI semantics, permission gating, widget state machines, inventory ordering, tables and URL state).
 - `npm run build` — OK; dashboard chunks lazy: `dashboard-page` 26.95 kB (7.52 gzip), charts separately split.
 - Rule-as-code grep gates (Persian literals in JSX, chart libs) — clean.
 - **Visual verification** (dev server + seeded org): RTL layout matches reference (right sidebar, grouped nav, active highlight; topbar search + Ctrl K; 2:1 and 1:1 chart grids; 4 KPI cards). Empty org → scope-missing notices; missing accounting setup → honest disabled states; documents error state with correlation id + retry; reconciliation CTA renders with permission. Mobile 390px: single column, hamburger nav, no overflow. Dark mode: app is light-only by design; dashboard follows the app's existing intent.
