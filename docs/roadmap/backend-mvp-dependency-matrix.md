@@ -9,6 +9,13 @@
 | Parent | [backend-mvp-roadmap.md](./backend-mvp-roadmap.md) |
 | Production code changed | **NONE** |
 
+> **Current-state addendum (2026-09-29):** this matrix's original baseline is a
+> dated planning snapshot. Current `main` `34dddfd` includes Task 30's bounded
+> Account Nature/Type/Detail foundation and Task 32's Dashboard corrected by PR
+> #86. The generic multi-dimension model, Reporting module, durable
+> Inventory→Accounting integration, Sales, Purchasing and Treasury remain absent.
+> See [`../current-state-reconciliation.md`](../current-state-reconciliation.md).
+>
 > Companion to the Backend MVP Roadmap. Classifies modules, capabilities,
 > dependencies, gating OQs/ADRs and MVP posture **as verified on `main`**. It
 > authorizes nothing; statuses are transcribed, not promoted. Status
@@ -64,7 +71,7 @@ Verified against `docs/accounting/task-index.md` §4 (authoritative candidate ma
 | Base Chart template + adoption **mechanism** | IMPLEMENTED — NOT ACCEPTED (23) | chart, configurations | OQ-25 (content), OQ-36 (prerequisites) | ADR-0037 Proposed | Mechanism done (acceptance pending); content is Phase 1A |
 | Base Chart **content** (codes, Persian titles, natures, mandatory list) | NOT PRESENT (deliberately not invented) | mechanism + approval | **OQ-25 + OQ-36** | ADR-0037 Proposed | Phase 1A — decision-gated |
 | Control roles (catalog + effective-dated mapping) | NOT PRESENT | a consumer (posting rules or reporting) — consumer-first | **OQ-25** | ADR-0037 Proposed | Phase 1C — decision-gated |
-| Detail dimensions (line-level) | NOT PRESENT | chart | **OQ-41** | ADR-0037 Proposed | Phase 1D — decision-gated |
+| Generic multi-dimension model (beyond Task 30's bounded Detail hierarchy/account-link/one-line-allocation foundation) | PARTIAL — bounded Detail foundation exists; full conceptual model NOT PRESENT | chart | **OQ-41** | ADR-0037 Proposed | Phase 1D — decision-gated |
 | Account code history / pre-use correction producer | NOT PRESENT (repo stricter: immutable from creation) | OQ-36 answers | OQ-36, OQ-25 | ADR-0033 Proposed | Phase 1B — decision-gated |
 | Corrections (correction/difference, replacement, adjustment) | NOT PRESENT (contract-only) | posting, periods | **OQ-27** | — | Phase 1E — decision-gated |
 | Year-transition / opening carry-forward | NOT PRESENT (explicitly excluded from projection) | calendar | **OQ-23** | — | Phase 1F — decision-gated |

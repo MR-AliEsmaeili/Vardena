@@ -139,15 +139,14 @@ semantics of an existing field requires an ADR).
 
 ## 6. Target Repository Layout
 
-> **Implementation status (verified 2026-09-26 —
-> `repository-documentation-audit.md`; frontend line updated by Task 22):** the
-> backend below **exists**
+> **Implementation status (reconciled 2026-09-29 at `main` `34dddfd`; see
+> `current-state-reconciliation.md`):** the backend below **exists**
 > (`backend/src/kernel`, `backend/src/modules/{health,identity,users,rbac,organization,inventory,documents,workflow,accounting}`,
-> `prisma/schema/` with 8 module files and `prisma/migrations/` with 16
+> `prisma/schema/` with 8 module files and `prisma/migrations/` with 18
 > migrations). The `frontend/` tree **now exists** with `src/{app,api,features,ui,lib}`
-> as drawn below (Task 22 — auth, organization context and the Accounting read
-> surfaces; `features/` holds `auth/ permissions/ organization/ accounting/`
-> only, plus a `styles/` and a `test/` folder). The
+> as drawn below (Task 22 plus the Task 32 Dashboard corrected by PR #86;
+> `features/` includes `auth/ permissions/ organization/ accounting/ dashboard/`,
+> plus a `styles/` and a `test/` folder). The
 > `backend/src/kernel/outbox/` port and the
 > `modules/{audit,notifications,sales,purchasing,reporting,excel,print,customization,integration,sync,jobs}`
 > folders below are **target layout, not present**. Module folders currently
@@ -200,8 +199,9 @@ Vardena/
 ## 7. Frontend Architecture (summary)
 
 > **Implementation status:** the conventions below are implemented by the
-> Task 22 slice (login/session, RTL app shell, organization context,
-> permission-aware navigation, Accounting read surfaces). Everything else —
+> Task 22 slice and the Task 32 Dashboard corrected by PR #86 (login/session,
+> RTL app shell, organization context, permission-aware navigation, Accounting
+> read surfaces and bounded Dashboard reads). Everything else —
 > other feature slices, grid-state persistence via the customization module,
 > the localization decision (OQ-02) — is still target state. Setup, scripts and
 > the file layout are documented in [`frontend/README.md`](../frontend/README.md).

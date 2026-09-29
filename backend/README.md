@@ -6,14 +6,15 @@ and daily workflows; the architecture contract lives in `docs/` + `.vardena/`
 (start at `../.vardena/project-context.md`) and the foundation decisions in
 `../docs/adr/0015-backend-foundation-conventions.md`.
 
-> **Scope (verified 2026-09-26):** kernel foundation plus nine registered
-> modules — `health` and the eight domain modules **identity, users, rbac,
-> organization, inventory, documents, workflow, accounting** — over 8
-> PostgreSQL schemas and 16 migrations. **Not implemented here:** Audit,
-> Notifications, Sales, Purchasing, Reporting, Excel, Print, Customization,
-> Integration, Sync, Jobs — and **Treasury (deferred, out of MVP)**. Do not
-> invent them; see `../docs/modules.md` and
-> `../docs/repository-documentation-audit.md`.
+> **Scope (verified at `main` `34dddfd`, 2026-09-29):** kernel foundation
+> plus nine registered modules — `health` and the eight domain modules
+> **identity, users, rbac, organization, inventory, documents, workflow,
+> accounting** — over 8 PostgreSQL schemas, 55 Prisma models, 18 migrations, 48
+> controllers and 142 registered permission codes. **Not implemented here:**
+> Audit, Notifications, Sales, Purchasing, Reporting, Excel, Print,
+> Customization, Integration, Sync, Jobs — and **Treasury (deferred, out of
+> MVP)**. Do not invent them; see `../docs/modules.md` and
+> `../docs/current-state-reconciliation.md`.
 
 ## Requirements
 

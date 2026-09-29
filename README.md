@@ -6,19 +6,20 @@ stack of ADR-0002, whose **first vertical slice is implemented**. Extensible by
 design — new ERP modules are added without architectural change. On-premise
 today, cloud-ready.
 
-> **Status: backend implemented, frontend at its first vertical slice**
-> (current `main` synchronized at `2aae5fba99671639fec4bffeb8877d3bcad09b6a`,
-> 2026-09-27; frontend Task 22 **ACCEPTED 2026-09-26**).
+> **Status: backend foundations and a bounded frontend are implemented**
+> (current-state audit: `main` at
+> `34dddfd60d6ce2f9d4599bd05b440556a80aa847`, 2026-09-29).
 > `frontend/` is a React + Vite SPA covering login/session, the RTL
-> application shell, organization context, permission-aware navigation and the
+> application shell, organization context, permission-aware navigation, the
 > read-only Accounting surfaces (chart tree, account statement, general ledger,
-> trial balance) against the real API — see
-> [frontend/README.md](frontend/README.md). No other UI exists yet.
-> `backend/` is a NestJS modular
-> monolith with the kernel (config, validation, errors, logging, correlation,
-> Prisma, rate limiting) plus nine registered modules — `health` and the eight
-> domain modules **identity, users, rbac, organization, inventory, documents,
-> workflow, accounting** — over 8 PostgreSQL schemas and 17 migrations.
+> trial balance), and the real-data Dashboard corrected by PR #86 — see
+> [frontend/README.md](frontend/README.md). It still has no Accounting write UI,
+> Inventory/Workflow administration UI, RBAC administration UI, or Treasury UI.
+> `backend/` is a NestJS modular monolith with the kernel plus nine registered
+> modules — `health` and the eight domain modules **identity, users, rbac,
+> organization, inventory, documents, workflow, accounting** — over 8
+> PostgreSQL schemas, 55 Prisma models, 18 migrations, 48 controllers, and 142
+> registered permission codes.
 > **Accounting** is the most advanced domain (fiscal calendar, chart of
 > accounts, configurations, vouchers, posting/ledger, balance projection,
 > reversal, read-only account-statement / general-ledger / trial-balance /
@@ -69,7 +70,7 @@ production deployment.
 | If you are…                                            | Read                                                                                                                                                  |
 | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 | An AI coding agent / new contributor                   | [.vardena/project-context.md](.vardena/project-context.md) (onboarding, mandatory order)                                                              |
-| Asking "what is actually built and what was accepted?" | [STATE.md](STATE.md) (project memory, task history, review status) + [docs/repository-documentation-audit.md](docs/repository-documentation-audit.md) |
+| Asking "what is actually built and what was accepted?" | [STATE.md](STATE.md) + [docs/current-state-reconciliation.md](docs/current-state-reconciliation.md) (current audited state), with [docs/repository-documentation-audit.md](docs/repository-documentation-audit.md) retained as the 2026-09-26 historical audit |
 | Planning or proposing the next MVP work                | [docs/roadmap/backend-mvp-roadmap.md](docs/roadmap/backend-mvp-roadmap.md) (read before proposing or implementing future work)                        |
 | Reviewing the system design                            | [docs/architecture.md](docs/architecture.md)                                                                                                          |
 | Working on a domain                                    | [docs/modules.md](docs/modules.md) + the matching `docs/*.md`                                                                                         |
@@ -89,7 +90,8 @@ production deployment.
 - [docs/accounting/domain-contract.md](docs/accounting/domain-contract.md) — **Accounting Domain Contract** (Task 10.1): bounded context, financial area, fiscal year/period, chart of accounts & coding structure, detail dimensions, accounting documents, posting & integration boundaries, invariants, gates. The contract is binding; its foundation, document, posting/ledger and read layers are now **implemented** (see `docs/accounting/task-index.md` for what exists and what is still a candidate)
 - [docs/accounting/task-index.md](docs/accounting/task-index.md) — authoritative accounting task sequence, capability status and OQ gates
 - [docs/tasks/](docs/tasks/) — per-task briefs, implementation gates, reports and acceptance records
-- [docs/repository-documentation-audit.md](docs/repository-documentation-audit.md) — documentation ↔ code consistency audit (2026-09-26), incl. the Treasury scope boundary
+- [docs/current-state-reconciliation.md](docs/current-state-reconciliation.md) — current repository-wide truth matrix, governance reconciliation, Task 32 correction and drift log at exact audited SHA
+- [docs/repository-documentation-audit.md](docs/repository-documentation-audit.md) — historical documentation ↔ code consistency audit (2026-09-26), incl. the Treasury scope boundary
 - [STATE.md](STATE.md) — consolidated project state: repository/module inventory, task history, review status, risks
 - [docs/open-questions.md](docs/open-questions.md) — registered open questions
 - [docs/adr/](docs/adr/) — architecture decision records
