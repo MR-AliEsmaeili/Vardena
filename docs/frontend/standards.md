@@ -1,4 +1,4 @@
-# Vardena Frontend Standards — نسخه ۲.۱
+# Vardena Frontend Standards — نسخه ۲.۲
 
 **وضعیت:** ACTIVE — مرجع رسمی قواعد UI
 
@@ -67,15 +67,41 @@ IDهای برندگذاری‌شده: DocId/AccountId/OrgId به‌صورت بر
 enum ممنوع؛ const object + union.
 satisfies برای آبجکت‌های config؛ type assertion (as) فقط interop با کد ثالث + کامنت دلیل.
 تایپ تکراری با Zod: schema = منبع، تایپ با z.infer مشتق می‌شود (یک منبع حقیقت برای validation و type).
-۵) مدیریت وضعیت — سه‌گانه و بسته
-نوع وضعیت ابزار الزام
-Server state TanStack Query fetch مستقیم axios در کامپوننت ممنوع
-URL state Router search params فیلتر/صفحه/sort لیست‌ها در URL
-Form state RHF + Zod فقط RHF
-UI موضعی useState/useContext آخرین گزینه
-State colocation: state در نزدیک‌ترین نقطه مصرف؛ بالا‌بردن فقط برای اشتراک واقعی.
-بدون دوباره‌سازی state مشتق: یک داده = یک منبع؛ کپی و همگام‌سازی دستی ممنوع.
-Zustand/Redux ممنوع؛ کتابخانه state جدید = ADR.
+۵) مدیریت وضعیت — بر اساس مالکیت
+
+| نوع وضعیت | ابزار پیش‌فرض | قاعده |
+| --- | --- | --- |
+| داده تحت مالکیت بکند (Server state) | TanStack Query | واکشی مستقیم یا axios داخل کامپوننت و کپی‌کردن داده در store دیگر ممنوع است. |
+| فیلتر، صفحه و sort لینک‌پذیر | Router search params | وضعیت لیست‌ها و گزارش‌ها در URL نگه‌داری شود. |
+| وضعیت فرم | React Hook Form + Zod | داده و تعامل فرم در scope همان فرم باقی بماند. |
+| تعامل محلی UI | React state | modal، tab، expansion، انتخاب محلی و وضعیت موقت نزدیک‌ترین کامپوننت مالک را ترک نکند. |
+| dependency کوچک و cross-tree | React Context | فقط برای scope مشخصی مانند session یا organization؛ Context نباید به cache عمومی داده بکند تبدیل شود. |
+| وضعیت پیچیده، client-owned و cross-feature | یک global state library تأییدشده | اختیاری است و فقط پس از اثبات نیاز واقعی معرفی می‌شود. |
+
+سلسله‌مراتب تصمیم:
+
+```text
+Backend-owned data
+        ↓
+TanStack Query
+
+Local component interaction
+        ↓
+React state
+
+Small scoped dependency/context
+        ↓
+React Context
+
+Complex cross-feature client-owned state
+        ↓
+Approved global state library (optional)
+```
+
+State colocation: state در نزدیک‌ترین نقطه مصرف بماند؛ بالا‌بردن فقط برای اشتراک واقعی مجاز است. داده مشتق در render محاسبه می‌شود و یک داده نباید با کپی و همگام‌سازی دستی چند منبع حقیقت پیدا کند.
+
+پروژه Redux Toolkit، Zustand یا MobX را الزام یا ممنوع نمی‌کند. وقتی state پیچیده و client-owned از مرز چند feature عبور کند و local state یا Context دیگر نگه‌داری‌پذیر نباشد، یک گزینه با تصمیم معماری و مطابق ADR-0002/AR-30 انتخاب و به‌صورت یکپارچه استفاده می‌شود؛ چند کتابخانه global state رقیب بدون توجیه معماری مجاز نیست. داده بکند حتی در آن حالت در TanStack Query باقی می‌ماند.
+
 refetchOnWindowFocus: پیش‌فرض خاموش (در فرم‌های مالی، رفرش غافلگیرانه ممنوع)؛ per-query برای گزارش‌ها فعال‌سازی آگاهانه.
 ۶) لایه API و همزمانی
 axios واحد + interceptor: 401 → login با حفظ مقصد؛ نگاشت کد خطا به پیام فارسی.
@@ -184,38 +210,8 @@ Density پیش‌فرض: comfortable یا compact
 Token transport: httpOnly cookie یا جایگزین (تصمیم مشترک با بکند)
 مانیتورینگ خطا و وب‌وایتال: self-host (GlitchTip) یا مرحله بعد
 React Compiler: زمان فعال‌سازی پس از پایداری
-Changelog
-۲.۱ — افزودن روش ساخت: React craft (بخش ۳)، انضباط TypeScript و DocStatus/ID برندگذاری‌شده (۴)，colocation و state hygiene (۵)، Race/Abort/debounce و ممنوعیت auto-retry mutation (۶)，امنیت فرانت (۱۵)، Testing Trophy و data-testid (۱۶)، Rule-as-Code و gateهای CI (۱۷)،Git/PR و self-review (۱۸)، اصول ۱۱ و ۱۲، OQ-8 و OQ-9، ارتقای DoD.
-۲.۰ — نگارش کامل اولیه.-------- END FILE CONTENT --------
-==================================================STEP 2 — AGENTS.md
-If AGENTS.md exists: append (skip if an identical section already exists):
+## Changelog
 
-Frontend
-پیش از هر کار UI: docs/frontend/standards.md را کامل بخوان و به آن پایبند بمان.
-کامپوننت‌های لایه پایه و الگوهای صفحه در src/shared؛ صفحۀ جدید فقط با ترکیب الگوها.
-قواعد بخش ۱۷ (Rule as Code) در CI گرفته می‌شوند؛ قاعدۀ قراردادی نقض‌شده در بازبینی = CHANGES REQUIRED.
-If not exists: create it with the block above plus a header line:"# Vardena — دستورالعمل ایجنت (نسخه اولیه؛ تکمیل با پروتکل اصلی پروژه)"
-
-==================================================STEP 3 — STATE.md
-Update STATE.md (preserve all existing content):
-
-Open Questions: replace the previous 7 UI items with the 9 items of section ۲۱ (prefix "UI:").
-Task entry:
-Task: docs/frontend-standards (v2.1)
-Status: ACCEPTED-PENDING-OWNER
-Owner Behavioral Verification: PENDING
-Report the full updated STATE.md content.
-==================================================STEP 4 — SAFETY LIMITS
-You must NOT: modify application source code, add dependencies, change build/lint config,modify Prisma schema, create migrations, alter ADRs, or expand the standards contentbeyond what is specified. Only the three files above may change.
-
-==================================================STEP 5 — VALIDATION & REPORT
-git status → only intended files staged.
-Verify docs/frontend/standards.md is valid Markdown (headings, tables, checkboxes intact)and contains sections ۰ through ۲۱ plus Changelog with version 2.1.
-Confirm no source files changed.
-Any failure → do not commit; Result: Blocked with findings.
-Commit message: "docs: upgrade frontend standards to v2.1 (craft, types, rule-as-code)"
-Report: Result / Branch / Files created-modified with purpose / Validation commands andoutputs / Important findings / Next recommended step (resolve OQ 1-3, then UI-1 brief).
-
-# END OF OFFICIAL FRONTEND STANDARDS v2.1
-
-The above document is the canonical frontend/UI standard.
+- **۲.۲** — جایگزینی ممنوعیت Redux/Zustand با سیاست technology-neutral مبتنی بر مالکیت state؛ تثبیت TanStack Query برای server state، React state برای تعامل محلی، Context برای dependency محدود، و امکان انتخاب یک global client-state library در صورت اثبات نیاز. حذف متن دستوریِ ناخواسته از انتهای سند.
+- **۲.۱** — افزودن روش ساخت: React craft (بخش ۳)، انضباط TypeScript و DocStatus/ID برندگذاری‌شده (۴)، colocation و state hygiene (۵)، Race/Abort/debounce و ممنوعیت auto-retry mutation (۶)، امنیت فرانت (۱۵)، Testing Trophy و data-testid (۱۶)، Rule-as-Code و gateهای CI (۱۷)، Git/PR و self-review (۱۸)، اصول ۱۱ و ۱۲، OQ-8 و OQ-9، ارتقای DoD.
+- **۲.۰** — نگارش کامل اولیه.

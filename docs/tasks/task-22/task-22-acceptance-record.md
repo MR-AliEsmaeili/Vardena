@@ -37,8 +37,9 @@ Repository review reconciled the implementation with the accepted architecture a
 records:
 
 - React + TypeScript + Vite, Tailwind, shadcn/ui-style primitives, React Router, TanStack Query,
-  Axios, React Hook Form + Zod, TanStack Table, and Day.js are used; no Zustand or alternative
-  frontend architecture was introduced.
+  Axios, React Hook Form + Zod, TanStack Table, and Day.js are used; Task 22 introduced no
+  global client store. This is historical acceptance evidence, not a continuing ban; current
+  state-management policy is `docs/frontend/standards.md` §۵.
 - Session authentication uses the existing httpOnly-cookie Identity contract. No token is persisted
   in `localStorage` or `sessionStorage`.
 - Organization selection is frontend context only. Backend organization membership and authorization
