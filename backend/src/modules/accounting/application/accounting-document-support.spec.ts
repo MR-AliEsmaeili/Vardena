@@ -101,6 +101,22 @@ describe('accounting document input normalization (§12/§13)', () => {
     expect(normalized.map((line) => line.creditAmount)).toEqual(['1250', '0']);
   });
 
+  it('preserves a submitted detailId through normalization (Task 30 — OD-29-03 mapping regression)', () => {
+    const normalized = normalizeLines([
+      { ...lines[0], detailId: 'detail-01' } as (typeof lines)[number] & {
+        detailId: string;
+      },
+      lines[1] as (typeof lines)[number],
+    ]);
+    expect(normalized[0]?.detailId).toBe('detail-01');
+  });
+
+  it('normalizes an absent detailId to null, never dropping the field (§ null/undefined parity)', () => {
+    const normalized = normalizeLines(lines);
+    expect(normalized[0]?.detailId).toBeNull();
+    expect(normalized[1]?.detailId).toBeNull();
+  });
+
   it('refuses a one-line document before it reaches the domain (400)', () => {
     let caught: unknown;
     try {

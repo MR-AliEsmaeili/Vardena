@@ -154,6 +154,77 @@ describe('protected routing', () => {
     },
   );
 
+  it('allows /app/accounting/documents/new with only Accounting.Document.Create — no Document.View prerequisite (backend permission alignment)', async () => {
+    // The backend's `POST /accounting-documents` enforces exactly
+    // `Accounting.Document.Create`; the create route must not additionally
+    // require `Accounting.Document.View`.
+    vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [
+        'Organization.Organization.View',
+        'Accounting.Document.Create',
+      ],
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      initialEntries: ['/app/accounting/documents/new'],
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: t.documents.createTitle }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(t.permissions.forbiddenTitle),
+    ).not.toBeInTheDocument();
+  });
+
+  it('blocks /app/accounting/documents/new without Accounting.Document.Create', async () => {
+    vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      // Has View (and could see the list/detail pages) but not Create.
+      permissions: [
+        'Organization.Organization.View',
+        'Accounting.Document.View',
+      ],
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      initialEntries: ['/app/accounting/documents/new'],
+    });
+
+    expect(
+      await screen.findByText(t.permissions.forbiddenTitle),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: t.documents.createTitle }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('still allows /app/accounting/documents/new for a session holding both Document.Create and Document.View (regression)', async () => {
+    vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [
+        'Organization.Organization.View',
+        'Accounting.Document.View',
+        'Accounting.Document.Create',
+      ],
+    });
+
+    renderWithProviders(<AppRoutes />, {
+      initialEntries: ['/app/accounting/documents/new'],
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: t.documents.createTitle }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(t.permissions.forbiddenTitle),
+    ).not.toBeInTheDocument();
+  });
+
   it('explains the missing permission instead of rendering the report', async () => {
     vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
     vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({

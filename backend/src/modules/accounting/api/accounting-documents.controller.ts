@@ -143,6 +143,7 @@ export class AccountingDocumentsController {
       branchId: body.branchId ?? null,
       lines: body.lines.map((line) => ({
         accountId: line.accountId,
+        detailId: line.detailId ?? null,
         debitAmount: line.debitAmount,
         creditAmount: line.creditAmount,
         description: line.description ?? null,
@@ -191,6 +192,7 @@ export class AccountingDocumentsController {
         : {
             lines: body.lines.map((line) => ({
               accountId: line.accountId,
+              detailId: line.detailId ?? null,
               debitAmount: line.debitAmount,
               creditAmount: line.creditAmount,
               description: line.description ?? null,

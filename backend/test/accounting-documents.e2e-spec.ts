@@ -559,6 +559,56 @@ describe('Accounting documents (e2e)', () => {
     ).toEqual([1, 2]);
   });
 
+  it('preserves a submitted line detailId through Create (mapping regression, Task 30 — OD-29-03)', async () => {
+    // A regression test for the transport DTO -> service input -> stored
+    // aggregate path: `detailId` must survive Create end to end, and a line
+    // that omits it must still come back `null` (never dropped or coerced to
+    // `undefined` on the wire).
+    const res = await composer
+      .post('/api/v1/accounting-documents')
+      .send(
+        draft({
+          description: 'Detail-carrying entry',
+          lines: [
+            {
+              accountId: state.debitAccountA,
+              detailId: state.creditAccountA,
+              debitAmount: '1250.00',
+              creditAmount: '0',
+            },
+            {
+              accountId: state.creditAccountA,
+              debitAmount: '0',
+              creditAmount: '1250.00',
+            },
+          ],
+        }),
+      )
+      .expect(201);
+    const lines = res.body.lines as Array<{
+      accountId: string;
+      detailId: string | null;
+    }>;
+    expect(
+      lines.find((line) => line.accountId === state.debitAccountA),
+    ).toMatchObject({ detailId: state.creditAccountA });
+    expect(
+      lines.find((line) => line.accountId === state.creditAccountA),
+    ).toMatchObject({ detailId: null });
+
+    // Reading the document back confirms it is the PERSISTED value, not an
+    // artifact of the create response alone.
+    const reread = await composer
+      .get(`/api/v1/accounting-documents/${res.body.id}`)
+      .query({ organizationId: state.orgA })
+      .expect(200);
+    expect(
+      (reread.body.lines as typeof lines).find(
+        (line) => line.accountId === state.debitAccountA,
+      ),
+    ).toMatchObject({ detailId: state.creditAccountA });
+  });
+
   it('refuses a composition that is not a balanced double entry (422)', async () => {
     const unbalanced = await composer
       .post('/api/v1/accounting-documents')
@@ -834,6 +884,55 @@ describe('Accounting documents (e2e)', () => {
   });
 
   // ---- lifecycle -----------------------------------------------------------
+
+  it('preserves a submitted line detailId through Update (mapping regression, Task 30 — OD-29-03)', async () => {
+    const created = await composer
+      .post('/api/v1/accounting-documents')
+      .send(draft({ description: 'Detail-carrying entry (pre-edit)' }))
+      .expect(201);
+    const id = created.body.id as string;
+
+    const edited = await composer
+      .patch(`/api/v1/accounting-documents/${id}`)
+      .query({ organizationId: state.orgA })
+      .send({
+        lines: [
+          {
+            accountId: state.debitAccountA,
+            detailId: state.creditAccountA,
+            debitAmount: '1250.00',
+            creditAmount: '0',
+          },
+          {
+            accountId: state.creditAccountA,
+            debitAmount: '0',
+            creditAmount: '1250.00',
+          },
+        ],
+      })
+      .expect(200);
+    const editedLines = edited.body.lines as Array<{
+      accountId: string;
+      detailId: string | null;
+    }>;
+    expect(
+      editedLines.find((line) => line.accountId === state.debitAccountA),
+    ).toMatchObject({ detailId: state.creditAccountA });
+    expect(
+      editedLines.find((line) => line.accountId === state.creditAccountA),
+    ).toMatchObject({ detailId: null });
+
+    // The re-read confirms the PERSISTED lines, not just the update response.
+    const reread = await composer
+      .get(`/api/v1/accounting-documents/${id}`)
+      .query({ organizationId: state.orgA })
+      .expect(200);
+    expect(
+      (reread.body.lines as typeof editedLines).find(
+        (line) => line.accountId === state.debitAccountA,
+      ),
+    ).toMatchObject({ detailId: state.creditAccountA });
+  });
 
   it('edits a draft, issues it once, and finalizes it immutably', async () => {
     const created = await composer

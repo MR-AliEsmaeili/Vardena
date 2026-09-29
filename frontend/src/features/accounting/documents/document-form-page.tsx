@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { FormProvider, useForm } from 'react-hook-form';
 import { getAccount } from '@/api/accounting.api';
 import { normalizeApiError } from '@/api/errors';
 import { queryKeys } from '@/api/query-keys';
@@ -352,137 +352,141 @@ function DocumentForm({
   }, []);
 
   return (
-    <div className="space-y-4">
-      <PageHeader
-        title={
-          mode === 'create' ? t.documents.createTitle : t.documents.editTitle
-        }
-        description={
-          mode === 'create' ? (
-            t.documents.createSubtitle
-          ) : (
-            <span className="flex flex-wrap items-center gap-2">
-              {editState !== null && (
-                <Badge variant={documentStatePresentation[editState].variant}>
-                  {documentStatePresentation[editState].label}
-                </Badge>
-              )}
-              <span className="text-xs">{t.documents.editSubtitle}</span>
-            </span>
-          )
-        }
-      />
-
-      {serverError !== null && (
-        <Alert variant="danger" role="alert">
-          <AlertTitle>{t.errors.title}</AlertTitle>
-          <AlertBody>
-            <p aria-live="polite">{serverError.message}</p>
-            {serverError.correlationId !== undefined && (
-              <p className="mt-2 text-xs text-rose-800/80">
-                {t.errors.correlationId}:{' '}
-                <span className="code">{serverError.correlationId}</span>
-              </p>
-            )}
-          </AlertBody>
-        </Alert>
-      )}
-
-      <form
-        noValidate
-        className="space-y-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void onSubmit(event);
-        }}
-      >
-        <Card>
-          <CardContent className="grid gap-4 md:grid-cols-3">
-            <Field
-              label={t.documents.fieldArea}
-              htmlFor="financialAreaId"
-              error={formState.errors.financialAreaId?.message}
-            >
-              <>
-                <Select
-                  id="financialAreaId"
-                  disabled={isTemporaryEdit === true || areasQuery.isFetching}
-                  aria-invalid={formState.errors.financialAreaId !== undefined}
-                  {...register('financialAreaId')}
-                >
-                  <option value="">{t.filters.select}</option>
-                  {areaOptions.map((area) => (
-                    <option key={area.id} value={area.id}>
-                      {area.code} — {area.title}
-                    </option>
-                  ))}
-                </Select>
-                {isTemporaryEdit === true && (
-                  <p className="text-[11px] text-slate-500">
-                    {t.documents.areaImmutableHint}
-                  </p>
+    <FormProvider {...form}>
+      <div className="space-y-4">
+        <PageHeader
+          title={
+            mode === 'create' ? t.documents.createTitle : t.documents.editTitle
+          }
+          description={
+            mode === 'create' ? (
+              t.documents.createSubtitle
+            ) : (
+              <span className="flex flex-wrap items-center gap-2">
+                {editState !== null && (
+                  <Badge variant={documentStatePresentation[editState].variant}>
+                    {documentStatePresentation[editState].label}
+                  </Badge>
                 )}
-              </>
-            </Field>
-            <Field
-              label={t.documents.fieldDate}
-              htmlFor="documentDate"
-              error={formState.errors.documentDate?.message}
+                <span className="text-xs">{t.documents.editSubtitle}</span>
+              </span>
+            )
+          }
+        />
+
+        {serverError !== null && (
+          <Alert variant="danger" role="alert">
+            <AlertTitle>{t.errors.title}</AlertTitle>
+            <AlertBody>
+              <p aria-live="polite">{serverError.message}</p>
+              {serverError.correlationId !== undefined && (
+                <p className="mt-2 text-xs text-rose-800/80">
+                  {t.errors.correlationId}:{' '}
+                  <span className="code">{serverError.correlationId}</span>
+                </p>
+              )}
+            </AlertBody>
+          </Alert>
+        )}
+
+        <form
+          noValidate
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onSubmit(event);
+          }}
+        >
+          <Card>
+            <CardContent className="grid gap-4 md:grid-cols-3">
+              <Field
+                label={t.documents.fieldArea}
+                htmlFor="financialAreaId"
+                error={formState.errors.financialAreaId?.message}
+              >
+                <>
+                  <Select
+                    id="financialAreaId"
+                    disabled={isTemporaryEdit === true || areasQuery.isFetching}
+                    aria-invalid={
+                      formState.errors.financialAreaId !== undefined
+                    }
+                    {...register('financialAreaId')}
+                  >
+                    <option value="">{t.filters.select}</option>
+                    {areaOptions.map((area) => (
+                      <option key={area.id} value={area.id}>
+                        {area.code} — {area.title}
+                      </option>
+                    ))}
+                  </Select>
+                  {isTemporaryEdit === true && (
+                    <p className="text-[11px] text-slate-500">
+                      {t.documents.areaImmutableHint}
+                    </p>
+                  )}
+                </>
+              </Field>
+              <Field
+                label={t.documents.fieldDate}
+                htmlFor="documentDate"
+                error={formState.errors.documentDate?.message}
+              >
+                <Input
+                  id="documentDate"
+                  type="date"
+                  dir="ltr"
+                  className="code"
+                  aria-invalid={formState.errors.documentDate !== undefined}
+                  {...register('documentDate')}
+                />
+              </Field>
+              <Field
+                label={t.documents.fieldDescription}
+                htmlFor="description"
+                error={formState.errors.description?.message}
+              >
+                <Input
+                  id="description"
+                  maxLength={MAX_DOCUMENT_DESCRIPTION_LENGTH}
+                  aria-invalid={formState.errors.description !== undefined}
+                  {...register('description')}
+                />
+              </Field>
+            </CardContent>
+          </Card>
+
+          <DocumentLinesEditor organizationId={organizationId} />
+
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onDirtyCancel}
+              disabled={submitting}
             >
-              <Input
-                id="documentDate"
-                type="date"
-                dir="ltr"
-                className="code"
-                aria-invalid={formState.errors.documentDate !== undefined}
-                {...register('documentDate')}
-              />
-            </Field>
-            <Field
-              label={t.documents.fieldDescription}
-              htmlFor="description"
-              error={formState.errors.description?.message}
-            >
-              <Input
-                id="description"
-                maxLength={MAX_DOCUMENT_DESCRIPTION_LENGTH}
-                aria-invalid={formState.errors.description !== undefined}
-                {...register('description')}
-              />
-            </Field>
-          </CardContent>
-        </Card>
+              {t.app.cancel}
+            </Button>
+            <Button type="submit" disabled={submitting}>
+              {submitLabel}
+            </Button>
+          </div>
+        </form>
 
-        <DocumentLinesEditor organizationId={organizationId} />
-
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onDirtyCancel}
-            disabled={submitting}
-          >
-            {t.app.cancel}
-          </Button>
-          <Button type="submit" disabled={submitting}>
-            {submitLabel}
-          </Button>
-        </div>
-      </form>
-
-      <ConfirmDialog
-        open={confirmLeave}
-        title={t.documents.dirtyLeaveTitle}
-        description={<p>{t.documents.dirtyLeaveDescription}</p>}
-        confirmLabel={t.documents.dirtyLeaveConfirm}
-        loading={false}
-        onConfirm={() => {
-          setConfirmLeave(false);
-          navigate(cancelTarget);
-        }}
-        onCancel={() => setConfirmLeave(false)}
-      />
-    </div>
+        <ConfirmDialog
+          open={confirmLeave}
+          title={t.documents.dirtyLeaveTitle}
+          description={<p>{t.documents.dirtyLeaveDescription}</p>}
+          confirmLabel={t.documents.dirtyLeaveConfirm}
+          loading={false}
+          onConfirm={() => {
+            setConfirmLeave(false);
+            navigate(cancelTarget);
+          }}
+          onCancel={() => setConfirmLeave(false)}
+        />
+      </div>
+    </FormProvider>
   );
 }
 

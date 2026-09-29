@@ -127,6 +127,8 @@ export interface AccountingDocumentLineRecord extends Row {
   accountingPeriodId: string;
   lineNo: number;
   accountId: string;
+  /** Optional Detail item allocation (Task 30 — OD-29-03). */
+  detailId: string | null;
   /** Canonical decimal strings (never floats, §13.1). */
   debitAmount: string;
   creditAmount: string;
@@ -877,6 +879,7 @@ export class InMemoryAccountingDocumentsRepository {
       id: string;
       lineNo: number;
       accountId: string;
+      detailId?: string | null | undefined;
       debitAmount: string;
       creditAmount: string;
       description: string | null;
@@ -895,6 +898,7 @@ export class InMemoryAccountingDocumentsRepository {
         accountingPeriodId: document.accountingPeriodId,
         lineNo: line.lineNo,
         accountId: line.accountId,
+        detailId: line.detailId ?? null,
         debitAmount: canonicalizeAmount(line.debitAmount),
         creditAmount: canonicalizeAmount(line.creditAmount),
         description: line.description,
@@ -965,6 +969,7 @@ export class InMemoryAccountingDocumentsRepository {
         documentId: line.documentId,
         lineNo: line.lineNo,
         accountId: line.accountId,
+        detailId: line.detailId ?? null,
         debitAmount: canonicalizeAmount(line.debitAmount),
         creditAmount: canonicalizeAmount(line.creditAmount),
         description: line.description,
