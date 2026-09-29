@@ -30,17 +30,18 @@ export function OrganizationSelection({ invalid }: { invalid: boolean }) {
   const { organizations, selectOrganization } = useOrganization();
   const [chosenId, setChosenId] = useState<string | null>(null);
 
-  // Derived during render: if the list changed underneath (refresh) and the
-  // remembered choice is gone, fall back to the first offered organization —
-  // never to a stale id (standards §3: derived state, no effect sync).
-  const effectiveChosenId = organizations.some((item) => item.id === chosenId)
-    ? (chosenId as string)
-    : (organizations[0]?.id ?? '');
+  // `null` is an intentional UX state: in a multi-organization session the
+  // user must make an explicit choice before continuing. If the list changes
+  // underneath the screen, a choice that is no longer offered becomes invalid
+  // during render rather than silently falling back to another organization.
+  const validChosenId = organizations.some((item) => item.id === chosenId)
+    ? chosenId
+    : null;
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (effectiveChosenId !== '') {
-      selectOrganization(effectiveChosenId);
+    if (validChosenId !== null) {
+      selectOrganization(validChosenId);
     }
   };
 
@@ -68,7 +69,7 @@ export function OrganizationSelection({ invalid }: { invalid: boolean }) {
                 {t.organization.selectingTitle}
               </legend>
               {organizations.map((item) => {
-                const checked = item.id === effectiveChosenId;
+                const checked = item.id === validChosenId;
                 return (
                   <label
                     key={item.id}
@@ -100,7 +101,7 @@ export function OrganizationSelection({ invalid }: { invalid: boolean }) {
             <Button
               type="submit"
               className="mt-4 w-full"
-              disabled={effectiveChosenId === ''}
+              disabled={validChosenId === null}
             >
               {t.organization.selectingSubmit}
             </Button>

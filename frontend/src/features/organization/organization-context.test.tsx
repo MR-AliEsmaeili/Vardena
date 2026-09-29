@@ -11,6 +11,7 @@ import {
   testUser,
 } from '@/test/fixtures';
 import { renderWithProviders } from '@/test/test-utils';
+import { OrganizationSelection } from './organization-selection';
 import { OrganizationSwitcher } from './organization-switcher';
 import { useOrganization } from './use-organization';
 
@@ -50,6 +51,10 @@ function OrganizationProbe() {
         select-second
       </button>
       <OrganizationSwitcher />
+      {(organization.status === 'selecting' ||
+        organization.status === 'invalid') && (
+        <OrganizationSelection invalid={organization.status === 'invalid'} />
+      )}
     </div>
   );
 }
@@ -91,10 +96,63 @@ describe('organization context', () => {
     await waitFor(() => {
       expect(screen.getByTestId('status')).toHaveTextContent('selecting');
     });
-    // No organization scope is active before the user confirms a choice, so
-    // no organization-scoped request can be sent with the wrong scope.
+    // No organization scope or visual default exists before the user chooses:
+    // the local radio state and the confirmed context state are both empty.
     expect(screen.getByTestId('organization-id')).toHaveTextContent('none');
     expect(screen.getByTestId('can-switch')).toHaveTextContent('yes');
+    const radios = screen.getAllByRole('radio');
+    expect(radios).toHaveLength(2);
+    expect(radios[0]).not.toBeChecked();
+    expect(radios[1]).not.toBeChecked();
+    expect(
+      screen.getByRole('button', { name: t.organization.selectingSubmit }),
+    ).toBeDisabled();
+  });
+
+  it('keeps radio choices local until Continue confirms the organization', async () => {
+    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
+      paginated([testOrganization, secondOrganization]),
+    );
+    const user = userEvent.setup();
+
+    renderWithProviders(<OrganizationProbe />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('selecting');
+    });
+
+    const firstRadio = screen.getByRole('radio', {
+      name: new RegExp(testOrganization.name),
+    });
+    const secondRadio = screen.getByRole('radio', {
+      name: new RegExp(secondOrganization.name),
+    });
+    const continueButton = screen.getByRole('button', {
+      name: t.organization.selectingSubmit,
+    });
+
+    // Native keyboard activation selects only the local radio value.
+    firstRadio.focus();
+    await user.keyboard('[Space]');
+    expect(firstRadio).toBeChecked();
+    expect(secondRadio).not.toBeChecked();
+    expect(continueButton).toBeEnabled();
+    expect(screen.getByTestId('status')).toHaveTextContent('selecting');
+    expect(screen.getByTestId('organization-id')).toHaveTextContent('none');
+
+    // Changing the local choice still must not activate an organization.
+    await user.click(secondRadio);
+    expect(secondRadio).toBeChecked();
+    expect(firstRadio).not.toBeChecked();
+    expect(screen.getByTestId('status')).toHaveTextContent('selecting');
+    expect(screen.getByTestId('organization-id')).toHaveTextContent('none');
+
+    await user.click(continueButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('status')).toHaveTextContent('ready');
+    });
+    expect(screen.getByTestId('organization-id')).toHaveTextContent('org-2');
   });
 
   it('activates the confirmed organization and then allows switching', async () => {

@@ -137,19 +137,37 @@ describe('organization resolution in the shell', () => {
     const dialog = await screen.findByRole('group', {
       name: t.organization.selectingTitle,
     });
-    // The workspace is not entered before a choice is confirmed.
+    const firstRadio = within(dialog).getByRole('radio', {
+      name: new RegExp(testOrganization.name),
+    });
+    const secondRadio = within(dialog).getByRole('radio', {
+      name: new RegExp(secondOrganization.name),
+    });
+    const continueButton = screen.getByRole('button', {
+      name: t.organization.selectingSubmit,
+    });
+
+    // The workspace is not entered and no organization is visually selected
+    // before the user makes an explicit choice.
     expect(
       screen.queryByRole('heading', { name: t.dashboard.title }),
     ).not.toBeInTheDocument();
+    expect(firstRadio).not.toBeChecked();
+    expect(secondRadio).not.toBeChecked();
+    expect(continueButton).toBeDisabled();
 
-    await user.click(
-      within(dialog).getByRole('radio', {
-        name: new RegExp(secondOrganization.name),
-      }),
-    );
-    await user.click(
-      screen.getByRole('button', { name: t.organization.selectingSubmit }),
-    );
+    expect(dashboardApi.listAccountingDocuments).not.toHaveBeenCalled();
+    expect(dashboardApi.listAccountBalances).not.toHaveBeenCalled();
+    expect(dashboardApi.listInventoryBalances).not.toHaveBeenCalled();
+    expect(dashboardApi.listWorkflowInstances).not.toHaveBeenCalled();
+
+    await user.click(secondRadio);
+    expect(firstRadio).not.toBeChecked();
+    expect(secondRadio).toBeChecked();
+    expect(continueButton).toBeEnabled();
+    // Choosing a radio is local UI state; scoped requests wait for Continue.
+    expect(dashboardApi.listAccountingDocuments).not.toHaveBeenCalled();
+    await user.click(continueButton);
 
     expect(
       await screen.findByRole('heading', { level: 1, name: t.dashboard.title }),
@@ -169,13 +187,18 @@ describe('organization resolution in the shell', () => {
       initialEntries: ['/app/accounting/chart'],
     });
 
-    await screen.findByRole('group', {
+    const selection = await screen.findByRole('group', {
       name: t.organization.selectingTitle,
     });
     expect(
       screen.queryByRole('heading', { name: t.chartTree.title }),
     ).not.toBeInTheDocument();
 
+    await user.click(
+      within(selection).getByRole('radio', {
+        name: new RegExp(testOrganization.name),
+      }),
+    );
     await user.click(
       screen.getByRole('button', { name: t.organization.selectingSubmit }),
     );
@@ -294,9 +317,14 @@ describe('organization switch cache isolation (security)', () => {
       initialEntries: ['/app'],
     });
 
-    // Confirm organization A (the first offered) on the selection screen.
+    // Explicitly choose and then confirm organization A on the selection screen.
     await user.click(
-      await screen.findByRole('button', {
+      await screen.findByRole('radio', {
+        name: new RegExp(testOrganization.name),
+      }),
+    );
+    await user.click(
+      screen.getByRole('button', {
         name: t.organization.selectingSubmit,
       }),
     );
