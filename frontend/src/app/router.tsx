@@ -66,15 +66,6 @@ export function AppRoutes() {
               <Route
                 element={
                   <RequirePermission
-                    permissions={[PERMISSIONS.accounting.documentCreate]}
-                  />
-                }
-              >
-                <Route path="documents/new" element={<DocumentCreatePage />} />
-              </Route>
-              <Route
-                element={
-                  <RequirePermission
                     permissions={[PERMISSIONS.accounting.documentEdit]}
                   />
                 }
@@ -84,6 +75,24 @@ export function AppRoutes() {
                   element={<DocumentEditPage />}
                 />
               </Route>
+            </Route>
+
+            {/*
+              `POST /accounting-documents` enforces exactly
+              `Accounting.Document.Create` (accounting-documents.controller.ts)
+              — it does not require `Accounting.Document.View`. Composing the
+              create route as a sibling of the View-gated group (rather than
+              nesting it inside), keeps the frontend gate aligned with that
+              backend contract: a Create-only principal is never blocked here.
+            */}
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.accounting.documentCreate]}
+                />
+              }
+            >
+              <Route path="documents/new" element={<DocumentCreatePage />} />
             </Route>
 
             <Route

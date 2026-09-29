@@ -157,6 +157,8 @@ export function parseOptionalDocumentDate(
 /** One submitted line, before the server assigns its ordinal. */
 export interface SubmittedAccountingDocumentLine {
   accountId: string;
+  /** Optional Detail item allocation (Task 30 — OD-29-03). */
+  detailId?: string | null | undefined;
   debitAmount: string;
   creditAmount: string;
   description?: string | null | undefined;
@@ -192,6 +194,7 @@ export function normalizeLines(
     }
     return {
       accountId: line.accountId.trim(),
+      detailId: line.detailId ?? null,
       debitAmount: normalizeAmount(line.debitAmount, `${field}.debitAmount`),
       creditAmount: normalizeAmount(line.creditAmount, `${field}.creditAmount`),
       description: normalizeLineDescription(line.description),
