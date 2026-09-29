@@ -16,9 +16,33 @@ interface Surface {
 
 const surfaces: readonly Surface[] = [
   {
+    to: '/app/accounting/financial-areas',
+    title: t.masterData.financialAreas,
+    description: t.masterData.financialAreasDescription,
+    permission: PERMISSIONS.accounting.financialAreaView,
+  },
+  {
+    to: '/app/accounting/fiscal-years',
+    title: t.masterData.fiscalYears,
+    description: t.masterData.fiscalYearsDescription,
+    permission: PERMISSIONS.accounting.fiscalYearView,
+  },
+  {
+    to: '/app/accounting/periods',
+    title: t.masterData.periods,
+    description: t.masterData.periodsDescription,
+    permission: PERMISSIONS.accounting.accountingPeriodView,
+  },
+  {
     to: '/app/accounting/chart',
     title: t.nav.chartTree,
     description: t.accounting.chartTreeDescription,
+    permission: PERMISSIONS.accounting.accountView,
+  },
+  {
+    to: '/app/accounting/accounts',
+    title: t.masterData.accounts,
+    description: t.masterData.accountsDescription,
     permission: PERMISSIONS.accounting.accountView,
   },
   {

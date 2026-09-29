@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import { useSearchParams } from 'react-router-dom';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
 import { Alert, AlertBody } from '@/ui/alert';
@@ -30,11 +31,13 @@ import { useAccountStatement } from './use-account-statement';
  */
 export function AccountStatementPage() {
   const organizationId = useOrganizationId();
+  const [searchParams] = useSearchParams();
   const state = useReportQueryState<StatementScopeValues>();
+  const linkedAccountId = searchParams.get('accountId') ?? '';
 
   const form = useForm<StatementScopeValues>({
     resolver: zodResolver(statementScopeSchema),
-    defaultValues: emptyStatementScope,
+    defaultValues: { ...emptyStatementScope, accountId: linkedAccountId },
     mode: 'onSubmit',
   });
 

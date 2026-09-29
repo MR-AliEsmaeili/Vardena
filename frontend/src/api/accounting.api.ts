@@ -3,11 +3,15 @@ import type {
   Account,
   AccountStatement,
   AccountStatementQuery,
+  AccountListQuery,
   AccountingPeriod,
+  AccountingPeriodListQuery,
   ChartTreeNode,
   ChartTreeQuery,
   FinancialArea,
+  FinancialAreaListQuery,
   FiscalYear,
+  FiscalYearListQuery,
   GeneralLedgerQuery,
   GeneralLedgerRow,
   Paginated,
@@ -102,6 +106,61 @@ export function listPostableAccounts(
       pageSize: 50,
       sort: 'code:asc',
     }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Master-data administration reads — server filtered, sorted and paged
+// ---------------------------------------------------------------------------
+
+export function listFinancialAreasPage(
+  query: FinancialAreaListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<FinancialArea>> {
+  return apiGet<Paginated<FinancialArea>>('/financial-areas', {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export function listFiscalYearsPage(
+  query: FiscalYearListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<FiscalYear>> {
+  return apiGet<Paginated<FiscalYear>>('/fiscal-years', {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export function listAccountingPeriodsPage(
+  query: AccountingPeriodListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<AccountingPeriod>> {
+  return apiGet<Paginated<AccountingPeriod>>('/accounting-periods', {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export function listAccounts(
+  query: AccountListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<Account>> {
+  return apiGet<Paginated<Account>>('/accounts', {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export function getAccount(
+  organizationId: string,
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<Account> {
+  return apiGet<Account>(`/accounts/${encodeURIComponent(accountId)}`, {
+    params: { organizationId },
     ...(signal ? { signal } : {}),
   });
 }

@@ -46,6 +46,42 @@ export const queryKeys = {
     postableAccounts: (organizationId: string, search: string) =>
       ['accounting', organizationId, 'accounts', 'postable', search] as const,
 
+    financialAreaList: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) =>
+      [
+        'accounting',
+        organizationId,
+        'financial-areas',
+        'list',
+        filters,
+      ] as const,
+
+    fiscalYearList: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) =>
+      ['accounting', organizationId, 'fiscal-years', 'list', filters] as const,
+
+    accountingPeriodList: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) =>
+      [
+        'accounting',
+        organizationId,
+        'accounting-periods',
+        'list',
+        filters,
+      ] as const,
+
+    accountList: (organizationId: string, filters: Record<string, unknown>) =>
+      ['accounting', organizationId, 'accounts', 'list', filters] as const,
+
+    accountDetail: (organizationId: string, accountId: string) =>
+      ['accounting', organizationId, 'accounts', 'detail', accountId] as const,
+
     chartTree: (organizationId: string) =>
       ['accounting', organizationId, 'chart-tree'] as const,
 

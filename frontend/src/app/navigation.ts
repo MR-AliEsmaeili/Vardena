@@ -1,6 +1,9 @@
 import {
   BookOpenCheck,
+  CalendarDays,
+  FolderKanban,
   LayoutDashboard,
+  List,
   ListTree,
   Scale,
   ScrollText,
@@ -57,9 +60,33 @@ export const navigationSections: readonly NavigationSection[] = [
         end: true,
       },
       {
+        to: '/app/accounting/financial-areas',
+        label: t.masterData.financialAreas,
+        icon: FolderKanban,
+        permissions: [PERMISSIONS.accounting.financialAreaView],
+      },
+      {
+        to: '/app/accounting/fiscal-years',
+        label: t.masterData.fiscalYears,
+        icon: CalendarDays,
+        permissions: [PERMISSIONS.accounting.fiscalYearView],
+      },
+      {
+        to: '/app/accounting/periods',
+        label: t.masterData.periods,
+        icon: CalendarDays,
+        permissions: [PERMISSIONS.accounting.accountingPeriodView],
+      },
+      {
         to: '/app/accounting/chart',
         label: t.nav.chartTree,
         icon: ListTree,
+        permissions: [PERMISSIONS.accounting.accountView],
+      },
+      {
+        to: '/app/accounting/accounts',
+        label: t.masterData.accounts,
+        icon: List,
         permissions: [PERMISSIONS.accounting.accountView],
       },
       {
