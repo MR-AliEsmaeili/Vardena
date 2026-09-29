@@ -9,6 +9,17 @@
 | Companion documents | [backend-mvp-dependency-matrix.md](./backend-mvp-dependency-matrix.md) · [future-task-candidates.md](./future-task-candidates.md) |
 | Production code changed by this roadmap | **NONE** |
 
+> **Current-state addendum (2026-09-29):** the original inspection baseline and
+> inventory below are a dated planning snapshot. Current `main` is
+> `34dddfd60d6ce2f9d4599bd05b440556a80aa847`: Task 30 adds Account Nature/Type
+> and the bounded Detail foundation; Task 32 adds a Dashboard, with PR #86 as the
+> corrective final implementation. Current counts are 55 Prisma models, 18
+> migrations, 48 controllers, 142 permissions, 113 backend unit-spec files and
+> 34 E2E-spec files. Dashboard existence does not create a Reporting module or
+> make frontend completion a Backend MVP gate. Use
+> [`../current-state-reconciliation.md`](../current-state-reconciliation.md) for
+> current truth; the roadmap remains the future planning map.
+>
 > **This roadmap describes the planned path from the current repository state to
 > Backend MVP. It does not itself authorize implementation or accept future
 > work.** No task number is created, no Open Question is closed, no ADR is
@@ -89,7 +100,7 @@ Application modules registered in `app.module.ts`: 9 — `health` + `users, iden
 
 Implemented and accepted: login/session (`/auth/login`, `/auth/me`, `/auth/logout`), effective-permission UX gating (`/permissions/effective`), organization context (`/organizations`, ADR-0025 switcher semantics), responsive RTL shell, permission-aware navigation, and the four read-only Accounting surfaces — Chart Tree (`/accounting/chart-tree`), Account Statement (`/accounting/account-statements`), General Ledger (`/accounting/general-ledger`), Trial Balance (`/accounting/trial-balance`) — plus supporting list reads (`/accounts`, `/financial-areas`, `/fiscal-years`, `/accounting-periods`) for scope pickers. API types are generated from OpenAPI (`src/api/generated/`).
 
-**No other UI exists**: no create/edit screens, no Inventory/Workflow/Documents/RBAC-admin/notifications/Treasury/reporting UI, no exports, no dashboards. The frontend is **not** complete and is not a Backend MVP blocker.
+**Current correction:** the Task 32 Dashboard exists, with PR #86 as its corrective final implementation. There are still no create/edit screens, Inventory/Workflow/Documents/RBAC-admin/notifications/Treasury administration UIs, generic Reporting UI, or exports. The frontend is **not** complete and is not a Backend MVP blocker.
 
 ### 1.5 Task status ledger (as recorded on `main`)
 

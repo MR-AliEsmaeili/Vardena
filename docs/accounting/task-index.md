@@ -8,6 +8,15 @@ Status: **Authoritative** · Date: 2026-09-27 · Type: governance / index (docum
 > authoritative. It defines no new capability, resolves no Open Question, and
 > changes no architecture. The binding technical contract stays in
 > [`domain-contract.md`](./domain-contract.md) and [ADR-0026](../adr/0026-accounting-bounded-context.md).
+>
+> **Current correction (2026-09-29, audited `main` `34dddfd`):** Task 30 is
+> implemented and merged through PR #80. It adds Account Nature/Type semantics
+> and a bounded first-class Detail hierarchy (versioned structure/levels/tree,
+> Account→Level-1 Detail Group, one line `detailId`, posting-boundary validation,
+> controlled atomic unlink). No separate Owner acceptance record was found. This
+> bounded foundation is not the full generic multi-dimension model described in
+> older candidate text; OQ-41 remains Open. See
+> [`../current-state-reconciliation.md`](../current-state-reconciliation.md).
 
 ## 1. Purpose
 
@@ -242,7 +251,7 @@ Accepted facts this index preserves (Tasks 10.5–10.8, do not reinterpret):
 - Posting is **synchronous, in-process, inside the finalization transaction**:
   no async posting, no Redis/Kafka, no microservice, no worker.
 - **Calendar status is enforced inside that same transaction** (Task 14): the **locked** `accounting_periods.status` / `fiscal_years.status` is judged as the first action after the scope locks, before the freeze marker, the account locks, the projection locks and any write, and re-judged after the document lock as the stored-scope verdict; a refused finalization leaves no trace. `closed` refuses new documents and finalizations (AC-I-04, §7.2 rule 4); `sealed` refuses everything, including a period reopen, unless the **year** is unsealed first through its own audited operation — the contract-sanctioned exception (§7.2 rules 4/5, AC-I-17) recorded by ADR-0032 rather than removed.
-- **Dimensions, posting rules and reports do not exist** in code. **Balances**: the turnover projection (`account_balance_projections` + derived views + transactional maintenance + rebuild) is **ACCEPTED WITH FOLLOW-UP as Task 12** on `arena/01a0ca12-vardena` (`a62a13d`, `264a395`) — **ADR-0031 remains Proposed per governance** (not marked Accepted outside promotion process), but the projection itself is now part of the accepted architecture per §6; ledger remains the sole source of truth, projection is rebuildable reporting-only, pending P1 real-PostgreSQL concurrency verification. Task 17A adds the read-only **ledger movement source** (see above) — a source, never a report: no layout, grouping, subtotal, statement classification or export exists.
+- **Current correction:** the Task 30 bounded Detail hierarchy/account-link/line-allocation foundation exists. The older contract's generic multi-dimension model, posting rules, and a generic Reporting platform do not exist in code. **Balances**: the turnover projection (`account_balance_projections` + derived views + transactional maintenance + rebuild) is **ACCEPTED WITH FOLLOW-UP as Task 12** on `arena/01a0ca12-vardena` (`a62a13d`, `264a395`) — **ADR-0031 remains Proposed per governance** (not marked Accepted outside promotion process), but the projection itself is now part of the accepted architecture per §6; ledger remains the sole source of truth, projection is rebuildable reporting-only, pending P1 real-PostgreSQL concurrency verification. Task 17A adds the read-only **ledger movement source** (see above) — a source, never a report: no layout, grouping, subtotal, statement classification or export exists.
 - **Inventory does not post automatically** to Accounting; no source-module trigger exists.
 - **Outbox/delivery semantics are undecided** (OQ-39); the only publication is the
   in-memory `AccountingDocument.Finalized` event.

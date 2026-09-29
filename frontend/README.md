@@ -1,10 +1,13 @@
 # Vardena Frontend
 
-React SPA for the Vardena ERP. It is the **first vertical slice** of the UI
-(Task 22): login → authenticated session → RTL application shell →
-organization context → permission-aware navigation → Accounting read
-surfaces. Everything it shows comes from the real backend API; there is no
-mock authentication, no demo data and no client-side accounting arithmetic.
+React SPA for the Vardena ERP. It contains the accepted **Task 22 vertical
+slice** (login → authenticated session → RTL application shell → organization
+context → permission-aware navigation → Accounting read surfaces) and the
+**Task 32 Dashboard**, whose final merged behavior is the corrective PR #86.
+Everything it shows comes from the real backend API; there is no mock
+authentication or production demo data. Exact backend decimal strings remain
+authoritative; Dashboard summaries use digit-exact presentation aggregation and
+never become a second accounting source of truth.
 
 ## Stack (fixed — ADR-0002)
 
@@ -81,7 +84,7 @@ src/
 │   ├── generated/            #   openapi-typescript output (committed, never edited)
 │   └── *.api.ts              #   per-module API functions
 ├── features/                 # one slice per backend module (AR-27)
-│   ├── auth/  permissions/  organization/
+│   ├── auth/  permissions/  organization/  dashboard/
 │   └── accounting/{chart-tree,account-statement,general-ledger,trial-balance,shared}
 ├── ui/                       # primitives (button, card, input, table, …) + patterns/
 ├── lib/                      # i18n dictionary, formatters, cn(), small hooks
@@ -132,7 +135,10 @@ keeps the tests fast and free of a second, drifting contract definition.
 
 ## Not in this slice
 
-Treasury, Sales, Purchasing, base chart, control roles, dimensions, posting
-rules, document create/finalize UI, Inventory, Workflow, RBAC admin,
-notifications, reporting, Excel/print, customization and audit UI. The
+Treasury, Sales, Purchasing, base-chart administration, control roles,
+generic multi-dimension administration, posting rules, document
+create/finalize UI, Inventory administration, Workflow decision UI, RBAC admin,
+notifications, a generic Reporting UI, Excel/print, customization and audit UI.
+The Dashboard does read bounded Inventory/Workflow/Accounting endpoints, but
+that does not make those administration or mutation surfaces implemented. The
 frontend is also not part of `docker-compose.yml` yet (documented follow-up).

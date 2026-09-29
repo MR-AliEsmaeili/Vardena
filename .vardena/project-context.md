@@ -28,8 +28,9 @@ authorization, and API. The frontend talks only to the Vardena API.
 ## Current Repository State
 
 *Current-state synchronization verified against `main` at
-`2aae5fba99671639fec4bffeb8877d3bcad09b6a` (2026-09-27), after the
-2026-09-26 `docs/repository-documentation-audit.md`. Task/acceptance state is
+`34dddfd60d6ce2f9d4599bd05b440556a80aa847` (2026-09-29). The current
+cross-repository audit is `docs/current-state-reconciliation.md`; the
+2026-09-26 `docs/repository-documentation-audit.md` is historical. Task/acceptance state is
 recorded in `STATE.md` and `docs/accounting/task-index.md` — implementation
 existing in `main` is **not** the same as a task or ADR being accepted.*
 
@@ -38,10 +39,10 @@ existing in `main` is **not** the same as a task or ADR being accepted.*
   registry, logging, pagination, Prisma service, rate limiting) plus nine
   modules under `backend/src/modules` — `health` and the eight domain modules
   `{users,identity,rbac,organization,inventory,documents,workflow,accounting}`
-  (the order `app.module.ts` registers them); 46 controllers under `/api/v1`;
+  (the order `app.module.ts` registers them); 48 controllers under `/api/v1`;
   Prisma schemas in `backend/prisma/schema/` (schema-per-module, 8 database
-  schemas, 52 models) and **17 migrations** in `backend/prisma/migrations/`;
-  **134 registered permission codes** (Accounting 41, Inventory 32,
+  schemas, 55 models) and **18 migrations** in `backend/prisma/migrations/`;
+  **142 registered permission codes** (Accounting 49, Inventory 32,
   Organization 28, Workflow 10, Documents 9, RBAC 8, Users 6).
 - **Installation bootstrap:** the post-migration
   `npm run bootstrap:system-admin` command provisions the real Users/RBAC
@@ -68,11 +69,14 @@ existing in `main` is **not** the same as a task or ADR being accepted.*
   separate from Ledger identity, adoption copies into organization-owned
   accounts, posting remains leaf-only, and aggregation remains read-time. Task
   24 R-2 makes `GET /api/v1/accounts` assert the existing principal-bound
-  organization scope on every list path. Both Task 23 and Task 24 are merged
-  and CI-green but **READY FOR REVIEW — NOT ACCEPTED**.
-  Still **not** implemented: posting rules / automatic mapping, control roles,
-  detail dimensions, cross-year opening carry-forward, statutory/legal books,
-  exports and any source-module posting trigger.
+  organization scope on every list path. Task 30 then adds Account Nature
+  (`DEBIT`, `CREDIT`, `DUAL`), Account Type, and a bounded configurable Detail
+  hierarchy/account-to-Level-1-group/line-allocation foundation. Task 23, Task
+  24 and Task 30 are merged and CI-green but have no separate Owner acceptance
+  record. Still **not** implemented: posting rules / automatic mapping, control
+  roles, the older contract's full generic multi-dimension model, cross-year
+  opening carry-forward, statutory/legal books, exports and any source-module
+  posting trigger.
 - **Inventory** has both halves: master data (Task 6) **and** the core movement
   ledger, balances, reservations and transfers (Tasks 9.5/9.6, ADR-0022).
   **Documents** (ADR-0023) and **Workflow** (ADR-0024) are implemented modules.
@@ -82,16 +86,17 @@ existing in `main` is **not** the same as a task or ADR being accepted.*
   Reporting, Excel, Print, Customization, Integration, Sync and Jobs modules;
   the worker has no dispatch loop; the domain-event bus is in-memory only (no
   `core.domain_events`, no outbox table, no jobs table).
-- **Tests:** unit specs live beside the code (107 `backend/src/**/*.spec.ts`);
+- **Tests:** unit specs live beside the code (113 `backend/src/**/*.spec.ts`);
   34 e2e specs in `backend/test/**/*.e2e-spec.ts`. Live-database suites are
   opt-in via `VARDENA_TEST_DATABASE_URL`; two migration rehearsals exist
   (`npm run test:migration-rehearsal` — Task 11 backfill;
   `npm run test:operational-freeze-rehearsal` — Task 13).
-- **The frontend exists as one accepted vertical slice** (Task 22, **ACCEPTED 2026-09-26**): `frontend/` is a React + Vite SPA with login/session, the RTL
-  application shell, organization context, permission-aware navigation and the
-  read-only Accounting surfaces (chart tree, account statement, general ledger,
-  trial balance). No other screen exists — no create/edit UI, no Inventory,
-  Workflow, RBAC admin or Treasury UI. Setup and conventions:
+- **The frontend contains the accepted Task 22 vertical slice and the merged
+  Task 32 Dashboard corrected by PR #86:** login/session, RTL shell, organization
+  context, permission-aware navigation, four read-only Accounting surfaces, and
+  a Dashboard over real bounded Accounting/Inventory/Workflow reads. There is
+  still no create/edit UI, Inventory/Workflow administration UI, RBAC admin or
+  Treasury UI. No separate Task 32 Owner acceptance record was found. Setup and conventions:
   `frontend/README.md`. Its CI job (`frontend` in `.github/workflows/ci.yml`)
   runs install → lint → typecheck → format:check → tests → build.
 - **Governance:** `STATE.md` is the consolidated project memory (task history,
@@ -139,7 +144,8 @@ docs/
   database-strategy.md ← schema-per-module, conventions, migrations, raw SQL policy
   reporting-strategy.md ← reporting architecture, raw SQL policy, export/print
   open-questions.md  ← registered open architectural/business questions (OQ-xx)
-  repository-documentation-audit.md ← doc↔code consistency audit (2026-09-26)
+  current-state-reconciliation.md ← current doc↔code/governance reconciliation (2026-09-29)
+  repository-documentation-audit.md ← historical doc↔code audit (2026-09-26)
   adr/               ← architecture decision records (ADR-xxxx)
   accounting/        ← accounting contract, task index, configuration, decision notes
   architecture/domain/ ← domain blueprint, glossary, per-domain analyses

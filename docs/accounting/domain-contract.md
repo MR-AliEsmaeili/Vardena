@@ -19,6 +19,18 @@ Produced by Task 10.1
 > acceptance. The contract text below is unchanged and remains binding; its
 > DECIDED / EXPERT-GATED / DEFERRED markers and every open OQ keep their meaning.
 
+> **Current Task 30 correction (2026-09-29):** PR #80 subsequently
+> implemented the bounded approved Detail foundation: versioned configurable
+> Detail structures/levels/tree, Account linkage to a Level-1 Detail Group, one
+> `detail_id` on document/ledger lines, posting-boundary validation, and a
+> controlled atomic unlink. It did **not** implement this historical contract's
+> complete generic multi-dimension/group/requirement/binding/area model. OQ-41
+> remains Open. Account Nature is now `DEBIT | CREDIT | DUAL` and Account Type is
+> `BALANCE_SHEET | INCOME_STATEMENT | MEMORANDUM` per OD-29-01/02. For current
+> truth use [`../current-state-reconciliation.md`](../current-state-reconciliation.md)
+> and [`task-index.md`](./task-index.md); the original contract text below remains
+> historical/normative evidence and is not retroactively rewritten.
+
 | | |
 |---|---|
 | Companion decision | [ADR-0026 — Accounting bounded context](../adr/0026-accounting-bounded-context.md) (**Accepted 2026-09-14**; this table said "Proposed" — corrected 2026-09-26) |
