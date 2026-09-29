@@ -19,20 +19,48 @@
 | login، session bootstrap/expiry، route permission gates، سازمان و خطای section گزارش‌ها وجود دارند. | `CURRENT` |
 | Toast primitive/provider وجود ندارد و dependency مرتبط نصب نیست. | `CONTRACT GAP` برای UI فعلی؛ قرارداد این سند برای تسک پیاده‌سازی بعدی است. |
 | Confirmation dialog primitive و فرم dirty-guard وجود ندارد. | `CONTRACT GAP` در فرانت‌اند |
-| API همه خطاها را با `{code,message,details?,correlationId}` و کدهای پایدار سطح بالا برمی‌گرداند. | `SUPPORTED` |
-| کدهای API فقط سطح عمومی‌اند؛ business subcode استاندارد سراسری ندارد و `details` بین سرویس‌ها یکنواخت نیست. | `CONTRACT GAP` |
-| نرمال‌ساز فرانت برای `ValidationFailed`، `BadRequest`، `BusinessRuleViolation` و `Conflict` می‌تواند `message` انگلیسی بکند را به UI عبور دهد. | `CURRENT` مغایر با هدف FE-UX-02؛ نیازمند تسک کد آینده |
+| `GlobalExceptionFilter` بکند همه خطاهای API را در envelope استاندارد `{ code, message, details?, correlationId }` قرار می‌دهد؛ `code`ها پایدارند و نگاشت مشخصی به HTTP status دارند. | پیاده‌سازی بکند `CURRENT`؛ قرارداد API برای مصرف فرانت `SUPPORTED` |
+| قرارداد field-level اعتبارسنجی بکند به‌شکل `ValidationIssue { field, message, code }` وجود دارد. `field` و `code` داده ماشینی قابل نگاشت‌اند؛ `message` متن canonical فارسی UX نیست. | `SUPPORTED` |
+| `message` و `details` هنوز قرارداد سراسری UX برای فارسی‌سازی، business subcode و semantic mapping همه قواعد کسب‌وکار به فیلد ندارند. envelope و error code پایدارند؛ raw `message` متن انسانی در سطح contract است، نه copy نهایی UX. | `CONTRACT GAP` |
+| `normalizeApiError()` فرانت برای `ValidationFailed`، `BadRequest`، `BusinessRuleViolation` و `Conflict` ممکن است `body.message` بکند را به UI برساند. این رفتار فعلی فرانت است، نه نشانه آنکه بکند تولیدکننده پیام نهایی UX است. | رفتار پیاده‌سازی `CURRENT`؛ از دید FE-UX-02 یک UX gap و نیازمند تسک کد آینده |
 | mutationهای سند حسابداری create/update/issue/finalize/delete/reverse در بکند وجود دارند؛ UI آن‌ها وجود ندارد. | `SUPPORTED` |
 | گزارش‌های گردش حساب، دفتر کل، تراز آزمایشی و درخت حساب‌ها در UI وجود دارند. | `CURRENT` |
 | انبار در بکند read/write دارد؛ UI فعلی فقط widget خواندنی موجودی در میزکار دارد. | read widget `CURRENT`؛ APIهای انبار `SUPPORTED`؛ UI عملیات انبار آینده است. |
 
-### 1.2 اصل کانال واحد
+### 1.2 مرز قرارداد خطا (Contract Boundary)
+
+**API Error Envelope** با **پیام قابل مشاهده کاربر** یک مفهوم نیست. envelope حمل استاندارد خطاست؛ UX mapper و واژه‌نامه فارسی مسئول تصمیم نمایش و copy نهایی‌اند.
+
+| لایه | مسئولیت |
+| --- | --- |
+| Backend error code | طبقه‌بندی ماشینی خطا |
+| Backend details | داده ساختاریافته در صورت وجود |
+| Backend message | توضیح انسانی عمومی در سطح contract؛ canonical UX copy نیست |
+| Frontend error mapper | تبدیل contract به semantic UX state |
+| Persian UX dictionary | متن نهایی قابل مشاهده کاربر |
+| Correlation ID | پشتیبانی و diagnosis؛ علت خطا نیست |
+
+برای رفع FE-UX-02، بکند نباید صرفاً متن فارسی را جایگزین `message` کند. اگر تشخیص دقیق‌تر rule به داده ماشینی تازه‌ای نیاز دارد، business subcode یا schema ساختاریافته باید در یک تسک قرارداد/API و در صورت لزوم ADR آینده تعریف و به‌عنوان `CONTRACT GAP` پیگیری شود. این سند هیچ تغییر API را مجاز یا پیاده‌سازی نمی‌کند.
+
+### 1.3 اصل کانال واحد
 
 هر رویداد قابل مشاهده کاربر یک **کانال اصلی** دارد. کانال دوم فقط اگر نقش متفاوت و مستند داشته باشد مجاز است؛ متن تکراری ممنوع است. مثال مجاز: در conflict جدی، Toast کوتاه تغییر وضعیت را فوراً اعلام می‌کند و alert درون فرم راه بازیابی را پایدار نگه می‌دارد. این استثنا الزام `standards.md` §۱۲ را برآورده می‌کند.
 
 ## 2. معماری تصمیم بازخورد
 
-### 2.1 درخت تصمیم
+### 2.1 اصل رسمی تصمیم‌گیری خطا
+
+> **Error code، منبع تصمیم UX است؛ raw message، منبع copy نهایی UX نیست.**
+
+ترتیب تصمیم الزامی است:
+
+1. frontend ابتدا با `code`، طبقه و semantic state خطا را تعیین می‌کند؛ هرگز با جست‌وجو در متن `message` تصمیم نمی‌گیرد.
+2. اگر `details` دارای schema شناخته‌شده، مستند و allow-listed باشد، mapper از داده ساختاریافته برای تشخیص دقیق‌تر rule یا field استفاده می‌کند.
+3. اگر mapping معتبر وجود نداشته باشد، پیام عمومی، امن و مخصوص همان operation از Persian UX dictionary نمایش داده می‌شود.
+4. raw backend `message` بدون تصمیم و mapping صریح نباید وارد UI نهایی شود؛ انسانی‌بودن متن contract به معنی UX-safe، فارسی یا canonical بودن آن نیست.
+5. `correlationId` فقط مرجع پشتیبانی و diagnosis است؛ دلیل خطا، متن خطا یا کلید تصمیم UX نیست.
+
+### 2.2 درخت تصمیم
 
 ```text
 رویداد رخ داد
@@ -64,7 +92,7 @@
 └─ اطلاع کوتاه و غیرمسدودکننده؟ ─────────────→ Toast اطلاعاتی؛ اگر ماندگاری لازم است alert
 ```
 
-### 2.2 جدول تصمیم رسمی
+### 2.3 جدول تصمیم رسمی
 
 | محرک | کانال اصلی | ماندگاری | CTA | Toast هم‌زمان؟ |
 | --- | --- | --- | --- | --- |
@@ -165,15 +193,29 @@ Toast نباید تنها کانال این موارد باشد:
 | debit/credit XOR | `در هر ردیف فقط یکی از مبلغ‌های بدهکار یا بستانکار باید وارد شود.` | همان ردیف |
 | unbalanced | `جمع بدهکار و بستانکار سند برابر نیست.` | خلاصه grid/form؛ مقدار authoritative فقط از backend |
 
-### 4.3 نگاشت خطای سرور
+### 4.3 نگاشت خطای سرور و `ValidationIssue`
+
+بکند فعلی برای خطای اعتبارسنجی قرارداد ساختاریافته زیر را دارد:
+
+```text
+ValidationIssue { field, message, code }
+```
+
+نقش هر عضو متفاوت است:
+
+- `field`: مسیر ماشینی فیلد و ورودی نگاشت به label فارسی؛ فقط pathهای allow-listed و واقعاً شناخته‌شده map می‌شوند.
+- `code`: نام ماشینی constraint مانند `isString` یا `min` و ورودی نگاشت به الگوی پیام فارسی.
+- `message`: توضیح انسانی contract؛ منبع canonical Persian UX copy نیست و مستقیم نمایش داده نمی‌شود.
+
+قواعد نگاشت:
 
 1. فقط `details` با schema شناخته‌شده و field path allow-list به فیلد map می‌شود.
-2. path فنی به label فارسی و row index قابل فهم تبدیل می‌شود: `lines[0].debitAmount` → `مبلغ بدهکار ردیف ۱`.
-3. متن انگلیسی `details.message` مستقیم نمایش داده نمی‌شود؛ constraint code شناخته‌شده به dictionary نگاشت می‌شود.
-4. issue ناشناخته در خلاصه فرم با پیام امن عمل نمایش داده می‌شود؛ raw payload فقط logging امن.
-5. duplicate یا business validation فقط وقتی inline می‌شود که API field/subcode قابل اعتماد بدهد.
+2. path فنی به label فارسی و row index یک‌مبنایی قابل فهم تبدیل می‌شود. برای مثال `lines.0.quantity` فقط در صورت وجود mapping واقعی می‌تواند به `مقدار ردیف ۱` تبدیل شود؛ mapper نباید label یا معنای فیلد ناشناخته را حدس بزند.
+3. `code` شناخته‌شده به متن Persian UX dictionary نگاشت می‌شود. نه `ValidationIssue.message` و نه متن انگلیسی آن مستقیماً copy نهایی نیست.
+4. issue ناشناخته در خلاصه فرم با پیام عمومی و امن همان operation نمایش داده می‌شود؛ raw payload فقط در logging امن و سازوکار پشتیبانی مجاز است.
+5. duplicate یا business validation فقط وقتی inline می‌شود که API، field و subcode ساختاریافته و مستند بدهد.
 
-**شکاف:** بکند `ValidationIssue {field,message,code}` دارد، اما business errors زیرکد یکنواخت ندارند و frontend فعلی message بکند را عبور می‌دهد. نگاشت کامل `CONTRACT GAP` است؛ تا رفع، از پیام generic مخصوص عمل استفاده شود.
+**مرز فعلی:** field-level schema برای `ValidationIssue`، `SUPPORTED` است. business-rule field mapping و business subcode یکنواخت هنوز `CONTRACT GAP` هستند. رفتار `CURRENT` فرانت که ممکن است `body.message` را عبور دهد یک UX gap است؛ این رفتار envelope پایدار بکند را به پیام canonical UX تبدیل نمی‌کند.
 
 ### 4.4 جلوگیری از duplication
 
@@ -325,9 +367,29 @@ nav مربوط به route کاملاً غیرقابل استفاده برای ن
 | inventory availability | موجودی کافی نیست | `امکان ثبت عملیات انبار وجود ندارد؛ زیرا موجودی قابل استفاده کافی نیست.` | کاهش مقدار/آزادسازی رزرو |
 | unsupported tracking | lot/serial/expiry هنوز قرارداد کامل ندارد | پیام capability unavailable | توقف؛ نه workaround جعلی |
 
-### 10.2 منبع پیام
+### 10.2 مرز `BusinessRuleViolation` و منبع پیام
 
-کد سطح بالا (`BusinessRuleViolation`) برای انتخاب متن دقیق کافی نیست. frontend فقط از `details.problem/rule` allow-listed و مستند استفاده می‌کند. وضعیت فعلی که message انگلیسی بکند را مستقیم fallback می‌کند باید حذف شود. ایجاد business subcode versioned یک `CONTRACT GAP` است و نیازمند تسک API جداگانه است؛ این سند API را تغییر نمی‌دهد.
+`BusinessRuleViolation` یک error code موجود و پایدار در بکند است، اما به‌تنهایی فقط خانواده خطا را مشخص می‌کند. business subcode استاندارد و سراسری برای تمام قواعد دامنه وجود ندارد؛ برخی endpointها ممکن است `details.problem` یا `details.rule` داشته باشند، اما تا وقتی schema آن مورد مستند و allow-listed نشده، frontend حق ندارد آن را قراردادی عمومی فرض کند.
+
+تشخیص rule از متن آزاد ممنوع است:
+
+```ts
+// ممنوع: متن انسانی پایدار و ماشینی نیست.
+if (error.message.includes('fiscal period is closed')) {
+  // ...
+}
+```
+
+تصمیم سطح اول باید با code باشد:
+
+```ts
+// مجاز: تعیین خانواده semantic خطا.
+if (error.code === 'BusinessRuleViolation') {
+  // پیام عمومی امن همان operation، مگر subcode رسمی map شده باشد.
+}
+```
+
+برای تشخیص دقیق «دوره بسته»، «حساب غیرقابل ثبت» یا ruleهای دیگر، ابتدا contract/subcode رسمی و ساختاریافته لازم است. frontend فقط از `details.problem/rule` مستند و allow-listed استفاده می‌کند؛ raw `message` نه discriminator است و نه copy نهایی. رفتار فعلی fallback به `message` یک UX gap است. تعریف business subcode versioned یک `CONTRACT GAP` و تسک API/ADR آینده است؛ این سند API را تغییر نمی‌دهد.
 
 ## 11. کاتالوگ پیام
 
