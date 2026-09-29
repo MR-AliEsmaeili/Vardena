@@ -105,7 +105,7 @@ The overarching journey moves deterministically from authentication through oper
 8. **Validation Failure:** Client-side Zod triggers inline red error text below the respective field (`«نام کاربری الزامی است.»`, `«گذرواژه الزامی است.»`).
 9. **Permission Failure:** N/A during credential entry (governed post-login).
 10. **Network/Server Failure:**
-    - `401 Unauthorized` / `InvalidCredentials`: Generic security-compliant alert inside card: `«نام کاربری یا گذرواژه نادرست است.»`.
+    - `401 Unauthorized` / `InvalidCredentials`: Generic security-compliant alert inside card — title `«نام کاربری یا گذرواژه نادرست است.»` with a recovery line `«نام کاربری و گذرواژه را بررسی کنید و دوباره تلاش کنید.»` and the support correlation id. It never renders the raw backend message or an HTTP code.
     - `NetworkError` / `500 InternalError`: Top-level alert with normalized message and correlation ID.
 11. **Recovery:** Correct credentials and resubmit. Form retains username; password cleared on failure.
 12. **Next Step:** Session Bootstrap (`/app`).
@@ -151,7 +151,7 @@ Session Query: GET /auth/me (retry: false, staleTime: 30s)
 ### 5.2 Session Status Breakdown
 
 - **Loading:** Renders `FullPageLoading` with spinner and label `«در حال بررسی نشست…»`. Full layout is suppressed to avoid visual flicker.
-- **Session Expired (Mid-Session 401):** Interceptor intercepts 401 on any operational request, wipes TanStack Query cache completely, sets `sessionExpired = true`, and navigates to `/login` with flash alert: `«نشست شما منقضی شده است. دوباره وارد شوید.»`.
+- **Session Expired (Mid-Session 401):** Interceptor intercepts 401 on any operational request, wipes TanStack Query cache completely, sets `sessionExpired = true`, and navigates to `/login` with flash alert: `«نشست شما منقضی شده است. لطفاً دوباره وارد شوید.»`.
 
 ---
 
@@ -420,7 +420,7 @@ Drill-down navigation enables financial auditors to trace high-level balances do
    - Sets `sessionExpired = true`.
    - Clears entire TanStack Query cache (preventing stale sensitive data leakage).
    - Redirects to `/login` preserving target path in `state.from`.
-4. Login page displays persistent warning banner: `«نشست شما منقضی شده است. دوباره وارد شوید.»`.
+4. Login page displays persistent warning banner: `«نشست شما منقضی شده است. لطفاً دوباره وارد شوید.»`.
 
 ---
 

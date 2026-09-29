@@ -342,8 +342,8 @@ nav مربوط به route کاملاً غیرقابل استفاده برای ن
 | سناریو | رفتار و متن | وضعیت |
 | --- | --- | --- |
 | بازدید اولیه بدون نشست | `/auth/me` با 401 یک state عادی است؛ redirect به login بدون error | `CURRENT` |
-| اعتبار ورود نامعتبر | alert فرم: `نام کاربری یا گذرواژه نادرست است.`؛ username حفظ و password پاک/امن می‌ماند | endpoint/UI `CURRENT`؛ پاک‌کردن password باید در اجرای آینده راستی‌آزمایی/اصلاح شود |
-| 401 میانه نشست | cache حساس پاک، تنها یک event expiry، redirect login؛ `نشست شما منقضی شده است. لطفاً دوباره وارد شوید.` | `CURRENT` با wording clarification |
+| اعتبار ورود نامعتبر | alert فرم: `نام کاربری یا گذرواژه نادرست است.` + خط بازیابی `نام کاربری و گذرواژه را بررسی کنید و دوباره تلاش کنید.`؛ username حفظ و password پس از شکست پاک می‌شود و focus به فیلد گذرواژه برمی‌گردد | `CURRENT` — پاک‌کردن password در FE-UX-03 پیاده و با تست پوشش داده شد |
+| 401 میانه نشست | cache حساس پاک، تنها یک event expiry، redirect login؛ `نشست شما منقضی شده است. لطفاً دوباره وارد شوید.` | `CURRENT` — copy در FE-UX-03 با این سند هم‌تراز شد |
 | login پس از expiry | بازگشت به مقصد محفوظ فقط اگر امن و مجاز؛ banner expiry حذف؛ Toast موفقیت لازم نیست | حفظ مقصد در route state `CURRENT` |
 | unauthorized action بدون نشست | وارد جریان session شود، نه 401 Toast | `CURRENT` architecture |
 | logout موفق | cache پاک و login؛ پیام success اختیاری و فقط یک‌بار | `CURRENT` |
