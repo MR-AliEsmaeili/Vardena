@@ -12,8 +12,12 @@ React 19 · TypeScript · Vite · Tailwind CSS v4 · shadcn/ui-style primitives 
 React Router · TanStack Query · Axios · React Hook Form + Zod ·
 TanStack Table · Day.js · lucide-react icons.
 
-No global client store (Redux/Zustand/MobX are forbidden): server state lives
-in TanStack Query, UI state lives in components.
+State is selected by ownership: backend-owned data lives in TanStack Query,
+local interaction state stays in components, and narrowly scoped cross-tree
+dependencies may use React Context. The project neither mandates nor forbids a
+global client-state library; one may be selected deliberately when complex,
+client-owned state genuinely crosses feature boundaries. Do not mirror server
+state into a global store or introduce competing global-state libraries.
 
 ## Quick start
 

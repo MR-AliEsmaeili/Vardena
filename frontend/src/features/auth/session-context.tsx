@@ -91,10 +91,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setUnauthorizedHandler(() => {
       setSessionExpired(true);
+      queryClient.clear();
       queryClient.setQueryData(queryKeys.session(), null);
-      queryClient.removeQueries({ queryKey: queryKeys.effectivePermissions() });
-      queryClient.removeQueries({ queryKey: ['accounting'] });
-      queryClient.removeQueries({ queryKey: ['organization'] });
     });
     return () => setUnauthorizedHandler(null);
   }, [queryClient]);

@@ -144,8 +144,10 @@ drifting definition of the contract.
 
 ## 6. Architecture-scope confirmations
 
-- Fixed stack only (ADR-0002); no Redux/Zustand/MobX, no GraphQL, no Next.js,
-  no microfrontends, no alternative UI/router/data library.
+- Task 22 added no Redux/Zustand/MobX, GraphQL, Next.js, microfrontend, or
+  alternative UI/router/data dependency. This records that slice's dependency
+  scope, not a permanent prohibition on a justified client-state library; the
+  current policy is `docs/frontend/standards.md` §۵.
 - One Axios instance; no ad-hoc `fetch`/`axios` in components (AR-28).
 - Feature slices mirror backend modules (AR-27); column definitions, schemas
   and hooks live beside their feature, not in a generic "utils" dump.
