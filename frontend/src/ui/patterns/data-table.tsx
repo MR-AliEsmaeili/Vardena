@@ -28,6 +28,7 @@ export interface DataTableProps<TRow> {
   isLoading?: boolean;
   isFetching?: boolean;
   error?: unknown;
+  errorDescription?: string;
   onRetry?: () => void;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -53,6 +54,7 @@ export function DataTable<TRow>({
   isLoading = false,
   isFetching = false,
   error,
+  errorDescription,
   onRetry,
   emptyTitle = t.table.emptyTitle,
   emptyDescription = t.table.emptyBody,
@@ -83,6 +85,7 @@ export function DataTable<TRow>({
       <ApiErrorAlert
         error={error}
         title={t.table.errorTitle}
+        {...(errorDescription ? { description: errorDescription } : {})}
         {...(onRetry ? { onRetry } : {})}
       />
     );

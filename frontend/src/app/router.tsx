@@ -3,6 +3,11 @@ import { AccountStatementPage } from '@/features/accounting/account-statement/ac
 import { AccountingHomePage } from '@/features/accounting/accounting-home-page';
 import { ChartTreePage } from '@/features/accounting/chart-tree/chart-tree-page';
 import { GeneralLedgerPage } from '@/features/accounting/general-ledger/general-ledger-page';
+import { AccountDetailPage } from '@/features/accounting/master-data/account-detail-page';
+import { AccountingPeriodsPage } from '@/features/accounting/master-data/accounting-periods-page';
+import { AccountsPage } from '@/features/accounting/master-data/accounts-page';
+import { FinancialAreasPage } from '@/features/accounting/master-data/financial-areas-page';
+import { FiscalYearsPage } from '@/features/accounting/master-data/fiscal-years-page';
 import { TrialBalancePage } from '@/features/accounting/trial-balance/trial-balance-page';
 import { LoginPage } from '@/features/auth/login-page';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
@@ -43,11 +48,53 @@ export function AppRoutes() {
             <Route
               element={
                 <RequirePermission
+                  permissions={[PERMISSIONS.accounting.financialAreaView]}
+                />
+              }
+            >
+              <Route path="financial-areas" element={<FinancialAreasPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[
+                    PERMISSIONS.accounting.financialAreaView,
+                    PERMISSIONS.accounting.fiscalYearView,
+                  ]}
+                />
+              }
+            >
+              <Route path="fiscal-years" element={<FiscalYearsPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[
+                    PERMISSIONS.accounting.financialAreaView,
+                    PERMISSIONS.accounting.fiscalYearView,
+                    PERMISSIONS.accounting.accountingPeriodView,
+                  ]}
+                />
+              }
+            >
+              <Route path="periods" element={<AccountingPeriodsPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
                   permissions={[PERMISSIONS.accounting.accountView]}
                 />
               }
             >
               <Route path="chart" element={<ChartTreePage />} />
+              <Route path="accounts" element={<AccountsPage />} />
+              <Route
+                path="accounts/:accountId"
+                element={<AccountDetailPage />}
+              />
             </Route>
 
             <Route
