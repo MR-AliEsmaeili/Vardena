@@ -1,0 +1,521 @@
+# FE-UX-01 — Vardena Product UX Foundation & User Journey Discovery
+
+**Status:** ACTIVE — Official Product & UX Contract
+**Role:** Product Designer · UX Architect · Frontend Architect · ERP Product Analyst
+**Date:** 2026-09-29
+**Governance:** Aligned with `docs/frontend/standards.md` (v2.2), `docs/accounting/domain-contract.md`, ADR-0007, ADR-0021, ADR-0025, ADR-0026, and `STATE.md`.
+
+---
+
+## 1. Product UX Principles
+
+Vardena is an enterprise-grade ERP designed for operational financial accuracy, dense information throughput, and strict regulatory compliance. The UX architecture adheres to the following foundational principles:
+
+1. **Information Density over Decoration:** ERP professionals operate with high-volume data grids (30–40 rows per viewport). Whitespace is deliberate, padding is compact, and decorative cards or non-functional illustrations are prohibited.
+2. **Deterministic State & Source of Truth:**
+   - **Backend-owned data:** Managed solely by TanStack Query.
+   - **Reproducible view state (Filters, Page, Sort):** Managed in URL Router Search Params (`URLSearchParams`).
+   - **Local interaction state:** Managed in local React state (`useState`/`useReducer`).
+   - **Form state:** Managed in React Hook Form + Zod.
+   - **Scoped global application dependencies:** Managed in minimal React Contexts (`SessionContext`, `OrganizationContext`).
+3. **No Financial Calculations on Frontend:** The backend is the single source of financial and accounting truth. The UI renders decimal strings exactly as returned (`tabular-nums`, right-aligned) and never recalculates totals, running balances, or tax amounts client-side.
+4. **Honest System Capabilities (No Fake UI):** Actions, buttons, and search inputs only exist if backed by real API endpoints. When a capability is not yet implemented (e.g., Global Search, Workflow Decisioning), the UI transparently communicates its status instead of rendering dead-end fake workflows.
+5. **RTL-First via Logical Properties:** Layouts and spacing strictly use CSS logical properties (`ms-`, `me-`, `ps-`, `pe-`, `start-`, `end-`). Directional classes (`ml-`, `mr-`, `pl-`, `pr-`, `left-`, `right-`) are forbidden.
+6. **The Four Essential States:** Every data-driven surface must explicitly handle four distinct states: `Loading`, `Success`, `Empty`, and `Error`.
+7. **Semantic Feedback Taxonomy:** User feedback is strictly categorized (Inline Validation, Toast, Confirmation Dialog, Page-Level Alert, Empty State) based on severity and permanence.
+8. **Consistent Formal Persian (i18n):** All user-facing copy originates from a centralized dictionary (`fa`), using formal respectful Persian ("شما") and official accounting terminology.
+9. **Accessible Keyboard Navigation:** Keyboard accessibility is mandatory: standard shortcuts (e.g., `Alt+D` for Dashboard, `Tab` flow, `Enter` navigation, `Escape` dialog close) and focus trapping on interactive overlays.
+10. **Zero Silent Degradation:** Network errors, permission rejections, and business rule violations surface meaningful, actionable messages with correlation tracking IDs.
+
+---
+
+## 2. Current Product Scope & Capability Classification
+
+To prevent inventing non-existent features, the system's current boundaries are established as follows:
+
+| Classification              | Definition                                                                      | Application to Vardena Current State                                                                                                                                                                                   |
+| :-------------------------- | :------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **EXISTS**                  | Fully implemented in backend API and frontend UI.                               | Session Login/Logout, Organization switcher, Dashboard KPIs & charts, Recent Documents grid, Accounting Navigation, Chart of Accounts tree, Account Statement report, General Ledger report, Trial Balance report.     |
+| **SUPPORTED**               | Backend endpoint and schema exist; frontend implementation ready to consume.    | Accounting Document CRUD & Lifecycle (`POST /accounting-documents`, `PATCH`, `:id/issue`, `:id/finalize`, `:id/reverse`, `DELETE`), Financial Area / Fiscal Year management.                                           |
+| **PARTIALLY SUPPORTED**     | Endpoint exists but lacks complete fields, filtering, or deep-linking metadata. | Accounting Document Detail view by ID (`GET /accounting-documents/:id` exists, but lacks dedicated frontend detail page and line drill-down routing).                                                                  |
+| **CONTRACT GAP**            | Desired UX has no supporting backend contract/endpoint.                         | Global Full-Text Search (`/search`), Workflow Approval Action execution (`POST /workflow/instances/:id/decide`), Trial Balance total summary row in API response, Saved User Report Preferences (`/user-preferences`). |
+| **FUTURE PRODUCT DECISION** | Policy, accounting rule, or design standard requiring Owner decision (OQ/ADR).  | Persian Solar Hijri DatePicker library selection (OQ-01), Dark Mode policy, System default density (Compact vs Comfortable), Finalized document print layouts.                                                         |
+
+---
+
+## 3. Primary User Journey Overview
+
+The overarching journey moves deterministically from authentication through operational monitoring to granular accounting audit:
+
+```text
+[ 1. LOGIN ]
+      │
+      ▼
+[ 2. SESSION BOOTSTRAP ]
+      │ (GET /auth/me + GET /rbac/effective-permissions)
+      ▼
+[ 3. ORGANIZATION RESOLUTION ]
+      ├─► Exactly 1 Org (Pinned/Unpinned) ──► Auto-select (Static indicator)
+      ├─► Multiple Orgs                   ──► Topbar Switcher active
+      ├─► No Org Memberships              ──► Empty Organization Alert (Terminal)
+      └─► Forbidden (Missing Perm)        ──► Permission Warning (Terminal)
+      │
+      ▼
+[ 4. APPLICATION SHELL ]
+      │ (Sidebar + Topbar + Organization Context + Permission Gates)
+      ▼
+[ 5. DASHBOARD ]
+      │ (Turnover KPIs, Charts, Recent Documents, Fiscal Period State, Side Widgets)
+      │
+      ├───► Direct CTA: "تراز آزمایشی" ───┐
+      ▼                                  │
+[ 6. ACCOUNTING LANDING ]                 │
+      │ (Surface cards with description)  │
+      ├───► Chart of Accounts Tree        │
+      ├───► Account Statement             │
+      ├───► General Ledger                │
+      └───► Trial Balance ◄───────────────┘
+              │
+              ▼
+[ 7. REPORT PARAMETERS & FILTERING ]
+              │ (Financial Area, Fiscal Year, Period, Account, Date Range)
+              ▼
+[ 8. REPORT EXECUTION & RESULT ]
+              │ (Server Pagination, Allow-listed Sorting, Tabular Decimals)
+              ▼
+[ 9. DRILL-DOWN ]
+              ├─► Trial Balance ──────► Account Statement (Pre-filtered)
+              ├─► Account Statement ──► Document Detail (Future Route / Supported API)
+              └─► General Ledger ─────► Document Detail (Future Route / Supported API)
+```
+
+---
+
+## 4. Login Journey
+
+### 4.1 Step-by-Step Analysis (12 Product Questions)
+
+1. **User Goal:** Authenticate securely into the enterprise system.
+2. **Why is the user here?** They are starting their workday, returned from an idle timeout, or clicked a deep-link while unauthenticated.
+3. **Information Available:** Username input, password input, application branding, session expiry warning (if redirected due to timeout).
+4. **User Actions:** Enter credentials, submit form (`Enter` or click button), view validation errors.
+5. **Loading State:** Input fields disabled, submit button displays loading spinner and text `«در حال ورود…»`.
+6. **Success Outcome:** Session cookie established; user redirected to intended destination (`location.state.from` or `/app`).
+7. **No Data State:** N/A (Form input).
+8. **Validation Failure:** Client-side Zod triggers inline red error text below the respective field (`«نام کاربری الزامی است.»`, `«گذرواژه الزامی است.»`).
+9. **Permission Failure:** N/A during credential entry (governed post-login).
+10. **Network/Server Failure:**
+    - `401 Unauthorized` / `InvalidCredentials`: Generic security-compliant alert inside card: `«نام کاربری یا گذرواژه نادرست است.»`.
+    - `NetworkError` / `500 InternalError`: Top-level alert with normalized message and correlation ID.
+11. **Recovery:** Correct credentials and resubmit. Form retains username; password cleared on failure.
+12. **Next Step:** Session Bootstrap (`/app`).
+
+### 4.2 Form Lifecycle & Validation Rules
+
+- **Schema:** Validated via `zodResolver(loginSchema)` on `onSubmit`.
+- **Fields:** `username` (trimmed string, min 1), `password` (string, min 1).
+- **Security Invariant:** Passwords are never logged, never stored in client state beyond form lifetime, and never echoed back in error responses.
+
+---
+
+## 5. Session Bootstrap UX
+
+### 5.1 Lifecycle Sequence
+
+Upon initial page load or hard browser refresh (`F5`), the frontend executes the bootstrap sequence:
+
+```text
+Browser Load
+     │
+     ▼
+Session Query: GET /auth/me (retry: false, staleTime: 30s)
+     ├─► 200 OK ──────────► Status: 'authenticated'
+     │                           │
+     │                           ▼
+     │                     Permissions Query: GET /rbac/effective-permissions
+     │                           │
+     │                           ▼
+     │                     Organization Query: GET /api/v1/organizations?isActive=true
+     │
+     ├─► 401 Unauthorized ─► Status: 'unauthenticated' (Normal state, NOT an error)
+     │                           │
+     │                           ▼
+     │                     Redirect to /login with state.from
+     │
+     └─► 500 / NetworkErr ─► Status: 'error'
+                                 │
+                                 ▼
+                           Full-page ApiErrorAlert with Retry button
+```
+
+### 5.2 Session Status Breakdown
+
+- **Loading:** Renders `FullPageLoading` with spinner and label `«در حال بررسی نشست…»`. Full layout is suppressed to avoid visual flicker.
+- **Session Expired (Mid-Session 401):** Interceptor intercepts 401 on any operational request, wipes TanStack Query cache completely, sets `sessionExpired = true`, and navigates to `/login` with flash alert: `«نشست شما منقضی شده است. دوباره وارد شوید.»`.
+
+---
+
+## 6. Organization Resolution UX
+
+Vardena implements organizational scoping under ADR-0021 and ADR-0025 (Deployment Pin):
+
+### 6.1 Resolution Scenarios
+
+```text
+GET /api/v1/organizations?isActive=true
+   │
+   ├─► Case A: Exactly 1 Organization Returned
+   │     ├─ UX Behavior: Auto-selects this organization immediately.
+   │     └─ UI Shell: Displays organization name as static badge/text (No dropdown).
+   │
+   ├─► Case B: Multiple Organizations Returned (> 1)
+   │     ├─ UX Behavior: Defaults to first org; activates Topbar `<Select>` dropdown.
+   │     ├─ Switch Action: Changing dropdown updates OrganizationContext and refetches scoped queries.
+   │     └─ Persistence: Selection lives in React memory (ADR-0025: no localStorage, no cookie).
+   │
+   ├─► Case C: Zero Organizations Returned (Empty)
+   │     ├─ UX Behavior: Application shell renders persistent Warning Alert.
+   │     └─ Copy: «سازمانی در دسترس نیست. دسترسی عضویت سازمان را با مدیر سامانه بررسی کنید.»
+   │
+   ├─► Case D: Forbidden (403 / Missing `Organization.Organization.View`)
+   │     ├─ UX Behavior: Shell renders Warning Alert with required permission hint.
+   │     └─ Copy: «خطا در دریافت سازمان — دریافت فهرست سازمان‌ها به مجوز Organization.Organization.View نیاز دارد.»
+   │
+   └─► Case E: Selected Organization Becomes Invalid (404 EntityNotFound on Scoped Call)
+         ├─ Cause: Organization deactivated, deleted, or deployment pin mismatched.
+         └─ Recovery: Shell triggers `organization.refresh()`, resets selection, or surfaces scoped 404 alert.
+```
+
+---
+
+## 7. Application Shell Architecture
+
+The shell (`AppShell`) provides the consistent operational frame across all modules:
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ [Logo] وردنا | سامانه یکپارچه    [ Topbar Search (Ctrl+K) ]    [Org: شرکت نمونه ▼] [User] [خروج] │
+├──────────────────────────┬─────────────────────────────────────────────────────────────┤
+│ ☰ منوی اصلی              │ مسیر: میزکار                                                │
+│                          ├─────────────────────────────────────────────────────────────┤
+│ 📊 میزکار                │                                                             │
+│                          │                                                             │
+│ 📚 حسابداری              │                     محتوای صفحه                             │
+│   ├─ درخت حساب‌ها        │                   (<Outlet />)                              │
+│   ├─ گردش حساب           │                                                             │
+│   ├─ دفتر کل             │                                                             │
+│   └─ تراز آزمایشی        │                                                             │
+│                          │                                                             │
+└──────────────────────────┴─────────────────────────────────────────────────────────────┘
+```
+
+### 7.1 Shell Components & Standards
+
+- **Sidebar Navigation:**
+  - Grouped into semantic sections (`میزکار`, `حسابداری`).
+  - Active route highlighted (`bg-indigo-50 text-indigo-700 font-medium`).
+  - Permission-aware gating: Menu items are hidden if the session lacks the backend permission code (`permissions.hasAll(...)`).
+  - Mobile Drawer: Responsive off-canvas navigation overlay on `< 1024px` screens with backdrop dismissal and focus restoration.
+  - Accessibility: Includes `#main-content` skip link (`sr-only focus:not-sr-only`).
+- **Topbar:**
+  - Branding: Application title and subtitle.
+  - Global Search Affordance: Visual input with `Ctrl+K` badge. In the absence of a backend search engine, submitting triggers an honest informational message (`CONTRACT GAP`).
+  - Organization Switcher: Renders interactive `<Select>` for multi-org or static label for single-org.
+  - User Status: Displays current username with `dir="ltr"`.
+  - Logout Control: Button with `LogOut` icon and disabled/loading state during mutation.
+- **Breadcrumbs & Page Header:** Each view renders a standardized `PageHeader` with title, subtitle, and primary contextual actions.
+- **404 Not Found Handling:** Unmatched paths inside `/app/*` render `NotFoundPage` with CTA `«بازگشت به صفحه اصلی»`.
+
+---
+
+## 8. Dashboard → Accounting Journey
+
+### 8.1 Dashboard Layout & Information Hierarchy
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│ [Banner] وضعیت دوره مالی: دوره مالی ۱ (باز)                                            │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ [KPI Row]  [جمع گردش بدهکار]   [جمع گردش بستانکار]   [خالص گردش دوره]   [دوره‌های دارای گردش]   │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ [Charts]   [گردش بدهکار/بستانکار]   [خالص گردش دوره‌ها]   [بزرگ‌ترین گردش‌ها]   [حرکات انبار] │
+├────────────────────────────────────────────────────────────┬───────────────────────────┤
+│ [جدول اسناد اخیر] (Recent Accounting Documents)            │ [ابزارک‌ها]               │
+│ - شماره سند | تاریخ | شرح | جمع (ریال) | وضعیت | منشأ       │ ├─ گردش‌کارهای فعال (نمایشی)│
+│ - صفحه ۱ از ۵ | صفحه‌بندی سمت سرور                         │ ├─ کمترین موجودی انبار    │
+│ - مرتب‌سازی بر اساس تاریخ و شماره سند                      │ ├─ وضعیت دوره‌های مالی    │
+│                                                            │ └─ [CTA] تراز آزمایشی     │
+└────────────────────────────────────────────────────────────┴───────────────────────────┘
+```
+
+### 8.2 Widget Categorization & Interaction Rules
+
+1. **Informational Widgets:**
+   - **KPI Cards:** Aggregated balance figures from `GET /accounting/balances`.
+   - **Trend Charts:** SVG-rendered debit/credit turnover and stock trends.
+   - **Recent Documents Table:** Live paginated read model from `GET /accounting-documents`.
+   - **Workflow Widget:** Displays active instances (`DISPLAY ONLY`, approval decision action is a `CONTRACT GAP`).
+   - **Inventory Alert Widget:** Displays stock sorted by `onHand` (honestly labeled as on-hand ranking).
+2. **Navigational Transitions into Accounting:**
+   - **Reconciliation Card CTA:** Direct link button `«باز کردن تراز آزمایشی»` navigating to `/app/accounting/trial-balance`.
+   - **Sidebar Menu:** Direct links to `درخت حساب‌ها`, `گردش حساب`, `دفتر کل`, and `تراز آزمایشی`.
+   - **Document Row Click (Future Requirement):** Once Document View is implemented, clicking a document row navigates to its voucher detail view (`/app/accounting/documents/:id`).
+
+---
+
+## 9. Accounting Information Architecture (IA)
+
+The Accounting subsystem is organized hierarchically around accounting workflows and user intent:
+
+```text
+Accounting (حسابداری)
+├── 1. Master Data & Structure (اطلاعات پایه و ساختار)
+│   ├── Chart of Accounts (درخت حساب‌ها) ──────────────► /app/accounting/chart [EXISTS]
+│   ├── Financial Areas (حوزه‌های مالی) ──────────────► Reference Filter Data [EXISTS] / Management UI [SUPPORTED API]
+│   ├── Fiscal Years (سال‌های مالی) ───────────────────► Reference Filter Data [EXISTS] / Management UI [SUPPORTED API]
+│   └── Accounting Periods (دوره‌های مالی) ───────────► Reference Filter Data [EXISTS] / Management UI [SUPPORTED API]
+│
+├── 2. Documents & Vouchers (اسناد حسابداری)
+│   ├── Recent Documents (اسناد اخیر) ────────────────► Embedded in Dashboard [EXISTS]
+│   ├── Document Management (فهرست، پیش‌نویس، قطعی) ───► /app/accounting/documents [SUPPORTED API / FUTURE UI]
+│   ├── Document Compose / Edit (ثبت و ویرایش سند) ───► /app/accounting/documents/new [SUPPORTED API / FUTURE UI]
+│   └── Document View & Reversal (مشاهده و معکوس‌سازی) ─► /app/accounting/documents/:id [SUPPORTED API / FUTURE UI]
+│
+└── 3. Financial Reports & Ledgers (گزارش‌ها و دفاتر مالی)
+    ├── Account Statement (گردش حساب) ────────────────► /app/accounting/account-statements [EXISTS]
+    ├── General Ledger (دفتر کل) ─────────────────────► /app/accounting/general-ledger [EXISTS]
+    └── Trial Balance (تراز آزمایشی) ─────────────────► /app/accounting/trial-balance [EXISTS]
+```
+
+---
+
+## 10. Report Discovery Flow
+
+When navigating to reports, the UX answers five essential questions for the accountant:
+
+| Question                    | Account Statement (گردش حساب)                                                                     | General Ledger (دفتر کل)                                                                        | Trial Balance (تراز آزمایشی)                                                                          |
+| :-------------------------- | :------------------------------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------- |
+| **Where am I?**             | `/app/accounting/account-statements`                                                              | `/app/accounting/general-ledger`                                                                | `/app/accounting/trial-balance`                                                                       |
+| **What does it represent?** | Opening balance, continuous running movements, and closing balance for a single postable account. | Immutable chronological double-entry movement rows across accounts.                             | Aggregated balance summary (Opening, Debit Turnover, Credit Turnover, Net, Closing) across the chart. |
+| **Required Scope?**         | Fiscal Year (`fiscalYearId`), Account (`accountId`).                                              | Financial Area (`financialAreaId`), Fiscal Year (`fiscalYearId`).                               | Financial Area (`financialAreaId`), Fiscal Year (`fiscalYearId`).                                     |
+| **Optional Filters?**       | Financial Area, Accounting Period.                                                                | Accounting Period, Account Picker, Account Code/Name search, Date Range (`dateFrom`, `dateTo`). | Accounting Period, Account Picker, Account Code/Name search, Date Range (`dateFrom`, `dateTo`).       |
+| **Default Initial State?**  | Neutral alert: «برای نمایش گزارش، حساب و سال مالی را انتخاب کنید.»                                | Neutral alert: «برای نمایش گزارش، حوزه مالی و سال مالی را انتخاب کنید.»                         | Neutral alert: «برای نمایش گزارش، حوزه مالی و سال مالی را انتخاب کنید.»                               |
+
+---
+
+## 11. Report Filter UX
+
+### 11.1 Filter Interaction & Validation Rules
+
+- **Form Management:** Implemented via React Hook Form with `zodResolver(scopeSchema)` in `onSubmit` mode.
+- **Cascade & Dependent Reset Rules:**
+  - Selecting/changing `financialAreaId` automatically clears and re-fetches `fiscalYearId` and `accountingPeriodId`.
+  - Selecting/changing `fiscalYearId` automatically clears and re-fetches `accountingPeriodId`.
+  - Account Picker searches postable (leaf) accounts dynamically via `GET /accounts?isPostable=true&search=...` (debounced 300ms).
+- **Date Format Contract:** Strict ISO `YYYY-MM-DD` pattern matching backend regex `/^\d{4}-\d{2}-\d{2}$/`.
+- **Apply Action:** User explicitly clicks `«نمایش گزارش»`. Validates inputs, resets table to page 1, and triggers data query.
+- **Reset Action:** User clicks `«پاک کردن فیلترها»`. Clears all inputs and unloads current query results.
+
+### 11.2 URL State Architecture vs Local State (Anti-Pattern Remediation)
+
+- **Current State:** Filter state currently resides in component `useState` via `useReportQueryState`.
+- **UX Requirement (Standards §5):** Report parameters, page number, page size, and sorting MUST reside in Router Search Params (`?area=...&year=...&account=...&page=1&sort=code:asc`).
+- **Benefits:**
+  - Deep-linking & bookmarking of exact report snapshots.
+  - Seamless Browser Back/Forward navigation between reports and drill-downs without state loss.
+  - Browser Refresh (`F5`) preserves active audit filters.
+
+---
+
+## 12. Report Result UX
+
+### 12.1 The Four Display States
+
+```text
+1. INITIAL / MISSING SCOPE:
+   ┌────────────────────────────────────────────────────────┐
+   │ ℹ برای نمایش گزارش، حوزه مالی و سال مالی را انتخاب کنید. │
+   └────────────────────────────────────────────────────────┘
+
+2. LOADING (Query in Flight):
+   ┌────────────────────────────────────────────────────────┐
+   │ [Skeleton Header Row]                                  │
+   │ [Skeleton Row 1] [Skeleton Row 2] [Skeleton Row 3] ... │
+   └────────────────────────────────────────────────────────┘
+
+3. EMPTY (Query Succeeded with 0 Rows):
+   ┌────────────────────────────────────────────────────────┐
+   │                    داده‌ای یافت نشد                     │
+   │      برای فیلترهای انتخاب‌شده هیچ ردیفی بازگردانده نشد.      │
+   └────────────────────────────────────────────────────────┘
+
+4. SUCCESS (Data Grid with Server Controls):
+   ┌────────────────────────────────────────────────────────┐
+   │ [Summary Header (Account Statement Totals)]            │
+   │ ┌────────────────────────────────────────────────────┐ │
+   │ │ Table: Sticky Header, Allow-listed Sorting, Tabular │ │
+   │ ├────────────────────────────────────────────────────┤ │
+   │ │ Row 1: Code | Date | Desc | Debit | Credit | Net   │ │
+   │ │ Row 2: ...                                         │ │
+   │ └────────────────────────────────────────────────────┘ │
+   │ [Pagination: صفحه ۱ از ۱۰ · قبلی | بعدی · تعداد در صفحه] │
+   └────────────────────────────────────────────────────────┘
+```
+
+### 12.2 Grid Formatting & Backend Financial Truth
+
+- **Amounts:** Displayed via `<AmountCell>` with `tabular-nums`, right alignment, and thousand separators. Negative numbers highlighted in red text.
+- **Server-Side Summary Cards:** Account Statement displays authoritative backend totals (`openingBalance`, `debitTotal`, `creditTotal`, `netChange`, `closingBalance`).
+- **No Client Calculations:** If backend does not provide total sums (as in Trial Balance endpoint), frontend strictly refrains from summing columns client-side.
+
+---
+
+## 13. Drill-Down UX Architecture
+
+Drill-down navigation enables financial auditors to trace high-level balances down to the underlying journal voucher:
+
+```text
+[ TRIAL BALANCE (تراز آزمایشی) ]
+      │
+      │ (Click Account Code / Row)
+      ▼
+[ ACCOUNT STATEMENT (گردش حساب) ]
+      │ Pre-fills: accountId, fiscalYearId, financialAreaId
+      │
+      │ (Click Voucher Number / Line)
+      ▼
+[ ACCOUNTING DOCUMENT DETAIL (مشاهده سند حسابداری) ]  <── [ CONTRACT GAP: Dedicated UI Page ]
+      │ (GET /accounting-documents/:id exists in backend API)
+      │
+      │ (Click Source Entity Reference)
+      ▼
+[ SOURCE TRANSACTION (انبار / فاکتور) ]               <── [ CONTRACT GAP: Cross-module UI link ]
+```
+
+### 13.1 Drill-Down Capability Matrix
+
+| Transition                              | User Action                    | Target Destination                                                  | Status                                                   | Implementation Mechanism                                                              |
+| :-------------------------------------- | :----------------------------- | :------------------------------------------------------------------ | :------------------------------------------------------- | :------------------------------------------------------------------------------------ |
+| **Trial Balance → Account Statement**   | Click Account row or code link | `/app/accounting/account-statements?fiscalYearId=...&accountId=...` | **SUPPORTED** (URL param mapping required)               | React Router `Link` / `navigate` passing query parameters.                            |
+| **Account Statement → Document Detail** | Click `voucherNumber`          | `/app/accounting/documents/:voucherId`                              | **PARTIALLY SUPPORTED** (API exists; UI route is Future) | Backend `GET /accounting-documents/:id` ready; requires frontend Document View route. |
+| **General Ledger → Document Detail**    | Click `voucherNumber`          | `/app/accounting/documents/:voucherId`                              | **PARTIALLY SUPPORTED** (API exists; UI route is Future) | Same as above.                                                                        |
+| **Document Line → Source Subledger**    | Click `sourceEntityId`         | `/app/inventory/movements/:id`                                      | **CONTRACT GAP**                                         | Source entity cross-module route contracts not yet formalized.                        |
+
+---
+
+## 14. Logout & Session Expiry UX
+
+### 14.1 Explicit User Logout
+
+1. User clicks `«خروج»` in Topbar.
+2. Button enters loading state (`«در حال خروج…»`).
+3. Executes `POST /api/v1/auth/logout` (server-side session revocation).
+4. `onSettled`: Client drops all cached queries via `queryClient.clear()`, resets session context to `unauthenticated`, and redirects to `/login`.
+
+### 14.2 Passive Session Timeout (401 Response)
+
+1. User session expires on server due to idle timeout.
+2. Next API request receives `401 Unauthorized`.
+3. Axios interceptor fires `unauthorizedHandler`:
+   - Sets `sessionExpired = true`.
+   - Clears entire TanStack Query cache (preventing stale sensitive data leakage).
+   - Redirects to `/login` preserving target path in `state.from`.
+4. Login page displays persistent warning banner: `«نشست شما منقضی شده است. دوباره وارد شوید.»`.
+
+---
+
+## 15. UX Feedback Taxonomy & Strategy
+
+To avoid notification fatigue and maintain professional clarity, Vardena standardizes all UI feedback:
+
+```text
+┌─────────────────────────┬───────────────────────────────┬──────────────────────────────────┐
+│ Feedback Type           │ Intended Use Case             │ Concrete Example                 │
+├─────────────────────────┼───────────────────────────────┼──────────────────────────────────┤
+│ 1. Inline Validation    │ Field-specific input errors   │ «تاریخ باید به قالب YYYY-MM-DD    │
+│                         │ (Zod / React Hook Form)       │  باشد.»                          │
+├─────────────────────────┼───────────────────────────────┼──────────────────────────────────┤
+│ 2. Toast Notification   │ Brief confirmation of an      │ «سند با موفقیت ثبت شد.»          │
+│                         │ asynchronous operation        │ (Auto-dismiss 4s, Max 3)         │
+├─────────────────────────┼───────────────────────────────┼──────────────────────────────────┤
+│ 3. Confirmation Dialog  │ Irreversible, high-impact, or │ «آیا از معکوس‌سازی (Reversal)     │
+│                         │ destructive financial actions │  این سند اطمینان دارید؟»         │
+├─────────────────────────┼───────────────────────────────┼──────────────────────────────────┤
+│ 4. Page/Section Alert   │ Query failures, missing scope,│ «خطا در دریافت دفتر کل — تلاش    │
+│                         │ or permission blocks          │  دوباره [کد پیگیری: req_123]»    │
+├─────────────────────────┼───────────────────────────────┼──────────────────────────────────┤
+│ 5. Empty State          │ Succeeded query with 0 results│ «برای فیلترهای انتخاب‌شده هیچ     │
+│                         │                               │  ردیفی بازگردانده نشد.»          │
+├─────────────────────────┼───────────────────────────────┼──────────────────────────────────┤
+│ 6. Permission Gate Alert│ Route or widget blocked due   │ «دسترسی لازم را ندارید — مجوز:    │
+│                         │ to missing RBAC privilege     │  Accounting.TrialBalance.View»   │
+└─────────────────────────┴───────────────────────────────┴──────────────────────────────────┘
+```
+
+---
+
+## 16. Persian UX Language & Terminology Policy
+
+1. **Tone of Voice:** Professional, formal, and concise. Users are addressed with the polite plural pronoun «شما».
+2. **No Raw Backend Internals:** Technical errors (`500`, `ECONNREFUSED`, `PrismaClientKnownRequestError`, `404`) must never be displayed raw. They are mapped to human-readable Persian explanations.
+3. **Actionable Error Formula:** Every error message must specify:
+   $$\text{What happened} + \text{What the user can do} + [\text{Correlation Tracking ID}]$$
+   _Example:_ `«دریافت فهرست اسناد انجام نشد. اتصال شبکه را بررسی کنید یا دوباره تلاش کنید. (کد پیگیری: 01HZX8...)»`
+4. **Canonical Accounting Glossary:**
+   - Account: `حساب`
+   - Account Code: `کد حساب`
+   - Chart of Accounts: `درخت حساب‌ها`
+   - General Ledger: `دفتر کل`
+   - Trial Balance: `تراز آزمایشی`
+   - Account Statement: `گردش حساب`
+   - Accounting Document / Voucher: `سند حسابداری`
+   - Draft / Temporary / Final: `پیش‌نویس / موقت / قطعی`
+   - Reversal Voucher: `سند معکوس`
+   - Financial Area: `حوزه مالی`
+   - Fiscal Year: `سال مالی`
+   - Accounting Period: `دوره مالی`
+   - Organization: `سازمان`
+
+---
+
+## 17. Permission UX & Security Boundary
+
+- **Architectural Truth:** UI permission checks are **UX presentation gates only**. The backend is the sole security and authorization authority.
+- **Four Permission UX States:**
+  1. _Unauthenticated:_ Immediate redirect to `/login`.
+  2. _Authenticated but Lacks UI Permission:_ Menu item hidden; direct route access renders `RequirePermission` warning alert specifying required code.
+  3. _Permission Granted:_ Full access to route and features.
+  4. _Backend Rejection (Concurrent Revocation / 403):_ Render `ApiErrorAlert` with `«مجوز لازم برای این عملیات را ندارید.»`.
+
+---
+
+## 18. Known Contract Gaps
+
+The following capabilities are recognized as missing backend contracts or unimplemented UI routes:
+
+1. **Global Search Endpoint (`CONTRACT GAP`):** Topbar search field is currently a non-submitting visual placeholder. Backend has no `/api/v1/search` endpoint.
+2. **Workflow Approval Decision Surface (`CONTRACT GAP`):** Dashboard workflow widget displays active instances. Mutating state (Approve/Reject) requires a dedicated backend decision surface.
+3. **Trial Balance Total Summary Row (`CONTRACT GAP`):** `TrialBalanceResponseDto` returns account rows but no aggregate totals object. Frontend intentionally does not compute client-side totals.
+4. **Accounting Document View & Management UI (`SUPPORTED API / FUTURE UI`):** Backend provides full CRUD (`POST /accounting-documents`, `GET :id`, `finalize`, `reverse`), but frontend currently only contains the Dashboard recent documents table.
+5. **Cross-Module Drill-Down Linkage (`CONTRACT GAP`):** `sourceModule` and `sourceEntityId` exist in ledger movement DTOs, but target entity view routes are not yet standardized.
+
+---
+
+## 19. Future UX Considerations
+
+1. **Persisted UI Preferences:** User customization of table column order, density (Compact/Comfortable), and saved report filter presets (pending Customization module).
+2. **Report Export Workflows:** Seamless streaming export to Excel (XLSX) and printable PDF documents via backend reporting pipeline (ADR-0009 / ADR-0012).
+3. **Solar Hijri (Jalali) DatePicker:** Native Persian calendar picker integration (addressing OQ-01).
+4. **Batch Operations Grid:** Bulk document posting/reversal workflows with multi-row selection and batch progress indicators.
+
+---
+
+## 20. Final Recommended Journey Specification
+
+The recommended journey solidifies an unbreakable, linkable, and robust workflow for Vardena:
+
+1. **Login:** Direct credential submission with deep-link redirection.
+2. **Bootstrap:** Automatic profile resolution, permission loading, and organization context locking.
+3. **Dashboard:** High-level executive overview with direct jump points to reports and recent document monitoring.
+4. **Report Center:** Selection of Account Statement, General Ledger, or Trial Balance with URL-addressable parameters.
+5. **Drill-Down:** Seamless traversal from high-level trial balance down to individual voucher lines, with browser history fully preserved.
