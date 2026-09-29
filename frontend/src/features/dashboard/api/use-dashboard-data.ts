@@ -4,7 +4,7 @@ import {
   listInventoryBalances,
   listWorkflowInstances,
 } from '@/api/dashboard.api';
-import { queryKeys } from '@/api/query-keys';
+import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import type { DashboardScope } from './use-dashboard-scope';
@@ -107,7 +107,17 @@ export function useDashboardDocuments(
       );
     },
     enabled,
-    placeholderData: (previous) => previous,
+    // Keep the previous page only within the SAME organization: on an
+    // organization switch the old organization's documents must disappear
+    // instead of being shown as if they belonged to the new one.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery !== undefined &&
+      !isOtherOrganizationScope(
+        previousQuery.queryKey,
+        organizationId ?? 'none',
+      )
+        ? previous
+        : undefined,
   });
 
   return { ...query, isPermitted };

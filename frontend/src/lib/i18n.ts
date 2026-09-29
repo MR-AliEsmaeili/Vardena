@@ -57,12 +57,23 @@ export const fa = {
     label: 'سازمان',
     switcher: 'انتخاب سازمان',
     loading: 'در حال دریافت سازمان…',
+    resolving: 'در حال بررسی سازمان…',
+    selectingTitle: 'انتخاب سازمان',
+    selectingSubtitle:
+      'برای ادامه، سازمانی که می‌خواهید با آن کار کنید را انتخاب کنید.',
+    selectingSubmit: 'ادامه',
+    invalidTitle: 'سازمان انتخاب‌شده در دسترس نیست',
+    invalidBody:
+      'سازمان انتخاب‌شده دیگر در دسترس نیست. سازمان دیگری را انتخاب کنید یا دوباره تلاش کنید.',
     emptyTitle: 'سازمانی در دسترس نیست',
     emptyBody:
-      'هیچ سازمان فعالی برای این حساب کاربری بازگردانده نشد. دسترسی عضویت سازمان را با مدیر سامانه بررسی کنید.',
+      'سازمانی برای حساب کاربری شما در دسترس نیست. دسترسی عضویت سازمان را با مدیر سامانه بررسی کنید.',
     errorTitle: 'خطا در دریافت سازمان',
     permissionHint:
       'دریافت فهرست سازمان‌ها به مجوز Organization.Organization.View نیاز دارد.',
+  },
+  breadcrumb: {
+    label: 'مسیر صفحه',
   },
   nav: {
     dashboard: 'میزکار',
@@ -74,17 +85,6 @@ export const fa = {
     openMenu: 'باز کردن منو',
     closeMenu: 'بستن منو',
     mainMenu: 'منوی اصلی',
-  },
-  topbar: {
-    searchPlaceholder: 'جست‌وجوی سند، کالا، حساب…',
-    searchAriaLabel: 'جست‌وجوی سراسری',
-    searchHint: 'Ctrl K',
-    searchUnavailable:
-      'جست‌وجوی سراسری هنوز فعال نیست؛ از مسیرهای بخش‌ها استفاده کنید.',
-    notifications: 'اعلان‌ها',
-    notificationsUnavailable:
-      'مرکز اعلان‌ها هنوز در دسترس نیست؛ این آیکن فقط نمایشی است.',
-    userChipLabel: 'کاربر جاری',
   },
   home: {
     title: 'میزکار',

@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { getAccountStatement } from '@/api/accounting.api';
 import type { AccountStatementQuery } from '@/api/contracts';
-import { queryKeys } from '@/api/query-keys';
+import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import {
   optionalParam,
   type StatementScopeValues,
@@ -64,6 +64,16 @@ export function useAccountStatement({
     queryFn: ({ signal }) =>
       getAccountStatement(query as AccountStatementQuery, signal),
     enabled,
-    placeholderData: (previous) => previous,
+    // Keep the previous statement only within the SAME organization: on an
+    // organization switch the old movements must disappear instead of being
+    // shown as if they belonged to the new organization.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery !== undefined &&
+      !isOtherOrganizationScope(
+        previousQuery.queryKey,
+        organizationId ?? 'none',
+      )
+        ? previous
+        : undefined,
   });
 }

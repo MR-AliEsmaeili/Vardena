@@ -184,6 +184,49 @@ describe('login flow', () => {
     ).toBeInTheDocument();
   });
 
+  it('returns to the deep-linked route after logging in', async () => {
+    vi.mocked(identityApi.login).mockResolvedValue(testUser);
+    const user = userEvent.setup();
+    // Direct entry to a private deep link while unauthenticated: the guard
+    // remembers the attempted route and the login restores it.
+    renderWithProviders(<AppRoutes />, {
+      initialEntries: ['/app/accounting/chart'],
+    });
+
+    await user.type(
+      await screen.findByLabelText(t.auth.username),
+      'accountant',
+    );
+    await user.type(screen.getByLabelText(t.auth.password), 'correct-password');
+    await user.click(screen.getByRole('button', { name: t.auth.submit }));
+
+    expect(
+      await screen.findByRole('heading', { name: t.chartTree.title }),
+    ).toBeInTheDocument();
+  });
+
+  it('never honors a non-internal post-login destination (open-redirect guard)', async () => {
+    vi.mocked(identityApi.login).mockResolvedValue(testUser);
+    const user = userEvent.setup();
+    renderWithProviders(<AppRoutes />, {
+      initialEntries: [
+        { pathname: '/login', state: { from: 'https://evil.example/' } },
+      ],
+    });
+
+    await user.type(
+      await screen.findByLabelText(t.auth.username),
+      'accountant',
+    );
+    await user.type(screen.getByLabelText(t.auth.password), 'correct-password');
+    await user.click(screen.getByRole('button', { name: t.auth.submit }));
+
+    // The application falls back to its own index, never to an external URL.
+    expect(
+      await screen.findByRole('heading', { level: 1, name: t.dashboard.title }),
+    ).toBeInTheDocument();
+  });
+
   it('ends the session and returns to the login page on logout', async () => {
     vi.mocked(identityApi.login).mockResolvedValue(testUser);
     const user = userEvent.setup();

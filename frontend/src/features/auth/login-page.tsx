@@ -18,6 +18,24 @@ interface LocationState {
 }
 
 /**
+ * The post-login destination must be an internal path. `state.from` normally
+ * originates from `RequireAuth`'s own redirect, but it is still untrusted
+ * input: anything that is not a same-app path starting with a single `/`
+ * (protocol-relative URLs included) falls back to `/app`, so the redirect can
+ * never leave the application (open-redirect guard).
+ */
+function safeReturnPath(from: unknown): string {
+  if (
+    typeof from === 'string' &&
+    from.startsWith('/') &&
+    !from.startsWith('//')
+  ) {
+    return from;
+  }
+  return '/app';
+}
+
+/**
  * Login page — the only public route.
  *
  * There are no demo credentials, no mocked user and no client-side
@@ -41,7 +59,7 @@ export function LoginPage() {
   }
 
   if (session.status === 'authenticated') {
-    return <Navigate to={state?.from ?? '/app'} replace />;
+    return <Navigate to={safeReturnPath(state?.from)} replace />;
   }
 
   const onSubmit = form.handleSubmit(async (values) => {

@@ -56,9 +56,11 @@ The overarching journey moves deterministically from authentication through oper
       ▼
 [ 3. ORGANIZATION RESOLUTION ]
       ├─► Exactly 1 Org (Pinned/Unpinned) ──► Auto-select (Static indicator)
-      ├─► Multiple Orgs                   ──► Topbar Switcher active
-      ├─► No Org Memberships              ──► Empty Organization Alert (Terminal)
-      └─► Forbidden (Missing Perm)        ──► Permission Warning (Terminal)
+      ├─► Multiple Orgs                   ──► Explicit Selection Step → Topbar Switcher
+      ├─► No Org Memberships              ──► Blocked State + Logout (Terminal)
+      ├─► Forbidden (Missing Perm)        ──► Blocked State + Logout (Terminal)
+      ├─► List Fetch Failure              ──► Error State + Retry (Terminal until retry)
+      └─► Selection No Longer In List     ──► Invalid Selection → Re-select (Terminal)
       │
       ▼
 [ 4. APPLICATION SHELL ]
@@ -165,25 +167,40 @@ Vardena implements organizational scoping under ADR-0021 and ADR-0025 (Deploymen
 GET /api/v1/organizations?isActive=true
    │
    ├─► Case A: Exactly 1 Organization Returned
-   │     ├─ UX Behavior: Auto-selects this organization immediately.
+   │     ├─ UX Behavior: Auto-selects this organization immediately (no selection step).
    │     └─ UI Shell: Displays organization name as static badge/text (No dropdown).
    │
    ├─► Case B: Multiple Organizations Returned (> 1)
-   │     ├─ UX Behavior: Defaults to first org; activates Topbar `<Select>` dropdown.
-   │     ├─ Switch Action: Changing dropdown updates OrganizationContext and refetches scoped queries.
-   │     └─ Persistence: Selection lives in React memory (ADR-0025: no localStorage, no cookie).
+   │     ├─ UX Behavior: An explicit selection screen is shown BEFORE the workspace;
+   │     │              `organizationId` stays null until the user confirms, so no
+   │     │              organization-scoped request can fire with an unconfirmed scope.
+   │     ├─ Post-selection: Topbar `<Select>` switcher active for later switching.
+   │     ├─ Switch Action: Updates OrganizationContext, evicts the previous
+   │     │                 organization's cached queries, and refetches scoped queries.
+   │     └─ Persistence: Selection lives in React memory, scoped to the session's
+   │                     user id (ADR-0025: no localStorage, no cookie).
    │
    ├─► Case C: Zero Organizations Returned (Empty)
-   │     ├─ UX Behavior: Application shell renders persistent Warning Alert.
-   │     └─ Copy: «سازمانی در دسترس نیست. دسترسی عضویت سازمان را با مدیر سامانه بررسی کنید.»
+   │     ├─ UX Behavior: Terminal blocked state replaces the workspace (sidebar and
+   │     │              routed content are not rendered); logout is offered.
+   │     └─ Copy: «سازمانی در دسترس نیست. سازمانی برای حساب کاربری شما در دسترس نیست.
+   │               دسترسی عضویت سازمان را با مدیر سامانه بررسی کنید.»
    │
    ├─► Case D: Forbidden (403 / Missing `Organization.Organization.View`)
-   │     ├─ UX Behavior: Shell renders Warning Alert with required permission hint.
+   │     ├─ UX Behavior: Terminal blocked state replaces the workspace; logout is offered.
    │     └─ Copy: «خطا در دریافت سازمان — دریافت فهرست سازمان‌ها به مجوز Organization.Organization.View نیاز دارد.»
    │
-   └─► Case E: Selected Organization Becomes Invalid (404 EntityNotFound on Scoped Call)
+   ├─► Case E: List Fetch Failure (Network / 5xx)
+   │     ├─ UX Behavior: Error state replaces the workspace (no silent degradation);
+   │     │              `ApiErrorAlert` with correlation id, «تلاش دوباره» and logout.
+   │     └─ Recovery: Retry refetches the list and resolution continues.
+   │
+   └─► Case F: Confirmed Selection No Longer In The Refreshed List
          ├─ Cause: Organization deactivated, deleted, or deployment pin mismatched.
-         └─ Recovery: Shell triggers `organization.refresh()`, resets selection, or surfaces scoped 404 alert.
+         ├─ UX Behavior: Status `invalid` — the scope is dropped (NEVER a silent
+         │              fallback to another organization) and the selection screen
+         │              returns with «سازمان انتخاب‌شده دیگر در دسترس نیست.».
+         └─ Scoped 404s on individual widgets surface their own `ApiErrorAlert`.
 ```
 
 ---
@@ -194,9 +211,9 @@ The shell (`AppShell`) provides the consistent operational frame across all modu
 
 ```text
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ [Logo] وردنا | سامانه یکپارچه    [ Topbar Search (Ctrl+K) ]    [Org: شرکت نمونه ▼] [User] [خروج] │
+│ [Logo] وردنا | سامانه یکپارچه                    [Org: شرکت نمونه ▼] [User] [خروج]    │
 ├──────────────────────────┬─────────────────────────────────────────────────────────────┤
-│ ☰ منوی اصلی              │ مسیر: میزکار                                                │
+│ ☰ منوی اصلی              │ مسیر: میزکار / حسابداری / درخت حساب‌ها (Breadcrumb)          │
 │                          ├─────────────────────────────────────────────────────────────┤
 │ 📊 میزکار                │                                                             │
 │                          │                                                             │
@@ -219,11 +236,12 @@ The shell (`AppShell`) provides the consistent operational frame across all modu
   - Accessibility: Includes `#main-content` skip link (`sr-only focus:not-sr-only`).
 - **Topbar:**
   - Branding: Application title and subtitle.
-  - Global Search Affordance: Visual input with `Ctrl+K` badge. In the absence of a backend search engine, submitting triggers an honest informational message (`CONTRACT GAP`).
-  - Organization Switcher: Renders interactive `<Select>` for multi-org or static label for single-org.
+  - No search field: the backend exposes no global search contract, and an inert input would be a fake capability — the topbar search placeholder was removed (FE-UX-04, `CONTRACT GAP`).
+  - Organization Switcher: Renders interactive `<Select>` for multi-org or static label for single-org; hidden while the scope is unresolved.
   - User Status: Displays current username with `dir="ltr"`.
   - Logout Control: Button with `LogOut` icon and disabled/loading state during mutation.
-- **Breadcrumbs & Page Header:** Each view renders a standardized `PageHeader` with title, subtitle, and primary contextual actions.
+- **Organization Gate:** While organization resolution is `loading` / `empty` / `forbidden` / `error` / `selecting` / `invalid`, the gate replaces the sidebar and routed content entirely (explicit state per FE-UX-04; the dashboard never loads around an unresolved scope).
+- **Breadcrumbs & Page Header:** Nested routes render a real-hierarchy breadcrumb (`مسیر: میزکار / حسابداری / …`, parents linked, current page `aria-current="page"`); no breadcrumb is invented for single-level routes. Each view additionally renders a standardized `PageHeader` with title, subtitle, and primary contextual actions.
 - **404 Not Found Handling:** Unmatched paths inside `/app/*` render `NotFoundPage` with CTA `«بازگشت به صفحه اصلی»`.
 
 ---

@@ -82,3 +82,32 @@ export const queryKeys = {
       ['workflow', organizationId, 'instances', filters] as const,
   },
 } as const;
+
+/**
+ * Query-key roots whose data is organization-scoped. By construction every
+ * such key carries the organization id at index 1 (`['accounting', orgId, …]`,
+ * `['inventory', orgId, …]`, `['workflow', orgId, …]`).
+ */
+const ORGANIZATION_SCOPED_ROOTS: readonly unknown[] = [
+  'accounting',
+  'inventory',
+  'workflow',
+];
+
+/**
+ * Whether a query key holds server data that belongs to an organization
+ * OTHER than `organizationId`. Used to evict the previous organization's
+ * cache when the effective organization changes, and to gate
+ * `placeholderData` so the previous page is only kept within the SAME
+ * organization — a plain `(previous) => previous` would otherwise render
+ * organization A's rows as if they were organization B's while B loads.
+ */
+export function isOtherOrganizationScope(
+  queryKey: readonly unknown[],
+  organizationId: string,
+): boolean {
+  return (
+    ORGANIZATION_SCOPED_ROOTS.includes(queryKey[0]) &&
+    queryKey[1] !== organizationId
+  );
+}
