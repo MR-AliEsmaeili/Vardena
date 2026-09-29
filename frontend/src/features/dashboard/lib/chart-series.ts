@@ -1,4 +1,5 @@
 import type { AccountBalance } from '@/api/contracts';
+import { sumDecimalStrings } from './kpis';
 
 /**
  * Chart input builders.
@@ -34,12 +35,8 @@ export function buildTurnoverSeries(rows: AccountBalance[]): {
         credit: row.periodCreditAmount,
       });
     } else {
-      bucket.debit = bucket.debit === ''
-        ? row.periodDebitAmount
-        : bucket.debit;
-      bucket.credit = bucket.credit === ''
-        ? row.periodCreditAmount
-        : bucket.credit;
+      bucket.debit = sumDecimalStrings(bucket.debit, row.periodDebitAmount);
+      bucket.credit = sumDecimalStrings(bucket.credit, row.periodCreditAmount);
     }
   }
   const ordered = [...byPeriod.entries()].sort((a, b) => a[0] - b[0]);

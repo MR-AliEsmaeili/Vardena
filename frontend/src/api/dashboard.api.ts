@@ -67,9 +67,10 @@ export function listAccountBalances(
 // ---------------------------------------------------------------------------
 
 /**
- * Stock balances for the availability alert widget. The backend sorts only
+ * Stock balances for the lowest-on-hand widget. The backend sorts only
  * `onHand`, `updatedAt`, `createdAt` (`InventoryBalancesService`); ascending
- * `onHand` surfaces the scarcest rows first.
+ * `onHand` is therefore presented honestly as an on-hand ranking, not an
+ * availability-alert ranking.
  */
 export function listInventoryBalances(
   query: InventoryBalanceListQuery,

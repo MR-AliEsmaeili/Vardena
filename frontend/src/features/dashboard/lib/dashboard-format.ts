@@ -18,7 +18,8 @@ export function formatAxisAmount(value: string): string {
   const intPart = unsigned.split('.')[0] ?? '0';
   const digits = intPart.replace(/^0+(?=\d)/, '');
   if (digits.length <= 4) return formatAmount(raw);
-  if (digits.length <= 6) return `${negative ? '-' : ''}${digits.slice(0, digits.length - 3)}K`;
+  if (digits.length <= 6)
+    return `${negative ? '-' : ''}${digits.slice(0, digits.length - 3)}K`;
   if (digits.length <= 9) {
     const millions = digits.slice(0, digits.length - 6);
     return `${negative ? '-' : ''}${millions}M`;

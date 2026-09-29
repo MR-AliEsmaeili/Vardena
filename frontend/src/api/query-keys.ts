@@ -63,7 +63,8 @@ export const queryKeys = {
     accountingDocuments: (
       organizationId: string,
       filters: Record<string, unknown>,
-    ) => ['accounting', organizationId, 'accounting-documents', filters] as const,
+    ) =>
+      ['accounting', organizationId, 'accounting-documents', filters] as const,
 
     accountBalances: (
       organizationId: string,

@@ -15,7 +15,11 @@ import { Button } from '@/ui/button';
 export function PeriodStatusBanner({
   visiblePeriods,
 }: {
-  visiblePeriods: Array<{ id: string; title: string; status: 'open' | 'closed' | 'sealed' }>;
+  visiblePeriods: Array<{
+    id: string;
+    title: string;
+    status: 'open' | 'closed' | 'sealed';
+  }>;
 }): ReactElement | null {
   const [dismissedIds, setDismissedIds] = useState<readonly string[]>([]);
   const noticeable = visiblePeriods.filter(
@@ -25,7 +29,9 @@ export function PeriodStatusBanner({
   if (first === undefined) return null;
 
   const statusLabel =
-    first.status === 'sealed' ? t.dashboard.periodSealed : t.dashboard.periodClosed;
+    first.status === 'sealed'
+      ? t.dashboard.periodSealed
+      : t.dashboard.periodClosed;
 
   return (
     <Alert variant="info" className="flex items-start gap-2.5 py-2.5">

@@ -1,15 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-  listAccountBalances,
   listAccountingDocuments,
   listInventoryBalances,
   listWorkflowInstances,
-  MAX_PAGE_SIZE,
 } from '@/api/dashboard.api';
 import { queryKeys } from '@/api/query-keys';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import type { DashboardScope } from './use-dashboard-scope';
+import { fetchAllAccountBalances } from './fetch-all-balances';
 
 /**
  * Dashboard query hooks.
@@ -45,30 +44,22 @@ export function useDashboardBalances(
     PERMISSIONS.accounting.balanceView,
   );
   const enabled =
-    organizationId !== null && scope !== null && permissions.loaded && isPermitted;
+    organizationId !== null &&
+    scope !== null &&
+    permissions.loaded &&
+    isPermitted;
 
   const query = useQuery({
     queryKey: queryKeys.accounting.accountBalances(organizationId ?? 'none', {
       organizationId,
       financialAreaId: scope?.financialAreaId,
       fiscalYearId: scope?.fiscalYearId,
-      page: 1,
-      pageSize: MAX_PAGE_SIZE,
     }),
     queryFn: ({ signal }) => {
       if (organizationId === null || scope === null) {
         throw new Error('balances query executed without scope');
       }
-      return listAccountBalances(
-        {
-          organizationId,
-          financialAreaId: scope.financialAreaId,
-          fiscalYearId: scope.fiscalYearId,
-          page: 1,
-          pageSize: MAX_PAGE_SIZE,
-        },
-        signal,
-      );
+      return fetchAllAccountBalances({ organizationId, scope }, signal);
     },
     enabled,
     staleTime: 30_000,
@@ -92,12 +83,15 @@ export function useDashboardDocuments(
   const enabled = organizationId !== null && permissions.loaded && isPermitted;
 
   const query = useQuery({
-    queryKey: queryKeys.accounting.accountingDocuments(organizationId ?? 'none', {
-      organizationId,
-      page,
-      pageSize,
-      sort,
-    }),
+    queryKey: queryKeys.accounting.accountingDocuments(
+      organizationId ?? 'none',
+      {
+        organizationId,
+        page,
+        pageSize,
+        sort,
+      },
+    ),
     queryFn: ({ signal }) => {
       if (organizationId === null) {
         throw new Error('documents query executed without organization');

@@ -22,7 +22,12 @@ import {
   PeriodStatusWidget,
   WorkflowWidget,
 } from './components/side-widgets';
-import { useDashboardBalances, useDashboardDocuments, useDashboardInventory, useDashboardWorkflow } from './api/use-dashboard-data';
+import {
+  useDashboardBalances,
+  useDashboardDocuments,
+  useDashboardInventory,
+  useDashboardWorkflow,
+} from './api/use-dashboard-data';
 import { useDashboardScope } from './api/use-dashboard-scope';
 
 /**
@@ -40,7 +45,11 @@ const PAGE_SIZE_OPTIONS = [9, 25, 50];
 export function DashboardPage(): ReactElement {
   const organizationId = useOrganizationId();
   const permissions = usePermissions();
-  const { scope, isReady: isScopeReady } = useDashboardScope(organizationId);
+  const {
+    scope,
+    isReady: isScopeReady,
+    isPermitted: isScopePermitted,
+  } = useDashboardScope(organizationId);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
@@ -66,7 +75,8 @@ export function DashboardPage(): ReactElement {
       (current) => {
         const merged = new URLSearchParams(current);
         if (next.page !== undefined) merged.set('page', String(next.page));
-        if (next.pageSize !== undefined) merged.set('pageSize', String(next.pageSize));
+        if (next.pageSize !== undefined)
+          merged.set('pageSize', String(next.pageSize));
         if (next.sort !== undefined) {
           if (next.sort === '') merged.delete('sort');
           else merged.set('sort', next.sort);
@@ -87,6 +97,9 @@ export function DashboardPage(): ReactElement {
   const inventoryQuery = useDashboardInventory(organizationId);
   const workflowQuery = useDashboardWorkflow(organizationId);
 
+  const isPeriodsPermitted = permissions.loaded
+    ? permissions.has(PERMISSIONS.accounting.accountingPeriodView)
+    : true;
   const periodsQuery = useQuery({
     queryKey: queryKeys.accounting.accountingPeriods(
       organizationId ?? 'none',
@@ -100,11 +113,19 @@ export function DashboardPage(): ReactElement {
         },
         signal,
       ),
-    enabled: organizationId !== null && scope !== null,
+    enabled:
+      organizationId !== null &&
+      scope !== null &&
+      permissions.loaded &&
+      isPeriodsPermitted,
     staleTime: 60_000,
   });
 
-  const isPeriodsLoading = periodsQuery.isPending && isScopeReady && scope !== null;
+  const isPeriodsLoading =
+    periodsQuery.isPending &&
+    isScopeReady &&
+    scope !== null &&
+    isPeriodsPermitted;
 
   const periods = periodsQuery.data?.items ?? [];
   const today = new Date();
@@ -129,7 +150,9 @@ export function DashboardPage(): ReactElement {
   }, []);
 
   const documentTotal = documentsQuery.data?.total ?? 0;
-  const canOpenTrialBalance = permissions.has(PERMISSIONS.accounting.trialBalanceView);
+  const canOpenTrialBalance = permissions.has(
+    PERMISSIONS.accounting.trialBalanceView,
+  );
 
   return (
     <div className="mx-auto w-full max-w-[1440px] space-y-4">
@@ -160,8 +183,8 @@ export function DashboardPage(): ReactElement {
         <KpiRow
           balances={balancesQuery.data?.items}
           isLoading={balancesQuery.isPending && isScopeReady}
-          isPermitted={balancesQuery.isPermitted}
-          scopeMissing={isScopeReady && scope === null}
+          isPermitted={balancesQuery.isPermitted && isScopePermitted}
+          scopeMissing={isScopePermitted && isScopeReady && scope === null}
         />
       )}
 
@@ -169,7 +192,8 @@ export function DashboardPage(): ReactElement {
         balances={balancesQuery.data?.items}
         error={balancesQuery.isError ? balancesQuery.error : undefined}
         onRetry={() => void balancesQuery.refetch()}
-        scopeMissing={isScopeReady && scope === null}
+        isPermitted={balancesQuery.isPermitted && isScopePermitted}
+        scopeMissing={isScopePermitted && isScopeReady && scope === null}
       />
 
       <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_21rem]">
@@ -184,12 +208,15 @@ export function DashboardPage(): ReactElement {
           error={documentsQuery.error}
           onRetry={() => void documentsQuery.refetch()}
           onPageChange={(nextPage) => updateParams({ page: nextPage })}
-          onPageSizeChange={(nextSize) => updateParams({ pageSize: nextSize, page: 1 })}
+          onPageSizeChange={(nextSize) =>
+            updateParams({ pageSize: nextSize, page: 1 })
+          }
           onSortingChange={(nextSorting) => {
             const next = sortingToParam(nextSorting) ?? '';
             updateParams({ sort: next, page: 1 });
           }}
           hasFilter={false}
+          isPermitted={documentsQuery.isPermitted}
         />
 
         <div className="flex flex-col gap-4">
@@ -197,11 +224,15 @@ export function DashboardPage(): ReactElement {
             instances={workflowQuery.data?.items}
             isLoading={workflowQuery.isPending}
             isPermitted={workflowQuery.isPermitted}
+            error={workflowQuery.error ?? undefined}
+            onRetry={() => void workflowQuery.refetch()}
           />
           <InventoryAlertWidget
             balances={inventoryQuery.data?.items}
             isLoading={inventoryQuery.isPending}
             isPermitted={inventoryQuery.isPermitted}
+            error={inventoryQuery.error ?? undefined}
+            onRetry={() => void inventoryQuery.refetch()}
           />
           <PeriodStatusWidget
             periods={periods.map((period) => ({
@@ -212,7 +243,10 @@ export function DashboardPage(): ReactElement {
               isCurrent: currentPeriod?.id === period.id,
             }))}
             isLoading={isPeriodsLoading}
-            scopeMissing={isScopeReady && scope === null}
+            isPermitted={isPeriodsPermitted && isScopePermitted}
+            scopeMissing={isScopePermitted && isScopeReady && scope === null}
+            error={periodsQuery.error ?? undefined}
+            onRetry={() => void periodsQuery.refetch()}
           />
           <ReconciliationEmptyCard canOpenTrialBalance={canOpenTrialBalance} />
         </div>

@@ -77,7 +77,8 @@ export const fa = {
     searchPlaceholder: 'جست‌وجوی سند، کالا، حساب…',
     searchAriaLabel: 'جست‌وجوی سراسری',
     searchHint: 'Ctrl K',
-    searchUnavailable: 'جست‌وجوی سراسری هنوز فعال نیست؛ از مسیرهای بخش‌ها استفاده کنید.',
+    searchUnavailable:
+      'جست‌وجوی سراسری هنوز فعال نیست؛ از مسیرهای بخش‌ها استفاده کنید.',
     notifications: 'اعلان‌ها',
     notificationsUnavailable:
       'مرکز اعلان‌ها هنوز در دسترس نیست؛ این آیکن فقط نمایشی است.',
@@ -104,11 +105,11 @@ export const fa = {
     kpiTotalDebit: 'جمع گردش بدهکار دوره',
     kpiTotalCredit: 'جمع گردش بستانکار دوره',
     kpiTotalNet: 'خالص گردش دوره',
-    kpiPostableAccounts: 'حساب‌های قابل ثبت فعال',
+    kpiPeriodsWithTurnover: 'دوره‌های دارای گردش',
     kpiUnit: 'ریال',
     kpiPeriodScope: 'برای دوره انتخاب‌شده',
     kpiAccountsScope: 'در درخت حساب‌ها',
-    kpiMovementsScope: 'حرکت ثبت‌شده انبار',
+    kpiPeriodsScope: 'در سال مالی انتخاب‌شده',
     chartsSectionLabel: 'نمودارهای روند',
     chartsOperationalLabel: 'نمودارهای عملیاتی',
     chartTurnoverTitle: 'گردش بدهکار و بستانکار دوره‌ها',
@@ -122,7 +123,8 @@ export const fa = {
     chartMovementsTitle: 'روند حرکات انبار',
     chartMovementsSubtitle: 'شش بازه اخیر بر پایه آخرین حرکت',
     chartEmpty: 'برای این بخش داده‌ای برای رسم نمودار وجود ندارد.',
-    scopeMissing: 'حوزه مالی یا سال مالی تعریف نشده است؛ راه‌اندازی حسابداری را کامل کنید.',
+    scopeMissing:
+      'حوزه مالی یا سال مالی تعریف نشده است؛ راه‌اندازی حسابداری را کامل کنید.',
     chartPeriodShort: 'دوره',
     chartFallback: 'نمایش نمودار در این محیط ممکن نیست.',
     chartAriaPrefix: 'نمودار:',
@@ -154,23 +156,21 @@ export const fa = {
     approvalsEmptyTitle: 'گردش‌کاری فعال نیست',
     approvalsEmptyBody:
       'برای این سازمان هیچ موضوعی در گردش‌کار فعال وجود ندارد.',
-    inventoryTitle: 'هشدار موجودی انبار',
-    inventorySubtitle: 'اقلام با کمترین موجودی قابل',
+    inventoryTitle: 'کمترین موجودی انبار',
+    inventorySubtitle: 'مرتب‌شده بر اساس موجودی واقعی',
     inventoryAvailable: 'قابل',
     inventoryReserved: 'رزروشده',
     inventoryOnHand: 'موجودی کل',
     inventoryBadge: 'رديف',
     inventoryEmptyTitle: 'موجودی ثبت نشده است',
-    inventoryEmptyBody:
-      'برای این سازمان ردیف موجودی انباری بازگردانده نشد.',
+    inventoryEmptyBody: 'برای این سازمان ردیف موجودی انباری بازگردانده نشد.',
     periodTitle: 'وضعیت دوره مالی',
     periodCurrent: '(جاری)',
     periodOpen: 'باز',
     periodClosed: 'بسته',
     periodSealed: 'سیل‌شده',
     periodEmptyTitle: 'دوره‌ای ثبت نشده است',
-    periodEmptyBody:
-      'برای سال مالی انتخابی هیچ دوره‌ای تعریف نشده است.',
+    periodEmptyBody: 'برای سال مالی انتخابی هیچ دوره‌ای تعریف نشده است.',
     noPermission: 'دسترسی لازم برای این بخش فراهم نیست.',
     reconciliationTitle: 'مغایرت پروجکشن تراز',
     reconciliationBody:
@@ -320,8 +320,7 @@ export const fa = {
       'دریافت موجودی انبار انجام نشد. دوباره تلاش کنید یا با مدیر سامانه تماس بگیرید.',
     periods:
       'دریافت دوره‌های مالی انجام نشد. دوباره تلاش کنید یا با مدیر سامانه تماس بگیرید.',
-    workflow:
-      'دریافت گردش‌کارهای فعال انجام نشد. دوباره تلاش کنید.',
+    workflow: 'دریافت گردش‌کارهای فعال انجام نشد. دوباره تلاش کنید.',
     charts:
       'رسم نمودارها انجام نشد. دوباره تلاش کنید یا با مدیر سامانه تماس بگیرید.',
     scopeMissing:

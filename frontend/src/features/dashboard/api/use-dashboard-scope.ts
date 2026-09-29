@@ -1,3 +1,5 @@
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
+import { usePermissions } from '@/features/permissions/use-permissions';
 import {
   useDashboardFinancialAreas,
   useDashboardFiscalYears,
@@ -20,9 +22,16 @@ export interface DashboardScope {
   fiscalYearId: string;
 }
 
-export function useDashboardScope(
-  organizationId: string | null,
-): { scope: DashboardScope | null; isReady: boolean } {
+export function useDashboardScope(organizationId: string | null): {
+  scope: DashboardScope | null;
+  isReady: boolean;
+  isPermitted: boolean;
+} {
+  const permissions = usePermissions();
+  const isPermitted = permissions.loaded
+    ? permissions.has(PERMISSIONS.accounting.financialAreaView) &&
+      permissions.has(PERMISSIONS.accounting.fiscalYearView)
+    : true;
   const areasQuery = useDashboardFinancialAreas(organizationId);
   const areas = areasQuery.data?.items ?? [];
   const defaultArea =
@@ -51,5 +60,5 @@ export function useDashboardScope(
       ? { financialAreaId: defaultArea.id, fiscalYearId: firstYear.id }
       : null;
 
-  return { scope, isReady };
+  return { scope, isReady, isPermitted };
 }

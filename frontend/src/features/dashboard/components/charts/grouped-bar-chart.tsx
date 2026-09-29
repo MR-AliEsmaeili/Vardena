@@ -92,7 +92,9 @@ export function GroupedBarChart({
                 y={y + 4}
                 className="fill-slate-400 text-[10px]"
               >
-                <tspan className="num">{formatAxisAmount(String(max * tick))}</tspan>
+                <tspan className="num">
+                  {formatAxisAmount(String(max * tick))}
+                </tspan>
               </text>
             </g>
           );
@@ -143,11 +145,17 @@ export function GroupedBarChart({
       </svg>
       <div className="mt-1 flex items-center justify-center gap-4 text-xs text-slate-600">
         <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" aria-hidden />
+          <span
+            className="inline-block h-2 w-2 rounded-full bg-emerald-500"
+            aria-hidden
+          />
           {labelA}
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-2 rounded-full bg-rose-500" aria-hidden />
+          <span
+            className="inline-block h-2 w-2 rounded-full bg-rose-500"
+            aria-hidden
+          />
           {labelB}
         </span>
       </div>

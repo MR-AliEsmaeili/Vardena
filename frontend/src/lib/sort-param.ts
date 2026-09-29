@@ -33,7 +33,6 @@ export function sortingFromParam(
       return { id: id.trim(), desc: direction.trim() !== 'asc' };
     })
     .filter(
-      (entry) =>
-        entry.id !== '' && (allowed === null || allowed.has(entry.id)),
+      (entry) => entry.id !== '' && (allowed === null || allowed.has(entry.id)),
     );
 }

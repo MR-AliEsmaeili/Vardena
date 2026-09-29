@@ -10,8 +10,8 @@ import { aggregateKpis, presentKpis } from '../lib/kpis';
  * KPI row (reference visual: four compact cards).
  *
  * Values are the backend-derived period aggregates of the dashboard scope:
- * total debit/credit turnover, net turnover and the count of rows that carry
- * turnover (a movement indicator, not an invented KPI). Formatting goes only
+ * total debit/credit turnover, net turnover and the count of accounting-period
+ * buckets represented by the projection. Formatting goes only
  * through the central formatters; negative net renders red (FR-7).
  */
 export function KpiRow({
@@ -53,7 +53,14 @@ export function KpiRow({
 
   const kpis = aggregateKpis(balances);
   const present = presentKpis(kpis);
+  // Display-only conversion for spark-line coordinates; exact strings remain
+  // authoritative for every KPI and tooltip.
   const spark = kpis.periodTurnover.map((entry) => Number(entry.net) || 0);
+  const periodsWithTurnover = kpis.periodTurnover.filter(
+    (entry) =>
+      !/^[-+]?0*(?:\.0*)?$/.test(entry.debit) ||
+      !/^[-+]?0*(?:\.0*)?$/.test(entry.credit),
+  ).length;
 
   const cards = [
     {
@@ -78,10 +85,10 @@ export function KpiRow({
       sparkClass: present.netNegative ? 'text-rose-500' : 'text-sky-500',
     },
     {
-      label: t.dashboard.kpiPostableAccounts,
-      value: formatCount(kpis.periodTurnover.length),
+      label: t.dashboard.kpiPeriodsWithTurnover,
+      value: formatCount(periodsWithTurnover),
       negative: false,
-      sub: t.dashboard.kpiMovementsScope,
+      sub: t.dashboard.kpiPeriodsScope,
       sparkClass: 'text-slate-400',
     },
   ];
@@ -103,7 +110,7 @@ export function KpiRow({
               >
                 {card.value}
               </span>
-              {card.label !== t.dashboard.kpiPostableAccounts && (
+              {card.label !== t.dashboard.kpiPeriodsWithTurnover && (
                 <span className="text-[11px] font-medium text-slate-400">
                   {t.dashboard.kpiUnit}
                 </span>

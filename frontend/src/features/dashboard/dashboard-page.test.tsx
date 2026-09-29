@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/errors';
 import { DashboardPage } from './dashboard-page';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
@@ -65,6 +66,7 @@ const accountingApi = await import('@/api/accounting.api');
 const dashboardApi = await import('@/api/dashboard.api');
 
 beforeEach(() => {
+  vi.clearAllMocks();
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
     userId: testUser.id,
@@ -159,9 +161,7 @@ describe('dashboard page — states', () => {
     expect(
       (await screen.findAllByRole('alert', {}, WAIT)).length,
     ).toBeGreaterThan(0);
-    expect(
-      screen.getAllByText(/corr-dashboard/).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText(/corr-dashboard/).length).toBeGreaterThan(0);
     expect(
       screen.getAllByRole('button', { name: t.app.retry }).length,
     ).toBeGreaterThan(0);
@@ -192,7 +192,11 @@ describe('dashboard page — states', () => {
     renderDashboard();
 
     // Every capability-gated section carries the same honest note.
-    const notes = await screen.findAllByText(t.dashboard.noPermission, {}, WAIT);
+    const notes = await screen.findAllByText(
+      t.dashboard.noPermission,
+      {},
+      WAIT,
+    );
     expect(notes.length).toBeGreaterThan(0);
   });
 });
@@ -234,9 +238,42 @@ describe('dashboard page — documents table interactions', () => {
     await waitFor(() => {
       expect(identityApi.getEffectivePermissions).toHaveBeenCalled();
     });
+    expect(accountingApi.listFinancialAreas).not.toHaveBeenCalled();
+    expect(accountingApi.listFiscalYears).not.toHaveBeenCalled();
+    expect(accountingApi.listAccountingPeriods).not.toHaveBeenCalled();
     expect(dashboardApi.listAccountBalances).not.toHaveBeenCalled();
     expect(dashboardApi.listAccountingDocuments).not.toHaveBeenCalled();
     expect(dashboardApi.listInventoryBalances).not.toHaveBeenCalled();
     expect(dashboardApi.listWorkflowInstances).not.toHaveBeenCalled();
+  });
+
+  it('does not request periods or show an empty state without period-view permission', async () => {
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: allAccountingPermissions.filter(
+        (code) => code !== PERMISSIONS.accounting.accountingPeriodView,
+      ),
+    });
+    renderDashboard();
+
+    expect(
+      await screen.findByText(t.dashboard.noPermission, {}, WAIT),
+    ).toBeInTheDocument();
+    expect(accountingApi.listAccountingPeriods).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText(t.dashboard.periodEmptyTitle),
+    ).not.toBeInTheDocument();
+  });
+
+  it('requests and presents inventory using the backend-supported on-hand ordering', async () => {
+    renderDashboard();
+
+    await screen.findByText(testInventoryBalance.itemId, {}, WAIT);
+    await waitFor(() => {
+      expect(dashboardApi.listInventoryBalances).toHaveBeenCalledWith(
+        expect.objectContaining({ sort: 'onHand:asc' }),
+        expect.anything(),
+      );
+    });
   });
 });
