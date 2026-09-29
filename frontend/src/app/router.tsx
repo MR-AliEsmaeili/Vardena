@@ -2,6 +2,12 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AccountStatementPage } from '@/features/accounting/account-statement/account-statement-page';
 import { AccountingHomePage } from '@/features/accounting/accounting-home-page';
 import { ChartTreePage } from '@/features/accounting/chart-tree/chart-tree-page';
+import { DocumentDetailPage } from '@/features/accounting/documents/document-detail-page';
+import {
+  DocumentCreatePage,
+  DocumentEditPage,
+} from '@/features/accounting/documents/document-form-page';
+import { DocumentsPage } from '@/features/accounting/documents/documents-page';
 import { GeneralLedgerPage } from '@/features/accounting/general-ledger/general-ledger-page';
 import { AccountDetailPage } from '@/features/accounting/master-data/account-detail-page';
 import { AccountingPeriodsPage } from '@/features/accounting/master-data/accounting-periods-page';
@@ -44,6 +50,41 @@ export function AppRoutes() {
 
           <Route path="accounting">
             <Route index element={<AccountingHomePage />} />
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.accounting.documentView]}
+                />
+              }
+            >
+              <Route path="documents" element={<DocumentsPage />} />
+              <Route
+                path="documents/:documentId"
+                element={<DocumentDetailPage />}
+              />
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[PERMISSIONS.accounting.documentCreate]}
+                  />
+                }
+              >
+                <Route path="documents/new" element={<DocumentCreatePage />} />
+              </Route>
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[PERMISSIONS.accounting.documentEdit]}
+                  />
+                }
+              >
+                <Route
+                  path="documents/:documentId/edit"
+                  element={<DocumentEditPage />}
+                />
+              </Route>
+            </Route>
 
             <Route
               element={

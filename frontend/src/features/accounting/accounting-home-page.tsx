@@ -16,6 +16,12 @@ interface Surface {
 
 const surfaces: readonly Surface[] = [
   {
+    to: '/app/accounting/documents',
+    title: t.nav.documents,
+    description: t.accounting.documentsDescription,
+    permission: PERMISSIONS.accounting.documentView,
+  },
+  {
     to: '/app/accounting/financial-areas',
     title: t.masterData.financialAreas,
     description: t.masterData.financialAreasDescription,

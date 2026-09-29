@@ -1,7 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useSearchParams } from 'react-router-dom';
 import { useOrganizationId } from '@/features/organization/use-organization';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
+import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
 import { Alert, AlertBody } from '@/ui/alert';
 import { Select } from '@/ui/select';
@@ -21,7 +24,7 @@ import {
   useFiscalYears,
 } from '../shared/use-accounting-references';
 import { useReportQueryState } from '../shared/use-report-query-state';
-import { accountStatementColumns } from './account-statement-columns';
+import { buildAccountStatementColumns } from './account-statement-columns';
 import { AccountStatementSummary } from './account-statement-summary';
 import { useAccountStatement } from './use-account-statement';
 
@@ -31,9 +34,21 @@ import { useAccountStatement } from './use-account-statement';
  */
 export function AccountStatementPage() {
   const organizationId = useOrganizationId();
+  const permissions = usePermissions();
   const [searchParams] = useSearchParams();
   const state = useReportQueryState<StatementScopeValues>();
   const linkedAccountId = searchParams.get('accountId') ?? '';
+
+  // Drill-down to a document needs its own view permission (UX only; the
+  // backend authorizes the document read itself).
+  const columns = useMemo(
+    () =>
+      buildAccountStatementColumns(
+        permissions.loaded &&
+          permissions.has(PERMISSIONS.accounting.documentView),
+      ),
+    [permissions],
+  );
 
   const form = useForm<StatementScopeValues>({
     resolver: zodResolver(statementScopeSchema),
@@ -165,7 +180,7 @@ export function AccountStatementPage() {
             <AccountStatementSummary statement={statement} />
           )}
           <DataTable
-            columns={accountStatementColumns}
+            columns={columns}
             data={movements?.items ?? []}
             getRowId={(row) => row.id}
             caption={t.statement.title}

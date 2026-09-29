@@ -113,6 +113,16 @@ export async function apiGet<TResponse>(
   return response.data;
 }
 
+/** PATCH helper: normalized errors, typed payload. */
+export async function apiPatch<TResponse, TBody = unknown>(
+  url: string,
+  body?: TBody,
+  config?: AxiosRequestConfig,
+): Promise<TResponse> {
+  const response = await apiClient.patch<TResponse>(url, body, config);
+  return response.data;
+}
+
 /** POST helper: normalized errors, typed payload. */
 export async function apiPost<TResponse, TBody = unknown>(
   url: string,
@@ -120,5 +130,14 @@ export async function apiPost<TResponse, TBody = unknown>(
   config?: AxiosRequestConfig,
 ): Promise<TResponse> {
   const response = await apiClient.post<TResponse>(url, body, config);
+  return response.data;
+}
+
+/** DELETE helper: normalized errors, typed payload. */
+export async function apiDelete<TResponse>(
+  url: string,
+  config?: AxiosRequestConfig,
+): Promise<TResponse> {
+  const response = await apiClient.delete<TResponse>(url, config);
   return response.data;
 }

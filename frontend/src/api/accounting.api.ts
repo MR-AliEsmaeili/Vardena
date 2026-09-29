@@ -1,13 +1,19 @@
-import { apiGet, cleanParams } from './client';
+import { apiDelete, apiGet, apiPatch, apiPost, cleanParams } from './client';
 import type {
   Account,
   AccountStatement,
   AccountStatementQuery,
   AccountListQuery,
+  AccountingDetail,
+  AccountingDocument,
+  AccountingDocumentLineInput,
+  AccountingDocumentListQuery,
   AccountingPeriod,
   AccountingPeriodListQuery,
   ChartTreeNode,
   ChartTreeQuery,
+  CreateAccountingDocumentInput,
+  DocumentTransitionInput,
   FinancialArea,
   FinancialAreaListQuery,
   FiscalYear,
@@ -15,8 +21,10 @@ import type {
   GeneralLedgerQuery,
   GeneralLedgerRow,
   Paginated,
+  ReverseAccountingDocumentInput,
   TrialBalanceQuery,
   TrialBalanceRow,
+  UpdateAccountingDocumentInput,
 } from './contracts';
 
 /**
@@ -266,4 +274,176 @@ export function listTrialBalance(
     params: cleanParams({ ...query }),
     ...(signal ? { signal } : {}),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Accounting documents — the voucher lifecycle (FE-UX-08)
+//
+// One function per EXISTING endpoint of `AccountingDocumentsController`. The
+// lifecycle is exactly the backend's: compose (`manual` origin only — the HTTP
+// surface composes manual documents), read, edit (draft/temporary), issue
+// (draft → temporary), finalize (temporary → final), reverse (final → new
+// final counter-document) and discard (draft/temporary). No reopen, no void:
+// those endpoints do not exist and are never simulated here.
+// ---------------------------------------------------------------------------
+
+/** Sort fields the documents list endpoint allow-lists server-side. */
+export const ACCOUNTING_DOCUMENT_SORT_FIELDS = [
+  'documentDate',
+  'documentNumber',
+  'createdAt',
+  'updatedAt',
+] as const;
+
+export function listAccountingDocuments(
+  query: AccountingDocumentListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<AccountingDocument>> {
+  return apiGet<Paginated<AccountingDocument>>('/accounting-documents', {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+export function getAccountingDocument(
+  organizationId: string,
+  documentId: string,
+  signal?: AbortSignal,
+): Promise<AccountingDocument> {
+  return apiGet<AccountingDocument>(
+    `/accounting-documents/${encodeURIComponent(documentId)}`,
+    {
+      params: { organizationId },
+      ...(signal ? { signal } : {}),
+    },
+  );
+}
+
+export function createAccountingDocument(
+  body: CreateAccountingDocumentInput,
+): Promise<AccountingDocument> {
+  return apiPost<AccountingDocument, CreateAccountingDocumentInput>(
+    '/accounting-documents',
+    body,
+  );
+}
+
+export function updateAccountingDocument(
+  organizationId: string,
+  documentId: string,
+  body: UpdateAccountingDocumentInput,
+): Promise<AccountingDocument> {
+  return apiPatch<AccountingDocument, UpdateAccountingDocumentInput>(
+    `/accounting-documents/${encodeURIComponent(documentId)}`,
+    body,
+    { params: { organizationId } },
+  );
+}
+
+export function issueAccountingDocument(
+  organizationId: string,
+  documentId: string,
+  body: DocumentTransitionInput,
+): Promise<AccountingDocument> {
+  return apiPost<AccountingDocument, DocumentTransitionInput>(
+    `/accounting-documents/${encodeURIComponent(documentId)}/issue`,
+    body,
+    { params: { organizationId } },
+  );
+}
+
+export function finalizeAccountingDocument(
+  organizationId: string,
+  documentId: string,
+  body: DocumentTransitionInput,
+): Promise<AccountingDocument> {
+  return apiPost<AccountingDocument, DocumentTransitionInput>(
+    `/accounting-documents/${encodeURIComponent(documentId)}/finalize`,
+    body,
+    { params: { organizationId } },
+  );
+}
+
+export function reverseAccountingDocument(
+  organizationId: string,
+  documentId: string,
+  body: ReverseAccountingDocumentInput,
+): Promise<AccountingDocument> {
+  return apiPost<AccountingDocument, ReverseAccountingDocumentInput>(
+    `/accounting-documents/${encodeURIComponent(documentId)}/reverse`,
+    body,
+    { params: { organizationId } },
+  );
+}
+
+export function deleteAccountingDocument(
+  organizationId: string,
+  documentId: string,
+): Promise<AccountingDocument> {
+  return apiDelete<AccountingDocument>(
+    `/accounting-documents/${encodeURIComponent(documentId)}`,
+    { params: { organizationId } },
+  );
+}
+
+export type AccountingDetailRecord = AccountingDetail;
+
+/**
+ * Postable detail options for a line's detail picker (server-filtered by the
+ * endpoint's own `search` parameter; group membership is validated by the
+ * backend on submit).
+ */
+export function listPostableDetails(
+  params: { organizationId: string; search?: string | undefined },
+  signal?: AbortSignal,
+): Promise<Paginated<AccountingDetail>> {
+  return apiGet<Paginated<AccountingDetail>>('/details', {
+    params: cleanParams({
+      organizationId: params.organizationId,
+      isPostable: true,
+      isActive: true,
+      search: params.search,
+      page: 1,
+      pageSize: 50,
+      sort: 'code:asc',
+    }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/** One detail record — the reference read behind a document line's detail. */
+export function getDetailRecord(
+  organizationId: string,
+  detailId: string,
+  signal?: AbortSignal,
+): Promise<AccountingDetail> {
+  return apiGet<AccountingDetail>(`/details/${encodeURIComponent(detailId)}`, {
+    params: { organizationId },
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/** The exact line payload the compose/edit endpoints accept. */
+export function toDocumentLineInputs(
+  lines: readonly {
+    accountId: string;
+    detailId: string;
+    debitAmount: string;
+    creditAmount: string;
+    description: string;
+  }[],
+): AccountingDocumentLineInput[] {
+  return lines.map((line) => ({
+    accountId: line.accountId,
+    ...(line.detailId === '' ? {} : { detailId: line.detailId }),
+    // The contract wants BOTH sides as non-negative decimal strings; an empty
+    // input is the `0` side, and a negative amount is written as the opposite
+    // side, never as a sign (§13.2).
+    debitAmount: line.debitAmount.trim() === '' ? '0' : line.debitAmount.trim(),
+    creditAmount:
+      line.creditAmount.trim() === '' ? '0' : line.creditAmount.trim(),
+    ...(line.description.trim() === ''
+      ? {}
+      : { description: line.description.trim() }),
+  }));
 }

@@ -49,6 +49,14 @@ type NullableString<T, K extends keyof T> = Omit<T, K> & {
   [P in K]: string | null;
 };
 
+/**
+ * Same as `NullableString`, but for keys the DTO declares OPTIONAL: the
+ * optionality is preserved instead of being turned into a required field.
+ */
+type OptionalNullableString<T, K extends keyof T> = Omit<T, K> & {
+  [P in K]?: string | null;
+};
+
 /** Standard list envelope (`docs/architecture.md` §9). */
 export interface Paginated<TItem> {
   items: TItem[];
@@ -133,21 +141,38 @@ export type TrialBalanceQuery =
 // ---------------------------------------------------------------------------
 
 /** One accounting voucher of the organization (`AccountingDocumentResponseDto`). */
-export type AccountingDocument = NullableString<
-  Schemas['AccountingDocumentResponseDto'],
-  | 'documentNumber'
-  | 'branchId'
-  | 'sourceModule'
-  | 'sourceEntityType'
-  | 'sourceEntityId'
-  | 'sourceOperation'
-  | 'finalizedAt'
-  | 'finalizedBy'
-  | 'correlationId'
-  | 'correctionReason'
-  | 'reversesDocumentId'
-  | 'reversedByDocumentId'
->;
+export type AccountingDocument = Omit<
+  NullableString<
+    Schemas['AccountingDocumentResponseDto'],
+    | 'documentNumber'
+    | 'branchId'
+    | 'sourceModule'
+    | 'sourceEntityType'
+    | 'sourceEntityId'
+    | 'sourceOperation'
+    | 'finalizedAt'
+    | 'finalizedBy'
+    | 'correlationId'
+    | 'correctionReason'
+    | 'reversesDocumentId'
+    | 'reversedByDocumentId'
+  >,
+  'lines'
+> & {
+  /** The generated nested line type carries the same nullable-string gaps. */
+  lines: AccountingDocumentLine[];
+};
+
+/** One line of a document response (`AccountingDocumentLineResponseDto`). */
+export type AccountingDocumentLine = Omit<
+  Schemas['AccountingDocumentLineResponseDto'],
+  'detailId' | 'description' | 'sourceLineReference'
+> & {
+  detailId?: string | null;
+  description: string | null;
+  sourceLineReference?: string | null;
+};
+
 export type AccountingDocumentListQuery =
   operations['AccountingDocumentsController_list_v1']['parameters']['query'];
 
@@ -168,6 +193,52 @@ export type InventoryBalanceListQuery =
 export type WorkflowInstance = Schemas['WorkflowInstanceResponseDto'];
 export type WorkflowInstanceListQuery =
   operations['WorkflowInstancesController_list_v1']['parameters']['query'];
+
+// ---------------------------------------------------------------------------
+// Accounting — Document lifecycle writes (FE-UX-08)
+//
+// The voucher aggregate's mutation contract (backend
+// `AccountingDocumentsController`): compose, edit, issue, finalize, reverse
+// and discard. Every field below is the generated OpenAPI schema, narrowed
+// only where the Swagger annotations emit `Record<string, never> | null` for
+// fields the backend DTO declares as `string | null` (refinement 2 above).
+// ---------------------------------------------------------------------------
+
+export type AccountingDocumentLineInput = OptionalNullableString<
+  Schemas['AccountingDocumentLineInputDto'],
+  'detailId'
+>;
+
+export type CreateAccountingDocumentInput = Omit<
+  OptionalNullableString<Schemas['CreateAccountingDocumentDto'], 'branchId'>,
+  'lines'
+> & {
+  lines: AccountingDocumentLineInput[];
+};
+
+export type UpdateAccountingDocumentInput = Omit<
+  OptionalNullableString<Schemas['UpdateAccountingDocumentDto'], 'branchId'>,
+  'lines'
+> & {
+  lines?: AccountingDocumentLineInput[];
+};
+
+export type DocumentTransitionInput = Schemas['DocumentTransitionDto'];
+
+export type ReverseAccountingDocumentInput =
+  Schemas['ReverseAccountingDocumentDto'];
+
+/** Detail record of a detail group (`DetailResponseDto`). */
+export type AccountingDetail = NullableString<
+  Schemas['DetailResponseDto'],
+  'parentId'
+>;
+
+// ---------------------------------------------------------------------------
+// Organization — branch reference (document header display)
+// ---------------------------------------------------------------------------
+
+export type Branch = Schemas['BranchResponseDto'];
 
 // ---------------------------------------------------------------------------
 // Accounting — Account Statement (Task 17B)

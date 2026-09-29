@@ -217,6 +217,10 @@ export function DashboardPage(): ReactElement {
           }}
           hasFilter={false}
           isPermitted={documentsQuery.isPermitted}
+          canOpenDocument={
+            permissions.loaded &&
+            permissions.has(PERMISSIONS.accounting.documentView)
+          }
         />
 
         <div className="flex flex-col gap-4">

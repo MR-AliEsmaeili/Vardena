@@ -9,10 +9,16 @@
  * No wildcard, no superuser, no invented code: an entry that no backend
  * endpoint enforces must not exist here either. These checks are UX only —
  * the backend authorizes every request (AR-21, ADR-0006).
+ *
+ * Document lifecycle codes (`Accounting.Document.*`) are the five codes the
+ * `AccountingDocumentsController` actually enforces: `View` (list/get),
+ * `Create` (compose), `Edit` (edit + issue), `Delete` (discard draft or
+ * temporary) and `Finalize`/`Reverse` (the lifecycle transitions).
  */
 export const PERMISSIONS = {
   organization: {
     view: 'Organization.Organization.View',
+    branchView: 'Organization.Branch.View',
   },
   accounting: {
     accountView: 'Accounting.Account.View',
@@ -23,6 +29,12 @@ export const PERMISSIONS = {
     generalLedgerView: 'Accounting.GeneralLedger.View',
     trialBalanceView: 'Accounting.TrialBalance.View',
     documentView: 'Accounting.Document.View',
+    documentCreate: 'Accounting.Document.Create',
+    documentEdit: 'Accounting.Document.Edit',
+    documentDelete: 'Accounting.Document.Delete',
+    documentFinalize: 'Accounting.Document.Finalize',
+    documentReverse: 'Accounting.Document.Reverse',
+    detailView: 'Accounting.Detail.View',
     balanceView: 'Accounting.Balance.View',
   },
   inventory: {

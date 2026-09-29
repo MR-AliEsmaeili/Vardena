@@ -3,7 +3,8 @@ import { cn } from '@/lib/utils';
 
 export interface PageHeaderProps {
   title: string;
-  description?: string;
+  /** Plain copy, or a small inline presentation (e.g. a state badge). */
+  description?: ReactNode;
   actions?: ReactNode;
   className?: string;
 }
@@ -26,8 +27,8 @@ export function PageHeader({
         <h1 className="truncate text-xl font-semibold text-slate-900">
           {title}
         </h1>
-        {description !== undefined && (
-          <p className="mt-1 text-sm text-slate-600">{description}</p>
+        {description !== undefined && description !== null && (
+          <div className="mt-1 text-sm text-slate-600">{description}</div>
         )}
       </div>
       {actions !== undefined && (

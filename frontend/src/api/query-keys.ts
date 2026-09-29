@@ -19,6 +19,8 @@ export const queryKeys = {
     all: () => ['organization', 'organizations'] as const,
     list: (filters: Record<string, unknown>) =>
       ['organization', 'organizations', 'list', filters] as const,
+    branchDetail: (organizationId: string, branchId: string) =>
+      ['organization', organizationId, 'branches', 'detail', branchId] as const,
   },
 
   accounting: {
@@ -102,6 +104,42 @@ export const queryKeys = {
     ) =>
       ['accounting', organizationId, 'accounting-documents', filters] as const,
 
+    /**
+     * Prefix shared by every accounting-documents LIST query and every DETAIL
+     * query of one organization — the invalidation scope after a lifecycle
+     * mutation. (The list keys append a filters object and the detail keys
+     * append `'detail', id`, so this raw prefix is what covers both.)
+     */
+    accountingDocumentsPrefix: (organizationId: string) =>
+      ['accounting', organizationId, 'accounting-documents'] as const,
+
+    generalLedgerPrefix: (organizationId: string) =>
+      ['accounting', organizationId, 'general-ledger'] as const,
+
+    trialBalancePrefix: (organizationId: string) =>
+      ['accounting', organizationId, 'trial-balance'] as const,
+
+    accountStatementPrefix: (organizationId: string) =>
+      ['accounting', organizationId, 'account-statement'] as const,
+
+    accountBalancesPrefix: (organizationId: string) =>
+      ['accounting', organizationId, 'account-balances'] as const,
+
+    accountingDocumentDetail: (organizationId: string, documentId: string) =>
+      [
+        'accounting',
+        organizationId,
+        'accounting-documents',
+        'detail',
+        documentId,
+      ] as const,
+
+    postableDetails: (organizationId: string, search: string) =>
+      ['accounting', organizationId, 'details', 'postable', search] as const,
+
+    detailRecord: (organizationId: string, detailId: string) =>
+      ['accounting', organizationId, 'details', 'detail', detailId] as const,
+
     accountBalances: (
       organizationId: string,
       filters: Record<string, unknown>,
@@ -131,6 +169,16 @@ const ORGANIZATION_SCOPED_ROOTS: readonly unknown[] = [
 ];
 
 /**
+ * The `organization` root mixes two kinds of keys: the session-global
+ * organization LIST (`['organization', 'organizations', …]` — not scoped to
+ * any one organization, it must survive a scope switch) and organization-
+ * SCOPED reference reads such as a branch detail
+ * (`['organization', orgId, 'branches', …]`). Only the latter carry an
+ * organization id at index 1, so the scope check for this root is exact.
+ */
+const ORGANIZATION_GLOBAL_NAMESPACES = new Set(['organizations']);
+
+/**
  * Whether a query key holds server data that belongs to an organization
  * OTHER than `organizationId`. Used to evict the previous organization's
  * cache when the effective organization changes, and to gate
@@ -142,6 +190,14 @@ export function isOtherOrganizationScope(
   queryKey: readonly unknown[],
   organizationId: string,
 ): boolean {
+  if (queryKey[0] === 'organization') {
+    const scope = queryKey[1];
+    return (
+      typeof scope === 'string' &&
+      !ORGANIZATION_GLOBAL_NAMESPACES.has(scope) &&
+      scope !== organizationId
+    );
+  }
   return (
     ORGANIZATION_SCOPED_ROOTS.includes(queryKey[0]) &&
     queryKey[1] !== organizationId
