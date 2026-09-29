@@ -8,6 +8,7 @@ import type { ReactElement, ReactNode } from 'react';
 import { MemoryRouter, type InitialEntry } from 'react-router-dom';
 import { SessionProvider } from '@/features/auth/session-context';
 import { OrganizationProvider } from '@/features/organization/organization-context';
+import { ToastProvider } from '@/ui/patterns/toast';
 
 /**
  * Test helpers.
@@ -52,7 +53,9 @@ export function renderWithProviders(
       <QueryClientProvider client={queryClient}>
         {withProviders ? (
           <SessionProvider>
-            <OrganizationProvider>{routed}</OrganizationProvider>
+            <OrganizationProvider>
+              <ToastProvider>{routed}</ToastProvider>
+            </OrganizationProvider>
           </SessionProvider>
         ) : (
           routed

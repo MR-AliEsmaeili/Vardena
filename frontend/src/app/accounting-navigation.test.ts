@@ -11,6 +11,10 @@ describe('accounting information architecture', () => {
     expect(accounting?.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          to: '/app/accounting/documents',
+          permissions: [PERMISSIONS.accounting.documentView],
+        }),
+        expect.objectContaining({
           to: '/app/accounting/financial-areas',
           permissions: [PERMISSIONS.accounting.financialAreaView],
         }),

@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   List,
   ListTree,
+  Receipt,
   Scale,
   ScrollText,
   type LucideIcon,
@@ -58,6 +59,12 @@ export const navigationSections: readonly NavigationSection[] = [
         label: t.accounting.title,
         icon: BookOpenCheck,
         end: true,
+      },
+      {
+        to: '/app/accounting/documents',
+        label: t.nav.documents,
+        icon: Receipt,
+        permissions: [PERMISSIONS.accounting.documentView],
       },
       {
         to: '/app/accounting/financial-areas',

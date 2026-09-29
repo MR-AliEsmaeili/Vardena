@@ -1,4 +1,5 @@
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
+import { Link } from 'react-router-dom';
 import type { SortingState } from '@tanstack/react-table';
 import type { AccountingDocument } from '@/api/contracts';
 import { t } from '@/lib/i18n';
@@ -17,6 +18,10 @@ import { formatDateOnly } from '@/lib/format';
  * tabular figures, and the document state rendered from the contract's
  * discriminated values. The sortable column ids are exactly the backend's
  * allow-listed sort fields; any other column is display-only.
+ *
+ * Drill-down (FE-UX-08): when the session also holds
+ * `Accounting.Document.View`, the document number links to the document's
+ * own page; without it, the number stays plain text (no dead links).
  */
 
 const statePresentation = {
@@ -34,72 +39,85 @@ function DocumentStateCell({
   return <Badge variant={presentation.variant}>{presentation.label}</Badge>;
 }
 
-export const documentColumns: ColumnDef<AccountingDocument, unknown>[] = [
-  {
-    id: 'documentNumber',
-    // The accessorKey makes the column genuinely sortable in TanStack's
-    // model (a display-only column cannot sort); sorting itself stays
-    // manual and is delegated to the backend's allow-listed field.
-    accessorKey: 'documentNumber',
-    header: t.dashboard.colDocumentNumber,
-    enableSorting: true,
-    cell: ({ row }) => (
-      <span
-        className="code font-semibold"
-        title={row.original.documentNumber ?? undefined}
-      >
-        {row.original.documentNumber ?? t.app.none}
-      </span>
-    ),
-  },
-  {
-    id: 'documentDate',
-    accessorKey: 'documentDate',
-    header: t.dashboard.colDocumentDate,
-    enableSorting: true,
-    cell: ({ row }) => (
-      <span className="num">{formatDateOnly(row.original.documentDate)}</span>
-    ),
-  },
-  {
-    id: 'description',
-    header: t.dashboard.colDescription,
-    enableSorting: false,
-    cell: ({ row }) => (
-      <span
-        className="block max-w-[21rem] truncate"
-        title={row.original.description}
-      >
-        {row.original.description}
-      </span>
-    ),
-  },
-  {
-    id: 'totalDebit',
-    header: t.dashboard.colTotal,
-    enableSorting: false,
-    meta: { align: 'end' },
-    cell: ({ row }) => <AmountCell value={row.original.totalDebit} />,
-  },
-  {
-    id: 'state',
-    header: t.dashboard.colState,
-    enableSorting: false,
-    cell: ({ row }) => <DocumentStateCell value={row.original.state} />,
-  },
-  {
-    id: 'origin',
-    header: t.dashboard.colOrigin,
-    enableSorting: false,
-    cell: ({ row }) => (
-      <span className="text-xs text-slate-600">
-        {row.original.origin === 'system'
-          ? t.dashboard.originSystem
-          : t.dashboard.originManual}
-      </span>
-    ),
-  },
-];
+export function buildDocumentColumns(
+  canOpenDocument: boolean,
+): ColumnDef<AccountingDocument, unknown>[] {
+  return [
+    {
+      id: 'documentNumber',
+      // The accessorKey makes the column genuinely sortable in TanStack's
+      // model (a display-only column cannot sort); sorting itself stays
+      // manual and is delegated to the backend's allow-listed field.
+      accessorKey: 'documentNumber',
+      header: t.dashboard.colDocumentNumber,
+      enableSorting: true,
+      cell: ({ row }) =>
+        canOpenDocument ? (
+          <Link
+            className="code font-semibold text-indigo-700 hover:underline"
+            to={`/app/accounting/documents/${encodeURIComponent(row.original.id)}`}
+            title={row.original.documentNumber ?? undefined}
+          >
+            {row.original.documentNumber ?? t.app.none}
+          </Link>
+        ) : (
+          <span
+            className="code font-semibold"
+            title={row.original.documentNumber ?? undefined}
+          >
+            {row.original.documentNumber ?? t.app.none}
+          </span>
+        ),
+    },
+    {
+      id: 'documentDate',
+      accessorKey: 'documentDate',
+      header: t.dashboard.colDocumentDate,
+      enableSorting: true,
+      cell: ({ row }) => (
+        <span className="num">{formatDateOnly(row.original.documentDate)}</span>
+      ),
+    },
+    {
+      id: 'description',
+      header: t.dashboard.colDescription,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <span
+          className="block max-w-[21rem] truncate"
+          title={row.original.description}
+        >
+          {row.original.description}
+        </span>
+      ),
+    },
+    {
+      id: 'totalDebit',
+      header: t.dashboard.colTotal,
+      enableSorting: false,
+      meta: { align: 'end' },
+      cell: ({ row }) => <AmountCell value={row.original.totalDebit} />,
+    },
+    {
+      id: 'state',
+      header: t.dashboard.colState,
+      enableSorting: false,
+      cell: ({ row }) => <DocumentStateCell value={row.original.state} />,
+    },
+    {
+      id: 'origin',
+      header: t.dashboard.colOrigin,
+      enableSorting: false,
+      cell: ({ row }) => (
+        <span className="text-xs text-slate-600">
+          {row.original.origin === 'system'
+            ? t.dashboard.originSystem
+            : t.dashboard.originManual}
+        </span>
+      ),
+    },
+  ];
+}
 
 export function DocumentsTable({
   documents,
@@ -116,6 +134,7 @@ export function DocumentsTable({
   onSortingChange,
   hasFilter,
   isPermitted = true,
+  canOpenDocument = false,
 }: {
   documents: AccountingDocument[];
   total: number;
@@ -131,7 +150,13 @@ export function DocumentsTable({
   onSortingChange: (sorting: SortingState) => void;
   hasFilter: boolean;
   isPermitted?: boolean;
+  /** Drill-down to the document page requires `Accounting.Document.View`. */
+  canOpenDocument?: boolean;
 }): ReactElement {
+  const columns = useMemo(
+    () => buildDocumentColumns(canOpenDocument === true),
+    [canOpenDocument],
+  );
   return (
     <Card>
       <CardHeader className="flex-row items-start justify-between gap-2">
@@ -152,7 +177,7 @@ export function DocumentsTable({
         </p>
       ) : (
         <DataTable
-          columns={documentColumns}
+          columns={columns}
           data={documents}
           getRowId={(row) => row.id}
           caption={t.dashboard.documentsSectionLabel}

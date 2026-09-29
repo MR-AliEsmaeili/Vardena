@@ -1,7 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { SortingState } from '@tanstack/react-table';
+import { useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useOrganizationId } from '@/features/organization/use-organization';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
+import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
 import { Alert, AlertBody } from '@/ui/alert';
 import { DataTable } from '@/ui/patterns/data-table';
@@ -14,7 +17,7 @@ import {
   type LedgerScopeValues,
 } from '../shared/report-filters';
 import { useReportQueryState } from '../shared/use-report-query-state';
-import { generalLedgerColumns } from './general-ledger-columns';
+import { buildGeneralLedgerColumns } from './general-ledger-columns';
 import { useGeneralLedger } from './use-general-ledger';
 
 /** Backend default order of the endpoint (documentDate ascending). */
@@ -23,6 +26,17 @@ const DEFAULT_SORTING: SortingState = [{ id: 'documentDate', desc: false }];
 /** General Ledger read surface (server-filtered, server-paged, server-sorted). */
 export function GeneralLedgerPage() {
   const organizationId = useOrganizationId();
+  const permissions = usePermissions();
+  // Drill-down to a document needs its own view permission (UX only; the
+  // backend authorizes the document read itself).
+  const columns = useMemo(
+    () =>
+      buildGeneralLedgerColumns(
+        permissions.loaded &&
+          permissions.has(PERMISSIONS.accounting.documentView),
+      ),
+    [permissions],
+  );
   const state = useReportQueryState<LedgerScopeValues>({
     defaultSorting: DEFAULT_SORTING,
   });
@@ -67,7 +81,7 @@ export function GeneralLedgerPage() {
         </Alert>
       ) : (
         <DataTable
-          columns={generalLedgerColumns}
+          columns={columns}
           data={rows}
           getRowId={(row) => row.ledgerLineId}
           caption={t.generalLedger.title}

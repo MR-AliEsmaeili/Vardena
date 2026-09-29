@@ -1,5 +1,5 @@
 import { apiGet, cleanParams } from './client';
-import type { Organization, Paginated } from './contracts';
+import type { Branch, Organization, Paginated } from './contracts';
 
 /**
  * Organization read surface (`backend/src/modules/organization`).
@@ -28,6 +28,22 @@ export function listOrganizations(
       pageSize: params.pageSize ?? 100,
       sort: 'code:asc',
     }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/**
+ * One branch of the organization — the reference read behind a document's
+ * optional header `branchId` (display only; the field itself stays a raw id
+ * in the document contract).
+ */
+export function getBranch(
+  organizationId: string,
+  branchId: string,
+  signal?: AbortSignal,
+): Promise<Branch> {
+  return apiGet<Branch>(`/branches/${encodeURIComponent(branchId)}`, {
+    params: { organizationId },
     ...(signal ? { signal } : {}),
   });
 }

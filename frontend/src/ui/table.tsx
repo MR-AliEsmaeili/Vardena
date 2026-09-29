@@ -35,6 +35,18 @@ export function TableBody({ className, ...props }: ComponentProps<'tbody'>) {
   );
 }
 
+export function TableFooter({ className, ...props }: ComponentProps<'tfoot'>) {
+  return (
+    <tfoot
+      className={cn(
+        'border-t border-slate-200 bg-slate-50 font-semibold text-slate-800',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
 export function TableRow({ className, ...props }: ComponentProps<'tr'>) {
   return <tr className={cn('hover:bg-slate-50/70', className)} {...props} />;
 }
