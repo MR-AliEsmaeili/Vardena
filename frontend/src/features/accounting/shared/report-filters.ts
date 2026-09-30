@@ -60,6 +60,7 @@ export const ledgerUrlCodec = createReportUrlCodec<LedgerScopeValues>(
     'dateTo',
   ],
   emptyLedgerScope,
+  ['financialAreaId', 'fiscalYearId'],
 );
 
 /** Account statement scope: one account inside one fiscal year. */
@@ -82,6 +83,7 @@ export const emptyStatementScope: StatementScopeValues = {
 export const statementUrlCodec = createReportUrlCodec<StatementScopeValues>(
   ['financialAreaId', 'fiscalYearId', 'accountingPeriodId', 'accountId'],
   emptyStatementScope,
+  ['fiscalYearId', 'accountId'],
 );
 
 /** `''` means "filter not set" in the form; the API must not receive it. */

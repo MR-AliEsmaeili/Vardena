@@ -24,14 +24,28 @@ export interface ReportUrlCodec<TFilters> {
   parse: (params: URLSearchParams) => TFilters | null;
   serialize: (filters: TFilters, params: URLSearchParams) => void;
   keys: readonly string[];
+  isExecutable: (filters: TFilters) => boolean;
 }
 
 export function createReportUrlCodec<T extends Record<string, string>>(
   keys: readonly (keyof T & string)[],
   defaults: T,
+  requiredKeys: readonly (keyof T & string)[] = [],
 ): ReportUrlCodec<T> {
   return {
     keys,
+    isExecutable: (filters) =>
+      requiredKeys.every((key) => Boolean(filters[key])) &&
+      keys.every((key) => {
+        const value = filters[key];
+        if (!value || !key.toLowerCase().includes('date')) return true;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        const date = new Date(`${value}T00:00:00Z`);
+        return (
+          !Number.isNaN(date.getTime()) &&
+          date.toISOString().slice(0, 10) === value
+        );
+      }),
     parse: (params) => {
       const hasFilter = keys.some((key) => params.has(key));
       if (!hasFilter) return null;
@@ -136,7 +150,8 @@ export function useReportQueryState<TFilters>(options: {
   );
 
   return {
-    applied: urlFilters,
+    applied:
+      urlFilters && options.codec.isExecutable(urlFilters) ? urlFilters : null,
     urlFilters,
     page,
     pageSize,

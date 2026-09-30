@@ -1,64 +1,64 @@
-# FE-UX-09/10 Reporting Workspace
+# FE-UX-09/10 Reporting Workspace — Final Correction
 
 ## Status
 
-**VERIFICATION PENDING** — correction applied to PR #95; local frontend verification passes. GitHub CI must complete before review readiness is claimed.
+**VERIFICATION PENDING** — local verification passes; GitHub CI must pass before the PR can be declared ready.
 
 ## Implemented
 
-- Stable-hook `useReportQueryState` architecture: router hooks are always invoked in the same order.
-- Report-specific URL codecs for Account Statement and the shared ledger scope used by General Ledger and Trial Balance.
-- URL-owned filters, page, page size, and sorting.
-- RHF hydration from URL state on deep links, Back/Forward, refresh, and Clear.
-- Apply resets page and updates only report-owned search keys.
-- Page size and sorting reset page to one.
-- Invalid/non-positive page and page size values use the UI-safe defaults; unsupported sort fields are filtered by the report's allow-list and do not reach the API.
-- Organization remains application context and is not copied into the URL.
-- Decimal values remain server-authoritative strings.
+- Stable unconditional Router hook execution in `use-report-query-state.ts`.
+- Explicit report URL codecs with allowed keys, required scope, and primitive date validation.
+- Account Statement requires fiscal year and account before execution.
+- General Ledger and Trial Balance require financial area and fiscal year before execution.
+- Incomplete or invalid URL filter state hydrates visible controls but does not become an executable TanStack Query state.
+- URL-owned filters, page, page size, and server sorting.
+- RHF reset from URL state on deep link, navigation, refresh/remount, and Clear.
+- Apply, pagination, page-size, sorting, and Clear preserve unrelated URL parameters.
+- GL/TB sorting is constrained to backend allow-lists; Account Statement does not send sorting.
+- Organization remains runtime context and is not serialized.
 
 ## Backend capability audit
 
-| Report | Endpoint | Permission | Filters | Pagination | Sorting | Drill-down / limitations |
-|---|---|---|---|---|---|---|
-| Account Statement | `GET /api/v1/accounting/account-statements` | `Accounting.AccountStatement.View` | organizationId, accountId, fiscalYearId; optional financialAreaId, accountingPeriodId, accountHierarchyId, accountCode, accountName | Supported | Fixed legal-book order; no sort parameter | Document identity is exposed where the existing document permission/route supports it. Generic account drill-down is a CONTRACT GAP. |
-| General Ledger | `GET /api/v1/accounting/general-ledger` | `Accounting.GeneralLedger.View` | organizationId, financialAreaId, fiscalYearId; optional accountingPeriodId, accountId, accountHierarchyId, accountCode, accountName, dateFrom, dateTo | Supported | Supported allow-list: documentDate, postingTimestamp, documentId, ledgerLineId, accountCode, accountName, accountId | Existing document navigation only; arbitrary drill-down is a CONTRACT GAP. |
-| Trial Balance | `GET /api/v1/accounting/trial-balance` | `Accounting.TrialBalance.View` | organizationId, financialAreaId, fiscalYearId; optional accountingPeriodId, accountId, accountHierarchyId, accountCode, accountName, dateFrom, dateTo | Supported | Supported allow-list: accountCode, accountName, accountId, opening, debit, credit, periodNet, closing | Account-to-statement navigation is a CONTRACT GAP. |
+| Report            | Endpoint                                    | Permission                         | Filters                                                                                                                                               | Pagination | Sorting                          | Drill-down                                                                  |
+| ----------------- | ------------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------------------------------- | --------------------------------------------------------------------------- |
+| Account Statement | `GET /api/v1/accounting/account-statements` | `Accounting.AccountStatement.View` | organizationId, accountId, fiscalYearId; optional financialAreaId, accountingPeriodId, accountHierarchyId, accountCode, accountName                   | Supported  | Fixed legal-book order           | Generic drill-down is CONTRACT GAP; existing document identity is retained. |
+| General Ledger    | `GET /api/v1/accounting/general-ledger`     | `Accounting.GeneralLedger.View`    | organizationId, financialAreaId, fiscalYearId; optional accountingPeriodId, accountId, accountHierarchyId, accountCode, accountName, dateFrom, dateTo | Supported  | Allow-listed backend fields only | Generic drill-down is CONTRACT GAP.                                         |
+| Trial Balance     | `GET /api/v1/accounting/trial-balance`      | `Accounting.TrialBalance.View`     | organizationId, financialAreaId, fiscalYearId; optional accountingPeriodId, accountId, accountHierarchyId, accountCode, accountName, dateFrom, dateTo | Supported  | Allow-listed backend fields only | Account-to-statement navigation is CONTRACT GAP.                            |
 
-Export, print, report builder, and new report types are CONTRACT GAP / FUTURE PRODUCT DECISION and are not exposed.
+Export, print, report builder, and new report types remain CONTRACT GAP/FUTURE.
 
-## URL state matrix
+## URL state contract
 
-| Report | URL key | UI control | API parameter | Default/reset | Validation |
-|---|---|---|---|---|---|
-| Statement | financialAreaId, fiscalYearId, accountingPeriodId, accountId | Area, year, period, account picker | Same names | Empty; Clear removes | Backend validates identifiers and scope relationships |
-| General Ledger / Trial Balance | financialAreaId, fiscalYearId, accountingPeriodId, accountId, accountCode, accountName, dateFrom, dateTo | Scope, account, text/date filters | Same names | Empty; Apply/page-size/sort reset page | Date syntax is UI validated; accounting validity remains server-authoritative |
-| All paged reports | page, pageSize | Server pagination | Same names | page 1, page size 50; Clear removes | Positive numeric UI-safe normalization |
-| GL / Trial Balance | sort | Table sort controls | Same value | Report default sort; changes reset page | Allow-listed fields only |
-| Statement | sort | No control | Not sent | Fixed backend order | Unsupported sort is ignored and never sent |
+| Surface           | Required keys                 | Optional keys                                                             | Invalid state behavior                                                                                      |
+| ----------------- | ----------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Account Statement | fiscalYearId, accountId       | financialAreaId, accountingPeriodId                                       | visible values may hydrate, but no API query until required keys exist and values pass primitive validation |
+| General Ledger    | financialAreaId, fiscalYearId | accountingPeriodId, accountId, accountCode, accountName, dateFrom, dateTo | incomplete scope is non-executable; malformed dates are non-executable                                      |
+| Trial Balance     | financialAreaId, fiscalYearId | accountingPeriodId, accountId, accountCode, accountName, dateFrom, dateTo | same as General Ledger                                                                                      |
+| All paged reports | —                             | page, pageSize                                                            | non-positive/non-numeric values normalize to UI-safe defaults                                               |
+| GL/TB sorting     | —                             | sort                                                                      | unsupported fields/directions are not sent; default sort remains active                                     |
 
-Unrelated query parameters are preserved.
+`organizationId` is never serialized. Unrelated search parameters are preserved. Backend remains authoritative for entity existence, ownership, permissions, and accounting validity.
 
-## Tests and verification
+## Test evidence
 
-Existing focused report tests remain green:
+- `frontend/src/features/accounting/shared/report-query.test.ts`: 12 tests, including Router-backed state transitions, incomplete scope, statement required scope, malformed dates, and report-specific codecs.
+- `frontend/src/features/accounting/account-statement/account-statement-page.test.tsx`: 2 tests, including required-scope no-call behavior and server result rendering.
+- `frontend/src/features/accounting/general-ledger/general-ledger-page.test.tsx`: 6 tests, including initial non-execution, empty/error states, server pagination, and allow-listed sorting.
+- `frontend/src/features/accounting/trial-balance/trial-balance-page.test.tsx`: 1 test covering initial non-execution, required-scope gating, and exact server query mapping.
 
-- `src/features/accounting/shared/report-query.test.ts` — 9 tests, including router-context state transitions.
-- `src/features/accounting/account-statement/account-statement-page.test.tsx` — 2 tests.
-- `src/features/accounting/general-ledger/general-ledger-page.test.tsx` — 6 tests, including pagination and server sorting.
-- Full frontend suite: 31 files, 208 tests passed.
+## Verification
 
-Commands passed locally:
+- `npm ci --ignore-scripts`: passed
+- `npm run lint`: passed
+- `npm run typecheck`: passed
+- `npm run format:check`: passed
+- `npm test`: passed — 32 files, 212 tests
+- `npm run build`: passed
+- GitHub CI: pending
 
-- `npm ci --ignore-scripts`
-- `npm run lint`
-- `npm run typecheck`
-- `npm run format:check`
-- `npm test`
-- `npm run build`
+## Remaining blockers
 
-## Remaining Contract Gaps
+1. CI result is pending.
+2. CI result is pending; broader Back/Forward/permission matrix coverage remains constrained by the existing page-test harness.
 
-- No backend-supported generic report drill-down contract exists.
-- Account Statement server sorting is intentionally unavailable.
-- Export and print are not implemented because no backend capability was found.
-- GitHub CI result is pending.
+No Backend, Prisma, dependency, global-state, financial-calculation, permission, organization-isolation, Treasury, Sales, Purchasing, Tax, export, print, or report-builder changes were made.
