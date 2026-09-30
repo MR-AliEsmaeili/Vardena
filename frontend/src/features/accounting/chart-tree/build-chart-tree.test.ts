@@ -17,7 +17,7 @@ function node(
     level,
     codingStructureVersionId: null,
     accountingConfigurationId: null,
-    accountNature: 'debit',
+    accountNature: 'DEBIT',
     isPostable: parentId !== null,
     isActive: true,
     createdAt: '2026-01-01T08:00:00.000Z',

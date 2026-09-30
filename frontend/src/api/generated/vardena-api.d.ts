@@ -2088,7 +2088,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List the accounts of one organization. */
+        /**
+         * List the accounts of one organization.
+         * @description The organization scope is asserted before any row is read, on every request and independently of the optional filters (ODR-3 + the deployment pin of ADR-0025).
+         */
         get: operations["AccountsController_list_v1"];
         put?: never;
         /** Create an account in the chart (level and pinned coding structure are derived). */
@@ -2113,8 +2116,25 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Edit an account (title and nature; postability and parent only while unreferenced). The code is immutable. */
+        /** Edit an account (title, nature, accountType, detailGroupId; postability, parent, and accountType only while unreferenced). The code is immutable. */
         patch: operations["AccountsController_update_v1"];
+        trace?: never;
+    };
+    "/api/v1/accounts/{id}/unlink-detail-group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Controlled destructive unlinking of Account <-> Detail relationship (OD-29-03). Atomically clears historical detail allocations and preserves monetary turnover. */
+        post: operations["AccountsController_unlinkDetailGroup_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/accounts/{id}/enable": {
@@ -2436,6 +2456,353 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/base-chart-templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List base chart templates (the product-delivered charts). */
+        get: operations["BaseChartTemplatesController_list_v1"];
+        put?: never;
+        /** Create a base chart template with version 1 as a DRAFT (full content supplied; validated before anything is stored). */
+        post: operations["BaseChartTemplatesController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/base-chart-templates/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one template with all its versions. */
+        get: operations["BaseChartTemplatesController_get_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Rename a base chart template (title only — identity and code are stable). */
+        patch: operations["BaseChartTemplatesController_rename_v1"];
+        trace?: never;
+    };
+    "/api/v1/base-chart-template-versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the versions of one template. */
+        get: operations["BaseChartTemplateVersionsController_list_v1"];
+        put?: never;
+        /** Create the NEXT draft version of a template (full content supplied; the version number is assigned server-side). */
+        post: operations["BaseChartTemplateVersionsController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/base-chart-template-versions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one base chart template version. */
+        get: operations["BaseChartTemplateVersionsController_get_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/base-chart-template-versions/{id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Replace a DRAFT version’s content (depth, levels and/or node tree; omitted fields keep the stored rows). */
+        put: operations["BaseChartTemplateVersionsController_updateDraftContent_v1"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/base-chart-template-versions/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a DRAFT version (one-way). */
+        post: operations["BaseChartTemplateVersionsController_approve_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/base-chart-template-versions/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Publish an APPROVED version (re-validates content under the template-wide lock; supersedes the previously published version if any). */
+        post: operations["BaseChartTemplateVersionsController_publish_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/base-chart-template-versions/{id}/supersede": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Supersede a PUBLISHED version WITHOUT a replacement (retirement; the replacement linkage is recorded when known). */
+        post: operations["BaseChartTemplateVersionsController_supersede_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/adopt-base-chart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Adopt a PUBLISHED base chart version: materialize its nodes as organization-owned accounts (snapshot copy), pinned to the organization’s active configuration. Atomic — a failed adoption writes nothing. */
+        post: operations["BaseChartAdoptionsController_adopt_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/adopt-base-chart/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Read-only evaluation of an adoption request (R8): compatibility verdict + the FINAL adoption set (requested ∪ ancestors ∪ mandatory) — never writes anything. */
+        post: operations["BaseChartAdoptionsController_preview_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/base-chart-adoptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the base chart adoptions of one organization. */
+        get: operations["BaseChartAdoptionsController_list_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/accounting/base-chart-adoptions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one base chart adoption. */
+        get: operations["BaseChartAdoptionsController_get_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/detail-structures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the detail structure versions of one organization. */
+        get: operations["DetailStructuresController_list_v1"];
+        put?: never;
+        /** Draft a new detail structure version (OD-29-03). */
+        post: operations["DetailStructuresController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/detail-structures/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the organization’s ACTIVE detail structure version. */
+        get: operations["DetailStructuresController_getActive_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/detail-structures/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one detail structure version with its levels. */
+        get: operations["DetailStructuresController_get_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a DRAFT detail structure version. */
+        patch: operations["DetailStructuresController_update_v1"];
+        trace?: never;
+    };
+    "/api/v1/detail-structures/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate a draft detail structure version. */
+        post: operations["DetailStructuresController_publish_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List detail records of one organization. */
+        get: operations["DetailsController_list_v1"];
+        put?: never;
+        /** Create a detail record in the hierarchy (level is derived). Level 1 is a Detail Group. */
+        post: operations["DetailsController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/details/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one detail record. */
+        get: operations["DetailsController_get_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a detail record (title; postability and parent only while unreferenced). */
+        patch: operations["DetailsController_update_v1"];
+        trace?: never;
+    };
+    "/api/v1/details/{id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Enable a disabled detail record. */
+        post: operations["DetailsController_enable_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/details/{id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disable a detail record. Records are never deleted. */
+        post: operations["DetailsController_disable_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2475,7 +2842,7 @@ export interface components {
             updatedAt: string;
         };
         PaginatedResponseClass: {
-            items: components["schemas"]["ChartTreeNodeDto"][];
+            items: components["schemas"]["DetailResponseDto"][];
             /** @example 42 */
             total: number;
             /** @example 1 */
@@ -4517,7 +4884,11 @@ export interface components {
             /** Format: ulid */
             accountingConfigurationId: Record<string, never> | null;
             /** @enum {string} */
-            accountNature: "debit" | "credit";
+            accountNature: "DEBIT" | "CREDIT" | "DUAL";
+            /** @enum {string} */
+            accountType: "BALANCE_SHEET" | "INCOME_STATEMENT" | "MEMORANDUM";
+            /** Format: ulid */
+            detailGroupId: Record<string, never> | null;
             isPostable: boolean;
             isActive: boolean;
             /** Format: date-time */
@@ -4550,14 +4921,28 @@ export interface components {
              * @description Balance direction (`ماهیت`). A reporting attribute only — it does not restrict which side a future line uses (§13.4).
              * @enum {string}
              */
-            accountNature: "debit" | "credit";
+            accountNature: "DEBIT" | "CREDIT" | "DUAL";
+            /**
+             * @description Account type (OD-29-02: BALANCE_SHEET, INCOME_STATEMENT, MEMORANDUM). Immutable once operationally used.
+             * @enum {string}
+             */
+            accountType?: "BALANCE_SHEET" | "INCOME_STATEMENT" | "MEMORANDUM";
+            /**
+             * Format: ulid
+             * @description Level-1 Detail Group reference (OD-29-03). Account links to Level-1 group, not leaf details.
+             */
+            detailGroupId?: Record<string, never> | null;
             /** @description Posting eligibility. Omitted = the coding structure default for the account’s level (§14 rule 4). A postable account must be a leaf (§14 rule 2). */
             isPostable?: boolean;
         };
         UpdateAccountDto: {
             title?: string;
             /** @enum {string} */
-            accountNature?: "debit" | "credit";
+            accountNature?: "DEBIT" | "CREDIT" | "DUAL";
+            /** @enum {string} */
+            accountType?: "BALANCE_SHEET" | "INCOME_STATEMENT" | "MEMORANDUM";
+            /** Format: ulid */
+            detailGroupId?: Record<string, never> | null;
             /** @description Posting eligibility. Refused when the account has children (a postable account is always a leaf, §14 rule 2). */
             isPostable?: boolean;
             /**
@@ -4565,6 +4950,13 @@ export interface components {
              * @description Re-parent the account (same organization, no cycles, level re-derived, code must still extend the new parent’s code). Refused once a document line references the account.
              */
             parentId?: Record<string, never> | null;
+        };
+        UnlinkDetailGroupDto: {
+            /**
+             * @description Explicit confirmation required to unlink Detail Group and atomically clear historical detail allocations (OD-29-03). Warning: "این تغییر باعث حذف ارتباط بین تفصیلی و کد حساب می‌شود و تمامی گردش‌های تفصیلی در سندهایی که کدحساب مدنظر گردش داشته باشد حذف خواهد شد . قبل از انجام این کار از دیتا بیس بکاپ بگیرید"
+             * @example true
+             */
+            confirmUnlink: boolean;
         };
         AccountingDocumentLineResponseDto: {
             /** Format: ulid */
@@ -4576,6 +4968,8 @@ export interface components {
             lineNo: number;
             /** Format: ulid */
             accountId: string;
+            /** Format: ulid */
+            detailId?: Record<string, never> | null;
             /**
              * @description Canonical decimal string.
              * @example 1250.00
@@ -4656,6 +5050,11 @@ export interface components {
              * @description Postable, active account.
              */
             accountId: string;
+            /**
+             * Format: ulid
+             * @description Detail reference (OD-29-03). Required if account is linked to a detail group.
+             */
+            detailId?: Record<string, never> | null;
             /**
              * @description Non-negative exact decimal (numeric(18,2)): at most 16 integer digits and 2 decimal places. A negative amount is written as the opposite side, never as a sign (§13.2).
              * @example 1250.00
@@ -5082,7 +5481,7 @@ export interface components {
              * @description Balance direction (`ماهیت`) — a reporting attribute.
              * @enum {string}
              */
-            accountNature: "debit" | "credit";
+            accountNature: "DEBIT" | "CREDIT" | "DUAL";
             /** @description Posting eligibility. true = a posting leaf; false = an aggregation node (rolls up posting descendants). There is no separate account classification. */
             isPostable: boolean;
             /** @description Active/inactive lifecycle. Disabled nodes stay in the tree (accounts are never deleted, §8.6); history stays readable. */
@@ -5091,6 +5490,371 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        BaseChartTemplateResponseDto: {
+            /** Format: ulid */
+            id: string;
+            code: string;
+            title: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        BaseChartLevelInputDto: {
+            /**
+             * @description 1-based ordinal of the level inside the version (gapless 1..maxDepth).
+             * @example 1
+             */
+            levelIndex: number;
+            /**
+             * @description Digit width of this level segment.
+             * @example 2
+             */
+            digitLength: number;
+            /**
+             * @description Authored postability default for nodes at this level (Task 21 §7). NEVER trusted by the adoption: it re-derives postability leaf-only (OD-20-5).
+             * @default true
+             */
+            defaultIsPostable: boolean;
+        };
+        BaseChartNodeInputDto: {
+            /**
+             * @description Template-INTERNAL authoring key (Task 21 §2): unique within ONE version, non-blank, local to the template — it never survives into the organization’s accounts and is never mistaken for an account code. Max length follows the same master-data code width; no format policy is imposed (none is authored in the baseline).
+             * @example G-001
+             */
+            nodeKey: string;
+            /**
+             * @description Authored tree edge in the template key space (null = a root). Self-parenting and cycles are refused by the content planner.
+             * @example null
+             */
+            parentNodeKey?: Record<string, never> | null;
+            /**
+             * @description Canonical digits-only code relative to the version’s own level shape (validated by the same checkAccountCode decision table the chart of accounts uses). Codes of depth N exclusively occupy the first N level-segments and must extend the parent code; the emission never adds segments beyond version depth.
+             * @example 10
+             */
+            code: string;
+            /**
+             * @description Node title. The template carries NO Persian titles and no invented accounting content (task §12/§23); titles stay organization-localizable only AFTER adoption.
+             * @example Assets
+             */
+            title: string;
+            /**
+             * @description Account nature (the vocabulary of the chart contract).
+             * @enum {string}
+             */
+            accountNature: "DEBIT" | "CREDIT" | "DUAL";
+            /** @description Authored postability default. OMITTED = the node’s own level default; explicit false refuses only on non-leaf intent (a non-leaf node can never be postable — OD-20-5 — and an authored postable PARENT is refused at authoring). */
+            isPostable?: boolean;
+            /**
+             * @description Adoption-COMPLETENESS marker (Task 21 §5): when true, EVERY adoption of this version — full or partial — includes this node together with its ancestor chain in the final adoption set. The marker never survives as behavior on the created accounts (no post-adoption guard exists by design, D-R-4).
+             * @default false
+             */
+            isMandatory: boolean;
+            /**
+             * @description Storage default carried to the adopted account’s is_active.
+             * @default true
+             */
+            defaultIsActive: boolean;
+        };
+        CreateBaseChartTemplateDto: {
+            /** @description Stable template code (unique across the product). Trimmed; the master-data convention, no invented format. */
+            code: string;
+            /** @description Template title (Persian-capable display name). */
+            title: string;
+            /** @description Configured chart depth of version 1 (never hard-coded; the existing 8-level ceiling applies). */
+            maxDepth: number;
+            /** @description The version’s OWN level set: gapless ordinals 1..maxDepth with digit widths. No titles/kinds (the template owns no level vocabulary beyond shape). */
+            levels: components["schemas"]["BaseChartLevelInputDto"][];
+            /** @description The full drafted node tree of version 1 (roots first not required — the content planner is input-order independent). */
+            nodes: components["schemas"]["BaseChartNodeInputDto"][];
+        };
+        RenameBaseChartTemplateDto: {
+            /** @description New template title. */
+            title: string;
+        };
+        BaseChartTemplateLevelResponseDto: {
+            /** Format: ulid */
+            id: string;
+            levelIndex: number;
+            digitLength: number;
+            defaultIsPostable: boolean;
+        };
+        BaseChartTemplateNodeResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** @description Template-internal key (of THIS version). */
+            nodeKey: string;
+            parentNodeKey: Record<string, never> | null;
+            code: string;
+            title: string;
+            /** @enum {string} */
+            accountNature: "DEBIT" | "CREDIT" | "DUAL";
+            isPostable: boolean;
+            isMandatory: boolean;
+            defaultIsActive: boolean;
+            level: number;
+        };
+        BaseChartTemplateVersionResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            templateId: string;
+            versionNumber: number;
+            /** @description Owning template code. */
+            templateCode: string;
+            /** @enum {string} */
+            status: "draft" | "approved" | "published" | "superseded";
+            maxDepth: number;
+            /** Format: date-time */
+            approvedAt: string | null;
+            /** Format: date-time */
+            publishedAt: string | null;
+            /** Format: date-time */
+            supersededAt: string | null;
+            /** Format: ulid */
+            supersededByVersionId: Record<string, never> | null;
+            levels: components["schemas"]["BaseChartTemplateLevelResponseDto"][];
+            nodes: components["schemas"]["BaseChartTemplateNodeResponseDto"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateBaseChartVersionDto: {
+            /**
+             * Format: ulid
+             * @description Owning template.
+             */
+            templateId: string;
+            maxDepth: number;
+            levels: components["schemas"]["BaseChartLevelInputDto"][];
+            nodes: components["schemas"]["BaseChartNodeInputDto"][];
+        };
+        UpdateBaseChartVersionContentDto: {
+            /** @description Replacement chart depth of the draft version (the stored levels/nodes must still fit when only the depth changes). */
+            maxDepth?: number;
+            /** @description Replacement level set — when present it replaces the whole stored level set (delete-and-replace is legal ONLY on drafts). */
+            levels?: components["schemas"]["BaseChartLevelInputDto"][];
+            /** @description Replacement node tree — when present it replaces the whole stored node set. */
+            nodes?: components["schemas"]["BaseChartNodeInputDto"][];
+        };
+        TransitionBaseChartVersionDto: {
+            /**
+             * Format: ulid
+             * @description For `supersede` only: the published version that replaces this one (null while the next published version is still being authored).
+             */
+            supersededByVersionId?: Record<string, never> | null;
+        };
+        AdoptBaseChartDto: {
+            /**
+             * Format: ulid
+             * @description The organization adopting the base chart (its CURRENT empty chart is the only legal target).
+             */
+            organizationId: string;
+            /**
+             * Format: ulid
+             * @description The PUBLISHED base chart template version to adopt.
+             */
+            templateVersionId: string;
+            /** @description Partial adoption selection in template node keys. Omitted or null = the WHOLE version. The FINAL adoption set is always requested ∪ ALL ancestor chains ∪ ALL mandatory nodes, computed and validated BEFORE any write — a partial adoption can never leave the tree broken, and a failed adoption writes nothing. */
+            selectedNodeKeys?: string[] | null;
+        };
+        BaseChartAdoptionResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            templateVersionId: string;
+            /** Format: ulid */
+            templateId: string;
+            templateCode: string;
+            versionNumber: number;
+            /** Format: ulid */
+            accountingConfigurationId: string;
+            /** Format: ulid */
+            codingStructureVersionId: string;
+            /** @description Final adoption set size (selected ∪ ancestors ∪ mandatory). */
+            accountCount: number;
+            /** Format: date-time */
+            adoptedAt: string;
+            adoptedBy: Record<string, never> | null;
+        };
+        BaseChartPlannedNodeDto: {
+            nodeKey: string;
+            parentNodeKey: Record<string, never> | null;
+            level: number;
+            code: string;
+            title: string;
+            /** @enum {string} */
+            accountNature: "DEBIT" | "CREDIT" | "DUAL";
+            /** @description Derived, leaf-only (OD-20-5): false whenever the node has children in the FINAL adoption set. */
+            isPostable: boolean;
+            isMandatory: boolean;
+            /** @description The is_active default carried to the adopted account copy. */
+            defaultIsActive: boolean;
+        };
+        BaseChartAdoptionPreviewResponseDto: {
+            /**
+             * @description The outcome of re-validating template compatibility AND computing the final adoption set WITHOUT writing anything.
+             * @enum {string}
+             */
+            verdict: "compatible" | "incompatible";
+            /** @description When incompatible: the refusal problem (template/selection domain vocabulary), never the internal message. */
+            problem?: Record<string, never>;
+            /** @description The offending node key, when one is named. */
+            subject?: Record<string, never>;
+            /** @description The FINAL adoption set (requested ∪ ancestors ∪ mandatory), in deterministic topological order — what an adoption WOULD insert. */
+            finalNodeCount: number;
+            finalSet: components["schemas"]["BaseChartPlannedNodeDto"][];
+        };
+        DetailStructureLevelResponseDto: {
+            /** Format: ulid */
+            id: string;
+            levelIndex: number;
+            title: string;
+            digitLength: number;
+        };
+        DetailStructureVersionResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** @example 1 */
+            versionNumber: number;
+            /** @enum {string} */
+            status: "draft" | "active" | "superseded";
+            title: Record<string, never> | null;
+            maxDepth: number;
+            /**
+             * @description Derived summary pattern.
+             * @example 2 + 4 + 4
+             */
+            pattern: string;
+            levels: components["schemas"]["DetailStructureLevelResponseDto"][];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        DetailStructureLevelInputDto: {
+            /**
+             * @description 1-based ordinal inside the version (1..maxDepth).
+             * @example 1
+             */
+            levelIndex: number;
+            /**
+             * @description Level title the organization configures.
+             * @example Detail Group
+             */
+            title: string;
+            /**
+             * @description Digits this level contributes to a detail code.
+             * @example 4
+             */
+            digitLength: number;
+        };
+        CreateDetailStructureVersionDto: {
+            /**
+             * Format: ulid
+             * @description Owning organization.
+             */
+            organizationId: string;
+            /**
+             * @description Optional human title for the detail structure.
+             * @example Standard Detail Hierarchy
+             */
+            title?: string;
+            /**
+             * @description Number of levels in this hierarchy.
+             * @example 3
+             */
+            maxDepth: number;
+            /**
+             * @description Levels in the structure (ordinals 1..maxDepth).
+             * @example [
+             *       {
+             *         "levelIndex": 1,
+             *         "title": "Detail Group",
+             *         "digitLength": 2
+             *       },
+             *       {
+             *         "levelIndex": 2,
+             *         "title": "Detail Level 2",
+             *         "digitLength": 4
+             *       },
+             *       {
+             *         "levelIndex": 3,
+             *         "title": "Detail Level 3",
+             *         "digitLength": 4
+             *       }
+             *     ]
+             */
+            levels: components["schemas"]["DetailStructureLevelInputDto"][];
+        };
+        UpdateDetailStructureVersionDto: {
+            /** @example Updated Detail Hierarchy */
+            title?: string;
+            maxDepth?: number;
+            /** @description Replaces the level set (draft only). */
+            levels?: components["schemas"]["DetailStructureLevelInputDto"][];
+        };
+        DetailResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** @example 01 */
+            code: string;
+            /** @example Bank Melli Branches */
+            title: string;
+            /** Format: ulid */
+            parentId: Record<string, never> | null;
+            /** @example 1 */
+            level: number;
+            /** Format: ulid */
+            detailStructureVersionId: string;
+            isPostable: boolean;
+            isActive: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateDetailDto: {
+            /**
+             * Format: ulid
+             * @description Owning organization.
+             */
+            organizationId: string;
+            /**
+             * @description Canonical code matching the level segment digits.
+             * @example 01
+             */
+            code: string;
+            /**
+             * @description Detail title.
+             * @example Bank Melli Branches
+             */
+            title: string;
+            /**
+             * Format: ulid
+             * @description Parent detail record. Omitted or null = Level 1 (Detail Group).
+             */
+            parentId?: Record<string, never> | null;
+            /** @description Posting eligibility (default: true). Must be a leaf. */
+            isPostable?: boolean;
+        };
+        UpdateDetailDto: {
+            title?: string;
+            /** @description Posting eligibility. Refused when the record has children. */
+            isPostable?: boolean;
+            /**
+             * Format: ulid
+             * @description Re-parent the detail record.
+             */
+            parentId?: Record<string, never> | null;
         };
     };
     responses: never;
@@ -13537,6 +14301,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description The organization is outside the caller’s scope — unknown, outside the deployment pin, or one the principal holds no membership of. Indistinguishable from a non-existent organization (no 403, no empty page). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     AccountsController_create_v1: {
@@ -13698,6 +14469,62 @@ export interface operations {
             };
             /** @description The change violates a chart invariant, or the account is already referenced by documents. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AccountsController_unlinkDetailGroup_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnlinkDetailGroupDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountResponseDto"];
+                };
+            };
+            /** @description Confirmation missing or account is not linked to a detail group. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Account does not exist. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14865,6 +15692,1318 @@ export interface operations {
             };
             /** @description The organization is disabled. */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartTemplatesController_list_v1: {
+        parameters: {
+            query?: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                /** @description Filter by exact template code. */
+                code?: string;
+                /** @description Search code or title (insensitive). */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartTemplatesController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBaseChartTemplateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseChartTemplateResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A template with that code already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The version content violates a template shape invariant (level shape, node keys/parents/cycles, code shape, postable parent, depth). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartTemplatesController_get_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        template?: components["schemas"]["BaseChartTemplateResponseDto"];
+                        versions?: components["schemas"]["BaseChartTemplateVersionResponseDto"][];
+                    };
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Template does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartTemplatesController_rename_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameBaseChartTemplateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseChartTemplateResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Template does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartTemplateVersionsController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                /** @description Owning template. */
+                templateId: string;
+                status?: "draft" | "approved" | "published" | "superseded";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartTemplateVersionsController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBaseChartVersionDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseChartTemplateVersionResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Template does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Two draft versions were created concurrently (retry the request). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The version content violates a template shape invariant. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartTemplateVersionsController_get_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseChartTemplateVersionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Template version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartTemplateVersionsController_updateDraftContent_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBaseChartVersionContentDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseChartTemplateVersionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Template version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The version is no longer a draft, or the resulting content violates a template shape invariant. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartTemplateVersionsController_approve_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseChartTemplateVersionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Template version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The version is not a draft. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartTemplateVersionsController_publish_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseChartTemplateVersionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Template version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The version is not approved, or its stored content failed publish re-validation. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartTemplateVersionsController_supersede_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransitionBaseChartVersionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseChartTemplateVersionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Template version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The version is not published (or the replacement is invalid). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartAdoptionsController_adopt_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdoptBaseChartDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseChartAdoptionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Organization, template version or other addressed entity does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Deterministic refusal: already adopted (idempotency), or the organization’s chart is not empty (no merge/overwrite). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not published, missing/incoherent active pins, template ↔ organization incompatibility, or an invalid selection (ancestor-closure / mandatory-inclusion / unknown keys). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartAdoptionsController_preview_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdoptBaseChartDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseChartAdoptionPreviewResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartAdoptionsController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                /** @description Owning organization (never cross-organization). */
+                organizationId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BaseChartAdoptionsController_get_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BaseChartAdoptionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Adoption does not exist (or is not of this organization). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DetailStructuresController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                organizationId: string;
+                status?: "draft" | "active" | "superseded";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DetailStructuresController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDetailStructureVersionDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailStructureVersionResponseDto"];
+                };
+            };
+            /** @description Validation failed or the structure shape is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DetailStructuresController_getActive_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailStructureVersionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The organization has no active detail structure version. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DetailStructuresController_get_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailStructureVersionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Detail structure version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DetailStructuresController_update_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDetailStructureVersionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailStructureVersionResponseDto"];
+                };
+            };
+            /** @description Validation failed or the structure shape is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Detail structure version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The version is not a draft and can no longer be changed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DetailStructuresController_publish_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailStructureVersionResponseDto"];
+                };
+            };
+            /** @description The level set is not a complete, valid detail structure. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Detail structure version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DetailsController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                organizationId: string;
+                parentId?: string;
+                level?: number;
+                isActive?: boolean;
+                isPostable?: boolean;
+                detailStructureVersionId?: string;
+                /** @description Case-insensitive substring match on code or title. */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DetailsController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateDetailDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailResponseDto"];
+                };
+            };
+            /** @description Validation failed or the code shape is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A detail record with that code already exists in this organization. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The placement violates a detail invariant (parent, level, code prefix, depth). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DetailsController_get_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Detail record does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DetailsController_update_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateDetailDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailResponseDto"];
+                };
+            };
+            /** @description Validation failed or the code shape is invalid. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Detail record does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The change violates a detail invariant, or the record is already referenced by document lines. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DetailsController_enable_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Detail record does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DetailsController_disable_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetailResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Detail record does not exist. */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
