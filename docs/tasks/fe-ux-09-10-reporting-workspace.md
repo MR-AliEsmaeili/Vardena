@@ -2,7 +2,7 @@
 
 ## Status
 
-**VERIFICATION PENDING** — local verification passes; GitHub CI must pass before the PR can be declared ready.
+**VERIFIED — GitHub CI #297 passed.** The frontend and backend CI jobs completed successfully, including typecheck, format checks, tests, builds, Prisma validation/generation, migration rehearsal, and backend E2E/live-DB coverage.
 
 ## Implemented
 
@@ -41,7 +41,7 @@ Export, print, report builder, and new report types remain CONTRACT GAP/FUTURE.
 
 ## Test evidence
 
-- `frontend/src/features/accounting/shared/report-query.test.ts`: 12 tests, including Router-backed state transitions, incomplete scope, statement required scope, malformed dates, and report-specific codecs.
+- `frontend/src/features/accounting/shared/report-query.test.ts`: 12 tests, including MemoryRouter-backed state transitions, incomplete scope, statement required scope, malformed dates, and report-specific codecs.
 - `frontend/src/features/accounting/account-statement/account-statement-page.test.tsx`: 2 tests, including required-scope no-call behavior and server result rendering.
 - `frontend/src/features/accounting/general-ledger/general-ledger-page.test.tsx`: 6 tests, including initial non-execution, empty/error states, server pagination, and allow-listed sorting.
 - `frontend/src/features/accounting/trial-balance/trial-balance-page.test.tsx`: 1 test covering initial non-execution, required-scope gating, and exact server query mapping.
@@ -54,11 +54,15 @@ Export, print, report builder, and new report types remain CONTRACT GAP/FUTURE.
 - `npm run format:check`: passed
 - `npm test`: passed — 32 files, 212 tests
 - `npm run build`: passed
-- GitHub CI: pending
+- GitHub CI #297: **passed**
+  - Frontend job: passed — lint, typecheck, format check, tests, build
+  - Backend job: passed — Prisma validate/generate, lint, typecheck, format check, unit tests, build, migration rehearsal, bootstrap, E2E/live-DB tests
 
-## Remaining blockers
+The report-query hook tests use `MemoryRouter` because `useReportQueryState` is Router-backed through `useSearchParams`; the previous router-free test description is no longer applicable.
 
-1. CI result is pending.
-2. CI result is pending; broader Back/Forward/permission matrix coverage remains constrained by the existing page-test harness.
+## Status notes
+
+- No additional blocker remains for the verification recorded by CI run #297.
+- Broader Back/Forward/permission matrix coverage remains a documented test-harness limitation, not a CI failure or implementation blocker.
 
 No Backend, Prisma, dependency, global-state, financial-calculation, permission, organization-isolation, Treasury, Sales, Purchasing, Tax, export, print, or report-builder changes were made.
