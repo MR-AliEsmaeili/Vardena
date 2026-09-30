@@ -1,4 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it } from 'vitest';
 import { buildAccountStatementQuery } from '../account-statement/use-account-statement';
 import { buildGeneralLedgerQuery } from '../general-ledger/use-general-ledger';
@@ -6,8 +7,10 @@ import { buildTrialBalanceQuery } from '../trial-balance/use-trial-balance';
 import {
   emptyLedgerScope,
   ledgerScopeSchema,
+  ledgerUrlCodec,
   optionalParam,
   statementScopeSchema,
+  statementUrlCodec,
 } from './report-filters';
 import { sortingToParam, useReportQueryState } from './use-report-query-state';
 
@@ -130,7 +133,19 @@ describe('sortingToParam', () => {
 
 describe('useReportQueryState', () => {
   it('returns to page 1 whenever filters, sort or page size change', () => {
-    const { result } = renderHook(() => useReportQueryState<{ a: string }>());
+    const { result } = renderHook(
+      () =>
+        useReportQueryState<{ a: string }>({
+          codec: {
+            keys: ['a'],
+            parse: (params) =>
+              params.has('a') ? { a: params.get('a') ?? '' } : null,
+            serialize: (filters, params) => params.set('a', filters.a),
+            isExecutable: (filters) => Boolean(filters.a),
+          },
+        }),
+      { wrapper: MemoryRouter },
+    );
 
     act(() => result.current.setPage(4));
     expect(result.current.page).toBe(4);
@@ -150,5 +165,34 @@ describe('useReportQueryState', () => {
 
     act(() => result.current.clear());
     expect(result.current.applied).toBeNull();
+  });
+});
+
+describe('report-specific URL contracts', () => {
+  it('does not make an incomplete ledger deep link executable', () => {
+    const filters = ledgerUrlCodec.parse(
+      new URLSearchParams('fiscalYearId=year-1'),
+    );
+    expect(filters).toMatchObject({
+      fiscalYearId: 'year-1',
+      financialAreaId: '',
+    });
+    expect(filters && ledgerUrlCodec.isExecutable(filters)).toBe(false);
+  });
+
+  it('requires account and fiscal year for an account statement deep link', () => {
+    const filters = statementUrlCodec.parse(
+      new URLSearchParams('fiscalYearId=year-1'),
+    );
+    expect(filters && statementUrlCodec.isExecutable(filters)).toBe(false);
+  });
+
+  it('rejects malformed report dates without querying the backend', () => {
+    const filters = ledgerUrlCodec.parse(
+      new URLSearchParams(
+        'financialAreaId=area-1&fiscalYearId=year-1&dateFrom=2026-99-99',
+      ),
+    );
+    expect(filters && ledgerUrlCodec.isExecutable(filters)).toBe(false);
   });
 });

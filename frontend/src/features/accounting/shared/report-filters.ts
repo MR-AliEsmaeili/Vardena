@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { t } from '@/lib/i18n';
+import { createReportUrlCodec } from './use-report-query-state';
 
 /**
  * Filter schemas for the accounting report screens.
@@ -47,6 +48,21 @@ export const emptyLedgerScope: LedgerScopeValues = {
   dateTo: '',
 };
 
+export const ledgerUrlCodec = createReportUrlCodec<LedgerScopeValues>(
+  [
+    'financialAreaId',
+    'fiscalYearId',
+    'accountingPeriodId',
+    'accountId',
+    'accountCode',
+    'accountName',
+    'dateFrom',
+    'dateTo',
+  ],
+  emptyLedgerScope,
+  ['financialAreaId', 'fiscalYearId'],
+);
+
 /** Account statement scope: one account inside one fiscal year. */
 export const statementScopeSchema = z.object({
   financialAreaId: z.string(),
@@ -63,6 +79,12 @@ export const emptyStatementScope: StatementScopeValues = {
   accountingPeriodId: '',
   accountId: '',
 };
+
+export const statementUrlCodec = createReportUrlCodec<StatementScopeValues>(
+  ['financialAreaId', 'fiscalYearId', 'accountingPeriodId', 'accountId'],
+  emptyStatementScope,
+  ['fiscalYearId', 'accountId'],
+);
 
 /** `''` means "filter not set" in the form; the API must not receive it. */
 export function optionalParam(value: string): string | undefined {

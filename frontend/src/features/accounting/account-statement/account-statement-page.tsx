@@ -1,5 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useSearchParams } from 'react-router-dom';
 import { useOrganizationId } from '@/features/organization/use-organization';
@@ -17,6 +17,7 @@ import {
   emptyStatementScope,
   statementScopeSchema,
   type StatementScopeValues,
+  statementUrlCodec,
 } from '../shared/report-filters';
 import {
   useAccountingPeriods,
@@ -36,7 +37,9 @@ export function AccountStatementPage() {
   const organizationId = useOrganizationId();
   const permissions = usePermissions();
   const [searchParams] = useSearchParams();
-  const state = useReportQueryState<StatementScopeValues>();
+  const state = useReportQueryState<StatementScopeValues>({
+    codec: statementUrlCodec,
+  });
   const linkedAccountId = searchParams.get('accountId') ?? '';
 
   // Drill-down to a document needs its own view permission (UX only; the
@@ -55,6 +58,15 @@ export function AccountStatementPage() {
     defaultValues: { ...emptyStatementScope, accountId: linkedAccountId },
     mode: 'onSubmit',
   });
+
+  useEffect(() => {
+    form.reset(
+      state.urlFilters ?? {
+        ...emptyStatementScope,
+        accountId: linkedAccountId,
+      },
+    );
+  }, [form, linkedAccountId, state.urlFilters]);
 
   const financialAreaId = form.watch('financialAreaId');
   const fiscalYearId = form.watch('fiscalYearId');
