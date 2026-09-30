@@ -229,7 +229,16 @@ deployment shape (ADR-0025):
   is invented. The administrator creates the initial organization through the
   ordinary API and then grants their own membership through the existing
   empty-organization first-grant rule; until that membership exists, ODR-3 still
-  returns 404 from organization-scoped paths despite the full RBAC role.
+  returns 404 from organization-scoped paths despite the full RBAC role. The
+  frontend's organization gate (`OrganizationGate` /
+  `CreateFirstOrganizationForm`, `docs/task-33-organization-first-login-provisioning-report.md`)
+  surfaces exactly this two-call sequence as a small form when the session
+  holds both
+  `Organization.Organization.Create` and `Organization.Membership.Grant`; a
+  session without both codes still sees the unchanged terminal "no organization
+  available" explainer. The backend contract, the permission checks, and the
+  first-member exception are unchanged — the frontend adds no new endpoint, no
+  bypass, and no client-side organization state.
 
 Authorization stays `required permission AND organization membership`: removing
 one permission from the `System Administrator` role denies exactly that

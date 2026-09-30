@@ -80,6 +80,8 @@ export type EffectivePermissions = Schemas['EffectivePermissionsDto'];
 export type Organization = Schemas['OrganizationResponseDto'];
 export type OrganizationListQuery =
   operations['OrganizationsController_list_v1']['parameters']['query'];
+export type CreateOrganizationRequest = Schemas['CreateOrganizationDto'];
+export type GrantMembershipRequest = Schemas['GrantMembershipDto'];
 
 // ---------------------------------------------------------------------------
 // Accounting — reference data used by report filters

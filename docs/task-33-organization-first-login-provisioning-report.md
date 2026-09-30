@@ -1,0 +1,512 @@
+# Task 33 — Organization Provisioning & First-Login Readiness
+
+Status: **READY FOR REVIEW — NOT ACCEPTED**
+Base commit: `1d9a3c014a23775697b112bb8953cea943d0db52` (branch
+`arena/01a0f16d-vardena`, merge of PR #95 on `main`)
+
+## 0. Executive summary
+
+The reported symptom — a successfully authenticated bootstrap administrator
+(`مدیر`) reaching the Persian "no organization available" screen — is **not a
+new defect and not a backend authorization bug**. It is the intersection of
+two already-documented, already-implemented, already-correct behaviors:
+
+1. **Unpinned deployment mode is the repository's default** (`DEPLOYMENT_ORGANIZATION_ID`
+   is unset in `.env.example`/`docker-compose.yml`; only pinned mode gets an
+   organization auto-provisioned by `npm run bootstrap:system-admin`, per Task 26 /
+   ADR-0038).
+2. **The frontend's `empty` organization state offered no action.** The backend
+   has always supported an authorized principal creating the first organization
+   and self-granting the first membership (ADR-0021 §"Alternatives considered";
+   `OrganizationsService.createOrganization`;
+   `OrganizationMembershipsService`'s first-member bootstrap exception), and this
+   path is exercised end-to-end today by
+   `backend/test/bootstrap-system-administrator-live.e2e-spec.ts`. But
+   `OrganizationGate`/`OrganizationContext` on the frontend treated
+   `organizations.length === 0` as an unconditional terminal dead end — logout or
+   "ask an administrator" were the only two options, even for the one session
+   (the bootstrap administrator) that already holds every permission needed to
+   fix it itself.
+
+**No backend change was required or made.** The fix is a small, additive
+frontend capability that calls the two existing, unmodified endpoints
+(`POST /organizations`, `POST /organizations/:id/members`) under the two
+existing, unmodified permission codes
+(`Organization.Organization.Create`, `Organization.Membership.Grant`), gated by
+the session's own effective permissions (UX-only, AR-21). Pinned-mode
+provisioning (Task 26) is unchanged and already closes the loop for that
+deployment mode.
+
+## 1. Current architecture findings (audit, before any change)
+
+### 1.1 Identity / Users / RBAC
+
+- `UsersService.createUser` creates an ordinary `users.users` row; passwords are
+  Argon2id via `PasswordService`. Sessions are opaque, httpOnly-cookie tokens
+  (`identity` module, ADR-0007). The request principal is bound in
+  `kernel/correlation/request-context.ts` (`getPrincipal()`/`getRequestContext()`).
+- `AuthorizationService.requireAllPermissions` evaluates ordinary
+  `user_roles → role_permissions → permissions` rows. No wildcard, no
+  username check, no role-name check exists anywhere in the codebase (grepped;
+  confirmed by `system-administrator-permission-reconciliation.spec.ts` and the
+  live suite's impostor-username test).
+- Permissions are **not** organization-bound in RBAC itself — a permission
+  code such as `Organization.Organization.Create` is a deployment-global grant.
+  Organization-scoped **authorization** is a second, independent gate
+  (§1.3): RBAC answers "may this principal do X at all", ODR-3 membership
+  answers "may this principal do X for organization Y". Both must pass.
+
+### 1.2 System Administrator bootstrap
+
+`backend/src/bootstrap-system-administrator.ts` (CLI entrypoint) →
+`SystemAdministratorBootstrapService.run()`:
+
+1. `ensureUser()` — creates `مدیر` (username fixed by
+   `BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME`) with a fixed initial password if
+   absent; if present, requires it to be active and non-deleted (refuses to
+   silently reactivate a disabled/deleted administrator); never resets an
+   existing password. **Idempotent** (race-safe via the username unique
+   constraint).
+2. `SystemAdministratorRbacService.ensureForUser()` — resolves
+   `PermissionRegistry.all()` (every module's registered permission codes, 142
+   at the time of this audit), mirrors them into `rbac.permissions`
+   (fail-closed if the mirror is incomplete), upserts the `System
+   Administrator` role with every registered permission, and assigns the role
+   to the user. Re-running the command **adds** newly registered permissions
+   to the existing role; it never removes any.
+3. `ensureDeploymentMembership()` — calls
+   `OrganizationsService.ensureDeploymentOrganization()`:
+   - **pinned** (`DEPLOYMENT_ORGANIZATION_ID` set): creates that exact
+     organization row if missing (code `MAIN`, the ADR-0025 "bootstrapped
+     out-of-band" step), then calls
+     `OrganizationMembershipsService.grantMembership()` for `مدیر` — an
+     **ordinary** `organization_memberships` row through the module that owns
+     it, not a direct table write.
+   - **unpinned**: returns `null`. **Nothing is invented.** The result records
+     `organizationId: null, organizationCreated: false, membershipCreated: false`.
+
+This is exactly the Task 26 / ADR-0038 closure already on `main`; it was
+re-verified, not re-implemented, by this task (§7 "Verification").
+
+### 1.3 Organization / OrganizationMembership
+
+- `Organization` (`organization.organizations`) is the tenant/business root
+  (ADR-0020/ADR-0021): `id`, `code` (globally unique), `name`, `isActive`,
+  audit columns. `OrganizationsService` owns create/list/get/update/enable/
+  disable, each re-checking its own `Organization.Organization.*` permission
+  in the application layer (AR-04/AR-21), independent of the route guard.
+- `OrganizationMembership` (`organization.organization_memberships`) is the
+  **only** principal → organization binding (Task 19, ODR-3):
+  composite primary key `(user_id, organization_id)`, `created_at`,
+  `created_by`. `OrganizationMembershipsService` owns
+  list/grant/revoke, each re-checking `Organization.Membership.*` **and**
+  `OrganizationsService.assertOrganizationInScope` (deployment pin, then the
+  acting principal's own membership) — **except** the documented, narrow
+  first-member bootstrap exception: granting the very first member of an
+  organization that currently has **zero** members does not require the
+  grantor to already be a member (otherwise no organization could ever be
+  populated). The exception applies to `grantMembership` only, never to list
+  or revoke, and closes the instant one member exists.
+- `assertOrganizationInScope` is the single ODR-3 chokepoint every
+  organization-scoped module (Accounting, Inventory, Documents, Workflow,
+  Organization's own master data) calls after its permission check (Task 26
+  closed the last 37 read surfaces that didn't). A caller with full RBAC
+  permissions but no membership row gets `404 EntityNotFound` — indistinguishable
+  from an unknown organization id. This is intact and **was not touched**.
+- `DEPLOYMENT_ORGANIZATION_ID` (ADR-0025) is an **optional, environment-configured
+  pin**: unset (the default) ⇒ `assertDeploymentOrganizationPin` is a no-op and
+  `listOrganizations`/`createOrganization` behave as an ordinary, potentially
+  multi-organization catalog; set ⇒ every organization-scoped id must equal the
+  pin (404 otherwise) and `createOrganization` is refused outright ("This
+  deployment is pinned to a single organization; additional organizations
+  cannot be created through the API").
+
+### 1.4 Frontend organization discovery/selection (the actual gap)
+
+- `OrganizationContext` (`frontend/src/features/organization/organization-context.tsx`)
+  derives a state machine — `loading | selecting | ready | empty | forbidden |
+  invalid | error` — purely from `GET /organizations` and the session's
+  effective permissions. It invents nothing: one organization auto-selects,
+  several require an explicit choice, zero is `empty`.
+- `OrganizationGate` (`frontend/src/app/layouts/organization-gate.tsx`) replaces
+  the whole workspace for every state except `ready`. Before this task, `empty`
+  rendered `BlockedState` unconditionally: a title, a body
+  (`سازمانی برای حساب کاربری شما در دسترس نیست...`), and a logout button. **No
+  organization-scoped request could ever be sent from this screen, and no path
+  existed to create one**, even though:
+  - the backend already allows it (unpinned mode, §1.3);
+  - the bootstrap administrator's session already holds
+    `Organization.Organization.Create` and `Organization.Membership.Grant`
+    (every registered permission, §1.2);
+  - `frontend/src/features/permissions/permission-codes.ts` didn't even mirror
+    those two codes, so no frontend surface could have gated on them.
+
+This is the exact and complete root cause: **an existing, correct, documented
+backend capability (ADR-0021's "the first organization is created through the
+API by a principal that already holds `Organization.Organization.Create`") had
+no frontend integration.**
+
+## 2. Root cause (precise statement)
+
+> In the repository's default (unpinned) configuration, a fresh install's
+> bootstrap administrator authenticates successfully and holds every RBAC
+> permission, but is a member of **zero** organizations because unpinned mode
+> intentionally invents no organization (ADR-0021 structural mode, confirmed
+> unchanged by Task 26/ADR-0038, which only provisions membership in **pinned**
+> mode). The backend already exposes a compliant path to fix this — ordinary
+> `POST /organizations` + `POST /organizations/:id/members` under the ordinary
+> first-member exception — but the frontend's `OrganizationGate` rendered the
+> `empty` state as an unconditional dead end with no way to reach that path.
+> The bug was a **missing frontend integration of an existing backend
+> capability**, not a backend authorization defect and not a bootstrap defect.
+
+## 3. Deployment-mode analysis
+
+| Mode | How determined | Repository-defined default | Local runtime | CI |
+|---|---|---|---|---|
+| **Pinned** | `DEPLOYMENT_ORGANIZATION_ID` set to a ULID | Not the default — the line is present but **commented out** in `backend/.env.example` (`# DEPLOYMENT_ORGANIZATION_ID=...`) and defaults to empty in `docker-compose.yml` (`${DEPLOYMENT_ORGANIZATION_ID:-}`) | Depends entirely on the operator's own `.env`, which is git-ignored and cannot be inspected or assumed by this repository | The backend CI job does not set it (verified against `.github/workflows/ci.yml`); backend unit/e2e suites run unpinned except the explicitly `describe`-scoped pinned-mode tests in `bootstrap-system-administrator-live.e2e-spec.ts`, which set the pin locally inside the test |
+| **Unpinned** | Variable absent/empty | **Yes — this is the default** | Same as above: this repository cannot know a developer's local `.env` and does not attempt to | Yes, for the general test suite |
+
+This repository **cannot and does not** determine what any individual
+developer's uncommitted local `.env` sets `DEPLOYMENT_ORGANIZATION_ID` to. What
+is verifiable from the repository itself is only the **default**, which is
+unpinned. The reported symptom is consistent with a fresh install that did not
+explicitly configure the pin — the expected, common case for a first local
+run.
+
+## 4. First-organization lifecycle — before and after
+
+### Unpinned mode (the default) — before this task
+
+```text
+fresh deployment (DEPLOYMENT_ORGANIZATION_ID unset)
+    ↓
+bootstrap system administrator            → مدیر + System Administrator role + every permission
+    ↓
+admin authenticates                       → session cookie, full RBAC
+    ↓
+admin can discover that zero organizations exist   → GET /organizations → []  (frontend: OrganizationContext = 'empty')
+    ↓
+admin can create the first organization   → POST /organizations WORKS (backend), but the
+                                              frontend `empty` screen offered no way to reach it
+    ✗ DEAD END on the frontend, despite a fully authorized backend capability
+```
+
+### Unpinned mode — after this task
+
+```text
+fresh deployment (DEPLOYMENT_ORGANIZATION_ID unset)
+    ↓
+bootstrap system administrator            → مدیر + System Administrator role + every permission   [unchanged]
+    ↓
+admin authenticates                       → session cookie, full RBAC                              [unchanged]
+    ↓
+admin can discover that zero organizations exist   → GET /organizations → []                       [unchanged]
+    ↓
+OrganizationGate shows CreateFirstOrganizationForm  → only because the session holds BOTH
+                                              Organization.Organization.Create AND
+                                              Organization.Membership.Grant                          [NEW — frontend only]
+    ↓
+admin submits code+name → POST /organizations (unchanged backend call, unchanged permission check)
+    ↓
+admin becomes the first member → POST /organizations/:id/members {userId: self}
+                                   (unchanged backend call, unchanged first-member exception)
+    ↓
+OrganizationGate refetches GET /organizations → now returns the new organization → 'ready'
+    ↓
+admin enters the organization                                                                        [NEW outcome, OLD mechanism]
+```
+
+### Pinned mode — unchanged, already closed by Task 26 / ADR-0038
+
+```text
+fresh deployment
+    ↓
+DEPLOYMENT_ORGANIZATION_ID configured
+    ↓
+bootstrap system administrator
+    ↓
+deployment organization provisioned        → OrganizationsService.ensureDeploymentOrganization()
+    ↓
+administrator membership granted           → OrganizationMembershipsService.grantMembership()
+    ↓
+admin authenticates
+    ↓
+organization available                     → GET /organizations returns exactly the pinned org → 'ready'
+```
+
+No code changed on this path. It was re-verified (§7), not re-implemented.
+
+## 5. Decision — Option C (both modes), no new deployment model
+
+Both modes were already architecturally decided and already implemented on the
+backend:
+
+- **Pinned (Option B):** the deployment organization is provisioned by the
+  existing installation bootstrap when `DEPLOYMENT_ORGANIZATION_ID` is
+  configured (Task 26 / ADR-0038). **Unchanged by this task.**
+- **Unpinned (Option A):** the first organization is created through the
+  normal Organization application/API flow, and the creating administrator
+  becomes its first member through the existing first-member mechanism
+  (ADR-0021, `OrganizationMembershipsService`). **This task's only change is
+  making this reachable from the frontend**, for a session that already holds
+  both permissions the backend already requires.
+
+No third deployment model, no wildcard organization access, no
+"system admin sees every organization", no username/role-name bypass, no
+frontend-only organization state, and no direct-SQL install step were
+introduced. Nothing about `assertOrganizationInScope`, the 404 isolation
+posture, or the first-member exception's scope (grant-only, closes at one
+member) changed.
+
+## 6. Changes implemented
+
+### 6.1 Backend
+
+**None.** The audit (§1) confirmed the backend already implements everything
+required for both modes; Task 26 / ADR-0038 already closed the pinned-mode gap.
+No schema change, no migration, no new endpoint, no new permission code, no
+guard change.
+
+### 6.2 Frontend
+
+All changes are additive, inside the `organization` feature slice, using only
+already-existing, unmodified endpoints and permission codes copied verbatim
+from the backend registry (AR-22 convention, already used by every other entry
+in `permission-codes.ts`):
+
+| File | Change |
+|---|---|
+| `frontend/src/api/contracts.ts` | Added `CreateOrganizationRequest`/`GrantMembershipRequest` type aliases, derived from the already-generated OpenAPI schemas (`CreateOrganizationDto`, `GrantMembershipDto`) — no new backend contract, no hand-written duplicate shape (ADR-0014/AR-26). |
+| `frontend/src/api/organization.api.ts` | Added `createOrganization()` (`POST /organizations`) and `grantMembership()` (`POST /organizations/:id/members`) — thin wrappers around the existing Axios instance (AR-28), identical in shape to every other function in this file. |
+| `frontend/src/features/permissions/permission-codes.ts` | Added `organization.create` (`Organization.Organization.Create`) and `organization.membershipGrant` (`Organization.Membership.Grant`) — codes copied from `backend/src/modules/organization/domain/organization-permissions.ts`, which already registered and enforced them; nothing new is enforced anywhere by this addition. |
+| `frontend/src/lib/i18n.ts` | Added the Persian strings for the new form (`createFirstTitle`, `createFirstBody`, field labels, validation messages, submit/submitting). The pre-existing `emptyTitle`/`emptyBody` terminal strings are untouched and still render for sessions without both permissions. |
+| `frontend/src/features/organization/create-first-organization-schema.ts` | New Zod schema mirroring `CreateOrganizationDto`'s validation (`code`/`name` required, same max lengths as the backend DTO) — client-side UX feedback only (AR-24); the backend re-validates regardless. |
+| `frontend/src/features/organization/create-first-organization-form.tsx` | New component: a code+name form that calls `createOrganization` then `grantMembership(newOrg.id, { userId })` in that order, and calls `onCreated()` **only if both succeed**. No organization/membership state is created, cached, or assumed client-side; success is entirely defined by both backend calls succeeding. |
+| `frontend/src/app/layouts/organization-gate.tsx` | The `empty` branch now renders a new `EmptyOrganizationState` component: if the session holds **both** `Organization.Organization.Create` and `Organization.Membership.Grant` (`usePermissions().hasAll([...])`, UX-only per AR-21), it renders `CreateFirstOrganizationForm` (with a logout affordance below it); otherwise it renders the **exact same, unchanged** `BlockedState` terminal explainer as before. `onCreated` is wired to the existing `useOrganization().refresh()` — no new state machine, no new organization/membership concept on the frontend. |
+
+Nothing else changed. No route was added, no new page, no new permission
+gate pattern beyond the existing `usePermissions().hasAll` used elsewhere.
+
+## 7. Files changed
+
+```
+docs/security.md                                                        (doc)
+frontend/README.md                                                      (doc)
+docs/task-33-organization-first-login-provisioning-report.md            (doc, new — this file)
+frontend/src/api/contracts.ts
+frontend/src/api/organization.api.ts
+frontend/src/features/permissions/permission-codes.ts
+frontend/src/lib/i18n.ts
+frontend/src/features/organization/create-first-organization-schema.ts  (new)
+frontend/src/features/organization/create-first-organization-form.tsx   (new)
+frontend/src/features/organization/create-first-organization-form.test.tsx (new)
+frontend/src/app/layouts/organization-gate.tsx
+frontend/src/app/layouts/app-shell.test.tsx
+```
+
+`git diff --stat` at the time of writing: 8 production/test files touched plus
+3 new files, +206/−10 lines (frontend only). No backend file, no Prisma
+schema file, no migration file, and no `docker-compose.yml`/`.env.example` file
+was touched.
+
+## 8. Database / migration impact
+
+**None.** No Prisma schema change, no migration. The audit in §9 of the task
+brief ("do not modify the schema unless the audit proves it cannot represent
+the required lifecycle") concluded the existing schema is sufficient:
+`Organization` remains the tenant root, `OrganizationMembership` remains the
+sole principal→organization binding with its existing composite primary key,
+and no role information was added to membership.
+
+## 9. Organization provisioning behavior (after this task)
+
+- **Pinned deployments:** unchanged — `ensureDeploymentOrganization()` inside
+  the installation bootstrap, at most one row, keyed by the pin, refused
+  inside any HTTP request context.
+- **Unpinned deployments:** unchanged backend behavior (`createOrganization`
+  requires `Organization.Organization.Create`, rejects duplicate codes, is
+  refused when pinned). The only change is that a session holding the
+  necessary permission can now reach this call from the UI instead of curling
+  it by hand.
+
+## 10. Membership behavior (after this task)
+
+Unchanged. `OrganizationMembershipsService.grantMembership` still requires
+`Organization.Membership.Grant`, still requires the acting principal's own
+membership of the target organization **except** for the first member of an
+organization with zero members, still returns `409 Conflict` for a duplicate
+grant, and still resolves the "unknown user" case as `404` via the real
+foreign key. The frontend addition calls this exact function through the
+existing controller — it does not reimplement, parallel, or relax any of these
+rules.
+
+## 11. Frontend behavior (after this task)
+
+- `GET /organizations` → `[]` is now correctly treated as what ADR-0021 always
+  intended it to be: **a valid first-install state**, not a permanent
+  authorization failure — but **only actionable for a session that already
+  holds both required permissions**. Every other session still sees the
+  unchanged terminal "no organization available" explainer with only "contact
+  the system administrator" and "log out" as recovery paths, exactly as
+  before.
+- No frontend-only organization state was introduced: `organizationId` stays
+  `null` until `GET /organizations` itself reports a usable organization, and
+  the new form's only side effect on success is asking `OrganizationContext`
+  to `refresh()` (re-run the real query).
+- No client-side hardcoded organization id, no fake default, no optimistic
+  organization/membership row.
+
+## 12. Tests added/updated
+
+### Frontend (new, this task)
+
+- `frontend/src/features/organization/create-first-organization-form.test.tsx`
+  (4 tests): required-field validation blocks submission; success calls
+  `createOrganization` then `grantMembership` with the acting user's own id
+  and only then reports success; a refused `createOrganization` (e.g. pinned
+  deployment) never calls `grantMembership` and never reports success; a
+  refused `grantMembership` after a successful `createOrganization` never
+  reports success.
+- `frontend/src/app/layouts/app-shell.test.tsx` (+1 test, 12 total in the
+  file): a full-shell integration test — a session with
+  `Organization.Organization.Create` + `Organization.Membership.Grant` sees
+  the create-first-organization form (not the terminal explainer) when
+  `GET /organizations` is empty, fills it in, and reaches the real dashboard
+  once the mocked backend calls succeed and the (re-mocked) list reflects the
+  new organization. The **pre-existing** "blocks the workspace ... when no
+  organization exists" test (a session **without** those two permissions)
+  is unchanged and still asserts the identical terminal explainer + logout
+  button + no dashboard — proving the new capability does not weaken the
+  default-permission-set behavior.
+
+### Backend (verified, not modified — already exist on `main`)
+
+Isolation and lifecycle behavior for both modes is already covered and was
+re-run (not re-authored) as part of this task's verification:
+
+- **Bootstrap idempotency / no silent reactivation / no password reset:**
+  `backend/src/bootstrap/system-administrator-bootstrap.service.spec.ts` (9
+  tests).
+- **Pinned mode — organization + membership provisioning, idempotent,
+  administrator access:** `backend/src/modules/organization/application/deployment-organization-bootstrap.spec.ts`
+  (8 tests, unit) and the live pinned-mode `describe` block in
+  `backend/test/bootstrap-system-administrator-live.e2e-spec.ts` (2 tests,
+  opt-in — needs `VARDENA_TEST_DATABASE_URL`).
+- **Unpinned mode — bootstrap invents no organization; first organization
+  created through the ordinary API; creating administrator becomes first
+  member; subsequent access requires membership:** the first live `describe`
+  block in the same file, specifically `uses normal RBAC and organization
+  membership across implemented domains` (creates an organization over real
+  HTTP, asserts a **404** before membership exists, grants membership, then
+  asserts **200** across Inventory/Documents/Workflow/Accounting) and
+  `denies organization-scoped access when the administrator membership is
+  removed` (removes the membership row directly and re-asserts 404 despite
+  full RBAC permissions — proves `authenticated + permission + no membership`
+  never becomes organization access).
+- **Non-member cannot access another organization / membership
+  administration is organization-bound / first-member exception is narrow:**
+  `backend/test/organization-membership.e2e-spec.ts` and
+  `backend/src/modules/organization/application/organization-memberships.service.spec.ts`
+  (17 unit tests).
+- **37/37 organization-scoped read surfaces enforce `assertOrganizationInScope`:**
+  `backend/src/modules/organization/application/organization-read-scope-completion.spec.ts`
+  (38 tests).
+
+These suites were re-run during verification (§13) to confirm the frontend-only
+change did not require, and did not accompany, any backend regression.
+
+## 13. Verification results (run in this session)
+
+All of the following were **actually executed** in this session; none is
+asserted without a run.
+
+| Check | Scope | Result |
+|---|---|---|
+| `npm run typecheck` | frontend | **PASS** — 0 errors |
+| `npm run lint` (oxlint) | frontend | **PASS** — 0 warnings, 0 errors, 158→159 files |
+| `npm run format:check` (prettier) | frontend | **PASS** (after `prettier --write` on the one new file that needed it) |
+| `npx vitest run` | frontend, full suite | **PASS** — 33 files, **217/217 tests** (212 pre-existing + 5 new: 4 in `create-first-organization-form.test.tsx` + 1 in `app-shell.test.tsx`) |
+| `npm run build` (`tsc --noEmit && vite build`) | frontend | **PASS** — production bundle built successfully |
+| `npm run typecheck` | backend | **PASS** — 0 errors (confirms the audit touched no backend type) |
+| `npm run lint` (oxlint) | backend | **PASS** — 1 pre-existing warning (`no-unsafe-optional-chaining` in an unrelated Task-30 spec file, not introduced by this task), 0 errors |
+| `npm run format:check` (prettier) | backend | **PASS** |
+| `npx vitest run --config ./vitest.config.ts` | backend, unit suite | **PASS** — 113 files, **1,319/1,319 tests** (unchanged — confirms zero backend regression from a zero-line backend diff) |
+| `npx vitest run --config ./vitest.config.e2e.ts` | backend, e2e suite | **PASS** — 20 files run, **278/278 tests**; **14 files / 113 tests SKIPPED** (the live-database suites, which require `VARDENA_TEST_DATABASE_URL` and are correctly opt-in) |
+
+### Explicitly delegated to CI (not run locally in this session)
+
+- **Live-database e2e suites** (`describe.skipIf(DATABASE_URL === undefined)`
+  blocks in `backend/test/bootstrap-system-administrator-live.e2e-spec.ts` and
+  other live suites) — these require a real PostgreSQL instance wired through
+  `VARDENA_TEST_DATABASE_URL`, which this sandbox does not have configured (no
+  outbound network access to provision one; `npx prisma generate`'s engine
+  download itself failed in this sandbox for the same reason, confirming no
+  network path to a live database engine either). These suites already exist,
+  already cover both deployment modes end-to-end (§12), and are exactly what
+  GitHub CI's `CI` workflow runs against its own PostgreSQL service container.
+  This task changed none of their assertions or fixtures.
+- **`docker-compose` boot / full container smoke test** — not exercised in this
+  sandbox; unaffected by this change (no compose file, Dockerfile, or
+  environment variable was touched).
+
+No test is reported as passed in this document unless the tool output above
+shows it actually ran and passed in this session.
+
+## 14. Remaining limitations (intentional, not regressions)
+
+- A session that is authenticated but holds **neither**
+  `Organization.Organization.Create` **nor** `Organization.Membership.Grant`
+  still sees the unchanged terminal "no organization available, contact your
+  system administrator" screen when `GET /organizations` is empty. This is
+  correct: the frontend gate is UX-only (AR-21) and does not, and must not, let
+  an under-permissioned principal create organizations or memberships.
+- A session holding only **one** of the two permissions (e.g. can create
+  organizations but cannot grant memberships) also still sees the terminal
+  explainer rather than a partially-working form, because the sequence is only
+  useful end-to-end. This mirrors the backend's own two-permission requirement
+  and avoids a confusing half-successful UI state (an organization created with
+  no way to enter it).
+- There is still no general-purpose organization administration UI (list,
+  edit, enable/disable, membership management for organizations the admin is
+  already a member of) — this remains explicitly out of scope for the frontend
+  per the repository's current state (`.vardena/project-context.md`: "no
+  create/edit UI" is a known, accepted, pre-existing gap across the whole
+  frontend, not something this task was asked to close). This task closes only
+  the specific first-login dead end described in the brief.
+- Password rotation / forced-password-change on first login remains open
+  (OQ-19, pre-existing, unrelated to this task).
+
+## 15. Follow-up work genuinely outside this task's scope
+
+- A general Organization/Membership administration UI (list all organizations
+  an admin can see, edit code/name, enable/disable, manage members of an
+  existing organization) is a legitimate future frontend feature but was not
+  requested and is not implied by the first-login dead end this task closes.
+- OQ-19 (administrator self-disable / self-role-removal / last-administrator
+  lockout protection) remains open and unaffected.
+- Whether unpinned multi-organization production deployments should get a
+  dedicated "create organization" entry point inside the workspace (not just
+  the first-login gate) is a product decision outside this task's brief, which
+  was scoped to "make the Organization lifecycle and first-login provisioning
+  coherent with the architecture that already exists" — the first-login gate
+  is exactly the point where the dead end was reported and is exactly where it
+  is closed.
+
+## 16. Acceptance-criteria cross-check
+
+| Criterion (task brief §14) | Status |
+|---|---|
+| Exact reason for "no organization available" identified | §2 |
+| Organization remains the tenant/business root | Unchanged — §1.3, §8 |
+| Financial Area not conflated with Organization | Untouched by this task; Financial Area remains an Accounting-owned structure inside an Organization (`docs/accounting/domain-contract.md`) — no change made or needed here |
+| Fiscal Year not conflated with Organization/Financial Area | Untouched by this task; unchanged accounting-module ownership |
+| OrganizationMembership remains the principal→organization binding | Unchanged — §1.3, §10 |
+| System Administrator remains an ordinary principal for organization-scoped authorization | Unchanged — §1.1/§1.2; the frontend gate uses the same effective-permission read every other UX gate uses, not a username/role-name check |
+| No wildcard/bypass introduced | Confirmed — §6.2, §10 |
+| Supported deployment mode(s) documented | §3, §5, `docs/security.md` update |
+| Fresh installation has a deterministic path from bootstrap → organization access | §4 (both modes) |
+| Existing tenant isolation behavior intact | Confirmed by re-run backend suites — §13 |
+| Tests prove the relevant lifecycle | §12 |
+| CI/verification results recorded truthfully | §13 |
+| No unrelated architecture or product scope introduced | §6 — frontend-only, two new files, no schema/endpoint/permission change |

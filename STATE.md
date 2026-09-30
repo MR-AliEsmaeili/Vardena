@@ -689,3 +689,51 @@ These frontend Open Questions remain open and require the owner's decision throu
 Task: docs/frontend-standards (v2.1)
 Status: ACCEPTED-PENDING-OWNER
 Owner Behavioral Verification: PENDING
+
+## 13. Task 33 — Organization Provisioning & First-Login Readiness (2026-09-30)
+
+This addendum records a focused implementation task without rewriting or
+removing any historical project state above. Full findings, root cause,
+decision and verification: `docs/task-33-organization-first-login-provisioning-report.md`.
+
+- **Reported symptom:** the bootstrap administrator (`مدیر`) authenticates
+  successfully but the frontend reaches the terminal "no organization
+  available" screen with no recovery path besides logging out.
+- **Root cause (verified, not assumed):** the repository's default
+  configuration is **unpinned** (`DEPLOYMENT_ORGANIZATION_ID` unset — commented
+  out in `backend/.env.example`, empty-default in `docker-compose.yml`).
+  Unpinned mode intentionally invents no organization (ADR-0021 structural
+  mode; Task 26 / ADR-0038 only provisions an organization + membership in
+  **pinned** mode). The backend has always allowed an authorized principal
+  (one holding `Organization.Organization.Create` and
+  `Organization.Membership.Grant` — which the bootstrap administrator's full
+  RBAC role already holds) to create the first organization and self-grant the
+  first membership through the existing, unmodified
+  `POST /organizations` + `POST /organizations/:id/members` endpoints and the
+  existing first-member bootstrap exception. **The frontend's `empty`
+  organization state offered no way to reach that path** — this was the actual
+  defect: a missing frontend integration of an existing, architecturally
+  correct backend capability.
+- **Decision:** Option C (both modes), matching what was already implemented.
+  Pinned mode (Task 26 / ADR-0038) is unchanged. Unpinned mode gets a small,
+  additive frontend capability only.
+- **Backend changes:** **none.** No schema, migration, endpoint, permission
+  code, or guard changed. Re-ran the full backend suite (113 unit spec files /
+  1,319 tests; 20 e2e spec files / 278 tests, 14 live-DB files correctly
+  skipped without `VARDENA_TEST_DATABASE_URL`) to confirm zero regression from
+  a zero-line backend diff.
+- **Frontend changes:** `OrganizationGate`'s `empty` state now renders a
+  first-organization bootstrap form (`CreateFirstOrganizationForm`) instead of
+  the unconditional terminal explainer, but **only** for a session holding
+  both `Organization.Organization.Create` and `Organization.Membership.Grant`
+  (UX-only gating, AR-21; the backend re-checks both permissions on both
+  calls). Every other session sees the unchanged terminal explainer. 3 new
+  frontend files, 8 files touched, +206/−10 lines; 5 new frontend tests (217/217
+  total frontend tests pass); frontend typecheck/lint/format/build all pass.
+- **No wildcard, bypass, frontend-only organization state, hardcoded
+  organization id, or new deployment model was introduced.**
+- **Scope:** frontend-only capability addition plus documentation; no
+  Financial Area, Fiscal Year, Accounting Period, RBAC, or organization-role
+  redesign was touched.
+- **Not accepted by this addendum:** as with every other entry in this file,
+  merge/CI-green is not Owner acceptance.

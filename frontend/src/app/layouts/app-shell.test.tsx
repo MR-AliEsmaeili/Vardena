@@ -33,6 +33,8 @@ vi.mock('@/api/identity.api', () => ({
 
 vi.mock('@/api/organization.api', () => ({
   listOrganizations: vi.fn(),
+  createOrganization: vi.fn(),
+  grantMembership: vi.fn(),
   MAX_PAGE_SIZE: 500,
 }));
 
@@ -233,6 +235,78 @@ describe('organization resolution in the shell', () => {
     expect(
       screen.queryByRole('button', { name: t.organization.selectingSubmit }),
     ).not.toBeInTheDocument();
+  });
+
+  it('lets a session holding organization Create + Membership.Grant create and enter the first organization (task §4/§7 unpinned lifecycle)', async () => {
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [
+        ...allAccountingPermissions,
+        'Organization.Organization.Create',
+        'Organization.Membership.Grant',
+      ],
+    });
+    vi.mocked(organizationApi.listOrganizations).mockResolvedValueOnce(
+      paginated([]),
+    );
+    const createdOrganization = {
+      ...testOrganization,
+      id: 'org-created',
+      code: 'MAIN',
+      name: 'سازمان اصلی',
+    };
+    vi.mocked(organizationApi.createOrganization).mockResolvedValue(
+      createdOrganization,
+    );
+    vi.mocked(organizationApi.grantMembership).mockResolvedValue(undefined);
+    const user = userEvent.setup();
+
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+
+    const blocked = await screen.findByRole('main');
+    expect(
+      await within(blocked).findByRole('heading', {
+        name: t.organization.createFirstTitle,
+      }),
+    ).toBeInTheDocument();
+    // The unreachable, permission-less explainer must not render alongside
+    // the actionable form.
+    expect(
+      within(blocked).queryByText(t.organization.emptyBody),
+    ).not.toBeInTheDocument();
+
+    await user.type(
+      within(blocked).getByLabelText(t.organization.createFirstCode),
+      'MAIN',
+    );
+    await user.type(
+      within(blocked).getByLabelText(t.organization.createFirstName),
+      'سازمان اصلی',
+    );
+
+    // The list now reflects the organization the backend created, exactly
+    // as a real `GET /organizations` refetch would after the two calls.
+    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
+      paginated([createdOrganization]),
+    );
+
+    await user.click(
+      within(blocked).getByRole('button', {
+        name: t.organization.createFirstSubmit,
+      }),
+    );
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: t.dashboard.title }),
+    ).toBeInTheDocument();
+    expect(organizationApi.createOrganization).toHaveBeenCalledWith({
+      code: 'MAIN',
+      name: 'سازمان اصلی',
+    });
+    expect(organizationApi.grantMembership).toHaveBeenCalledWith(
+      'org-created',
+      { userId: testUser.id },
+    );
   });
 
   it('blocks the workspace when the session cannot read the organization list', async () => {
