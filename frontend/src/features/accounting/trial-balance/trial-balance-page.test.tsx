@@ -40,6 +40,7 @@ vi.mock('@/api/accounting.api', () => ({
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
 const accountingApi = await import('@/api/accounting.api');
+const listTrialBalanceMock = vi.mocked(accountingApi.listTrialBalance);
 
 beforeEach(() => {
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
@@ -82,7 +83,7 @@ describe('Trial Balance URL-owned report state', () => {
     await waitFor(() =>
       expect(accountingApi.listTrialBalance).toHaveBeenCalledTimes(1),
     );
-    expect(accountingApi.listTrialBalance.mock.calls[0]?.[0]).toMatchObject({
+    expect(listTrialBalanceMock.mock.calls[0]?.[0]).toMatchObject({
       organizationId: 'org-1',
       financialAreaId: 'area-1',
       fiscalYearId: 'year-1',
