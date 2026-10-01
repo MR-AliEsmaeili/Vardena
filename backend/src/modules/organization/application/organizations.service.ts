@@ -212,9 +212,8 @@ export class OrganizationsService {
       principal.userId,
     );
     if (organizationIds.length === 0) return [];
-    const organizations = await this.repository.listActiveByIds(
-      organizationIds,
-    );
+    const organizations =
+      await this.repository.listActiveByIds(organizationIds);
     return organizations.map(toOrganizationDto);
   }
 

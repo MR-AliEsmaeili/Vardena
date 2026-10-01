@@ -62,7 +62,10 @@ function buildOrganizations(
 
 function asActor<R>(userId: string, fn: () => Promise<R>): Promise<R> {
   return runWithRequestContext(
-    { correlationId: 'corr-bootstrap', principal: { userId, sessionId: 'sess' } },
+    {
+      correlationId: 'corr-bootstrap',
+      principal: { userId, sessionId: 'sess' },
+    },
     fn,
   );
 }

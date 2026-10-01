@@ -184,12 +184,16 @@ describe('Organization bootstrap discovery (e2e)', () => {
   });
 
   it('isolation: a member of A never receives B, and vice versa', async () => {
-    const aView = await userAAgent.get('/api/v1/organizations/mine').expect(200);
+    const aView = await userAAgent
+      .get('/api/v1/organizations/mine')
+      .expect(200);
     expect(
       (aView.body as Array<{ id: string }>).map((item) => item.id),
     ).not.toContain(state.orgBId);
 
-    const bView = await userBAgent.get('/api/v1/organizations/mine').expect(200);
+    const bView = await userBAgent
+      .get('/api/v1/organizations/mine')
+      .expect(200);
     const bIds = (bView.body as Array<{ id: string }>).map((item) => item.id);
     expect(bIds).toEqual([state.orgBId]);
     expect(bIds).not.toContain(state.orgAId);
