@@ -115,6 +115,36 @@ export interface LicenseState {
   provider: string;
 }
 
+/**
+ * `POST /api/v1/license/activate` request body (`ActivateLicenseDto`,
+ * `backend/src/modules/licensing/api/dto/license.dto.ts`).
+ *
+ * The body carries exactly ONE field — the signed license code. Status,
+ * limits, validity window and entitlements are derived by the backend from
+ * the verified payload inside the code, so the client can never describe the
+ * license it wants (L-02).
+ */
+export interface ActivateLicenseRequest {
+  code: string;
+}
+
+/** Backend `MaxLength(8192)` of `ActivateLicenseDto.code`. */
+export const LICENSE_CODE_MAX_LENGTH = 8192;
+
+/**
+ * `LicenseActivationController.activate()` answers with the SAME evaluated
+ * state as `GET /license/current` plus `changed` (false when the submitted
+ * code was already the installation's current license — activation is
+ * idempotent).
+ *
+ * It is a result receipt, not a license source: the gate always re-reads
+ * `GET /license/current` after a successful activation instead of promoting
+ * this payload into the license query cache (§8 of the task, AR-21).
+ */
+export interface LicenseActivationResult extends LicenseState {
+  changed: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Organization
 // ---------------------------------------------------------------------------

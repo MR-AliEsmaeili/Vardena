@@ -1,5 +1,9 @@
-import { apiGet } from './client';
-import type { LicenseState } from './contracts';
+import { apiGet, apiPost } from './client';
+import type {
+  ActivateLicenseRequest,
+  LicenseActivationResult,
+  LicenseState,
+} from './contracts';
 
 /**
  * Licensing self-read (`backend/src/modules/licensing`, ADR-0030).
@@ -14,4 +18,27 @@ import type { LicenseState } from './contracts';
  */
 export function getLicenseState(signal?: AbortSignal): Promise<LicenseState> {
   return apiGet<LicenseState>('/license/current', signal ? { signal } : {});
+}
+
+/**
+ * Installation license activation (`POST /api/v1/license/activate`, L-02).
+ *
+ * The raw code travels exactly once, in the request body of this call: it is
+ * never put in the URL, in a query string, in a header, in a log line or in
+ * any browser storage, and the only thing kept afterwards is the backend's
+ * own evaluated answer. The backend verifies the signature, the installation
+ * binding and the lifecycle and persists the license — this function does no
+ * validation beyond transporting the string.
+ *
+ * The response is a receipt (`LicenseActivationResult`): callers must re-read
+ * `GET /license/current` for the authoritative state instead of treating a
+ * 200 here as "the installation is licensed".
+ */
+export function activateLicense(
+  request: ActivateLicenseRequest,
+): Promise<LicenseActivationResult> {
+  return apiPost<LicenseActivationResult, ActivateLicenseRequest>(
+    '/license/activate',
+    request,
+  );
 }
