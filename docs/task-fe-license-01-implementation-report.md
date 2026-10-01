@@ -76,3 +76,28 @@ permission.
 Executed locally (frontend only): `npm test` (41 files, 298 tests, all pass),
 `npm run typecheck`, `npm run lint`, `npx prettier --check src`, `npm run build`.
 Backend suites and live-DB/E2E verification are left to GitHub CI.
+
+## 6. Review trail
+
+- Branch `arena/01a0f7cb-vardena`, commit `e72e547`
+  (`feat(frontend): license activation step in the licensing bootstrap gate`).
+- PR [#100](https://github.com/MR-AliEsmaeili/Vardena/pull/100) → `main`.
+- GitHub CI run `36875679821` on `e72e547`: **success** (jobs `frontend` and
+  `backend`, the latter including the live-PostgreSQL suites this task did not
+  run locally).
+- Documentation updated with the implemented behavior:
+  `docs/licensing-architecture.md` §"Frontend consumption" (the statement that
+  "the frontend adds no activation form in L-02" no longer describes the
+  repository) and a License Activation row in
+  `docs/frontend/ux/ux-flow-matrix.md`.
+
+## 7. Known limitations
+
+- All backend activation rejections (malformed code, bad signature, wrong
+  installation, expired/suspended) map to one Persian sentence: the service
+  raises them through `AppException.businessRule(...)` without a structured
+  `details` discriminator, so there is nothing to branch on. Registered as a
+  contract gap, not worked around by parsing messages.
+- The activation step is offered only to sessions holding
+  `Licensing.License.Activate` (UX routing; the backend authorizes the call
+  regardless).
