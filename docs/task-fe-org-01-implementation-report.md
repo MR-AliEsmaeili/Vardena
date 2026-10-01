@@ -3,9 +3,12 @@
 **Task:** FE-ORG-01 — frontend vertical slice for organization administration and
 organization-scoped master data.
 **Branch:** `arena/01a0f6e4-vardena` (base `main` @ `8af1ebc`, merge of PR #96).
-**Pull request:** [#98](https://github.com/MR-AliEsmaeili/Vardena/pull/98).
-**Implementation commit:** `a7f9d3e` — *feat(frontend): organization & master data
-administration (FE-ORG-01)*.
+**Pull request:** [#98](https://github.com/MR-AliEsmaeili/Vardena/pull/98) — HEAD
+`bd8ab37` at the time of writing (read `gh pr view 98 --json headRefOid` for the
+literal current value).
+**Implementation commit:** `a7f9d3e` — *feat(frontend): organization & master
+data administration (FE-ORG-01)*, CI run `36849761466` ✅ (incl. live-DB E2E).
+**Documentation commit:** `bd8ab37`, CI run `36850203205` ✅.
 **Backend / Prisma / migration files changed:** **0**.
 
 The section numbering below (26.1 … 26.8) is the section list the task requested.
@@ -310,22 +313,35 @@ dangling-underscore identifier in `admin-list-state.ts`, and an explicit
 | `organization-admin-details.test.tsx` | 4 | related department/branch resolved and linked; stored id shown (and no request sent) without the related `*.View`; explicit "not assigned" copy; 404 rendered as a normalized error without the backend message |
 | `admin-error-messages.test.ts` | 8 | the code × resource × operation mapping, correlation-id pass-through, and that no English server message ever reaches the user |
 
-### 26.6.3 GitHub CI
+### 26.6.3 GitHub CI and E2E
 
 CI workflow `.github/workflows/ci.yml`, triggered by PR #98
-(`arena/01a0f6e4-vardena` → `main`).
+(`arena/01a0f6e4-vardena` → `main`). The `frontend` job repeats
+`npm ci → lint → typecheck → format:check → test → build`; the `backend` job
+runs the full backend pipeline including the migration rehearsal and **E2E
+against the live Postgres service** (`npm run test:e2e`). That backend job is
+the authoritative E2E signal, exactly as
+`docs/testing/test-execution-policy.md` and `docs/testing/e2e-hang-root-cause.md`
+prescribe — **E2E was not run locally**, and the slowness of a local E2E run was
+not used as a reason to stop.
 
-- **Run:** [`36849761466`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36849761466) — jobs `backend` and `frontend`.
-- The `frontend` job repeats `npm ci → lint → typecheck → format:check → test →
-  build`.
-- The `backend` job runs the full backend pipeline including **E2E with the live
-  Postgres service** (`npm run test:e2e`) and the migration rehearsal. It is the
-  authoritative E2E signal for this change, exactly as
-  `docs/testing/test-execution-policy.md` and `docs/testing/e2e-hang-root-cause.md`
-  prescribe; E2E was **not** run locally.
-- Result: see §26.8. The backend job is expected to be unaffected — the diff
-  contains zero backend files — and it runs as the regression proof of that
-  claim.
+Each commit is named below with the run that verified **that** commit; no SHA in
+this report stands for anything other than its own identity.
+
+| Commit | What it contains | CI run | Result |
+|---|---|---|---|
+| `a7f9d3e` | **implementation commit** — all production and test code of this slice | [`36849761466`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36849761466) (`headSha a7f9d3ed…`) | ✅ `success` — `frontend` 1m43s (lint, typecheck, format:check, tests, build all `success`); `backend` 4m7s, with **`Unit tests` ✅, `Migration rehearsal` ✅, `E2E tests (incl. live-DB suites)` ✅** |
+| `bd8ab37` | **documentation commit** — this report, `frontend/README.md`, `STATE.md` §14; zero production files (`git diff --stat a7f9d3e..bd8ab37 -- frontend/src backend` is empty) | [`36850203205`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36850203205) (`headSha bd8ab37e…`) | ✅ `success` — `frontend` 1m42s; `backend` 3m22s, **`E2E tests (incl. live-DB suites)` ✅** |
+
+The `backend` job passing on a diff that contains **zero backend files** is the
+regression proof of the "0 backend changes" claim, not a formality.
+
+**On the current PR HEAD.** Any commit after `bd8ab37` in this PR is a
+documentation-only correction, independently verified by its own CI run, and
+does not change production behavior. Read the literal current value with
+`gh pr view 98 --json headRefOid` (and its run with
+`gh run list --branch arena/01a0f6e4-vardena`) rather than trusting a SHA frozen
+in prose — the rule adopted in `STATE.md` §13.1.
 
 ---
 
@@ -368,7 +384,12 @@ only; where a document disagreed with current code, the code won.
 
 ### Final status
 
-**READY FOR CI VERIFICATION** — all local gates pass (lint, typecheck,
-format:check, 277 tests, build) and the change is pushed as PR #98 with CI run
-`36849761466` in flight; the status moves to READY FOR REVIEW once that run is
-green.
+**READY FOR REVIEW**
+
+All local gates pass (lint 0/0, typecheck exit 0, format:check clean, 39 files /
+277 tests, build exit 0), and GitHub Actions is green on both the
+implementation commit `a7f9d3e` (run `36849761466`, including the live-DB E2E
+suites) and the documentation commit `bd8ab37` (run `36850203205`). Backend
+files changed: **0**. No known defect is open against this slice; every item in
+§26.8's limitation list is a recorded scope decision, not a defect. Merge/CI
+green is not Owner acceptance.
