@@ -38,1499 +38,183 @@
 
 ---
 
-# ۱) اصول بنیادین — ۱۲ اصل
-
-### ۱. چگالی بر تزئین
-
-جدول‌ها ۳۰–۴۰ ردیف در صفحه.
-
-کارت تزئینی و فضای مرده ممنوع.
-
-### ۲. الگو واحد
-
-هر چیز تکرارشونده یک الگو.
-
-صفحۀ جدید = ترکیب الگوها.
-
-الگوی جدید = تسک مستقل.
-
-### ۳. فرمت مرکزی
-
-هیچ عدد/تاریخی بدون فرمتر مرکزی.
-
-`toLocaleString` پراکنده و concat دستی ممنوع.
-
-### ۴. RTL فقط با logical properties
-
-الزامی:
-
-```text
-ms-
-me-
-ps-
-pe-
-start-
-end-
-```
-
-ممنوع:
-
-```text
-ml-
-mr-
-pl-
-pr-
-left-
-right-
-```
-
-### ۵. چهار حالت همیشه
-
-هر UI باید این چهار حالت را داشته باشد:
-
-```text
-loading
-empty
-error
-success
-```
-
-### ۶. رنگ فقط semantic token
-
-استفاده مستقیم از:
-
-```text
-hex
-rgb
-```
-
-ممنوع.
-
-### ۷. متن فقط از i18n
-
-رشتۀ فارسی inline در JSX ممنوع.
-
-### ۸. سرعت قرارداد است
-
-بودجه‌های بخش ۱۴ الزامی هستند.
-
-فونت باید self-host باشد.
-
-### ۹. دسترس‌پذیری الزامی
-
-بخش ۱۳ حداقل است، نه اختیاری.
-
-### ۱۰. امنیت واقعی در Backend
-
-چک permission در UI فقط برای UX است.
-
-امنیت واقعی باید در Backend enforce شود.
-
-### ۱۱. Composition به‌جای تکرار
-
-منطق در hooks/services.
-
-رندر در component.
-
-Prop drilling عمیق با composition حل می‌شود، نه Context همه‌جا.
-
-### ۱۲. Rule = Code
-
-ممنوعیت‌ها تا حد ممکن باید با lint/CI گرفته شوند.
-
----
-
-# ۲) معماری کد
-
-معماری باید feature-based و آینۀ Vertical Slice بکند.
-
-ساختار:
-
-```text
-src/
-  app/
-  shared/
-    ui/
-    lib/
-    api/
-  features/
-    <feature>/
-      api/
-      components/
-      pages/
-      i18n/
-      schema/
-```
-
-قانون dependency:
-
-```text
-feature → shared
-```
-
-مجاز است.
-
-اما:
-
-```text
-feature → feature
-```
-
-ممنوع است.
-
-این قانون آینۀ مرزبندی ماژول‌های Backend است.
-
-## Path aliases
-
-الزامی:
-
-```text
-@/shared
-@/features/
-```
-
-## Colocation
-
-هر چیز فقط در نزدیک‌ترین محل استفاده قرار بگیرد.
-
-وقتی چیزی حداقل در دو feature مشترک شد، به `shared` منتقل شود.
-
-## Import cycle
-
-ممنوع.
-
-باید با:
-
-```text
-import/no-cycle = error
-```
-
-گرفته شود.
-
-## API Types
-
-تایپ API فقط از OpenAPI تولید می‌شود.
-
-تایپ دستی response ممنوع.
-
-تغییر generated types برای پنهان‌کردن ناسازگاری ممنوع.
-
-اگر frontend و backend ناسازگار هستند، قرارداد Backend باید اصلاح شود.
-
-## Component files
-
-هر فایل فقط یک component داشته باشد.
-
-نام فایل = نام component.
-
-حد راهنما:
-
-```text
-~250 lines
-```
-
-اگر بزرگ‌تر شد، hook یا sub-component استخراج شود.
-
-## Export
-
-برای:
-
-```text
-shared/ui
-```
-
-فقط named export.
-
-`default export` فقط برای `lazy()` در سطح route.
-
----
-
-# ۳) React و طراحی Component
-
-## Composition First
-
-اگر داده بیش از حدود دو سطح جابه‌جا می‌شود، component باید بازطراحی شود.
-
-از:
-
-```text
-children
-slot
-```
-
-استفاده شود.
-
-Context فقط برای داده واقعاً سراسری.
-
-## Logic خارج از Component
-
-محاسبه، fetch و تغییر فرمت باید در:
-
-```text
-hook
-lib
-service
-```
-
-باشد.
-
-Component فقط مسئول rendering و event handling باشد.
-
-## Derived State
-
-داده مشتق‌شده باید هنگام render محاسبه شود.
-
-این الگو ممنوع است:
-
-```text
-calculate in render
-→ setState in useEffect
-```
-
-زیرا باعث bug و chained re-render می‌شود.
-
-## Effects
-
-Effect فقط برای sync با دنیای بیرون:
-
-```text
-network
-DOM
-subscription
-```
-
-Business logic داخل effect ممنوع.
-
-## Keys
-
-برای ردیف‌های dynamic یا قابل حذف سند:
-
-`index` به عنوان key ممنوع.
-
-فقط ID پایدار.
-
-در غیر این صورت state فیلدها بین ردیف‌ها جابه‌جا می‌شود.
-
-این موضوع مخصوصاً برای grid اسناد مالی حیاتی است.
-
-## Custom Hooks
-
-هنگام:
-
-* تکرار منطق
-* سنگین‌شدن component
-
-Custom hook ایجاد شود.
-
-نام با:
-
-```text
-use*
-```
-
-و خروجی typed باشد.
-
-## memo / useCallback
-
-فقط با دلیل واقعی:
-
-* profiling
-* یا عبور به child memoized
-
-Micro-optimization کور ممنوع.
-
-## forwardRef
-
-فقط در primitives لایه:
-
-```text
-shared/ui
-```
-
-## React Compiler
-
-در حال حاضر:
-
-```text
-OQ-9
-```
-
----
-
-# ۴) TypeScript
-
-`strict` همیشه فعال باشد.
-
-`any` ممنوع.
-
-داده نامعلوم:
-
-```text
-unknown + narrowing
-```
-
-## DocStatus
-
-برای وضعیت سند از discriminated union استفاده شود:
-
-```ts
-type DocStatus =
-  | { kind: "draft" }
-  | { kind: "temporary" }
-  | { kind: "final" }
-  | { kind: "reversed"; reversedBy: DocId };
-```
-
-Rendering و اجازه عملیات باید exhaustive switch داشته باشد.
-
-برای حالت unreachable از:
-
-```text
-assertNever
-```
-
-استفاده شود.
-
-هدف:
-
-«سند Final با دکمۀ ویرایش» در compile-time غیرممکن شود، نه اینکه فقط در test کشف شود.
-
-## Branded IDs
-
-IDهای زیر باید branded روی string باشند:
-
-```text
-DocId
-AccountId
-OrgId
-```
-
-هدف جلوگیری از اشتباهاتی مانند:
-
-```text
-DocId → AccountId
-```
-
-در compile-time است.
-
-## enum
-
-`enum` ممنوع.
-
-به‌جای آن:
-
-```text
-const object + union
-```
-
-## satisfies
-
-برای config objectها از:
-
-```text
-satisfies
-```
-
-استفاده شود.
-
-## type assertion
-
-`as` فقط برای third-party interoperability مجاز است.
-
-در آن حالت باید comment دلیل وجود داشته باشد.
-
-## Zod
-
-Schema منبع حقیقت است.
-
-Type با:
-
-```text
-z.infer
-```
-
-مشتق شود.
-
-یک منبع حقیقت برای:
-
-```text
-validation
-type
-```
-
----
-
-# ۵) مدیریت وضعیت — سه‌گانه و بسته
-
-| نوع وضعیت    | ابزار                | الزام                                 |
-| ------------ | -------------------- | ------------------------------------- |
-| Server state | TanStack Query       | fetch مستقیم axios در component ممنوع |
-| URL state    | Router search params | filter/page/sort لیست‌ها در URL       |
-| Form state   | RHF + Zod            | فقط RHF                               |
-| UI موضعی     | useState/useContext  | آخرین گزینه                           |
-
-## State Colocation
-
-State در نزدیک‌ترین نقطه مصرف قرار بگیرد.
-
-بالا بردن state فقط برای اشتراک واقعی.
-
-## Derived State
-
-دوباره‌سازی state مشتق ممنوع.
-
-یک داده = یک source of truth.
-
-Copy و manual synchronization ممنوع.
-
-## State Libraries
-
-ممنوع:
-
-```text
-Zustand
-Redux
-```
-
-کتابخانه state جدید فقط با ADR.
-
-## Window Focus
-
-پیش‌فرض:
-
-```text
-refetchOnWindowFocus = false
-```
-
-زیرا در فرم‌های مالی refresh غافلگیرکننده ممنوع است.
-
-برای گزارش‌ها فعال‌سازی باید per-query و آگاهانه باشد.
-
----
-
-# ۶) API Layer و همزمانی
-
-## Axios
-
-یک Axios واحد + interceptor.
-
-`401` باید:
-
-```text
-→ login
-→ preserve destination
-```
-
-انجام دهد.
-
-کد خطا باید به پیام فارسی map شود.
-
-## Query Options
-
-برای هر entity یک queryOptions factory.
-
-ساختار queryKey:
-
-```text
-[ماژول, entity, پارامترها]
-```
-
-## Invalidation
-
-بعد از mutation فقط invalidation هدفمند.
-
-پاک‌کردن کل cache ممنوع.
-
-## staleTime
-
-پیش‌فرض:
-
-```text
-داده پایه: ۵ دقیقه
-لیست عملیاتی: ۳۰ ثانیه
-```
-
-بعد از mutation همان entity باید فوری invalidate شود.
-
-## Race Conditions
-
-برای fetchهایی که پارامتر متغیر دارند:
-
-```text
-AbortController
-signal
-latest-wins
-```
-
-الزامی است.
-
-## Search Debounce
-
-حدود:
-
-```text
-300ms
-```
-
-و باید با util مرکزی انجام شود.
-
-## Retry
-
-فقط GET.
-
-حداکثر:
-
-```text
-2
-```
-
-با exponential backoff.
-
-Auto-retry برای mutation مطلقاً ممنوع.
-
-Retry دستی کاربر باید با همان:
-
-```text
-operationKey
-```
-
-انجام شود.
-
-این مطابق قرارداد Idempotency Backend است.
-
-## Optimistic Update
-
-برای عملیات مالی ممنوع:
-
-```text
-Posting
-Reversal
-Allocation
-Period Closing
-```
-
-UI فقط بعد از تأیید Server به وضعیت نهایی برسد.
-
-## Mutation
-
-هر request باید error state داشته باشد.
-
-دکمه mutation هنگام ارسال disabled باشد.
-
----
-
-# ۷) اعداد و تاریخ
-
-Formatterهای مرکزی:
-
-```text
-formatMoney(value: string)
-formatQuantity
-formatPercent
-```
-
-برای مبلغ، ورودی `number` خطا است.
-
-قرارداد Amount بر اساس Decimal است.
-
-## User Settings
-
-باید تنظیمات کاربر برای:
-
-* ارقام فارسی/لاتین
-* اعشار per-entity
-* separator
-
-در نظر گرفته شود.
-
-## Financial Display
-
-الزامی:
-
-```text
-tabular-nums
-```
-
-سلول مبلغ:
-
-```text
-راست‌چین
-```
-
-عدد منفی:
-
-```text
-قرمز
-```
-
-جمع:
-
-```text
-bold
-```
-
-گردکردن فقط نمایشی.
-
-## Dates
-
-Backend:
-
-```text
-ISO
-```
-
-Frontend display:
-
-```text
-Jalali
-```
-
-کتابخانه:
-
-```text
-OQ-1
-```
-
-محتوای LTR داخل RTL باید:
-
-```html
-<span dir="ltr">
-```
-
-باشد.
-
----
-
-# ۸) DataTable
-
-پایه:
-
-```text
-TanStack Table
-```
-
-با یک wrapper واحد.
-
-## Table Rules
-
-الزامی:
-
-* sticky header
-* در جدول عریض، ستون شرح sticky
-* pagination سمت server
-* sort سمت server
-* sort در URL
-
-## Amount Columns
-
-مبلغ:
-
-```text
-right aligned
-tabular-nums
-```
-
-Footer باید بین این دو تفکیک کند:
-
-```text
-جمع صفحه
-جمع کل
-```
-
-## Row Selection
-
-با شمارنده.
-
-## User Columns
-
-در فاز ۱:
-
-```text
-localStorage
-```
-
-برای تنظیمات ستون‌های per-user.
-
-## Virtualization
-
-اگر همزمان ۱۰۰ ردیف نمایش داده می‌شود:
-
-```text
-virtualization
-```
-
-الزامی است.
-
-## Inline Editing
-
-فقط Draft.
-
-Final فقط read-only.
-
-## Empty States
-
-این دو باید کاملاً متفاوت باشند:
-
-```text
-نتیجه‌ای یافت نشد
-```
-
-و:
-
-```text
-اولین رکورد را بساز
-```
-
----
-
-# ۹) فرم
-
-فرم‌ها:
-
-```text
-zodResolver
-mode: onSubmit
-```
-
-`defaultValues` از API.
-
-بعد از ثبت موفق:
-
-```text
-reset
-```
-
-با response سرور.
-
-## Validation
-
-خطای field زیر همان field.
-
-خطای server به صورت summary بالای فرم با:
-
-```text
-aria-live
-```
-
-اولین فیلد invalid باید خودکار focus شود.
-
-## Dirty Guard
-
-خروج از فرم تغییرکرده باید dirty guard داشته باشد.
-
-## Grid Enter
-
-Enter در grid:
-
-```text
-→ row بعد
-```
-
-Submit فقط:
-
-```text
-Button
-Ctrl+S
-```
-
-## Required
-
-فیلد اجباری:
-
-```text
-*
-aria-required
-```
-
-## After Document Creation
-
-بعد از ثبت سند:
-
-```text
-→ همان سند
-```
-
-باید قابل link باشد.
-
----
-
-# ۱۰) چهار حالت + Error
-
-## Loading
-
-Skeleton باید شکل واقعی محتوا را داشته باشد.
-
-Full-page spinner ممنوع.
-
-## Refetch
-
-Refetch نباید باعث layout shift شود.
-
-## Empty
-
-Empty باید CTA داشته باشد.
-
-## Error
-
-Error باید شامل:
-
-* پیام معنایی
-* Retry
-* کد خطا در details
-
-باشد.
-
-## ErrorBoundary
-
-در سطح page.
-
-Crash یک page نباید کل application را از کار بیندازد.
-
-## 403
-
-پیام:
-
-```text
-دسترسی لازم را ندارید
-```
-
-به همراه مسیر بازگشت.
-
-## Session Expiry
-
-با:
-
-```text
-هشدار
-تمدید
-```
-
-مدیریت شود.
-
----
-
-# ۱۱) تأییدها و عملیات حساس
-
-برای عملیات زیر `ConfirmDialog` الزامی است:
-
-```text
-Delete
-Posting
-Reversal
-Void
-Period Closing
-```
-
-## Irreversible Financial Operations
-
-باید:
-
-1. دلیل اجباری
-2. نمایش اثر عملیات
-3. تأیید نهایی
-
-داشته باشند.
-
-مثال:
-
-```text
-سند ۱۴۰۴-۰۰۱۰ معکوس می‌شود؛ سند معکوس ۱۴۰۴-۰۰۱۰R ایجاد خواهد شد
-```
-
-## Unauthorized Capability
-
-قاعده فعلی:
-
-```text
-disable + tooltip
-```
-
-و مرتبط با:
-
-```text
-OQ-5
-```
-
----
-
-# ۱۲) Notification
-
-Toastها:
-
-```text
-success
-error
-info
-```
-
-باید RTL باشند.
-
-حداکثر:
-
-```text
-3
-```
-
-toast همزمان.
-
-Action اختیاری است.
-
-## Conflict
-
-خطای جدی Conflict باید:
-
-```text
-toast
-+
-inline message
-```
-
-در همان صفحه داشته باشد.
-
----
-
-# ۱۳) Accessibility
-
-HTML معنایی.
-
-Dialog:
-
-```text
-focus trap
-Escape
-focus restoration
-```
-
-الزامی.
-
-همه inputها label داشته باشند.
-
-خطای async با:
-
-```text
-aria-live
-```
-
-اعلام شود.
-
-Contrast:
-
-```text
-AA
-```
-
-Focus:
-
-```text
-focus-visible
-```
-
-## Keyboard Shortcuts
-
-با registry مرکزی.
-
-قابل کشف از طریق:
-
-```text
-؟
-```
-
-میانبرها:
-
-```text
-Ctrl K → جست‌وجو
-Alt N → سند جدید
-Ctrl S → ذخیره
-```
-
----
-
-# ۱۴) Performance
-
-## Font
-
-فونت:
-
-```text
-Vazirmatn
-```
-
-باید self-host شود.
-
-با Persian subset.
-
-CDN خارجی قابل اتکا نیست.
-
-## Code Splitting
-
-Route-level code splitting.
-
-هر route باید lazy باشد.
-
-## Budgets
-
-بودجه:
-
-```text
-Initial route JS ≤ ~250KB gzip
-LCP ≤ 2.5s
-Page switch perceived ≤ 300ms
-```
-
-## Libraries
-
-کتابخانه جدید:
-
-```text
-حجم بررسی شود
-+
-ADR
-```
-
-نمودارها فقط lazy.
-
-## Images / Icons
-
-Bitmap بدون نیاز ممنوع.
-
-برای icon:
-
-```text
-SVG / sprite
-```
-
----
-
-# ۱۵) امنیت فرانت
-
-## dangerouslySetInnerHTML
-
-مطلقاً ممنوع.
-
-استثنا فقط:
-
-```text
-central sanitizer
-+
-ADR
-```
-
-## URL Parameters
-
-URL parameter غیرقابل اعتماد است.
-
-ساخت لینک فقط با:
-
-```text
-URLSearchParams
-```
-
-استفاده از raw href ممنوع.
-
-## localStorage
-
-Whitelist فقط:
-
-```text
-theme
-density
-column settings
-```
-
-Token و business data مطلقاً ممنوع.
-
-Transport token:
-
-```text
-OQ-7
-```
-
-Draft سند فقط:
-
-```text
-memory
-sessionStorage
-```
-
-و آن هم با تصمیم آگاهانه.
-
-## Secrets
-
-هیچ Secret نباید در bundle باشد.
-
-کلید سرویس‌های cloud فقط سمت Backend.
-
-## Dependencies
-
-`lockfile` باید commit شود.
-
-در CI:
-
-```text
-npm audit
-```
-
-و:
-
-```text
-high = fail
-```
-
-هر library جدید همیشه ADR می‌خواهد.
-
----
-
-# ۱۶) تست
-
-Testing Trophy:
-
-```text
-Integration
->
-Unit
->
-E2E
-```
-
-اولویت:
-
-### Integration
-
-Component + MSW
-
-### Unit
-
-Formatter / Hook / Schema
-
-### E2E
-
-مسیرهای حیاتی.
-
-## Implementation Detail Tests
-
-ممنوع.
-
-از جمله:
-
-* snapshot جزئیات implementation
-* assert روی internal state
-
-فقط رفتار قابل مشاهده کاربر تست شود.
-
-## data-testid
-
-نام معنایی و پایدار:
-
-```text
-data-testid="doc-row"
-data-testid="posting-submit"
-```
-
-مقدار تصادفی ممنوع.
-
-## Vitest
-
-برای:
-
-```text
-formatters
-schemas
-```
-
-## Testing Library + MSW
-
-برای domain components.
-
-## Playwright E2E
-
-مسیر حیاتی:
-
-```text
-login
-→ ثبت سند
-→ posting
-→ reversal
-→ گزارش
-```
-
-## CI
-
-باید از صفر اجرا شود:
-
-```text
-typecheck
-lint
-test
-build
-```
-
----
-
-# ۱۷) قواعد ماشینی — Rule as Code
-
-ابزارها:
-
-```text
-ESLint flat config
-typescript-eslint strict
-react-hooks
-jsx-a11y
-import plugin
-```
-
-## Required Gates
-
-| ممنوعیت                                                      | Gate                                         |
-| ------------------------------------------------------------ | -------------------------------------------- |
-| `any`                                                        | `@typescript-eslint/no-explicit-any = error` |
-| cycle بین ماژول‌ها                                           | `import/no-cycle = error`                    |
-| deps ناقص hook                                               | `react-hooks/exhaustive-deps = error`        |
-| a11y                                                         | `jsx-a11y = error`                           |
-| کلاس‌های جهت‌دار non-logical                                 | grep در CI روی فایل‌های تغییرکرده            |
-| hex/rgb مستقیم                                               | grep در CI + مرجع token                      |
-| `toLocaleString` / فرمت دستی خارج از `src/shared/lib/format` | grep در CI                                   |
-| رشتۀ فارسی در JSX                                            | grep در CI، فایل‌های i18n مستثنی             |
-| ترتیب import                                                 | `eslint-plugin-import`                       |
-| ترتیب کلاس‌های Tailwind                                      | `prettier-plugin-tailwindcss`                |
-
-هدف:
-
-خروجی بازبینی انسانی باید روی **منطق و دامنه** متمرکز باشد، نه خطاهایی که ماشین می‌تواند بگیرد.
-
----
-
-# ۱۸) Git و PR
-
-## Conventional Commits
-
-الزامی:
-
-```text
-feat|fix|docs|refactor|test|chore(scope): خلاصه
-```
-
-## Branch
-
-الگو:
-
-```text
-feat/task-NN-…
-fix/…
-docs/…
-```
-
-هرگز روی `main` کار نشود.
-
-## PR Size
-
-هدف:
-
-```text
-≤ ~400 lines changed
-```
-
-بزرگ‌تر از این مقدار = تقسیم تسک.
-
-## PR Template
-
-باید شامل:
-
-* لینک task
-* DoD checklist
-* screenshot چهار حالت
-* test evidence
-
-باشد.
-
-## Self Review
-
-Agent قبل از submit باید diff خودش را یک‌بار کامل بخواند و موارد آشکار را اصلاح کند.
-
-## Review Iteration
-
-هنگام بازبینی:
-
-```text
-new commit
-```
-
-به force-push ترجیح داده شود.
-
----
-
-# ۱۹) i18n و لحن فارسی
-
-کلیدها باید معنادار باشند.
-
-لحن:
-
-```text
-رسمی-ساده
-```
-
-خطاب:
-
-```text
-شما
-```
-
-## Error Formula
-
-خطا باید بگوید:
-
-```text
-چه شد
-+
-چه کنید
-```
-
-مثال:
-
-```text
-مانده قابل تخصیص کافی نیست — مبلغ کمتر از ۲٬۵۰۰٬۰۰۰ وارد کنید
-```
-
-## Financial Numbers
-
-عدد مالی در جمله همیشه با formatter نمایش داده شود.
-
----
-
-# ۲۰) Definition of Done — هر تسک UI
-
-هر UI task فقط زمانی Done است که:
-
-* چهار حالت داشته باشد.
-* screenshot هر چهار حالت در report موجود باشد.
-* responsive در `1280px` بررسی شده باشد.
-* keyboard کامل کار کند.
-* صفر فرمت دستی وجود داشته باشد.
-* صفر `console error/warn` وجود داشته باشد.
-* صفر `any` جدید وجود داشته باشد.
-* تمام requestها error state داشته باشند.
-* mutation دابل‌ارسال نداشته باشد.
-* grepهای بخش ۱۷ خالی باشند.
-* `import/no-cycle` پاک باشد.
-* typecheck سبز باشد.
-* lint سبز باشد.
-* test سبز باشد.
-* build سبز باشد.
-* PR template کامل باشد.
-* لینک task وجود داشته باشد.
-* test evidence وجود داشته باشد.
-* self-review انجام شده باشد.
-
----
-
-# ۲۱) Open Questions — نیازمند تصمیم مالک → ADR
-
-این موارد در زمان تدوین استاندارد Open Question هستند و نباید بدون تصمیم مالک به صورت خودسرانه تغییر کنند:
-
-### OQ-1 — Jalali DatePicker
-
-انتخاب بین:
-
-```text
-react-multi-date-picker
-```
-
-یا جایگزین مناسب.
-
-### OQ-2 — Dark Mode
-
-```text
-بله
-خیر
-سیستم
-```
-
-### OQ-3 — Default Density
-
-```text
-comfortable
-compact
-```
-
-### OQ-4 — OpenAPI Type Generator
-
-انتخاب بین:
-
-```text
-orval
-openapi-typescript
-```
-
-### OQ-5 — Unauthorized Capability
-
-```text
-disable + tooltip
-hide
-```
-
-### OQ-6 — Device Target
-
-```text
-desktop-only
-mobile read-only
-```
-
-### OQ-7 — Token Transport
-
-```text
-httpOnly cookie
-```
-
-یا جایگزین.
-
-تصمیم باید مشترک با Backend باشد.
-
-### OQ-8 — Error Monitoring / Web Vitals
-
-انتخاب بین:
-
-```text
-self-host (GlitchTip)
-```
-
-یا انتقال به مرحله بعد.
-
-### OQ-9 — React Compiler
-
-زمان فعال‌سازی پس از پایدارشدن معماری و frontend.
-
----
-
-# Changelog
-
-## ۲.۱
-
-افزوده‌شده:
-
-* React craft — بخش ۳
-* TypeScript discipline
-* DocStatus
-* Branded IDs
-* Colocation
-* State hygiene
-* Race / Abort / debounce
-* ممنوعیت auto-retry mutation
-* Frontend security
-* Testing Trophy
-* data-testid
-* Rule-as-Code
-* CI gates
-* Git/PR
-* self-review
-* اصول ۱۱ و ۱۲
-* OQ-8
-* OQ-9
-* ارتقای DoD
-
-## ۲.۰
-
-نگارش کامل اولیه.
-
----
+اصول بنیادین (۱۲)
+۱. چگالی بر تزئین: جدول‌ها ۳۰–۴۰ ردیف در صفحه؛ کارت تزئینی و فضای مرده ممنوع.۲. الگو واحد: هر چیز تکرارشونده یک الگو؛ صفحۀ جدید = ترکیب الگوها؛ الگوی جدید = تسک مستقل.۳. فرمت مرکزی: هیچ عدد/تاریخی بدون فرمتر مرکزی؛ toLocaleString پراکنده و concat دستی ممنوع.۴. RTL فقط با logical properties: ms-, me-, ps-, pe-, start-, end- الزامی؛ ml-, mr-, pl-, pr-, left-, right- ممنوع.۵. چهار حالت همیشه: loading / empty / error / success.۶. رنگ فقط توکن semantic: hex/rgb مستقیم ممنوع.۷. متن فقط از i18n: رشتۀ فارسی inline در JSX ممنوع.۸. سرعت قرارداد است: بودجه‌های بخش ۱۴ الزامی؛ فونت self-host.۹. دسترس‌پذیری الزامی: بخش ۱۳ حداقل است، نه اختیاری.۱۰. امنیت واقعی در بکند: چک permission در UI فقط UX است.۱۱. کامپوزیشن به‌جای تکرار: منطق در hooks/سرویس، رندر در کامپوننت؛ prop drilling عمیق با کامپوزیشن حل می‌شود نه Context همه‌جا.۱۲. قاعده = کد اجرایی: ممنوعیت‌ها تا حد ممکن با lint/CI گرفته می‌شوند.
+
+۲) معماری کد
+feature-based، آینۀ Vertical Slice بکند: src/app · src/shared (ui, lib, api) · src/features/ (api, components, pages, i18n, schema)
+feature → shared مجاز؛ feature → feature ممنوع (آینۀ مرزبندی ماژول‌های بکند).
+Path aliases: @/shared و @/features/.
+Colocation: هر چیز فقط در نزدیک‌ترین محل استفاده؛ مشترک‌شدن از دو feature = انتقال به shared.
+Import cycle ممنوع (import/no-cycle = error).
+تایپ API فقط از OpenAPI تولید می‌شود؛ تایپ دستیِ response ممنوع؛ دستکاری تایپ generated برای پنهان‌کردن ناسازگاری ممنوع — ناسازگاری باید در قرارداد بکند اصلاح شود.
+فایل/کامپوننت: یک کامپوننت در هر فایل؛ نام فایل = نام کامپوننت؛ حد راهنما ~۲۵۰ خط؛ بیشتر = استخراج hook/زیرکامپوننت.
+Export: shared/ui فقط named export؛ default فقط برای lazy() در سطح route.
+۳) React و طراحی کامپوننت
+کامپوزیشن اول: داده‌ای که بیش از ~۲ سطح می‌گردد → کامپوننت را بازطراحی کن (children/slot)؛ Context فقط برای داده واقعاً سراسری.
+منطق خارج از کامپوننت: محاسبه/واکشی/چانگِ فرمت در hook یا lib؛ کامپوننت فقط رندر و رخداد.
+Derived state: داده مشتق در رندر محاسبه می‌شود؛ الگوی «محاسبه در render سپس setState در useEffect» ممنوع (باگ و re-render زنجیره‌ای).
+Effects فقط برای همگام‌سازی با دنیای بیرون (شبکه، DOM، subscription). منطق کسب‌وکار در effect ممنوع.
+Keys: برای ردیف‌های داینامیک/قابل‌حذف سند، index ممنوع — فقط ID پایدار؛ وگرنه state فیلدها بین ردیف‌ها جابه‌جا می‌شود (باگ کلاسیک گرید اسناد مالی).
+Custom hook: هنگام تکرار منطق یا کامپوننت سنگین؛ نام use\*؛ خروجی تایپ‌دار.
+memo/useCallback فقط با دلیل (پروفایل یا عبور به فرزند memoized)؛ میکرو-بهینه‌سازی کور ممنوع.
+forwardRef فقط در primitives لایه shared/ui.
+React Compiler: OQ-9.
+۴) TypeScript
+strict همیشه؛ any ممنوع؛ داده نامعلوم = unknown + narrowing.
+اتحادیۀ متمایز برای وضعیت سند:type DocStatus = | { kind: "draft" } | { kind: "temporary" } | { kind: "final" } | { kind: "reversed"; reversedBy: DocId };رندر/اجازۀ عملیات با exhaustive switch؛ حالت unreachable با assertNever —«سند Final با دکمۀ ویرایش» در کامپایل غیرممکن می‌شود، نه در تست.
+IDهای برندگذاری‌شده: DocId/AccountId/OrgId به‌صورت برند روی string —پاس‌دادن DocId به‌جای AccountId خطای کامپایل می‌شود (پیشگیری از خطای مرزی سازمان/موجودیت).
+enum ممنوع؛ const object + union.
+satisfies برای آبجکت‌های config؛ type assertion (as) فقط interop با کد ثالث + کامنت دلیل.
+تایپ تکراری با Zod: schema = منبع، تایپ با z.infer مشتق می‌شود (یک منبع حقیقت برای validation و type).
+۵) مدیریت وضعیت — سه‌گانه و بسته
+نوع وضعیت ابزار الزام
+Server state TanStack Query fetch مستقیم axios در کامپوننت ممنوع
+URL state Router search params فیلتر/صفحه/sort لیست‌ها در URL
+Form state RHF + Zod فقط RHF
+UI موضعی useState/useContext آخرین گزینه
+State colocation: state در نزدیک‌ترین نقطه مصرف؛ بالا‌بردن فقط برای اشتراک واقعی.
+بدون دوباره‌سازی state مشتق: یک داده = یک منبع؛ کپی و همگام‌سازی دستی ممنوع.
+Zustand/Redux ممنوع؛ کتابخانه state جدید = ADR.
+refetchOnWindowFocus: پیش‌فرض خاموش (در فرم‌های مالی، رفرش غافلگیرانه ممنوع)؛ per-query برای گزارش‌ها فعال‌سازی آگاهانه.
+۶) لایه API و همزمانی
+axios واحد + interceptor: 401 → login با حفظ مقصد؛ نگاشت کد خطا به پیام فارسی.
+queryOptions factory per-entity؛ queryKey: [ماژول, entity, پارامترها].
+invalidation هدفمند بعد از mutation؛ پاک‌کردن کل کش ممنوع.
+staleTime پیش‌فرض: داده پایه ۵ دقیقه · لیست عملیاتی ۳۰ ثانیه · پس از mutation همان entity، invalidate فوری.
+Race: واکشی وابسته به پارامتر متغیر = AbortController (signal) + latest-wins؛ جست‌وجو debounce ~۳۰۰ms با util مرکزی.
+Retry: فقط GET، حداکثر ۲، exponential. auto-retry برای mutation مطلقاً ممنوع —retry دستی کاربر با همان operationKey (قرارداد Idempotency بکند).
+Optimistic update برای عملیات مالی ممنوع (Posting، Reversal، تخصیص، بستن دوره)؛ UI پس از تأیید سرور.
+هر درخواست حالت خطا دارد؛ دکمۀ mutation حین ارسال disabled.
+۷) اعداد و تاریخ
+formatMoney(value: string) · formatQuantity · formatPercent — ورودی number برای مبلغ = خطا (قرارداد Decimal).
+تنظیمات کاربر: ارقام فارسی/لاتین، اعشار per-entity، جداکننده.
+tabular-nums · راست‌چین سلول مبلغ · منفی قرمز · جمع bold · گردکردن فقط نمایشی.
+بکند ISO؛ نمایش شمسی (کتابخانه: OQ-1)؛ محتوای LTR داخل RTL با span dir="ltr".
+۸) DataTable
+پایه: TanStack Table + wrapper واحد.
+
+sticky header (+ ستون شرح در جدول عریض) · pagination و sort سمت سرور · sort در URL.
+ستون مبلغ: راست‌چین tabular-nums؛ tfoot با تفکیک «جمع صفحه» و «جمع کل».
+انتخاب ردیف با شمارنده؛ ستون‌های per-user (فاز ۱ localStorage).
+۱۰۰ ردیف همزمان = virtualization.
+inline edit فقط پیش‌نویس؛ قطعی فقط مشاهده.
+دو empty متمایز: «نتیجه‌ای یافت نشد» ≠ «اولین رکورد را بساز».
+۹) فرم
+zodResolver + mode: onSubmit؛ defaultValues از داده API؛ پس از ثبت موفق reset با پاسخ سرور.
+خطا زیر فیلد؛ خطای سرور: خلاصه بالای فرم با aria-live؛ focus خودکار اولین فیلد نامعتبر.
+Dirty guard برای خروج از فرم تغییرکرده.
+Enter در گرید ردیف‌ها = ردیف بعدی؛ submit فقط دکمه/Ctrl+S.
+اجباری: ستاره + aria-required؛ پس از ثبت سند: هدایت به همان سند (لینک‌پذیر).
+۱۰) چهار حالت + خطا
+Skeleton با شکل واقعی محتوا؛ spinner تمام‌صفحه ممنوع.
+Refetch بدون جابه‌جایی layout.
+Empty با CTA؛ Error با پیام معنایی + تلاش دوباره + کد خطا در details.
+ErrorBoundary سطح page؛ crash یک صفحه کل اپ را نمی‌اندازد.
+403: «دسترسی لازم را ندارید» + مسیر بازگشت؛ انقضای نشست با هشدار و تمدید.
+۱۱) تأییدها و عملیات حساس
+ConfirmDialog: حذف، Posting، Reversal، Void، بستن دوره.
+غیرقابل‌برگشت مالی: ورود اجباری دلیل + نمایش اثر پیش از تأیید («سند ۱۴۰۴-۰۰۱۰ معکوس می‌شود؛ سند معکوس ۱۴۰۴-۰۰۱۰R ایجاد خواهد شد»).
+بی‌مجوز: disable + tooltip (OQ-5).
+۱۲) Notification
+Toast: success/error/info، RTL، حداکثر ۳ همزمان، اکشن اختیاری.
+خطای جدی (Conflict): toast + پیام inline همان صفحه.
+۱۳) دسترس‌پذیری
+HTML معنایی؛ Dialog با focus trap + Escape + بازگشت focus.
+label همه inputها؛ اعلام خطای async با aria-live؛ contrast AA؛ focus-visible.
+میان‌برها با رجیستری مرکزی + قابل کشف با «؟»؛ Ctrl K جست‌وجو · Alt N سند جدید · Ctrl S ذخیره.
+۱۴) Performance
+Vazirmatn self-host با subset فارسی (CDN خارجی اتکاپذیر نیست).
+Route-level code splitting؛ هر route lazy.
+بودجه: JS اولیۀ route ≤ ~250KB gzip · LCP ≤ 2.5s · تعویض صفحه ≤ 300ms حس‌شده.
+کتابخانه جدید = بررسی حجم + ADR؛ نمودار فقط lazy.
+تصویر bitmap بدون نیاز ممنوع؛ آیکون SVG/sprite.
+۱۵) امنیت فرانت
+dangerouslySetInnerHTML ممنوع. استثنا فقط با sanitizer مرکزی + ADR.
+URL param نامعتبر است؛ ساخت لینک فقط با URLSearchParams؛ never در href خام.
+لیست سفید localStorage: theme، density، تنظیمات ستون. توکن و داده کسب‌وکار مطلقاً ممنوع(transport توکن: OQ-7). پیش‌نویس سند: فقط در حافظه/sessionStorage با تصمیم آگاهانه.
+Secret در bundle وجود ندارد — کلید هر سرویس ابری فقط سمت بکند.
+وابستگی: lockfile commit؛ npm audit در CI (high = fail)؛ کتابخانه جدید همیشه ADR.
+۱۶) تست
+Testing Trophy: اولویت integration (کامپوننت + MSW) > unit (فرمتر/hook/schema) > E2E.
+تست داخلیِ پیاده‌سازی (snapshot جزئیات، assert روی state داخلی) ممنوع؛ فقط رفتار قابل مشاهده کاربر.
+data-testid با نام معنایی پایدار (data-testid="doc-row"، "posting-submit")؛ بدون مقدار تصادفی.
+Vitest: فرمترها و schemaها؛ Testing Library + MSW: کامپوننت‌های دامنه؛Playwright E2E مسیر حیاتی: login → ثبت سند → posting → reversal → گزارش.
+CI: typecheck + lint + test + build از صفر.
+۱۷) قواعد ماشینی — Rule as Code
+ابزار: ESLint (flat config) + typescript-eslint strict + react-hooks + jsx-a11y + import plugin.
+
+ممنوعیت این سند gate
+any @typescript-eslint/no-explicit-any = error
+cycle بین ماژول‌ها import/no-cycle = error
+deps ناقص hook react-hooks/exhaustive-deps = error
+a11y jsx-a11y = error
+کلاس‌های جهت‌دار non-logical grep در CI روی فایل‌های تغییرکرده
+hex/rgb مستقیم grep در CI + مرجع توکن
+toLocaleString/فرمت دستی خارج src/shared/lib/format grep در CI
+رشتۀ فارسی در JSX grep در CI (فایل‌های i18n مستثنی)
+ترتیب import eslint-plugin-import
+prettier-plugin-tailwindcss برای ترتیب کلاس‌ها.
+هدف: خروجی بازبینی انسانی به منطق و دامنه برسد، نه خطاهای قابل ماشین.
+۱۸) Git و PR
+Conventional commits: feat|fix|docs|refactor|test|chore(scope): خلاصه.
+Branch: feat/task-NN-… · fix/… · docs/… (هرگز روی main).
+PR هدف ≤ ~۴۰۰ خط تغییر؛ بزرگ‌تر = تقسیم تسک.
+قالب PR: لینک تسک + چک‌لیست DoD + اسکرین‌شات چهار حالت + شواهد تست.
+Self-review: Agent قبل از submit، diff خودش را یک‌بار کامل می‌خواند و موارد آشکار را اصلاح می‌کند.
+حین بازبینی: commit جدید ترجیح دارد بر force-push.
+۱۹) i18n و لحن فارسی
+کلید معنادار؛ لحن رسمی-ساده، خطاب «شما»؛فرمول خطا: چه شد + چه کنید («مانده قابل تخصیص کافی نیست — مبلغ کمتر از ۲٬۵۰۰٬۰۰۰ وارد کنید»).
+عدد مالی در جمله: همیشه با فرمتر.
+۲۰) DoD هر تسک UI
+چهار حالت + اسکرین‌شات هر چهار حالت در گزارش
+ریسپانسیو 1280px · کیبورد کامل
+صفر فرمت دستی · صفر console error/warn · صفر any جدید
+همه درخواست‌ها حالت خطا دارند · mutation بدون دابل‌ارسال
+grepهای بخش ۱۷ خالی · import/no-cycle پاک
+typecheck + lint + test + build سبز
+قالب PR کامل (لینک تسک، شواهد، self-review انجام شد)
+۲۱) Open Questions — نیازمند تصمیم مالک (→ ADR)
+DatePicker شمسی: react-multi-date-picker یا جایگزین
+Dark mode: بله/خیر/سیستم
+Density پیش‌فرض: comfortable یا compact
+ابزار تولید تایپ OpenAPI: orval یا openapi-typescript
+قابلیت بی‌مجوز: disable+tooltip یا hide
+تارگت دستگاه: دسکتاپ‌فقط یا موبایل read-only
+Token transport: httpOnly cookie یا جایگزین (تصمیم مشترک با بکند)
+مانیتورینگ خطا و وب‌وایتال: self-host (GlitchTip) یا مرحله بعد
+React Compiler: زمان فعال‌سازی پس از پایداری
+Changelog
+۲.۱ — افزودن روش ساخت: React craft (بخش ۳)، انضباط TypeScript و DocStatus/ID برندگذاری‌شده (۴)，colocation و state hygiene (۵)، Race/Abort/debounce و ممنوعیت auto-retry mutation (۶)，امنیت فرانت (۱۵)، Testing Trophy و data-testid (۱۶)، Rule-as-Code و gateهای CI (۱۷)،Git/PR و self-review (۱۸)، اصول ۱۱ و ۱۲، OQ-8 و OQ-9، ارتقای DoD.
+۲.۰ — نگارش کامل اولیه.-------- END FILE CONTENT --------
+==================================================STEP 2 — AGENTS.md
+If AGENTS.md exists: append (skip if an identical section already exists):
+
+Frontend
+پیش از هر کار UI: docs/frontend/standards.md را کامل بخوان و به آن پایبند بمان.
+کامپوننت‌های لایه پایه و الگوهای صفحه در src/shared؛ صفحۀ جدید فقط با ترکیب الگوها.
+قواعد بخش ۱۷ (Rule as Code) در CI گرفته می‌شوند؛ قاعدۀ قراردادی نقض‌شده در بازبینی = CHANGES REQUIRED.
+If not exists: create it with the block above plus a header line:"# Vardena — دستورالعمل ایجنت (نسخه اولیه؛ تکمیل با پروتکل اصلی پروژه)"
+
+==================================================STEP 3 — STATE.md
+Update STATE.md (preserve all existing content):
+
+Open Questions: replace the previous 7 UI items with the 9 items of section ۲۱ (prefix "UI:").
+Task entry:
+Task: docs/frontend-standards (v2.1)
+Status: ACCEPTED-PENDING-OWNER
+Owner Behavioral Verification: PENDING
+Report the full updated STATE.md content.
+==================================================STEP 4 — SAFETY LIMITS
+You must NOT: modify application source code, add dependencies, change build/lint config,modify Prisma schema, create migrations, alter ADRs, or expand the standards contentbeyond what is specified. Only the three files above may change.
+
+==================================================STEP 5 — VALIDATION & REPORT
+git status → only intended files staged.
+Verify docs/frontend/standards.md is valid Markdown (headings, tables, checkboxes intact)and contains sections ۰ through ۲۱ plus Changelog with version 2.1.
+Confirm no source files changed.
+Any failure → do not commit; Result: Blocked with findings.
+Commit message: "docs: upgrade frontend standards to v2.1 (craft, types, rule-as-code)"
+Report: Result / Branch / Files created-modified with purpose / Validation commands andoutputs / Important findings / Next recommended step (resolve OQ 1-3, then UI-1 brief).
 
 # END OF OFFICIAL FRONTEND STANDARDS v2.1
 
