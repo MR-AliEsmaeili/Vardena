@@ -177,9 +177,50 @@ describe('licensing bootstrap stage', () => {
     // L-02: a fresh installation has an identity but no license. That is a
     // distinct state from "the license stopped being valid", and the screen
     // must name the installation id the operator has to quote.
+    //
+    // BEHAVIOR CHANGE (frontend license activation slice): a session that
+    // holds `Licensing.License.Activate` — as this one does — is now offered
+    // the activation step itself instead of a terminal explainer, so the
+    // assertion moved from the explainer title to the activation surface.
+    // Everything the original test protected is still asserted: the
+    // installation id is on screen, the state is never reported as a
+    // permission problem, and the workspace stays closed.
     vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
       userId: testUser.id,
       permissions: ['Licensing.License.Activate'],
+    });
+    vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
+      testUnlicensedLicenseState,
+    );
+
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+
+    const main = await screen.findByRole('main');
+    expect(
+      await within(main).findByText(t.license.activateTitle),
+    ).toBeInTheDocument();
+    expect(
+      within(main).getByText(
+        testUnlicensedLicenseState.installationId ?? 'missing',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(main).queryByText(t.license.inactiveTitle),
+    ).not.toBeInTheDocument();
+    expect(
+      within(main).queryByText(t.permissions.forbiddenTitle),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: t.dashboard.title }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps the terminal explainer for a never-licensed installation the session may not activate', async () => {
+    // The same backend state, without `Licensing.License.Activate`: the
+    // original explainer — including the installation id — is unchanged.
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [],
     });
     vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
       testUnlicensedLicenseState,
@@ -200,6 +241,9 @@ describe('licensing bootstrap stage', () => {
           ),
       ),
     ).toBeInTheDocument();
+    expect(
+      within(main).queryByText(t.license.activateTitle),
+    ).not.toBeInTheDocument();
     expect(
       within(main).queryByText(t.license.inactiveTitle),
     ).not.toBeInTheDocument();

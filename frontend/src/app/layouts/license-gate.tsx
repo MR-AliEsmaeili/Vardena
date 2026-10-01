@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
+import { LicenseActivationForm } from '@/features/licensing/license-activation-form';
 import { useLicenseState } from '@/features/licensing/use-license-state';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
+import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import {
@@ -22,8 +25,10 @@ import {
  * replace them entirely:
  *
  * - `loading` — the read is in flight: no organization UI, no workspace;
- * - `inactive` — the backend evaluated the license as not active: a license
- *   explainer, deliberately NOT a permission-denied message (an inactive
+ * - `inactive` — the backend evaluated the license as not active: the
+ *   activation step for a session that holds `Licensing.License.Activate`
+ *   (L-02), otherwise the license explainer — deliberately NOT a
+ *   permission-denied message (an inactive
  *   license also empties the effective permission set server-side —
  *   `AuthorizationService.effectivePermissionCodes` → `filterLicensedPermissions`
  *   — so without this stage the user would be told they lack permission when
@@ -37,6 +42,7 @@ import {
  */
 export function LicenseGate({ children }: { children: ReactNode }) {
   const license = useLicenseState();
+  const permissions = usePermissions();
 
   switch (license.status) {
     case 'loading':
@@ -76,6 +82,27 @@ export function LicenseGate({ children }: { children: ReactNode }) {
       const body = unlicensed
         ? t.license.unlicensedBody
         : t.license.inactiveBody;
+
+      // The activation step (L-02). It is offered when the session actually
+      // holds the backend's own activation permission — a UX affordance only
+      // (AR-21): `POST /license/activate` re-authorizes the call, so a
+      // session without the code sees the unchanged explainer instead of a
+      // form that could only ever answer 403. This is NOT a license bypass:
+      // the gate still releases only on a backend-confirmed active license,
+      // for administrators exactly as for anyone else.
+      if (permissions.hasAll([PERMISSIONS.licensing.licenseActivate])) {
+        return (
+          <BootstrapScreen>
+            <div className="space-y-4">
+              <LicenseActivationForm installationId={installationId} />
+              <div className="flex justify-center">
+                <LogoutButton />
+              </div>
+            </div>
+          </BootstrapScreen>
+        );
+      }
+
       return (
         <BootstrapScreen>
           <BlockedState

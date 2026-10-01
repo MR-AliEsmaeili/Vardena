@@ -16,6 +16,20 @@
  * temporary) and `Finalize`/`Reverse` (the lifecycle transitions).
  */
 export const PERMISSIONS = {
+  /**
+   * Installation licensing (`backend/src/modules/licensing/domain/
+   * licensing-permissions.ts`). The single code of the module: it authorizes
+   * `POST /api/v1/license/activate`. Reading the license state needs no
+   * permission at all (authenticated bootstrap self-read, ADR-0030).
+   *
+   * Like every entry here it is a UX check only (AR-21): the backend
+   * re-authorizes activation, and holding an administrative role is NOT a
+   * license bypass — an installation without an active license stays blocked
+   * for every user, administrator or not.
+   */
+  licensing: {
+    licenseActivate: 'Licensing.License.Activate',
+  },
   organization: {
     view: 'Organization.Organization.View',
     create: 'Organization.Organization.Create',
@@ -75,6 +89,7 @@ export const PERMISSIONS = {
 } as const;
 
 export type PermissionCode =
+  | (typeof PERMISSIONS.licensing)[keyof typeof PERMISSIONS.licensing]
   | (typeof PERMISSIONS.organization)[keyof typeof PERMISSIONS.organization]
   | (typeof PERMISSIONS.accounting)[keyof typeof PERMISSIONS.accounting]
   | (typeof PERMISSIONS.inventory)[keyof typeof PERMISSIONS.inventory]
