@@ -20,8 +20,11 @@ The Warehouse implementation was audited at baseline `ee17f41c5022d7185087285361
 
 ## CI evidence
 
-- Run: **PENDING post-push run**
-- Backend job: **PENDING**
-- Relevant groups: Prisma validate/generate, lint, typecheck, format check, unit tests, build, migration deploy, migration rehearsal, live PostgreSQL E2E.
+- Run: [36925825056](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36925825056) — observed while still running
+- Backend job: [110582772553](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36925825056/job/110582772553) — pending at evidence capture
+- Frontend job: [110582772819](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36925825056/job/110582772819) — passed
+- Relevant backend groups: Prisma validate/generate, lint, typecheck, format check, unit tests, build, migration deploy, migration rehearsal, live PostgreSQL E2E — pending backend completion.
+
+CI is not claimed passed: backend remained pending when the evidence file was updated.
 
 No CI result is claimed until the actual post-push GitHub Actions run and job are inspected with `gh`.
