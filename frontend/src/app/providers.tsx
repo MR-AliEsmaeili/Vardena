@@ -13,9 +13,10 @@ export interface AppProvidersProps {
 
 /**
  * Provider composition: query client → session → organization context →
- * toasts. The order matters: the organization context depends on the session
- * and on its effective permissions; the toast channel sits last so every
- * feature under it can announce completed mutations.
+ * toasts. The order matters: the organization context depends on the
+ * session (it fetches `GET /organizations/mine` once authenticated — no
+ * permission check, membership alone decides the result); the toast channel
+ * sits last so every feature under it can announce completed mutations.
  */
 export function AppProviders({ children, queryClient }: AppProvidersProps) {
   const [client] = useState(() => queryClient ?? createQueryClient());

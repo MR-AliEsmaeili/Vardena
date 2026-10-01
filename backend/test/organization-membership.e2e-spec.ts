@@ -99,6 +99,8 @@ describe('Organization membership administration (e2e)', () => {
         raw.findMembership(userId, organizationId),
       hasAnyMember: (organizationId: string) =>
         raw.hasAnyMember(organizationId),
+      listOrganizationIdsForUser: (userId: string) =>
+        raw.listOrganizationIdsForUser(userId),
       listForOrganization: (params: {
         organizationId: string;
         skip: number;

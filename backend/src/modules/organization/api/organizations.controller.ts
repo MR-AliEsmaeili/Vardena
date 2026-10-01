@@ -77,6 +77,34 @@ export class OrganizationsController {
     return this.organizations.listOrganizations(query);
   }
 
+  /**
+   * The organization BOOTSTRAP read (Organization Bootstrap & Context
+   * Foundation task): the organizations the AUTHENTICATED SESSION may use as
+   * its working scope, decided by membership alone.
+   *
+   * Declared before `:id` — Nest matches routes in declaration order, and
+   * `mine` must never be captured as an `:id` path parameter.
+   *
+   * Documented authorization exception (AR-21), the same one
+   * `GET /permissions/effective` and `GET /license/current` already use: no
+   * permission code, because the response is limited to the caller's own
+   * memberships. It is NOT the `Organization.Organization.View`
+   * administration catalog `GET /organizations` above — see
+   * `OrganizationsService.listMyOrganizations`.
+   */
+  @Get('mine')
+  @UseGuards(AuthGuard)
+  @ApiOperation({
+    summary:
+      "The authenticated session's own accessible organizations (bootstrap read).",
+    description:
+      'Organizations the caller holds an active membership of, excluding inactive organizations. No administration permission is required — membership is the authorization.',
+  })
+  @ApiOkResponse({ type: OrganizationResponseDto, isArray: true })
+  async mine(): Promise<OrganizationResponseDto[]> {
+    return this.organizations.listMyOrganizations();
+  }
+
   @Get(':id')
   @UseGuards(AuthGuard, AuthorizationGuard)
   @RequirePermission(ORGANIZATION_PERMISSIONS.VIEW)

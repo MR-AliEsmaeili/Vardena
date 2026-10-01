@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Account } from '@/api/contracts';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { t } from '@/lib/i18n';
-import { paginated, testOrganization, testUser } from '@/test/fixtures';
+import { testOrganization, testUser } from '@/test/fixtures';
 import { renderWithProviders } from '@/test/test-utils';
 import { AccountDetailPage } from './account-detail-page';
 
@@ -15,7 +15,7 @@ vi.mock('@/api/identity.api', () => ({
   getEffectivePermissions: vi.fn(),
 }));
 vi.mock('@/api/organization.api', () => ({
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   MAX_PAGE_SIZE: 500,
 }));
 vi.mock('@/api/accounting.api', () => ({ getAccount: vi.fn() }));
@@ -56,9 +56,9 @@ function renderDetail() {
 
 beforeEach(() => {
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
   vi.mocked(accountingApi.getAccount).mockResolvedValue(postableAccount);
 });
 

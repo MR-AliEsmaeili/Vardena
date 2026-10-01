@@ -18,6 +18,14 @@ export const queryKeys = {
 
   organizations: {
     all: () => ['organization', 'organizations'] as const,
+
+    /**
+     * The organization BOOTSTRAP read (`GET /organizations/mine`) — the
+     * Organization Context's own query key. Session-global, not filtered:
+     * one key for the one call the context ever makes.
+     */
+    mine: () => ['organization', 'organizations', 'mine'] as const,
+
     list: (filters: Record<string, unknown>) =>
       ['organization', 'organizations', 'list', filters] as const,
 

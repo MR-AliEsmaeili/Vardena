@@ -32,7 +32,7 @@ vi.mock('@/api/identity.api', () => ({
   getEffectivePermissions: vi.fn(),
 }));
 vi.mock('@/api/organization.api', () => ({
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   MAX_PAGE_SIZE: 500,
 }));
 vi.mock('@/api/accounting.api', () => ({
@@ -101,9 +101,9 @@ function mockPermissions(permissions: string[]) {
 beforeEach(() => {
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   mockPermissions(allAccountingPermissions);
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
   vi.mocked(accountingApi.listFinancialAreas).mockResolvedValue(
     paginated([testFinancialArea]),
   );
@@ -142,7 +142,10 @@ describe('Documents list — loading, rendering, empty and error states', () => 
     expect(within(table).getByText('1001')).toBeInTheDocument();
     expect(within(table).getByText('2026-04-05')).toBeInTheDocument();
     expect(within(table).getByText(t.documents.stateFinal)).toBeInTheDocument();
-    expect(within(table).getByText(/FIN/)).toBeInTheDocument();
+    // The financial area column resolves from its own query
+    // (`listFinancialAreas`) — `findByText` rather than `getByText` because
+    // it is not guaranteed to land in the same microtask as the document row.
+    expect(await within(table).findByText(/FIN/)).toBeInTheDocument();
   });
 
   it('shows the plain empty state when there is no filter and no data', async () => {

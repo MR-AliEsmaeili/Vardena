@@ -69,10 +69,14 @@ function EmptyOrganizationState() {
  * "around" an unresolved, failed or missing organization scope, and no state
  * may degrade silently:
  *
- * - `loading` / `forbidden` / `error` — explicit explainer above;
+ * - `loading` / `error` — explicit explainer above;
  * - `empty` — the terminal explainer, or the first-organization bootstrap
  *   form when the session can actually use it (see `EmptyOrganizationState`);
  * - `selecting` / `invalid` — the explicit organization selection step.
+ *
+ * There is no `forbidden` state to handle here: the bootstrap read
+ * (`GET /organizations/mine`) requires no administration permission —
+ * membership alone decides the result (AR-21).
  *
  * This gate is reached only through `LicenseGate` (`license-gate.tsx`), i.e.
  * only while the installation license is active.
@@ -82,15 +86,6 @@ export function OrganizationGate() {
 
   if (status === 'loading') {
     return <ResolvingState label={t.organization.resolving} />;
-  }
-
-  if (status === 'forbidden') {
-    return (
-      <BlockedState
-        title={t.organization.errorTitle}
-        description={t.organization.permissionHint}
-      />
-    );
   }
 
   if (status === 'empty') {

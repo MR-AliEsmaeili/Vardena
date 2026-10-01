@@ -5,7 +5,6 @@ import { ApiError } from '@/api/errors';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
-  paginated,
   secondOrganization,
   testOrganization,
   testUser,
@@ -23,7 +22,7 @@ vi.mock('@/api/identity.api', () => ({
 }));
 
 vi.mock('@/api/organization.api', () => ({
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   MAX_PAGE_SIZE: 500,
 }));
 
@@ -69,9 +68,9 @@ beforeEach(() => {
 
 describe('organization context', () => {
   it('uses the single organization the API returns, without a switcher', async () => {
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([testOrganization]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+      testOrganization,
+    ]);
 
     renderWithProviders(<OrganizationProbe />);
 
@@ -87,9 +86,10 @@ describe('organization context', () => {
   });
 
   it('requires an explicit selection while several organizations exist', async () => {
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([testOrganization, secondOrganization]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+      testOrganization,
+      secondOrganization,
+    ]);
 
     renderWithProviders(<OrganizationProbe />);
 
@@ -110,9 +110,10 @@ describe('organization context', () => {
   });
 
   it('keeps radio choices local until Continue confirms the organization', async () => {
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([testOrganization, secondOrganization]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+      testOrganization,
+      secondOrganization,
+    ]);
     const user = userEvent.setup();
 
     renderWithProviders(<OrganizationProbe />);
@@ -156,9 +157,10 @@ describe('organization context', () => {
   });
 
   it('activates the confirmed organization and then allows switching', async () => {
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([testOrganization, secondOrganization]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+      testOrganization,
+      secondOrganization,
+    ]);
     const user = userEvent.setup();
 
     renderWithProviders(<OrganizationProbe />);
@@ -189,9 +191,9 @@ describe('organization context', () => {
   });
 
   it('drops an organization selection that is no longer in the API list', async () => {
-    vi.mocked(organizationApi.listOrganizations)
-      .mockResolvedValueOnce(paginated([testOrganization, secondOrganization]))
-      .mockResolvedValueOnce(paginated([testOrganization]));
+    vi.mocked(organizationApi.listMyOrganizations)
+      .mockResolvedValueOnce([testOrganization, secondOrganization])
+      .mockResolvedValueOnce([testOrganization]);
     const user = userEvent.setup();
 
     renderWithProviders(<OrganizationProbe />);
@@ -214,7 +216,7 @@ describe('organization context', () => {
   });
 
   it('reports an error state when the organization list cannot be fetched', async () => {
-    vi.mocked(organizationApi.listOrganizations).mockRejectedValue(
+    vi.mocked(organizationApi.listMyOrganizations).mockRejectedValue(
       new ApiError({
         code: 'InternalError',
         message: 'x',
@@ -231,28 +233,31 @@ describe('organization context', () => {
     expect(screen.getByTestId('organization-id')).toHaveTextContent('none');
   });
 
-  it('reports a forbidden context and sends no request when the view permission is missing', async () => {
+  it('resolves organizations by membership alone — no RBAC permission is required', async () => {
+    // Organization Bootstrap & Context Foundation: `GET /organizations/mine`
+    // (AR-21) is a membership-based read, not an
+    // `Organization.Organization.View` administration read. A session that
+    // holds NO permission whatsoever must still resolve its organization
+    // scope.
     vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
       userId: testUser.id,
-      permissions: ['Accounting.GeneralLedger.View'],
+      permissions: [],
     });
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([testOrganization]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+      testOrganization,
+    ]);
 
     renderWithProviders(<OrganizationProbe />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('status')).toHaveTextContent('forbidden');
+      expect(screen.getByTestId('status')).toHaveTextContent('ready');
     });
-    expect(screen.getByTestId('organization-id')).toHaveTextContent('none');
-    expect(organizationApi.listOrganizations).not.toHaveBeenCalled();
+    expect(screen.getByTestId('organization-id')).toHaveTextContent('org-1');
+    expect(organizationApi.listMyOrganizations).toHaveBeenCalled();
   });
 
   it('reports an empty context when the API returns no organization', async () => {
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([]);
 
     renderWithProviders(<OrganizationProbe />);
 

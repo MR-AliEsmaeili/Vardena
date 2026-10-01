@@ -30,7 +30,7 @@ vi.mock('@/api/identity.api', () => ({
   getEffectivePermissions: vi.fn(),
 }));
 vi.mock('@/api/organization.api', () => ({
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   getBranch: vi.fn(),
   MAX_PAGE_SIZE: 500,
 }));
@@ -129,9 +129,9 @@ function mockPermissions(permissions: string[]) {
 beforeEach(() => {
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   mockPermissions(allAccountingPermissions);
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
   vi.mocked(accountingApi.listFinancialAreas).mockResolvedValue(
     paginated([testFinancialArea]),
   );

@@ -65,7 +65,7 @@ vi.mock('@/api/organization.api', () => ({
     'updatedAt',
   ],
   PARTY_SORT_FIELDS: ['code', 'displayName', 'createdAt', 'updatedAt'],
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   createOrganization: vi.fn(),
   grantMembership: vi.fn(),
   getOrganization: vi.fn(),
@@ -121,9 +121,9 @@ beforeEach(() => {
   vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
     testActiveLicenseState,
   );
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
   vi.mocked(organizationApi.getOrganization).mockResolvedValue(
     testOrganization,
   );

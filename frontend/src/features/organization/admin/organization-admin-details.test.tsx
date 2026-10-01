@@ -6,7 +6,6 @@ import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { t } from '@/lib/i18n';
 import {
   allOrganizationAdminPermissions,
-  paginated,
   testBranch,
   testDepartment,
   testEmployee,
@@ -34,7 +33,7 @@ vi.mock('@/api/identity.api', () => ({
 
 vi.mock('@/api/organization.api', () => ({
   MAX_PAGE_SIZE: 500,
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   getEmployee: vi.fn(),
   enableEmployee: vi.fn(),
   disableEmployee: vi.fn(),
@@ -63,9 +62,9 @@ beforeEach(() => {
     userId: testUser.id,
     permissions: allOrganizationAdminPermissions,
   });
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
   vi.mocked(organizationApi.getEmployee).mockResolvedValue(testEmployee);
   vi.mocked(organizationApi.getDepartment).mockResolvedValue(testDepartment);
   vi.mocked(organizationApi.getBranch).mockResolvedValue(testBranch);
