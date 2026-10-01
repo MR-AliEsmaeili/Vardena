@@ -439,6 +439,20 @@ export class OrganizationsService {
     const existing = await this.repository.findById(pin);
     if (existing !== null) return { organization: existing, created: false };
 
+    // An installation that has never activated a license provisions nothing:
+    // organizations are a licensed capability (ADR-0030). Bootstrap is
+    // idempotent and reconciling, so the operator activates the license and
+    // re-runs the command — the pinned organization is created then. The
+    // alternative (creating it unlicensed) would be a licensing bypass.
+    if (await this.licensing.isUnlicensed()) {
+      this.logger.warn(
+        'Deployment organization provisioning deferred: the installation is not licensed yet',
+        { organizationId: pin },
+        OrganizationsService.name,
+      );
+      return null;
+    }
+
     const allocation = await this.licensing.organizationAllocation();
     const now = new Date();
     try {

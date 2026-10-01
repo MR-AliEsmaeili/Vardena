@@ -343,15 +343,26 @@ export class AuthenticationService {
   ): void {
     const { cookieName, cookiePath, cookieSecure, cookieSameSite } =
       this.config.auth;
-    // maxAge in milliseconds for `Set-Cookie`. Use the ABSOLUTE expiry cap
-    // for the cookie lifetime; idle expiry is enforced server-side.
-    const maxAgeMs = session.absoluteExpiresAt.getTime() - Date.now();
+    // `res.cookie({ maxAge })` is MILLISECONDS (Express converts it to the
+    // `Max-Age` seconds directive itself). Dividing by 1000 here previously
+    // shortened every session cookie by a factor of 1000 — with the default
+    // 12-hour absolute cap the browser dropped the cookie after ~43 seconds,
+    // so an ordinary working session appeared to log the user out at random
+    // even though the server-side session was still perfectly valid.
+    //
+    // The cookie lifetime is the ABSOLUTE cap; idle expiry stays server-side
+    // (and is slid forward on every authenticated request), so an active user
+    // is never signed out before the cap and an idle one still expires.
+    const maxAgeMs = Math.max(
+      0,
+      session.absoluteExpiresAt.getTime() - Date.now(),
+    );
     res.cookie(cookieName, rawToken, {
       httpOnly: true,
       secure: cookieSecure,
       sameSite: cookieSameSite === 'none' ? 'none' : cookieSameSite,
       path: cookiePath,
-      maxAge: Math.floor(maxAgeMs / 1000),
+      maxAge: maxAgeMs,
       // Do NOT set `domain` unless explicitly configured later: leaving it
       // off defaults to the current host (most-restrictive).
     });

@@ -27,6 +27,7 @@ async function bootstrapSystemAdministrator(): Promise<void> {
     logger.log(
       'System administrator bootstrap complete',
       {
+        installationId: result.installationId,
         userId: result.userId,
         roleId: result.roleId,
         permissionCount: result.permissionCount,

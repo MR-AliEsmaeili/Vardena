@@ -5,12 +5,14 @@ import type { Organization } from '../modules/organization/domain/organization.j
 import { OrganizationMembershipsService } from '../modules/organization/application/organization-memberships.service.js';
 import { OrganizationsService } from '../modules/organization/application/organizations.service.js';
 import { SystemAdministratorRbacService } from '../modules/rbac/application/system-administrator-rbac.service.js';
+import { InstallationIdentityService } from '../modules/licensing/application/installation-identity.service.js';
 import { UsersService } from '../modules/users/application/users.service.js';
 import {
   BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME,
   SystemAdministratorBootstrapService,
 } from './system-administrator-bootstrap.service.js';
 
+const INSTALLATION_ID = '01K6D3Q8GH0K97M5DFYBTZ8V7N';
 const USER_ID = '01K6D3Q8GH0K97M5DFYBTZ8V7P';
 const ROLE_ID = '01K6D3Q8GH0K97M5DFYBTZ8V7Q';
 const ORGANIZATION_ID = '01K6D3Q8GH0K97M5DFYBTZ8V7R';
@@ -87,7 +89,16 @@ function harness(options: {
         : options.organization,
     );
   const grantMembership = options.grantMembership ?? vi.fn();
+  const currentInstallation = vi.fn().mockResolvedValue({
+    installationId: INSTALLATION_ID,
+    name: 'Vardena installation',
+    customerId: null,
+    createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  });
   const service = new SystemAdministratorBootstrapService(
+    {
+      current: currentInstallation,
+    } as unknown as InstallationIdentityService,
     { findByUsername, createUser } as unknown as UsersService,
     { ensureForUser } as unknown as SystemAdministratorRbacService,
     { ensureDeploymentOrganization } as unknown as OrganizationsService,
@@ -108,6 +119,7 @@ describe('SystemAdministratorBootstrapService', () => {
     const h = harness({});
 
     await expect(h.service.run()).resolves.toEqual({
+      installationId: INSTALLATION_ID,
       userId: USER_ID,
       roleId: ROLE_ID,
       permissionCount: 131,
@@ -241,6 +253,14 @@ describe('SystemAdministratorBootstrapService', () => {
       userRoleCreated: false,
     });
     const service = new SystemAdministratorBootstrapService(
+      {
+        current: vi.fn().mockResolvedValue({
+          installationId: INSTALLATION_ID,
+          name: 'Vardena installation',
+          customerId: null,
+          createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        }),
+      } as unknown as InstallationIdentityService,
       { findByUsername, createUser } as unknown as UsersService,
       { ensureForUser } as unknown as SystemAdministratorRbacService,
       {
@@ -250,6 +270,7 @@ describe('SystemAdministratorBootstrapService', () => {
     );
 
     await expect(service.run()).resolves.toMatchObject({
+      installationId: INSTALLATION_ID,
       userId: USER_ID,
       userCreated: false,
     });

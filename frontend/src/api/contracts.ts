@@ -93,11 +93,21 @@ export interface LicenseEntitlement {
   code: string;
 }
 
+/**
+ * `UNLICENSED` is not a license lifecycle value: it is an installation that
+ * has never activated one (L-02). Every license-derived field is therefore
+ * nullable, while `installationId` is reported even when unlicensed — it is
+ * the value an operator quotes to obtain a license for this installation.
+ */
 export interface LicenseState {
-  status: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED';
+  licensed: boolean;
+  status: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED' | 'UNLICENSED';
   active: boolean;
-  inactiveReason: 'status' | 'not-yet-valid' | 'expired' | null;
-  validFrom: string;
+  inactiveReason: 'unlicensed' | 'status' | 'not-yet-valid' | 'expired' | null;
+  installationId: string | null;
+  customerId: string | null;
+  licenseId: string | null;
+  validFrom: string | null;
   validUntil: string | null;
   organizationLimit: number | null;
   userLimit: number | null;

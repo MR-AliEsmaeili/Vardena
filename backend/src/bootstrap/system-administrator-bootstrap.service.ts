@@ -3,6 +3,7 @@ import { AppException } from '../kernel/errors/app-exception.js';
 import { OrganizationMembershipsService } from '../modules/organization/application/organization-memberships.service.js';
 import { OrganizationsService } from '../modules/organization/application/organizations.service.js';
 import { SystemAdministratorRbacService } from '../modules/rbac/application/system-administrator-rbac.service.js';
+import { InstallationIdentityService } from '../modules/licensing/application/installation-identity.service.js';
 import { UsersService } from '../modules/users/application/users.service.js';
 
 export const BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME = 'مدیر';
@@ -13,6 +14,8 @@ export const BOOTSTRAP_SYSTEM_ADMINISTRATOR_USERNAME = 'مدیر';
 const BOOTSTRAP_SYSTEM_ADMINISTRATOR_INITIAL_PASSWORD = '1';
 
 export interface SystemAdministratorBootstrapResult {
+  /** The installation identity this deployment runs as (L-02). */
+  installationId: string;
   userId: string;
   roleId: string;
   permissionCount: number;
@@ -42,6 +45,7 @@ export interface SystemAdministratorBootstrapResult {
 @Injectable()
 export class SystemAdministratorBootstrapService {
   constructor(
+    private readonly installation: InstallationIdentityService,
     private readonly users: UsersService,
     private readonly rbac: SystemAdministratorRbacService,
     private readonly organizations: OrganizationsService,
@@ -49,10 +53,20 @@ export class SystemAdministratorBootstrapService {
   ) {}
 
   async run(): Promise<SystemAdministratorBootstrapResult> {
+    // The installation identity is provisioned first and exactly once: every
+    // later start loads the same row, and a license can only be bound to an
+    // installation that already exists (L-02). It is independent of the
+    // administrator — replacing the bootstrap user never changes it.
+    const installation = await this.installation.current();
     const user = await this.ensureUser();
     const rbac = await this.rbac.ensureForUser(user.userId);
     const organization = await this.ensureDeploymentMembership(user.userId);
-    return { ...user, ...rbac, ...organization };
+    return {
+      installationId: installation.installationId,
+      ...user,
+      ...rbac,
+      ...organization,
+    };
   }
 
   private async ensureUser(): Promise<{

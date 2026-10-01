@@ -11,6 +11,7 @@ import {
   paginated,
   testActiveLicenseState,
   testInactiveLicenseState,
+  testUnlicensedLicenseState,
   testOrganization,
   testUser,
 } from '@/test/fixtures';
@@ -172,6 +173,41 @@ describe('licensing bootstrap stage', () => {
     expect(licensingApi.getLicenseState).toHaveBeenCalled();
   });
 
+  it('tells a never-licensed installation how to get licensed', async () => {
+    // L-02: a fresh installation has an identity but no license. That is a
+    // distinct state from "the license stopped being valid", and the screen
+    // must name the installation id the operator has to quote.
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: ['Licensing.License.Activate'],
+    });
+    vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
+      testUnlicensedLicenseState,
+    );
+
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+
+    const main = await screen.findByRole('main');
+    expect(
+      await within(main).findByText(t.license.unlicensedTitle),
+    ).toBeInTheDocument();
+    expect(
+      within(main).getByText(
+        (_content, element) =>
+          element?.textContent?.startsWith(t.license.unlicensedBody) === true &&
+          element.textContent.includes(
+            testUnlicensedLicenseState.installationId ?? 'missing',
+          ),
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(main).queryByText(t.license.inactiveTitle),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: t.dashboard.title }),
+    ).not.toBeInTheDocument();
+  });
+
   it('stops before organization bootstrap when the license is inactive', async () => {
     // The real backend empties the effective permission set while the
     // license is inactive (`AuthorizationService.effectivePermissionCodes` →
@@ -191,7 +227,17 @@ describe('licensing bootstrap stage', () => {
     expect(
       await within(main).findByText(t.license.inactiveTitle),
     ).toBeInTheDocument();
-    expect(within(main).getByText(t.license.inactiveBody)).toBeInTheDocument();
+    // The body carries the licensing explanation plus the installation id an
+    // operator must quote to obtain a license.
+    expect(
+      within(main).getByText(
+        (_content, element) =>
+          element?.textContent?.startsWith(t.license.inactiveBody) === true &&
+          element.textContent.includes(
+            testInactiveLicenseState.installationId ?? 'missing',
+          ),
+      ),
+    ).toBeInTheDocument();
 
     // No organization stage, no organization bootstrap, no workspace.
     expect(
@@ -271,7 +317,9 @@ describe('licensing bootstrap stage', () => {
     // state is never reported as "inactive" or silently treated as active.
     expect(screen.getByText(/corr-license/)).toBeInTheDocument();
     expect(screen.queryByText(t.license.inactiveTitle)).not.toBeInTheDocument();
-    expect(screen.queryByText(t.license.inactiveBody)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(t.license.unlicensedTitle),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('heading', { name: t.dashboard.title }),
     ).not.toBeInTheDocument();

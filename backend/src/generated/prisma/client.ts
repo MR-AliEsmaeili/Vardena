@@ -129,6 +129,14 @@ export interface PrismaClient {
   detailStructureLevel: Delegate;
   /** `accounting.details` — declared in prisma/schema/accounting.prisma. */
   detail: Delegate;
+  /** `licensing.customers` — declared in prisma/schema/licensing.prisma. */
+  licenseCustomer: Delegate;
+  /** `licensing.installations` — declared in prisma/schema/licensing.prisma. */
+  installation: Delegate;
+  /** `licensing.licenses` — declared in prisma/schema/licensing.prisma. */
+  license: Delegate;
+  /** `licensing.license_entitlements` — declared in prisma/schema/licensing.prisma. */
+  licenseEntitlement: Delegate;
 }
 
 const PrismaClientImpl = class {
@@ -281,6 +289,18 @@ const PrismaClientImpl = class {
     return this.delegate;
   }
   get detail(): Delegate {
+    return this.delegate;
+  }
+  get licenseCustomer(): Delegate {
+    return this.delegate;
+  }
+  get installation(): Delegate {
+    return this.delegate;
+  }
+  get license(): Delegate {
+    return this.delegate;
+  }
+  get licenseEntitlement(): Delegate {
     return this.delegate;
   }
 } as unknown as { new (options: { adapter: unknown }): PrismaClient };

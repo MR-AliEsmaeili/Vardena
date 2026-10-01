@@ -39,7 +39,8 @@ describe('loadAppConfig', () => {
       },
       deploymentOrganizationId: null,
       licensing: {
-        provider: 'local-development',
+        provider: 'persistent',
+        signingPublicKeys: [],
         status: 'ACTIVE',
         validFrom: new Date('2020-01-01T00:00:00.000Z'),
         validUntil: null,

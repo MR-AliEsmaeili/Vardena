@@ -6,7 +6,7 @@
  * values; driver errors are driver-formatted and contain no credentials).
  */
 export async function runEntrypoint(
-  name: 'api' | 'worker' | 'system-bootstrap',
+  name: 'api' | 'worker' | 'system-bootstrap' | 'issue-development-license',
   fn: () => Promise<void>,
 ): Promise<void> {
   try {
