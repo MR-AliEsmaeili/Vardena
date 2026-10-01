@@ -21,6 +21,7 @@ import { PasswordService } from '../domain/password.service.js';
 import type { User, UserDto } from '../domain/user.js';
 import { toUserDto } from '../domain/user.js';
 import { USER_PERMISSIONS } from '../domain/user-permissions.js';
+import { LicensingService } from '../../licensing/application/licensing.service.js';
 import {
   USER_CREATED_EVENT,
   USER_DISABLED_EVENT,
@@ -101,6 +102,7 @@ export class UsersService {
     private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
+    private readonly licensing: LicensingService,
   ) {}
 
   // -----------------------------------------------------------------------
@@ -232,19 +234,31 @@ export class UsersService {
     if (existing !== null) {
       throw AppException.conflict('A user with that username already exists.');
     }
+    const createsActiveUser = params.isActive ?? true;
+    const allocation = createsActiveUser
+      ? await this.licensing.activeUserAllocation()
+      : null;
 
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
     const passwordHash = await this.passwordService.hash(params.password);
-    const user = await this.repository.create({
+    const createInput = {
       id: generateId(),
       username,
       passwordHash,
-      isActive: params.isActive ?? true,
+      isActive: createsActiveUser,
       createdAt: now,
       updatedAt: now,
       createdBy: actorId,
-    });
+    };
+    const user =
+      allocation === null
+        ? await this.repository.create(createInput)
+        : await this.repository.createActiveWithinLicenseLimit(
+            createInput,
+            allocation,
+          );
+    if (user === null) this.licensing.throwActiveUserLimitReached();
 
     await this.publish({
       type: USER_CREATED_EVENT,
@@ -355,11 +369,30 @@ export class UsersService {
   /** Re-enable a previously disabled account. */
   async enableUser(userId: string): Promise<UserDto> {
     await this.authorization.requireAllPermissions([USER_PERMISSIONS.ENABLE]);
-    const updated = await this.repository.update(userId, {
-      isActive: true,
+    const existing = await this.repository.findById(userId);
+    if (existing === null || existing.deletedAt !== null) {
+      throw AppException.notFound('User', userId);
+    }
+    const patch = {
+      isActive: true as const,
       updatedAt: new Date(),
       updatedBy: getPrincipal()?.userId ?? null,
-    });
+    };
+    let updated: User | null;
+    if (existing.isActive) {
+      updated = await this.repository.update(userId, patch);
+    } else {
+      const allocation = await this.licensing.activeUserAllocation();
+      const result = await this.repository.enableWithinLicenseLimit(
+        userId,
+        patch,
+        allocation,
+      );
+      if (result.outcome === 'limit-reached') {
+        this.licensing.throwActiveUserLimitReached();
+      }
+      updated = result.outcome === 'updated' ? result.user : null;
+    }
     if (updated === null || updated.deletedAt !== null) {
       throw AppException.notFound('User', userId);
     }

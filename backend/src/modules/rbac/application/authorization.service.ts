@@ -7,6 +7,7 @@ import {
 } from '../../../kernel/correlation/request-context.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { UserRolesRepository } from '../data/user-roles.repository.js';
+import { LicensingService } from '../../licensing/application/licensing.service.js';
 
 /**
  * Authorization service — RBAC's public evaluation surface (ADR-0006,
@@ -39,11 +40,15 @@ export class AuthorizationService {
   constructor(
     private readonly userRoles: UserRolesRepository,
     private readonly logger: JsonLogger,
+    private readonly licensing: LicensingService,
   ) {}
 
   /** Effective permission codes of a user (union over their roles). */
   async effectivePermissionCodes(userId: string): Promise<string[]> {
-    return this.userRoles.listPermissionCodesForUser(userId);
+    const stored = await this.userRoles.listPermissionCodesForUser(userId);
+    // Assignments remain stored; licensing only removes them from the
+    // effective set and they become effective again if entitlement returns.
+    return this.licensing.filterLicensedPermissions(stored);
   }
 
   /** True when the user holds every one of `codes`. */

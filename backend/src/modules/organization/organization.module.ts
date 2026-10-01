@@ -22,6 +22,7 @@ import { DepartmentsController } from './api/departments.controller.js';
 import { EmployeesController } from './api/employees.controller.js';
 import { PartiesController } from './api/parties.controller.js';
 import { OrganizationMembershipsController } from './api/organization-memberships.controller.js';
+import { LicensingModule } from '../licensing/licensing.module.js';
 
 /**
  * Organization module (docs/modules.md §Organization, ADR-0020, ADR-0021).
@@ -49,7 +50,7 @@ import { OrganizationMembershipsController } from './api/organization-membership
  *   `UsersModule`: a composition cycle, not a data cycle.
  */
 @Module({
-  imports: [RbacModule, forwardRef(() => IdentityModule)],
+  imports: [RbacModule, forwardRef(() => IdentityModule), LicensingModule],
   controllers: [
     OrganizationsController,
     BranchesController,

@@ -11,7 +11,7 @@
 
 datasource db {
   provider = "postgresql"
-  schemas  = ["identity", "users", "rbac", "organization", "inventory", "documents", "workflow", "accounting"]
+  schemas  = ["identity", "users", "rbac", "licensing", "organization", "inventory", "documents", "workflow", "accounting"]
 }
 
 generator client {

@@ -4,6 +4,7 @@ import { PermissionsRepository } from '../data/permissions.repository.js';
 import { RolesRepository } from '../data/roles.repository.js';
 import { PermissionRegistry } from './permission-registry.js';
 import { PermissionSyncService } from './permission-sync.service.js';
+import { LicensingService } from '../../licensing/application/licensing.service.js';
 
 export const SYSTEM_ADMINISTRATOR_ROLE_NAME = 'System Administrator';
 
@@ -25,6 +26,7 @@ export class SystemAdministratorRbacService {
     private readonly permissionSync: PermissionSyncService,
     private readonly permissions: PermissionsRepository,
     private readonly roles: RolesRepository,
+    private readonly licensing: LicensingService,
   ) {}
 
   async ensureForUser(userId: string): Promise<{
@@ -40,7 +42,15 @@ export class SystemAdministratorRbacService {
       );
     }
 
-    const definitions = this.registry.all();
+    const registered = this.registry.all();
+    const licensedCodes = new Set(
+      await this.licensing.filterLicensedPermissions(
+        registered.map(({ code }) => code),
+      ),
+    );
+    const definitions = registered.filter(({ code }) =>
+      licensedCodes.has(code),
+    );
     const codes = definitions.map((definition) => definition.code);
     const mirrored = await this.permissions.findByCodes(codes);
     const mirroredByCode = new Map(

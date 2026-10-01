@@ -1,3 +1,4 @@
+import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   DomainEventBus,
@@ -113,6 +114,7 @@ async function buildFixture(
   const authorization = new AuthorizationService(
     rbacStores.userRoles,
     loggerStub(),
+    licensingTestDouble(),
   );
   const organizations = new OrganizationsService(
     masterStores.organizations,
@@ -121,6 +123,7 @@ async function buildFixture(
     loggerStub(),
     bus,
     config,
+    licensingTestDouble(),
   );
   const structures = new CodingStructuresService(
     stores.structures,

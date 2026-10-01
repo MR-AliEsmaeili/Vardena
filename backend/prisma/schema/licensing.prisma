@@ -1,0 +1,88 @@
+// Licensing owns commercial Customer/Installation/License/Entitlement facts.
+// Organization remains a business tenant inside the single deployed installation.
+
+enum LicenseStatus {
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+
+  @@schema("licensing")
+}
+
+enum EntitlementKind {
+  MODULE
+  FEATURE
+
+  @@schema("licensing")
+}
+
+model LicenseCustomer {
+  id          String   @id
+  displayName String   @map("display_name") @db.VarChar(200)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy   String?  @map("created_by")
+  updatedBy   String?  @map("updated_by")
+
+  installations Installation[]
+
+  @@map("customers")
+  @@schema("licensing")
+}
+
+model Installation {
+  id         String   @id
+  customerId String   @map("customer_id")
+  name       String   @db.VarChar(200)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy  String?  @map("created_by")
+  updatedBy  String?  @map("updated_by")
+
+  customer LicenseCustomer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  licenses License[]
+
+  @@index([customerId], map: "idx_installations_customer_id")
+  @@map("installations")
+  @@schema("licensing")
+}
+
+model License {
+  id                String        @id
+  installationId    String        @map("installation_id")
+  status            LicenseStatus
+  provider          String        @db.VarChar(80)
+  validFrom         DateTime      @map("valid_from") @db.Timestamptz(6)
+  validUntil        DateTime?     @map("valid_until") @db.Timestamptz(6)
+  organizationLimit Int?          @map("organization_limit")
+  userLimit         Int?          @map("user_limit")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy         String?       @map("created_by")
+  updatedBy         String?       @map("updated_by")
+
+  installation Installation       @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  entitlements LicenseEntitlement[]
+
+  @@index([installationId, status], map: "idx_licenses_installation_id_status")
+  @@map("licenses")
+  @@schema("licensing")
+}
+
+model LicenseEntitlement {
+  id        String          @id
+  licenseId String          @map("license_id")
+  kind      EntitlementKind
+  code      String          @db.VarChar(120)
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime        @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?         @map("created_by")
+  updatedBy String?         @map("updated_by")
+
+  license License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  @@unique([licenseId, kind, code], map: "uq_license_entitlements_license_kind_code")
+  @@index([kind, code], map: "idx_license_entitlements_kind_code")
+  @@map("license_entitlements")
+  @@schema("licensing")
+}

@@ -1,3 +1,4 @@
+import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { describe, expect, it } from 'vitest';
 import {
   DomainEventBus,
@@ -30,7 +31,9 @@ function loggerStub(): JsonLogger {
   } as unknown as JsonLogger;
 }
 
-async function buildFixture(): Promise<{
+async function buildFixture(
+  licenseOverrides: Parameters<typeof licensingTestDouble>[0] = {},
+): Promise<{
   service: UsersService;
   password: PasswordService;
   events: DomainEvent[];
@@ -52,9 +55,11 @@ async function buildFixture(): Promise<{
   }
 
   const password = new PasswordService();
+  const licensing = licensingTestDouble(licenseOverrides);
   const authorization = new AuthorizationService(
     stores.userRoles,
     loggerStub(),
+    licensing,
   );
   const service = new UsersService(
     stores.users,
@@ -62,6 +67,7 @@ async function buildFixture(): Promise<{
     authorization,
     loggerStub(),
     bus,
+    licensing,
   );
   return { service, password, events, stores };
 }
@@ -77,6 +83,14 @@ function asActor<R>(fn: () => Promise<R>): Promise<R> {
 }
 
 describe('UsersService (administration)', () => {
+  it('enforces the unique active-user limit independently of organization memberships', async () => {
+    const { service } = await buildFixture({ userLimit: 1 });
+    await service.createUser({ username: 'first', password: 'secret' });
+    await expect(
+      service.createUser({ username: 'second', password: 'secret' }),
+    ).rejects.toMatchObject({ code: 'BusinessRuleViolation' });
+  });
+
   it('creates a user with an argon2id hash and never returns the hash', async () => {
     const { service, password, events, stores } = await buildFixture();
 

@@ -12,6 +12,7 @@ import {
   PERMISSION_CODE_RULE,
 } from '../domain/permission-code.js';
 import { PermissionRegistry } from './permission-registry.js';
+import { LicensingService } from '../../licensing/application/licensing.service.js';
 
 /** Sortable fields for the permission list (anything else is rejected). */
 const SORTABLE_FIELDS: Record<string, string> = {
@@ -38,6 +39,7 @@ export class PermissionsService {
   constructor(
     private readonly registry: PermissionRegistry,
     private readonly repository: PermissionsRepository,
+    private readonly licensing: LicensingService,
   ) {}
 
   /** List the mirrored permission registry (paginated, deterministic order). */
@@ -45,10 +47,14 @@ export class PermissionsService {
     query: ListPermissionsQuery,
   ): Promise<PaginatedResult<PermissionRef>> {
     const { skip, take } = toOffset(query.page, query.pageSize);
+    const allowedCodes = await this.licensing.filterLicensedPermissions(
+      this.registry.all().map(({ code }) => code),
+    );
     const { items, total } = await this.repository.list({
       orderBy: resolveOrderBy(query.sort),
       skip,
       take,
+      allowedCodes,
     });
     return toPaginatedResult(items, total, query.page, query.pageSize);
   }
@@ -76,6 +82,7 @@ export class PermissionsService {
     if (!this.registry.has(code)) {
       throw AppException.notFound('Permission', code);
     }
+    await this.licensing.requirePermissionLicensed(code);
     const permission = await this.repository.findByCode(code);
     if (permission === null) {
       // Registry knows the code but the mirror row is missing (e.g. the

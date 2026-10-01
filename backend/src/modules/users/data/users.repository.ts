@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import type { User } from '../domain/user.js';
+import type { LicensedAllocation } from '../../licensing/application/licensing.service.js';
 
 /**
  * Data access for `users.users`.
@@ -29,6 +30,21 @@ type UserWhere = {
 
 /** Prisma orderBy accepts an array of single-field directions. */
 export type UserOrderBy = Array<Record<string, 'asc' | 'desc'>>;
+
+interface UserCreateInput {
+  id: string;
+  username: string;
+  passwordHash: string;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export type UserActivationResult =
+  | { outcome: 'updated'; user: User }
+  | { outcome: 'not-found' }
+  | { outcome: 'limit-reached' };
 
 @Injectable()
 export class UsersRepository {
@@ -110,15 +126,56 @@ export class UsersRepository {
     return { items: rows.map(toDomain), total };
   }
 
-  async create(input: {
-    id: string;
-    username: string;
-    passwordHash: string;
-    isActive: boolean;
-    createdAt: Date;
-    updatedAt: Date;
-    createdBy: string | null;
-  }): Promise<User> {
+  async countActive(): Promise<number> {
+    const client = await this.prisma.getClient<{
+      user: { count: (args: { where: UserWhere }) => Promise<number> };
+    }>();
+    return client.user.count({ where: { deletedAt: null, isActive: true } });
+  }
+
+  /** Atomic active-user allocation for creation, scoped to the installation. */
+  async createActiveWithinLicenseLimit(
+    input: UserCreateInput,
+    allocation: LicensedAllocation,
+  ): Promise<User | null> {
+    const client = await this.prisma.getClient<UserAllocationClient>();
+    return client.$transaction(async (tx) => {
+      await lockActiveUserAllocation(tx, allocation.installationId);
+      if (allocation.limit !== null) {
+        const count = await tx.user.count({
+          where: { deletedAt: null, isActive: true },
+        });
+        if (count >= allocation.limit) return null;
+      }
+      return toDomain(await tx.user.create({ data: input }));
+    });
+  }
+
+  /** Atomic inactive → active allocation; re-reads lifecycle under the lock. */
+  async enableWithinLicenseLimit(
+    id: string,
+    patch: { isActive: true; updatedAt: Date; updatedBy: string | null },
+    allocation: LicensedAllocation,
+  ): Promise<UserActivationResult> {
+    const client = await this.prisma.getClient<UserAllocationClient>();
+    return client.$transaction(async (tx) => {
+      await lockActiveUserAllocation(tx, allocation.installationId);
+      const existing = await tx.user.findUnique({ where: { id } });
+      if (existing === null || existing.deletedAt !== null) {
+        return { outcome: 'not-found' };
+      }
+      if (!existing.isActive && allocation.limit !== null) {
+        const count = await tx.user.count({
+          where: { deletedAt: null, isActive: true },
+        });
+        if (count >= allocation.limit) return { outcome: 'limit-reached' };
+      }
+      const updated = await tx.user.update({ where: { id }, data: patch });
+      return { outcome: 'updated', user: toDomain(updated) };
+    });
+  }
+
+  async create(input: UserCreateInput): Promise<User> {
     const client = await this.prisma.getClient<{
       user: {
         create: (args: { data: typeof input }) => Promise<PrismaUserRecord>;
@@ -160,6 +217,25 @@ export class UsersRepository {
 
 // ---- Internal helpers ----
 
+interface UserAllocationTx {
+  user: {
+    findUnique: (args: {
+      where: { id: string };
+    }) => Promise<PrismaUserRecord | null>;
+    count: (args: { where: UserWhere }) => Promise<number>;
+    create: (args: { data: UserCreateInput }) => Promise<PrismaUserRecord>;
+    update: (args: {
+      where: { id: string };
+      data: { isActive: true; updatedAt: Date; updatedBy: string | null };
+    }) => Promise<PrismaUserRecord>;
+  };
+  $queryRaw<T>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
+}
+
+interface UserAllocationClient extends UserAllocationTx {
+  $transaction<T>(fn: (tx: UserAllocationTx) => Promise<T>): Promise<T>;
+}
+
 interface PrismaUserRecord {
   id: string;
   username: string;
@@ -170,6 +246,14 @@ interface PrismaUserRecord {
   deletedAt: Date | null;
   createdBy: string | null;
   updatedBy: string | null;
+}
+
+async function lockActiveUserAllocation(
+  tx: UserAllocationTx,
+  installationId: string,
+): Promise<void> {
+  const key = `vardena:license:${installationId}:active-users`;
+  await tx.$queryRaw<unknown>`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))::text AS "locked"`;
 }
 
 function toWhere(filter: UserListFilter): UserWhere {

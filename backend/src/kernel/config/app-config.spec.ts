@@ -38,6 +38,24 @@ describe('loadAppConfig', () => {
         loginRateLimit: { windowMs: 15 * 60 * 1000, max: 10 },
       },
       deploymentOrganizationId: null,
+      licensing: {
+        provider: 'local-development',
+        status: 'ACTIVE',
+        validFrom: new Date('2020-01-01T00:00:00.000Z'),
+        validUntil: null,
+        organizationLimit: null,
+        userLimit: null,
+        moduleEntitlements: [
+          'accounting',
+          'documents',
+          'inventory',
+          'organization',
+          'rbac',
+          'users',
+          'workflow',
+        ],
+        featureEntitlements: [],
+      },
     });
   });
 

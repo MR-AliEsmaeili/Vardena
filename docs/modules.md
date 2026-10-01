@@ -1034,3 +1034,14 @@ delivery operation (e.g. destination `faraPayam`, operation
 `InventoryReceipt.Created`) and is written by the business module **inside its
 own transaction** using the kernel outbox port — it is not "emitted to the Sync
 module" at runtime. See `docs/integrations.md` and ADR-0004.
+
+---
+
+## Licensing (**IMPLEMENTED foundation — L-01**)
+
+- **Owns:** `licensing.customers`, `licensing.installations`, `licensing.licenses`, and typed `licensing.license_entitlements`.
+- **Public surface:** `LicensingService` behind `LicenseProvider`; current implementation is `LocalDevelopmentLicenseProvider`.
+- **Enforces:** lifecycle/validity, module/feature entitlements, finite/null-unlimited organization and active-user limits, assignable permission catalog, and effective RBAC permissions.
+- **API:** authenticated `GET /api/v1/license/current` (non-secret evaluated installation state).
+- **Foundation only:** persisted records have no commercial activation/write API in L-01.
+- **Deferred:** CRM/commercial provider, billing, remote validation, signed offline files, hardware binding, and activation UI. See ADR-0030 and `docs/licensing-architecture.md`.

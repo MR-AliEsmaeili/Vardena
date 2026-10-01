@@ -1,3 +1,4 @@
+import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import {
   InternalServerErrorException,
   type ExecutionContext,
@@ -62,6 +63,7 @@ async function buildHarness(): Promise<Harness> {
   const authorization = new AuthorizationService(
     stores.userRoles,
     loggerStub(warn),
+    licensingTestDouble(),
   );
 
   const synced = await stores.raw.permissions.syncDefinitions(

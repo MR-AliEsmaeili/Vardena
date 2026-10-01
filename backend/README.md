@@ -65,6 +65,14 @@ deployments inject real env (dotenv never overrides real env).
 | `AUTH_SESSION_ABSOLUTE_TIMEOUT_MS` | `43200000` (12 h)     | Absolute session hard cap                                                                         |
 | `AUTH_LOGIN_RATE_LIMIT_WINDOW_MS`  | `900000` (15 min)     | Login-only rate-limit window                                                                      |
 | `AUTH_LOGIN_RATE_LIMIT_MAX`        | `10`                  | Login-only max attempts per window                                                                |
+| `LICENSE_PROVIDER`                 | `local-development`   | Explicit provider; never inferred from `NODE_ENV`                                                 |
+| `LICENSE_STATUS`                   | `ACTIVE`              | `ACTIVE \| EXPIRED \| SUSPENDED`                                                                  |
+| `LICENSE_VALID_FROM`               | `2020-01-01T00:00Z`   | Inclusive ISO-8601 boundary                                                                       |
+| `LICENSE_VALID_UNTIL`              | `perpetual`           | Exclusive ISO-8601 boundary or explicit `perpetual`                                               |
+| `LICENSE_ORGANIZATION_LIMIT`       | `unlimited`           | Positive integer or explicit `unlimited`                                                          |
+| `LICENSE_USER_LIMIT`               | `unlimited`           | Unique active users; positive integer or `unlimited`                                              |
+| `LICENSE_MODULE_ENTITLEMENTS`      | implemented modules   | Comma-separated lower-case module prefixes                                                        |
+| `LICENSE_FEATURE_ENTITLEMENTS`     | _(empty)_             | Comma-separated feature codes; codes do not implement features                                    |
 
 Adding a key? Update `app-config.ts`, `.env.example`, and this table together.
 
@@ -89,8 +97,8 @@ npm run bootstrap:system-admin
 
 The bootstrap is deterministic and idempotent. It creates the real Users/RBAC
 records for the initial `System Administrator`, reconciles that role to every
-currently registered permission, ensures the administrator's membership of the
-pinned deployment organization when one is configured, and never resets an
+currently licensed registered permission, ensures the administrator's membership of the
+pinned deployment organization when one is configured (subject to the explicit license), and never resets an
 existing password or lifecycle state. It has
 no HTTP endpoint and performs no runtime authorization bypass.
 

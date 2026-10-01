@@ -12,6 +12,8 @@ import { SessionRevocationConsumer } from './application/session-revocation.cons
 import { AuthController } from './api/auth.controller.js';
 import { AuthGuard } from './application/auth.guard.js';
 import { LoginRateLimitMiddleware } from './api/login-rate-limit.middleware.js';
+import { LicensingModule } from '../licensing/licensing.module.js';
+import { LicenseStateController } from '../licensing/api/license-state.controller.js';
 
 /**
  * Identity module (docs/modules.md §Identity, ADR-0007).
@@ -26,8 +28,8 @@ import { LoginRateLimitMiddleware } from './api/login-rate-limit.middleware.js';
  * data (AR-07).
  */
 @Module({
-  imports: [forwardRef(() => UsersModule)],
-  controllers: [AuthController],
+  imports: [forwardRef(() => UsersModule), LicensingModule],
+  controllers: [AuthController, LicenseStateController],
   providers: [
     SessionsRepository,
     SessionTokenService,

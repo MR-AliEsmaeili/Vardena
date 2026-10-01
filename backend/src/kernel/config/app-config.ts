@@ -58,6 +58,17 @@ export interface AuthConfig {
   loginRateLimit: RateLimitConfig;
 }
 
+export interface LicensingConfig {
+  provider: 'local-development';
+  status: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED';
+  validFrom: Date;
+  validUntil: Date | null;
+  organizationLimit: number | null;
+  userLimit: number | null;
+  moduleEntitlements: string[];
+  featureEntitlements: string[];
+}
+
 export interface AppConfig {
   nodeEnv: NodeEnv;
   port: number;
@@ -76,6 +87,8 @@ export interface AppConfig {
    * names an organization must name this one; any other id answers 404.
    */
   deploymentOrganizationId: string | null;
+  /** Explicit provider configuration; never inferred from NODE_ENV or identity. */
+  licensing: LicensingConfig;
 }
 
 const NODE_ENVS: readonly NodeEnv[] = ['development', 'test', 'production'];
@@ -191,6 +204,51 @@ function parseDeploymentOrganizationId(
   return value;
 }
 
+function parseLicenseLimit(
+  raw: string | undefined,
+  key: string,
+  errors: string[],
+): number | null {
+  if (
+    raw === undefined ||
+    raw.trim() === '' ||
+    raw.trim().toLowerCase() === 'unlimited'
+  )
+    return null;
+  return parsePositiveInt(raw, key, errors) ?? null;
+}
+
+function parseIsoDate(
+  raw: string | undefined,
+  key: string,
+  fallback: Date | null,
+  errors: string[],
+): Date | null {
+  if (raw === undefined || raw.trim() === '') return fallback;
+  if (raw.trim().toLowerCase() === 'perpetual' && key === 'LICENSE_VALID_UNTIL')
+    return null;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    errors.push(
+      `${key} must be an ISO-8601 date-time${key === 'LICENSE_VALID_UNTIL' ? ' or perpetual' : ''}.`,
+    );
+    return fallback;
+  }
+  return parsed;
+}
+
+function parseCodes(raw: string | undefined, defaults: string[]): string[] {
+  if (raw === undefined || raw.trim() === '') return defaults;
+  return [
+    ...new Set(
+      raw
+        .split(',')
+        .map((code) => code.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ].sort();
+}
+
 /**
  * Load and validate configuration from the given env mapping.
  * @throws Error listing every invalid/missing value.
@@ -285,6 +343,44 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     errors,
   );
 
+  // Explicit local provider configuration. It is selected by name, never by
+  // NODE_ENV, administrator identity, role, or email.
+  const licenseProviderRaw =
+    env['LICENSE_PROVIDER']?.trim() || 'local-development';
+  if (licenseProviderRaw !== 'local-development') {
+    errors.push('LICENSE_PROVIDER currently supports only local-development.');
+  }
+  const licenseStatusRaw =
+    env['LICENSE_STATUS']?.trim().toUpperCase() || 'ACTIVE';
+  if (!['ACTIVE', 'EXPIRED', 'SUSPENDED'].includes(licenseStatusRaw)) {
+    errors.push('LICENSE_STATUS must be ACTIVE, EXPIRED, or SUSPENDED.');
+  }
+  const licenseValidFrom = parseIsoDate(
+    env['LICENSE_VALID_FROM'],
+    'LICENSE_VALID_FROM',
+    new Date('2020-01-01T00:00:00.000Z'),
+    errors,
+  )!;
+  const licenseValidUntil = parseIsoDate(
+    env['LICENSE_VALID_UNTIL'],
+    'LICENSE_VALID_UNTIL',
+    null,
+    errors,
+  );
+  if (licenseValidUntil !== null && licenseValidUntil <= licenseValidFrom) {
+    errors.push('LICENSE_VALID_UNTIL must be later than LICENSE_VALID_FROM.');
+  }
+  const licenseOrganizationLimit = parseLicenseLimit(
+    env['LICENSE_ORGANIZATION_LIMIT'],
+    'LICENSE_ORGANIZATION_LIMIT',
+    errors,
+  );
+  const licenseUserLimit = parseLicenseLimit(
+    env['LICENSE_USER_LIMIT'],
+    'LICENSE_USER_LIMIT',
+    errors,
+  );
+
   if (errors.length > 0) {
     throw new Error(
       `Invalid configuration:\n${errors.map((e) => `  - ${e}`).join('\n')}`,
@@ -312,5 +408,23 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       loginRateLimit: { windowMs: loginWindowMs, max: loginMax },
     },
     deploymentOrganizationId,
+    licensing: {
+      provider: 'local-development',
+      status: licenseStatusRaw as LicensingConfig['status'],
+      validFrom: licenseValidFrom,
+      validUntil: licenseValidUntil,
+      organizationLimit: licenseOrganizationLimit,
+      userLimit: licenseUserLimit,
+      moduleEntitlements: parseCodes(env['LICENSE_MODULE_ENTITLEMENTS'], [
+        'accounting',
+        'documents',
+        'inventory',
+        'organization',
+        'rbac',
+        'users',
+        'workflow',
+      ]),
+      featureEntitlements: parseCodes(env['LICENSE_FEATURE_ENTITLEMENTS'], []),
+    },
   };
 }
