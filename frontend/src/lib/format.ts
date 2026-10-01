@@ -68,3 +68,12 @@ export function formatDateTime(value: string | null | undefined): string {
 export function formatCount(value: number): string {
   return new Intl.NumberFormat('en-US').format(value);
 }
+
+/**
+ * Quantity display for exact decimal strings (inventory `numeric(18,4)`).
+ * Like money, quantities are never parsed into a float: grouping is a pure
+ * string transformation over the exact digits the API returned.
+ */
+export function formatQuantity(value: string | null | undefined): string {
+  return formatAmount(value);
+}

@@ -1,13 +1,18 @@
 import type {
+  AccountBalance,
   AccountStatement,
+  AccountingDocument,
+  AccountingPeriod,
   AuthenticatedUser,
   ChartTreeNode,
   FinancialArea,
   FiscalYear,
   GeneralLedgerRow,
+  InventoryBalance,
   Organization,
   Paginated,
   TrialBalanceRow,
+  WorkflowInstance,
 } from '@/api/contracts';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 
@@ -30,6 +35,10 @@ export const allAccountingPermissions: string[] = [
   PERMISSIONS.accounting.accountStatementView,
   PERMISSIONS.accounting.generalLedgerView,
   PERMISSIONS.accounting.trialBalanceView,
+  PERMISSIONS.accounting.documentView,
+  PERMISSIONS.accounting.balanceView,
+  PERMISSIONS.inventory.balanceView,
+  PERMISSIONS.workflow.instanceView,
 ];
 
 export const testOrganization: Organization = {
@@ -77,6 +86,107 @@ export const testFiscalYear: FiscalYear = {
 export function paginated<TItem>(items: TItem[]): Paginated<TItem> {
   return { items, total: items.length, page: 1, pageSize: 100 };
 }
+
+// -------------------------------------------------------------------------
+// Dashboard (Task 32) — shapes mirror the generated DTOs exactly.
+// -------------------------------------------------------------------------
+
+export const testAccountBalances: AccountBalance[] = [
+  {
+    id: 'bal-1',
+    organizationId: 'org-1',
+    financialAreaId: 'area-1',
+    fiscalYearId: 'year-1',
+    accountingPeriodId: 'period-1',
+    periodSequence: 1,
+    accountId: 'acc-2',
+    periodDebitAmount: '12000.00',
+    periodCreditAmount: '3000.50',
+    periodNetAmount: '8999.50',
+    openingBalanceAmount: '0.00',
+    closingBalanceAmount: '8999.50',
+    createdAt: '2026-04-01T10:00:00.000Z',
+    updatedAt: '2026-04-01T10:00:00.000Z',
+  },
+  {
+    id: 'bal-2',
+    organizationId: 'org-1',
+    financialAreaId: 'area-1',
+    fiscalYearId: 'year-1',
+    accountingPeriodId: 'period-1',
+    periodSequence: 1,
+    accountId: 'acc-3',
+    periodDebitAmount: '0.00',
+    periodCreditAmount: '0.00',
+    periodNetAmount: '0.00',
+    openingBalanceAmount: '0.00',
+    closingBalanceAmount: '0.00',
+    createdAt: '2026-04-01T10:00:00.000Z',
+    updatedAt: '2026-04-01T10:00:00.000Z',
+  },
+] as AccountBalance[];
+
+export const testAccountingDocument: AccountingDocument = {
+  id: 'doc-1',
+  organizationId: 'org-1',
+  financialAreaId: 'area-1',
+  fiscalYearId: 'year-1',
+  accountingPeriodId: 'period-1',
+  documentType: 'accounting_voucher',
+  documentNumber: '1001',
+  documentDate: '2026-04-05',
+  description: 'خرید نرم‌افزار',
+  state: 'final',
+  origin: 'manual',
+  branchId: null,
+  lines: [],
+  totalDebit: '1250000.00',
+  totalCredit: '1250000.00',
+  createdAt: '2026-04-05T09:00:00.000Z',
+  updatedAt: '2026-04-05T09:30:00.000Z',
+} as unknown as AccountingDocument;
+
+export const testInventoryBalance: InventoryBalance = {
+  id: 'inv-1',
+  organizationId: 'org-1',
+  branchId: 'br-1',
+  warehouseId: 'wh-1',
+  itemId: 'item-1',
+  onHand: '100',
+  reserved: '5',
+  available: '95',
+  lastMovementAt: null,
+  createdAt: '2026-04-01T08:00:00.000Z',
+  updatedAt: '2026-04-01T08:00:00.000Z',
+} as InventoryBalance;
+
+export const testWorkflowInstance: WorkflowInstance = {
+  id: 'wf-1',
+  organizationId: 'org-1',
+  definitionId: 'def-1',
+  versionId: 'ver-1',
+  entityModule: 'inventory',
+  entityType: 'inventory_receipt',
+  entityId: 'ent-1',
+  currentStateId: 'st-1',
+  createdAt: '2026-04-02T08:00:00.000Z',
+  updatedAt: '2026-04-02T08:00:00.000Z',
+} as WorkflowInstance;
+
+export const testAccountingPeriod: AccountingPeriod = {
+  id: 'period-1',
+  organizationId: 'org-1',
+  financialAreaId: 'area-1',
+  fiscalYearId: 'year-1',
+  sequence: 1,
+  title: 'فروردین',
+  startDate: '2026-03-21',
+  endDate: '2026-04-20',
+  status: 'open',
+  periodKind: 'normal',
+  createdAt: '2026-03-21T00:00:00.000Z',
+  updatedAt: '2026-03-21T00:00:00.000Z',
+} as AccountingPeriod;
 
 export const chartTreeNodes: ChartTreeNode[] = [
   {

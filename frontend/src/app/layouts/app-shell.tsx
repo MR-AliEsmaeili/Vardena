@@ -9,6 +9,7 @@ import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Button } from '@/ui/button';
+import { TopbarSearch } from './topbar-search';
 import { navigationSections } from '../navigation';
 
 /**
@@ -71,6 +72,8 @@ export function AppShell() {
               {t.app.tagline}
             </span>
           </div>
+
+          <TopbarSearch />
 
           <div className="ms-auto flex items-center gap-3">
             <OrganizationSwitcher />

@@ -129,6 +129,47 @@ export type TrialBalanceQuery =
   operations['TrialBalanceController_list_v1']['parameters']['query'];
 
 // ---------------------------------------------------------------------------
+// Accounting — Dashboard read surfaces (read-only, Task 32)
+// ---------------------------------------------------------------------------
+
+/** One accounting voucher of the organization (`AccountingDocumentResponseDto`). */
+export type AccountingDocument = NullableString<
+  Schemas['AccountingDocumentResponseDto'],
+  | 'documentNumber'
+  | 'branchId'
+  | 'sourceModule'
+  | 'sourceEntityType'
+  | 'sourceEntityId'
+  | 'sourceOperation'
+  | 'finalizedAt'
+  | 'finalizedBy'
+  | 'correlationId'
+  | 'correctionReason'
+  | 'reversesDocumentId'
+  | 'reversedByDocumentId'
+>;
+export type AccountingDocumentListQuery =
+  operations['AccountingDocumentsController_list_v1']['parameters']['query'];
+
+/** One period-balance row of the projection (`BalanceDto`). */
+export type AccountBalance = Schemas['BalanceDto'];
+export type AccountBalanceListQuery =
+  operations['AccountingBalancesController_list_v1']['parameters']['query'];
+
+/** Inventory stock balance (`InventoryBalanceResponseDto`). */
+export type InventoryBalance = NullableString<
+  Schemas['InventoryBalanceResponseDto'],
+  'lastMovementAt'
+>;
+export type InventoryBalanceListQuery =
+  operations['InventoryBalancesController_list_v1']['parameters']['query'];
+
+/** Workflow binding/instance row (`WorkflowInstanceResponseDto`). */
+export type WorkflowInstance = Schemas['WorkflowInstanceResponseDto'];
+export type WorkflowInstanceListQuery =
+  operations['WorkflowInstancesController_list_v1']['parameters']['query'];
+
+// ---------------------------------------------------------------------------
 // Accounting — Account Statement (Task 17B)
 // ---------------------------------------------------------------------------
 

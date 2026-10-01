@@ -7,7 +7,7 @@ import { TrialBalancePage } from '@/features/accounting/trial-balance/trial-bala
 import { LoginPage } from '@/features/auth/login-page';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { AppShell } from './layouts/app-shell';
-import { HomePage } from './routes/home-page';
+import { DashboardRoute } from './routes/dashboard-route';
 import { NotFoundPage } from './routes/not-found-page';
 import { RequireAuth } from './routes/require-auth';
 import { RequirePermission } from './routes/require-permission';
@@ -27,7 +27,15 @@ export function AppRoutes() {
 
       <Route element={<RequireAuth />}>
         <Route path="/app" element={<AppShell />}>
-          <Route index element={<HomePage />} />
+          <Route
+            element={
+              <RequirePermission
+                permissions={[PERMISSIONS.accounting.documentView]}
+              />
+            }
+          >
+            <Route index element={<DashboardRoute />} />
+          </Route>
 
           <Route path="accounting">
             <Route index element={<AccountingHomePage />} />

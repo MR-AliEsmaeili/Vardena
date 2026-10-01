@@ -22,9 +22,19 @@ export const PERMISSIONS = {
     accountStatementView: 'Accounting.AccountStatement.View',
     generalLedgerView: 'Accounting.GeneralLedger.View',
     trialBalanceView: 'Accounting.TrialBalance.View',
+    documentView: 'Accounting.Document.View',
+    balanceView: 'Accounting.Balance.View',
+  },
+  inventory: {
+    balanceView: 'Inventory.Balance.View',
+  },
+  workflow: {
+    instanceView: 'Workflow.Instance.View',
   },
 } as const;
 
 export type PermissionCode =
   | (typeof PERMISSIONS.organization)[keyof typeof PERMISSIONS.organization]
-  | (typeof PERMISSIONS.accounting)[keyof typeof PERMISSIONS.accounting];
+  | (typeof PERMISSIONS.accounting)[keyof typeof PERMISSIONS.accounting]
+  | (typeof PERMISSIONS.inventory)[keyof typeof PERMISSIONS.inventory]
+  | (typeof PERMISSIONS.workflow)[keyof typeof PERMISSIONS.workflow];
