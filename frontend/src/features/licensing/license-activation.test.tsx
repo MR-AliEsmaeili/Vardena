@@ -9,7 +9,6 @@ import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
-  paginated,
   testActiveLicenseState,
   testOrganization,
   testUnlicensedLicenseState,
@@ -41,7 +40,7 @@ vi.mock('@/api/identity.api', () => ({
 }));
 
 vi.mock('@/api/organization.api', () => ({
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   createOrganization: vi.fn(),
   grantMembership: vi.fn(),
   MAX_PAGE_SIZE: 500,
@@ -123,9 +122,9 @@ beforeEach(() => {
     permissions: activationPermissions,
   });
   vi.mocked(identityApi.logout).mockResolvedValue(undefined);
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
   serveLicenseState(testUnlicensedLicenseState);
 });
 
@@ -170,7 +169,7 @@ describe('license activation', () => {
     expect(
       screen.queryByLabelText(t.license.activateCodeLabel),
     ).not.toBeInTheDocument();
-    expect(organizationApi.listOrganizations).toHaveBeenCalled();
+    expect(organizationApi.listMyOrganizations).toHaveBeenCalled();
   });
 
   it('keeps the plain explainer for a session without the activation permission', async () => {
@@ -263,7 +262,7 @@ describe('license activation', () => {
     // The success announcement of the completed mutation.
     expect(await screen.findByText(t.license.activateSuccess)).toBeVisible();
     // …and the organization bootstrap ran behind the released gate.
-    expect(organizationApi.listOrganizations).toHaveBeenCalled();
+    expect(organizationApi.listMyOrganizations).toHaveBeenCalled();
   });
 
   it('sends exactly one request while an activation is in flight', async () => {

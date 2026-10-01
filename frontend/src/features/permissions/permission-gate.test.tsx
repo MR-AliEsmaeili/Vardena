@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@/lib/i18n';
-import { paginated, testOrganization, testUser } from '@/test/fixtures';
+import { testOrganization, testUser } from '@/test/fixtures';
 import { renderWithProviders } from '@/test/test-utils';
 import { PermissionGate } from './permission-gate';
 
@@ -13,7 +13,7 @@ vi.mock('@/api/identity.api', () => ({
 }));
 
 vi.mock('@/api/organization.api', () => ({
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   MAX_PAGE_SIZE: 500,
 }));
 
@@ -22,9 +22,9 @@ const organizationApi = await import('@/api/organization.api');
 
 beforeEach(() => {
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
 });
 
 function givenPermissions(permissions: string[]): void {

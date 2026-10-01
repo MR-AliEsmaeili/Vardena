@@ -8,7 +8,6 @@ import type { AccountingDocument } from '@/api/contracts';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
-  paginated,
   testOrganization,
   testUser,
 } from '@/test/fixtures';
@@ -35,7 +34,7 @@ vi.mock('@/api/identity.api', () => ({
   getEffectivePermissions: vi.fn(),
 }));
 vi.mock('@/api/organization.api', () => ({
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   MAX_PAGE_SIZE: 500,
 }));
 vi.mock('@/api/accounting.api', async () => {
@@ -118,9 +117,9 @@ beforeEach(() => {
     userId: testUser.id,
     permissions: allAccountingPermissions,
   });
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
 });
 
 describe('Issue dialog', () => {

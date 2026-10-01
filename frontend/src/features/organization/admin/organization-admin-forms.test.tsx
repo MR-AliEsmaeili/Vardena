@@ -42,7 +42,7 @@ vi.mock('@/api/identity.api', () => ({
 
 vi.mock('@/api/organization.api', () => ({
   MAX_PAGE_SIZE: 500,
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   listBranches: vi.fn(),
   listDepartments: vi.fn(),
   getDepartment: vi.fn(),
@@ -90,9 +90,9 @@ beforeEach(() => {
     userId: testUser.id,
     permissions: allOrganizationAdminPermissions,
   });
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
   vi.mocked(organizationApi.listBranches).mockResolvedValue(
     paginated([testBranch]),
   );

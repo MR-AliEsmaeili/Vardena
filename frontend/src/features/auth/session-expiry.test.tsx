@@ -5,7 +5,6 @@ import { AppRoutes } from '@/app/router';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
-  paginated,
   testActiveLicenseState,
   testOrganization,
   testUser,
@@ -43,7 +42,7 @@ vi.mock('@/api/identity.api', () => ({
 }));
 
 vi.mock('@/api/organization.api', () => ({
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   MAX_PAGE_SIZE: 500,
 }));
 
@@ -104,9 +103,9 @@ beforeEach(() => {
     userId: testUser.id,
     permissions: allAccountingPermissions,
   });
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
 });
 
 describe('session expiry', () => {

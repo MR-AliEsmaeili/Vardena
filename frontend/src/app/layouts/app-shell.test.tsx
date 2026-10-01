@@ -7,7 +7,6 @@ import { AppRoutes } from '@/app/router';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
-  paginated,
   secondOrganization,
   testAccountingDocument,
   testActiveLicenseState,
@@ -40,7 +39,7 @@ vi.mock('@/api/identity.api', () => ({
 }));
 
 vi.mock('@/api/organization.api', () => ({
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   createOrganization: vi.fn(),
   grantMembership: vi.fn(),
   MAX_PAGE_SIZE: 500,
@@ -100,9 +99,9 @@ beforeEach(() => {
     permissions: allAccountingPermissions,
   });
   vi.mocked(identityApi.logout).mockResolvedValue(undefined);
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
   // Default: an active, unlimited installation license (the local provider's
   // default — ADR-0030), so pre-L-01 scenarios are unaffected unless a test
   // explicitly exercises the license-inactive path.
@@ -112,8 +111,11 @@ beforeEach(() => {
 });
 
 describe('organization resolution in the shell', () => {
-  it('shows the Persian resolving state and no workspace while the scope is unknown', async () => {
-    vi.mocked(identityApi.getEffectivePermissions).mockImplementation(
+  it('shows the Persian resolving state and no workspace while the organization scope is unknown', async () => {
+    // Organization resolution (`GET /organizations/mine`) no longer depends
+    // on permissions having loaded — it depends only on the session and its
+    // own fetch, so this exercises ITS pending state directly.
+    vi.mocked(organizationApi.listMyOrganizations).mockImplementation(
       () => new Promise(() => {}),
     );
 
@@ -128,7 +130,6 @@ describe('organization resolution in the shell', () => {
     expect(
       screen.queryByRole('heading', { name: t.dashboard.title }),
     ).not.toBeInTheDocument();
-    expect(organizationApi.listOrganizations).not.toHaveBeenCalled();
   });
 
   it('enters the workspace directly for a single organization, without a selection step', async () => {
@@ -148,9 +149,10 @@ describe('organization resolution in the shell', () => {
   });
 
   it('requires an explicit organization selection before the workspace loads', async () => {
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([testOrganization, secondOrganization]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+      testOrganization,
+      secondOrganization,
+    ]);
     const user = userEvent.setup();
 
     renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
@@ -199,9 +201,10 @@ describe('organization resolution in the shell', () => {
   });
 
   it('preserves the requested route across the organization selection step', async () => {
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([testOrganization, secondOrganization]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+      testOrganization,
+      secondOrganization,
+    ]);
     const user = userEvent.setup();
 
     renderWithProviders(<AppRoutes />, {
@@ -230,9 +233,7 @@ describe('organization resolution in the shell', () => {
   });
 
   it('blocks the workspace with a Persian explainer and logout when no organization exists', async () => {
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([]);
 
     renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
 
@@ -265,9 +266,7 @@ describe('organization resolution in the shell', () => {
         'Organization.Membership.Grant',
       ],
     });
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValueOnce(
-      paginated([]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValueOnce([]);
     const createdOrganization = {
       ...testOrganization,
       id: 'org-created',
@@ -304,10 +303,11 @@ describe('organization resolution in the shell', () => {
     );
 
     // The list now reflects the organization the backend created, exactly
-    // as a real `GET /organizations` refetch would after the two calls.
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([createdOrganization]),
-    );
+    // as a real `GET /organizations/mine` refetch would after the two calls
+    // (the caller is now a member of it).
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+      createdOrganization,
+    ]);
 
     await user.click(
       within(blocked).getByRole('button', {
@@ -328,31 +328,28 @@ describe('organization resolution in the shell', () => {
     );
   });
 
-  it('blocks the workspace when the session cannot read the organization list', async () => {
+  it('enters the workspace for a session holding no Organization.* permission at all, because /organizations/mine requires only membership', async () => {
+    // Organization Bootstrap & Context Foundation: `GET /organizations/mine`
+    // is membership-based (AR-21), not an `Organization.Organization.View`
+    // administration read. A session that cannot administer organizations at
+    // all must still resolve its own organization scope and reach the
+    // workspace.
     vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
       userId: testUser.id,
-      permissions: ['Accounting.GeneralLedger.View'],
+      permissions: ['Accounting.Document.View'],
     });
 
     renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
 
-    const blocked = await screen.findByRole('main');
     expect(
-      await within(blocked).findByText(t.organization.errorTitle),
+      await screen.findByRole('heading', { level: 1, name: t.dashboard.title }),
     ).toBeInTheDocument();
-    expect(
-      within(blocked).getByText(/Organization\.Organization\.View/),
-    ).toBeInTheDocument();
-    expect(
-      within(blocked).getByRole('button', { name: new RegExp(t.auth.logout) }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('heading', { name: t.dashboard.title }),
-    ).not.toBeInTheDocument();
+    expect(screen.getByText(testOrganization.name)).toBeInTheDocument();
+    expect(organizationApi.listMyOrganizations).toHaveBeenCalled();
   });
 
   it('surfaces an organization fetch failure with retry instead of degrading silently', async () => {
-    vi.mocked(organizationApi.listOrganizations)
+    vi.mocked(organizationApi.listMyOrganizations)
       .mockRejectedValueOnce(
         new ApiError({
           code: 'InternalError',
@@ -361,7 +358,7 @@ describe('organization resolution in the shell', () => {
           correlationId: 'corr-org-list',
         }),
       )
-      .mockResolvedValue(paginated([testOrganization]));
+      .mockResolvedValue([testOrganization]);
     const user = userEvent.setup();
 
     renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
@@ -384,9 +381,10 @@ describe('organization resolution in the shell', () => {
 
 describe('organization switch cache isolation (security)', () => {
   it('never renders organization A data while organization B loads, and evicts A cache', async () => {
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([testOrganization, secondOrganization]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+      testOrganization,
+      secondOrganization,
+    ]);
     // Organization 1 answers immediately with its own document; organization
     // 2 stays in flight so the test can observe exactly what is rendered
     // for B while its data has not arrived.

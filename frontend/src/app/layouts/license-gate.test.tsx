@@ -8,7 +8,6 @@ import { useLicenseState } from '@/features/licensing/use-license-state';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
-  paginated,
   testActiveLicenseState,
   testInactiveLicenseState,
   testUnlicensedLicenseState,
@@ -38,7 +37,7 @@ vi.mock('@/api/identity.api', () => ({
 }));
 
 vi.mock('@/api/organization.api', () => ({
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   createOrganization: vi.fn(),
   grantMembership: vi.fn(),
   MAX_PAGE_SIZE: 500,
@@ -104,9 +103,9 @@ beforeEach(() => {
     permissions: allAccountingPermissions,
   });
   vi.mocked(identityApi.logout).mockResolvedValue(undefined);
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
   vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
     testActiveLicenseState,
   );
@@ -158,9 +157,7 @@ describe('licensing bootstrap stage', () => {
     // Zero organizations and no create permission: the organization gate's
     // own terminal explainer. Seeing it proves the organization stage was
     // reached — through, not around, the licensing stage.
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([]);
 
     renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
 
@@ -298,7 +295,12 @@ describe('licensing bootstrap stage', () => {
     expect(
       screen.queryByRole('heading', { name: t.dashboard.title }),
     ).not.toBeInTheDocument();
-    expect(organizationApi.listOrganizations).not.toHaveBeenCalled();
+    // `GET /organizations/mine` itself no longer waits on permissions (it
+    // needs none, AR-21) and may run in the background while the license
+    // gate keeps the UI here — that is harmless, since nothing it returns is
+    // ever rendered while the license stays inactive. What matters, and is
+    // asserted above and below, is that no organization or workspace UI
+    // reaches the screen and the bootstrap-only mutations never fire.
     expect(organizationApi.createOrganization).not.toHaveBeenCalled();
     expect(organizationApi.grantMembership).not.toHaveBeenCalled();
 
@@ -318,9 +320,7 @@ describe('licensing bootstrap stage', () => {
       userId: testUser.id,
       permissions: firstOrganizationPermissions,
     });
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([]);
     vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
       testInactiveLicenseState,
     );
@@ -334,7 +334,6 @@ describe('licensing bootstrap stage', () => {
     for (const permissionCopy of [
       t.permissions.forbiddenTitle,
       t.permissions.forbiddenBody,
-      t.organization.permissionHint,
       t.organization.emptyBody,
     ]) {
       expect(screen.queryByText(permissionCopy)).not.toBeInTheDocument();
@@ -376,9 +375,7 @@ describe('licensing bootstrap stage', () => {
   });
 
   it('recovers through retry: a failed read, then an active license, then the organization gate', async () => {
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([]);
     vi.mocked(licensingApi.getLicenseState)
       .mockRejectedValueOnce(
         new ApiError({ code: 'InternalError', message: 'x', status: 500 }),
@@ -441,9 +438,7 @@ describe('licensing bootstrap stage', () => {
       userId: testUser.id,
       permissions: firstOrganizationPermissions,
     });
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValueOnce(
-      paginated([]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValueOnce([]);
     const createdOrganization = {
       ...testOrganization,
       id: 'org-created',
@@ -473,9 +468,9 @@ describe('licensing bootstrap stage', () => {
       within(main).getByLabelText(t.organization.createFirstName),
       'سازمان اصلی',
     );
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([createdOrganization]),
-    );
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+      createdOrganization,
+    ]);
 
     await user.click(
       within(main).getByRole('button', {

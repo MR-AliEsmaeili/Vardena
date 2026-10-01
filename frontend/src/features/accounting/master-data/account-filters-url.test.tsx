@@ -19,7 +19,7 @@ vi.mock('@/api/identity.api', () => ({
   getEffectivePermissions: vi.fn(),
 }));
 vi.mock('@/api/organization.api', () => ({
-  listOrganizations: vi.fn(),
+  listMyOrganizations: vi.fn(),
   MAX_PAGE_SIZE: 500,
 }));
 vi.mock('@/api/accounting.api', () => ({ listAccounts: vi.fn() }));
@@ -50,9 +50,9 @@ beforeEach(() => {
     userId: testUser.id,
     permissions: allAccountingPermissions,
   });
-  vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-    paginated([testOrganization]),
-  );
+  vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+    testOrganization,
+  ]);
   vi.mocked(accountingApi.listAccounts).mockResolvedValue(paginated([]));
 });
 
