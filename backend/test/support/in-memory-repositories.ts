@@ -40,6 +40,7 @@ import type { UserRolesRepository } from '../../src/modules/rbac/data/user-roles
 import type { UsersRepository } from '../../src/modules/users/data/users.repository.js';
 import type { SessionsRepository } from '../../src/modules/identity/data/sessions.repository.js';
 import { generateId } from '../../src/kernel/ids/ulid.js';
+import type { LicensedAllocation } from '../../src/modules/licensing/application/licensing.service.js';
 
 // ---------------------------------------------------------------------------
 // Prisma-style failures
@@ -70,6 +71,7 @@ export function recordNotFound(): Error {
 
 export class InMemoryUsersRepository {
   private readonly byId = new Map<string, User>();
+  private allocationTail: Promise<void> = Promise.resolve();
 
   async findById(id: string): Promise<User | null> {
     return this.byId.get(id) ?? null;
@@ -115,6 +117,57 @@ export class InMemoryUsersRepository {
     return [...this.byId.values()].filter(
       (user) => user.isActive && user.deletedAt === null,
     ).length;
+  }
+
+  async createActiveWithinLicenseLimit(
+    input: {
+      id: string;
+      username: string;
+      passwordHash: string;
+      isActive: boolean;
+      createdAt: Date;
+      updatedAt: Date;
+      createdBy: string | null;
+    },
+    allocation: LicensedAllocation,
+  ): Promise<User | null> {
+    return this.withAllocationLock(async () => {
+      if (
+        allocation.limit !== null &&
+        (await this.countActive()) >= allocation.limit
+      ) {
+        return null;
+      }
+      return this.create(input);
+    });
+  }
+
+  async enableWithinLicenseLimit(
+    id: string,
+    patch: { isActive: true; updatedAt: Date; updatedBy: string | null },
+    allocation: LicensedAllocation,
+  ): Promise<
+    | { outcome: 'updated'; user: User }
+    | { outcome: 'not-found' }
+    | { outcome: 'limit-reached' }
+  > {
+    return this.withAllocationLock(async () => {
+      const existing = await this.findById(id);
+      if (existing === null || existing.deletedAt !== null) {
+        return { outcome: 'not-found' };
+      }
+      if (
+        !existing.isActive &&
+        allocation.limit !== null &&
+        (await this.countActive()) >= allocation.limit
+      ) {
+        return { outcome: 'limit-reached' };
+      }
+      const updated = await this.update(id, patch);
+      return updated === null
+        ? { outcome: 'not-found' }
+        : { outcome: 'updated', user: updated };
+    });
   }
 
   async create(input: {
@@ -163,6 +216,20 @@ export class InMemoryUsersRepository {
     };
     this.byId.set(id, updated);
     return updated;
+  }
+
+  private async withAllocationLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.allocationTail;
+    let release!: () => void;
+    this.allocationTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
   }
 
   /** Foreign-key emulation for RBAC's `user_roles.user_id`. */

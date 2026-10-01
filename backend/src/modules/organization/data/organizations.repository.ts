@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import { isRecordNotFound } from '../../../kernel/prisma/prisma-errors.js';
 import type { Organization } from '../domain/organization.js';
+import type { LicensedAllocation } from '../../licensing/application/licensing.service.js';
 import {
   type AuditColumns,
   type MasterDataDelegate,
@@ -55,13 +56,20 @@ interface OrganizationUpdate {
   updatedBy: string | null;
 }
 
-type Client = {
-  organization: MasterDataDelegate<
-    OrganizationRow,
-    OrganizationWhere,
-    OrganizationCreate,
-    OrganizationUpdate
-  >;
+type OrganizationDelegate = MasterDataDelegate<
+  OrganizationRow,
+  OrganizationWhere,
+  OrganizationCreate,
+  OrganizationUpdate
+>;
+
+type OrganizationTx = {
+  organization: OrganizationDelegate;
+  $queryRaw<T>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
+};
+
+type Client = OrganizationTx & {
+  $transaction<T>(fn: (tx: OrganizationTx) => Promise<T>): Promise<T>;
 };
 
 export interface OrganizationListFilter {
@@ -128,6 +136,30 @@ export class OrganizationsRepository {
     return organization.count({ where: {} });
   }
 
+  /**
+   * Serialize licensed organization allocation for one installation. The
+   * transaction-scoped advisory lock is held through count + insert, so a
+   * concurrent contender re-counts only after the winner commits.
+   */
+  async createWithinLicenseLimit(
+    input: OrganizationCreate,
+    allocation: LicensedAllocation,
+  ): Promise<Organization | null> {
+    const client = await this.client();
+    return client.$transaction(async (tx) => {
+      await lockInstallationAllocation(
+        tx,
+        allocation.installationId,
+        'organizations',
+      );
+      if (allocation.limit !== null) {
+        const count = await tx.organization.count({ where: {} });
+        if (count >= allocation.limit) return null;
+      }
+      return toDomain(await tx.organization.create({ data: input }));
+    });
+  }
+
   async create(input: OrganizationCreate): Promise<Organization> {
     const { organization } = await this.client();
     return toDomain(await organization.create({ data: input }));
@@ -150,6 +182,15 @@ export class OrganizationsRepository {
 }
 
 // ---- Internal helpers ----
+
+async function lockInstallationAllocation(
+  tx: OrganizationTx,
+  installationId: string,
+  resource: 'organizations',
+): Promise<void> {
+  const key = `vardena:license:${installationId}:${resource}`;
+  await tx.$queryRaw<unknown>`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))::text AS "locked"`;
+}
 
 function toWhere(filter: OrganizationListFilter): OrganizationWhere {
   const where: OrganizationWhere = {};

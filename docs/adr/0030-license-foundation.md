@@ -23,6 +23,7 @@ A module/feature Entitlement and an RBAC Permission are different facts. Licensi
 6. Organization creation and active-user creation/re-enablement are license-gated in their owning application services. Existing Organization permissions and membership rules still apply.
 7. Consumers depend on `LicenseProvider` through `LicensingService`. The current `LocalDevelopmentLicenseProvider` is selected explicitly and reads validated configuration. It has no `NODE_ENV`, administrator, role, username, or email bypass.
 8. Persistence uses typed Customer, Installation, License, and Entitlement tables in the `licensing` schema; no EAV or universal JSON payload.
+9. Finite organization and active-user allocations serialize on PostgreSQL transaction-scoped advisory locks keyed by installation and resource. Count plus mutation occur under that lock in one transaction, preventing concurrent over-allocation without a process-global or distributed lock.
 
 ## Consequences
 

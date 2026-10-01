@@ -64,15 +64,51 @@ All consumers depend on `LicensingService`/`LicenseProvider`. `LICENSE_PROVIDER=
 - `npm run typecheck`: PASS.
 - `npm run lint`: PASS (one pre-existing warning in `coding-structure-accounts.spec.ts`, zero errors).
 - `npm run format:check`: PASS.
-- `npm test`: PASS — 115 files, 1330 tests.
+- `npm test`: PASS — 116 files, 1335 tests (including 5 focused concurrent application-operation tests).
 - `npm run build`: PASS.
 - Focused licensing unit/integration: PASS — 25 tests in the focused run before the final full unit run.
 - Focused `test/licensing.e2e-spec.ts`: PASS — 4 tests, ~0.5 seconds test time.
 - Prisma validation/generate local attempt: environment could not download Prisma's schema-engine checksum from `binaries.prisma.sh` (TLS/network failure before validation); schema/migration validation is therefore delegated to the existing CI Prisma validate/generate/deploy steps.
 
+## Concurrency-safe limit enforcement
+
+Organization and active-user allocations no longer use an independently raceable `count → check → create/update` sequence. The application obtains the active installation allocation (`installationId` plus nullable limit), then the owning repository opens one PostgreSQL transaction, acquires `pg_advisory_xact_lock(hashtextextended(key, 0))`, re-counts, and mutates while holding that transaction lock. Keys are installation/resource scoped:
+
+- `vardena:license:<installationId>:organizations`
+- `vardena:license:<installationId>:active-users`
+
+All contenders for the same licensed installation/resource therefore serialize. A later contender can only count after the winner commits and is rejected if the winner consumed the final slot. Organization and user locks are separate, so unrelated resource allocation is not globally serialized. Authorization, input validation, username/code checks, and password hashing stay outside the narrow allocation transaction. `enableUser()` re-reads lifecycle under the same active-user allocation lock. Membership rows remain irrelevant to the unique active `users.users` count.
+
+Exact implementation files:
+
+- `backend/src/modules/organization/data/organizations.repository.ts`
+- `backend/src/modules/organization/application/organizations.service.ts`
+- `backend/src/modules/users/data/users.repository.ts`
+- `backend/src/modules/users/application/users.service.ts`
+- `backend/src/modules/licensing/application/licensing.service.ts`
+
+Focused application concurrency tests:
+
+- `admits exactly one of two concurrent organization creates at limit 1`
+- `admits no more than two concurrent organization creates at limit 2`
+- `admits exactly one of two concurrent active-user creates at limit 1`
+- `admits no more than two concurrent active-user creates at limit 2`
+- `serializes concurrent re-enables and refuses them when the active-user limit is consumed`
+- File: `backend/src/modules/licensing/application/license-limit-concurrency.spec.ts`
+- Local result: PASS (5/5)
+
+PostgreSQL concurrency tests:
+
+- `commits exactly one of two concurrent organization allocations for one available slot`
+- `commits exactly one of two concurrent active-user allocations for one available slot`
+- `commits exactly one of two concurrent inactive-to-active allocations for one available slot`
+- File: `backend/test/licensing-limits-live.e2e-spec.ts`
+- Local full live execution: intentionally deferred to GitHub Actions.
+- GitHub run/backend/E2E result: PENDING follow-up verification.
+
 ## E2E verification
 
-Local full E2E: **intentionally not awaited** because the repository live suite is long-running. Only the deterministic focused licensing E2E was run locally.
+Local full E2E: **intentionally not awaited** because the repository live suite is long-running. Only deterministic focused in-process licensing E2E was run locally.
 
 GitHub Actions workflow: `.github/workflows/ci.yml` (`CI`, backend job including migrate/bootstrap/full E2E).
 
@@ -105,4 +141,4 @@ Deferred/not implemented: CRM, billing/payments, marketplace/subscriptions, remo
 
 ## Final status
 
-READY FOR REVIEW
+BLOCKED — follow-up PostgreSQL concurrency CI verification is pending.

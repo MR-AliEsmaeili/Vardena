@@ -234,24 +234,31 @@ export class UsersService {
     if (existing !== null) {
       throw AppException.conflict('A user with that username already exists.');
     }
-    if (params.isActive ?? true) {
-      await this.licensing.assertCanActivateUser(
-        await this.repository.countActive(),
-      );
-    }
+    const createsActiveUser = params.isActive ?? true;
+    const allocation = createsActiveUser
+      ? await this.licensing.activeUserAllocation()
+      : null;
 
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
     const passwordHash = await this.passwordService.hash(params.password);
-    const user = await this.repository.create({
+    const createInput = {
       id: generateId(),
       username,
       passwordHash,
-      isActive: params.isActive ?? true,
+      isActive: createsActiveUser,
       createdAt: now,
       updatedAt: now,
       createdBy: actorId,
-    });
+    };
+    const user =
+      allocation === null
+        ? await this.repository.create(createInput)
+        : await this.repository.createActiveWithinLicenseLimit(
+            createInput,
+            allocation,
+          );
+    if (user === null) this.licensing.throwActiveUserLimitReached();
 
     await this.publish({
       type: USER_CREATED_EVENT,
@@ -366,16 +373,26 @@ export class UsersService {
     if (existing === null || existing.deletedAt !== null) {
       throw AppException.notFound('User', userId);
     }
-    if (!existing.isActive) {
-      await this.licensing.assertCanActivateUser(
-        await this.repository.countActive(),
-      );
-    }
-    const updated = await this.repository.update(userId, {
-      isActive: true,
+    const patch = {
+      isActive: true as const,
       updatedAt: new Date(),
       updatedBy: getPrincipal()?.userId ?? null,
-    });
+    };
+    let updated: User | null;
+    if (existing.isActive) {
+      updated = await this.repository.update(userId, patch);
+    } else {
+      const allocation = await this.licensing.activeUserAllocation();
+      const result = await this.repository.enableWithinLicenseLimit(
+        userId,
+        patch,
+        allocation,
+      );
+      if (result.outcome === 'limit-reached') {
+        this.licensing.throwActiveUserLimitReached();
+      }
+      updated = result.outcome === 'updated' ? result.user : null;
+    }
     if (updated === null || updated.deletedAt !== null) {
       throw AppException.notFound('User', userId);
     }

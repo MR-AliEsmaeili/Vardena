@@ -41,6 +41,7 @@ import type { UnitConversion } from '../../src/modules/inventory/domain/unit-con
 import type { Warehouse } from '../../src/modules/inventory/domain/warehouse.js';
 import type { HierarchyEdge } from '../../src/modules/organization/domain/hierarchy.js';
 import type { OrganizationsRepository } from '../../src/modules/organization/data/organizations.repository.js';
+import type { LicensedAllocation } from '../../src/modules/licensing/application/licensing.service.js';
 import type { OrganizationMembershipsRepository } from '../../src/modules/organization/data/organization-memberships.repository.js';
 import type { OrganizationMembershipRow } from '../../src/modules/organization/data/organization-memberships.repository.js';
 import type { BranchesRepository } from '../../src/modules/organization/data/branches.repository.js';
@@ -293,6 +294,7 @@ class ScopedCodeTable<TRow extends Row & { organizationId: string }> {
 
 export class InMemoryOrganizationsRepository {
   readonly table = new InMemoryTable<Organization>([['code']]);
+  private allocationTail: Promise<void> = Promise.resolve();
 
   async findById(id: string): Promise<Organization | null> {
     return this.table.findById(id);
@@ -319,6 +321,26 @@ export class InMemoryOrganizationsRepository {
 
   async countAll(): Promise<number> {
     return this.table.size;
+  }
+
+  async createWithinLicenseLimit(
+    input: Organization,
+    allocation: LicensedAllocation,
+  ): Promise<Organization | null> {
+    const previous = this.allocationTail;
+    let release!: () => void;
+    this.allocationTail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      if (allocation.limit !== null && this.table.size >= allocation.limit) {
+        return null;
+      }
+      return this.table.insert(clone(input));
+    } finally {
+      release();
+    }
   }
 
   async create(input: Organization): Promise<Organization> {

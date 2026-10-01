@@ -174,9 +174,7 @@ export class OrganizationsService {
         'This deployment is pinned to a single organization; additional organizations cannot be created through the API.',
       );
     }
-    await this.licensing.assertCanCreateOrganization(
-      await this.repository.countAll(),
-    );
+    const allocation = await this.licensing.organizationAllocation();
     const code = normalizeCode(input.code);
     const name = normalizeName(input.name);
     assertCodeAndName(code, name);
@@ -192,15 +190,20 @@ export class OrganizationsService {
     const actorId = getPrincipal()?.userId ?? null;
     let created: Organization;
     try {
-      created = await this.repository.create({
-        id: generateId(),
-        code,
-        name,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-        createdBy: actorId,
-      });
+      const allocated = await this.repository.createWithinLicenseLimit(
+        {
+          id: generateId(),
+          code,
+          name,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: actorId,
+        },
+        allocation,
+      );
+      if (allocated === null) this.licensing.throwOrganizationLimitReached();
+      created = allocated;
     } catch (error) {
       if (isUniqueViolation(error)) {
         throw AppException.conflict(
@@ -436,20 +439,22 @@ export class OrganizationsService {
     const existing = await this.repository.findById(pin);
     if (existing !== null) return { organization: existing, created: false };
 
-    await this.licensing.assertCanCreateOrganization(
-      await this.repository.countAll(),
-    );
+    const allocation = await this.licensing.organizationAllocation();
     const now = new Date();
     try {
-      const created = await this.repository.create({
-        id: pin,
-        code: DEPLOYMENT_ORGANIZATION_BOOTSTRAP_CODE,
-        name: DEPLOYMENT_ORGANIZATION_BOOTSTRAP_NAME,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-        createdBy: null,
-      });
+      const created = await this.repository.createWithinLicenseLimit(
+        {
+          id: pin,
+          code: DEPLOYMENT_ORGANIZATION_BOOTSTRAP_CODE,
+          name: DEPLOYMENT_ORGANIZATION_BOOTSTRAP_NAME,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: null,
+        },
+        allocation,
+      );
+      if (created === null) this.licensing.throwOrganizationLimitReached();
       await publishEvent(this.events, {
         type: ORGANIZATION_CREATED_EVENT,
         aggregateType: 'Organization',

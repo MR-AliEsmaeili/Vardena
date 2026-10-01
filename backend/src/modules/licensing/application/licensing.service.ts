@@ -8,6 +8,11 @@ import {
 } from '../domain/license.js';
 import { LICENSE_PROVIDER, type LicenseProvider } from './license-provider.js';
 
+export interface LicensedAllocation {
+  installationId: string;
+  limit: number | null;
+}
+
 @Injectable()
 export class LicensingService {
   constructor(
@@ -63,27 +68,45 @@ export class LicensingService {
     }
   }
 
-  async assertCanCreateOrganization(currentCount: number): Promise<void> {
+  async organizationAllocation(): Promise<LicensedAllocation> {
     const license = await this.requireActive();
     await this.requireModule('organization');
-    if (
-      license.organizationLimit !== null &&
-      currentCount >= license.organizationLimit
-    ) {
-      throw AppException.businessRule(
-        'The installation license organization limit has been reached.',
-      );
+    return {
+      installationId: license.installationId,
+      limit: license.organizationLimit,
+    };
+  }
+
+  async activeUserAllocation(): Promise<LicensedAllocation> {
+    const license = await this.requireActive();
+    await this.requireModule('users');
+    return { installationId: license.installationId, limit: license.userLimit };
+  }
+
+  async assertCanCreateOrganization(currentCount: number): Promise<void> {
+    const allocation = await this.organizationAllocation();
+    if (allocation.limit !== null && currentCount >= allocation.limit) {
+      this.throwOrganizationLimitReached();
     }
   }
 
   async assertCanActivateUser(currentActiveCount: number): Promise<void> {
-    const license = await this.requireActive();
-    await this.requireModule('users');
-    if (license.userLimit !== null && currentActiveCount >= license.userLimit) {
-      throw AppException.businessRule(
-        'The installation license active-user limit has been reached.',
-      );
+    const allocation = await this.activeUserAllocation();
+    if (allocation.limit !== null && currentActiveCount >= allocation.limit) {
+      this.throwActiveUserLimitReached();
     }
+  }
+
+  throwOrganizationLimitReached(): never {
+    throw AppException.businessRule(
+      'The installation license organization limit has been reached.',
+    );
+  }
+
+  throwActiveUserLimitReached(): never {
+    throw AppException.businessRule(
+      'The installation license active-user limit has been reached.',
+    );
   }
 
   async requireModule(code: string): Promise<void> {
