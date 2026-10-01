@@ -960,3 +960,115 @@ historical project state above.
   `frontend/README.md` were updated instead of adding a competing record.
 - **Not accepted by this addendum:** as with every other entry in this file,
   merge/CI-green is not Owner acceptance.
+
+## 16. C-46 — Inventory Warehouse Master Completion, backend (2026-10-01)
+
+This addendum records a focused backend task without rewriting or removing any
+historical project state above. Full findings, gap matrix, implemented
+changes and verification: `docs/tasks/task-33/`.
+
+- **Numbering note (read before anything else in this section).** The work
+  order that authorized this task titled it **"Task 33 — Inventory /
+  Warehouse Master Completion"** and asked for a `docs/tasks/task-33/` folder.
+  That number collides with the **already-merged, unrelated** §13 record
+  above (**"Task 33 — Organization Provisioning & First-Login Readiness"**,
+  PR #96, `docs/task-33-organization-first-login-provisioning-report.md`).
+  Per AG-17 ("record, don't assume"), this section does **not** renumber §13,
+  does **not** claim to be "the" Task 33, and does **not** edit
+  `docs/accounting/task-index.md` (this is Inventory, not Accounting — forcing
+  it there would misfile it, and the task's own instructions say so
+  explicitly). The repository's actual cross-domain registry for this kind of
+  item is the Future Task Candidate Register
+  (`docs/roadmap/future-task-candidates.md`), where this work is **candidate
+  `C-46` (Warehouse coding / master completion)**. The `docs/tasks/task-33/`
+  folder exists because the work order required that exact path; its content
+  refers to the work as "Task 33 (= roadmap candidate C-46)" throughout so a
+  reader cannot confuse it with §13.
+- **Scope:** verify the existing Inventory Warehouse master-data vertical
+  slice (list/get/create/update/enable/disable) against the current
+  repository contract and close genuine gaps only. Reconnaissance found the
+  production implementation (`backend/src/modules/inventory/{domain,
+  application,data,api}/warehouse*.ts`) **already complete and correct**:
+  organization scope via `OrganizationsService.assertOrganizationInScope` /
+  `requireUsableOrganization`, branch validation via
+  `BranchesService.requireUsableBranchInOrganization` (no cross-module Prisma
+  access), organization-scoped code uniqueness (`uq_warehouses_organization_
+  id_code`, pre-check + unique-violation fallback), the two ADR-0022 lifecycle
+  freeze guards (branch cannot change once `inventory_movements` exist for the
+  warehouse; a warehouse cannot be disabled while `inventory_balances` still
+  shows stock), explicit per-operation permissions
+  (`Inventory.Warehouse.{View,Create,Edit,Enable,Disable}`), domain events
+  (`Warehouse.{Created,Updated,Enabled,Disabled}`) fired only after a
+  successful write, and a schema that already supports every required
+  capability (**zero migration**).
+- **The genuine gap was test coverage, not implementation.** `WarehousesService`
+  had no dedicated unit spec at all; the two freeze guards had no test
+  anywhere (in any module) that ever drove them into their blocking branch;
+  no live-PostgreSQL suite existed for Warehouse (or for master data
+  generally) to prove the organization-scoped unique constraint survives a
+  real concurrent write race; and the hermetic HTTP suite
+  (`master-data.e2e-spec.ts`) covered the warehouse journey once but never
+  exercised duplicate-code 409, warehouse-specific cross-organization
+  GET/PATCH IDOR, or a PATCH onto a foreign-organization branch.
+- **Backend production changes: NONE.** `git diff --stat` touches only test
+  files; no controller, DTO, service, repository, domain file, permission
+  code, event, or Prisma schema/migration was changed.
+- **Test changes (regression coverage only):**
+  - New `backend/src/modules/inventory/application/warehouses.service.spec.ts`
+    (24 cases): create/update normalization and validation, organization-scoped
+    duplicate-code conflict and cross-organization code reuse, foreign-branch
+    rejection on create and on update, **both freeze guards driven into their
+    blocking branch** (via a controllable fake movements/balances seam) and
+    confirmed non-blocking when the branch is unchanged or the balance clears,
+    enable/disable idempotency and event-on-real-change-only,
+    `requireUsableWarehouseInOrganization` (`allowInactive`), and
+    list pagination/branch filter/active filter/search/sort allowlist.
+  - Extended `backend/src/modules/organization/application/master-data-
+    authorization.spec.ts` with a new `WarehousesService authorization &
+    cross-organization IDOR` block (3 cases) driven through the REAL
+    `AuthorizationService` + real RBAC repositories: anonymous 401, a
+    distinct permission required per Warehouse operation (View+Create does
+    not imply Edit/Enable/Disable), and a member of both organizations still
+    cannot read/update/enable/disable a warehouse or reuse a branch belonging
+    to the other organization (genuine IDOR, not a scope rejection).
+  - Extended the hermetic `backend/test/master-data.e2e-spec.ts` (4 cases):
+    duplicate warehouse code 409 within one organization, the same code
+    allowed in a different organization, cross-organization GET/PATCH 404 by
+    id (no-disclosure), and PATCH rejecting a foreign-organization branch.
+  - New `backend/test/warehouse-master-live.e2e-spec.ts`
+    (`describe.skipIf` on `VARDENA_TEST_DATABASE_URL`, the same opt-in
+    pattern as `workflow-live.e2e-spec.ts` / `licensing-persistence-live.
+    e2e-spec.ts`): 5 cases against **real PostgreSQL** — organization-scoped
+    code uniqueness surviving 8 concurrent `createWarehouse` calls for the
+    identical `(organizationId, code)` (exactly one winner, the database
+    unique index is authoritative, not the application pre-check), the same
+    code reused across two organizations, organization isolation on real
+    committed rows, branch isolation on create/update, and both lifecycle
+    freeze guards exercised against real `inventory_movements`/
+    `inventory_balances` rows produced by
+    `InventoryMovementsService.postMovement` (including the disable guard
+    lifting once the real balance is driven back to zero, and the branch
+    guard staying permanent afterward).
+- **No wildcard permission, role-name/username/system-admin/NODE_ENV bypass,
+  second tenant-check mechanism, new schema, new migration, new module, new
+  Item/Product/valuation/costing/Receipt/Issue/Material-Request/Purchasing/
+  Treasury capability, or frontend change was introduced.** OQ-22, OQ-33 (and
+  OQ-11, OQ-24, OQ-29, OQ-36, OQ-39, OQ-41, OQ-42, OQ-43, OQ-54) are preserved
+  OPEN, none resolved implicitly.
+- **Local fast verification (executed):** `npm run typecheck` clean,
+  `npm run lint` 0 errors (1 pre-existing unrelated warning), `npm run
+  format:check` clean, `npm run build` OK, focused specs (`warehouses.
+  service.spec.ts` 24/24, `master-data-authorization.spec.ts` 25/25,
+  `master-data.e2e-spec.ts` 41/41) all pass, and the full hermetic unit suite
+  (`npm test`) **120 files / 1391 tests passed** (no pre-existing test
+  modified or weakened). The new live-database spec was confirmed to be
+  correctly **skipped** locally (no `VARDENA_TEST_DATABASE_URL`); it is
+  wired into the existing `test:e2e` glob so GitHub Actions' `backend` job
+  (which already provisions Postgres and sets `VARDENA_TEST_DATABASE_URL`)
+  executes it for real — see `docs/tasks/task-33/test-evidence.md` for the
+  actual CI run once available.
+- **Not accepted by this addendum:** as with every other entry in this file,
+  implementation/merge/CI-green is not Owner acceptance. This section also
+  does not accept, re-accept, or alter the status of §13 (the other "Task
+  33"), C-01..C-45, or any other candidate in the Future Task Candidate
+  Register beyond updating C-46's own row.

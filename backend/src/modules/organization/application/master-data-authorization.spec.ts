@@ -17,7 +17,10 @@ import { WarehousesService } from '../../inventory/application/warehouses.servic
 import type { InventoryMovementsRepository } from '../../inventory/data/inventory-movements.repository.js';
 import type { InventoryBalancesRepository } from '../../inventory/data/inventory-balances.repository.js';
 import { ORGANIZATION_PERMISSION_DEFINITIONS } from '../domain/organization-permissions.js';
-import { INVENTORY_PERMISSION_DEFINITIONS } from '../../inventory/domain/inventory-permissions.js';
+import {
+  INVENTORY_PERMISSION_DEFINITIONS,
+  WAREHOUSE_PERMISSIONS,
+} from '../../inventory/domain/inventory-permissions.js';
 import {
   ORGANIZATION_CREATED_EVENT,
   ORGANIZATION_DISABLED_EVENT,
@@ -669,5 +672,196 @@ describe('BranchesService organization isolation', () => {
     );
     expect(warehouse.branchId).toBe(branch.id);
     expect(warehouse.organizationId).toBe(orgA);
+  });
+});
+
+/**
+ * Task 33 (Inventory / Warehouse Master Completion) addition.
+ *
+ * The three warehouse cases above already prove organization/branch data
+ * isolation through `asSystem`. This block closes the remaining gap: the
+ * REAL `AuthorizationService` driven through an authenticated request
+ * context (`asActor`), so that a missing/foreign-organization permission is
+ * provably enforced by the service layer for every Warehouse operation, not
+ * only by the HTTP guard.
+ */
+describe('WarehousesService authorization & cross-organization IDOR', () => {
+  let fixture: Fixture;
+  let orgA: string;
+  let orgB: string;
+  let branchA: string;
+  let branchB: string;
+
+  beforeEach(async () => {
+    fixture = await buildFixture();
+    orgA = (
+      await asSystem(() =>
+        fixture.organizations.createOrganization({
+          code: 'ORG-A',
+          name: 'Org A',
+        }),
+      )
+    ).id;
+    orgB = (
+      await asSystem(() =>
+        fixture.organizations.createOrganization({
+          code: 'ORG-B',
+          name: 'Org B',
+        }),
+      )
+    ).id;
+    branchA = (
+      await asSystem(() =>
+        fixture.branches.createBranch({
+          organizationId: orgA,
+          code: 'A-1',
+          name: 'Branch A1',
+        }),
+      )
+    ).id;
+    branchB = (
+      await asSystem(() =>
+        fixture.branches.createBranch({
+          organizationId: orgB,
+          code: 'B-1',
+          name: 'Branch B1',
+        }),
+      )
+    ).id;
+  });
+
+  it('rejects an anonymous list/get/create with 401, not 403', async () => {
+    const anonymous = (fn: () => Promise<unknown>): Promise<unknown> =>
+      runWithRequestContext({ correlationId: 'corr-1' }, fn);
+
+    await expect(
+      anonymous(() =>
+        fixture.warehouses.listWarehouses({
+          organizationId: orgA,
+          page: 1,
+          pageSize: 10,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'Unauthorized' });
+    await expect(
+      anonymous(() =>
+        fixture.warehouses.createWarehouse({
+          organizationId: orgA,
+          branchId: branchA,
+          code: 'WH-1',
+          name: 'Warehouse 1',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'Unauthorized' });
+  });
+
+  it('requires a distinct permission per Warehouse operation', async () => {
+    // ODR-3: the actor must also be a legitimate member of orgA — these
+    // permission assertions are about the CODE, not about scope.
+    fixture.masterStores.raw.memberships.seed(ACTOR, orgA);
+    await fixture.grant(ACTOR, [
+      WAREHOUSE_PERMISSIONS.VIEW,
+      WAREHOUSE_PERMISSIONS.CREATE,
+    ]);
+
+    const created = await asActor(ACTOR, () =>
+      fixture.warehouses.createWarehouse({
+        organizationId: orgA,
+        branchId: branchA,
+        code: 'WH-1',
+        name: 'Warehouse 1',
+      }),
+    );
+    // View+Create holds no Edit/Enable/Disable.
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.warehouses.updateWarehouse(orgA, created.id, {
+          name: 'Renamed',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.warehouses.disableWarehouse(orgA, created.id),
+      ),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.warehouses.enableWarehouse(orgA, created.id),
+      ),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+
+    // View alone cannot create.
+    const viewer = `${ACTOR}-viewer`;
+    fixture.masterStores.raw.memberships.seed(viewer, orgA);
+    await fixture.grant(viewer, [WAREHOUSE_PERMISSIONS.VIEW]);
+    await expect(
+      asActor(viewer, () =>
+        fixture.warehouses.createWarehouse({
+          organizationId: orgA,
+          branchId: branchA,
+          code: 'WH-2',
+          name: 'Warehouse 2',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+  });
+
+  it('cannot read, update, enable or disable a warehouse of another organization even with full Warehouse permissions (IDOR)', async () => {
+    fixture.masterStores.raw.memberships.seed(ACTOR, orgA);
+    fixture.masterStores.raw.memberships.seed(ACTOR, orgB);
+    await fixture.grant(ACTOR, [
+      WAREHOUSE_PERMISSIONS.VIEW,
+      WAREHOUSE_PERMISSIONS.CREATE,
+      WAREHOUSE_PERMISSIONS.EDIT,
+      WAREHOUSE_PERMISSIONS.ENABLE,
+      WAREHOUSE_PERMISSIONS.DISABLE,
+    ]);
+
+    const warehouseInB = await asActor(ACTOR, () =>
+      fixture.warehouses.createWarehouse({
+        organizationId: orgB,
+        branchId: branchB,
+        code: 'WH-B',
+        name: 'Warehouse in B',
+      }),
+    );
+
+    // The actor is a member of orgA too, so this is a genuine cross-tenant
+    // probe, not a scope rejection.
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.warehouses.getWarehouse(orgA, warehouseInB.id),
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.warehouses.updateWarehouse(orgA, warehouseInB.id, {
+          name: 'Hijacked',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.warehouses.disableWarehouse(orgA, warehouseInB.id),
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.warehouses.enableWarehouse(orgA, warehouseInB.id),
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+
+    // And a foreign branch cannot be used to create/move a warehouse in orgA.
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.warehouses.createWarehouse({
+          organizationId: orgA,
+          branchId: branchB,
+          code: 'WH-CROSS',
+          name: 'Cross-org attempt',
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
   });
 });

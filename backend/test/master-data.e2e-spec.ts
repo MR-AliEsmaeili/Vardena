@@ -373,6 +373,63 @@ describe('Organization + Inventory master data (e2e)', () => {
     expect(res.body.code).toBe('EntityNotFound');
   });
 
+  it('rejects a duplicate warehouse code within the same organization with 409', async () => {
+    const res = await root
+      .post('/api/v1/inventory/warehouses')
+      .send({
+        organizationId: state.orgId,
+        branchId: state.branchId,
+        code: 'WH-TEH-01',
+        name: 'Duplicate attempt',
+      })
+      .expect(409);
+    expect(res.body.code).toBe('Conflict');
+  });
+
+  it('allows the same warehouse code in a different organization', async () => {
+    const res = await root
+      .post('/api/v1/inventory/warehouses')
+      .send({
+        organizationId: state.otherOrgId,
+        branchId: state.otherBranchId,
+        code: 'WH-TEH-01',
+        name: 'Same code, other organization',
+      })
+      .expect(201);
+    expect(res.body.organizationId).toBe(state.otherOrgId);
+  });
+
+  it("answers 404 (not disclosure) for another organization's warehouse by id (GET/PATCH IDOR)", async () => {
+    const getRes = await root
+      .get(`/api/v1/inventory/warehouses/${state.warehouseId}`)
+      .query({ organizationId: state.otherOrgId })
+      .expect(404);
+    expect(getRes.body.code).toBe('EntityNotFound');
+
+    const patchRes = await root
+      .patch(`/api/v1/inventory/warehouses/${state.warehouseId}`)
+      .query({ organizationId: state.otherOrgId })
+      .send({ name: 'Hijacked' })
+      .expect(404);
+    expect(patchRes.body.code).toBe('EntityNotFound');
+
+    // Unchanged: the real name is still visible from the correct organization.
+    const still = await root
+      .get(`/api/v1/inventory/warehouses/${state.warehouseId}`)
+      .query({ organizationId: state.orgId })
+      .expect(200);
+    expect(still.body.name).toBe('Tehran central warehouse');
+  });
+
+  it('rejects moving a warehouse to a branch owned by another organization', async () => {
+    const res = await root
+      .patch(`/api/v1/inventory/warehouses/${state.warehouseId}`)
+      .query({ organizationId: state.orgId })
+      .send({ branchId: state.otherBranchId })
+      .expect(404);
+    expect(res.body.code).toBe('EntityNotFound');
+  });
+
   // ---- journey 2: organization → item group → item → unit → conversion -----
 
   it('journey 2: creates units', async () => {
