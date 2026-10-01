@@ -84,6 +84,10 @@ export const fa = {
     createFirstNameRequired: 'نام سازمان الزامی است.',
     createFirstSubmit: 'ایجاد سازمان',
     createFirstSubmitting: 'در حال ایجاد سازمان…',
+    licenseInactiveTitle: 'مجوز استقرار فعال نیست',
+    licenseInactiveBody:
+      'ایجاد سازمان تا زمانی که مجوز این استقرار فعال شود در دسترس نیست. این محدودیت به سطح دسترسی حساب کاربری شما مربوط نمی‌شود؛ با مدیر سامانه تماس بگیرید.',
+    licenseErrorTitle: 'خطا در دریافت وضعیت مجوز',
   },
   breadcrumb: {
     label: 'مسیر صفحه',

@@ -1,5 +1,6 @@
 import { LogOut } from 'lucide-react';
 import { useSession } from '@/features/auth/use-session';
+import { useLicenseState } from '@/features/licensing/use-license-state';
 import { CreateFirstOrganizationForm } from '@/features/organization/create-first-organization-form';
 import { OrganizationSelection } from '@/features/organization/organization-selection';
 import { useOrganization } from '@/features/organization/use-organization';
@@ -88,11 +89,52 @@ function BlockedState({
  * permissions and refuses the call entirely in a pinned deployment; a
  * session without both codes still sees the unchanged terminal explainer,
  * exactly as before this form existed.
+ *
+ * ADR-0030 (L-01) added an installation license in front of organization
+ * creation. `effectivePermissionCodes` already drops `Organization.*` codes
+ * when the `organization` module is not entitled or the license is
+ * inactive (`AuthorizationService.effectivePermissionCodes`), so
+ * `canBootstrapFirstOrganization` below is already license-aware for that
+ * case. The one gap that filtering does not close is messaging: a session
+ * that simply lacks the RBAC permission and one blocked only because the
+ * license is inactive would otherwise both see the identical generic
+ * "you lack permission" explainer, which this follow-up's compatibility
+ * audit treats as misleading per the license-state read this component now
+ * does first (`docs/licensing-architecture.md` "PR #96" note). The license
+ * read never enforces anything — it only decides which explainer to show;
+ * `OrganizationsService.createOrganization` is the sole enforcement point.
  */
 function EmptyOrganizationState() {
   const { user } = useSession();
   const permissions = usePermissions();
   const { refresh } = useOrganization();
+  const license = useLicenseState();
+
+  if (license.loading) {
+    return <ResolvingState />;
+  }
+
+  if (license.isError) {
+    return (
+      <div className="space-y-4">
+        <ApiErrorAlert
+          error={license.error}
+          title={t.organization.licenseErrorTitle}
+          onRetry={license.refetch}
+        />
+        <LogoutButton />
+      </div>
+    );
+  }
+
+  if (!license.active) {
+    return (
+      <BlockedState
+        title={t.organization.licenseInactiveTitle}
+        description={t.organization.licenseInactiveBody}
+      />
+    );
+  }
 
   const canBootstrapFirstOrganization =
     user !== null &&
