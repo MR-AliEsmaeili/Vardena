@@ -82,9 +82,16 @@ Backend suites and live-DB/E2E verification are left to GitHub CI.
 - Branch `arena/01a0f7cb-vardena`, commit `e72e547`
   (`feat(frontend): license activation step in the licensing bootstrap gate`).
 - PR [#100](https://github.com/MR-AliEsmaeili/Vardena/pull/100) → `main`.
-- GitHub CI run `36875679821` on `e72e547`: **success** (jobs `frontend` and
-  `backend`, the latter including the live-PostgreSQL suites this task did not
-  run locally).
+- GitHub CI history on this branch:
+  - run `36875679821` on `e72e547` (implementation): **success** — jobs
+    `frontend` and `backend`, the latter including the live-PostgreSQL suites
+    this task did not run locally;
+  - run `36876812366` on `501830c` (documentation-only commit): **failure** in
+    the backend step "E2E tests (incl. live-DB suites)" — no code changed
+    between `e72e547` and `501830c`, so it is not attributable to this task;
+  - run `36877691687` on `a120b20` (empty re-run commit, identical tree):
+    **success** — both jobs, confirming the previous failure was transient.
+    The flaky suite was neither skipped nor weakened.
 - Documentation updated with the implemented behavior:
   `docs/licensing-architecture.md` §"Frontend consumption" (the statement that
   "the frontend adds no activation form in L-02" no longer describes the
