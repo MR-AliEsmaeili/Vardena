@@ -45,6 +45,11 @@ export function evaluateLicense(
   return { ...license, active: inactiveReason === null, inactiveReason };
 }
 
+const PERMISSION_PREFIX_TO_MODULE: Readonly<Record<string, string>> = {
+  Document: 'documents',
+};
+
 export function permissionModuleCode(permissionCode: string): string {
-  return permissionCode.split('.')[0]!.toLowerCase();
+  const prefix = permissionCode.split('.')[0]!;
+  return PERMISSION_PREFIX_TO_MODULE[prefix] ?? prefix.toLowerCase();
 }

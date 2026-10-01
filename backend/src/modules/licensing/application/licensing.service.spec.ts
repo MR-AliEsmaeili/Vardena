@@ -22,6 +22,7 @@ function license(
     entitlements: [
       { kind: 'MODULE', code: 'organization' },
       { kind: 'MODULE', code: 'accounting' },
+      { kind: 'MODULE', code: 'documents' },
       { kind: 'MODULE', code: 'users' },
       { kind: 'FEATURE', code: 'report_builder' },
     ],
@@ -87,6 +88,7 @@ describe('LicensingService', () => {
       licensing.filterLicensedPermissions(
         [
           'Accounting.Account.View',
+          'Document.DocumentType.Configure',
           'Inventory.Item.View',
           'Organization.Organization.Create',
         ],
@@ -94,6 +96,7 @@ describe('LicensingService', () => {
       ),
     ).resolves.toEqual([
       'Accounting.Account.View',
+      'Document.DocumentType.Configure',
       'Organization.Organization.Create',
     ]);
     await expect(
