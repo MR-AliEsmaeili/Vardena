@@ -1,3 +1,4 @@
+import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   DomainEventBus,
@@ -129,10 +130,15 @@ function buildFixture(): Fixture {
   const organizations = new OrganizationsService(
     masterStores.organizations,
     masterStores.memberships,
-    new AuthorizationService(rbacStores.userRoles, loggerStub()),
+    new AuthorizationService(
+      rbacStores.userRoles,
+      loggerStub(),
+      licensingTestDouble(),
+    ),
     loggerStub(),
     bus,
     UNPINNED_APP_CONFIG,
+    licensingTestDouble(),
   );
 
   const vouchers = createAccountingDocumentStores({

@@ -119,26 +119,37 @@ export class PermissionsRepository {
     orderBy: Array<Record<string, 'asc' | 'desc'>>;
     skip: number;
     take: number;
+    allowedCodes?: string[];
   }): Promise<{ items: PermissionRef[]; total: number }> {
     const client = await this.prisma.getClient<{
       permission: {
         findMany: (args: {
+          where?: { code: { in: string[] } };
           orderBy: Array<Record<string, 'asc' | 'desc'>>;
           skip: number;
           take: number;
           select: { code: true; description: true };
         }) => Promise<PermissionRef[]>;
-        count: () => Promise<number>;
+        count: (args?: {
+          where: { code: { in: string[] } };
+        }) => Promise<number>;
       };
     }>();
+    const where =
+      params.allowedCodes === undefined
+        ? undefined
+        : { code: { in: params.allowedCodes } };
     const [items, total] = await Promise.all([
       client.permission.findMany({
+        ...(where === undefined ? {} : { where }),
         orderBy: params.orderBy,
         skip: params.skip,
         take: params.take,
         select: { code: true, description: true },
       }),
-      client.permission.count(),
+      where === undefined
+        ? client.permission.count()
+        : client.permission.count({ where }),
     ]);
     return { items, total };
   }

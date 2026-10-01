@@ -27,6 +27,7 @@ import { toOrganizationDto } from '../domain/organization.js';
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
 import { normalizeCode, normalizeName } from '../domain/master-data.js';
 import { ORGANIZATION_PERMISSIONS } from '../domain/organization-permissions.js';
+import { LicensingService } from '../../licensing/application/licensing.service.js';
 import {
   ORGANIZATION_CREATED_EVENT,
   ORGANIZATION_DISABLED_EVENT,
@@ -114,6 +115,7 @@ export class OrganizationsService {
     private readonly logger: JsonLogger,
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly licensing: LicensingService,
   ) {}
 
   async listOrganizations(
@@ -172,6 +174,9 @@ export class OrganizationsService {
         'This deployment is pinned to a single organization; additional organizations cannot be created through the API.',
       );
     }
+    await this.licensing.assertCanCreateOrganization(
+      await this.repository.countAll(),
+    );
     const code = normalizeCode(input.code);
     const name = normalizeName(input.name);
     assertCodeAndName(code, name);
@@ -431,6 +436,9 @@ export class OrganizationsService {
     const existing = await this.repository.findById(pin);
     if (existing !== null) return { organization: existing, created: false };
 
+    await this.licensing.assertCanCreateOrganization(
+      await this.repository.countAll(),
+    );
     const now = new Date();
     try {
       const created = await this.repository.create({

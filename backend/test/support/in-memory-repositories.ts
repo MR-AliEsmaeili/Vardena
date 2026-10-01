@@ -111,6 +111,12 @@ export class InMemoryUsersRepository {
     };
   }
 
+  async countActive(): Promise<number> {
+    return [...this.byId.values()].filter(
+      (user) => user.isActive && user.deletedAt === null,
+    ).length;
+  }
+
   async create(input: {
     id: string;
     username: string;
@@ -307,8 +313,16 @@ export class InMemoryPermissionsRepository {
     orderBy: Array<Record<string, 'asc' | 'desc'>>;
     skip: number;
     take: number;
+    allowedCodes?: string[];
   }): Promise<{ items: PermissionRef[]; total: number }> {
-    const all = sortBy([...this.byId.values()], params.orderBy);
+    const allowed =
+      params.allowedCodes === undefined ? null : new Set(params.allowedCodes);
+    const all = sortBy(
+      [...this.byId.values()].filter(
+        (permission) => allowed === null || allowed.has(permission.code),
+      ),
+      params.orderBy,
+    );
     return {
       items: all
         .slice(params.skip, params.skip + params.take)

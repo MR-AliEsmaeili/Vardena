@@ -110,6 +110,13 @@ export class UsersRepository {
     return { items: rows.map(toDomain), total };
   }
 
+  async countActive(): Promise<number> {
+    const client = await this.prisma.getClient<{
+      user: { count: (args: { where: UserWhere }) => Promise<number> };
+    }>();
+    return client.user.count({ where: { deletedAt: null, isActive: true } });
+  }
+
   async create(input: {
     id: string;
     username: string;

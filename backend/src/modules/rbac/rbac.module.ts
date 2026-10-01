@@ -14,6 +14,7 @@ import { UserRolesService } from './application/user-roles.service.js';
 import { SystemAdministratorRbacService } from './application/system-administrator-rbac.service.js';
 import { PermissionsController } from './api/permissions.controller.js';
 import { RolesController } from './api/roles.controller.js';
+import { LicensingModule } from '../licensing/licensing.module.js';
 
 /**
  * RBAC module (docs/modules.md §RBAC).
@@ -34,7 +35,7 @@ import { RolesController } from './api/roles.controller.js';
  * only use each other's public surface.
  */
 @Module({
-  imports: [forwardRef(() => IdentityModule)],
+  imports: [forwardRef(() => IdentityModule), LicensingModule],
   controllers: [RolesController, PermissionsController],
   providers: [
     PermissionRegistry,

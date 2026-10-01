@@ -1,3 +1,4 @@
+import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   DomainEventBus,
@@ -64,6 +65,7 @@ async function buildFixture(): Promise<Fixture> {
     // The check short-circuits before touching the repository.
     undefined as never,
     loggerStub(),
+    licensingTestDouble(),
   );
 
   const organizations = new OrganizationsService(
@@ -73,6 +75,7 @@ async function buildFixture(): Promise<Fixture> {
     loggerStub(),
     bus,
     UNPINNED_APP_CONFIG,
+    licensingTestDouble(),
   );
   const units = new UnitsService(
     stores.units,

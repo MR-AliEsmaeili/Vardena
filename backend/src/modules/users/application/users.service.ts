@@ -21,6 +21,7 @@ import { PasswordService } from '../domain/password.service.js';
 import type { User, UserDto } from '../domain/user.js';
 import { toUserDto } from '../domain/user.js';
 import { USER_PERMISSIONS } from '../domain/user-permissions.js';
+import { LicensingService } from '../../licensing/application/licensing.service.js';
 import {
   USER_CREATED_EVENT,
   USER_DISABLED_EVENT,
@@ -101,6 +102,7 @@ export class UsersService {
     private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
+    private readonly licensing: LicensingService,
   ) {}
 
   // -----------------------------------------------------------------------
@@ -232,6 +234,11 @@ export class UsersService {
     if (existing !== null) {
       throw AppException.conflict('A user with that username already exists.');
     }
+    if (params.isActive ?? true) {
+      await this.licensing.assertCanActivateUser(
+        await this.repository.countActive(),
+      );
+    }
 
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
@@ -355,6 +362,15 @@ export class UsersService {
   /** Re-enable a previously disabled account. */
   async enableUser(userId: string): Promise<UserDto> {
     await this.authorization.requireAllPermissions([USER_PERMISSIONS.ENABLE]);
+    const existing = await this.repository.findById(userId);
+    if (existing === null || existing.deletedAt !== null) {
+      throw AppException.notFound('User', userId);
+    }
+    if (!existing.isActive) {
+      await this.licensing.assertCanActivateUser(
+        await this.repository.countActive(),
+      );
+    }
     const updated = await this.repository.update(userId, {
       isActive: true,
       updatedAt: new Date(),

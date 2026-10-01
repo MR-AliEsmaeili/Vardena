@@ -1,3 +1,4 @@
+import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { describe, expect, it, vi } from 'vitest';
 import { PermissionsRepository } from '../data/permissions.repository.js';
 import { RolesRepository } from '../data/roles.repository.js';
@@ -56,6 +57,7 @@ describe('SystemAdministratorRbacService', () => {
       {
         ensureRoleWithPermissionsForUser,
       } as unknown as RolesRepository,
+      licensingTestDouble(),
     );
 
     await expect(service.ensureForUser(USER_ID)).resolves.toEqual({
@@ -90,6 +92,7 @@ describe('SystemAdministratorRbacService', () => {
       {
         ensureRoleWithPermissionsForUser,
       } as unknown as RolesRepository,
+      licensingTestDouble(),
     );
 
     await expect(service.ensureForUser(USER_ID)).rejects.toThrow(
@@ -124,6 +127,7 @@ describe('SystemAdministratorRbacService', () => {
       {
         ensureRoleWithPermissionsForUser,
       } as unknown as RolesRepository,
+      licensingTestDouble(),
     );
 
     await expect(service.ensureForUser(USER_ID)).rejects.toThrow(

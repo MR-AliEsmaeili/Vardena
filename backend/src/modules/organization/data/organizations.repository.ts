@@ -123,6 +123,11 @@ export class OrganizationsRepository {
     return { items: rows.map(toDomain), total };
   }
 
+  async countAll(): Promise<number> {
+    const { organization } = await this.client();
+    return organization.count({ where: {} });
+  }
+
   async create(input: OrganizationCreate): Promise<Organization> {
     const { organization } = await this.client();
     return toDomain(await organization.create({ data: input }));

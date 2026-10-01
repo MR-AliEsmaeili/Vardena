@@ -1,3 +1,4 @@
+import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   DomainEventBus,
@@ -68,6 +69,7 @@ async function buildFixture(): Promise<Fixture> {
   const authorization = new AuthorizationService(
     undefined as never,
     loggerStub(),
+    licensingTestDouble(),
   );
   const organizations = new OrganizationsService(
     master.organizations,
@@ -76,6 +78,7 @@ async function buildFixture(): Promise<Fixture> {
     loggerStub(),
     bus,
     UNPINNED_APP_CONFIG,
+    licensingTestDouble(),
   );
   const registry = new DocumentTypeRegistry();
   registry.register([
@@ -291,7 +294,11 @@ describe('NumberingService allocation', () => {
       losing as never,
       fixture.stores.numberingAllocations,
       fixture.organizations,
-      new AuthorizationService(undefined as never, loggerStub()),
+      new AuthorizationService(
+        undefined as never,
+        loggerStub(),
+        licensingTestDouble(),
+      ),
       loggerStub(),
       new DomainEventBus(),
     );

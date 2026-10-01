@@ -1,3 +1,4 @@
+import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { describe, expect, it } from 'vitest';
 import { runWithRequestContext } from '../../../kernel/correlation/request-context.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
@@ -46,10 +47,12 @@ function buildFixture() {
     sync,
     stores.permissions,
     stores.roles,
+    licensingTestDouble(),
   );
   const authorization = new AuthorizationService(
     stores.userRoles,
     loggerStub(),
+    licensingTestDouble(),
   );
   return { stores, registry, service, authorization };
 }
@@ -91,13 +94,13 @@ describe('System Administrator permission reconciliation contract', () => {
     await seedUser(stores, { id: ADMIN });
     const first = await service.ensureForUser(ADMIN);
 
-    // A future module (e.g. Sales) registers a new protected capability. It is
-    // NOT added to any administrator list anywhere — only to the registry.
+    // Another licensed module registers a new protected capability. It is not
+    // added to any administrator list anywhere — only to the registry.
     registry.register([
-      { code: 'Sales.Invoice.Export', description: 'Export invoices.' },
+      { code: 'Workflow.Definition.View', description: 'View workflows.' },
     ]);
     await expect(
-      authorization.hasAllPermissions(ADMIN, ['Sales.Invoice.Export']),
+      authorization.hasAllPermissions(ADMIN, ['Workflow.Definition.View']),
     ).resolves.toBe(false);
 
     const second = await service.ensureForUser(ADMIN);
@@ -109,7 +112,7 @@ describe('System Administrator permission reconciliation contract', () => {
     expect(second.permissionCount).toBe(registry.size);
     expect(second.permissionCount).toBe(first.permissionCount + 1);
     await expect(
-      authorization.hasAllPermissions(ADMIN, ['Sales.Invoice.Export']),
+      authorization.hasAllPermissions(ADMIN, ['Workflow.Definition.View']),
     ).resolves.toBe(true);
     await expect(
       authorization.hasAllPermissions(ADMIN, ['Users.User.View']),

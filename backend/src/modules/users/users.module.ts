@@ -6,6 +6,7 @@ import { PasswordService } from './domain/password.service.js';
 import { UsersService } from './application/users.service.js';
 import { UsersPermissionRegistration } from './application/users-permission-registration.js';
 import { UsersController } from './api/users.controller.js';
+import { LicensingModule } from '../licensing/licensing.module.js';
 
 /**
  * Users module (docs/modules.md §Users).
@@ -22,7 +23,7 @@ import { UsersController } from './api/users.controller.js';
  *   cycle is a composition cycle, not a data cycle (AR-07).
  */
 @Module({
-  imports: [RbacModule, forwardRef(() => IdentityModule)],
+  imports: [RbacModule, forwardRef(() => IdentityModule), LicensingModule],
   controllers: [UsersController],
   providers: [
     PasswordService,

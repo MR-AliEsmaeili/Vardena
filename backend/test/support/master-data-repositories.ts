@@ -317,6 +317,10 @@ export class InMemoryOrganizationsRepository {
     return listPage(this.table, params);
   }
 
+  async countAll(): Promise<number> {
+    return this.table.size;
+  }
+
   async create(input: Organization): Promise<Organization> {
     return this.table.insert(clone(input));
   }

@@ -1,3 +1,4 @@
+import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { describe, expect, it } from 'vitest';
 import {
   DomainEventBus,
@@ -59,6 +60,7 @@ async function buildFixture(): Promise<{
   const authorization = new AuthorizationService(
     stores.userRoles,
     loggerStub(),
+    licensingTestDouble(),
   );
   const service = new UserRolesService(
     stores.roles,

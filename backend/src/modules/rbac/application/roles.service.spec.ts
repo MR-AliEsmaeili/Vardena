@@ -1,3 +1,4 @@
+import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { describe, expect, it } from 'vitest';
 import {
   DomainEventBus,
@@ -55,10 +56,15 @@ async function buildFixture(): Promise<{
   // Mirror the registry into the permission table, like the startup sync does.
   await stores.raw.permissions.syncDefinitions(registry.all(), new Date());
 
-  const permissions = new PermissionsService(registry, stores.permissions);
+  const permissions = new PermissionsService(
+    registry,
+    stores.permissions,
+    licensingTestDouble(),
+  );
   const authorization = new AuthorizationService(
     stores.userRoles,
     loggerStub(),
+    licensingTestDouble(),
   );
   const service = new RolesService(
     stores.roles,
