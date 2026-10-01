@@ -1,8 +1,12 @@
 # Task 33 — Organization Provisioning & First-Login Readiness
 
-Status: **READY FOR REVIEW — NOT ACCEPTED**
-Base commit: `1d9a3c014a23775697b112bb8953cea943d0db52` (branch
+Status: **READY FOR REVIEW**
+Base commit (original): `1d9a3c014a23775697b112bb8953cea943d0db52` (branch
 `arena/01a0f16d-vardena`, merge of PR #95 on `main`)
+Current head (after the PR #96 follow-up in §17–§25):
+`f9477b6b770787cd5745a04323d38481b98c238f`, rebased onto `main`
+`841b6851` (merge of PR #97 / L-01). See §17 for the rebase record and §18
+for the L-01 compatibility audit this follow-up performed.
 
 ## 0. Executive summary
 
@@ -510,3 +514,289 @@ shows it actually ran and passed in this session.
 | Tests prove the relevant lifecycle | §12 |
 | CI/verification results recorded truthfully | §13 |
 | No unrelated architecture or product scope introduced | §6 — frontend-only, two new files, no schema/endpoint/permission change |
+
+---
+
+# PR #96 follow-up — rebase onto `main` + L-01 licensing compatibility audit
+
+Everything below this line documents a separate, later pass over the same
+PR #96. Sections 0–16 above are the original Task 33 deliverable and are left
+unmodified as the historical record of that work; nothing in §1–§16 was found
+to be factually wrong, so nothing there was rewritten.
+
+## 17. Rebase
+
+- **Original base:** `1d9a3c0` (`main`, merge of PR #95).
+- **Original head (pre-follow-up):** `5db7b87` ("organization: close unpinned
+  first-login dead end via frontend first-organization bootstrap").
+- **Current `main` at follow-up time:** `841b685` (merge of PR #97, "L-01:
+  licensing foundation and entitlement architecture"), six commits ahead of
+  `1d9a3c0`: `f13c6e0`, `9a2510c`, `03aa933`, `735eaa2`, `f6afef6`, `841b685`.
+- **Conflicts:** none. `git rebase origin/main` replayed both PR #96 commits
+  (the original Task 33 commit and the one compatibility-fix commit added in
+  §18 below) cleanly — the two change sets touch disjoint files (L-01 is
+  entirely backend; PR #96 is entirely frontend until the one new frontend
+  file this follow-up adds to read the license-state endpoint).
+- **Resolution:** a clean `git rebase`, no manual conflict resolution was
+  needed. `PR #96` was not closed; no new PR was opened; no unrelated history
+  was rewritten (the rebase only replayed PR #96's own two commits onto the
+  new base).
+- **Post-rebase head:** `f9477b6b770787cd5745a04323d38481b98c238f`, pushed to
+  `origin/arena/01a0f16d-vardena` with `git push --force-with-lease` (a rebase
+  of an already-pushed branch requires a forced update of that one branch;
+  no other branch or ref was touched).
+- **Post-rebase diff check:** `git diff --stat origin/main..HEAD` after the
+  rebase shows exactly the 17 files PR #96 + this follow-up ever touched
+  (frontend only, plus docs) — confirming the final diff is PR #96's original
+  functionality plus the one compatibility addition in §18, nothing else.
+
+## 18. L-01 compatibility audit
+
+The audit inspected every item the follow-up brief listed, against the
+licensing foundation actually merged in PR #97 (`backend/src/modules/
+licensing/*`, `docs/adr/0030-license-foundation.md`,
+`docs/licensing-architecture.md`).
+
+**Organization creation path**
+(`OrganizationsService.createOrganization`,
+`OrganizationsRepository.createWithinLicenseLimit`): L-01 inserted a license
+check between the existing deployment-pin check and the existing
+code/name validation — `licensing.organizationAllocation()` (requires an
+active license and the `organization` module entitlement) followed by a
+concurrency-safe count-and-create inside one transaction
+(`createWithinLicenseLimit`, holding a Postgres advisory lock keyed by
+installation+resource). On a reached limit it throws the same
+`AppException.businessRule` (`BusinessRuleViolation`, HTTP 422) the pinned-
+deployment refusal already used — no new error code, no new HTTP status, no
+DTO/contract change. `CreateOrganizationDto`, `GrantMembershipDto`, and
+`OrganizationResponseDto` are byte-for-byte unchanged (`git diff` confirms —
+not merely "assumed unchanged"). Compatibility: **no frontend change
+required** for the create call itself; `organization.api.ts` keeps calling
+the same `POST /organizations` with the same body and reading the same
+response shape it always did.
+
+**RBAC / permission handling**
+(`AuthorizationService.effectivePermissionCodes`): now intersects stored
+grants with `LicensingService.filterLicensedPermissions` before returning
+them, so `GET /permissions/effective` — the exact endpoint
+`usePermissions()`/`GET /permissions/effective` already consumes — already
+drops `Organization.Organization.Create` / `Organization.Membership.Grant`
+from the effective set whenever the `organization` module is unlicensed or
+the license itself is inactive. The default `LocalDevelopmentLicenseProvider`
+configuration (`backend/src/kernel/config/app-config.ts`) entitles
+`organization` (and every other currently-implemented module) by default
+with no limits, so default/CI/unconfigured deployments are unaffected.
+Compatibility: **no frontend change required** here either —
+`EmptyOrganizationState`'s `permissions.hasAll([...])` check was already
+reading the post-L-01-filtered set through the pre-existing contract, exactly
+as the brief required ("use the existing effective-permissions API/session
+contract... do not create a new permission endpoint").
+
+**Deployment pin** (`ensureDeploymentOrganization`): the pinned-deployment
+bootstrap path now also calls `licensing.organizationAllocation()` and
+`createWithinLicenseLimit` before creating the pinned organization — a
+pinned deployment cannot bypass the license any more than an unpinned one
+can. This path is backend-only and invisible to PR #96's frontend code (a
+pinned deployment never reaches the empty-organization gate because
+`GET /organizations` already returns exactly one organization). No frontend
+change needed or made.
+
+**Membership bootstrap** (`OrganizationMembershipsService`, ODR-3 first-
+member exception): `git diff 1d9a3c0 origin/main -- backend/src/modules/
+organization/application/organization-memberships.service.ts
+backend/src/modules/organization/api/organization-memberships.controller.ts
+backend/src/modules/organization/domain/organization-permissions.ts` is
+empty — L-01 did not touch the membership module at all. `Organization.
+Membership.Grant` remains a plain RBAC permission, licensed through the same
+`organization` module as `Organization.Organization.Create` (same prefix,
+`permissionModuleCode()`), so both permissions are licensed/unlicensed
+together under every current license configuration. Create Organization and
+Create Membership remain two separate backend calls in
+`CreateFirstOrganizationForm` (`POST /organizations` then
+`POST /organizations/:id/members`); this follow-up did not collapse them
+into one call or one abstraction, and did not reimplement any part of the
+ODR-3 bootstrap exception client-side.
+
+**License-limit / inactive-license failure UX:** `errors.ts`'s existing,
+unmodified convention — `messageForCode('BusinessRuleViolation', fallback)`
+returns the backend's own message verbatim, never a generic string — already
+makes "the installation license organization limit has been reached" and
+"This deployment is pinned to a single organization…" render as distinct,
+accurate messages the moment a create call actually fails. That part needed
+no change. The one gap the audit found: before a create is even attempted,
+a session that holds both organization permissions but is blocked only
+because the license is inactive saw the identical generic "you don't have
+permission" explainer (`t.organization.emptyBody`) that a session with no
+permission at all sees — both facts collapse to "the create form isn't
+offered" and the UI could not tell them apart without the one further
+read ADR-0030 explicitly calls out: *"PR #96's first-organization UX must
+call the license-state endpoint before offering organization provisioning
+[...] Its existing Organization/RBAC path remains unchanged."* This is the
+one and only compatibility fix implemented (§19/§20 below): a read of the
+already-existing `GET /license/current` (no RBAC permission required, no new
+endpoint added — `LicenseStateController` ships as part of L-01 itself) used
+purely to pick which explainer to show. It performs no count/limit math
+client-side (`organizationLimit`/`userLimit` are read into the `LicenseState`
+type but never compared against anything in the frontend) and changes no
+enforcement — `OrganizationsService.createOrganization` is unaffected and
+remains the only place a create is actually accepted or rejected.
+
+**User/active-user limits** (`UsersService`, `activeUserAllocation`): out of
+PR #96's scope by design — organization creation and membership grant are
+the only two calls PR #96's frontend makes, and `CreateFirstOrganizationForm`
+never creates a `User`. No duplication of the active-user limit was added or
+considered necessary.
+
+**Frontend/backend responsibility boundary:** unchanged and re-confirmed.
+The frontend still never reads license state from `localStorage`,
+`sessionStorage`, an environment variable, or any hardcoded value; the one
+license read added is a per-request `GET /license/current` call proxied
+through the same authenticated, httpOnly-cookie session as every other
+request, with a 60s `staleTime` (identical caching posture to
+`usePermissions()`/`getEffectivePermissions`). There is no
+`isAdmin`/`NODE_ENV`/email/role branch anywhere in the new code, no
+organization-count-vs-limit comparison, and no second "licensed
+permissions" mechanism — the existing `GET /permissions/effective` route
+remains the only permission source the frontend reads.
+
+## 19. Files changed (this follow-up, on top of §7's original list)
+
+| File | Change |
+|---|---|
+| `frontend/src/api/contracts.ts` | Add `LicenseState`/`LicenseEntitlement` types, hand-restored from `LicenseStateController`'s return type (documented 4th instance of the file's existing "annotation gap" pattern — that endpoint has no decorated response DTO for the OpenAPI generator to pick up) |
+| `frontend/src/api/licensing.api.ts` (new) | `getLicenseState()` — thin `GET /license/current` wrapper, same shape as `identity.api.ts`'s `getEffectivePermissions` |
+| `frontend/src/api/query-keys.ts` | Add the `licenseState` query key |
+| `frontend/src/features/licensing/use-license-state.ts` (new) | `useLicenseState()` hook, same shape as `usePermissions()` |
+| `frontend/src/app/layouts/organization-gate.tsx` | `EmptyOrganizationState` reads license state before the RBAC check; adds a dedicated blocked explainer for an inactive license |
+| `frontend/src/lib/i18n.ts` | `licenseInactiveTitle`, `licenseInactiveBody`, `licenseErrorTitle` (Persian copy) |
+| `frontend/src/test/fixtures.ts` | `testActiveLicenseState`, `testInactiveLicenseState` |
+| `frontend/src/app/layouts/app-shell.test.tsx` | Mock `@/api/licensing.api`; default to an active license; add a regression test for the license-inactive explainer |
+| `docs/task-33-organization-first-login-provisioning-report.md` | This section and §17/§18/§20–§25 |
+| `STATE.md` | §13 addendum updated for the post-L-01 reality |
+| `docs/security.md` | Reviewed; licensing-related clarification added |
+| `frontend/README.md` | Reviewed; licensing-related clarification added |
+
+No backend file was changed by this follow-up. No file outside this list was
+touched.
+
+## 20. Tests (this follow-up)
+
+| # | Test | Result | Evidence |
+|---|---|---|---|
+| 1 | Existing "lets a session holding organization Create + Membership.Grant create and enter the first organization" still passes unmodified with an active-license default | Pass | `npx vitest run src/app/layouts/app-shell.test.tsx` (13/13) |
+| 2 | Existing "blocks the workspace... when no organization exists" (no permission) still shows the generic explainer, unaffected by the license check | Pass | same run |
+| 3 | New: a session holding BOTH organization permissions sees the license-inactive explainer, not the permission-denied explainer, and not the create form, when the license is inactive | Pass | new test `blocks first-organization creation with the license explainer, not the permission explainer, when the installation license is inactive (ADR-0030)` |
+| 4 | New: the license-inactive scenario never calls `createOrganization` | Pass | assertion inside test #3 |
+| 5 | `CreateFirstOrganizationForm` unit tests (direct render, no gate) remain fully unaffected since they do not render `EmptyOrganizationState` | Pass | `create-first-organization-form.test.tsx` (4/4) |
+| 6 | Full frontend suite regression | Pass | `npx vitest run` — 33 files / 218 tests |
+| 7 | Backend full unit suite regression (no backend file touched, re-run to confirm the rebased base itself is healthy) | Pass | `npm test` in `backend/` — 116 files / 1335 tests |
+| 8 | Backend + frontend CI on the exact final pushed commit | Pass | §22 |
+
+Authorization/licensing-specific assertions ride on the real post-rebase
+`main` contract (`effectivePermissionCodes` filtering, `BusinessRuleViolation`
+message pass-through) rather than a mock of nonexistent licensing logic — the
+mocked boundary in `app-shell.test.tsx` is `@/api/*` request functions only
+(same boundary the suite already used before this follow-up), not the
+licensing/authorization logic itself.
+
+## 21. Local verification (this follow-up)
+
+Run from a clean `npm ci` in both `frontend/` and `backend/` after the
+rebase, against the rebased `arena/01a0f16d-vardena` working tree:
+
+- `npx tsc --noEmit` (frontend): pass, 0 errors.
+- `npx oxlint .` (frontend): "Found 0 warnings and 0 errors."
+- `npx prettier --check .` (frontend): "All matched files use Prettier code
+  style!"
+- `npx vitest run` (frontend): 33 files / 218 tests, all pass.
+- `npm run build` (frontend, `tsc --noEmit && vite build`): pass.
+- `npm test` (backend, vitest unit suite): 116 files / 1335 tests, all pass.
+- `npx prisma validate` (backend): **not runnable in this sandbox** — the
+  schema-engine binary download is blocked by the sandbox's network egress
+  policy (`request to https://binaries.prisma.sh/... failed`), a pre-existing
+  sandbox limitation unrelated to this change (also hit and documented during
+  the original Task 33 session). This is not a defect: the GitHub Actions
+  backend job runs `Prisma validate` and `Prisma generate` as explicit steps
+  and both passed on the final commit (§22) — no backend schema file was
+  touched by this follow-up in any case.
+- Backend E2E suite: not run locally in this session (no local Postgres in
+  this sandbox); deferred to CI per the follow-up brief's explicit
+  instruction, and verified there (§22/§23).
+
+## 22. GitHub CI (this follow-up)
+
+- **Commit verified:** `f9477b6b770787cd5745a04323d38481b98c238f` — confirmed
+  via `gh pr view 96 --json headRefOid` to be PR #96's exact current head at
+  the time of this check (not a stale pre-rebase run).
+- **Workflow:** `.github/workflows/ci.yml`, run **#96**,
+  run id **36830490998**
+  (https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36830490998).
+- **Jobs:**
+  - `backend` (job id `110265735253`): **success**, 3m17s. Steps included
+    Prisma validate, Prisma generate, Lint, Typecheck, Format check, Unit
+    tests, Build, Migrate test database, Bootstrap system administrator,
+    Migration rehearsal, and **E2E tests (incl. live-DB suites)** — all
+    green.
+  - `frontend` (job id `110265735804`): **success**, 1m56s. Steps included
+    Lint, Typecheck, Format check, Tests, Build — all green.
+- **Overall run conclusion:** `success` (`gh run view 36830490998 --json
+  status,conclusion` → `{"conclusion":"success","status":"completed"}`).
+
+## 23. E2E
+
+Explicitly **deferred locally and verified in GitHub CI** — the backend
+job's "E2E tests (incl. live-DB suites)" step ran against a real Postgres
+service container in the Actions runner and passed on commit `f9477b6`
+(§22). This was not run as a separate local full-E2E pass in this sandbox
+(no local Postgres); per the follow-up brief this is not a blocker and not a
+basis for reporting anything other than READY FOR REVIEW, since the
+authoritative CI run already completed successfully against the exact final
+commit.
+
+## 24. Known issues
+
+No known implementation defects remain. Two sandbox-environment limitations
+were hit and worked around, not fixed (because they are not code defects):
+`npx prisma validate` cannot reach `binaries.prisma.sh` from this sandbox
+(worked around by relying on the GitHub Actions job, which has network
+access and passed); no local Postgres is available in this sandbox for a
+local E2E run (worked around by relying on the GitHub Actions job, which
+provisions one and passed).
+
+One pre-existing, intentionally-out-of-scope observation carried over
+unchanged from the original Task 33 report's §14/§15 is still accurate: the
+license-inactive explainer added here uses the same terminal,
+logout-or-contact-administrator pattern as every other blocked state in
+`OrganizationGate` — there is still no general license-activation UI, and
+none is implied or required (§16's "Scope control" explicitly forbids a
+"license activation portal"; this follow-up implements neither).
+
+## 25. Scope notes
+
+No unrelated scope was introduced. Confirmed against the follow-up brief's
+forbidden list: no CRM, billing, marketplace, remote license server,
+activation portal, hardware binding, offline licensing, new RBAC/permission
+architecture, new workflow engine, Redis, microservice split, or unrelated
+refactor was added. No file outside the list in §19 was modified; in
+particular, `SessionProvider`/`session-context.tsx` and `OrganizationProvider`/
+`organization-context.tsx` — both high-centrality, already heavily tested
+files — were left completely untouched, and the one new query (license
+state) was implemented as its own small, independently-enabled hook used only
+inside `EmptyOrganizationState`, specifically to avoid widening the blast
+radius of this change beyond first-organization provisioning. The Task 33
+decision recorded in §5 (Option C, frontend-only, no backend/ADR change)
+still stands; this follow-up did not reopen or redo that decision, it only
+added the one reactive UX read ADR-0030 itself called for.
+
+## Final status
+
+**READY FOR REVIEW** — implementation (original Task 33 scope + this
+follow-up's one L-01 compatibility fix) is complete, no known defects remain,
+local fast verification passed (frontend: typecheck/lint/format/unit+
+component tests/build; backend: full unit suite — prisma validate deferred to
+CI per §21), the branch is pushed to `origin/arena/01a0f16d-vardena` at
+`f9477b6`, GitHub Actions CI passed in full on that exact commit (§22,
+run 36830490998), and E2E (including live-DB suites) is verified via that
+same CI run (§23). Documentation (`docs/task-33-organization-first-login-
+provisioning-report.md`, `docs/security.md`, `frontend/README.md`,
+`STATE.md`) is updated to reflect the post-L-01 reality.

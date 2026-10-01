@@ -737,3 +737,45 @@ decision and verification: `docs/task-33-organization-first-login-provisioning-r
   redesign was touched.
 - **Not accepted by this addendum:** as with every other entry in this file,
   merge/CI-green is not Owner acceptance.
+
+### 13.1 PR #96 follow-up — rebase onto L-01 licensing foundation (2026-10-01)
+
+PR #97 ("L-01: licensing foundation and entitlement architecture",
+`docs/adr/0030-license-foundation.md`) merged into `main` after PR #96 (this
+Task 33 work) was opened, adding an installation License → Entitlement →
+assignable Permission catalog layer in front of RBAC. This follow-up rebased
+PR #96 onto the new `main`, audited §13's implementation against it, and
+applied the one compatibility fix the audit found necessary — full findings
+in `docs/task-33-organization-first-login-provisioning-report.md` §17–§25.
+
+- **No backend contract PR #96 depends on changed.**
+  `CreateOrganizationDto`/`GrantMembershipDto`/`OrganizationResponseDto` and
+  the whole membership module are byte-for-byte unchanged by L-01.
+- **Most of L-01's effect on PR #96 is already transparent.**
+  `AuthorizationService.effectivePermissionCodes` now intersects stored RBAC
+  grants with licensed modules, and PR #96's frontend already reads that
+  exact filtered set through the pre-existing `GET /permissions/effective`
+  contract — no code change was needed for `Organization.Organization.Create`
+  / `Organization.Membership.Grant` to stay license-aware.
+- **The one compatibility fix:** ADR-0030 explicitly calls out that "PR #96's
+  first-organization UX must call the license-state endpoint before offering
+  organization provisioning." Before this fix, a session holding both
+  organization permissions but blocked only because the installation license
+  was inactive saw the same generic "you lack permission" explainer as a
+  session with no permission at all. The frontend now reads the existing
+  `GET /license/current` self-read (already shipped by L-01, no RBAC
+  permission required, no new backend endpoint added) before evaluating the
+  RBAC-gated first-organization affordance, and shows a distinct "license is
+  not active" explainer when appropriate. This is read-only UX routing, not
+  enforcement — no count/limit comparison was added client-side, and
+  `OrganizationsService.createOrganization` remains the sole enforcement
+  point.
+- **No frontend-side license enforcement of any kind was added** — no
+  threshold checks, no reading license state from storage/env, no
+  admin/role/NODE_ENV bypass, no second "licensed permissions" mechanism.
+- Rebased cleanly (no conflicts) onto `main` `841b685`; final head
+  `f9477b6b770787cd5745a04323d38481b98c238f`; GitHub Actions CI run
+  `36830490998` passed in full (backend incl. live-DB E2E, frontend) on that
+  exact commit.
+- **Not accepted by this addendum either** — same rule as every other entry
+  in this file.
