@@ -810,3 +810,29 @@ rewriting §13.1's history.
   **superseded** as "current" evidence by the above.
 - **No production code, backend source, or implementation file changed** in
   this correction — documentation only.
+
+### 13.3 Second evidence correction (2026-10-01, same day)
+
+Writing §13.2 itself required a commit, which moved PR #96's HEAD from
+`487d363` to `abd5134d793ef4b87088afad0f7f9fe04ace9127` — the same
+mechanical effect §13.2 corrected for `f9477b6`→`487d363`. Documenting a
+branch's own HEAD always trails by exactly the commit doing the documenting;
+see `docs/task-33-organization-first-login-provisioning-report.md` §27 for
+the full explanation and the rule adopted going forward (describe the
+implementation commit `f9477b6` as the verified baseline, treat every commit
+after it as an independently-CI-verified, production-behavior-unchanged
+documentation correction, and read `git rev-parse HEAD` /
+`gh pr view 96 --json headRefOid` for the literal current value instead of
+trusting a frozen SHA in prose).
+
+- **Current PR #96 HEAD at time of writing:**
+  `abd5134d793ef4b87088afad0f7f9fe04ace9127`.
+- **Current authoritative CI:** GitHub Actions run `36840117957`, tied to
+  `abd5134` (`gh run view 36840117957 --json status,conclusion,headSha` →
+  success/completed/`abd5134...`). Both jobs `success`, backend incl.
+  E2E/live-DB suites.
+- `487d363`/run `36831107322` (§13.2) and `f9477b6`/run `36830490998`
+  (§13.1) remain valid historical records, superseded only as "current."
+- `git diff --stat -- backend/` and `-- frontend/src/` between `487d363` and
+  `abd5134` are both empty — documentation-only, same as every correction in
+  this chain.

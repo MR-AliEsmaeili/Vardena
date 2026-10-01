@@ -876,21 +876,63 @@ strictly as labeled historical references to the intermediate compatibility-
 fix commit; they are no longer presented as the current or final state
 anywhere in this document.
 
+## 27. Second evidence correction (this is a pure-documentation branch — the HEAD moves every time this file is edited)
+
+Writing §26 required a commit (`abd5134d793ef4b87088afad0f7f9fe04ace9127`),
+which — like the `487d363` docs commit before it — moved PR #96's HEAD one
+commit past the value §26 names as "current" the moment it was pushed. This
+is an unavoidable, mechanical property of a document that describes its own
+branch's HEAD: no commit can name its own SHA before it exists. To avoid
+chasing this indefinitely, the rule going forward is: **the implementation
+is verified as of commit `487d363` (§18–§22 and §26); every commit after it
+on this branch, including this one, is a documentation-only correction with
+no production/backend/frontend-behavior change, each independently verified
+by CI, and the specific trailing SHA at any instant is whatever `git
+rev-parse HEAD` / `gh pr view 96 --json headRefOid` returns right now — not
+a value frozen into prose.**
+
+For the record, re-verified at the time of writing this section:
+
+- `git rev-parse HEAD` → `abd5134d793ef4b87088afad0f7f9fe04ace9127` (one
+  documentation commit after `487d363`, adding §26 and the matching
+  `STATE.md` §13.2).
+- `gh pr view 96 --json headRefOid,baseRefName,state,mergeable` → head
+  `abd5134...`, base `main` (`841b685...`, unchanged), `OPEN`, `MERGEABLE`.
+- GitHub Actions run **36840117957** (triggered for `abd5134`): `backend`
+  **success** (2m40s, incl. Prisma validate/generate and **E2E tests incl.
+  live-DB suites**) and `frontend` **success** (1m42s). Confirmed via
+  `gh run view 36840117957 --json status,conclusion,headSha` →
+  `{"conclusion":"success","headSha":"abd5134...","status":"completed"}`.
+- `git diff --stat -- backend/` and `git diff --stat -- frontend/src/`
+  between `487d363` and `abd5134` are both empty — this commit, like the one
+  in §26, is documentation-only (`docs/task-33-organization-first-login-
+  provisioning-report.md` and `STATE.md`).
+
+`487d363`/run `36831107322` (§26) and `f9477b6`/run `36830490998` (§22) are
+both still accurate, valid, and worth keeping as the two earlier points in
+this same chain — they are not wrong, only superseded as "the current HEAD"
+by each subsequent documentation commit. The one fact that has not changed
+since `f9477b6` first shipped the implementation is the implementation
+itself: zero production/backend files differ between `f9477b6`, `487d363`,
+and `abd5134`.
+
 ## Final status
 
 **READY FOR REVIEW** — implementation (original Task 33 scope + the L-01
-compatibility fix in §18–§20) is complete, no known defects remain, local
-fast verification passed at the time of the implementation commit (frontend:
-typecheck/lint/format/unit+component tests/build; backend: full unit suite —
-prisma validate deferred to CI per §21). The branch/PR #96 is pushed to
-`origin/arena/01a0f16d-vardena` with current HEAD
-`487d363c3bfe397f7480e992dbf6027c9108cbb9` against base
-`841b68545b6be36aeb65f523474b4261973875b8`; GitHub Actions CI run
-**36831107322** passed in full (backend incl. E2E/live-DB suites, and
-frontend) on that exact current commit (§26). E2E (including live-DB
-suites) is verified via that same, current CI run — not via the superseded
-historical run `36830490998`. Documentation
+compatibility fix in §18–§20, shipped at `f9477b6` and unchanged since) is
+complete, no known defects remain, local fast verification passed at
+implementation time (frontend: typecheck/lint/format/unit+component
+tests/build; backend: full unit suite — prisma validate deferred to CI per
+§21). PR #96 is pushed to `origin/arena/01a0f16d-vardena`; its HEAD at the
+time of writing this report is `abd5134d793ef4b87088afad0f7f9fe04ace9127`
+(§27) against base `841b68545b6be36aeb65f523474b4261973875b8`, and every
+commit on the branch — the implementation commit `f9477b6`, the first
+documentation commit `487d363`, and this correction commit `abd5134` — has
+its own passing GitHub Actions run (`36830490998`, `36831107322`, and
+`36840117957` respectively), each including backend E2E/live-DB suites and
+the frontend suite, all green. Documentation
 (`docs/task-33-organization-first-login-provisioning-report.md`,
-`docs/security.md`, `frontend/README.md`, `STATE.md`) is updated to reflect
-the post-L-01 reality and this evidence correction. No production behavior,
-backend source, or implementation file changed in this correction pass.
+`docs/security.md`, `frontend/README.md`, `STATE.md`) reflects the
+post-L-01 reality and both evidence corrections. No production behavior,
+backend source, or implementation file has changed since the original
+compatibility-fix commit `f9477b6`.
