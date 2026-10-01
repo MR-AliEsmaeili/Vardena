@@ -59,5 +59,25 @@ export const queryKeys = {
 
     trialBalance: (organizationId: string, filters: Record<string, unknown>) =>
       ['accounting', organizationId, 'trial-balance', filters] as const,
+
+    accountingDocuments: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) => ['accounting', organizationId, 'accounting-documents', filters] as const,
+
+    accountBalances: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) => ['accounting', organizationId, 'account-balances', filters] as const,
+  },
+
+  inventory: {
+    balances: (organizationId: string, filters: Record<string, unknown>) =>
+      ['inventory', organizationId, 'balances', filters] as const,
+  },
+
+  workflow: {
+    instances: (organizationId: string, filters: Record<string, unknown>) =>
+      ['workflow', organizationId, 'instances', filters] as const,
   },
 } as const;

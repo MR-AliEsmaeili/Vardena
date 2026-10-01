@@ -37,7 +37,13 @@ export const navigationSections: readonly NavigationSection[] = [
     id: 'workspace',
     label: t.nav.dashboard,
     items: [
-      { to: '/app', label: t.nav.dashboard, icon: LayoutDashboard, end: true },
+      {
+        to: '/app',
+        label: t.nav.dashboard,
+        icon: LayoutDashboard,
+        end: true,
+        permissions: [PERMISSIONS.accounting.documentView],
+      },
     ],
   },
   {

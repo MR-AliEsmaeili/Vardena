@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
 import type { SortingState } from '@tanstack/react-table';
 
+export { sortingToParam } from '@/lib/sort-param';
+
 /**
  * Paging + sorting + "applied filters" state shared by the report screens.
  *
@@ -69,17 +71,4 @@ export function useReportQueryState<TFilters>(options?: {
     setPageSize,
     setSorting,
   };
-}
-
-/**
- * Serialize the table sort state into the backend's `sort` parameter
- * (`field:asc|desc`, comma separated). Only columns whose id IS the API sort
- * field are sortable, so an unsupported field can never be sent (the backend
- * answers 400 for anything outside its allow-list).
- */
-export function sortingToParam(sorting: SortingState): string | undefined {
-  if (sorting.length === 0) return undefined;
-  return sorting
-    .map((entry) => `${entry.id}:${entry.desc ? 'desc' : 'asc'}`)
-    .join(',');
 }
