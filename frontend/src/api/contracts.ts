@@ -113,7 +113,65 @@ export type Organization = Schemas['OrganizationResponseDto'];
 export type OrganizationListQuery =
   operations['OrganizationsController_list_v1']['parameters']['query'];
 export type CreateOrganizationRequest = Schemas['CreateOrganizationDto'];
+export type UpdateOrganizationRequest = Schemas['UpdateOrganizationDto'];
 export type GrantMembershipRequest = Schemas['GrantMembershipDto'];
+
+// ---------------------------------------------------------------------------
+// Organization — master data administration (FE-ORG-01)
+//
+// Branch / Department / Employee / Party, exactly as
+// `backend/src/modules/organization/api/*.controller.ts` declares them. Every
+// list query type is read from the generated operation, so a filter the
+// backend does not declare cannot be constructed here (`forbidNonWhitelisted`
+// would answer 400 for it anyway).
+//
+// There is deliberately NO delete request type: none of these controllers
+// exposes DELETE — the lifecycle is `is_active` (enable/disable), per
+// `docs/architecture/domain/master-data-strategy.md` §7.4 (OQ-36).
+// ---------------------------------------------------------------------------
+
+/** `BranchResponseDto` is aliased further down (document header display). */
+export type BranchListQuery =
+  operations['BranchesController_list_v1']['parameters']['query'];
+export type CreateBranchRequest = Schemas['CreateBranchDto'];
+export type UpdateBranchRequest = Schemas['UpdateBranchDto'];
+
+export type Department = NullableString<
+  Schemas['DepartmentResponseDto'],
+  'parentDepartmentId'
+>;
+export type DepartmentListQuery =
+  operations['DepartmentsController_list_v1']['parameters']['query'];
+export type CreateDepartmentRequest = Schemas['CreateDepartmentDto'];
+/** `parentDepartmentId: null` detaches the department from its parent. */
+export type UpdateDepartmentRequest = OptionalNullableString<
+  Schemas['UpdateDepartmentDto'],
+  'parentDepartmentId'
+>;
+
+export type Employee = NullableString<
+  Schemas['EmployeeResponseDto'],
+  'departmentId' | 'branchId'
+>;
+export type EmployeeListQuery =
+  operations['EmployeesController_list_v1']['parameters']['query'];
+export type CreateEmployeeRequest = Schemas['CreateEmployeeDto'];
+/** `departmentId`/`branchId` set to `null` clears the assignment. */
+export type UpdateEmployeeRequest = OptionalNullableString<
+  Schemas['UpdateEmployeeDto'],
+  'departmentId' | 'branchId'
+>;
+
+export type Party = NullableString<
+  Schemas['PartyResponseDto'],
+  'legalName' | 'email' | 'phone'
+>;
+/** Closed identity type of a party (`PARTY_TYPES`: person | organization). */
+export type PartyType = Schemas['PartyResponseDto']['partyType'];
+export type PartyListQuery =
+  operations['PartiesController_list_v1']['parameters']['query'];
+export type CreatePartyRequest = Schemas['CreatePartyDto'];
+export type UpdatePartyRequest = Schemas['UpdatePartyDto'];
 
 // ---------------------------------------------------------------------------
 // Accounting — reference data used by report filters

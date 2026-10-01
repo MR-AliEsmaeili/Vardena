@@ -1,10 +1,13 @@
 import type {
   AccountBalance,
+  Branch,
   AccountStatement,
   AccountingDocument,
   AccountingPeriod,
   AuthenticatedUser,
   ChartTreeNode,
+  Department,
+  Employee,
   FinancialArea,
   FiscalYear,
   GeneralLedgerRow,
@@ -12,6 +15,7 @@ import type {
   LicenseState,
   Organization,
   Paginated,
+  Party,
   TrialBalanceRow,
   WorkflowInstance,
 } from '@/api/contracts';
@@ -339,3 +343,90 @@ export const accountStatement: AccountStatement = {
   openingBasis: 'intra-fiscal-year',
   orderBasis: 'documentDate,voucherNumber,lineNo,id',
 } as AccountStatement;
+
+// ---------------------------------------------------------------------------
+// Organization master data (FE-ORG-01)
+//
+// Shaped exactly like `BranchResponseDto`, `DepartmentResponseDto`,
+// `EmployeeResponseDto` and `PartyResponseDto`. None of them has a `deletedAt`
+// or any other soft-delete marker: the lifecycle of this master data is the
+// `isActive` flag.
+// ---------------------------------------------------------------------------
+
+/** Every `Organization.*` permission except membership (out of scope). */
+export const allOrganizationAdminPermissions: string[] = [
+  PERMISSIONS.organization.view,
+  PERMISSIONS.organization.edit,
+  PERMISSIONS.organization.enable,
+  PERMISSIONS.organization.disable,
+  PERMISSIONS.organization.branchView,
+  PERMISSIONS.organization.branchCreate,
+  PERMISSIONS.organization.branchEdit,
+  PERMISSIONS.organization.branchEnable,
+  PERMISSIONS.organization.branchDisable,
+  PERMISSIONS.organization.departmentView,
+  PERMISSIONS.organization.departmentCreate,
+  PERMISSIONS.organization.departmentEdit,
+  PERMISSIONS.organization.departmentEnable,
+  PERMISSIONS.organization.departmentDisable,
+  PERMISSIONS.organization.employeeView,
+  PERMISSIONS.organization.employeeCreate,
+  PERMISSIONS.organization.employeeEdit,
+  PERMISSIONS.organization.employeeEnable,
+  PERMISSIONS.organization.employeeDisable,
+  PERMISSIONS.organization.partyView,
+  PERMISSIONS.organization.partyCreate,
+  PERMISSIONS.organization.partyEdit,
+  PERMISSIONS.organization.partyEnable,
+  PERMISSIONS.organization.partyDisable,
+];
+
+export const testBranch: Branch = {
+  id: 'brn-1',
+  organizationId: testOrganization.id,
+  code: 'BR-01',
+  name: 'دفتر مرکزی',
+  isActive: true,
+  createdAt: '2026-02-01T08:00:00.000Z',
+  updatedAt: '2026-02-02T08:00:00.000Z',
+};
+
+export const testDepartment: Department = {
+  id: 'dep-1',
+  organizationId: testOrganization.id,
+  code: 'DP-01',
+  name: 'مالی',
+  parentDepartmentId: null,
+  isActive: true,
+  createdAt: '2026-02-01T08:00:00.000Z',
+  updatedAt: '2026-02-02T08:00:00.000Z',
+};
+
+export const testEmployee: Employee = {
+  id: 'emp-1',
+  organizationId: testOrganization.id,
+  employeeCode: 'EMP-01',
+  firstName: 'سارا',
+  lastName: 'محمدی',
+  departmentId: testDepartment.id,
+  branchId: testBranch.id,
+  isActive: true,
+  createdAt: '2026-02-01T08:00:00.000Z',
+  updatedAt: '2026-02-02T08:00:00.000Z',
+};
+
+export const testParty: Party = {
+  id: 'par-1',
+  organizationId: testOrganization.id,
+  code: 'PT-01',
+  displayName: 'بازرگانی آریا',
+  legalName: 'شرکت بازرگانی آریا',
+  partyType: 'organization',
+  isCustomer: true,
+  isSupplier: false,
+  email: null,
+  phone: null,
+  isActive: true,
+  createdAt: '2026-02-01T08:00:00.000Z',
+  updatedAt: '2026-02-02T08:00:00.000Z',
+};

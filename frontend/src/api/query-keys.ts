@@ -20,8 +20,57 @@ export const queryKeys = {
     all: () => ['organization', 'organizations'] as const,
     list: (filters: Record<string, unknown>) =>
       ['organization', 'organizations', 'list', filters] as const,
+
+    /**
+     * The ACTIVE organization's own record (`GET /organizations/:id`).
+     * Organization-scoped by construction: the id sits at index 1, so an
+     * organization switch evicts it like every other scoped read.
+     */
+    detail: (organizationId: string) =>
+      ['organization', organizationId, 'organization', 'detail'] as const,
+
+    branches: (organizationId: string) =>
+      ['organization', organizationId, 'branches'] as const,
+    branchList: (organizationId: string, filters: Record<string, unknown>) =>
+      ['organization', organizationId, 'branches', 'list', filters] as const,
     branchDetail: (organizationId: string, branchId: string) =>
       ['organization', organizationId, 'branches', 'detail', branchId] as const,
+
+    departments: (organizationId: string) =>
+      ['organization', organizationId, 'departments'] as const,
+    departmentList: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) =>
+      ['organization', organizationId, 'departments', 'list', filters] as const,
+    departmentDetail: (organizationId: string, departmentId: string) =>
+      [
+        'organization',
+        organizationId,
+        'departments',
+        'detail',
+        departmentId,
+      ] as const,
+
+    employees: (organizationId: string) =>
+      ['organization', organizationId, 'employees'] as const,
+    employeeList: (organizationId: string, filters: Record<string, unknown>) =>
+      ['organization', organizationId, 'employees', 'list', filters] as const,
+    employeeDetail: (organizationId: string, employeeId: string) =>
+      [
+        'organization',
+        organizationId,
+        'employees',
+        'detail',
+        employeeId,
+      ] as const,
+
+    parties: (organizationId: string) =>
+      ['organization', organizationId, 'parties'] as const,
+    partyList: (organizationId: string, filters: Record<string, unknown>) =>
+      ['organization', organizationId, 'parties', 'list', filters] as const,
+    partyDetail: (organizationId: string, partyId: string) =>
+      ['organization', organizationId, 'parties', 'detail', partyId] as const,
   },
 
   accounting: {

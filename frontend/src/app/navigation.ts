@@ -1,13 +1,18 @@
 import {
+  Building2,
   BookOpenCheck,
   CalendarDays,
+  Contact,
   FolderKanban,
+  Handshake,
   LayoutDashboard,
   List,
   ListTree,
+  Network,
   Receipt,
   Scale,
   ScrollText,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 import { t } from '@/lib/i18n';
@@ -113,6 +118,48 @@ export const navigationSections: readonly NavigationSection[] = [
         label: t.nav.trialBalance,
         icon: Scale,
         permissions: [PERMISSIONS.accounting.trialBalanceView],
+      },
+    ],
+  },
+  {
+    id: 'organization',
+    label: t.orgAdmin.title,
+    items: [
+      {
+        to: '/app/organization',
+        label: t.orgAdmin.title,
+        icon: Building2,
+        end: true,
+      },
+      {
+        to: '/app/organization/profile',
+        label: t.orgAdmin.profile,
+        icon: Building2,
+        permissions: [PERMISSIONS.organization.view],
+      },
+      {
+        to: '/app/organization/branches',
+        label: t.orgAdmin.branches,
+        icon: Network,
+        permissions: [PERMISSIONS.organization.branchView],
+      },
+      {
+        to: '/app/organization/departments',
+        label: t.orgAdmin.departments,
+        icon: Contact,
+        permissions: [PERMISSIONS.organization.departmentView],
+      },
+      {
+        to: '/app/organization/employees',
+        label: t.orgAdmin.employees,
+        icon: Users,
+        permissions: [PERMISSIONS.organization.employeeView],
+      },
+      {
+        to: '/app/organization/parties',
+        label: t.orgAdmin.parties,
+        icon: Handshake,
+        permissions: [PERMISSIONS.organization.partyView],
       },
     ],
   },

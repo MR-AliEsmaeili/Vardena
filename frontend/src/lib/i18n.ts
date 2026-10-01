@@ -89,6 +89,220 @@ export const fa = {
       'ایجاد سازمان تا زمانی که مجوز این استقرار فعال شود در دسترس نیست. این محدودیت به سطح دسترسی حساب کاربری شما مربوط نمی‌شود؛ با مدیر سامانه تماس بگیرید.',
     licenseErrorTitle: 'خطا در دریافت وضعیت مجوز',
   },
+  orgAdmin: {
+    title: 'سازمان و اطلاعات پایه',
+    subtitle:
+      'مدیریت مشخصات سازمان جاری و اطلاعات پایه آن: شعبه‌ها، واحدهای سازمانی، کارکنان و طرف‌حساب‌ها.',
+    scopeHint: 'همه رکوردهای این بخش به سازمان جاری تعلق دارند.',
+
+    // --- Shared labels -----------------------------------------------------
+    code: 'کد',
+    name: 'نام',
+    status: 'وضعیت',
+    active: 'فعال',
+    inactive: 'غیرفعال',
+    allStatuses: 'همه وضعیت‌ها',
+    createdAt: 'تاریخ ایجاد',
+    updatedAt: 'آخرین تغییر',
+    actions: 'عملیات',
+    view: 'مشاهده',
+    edit: 'ویرایش',
+    save: 'ذخیره',
+    saving: 'در حال ذخیره…',
+    back: 'بازگشت',
+    dirtyLeaveTitle: 'خروج از فرم',
+    dirtyLeaveDescription: 'تغییرات ذخیره‌نشده این فرم از دست می‌رود.',
+    dirtyLeaveConfirm: 'خروج بدون ذخیره',
+    searchPlaceholder: 'جست‌وجو در کد یا نام',
+    filter: 'اعمال فیلتر',
+    clear: 'پاک کردن فیلترها',
+    notAssigned: 'تعیین نشده',
+    identity: 'شناسه سامانه‌ای',
+    loading: 'در حال دریافت اطلاعات…',
+    optionsTruncated:
+      'فهرست انتخاب تا ۲۰۰ مورد نخست نمایش داده می‌شود. اگر مورد موردنظر در فهرست نیست، ابتدا آن را از صفحه مربوط پیدا کنید.',
+
+    // --- Lifecycle (enable/disable — there is no delete) -------------------
+    enable: 'فعال‌سازی',
+    disable: 'غیرفعال‌سازی',
+    enabling: 'در حال فعال‌سازی…',
+    disabling: 'در حال غیرفعال‌سازی…',
+    enableTitle: 'فعال‌سازی رکورد',
+    disableTitle: 'غیرفعال‌سازی رکورد',
+    enableBody:
+      'با فعال‌سازی، این رکورد دوباره در فهرست‌ها و انتخاب‌های جدید قابل استفاده می‌شود.',
+    disableBody:
+      'با غیرفعال‌سازی، این رکورد در رکوردهای جدید قابل انتخاب نخواهد بود؛ سوابق موجود دست‌نخورده و قابل مشاهده می‌مانند. این عملیات حذف نیست و بعداً قابل برگشت است.',
+    enabled: 'رکورد فعال شد.',
+    disabled: 'رکورد غیرفعال شد.',
+    noDeleteHint:
+      'حذف در این بخش وجود ندارد؛ چرخه عمر اطلاعات پایه با فعال/غیرفعال کردن مدیریت می‌شود.',
+
+    // --- Organization profile ---------------------------------------------
+    profile: 'پروفایل سازمان',
+    profileDescription:
+      'مشخصات سازمان جاری، وضعیت فعال‌بودن و ویرایش کد و نام آن.',
+    organizationCode: 'کد سازمان',
+    organizationName: 'نام سازمان',
+    organizationUpdated: 'مشخصات سازمان به‌روزرسانی شد.',
+    organizationEnabled: 'سازمان فعال شد.',
+    organizationDisabled: 'سازمان غیرفعال شد.',
+    organizationDisableTitle: 'غیرفعال‌سازی سازمان جاری',
+    organizationDisableBody:
+      'با غیرفعال‌شدن سازمان، ایجاد رکوردهای جدید در دامنه آن متوقف می‌شود؛ داده‌های موجود همچنان قابل مشاهده‌اند. این عملیات روی کل کاربران این سازمان اثر می‌گذارد.',
+    organizationEnableTitle: 'فعال‌سازی سازمان جاری',
+    organizationEnableBody:
+      'با فعال‌شدن سازمان، ایجاد رکوردهای جدید در دامنه آن دوباره ممکن می‌شود.',
+    organizationLoadFailed: 'دریافت مشخصات سازمان انجام نشد. دوباره تلاش کنید.',
+
+    // --- Branch ------------------------------------------------------------
+    branches: 'شعبه‌ها',
+    branchesDescription:
+      'شعبه، محل فعالیت سازمان و یکی از ابعاد دامنه‌بندی اسناد و گزارش‌هاست.',
+    branch: 'شعبه',
+    branchDetail: 'مشخصات شعبه',
+    branchCreateTitle: 'ایجاد شعبه',
+    branchEditTitle: 'ویرایش شعبه',
+    branchCreated: 'شعبه ایجاد شد.',
+    branchUpdated: 'شعبه به‌روزرسانی شد.',
+    noBranches: 'شعبه‌ای مطابق فیلترهای انتخاب‌شده یافت نشد.',
+    branchesLoadFailed: 'دریافت فهرست شعبه‌ها انجام نشد. دوباره تلاش کنید.',
+    branchLoadFailed: 'دریافت مشخصات شعبه انجام نشد. دوباره تلاش کنید.',
+    newBranch: 'شعبه جدید',
+
+    // --- Department --------------------------------------------------------
+    departments: 'واحدهای سازمانی',
+    departmentsDescription:
+      'واحد سازمانی، بخش وظیفه‌ای درون سازمان است و می‌تواند زیرمجموعه واحد دیگری باشد.',
+    department: 'واحد سازمانی',
+    departmentDetail: 'مشخصات واحد سازمانی',
+    departmentCreateTitle: 'ایجاد واحد سازمانی',
+    departmentEditTitle: 'ویرایش واحد سازمانی',
+    departmentCreated: 'واحد سازمانی ایجاد شد.',
+    departmentUpdated: 'واحد سازمانی به‌روزرسانی شد.',
+    noDepartments: 'واحد سازمانی مطابق فیلترهای انتخاب‌شده یافت نشد.',
+    departmentsLoadFailed:
+      'دریافت فهرست واحدهای سازمانی انجام نشد. دوباره تلاش کنید.',
+    departmentLoadFailed:
+      'دریافت مشخصات واحد سازمانی انجام نشد. دوباره تلاش کنید.',
+    newDepartment: 'واحد سازمانی جدید',
+    parentDepartment: 'واحد والد',
+    rootDepartment: 'واحد ریشه (بدون والد)',
+    allParents: 'همه واحدها',
+    parentHint:
+      'واحد والد باید در همان سازمان و در زمان انتساب فعال باشد؛ ایجاد حلقه در سلسله‌مراتب پذیرفته نمی‌شود.',
+    parentsUnavailable:
+      'فهرست واحدهای والد در دسترس نیست؛ انتخاب والد غیرفعال است.',
+
+    // --- Employee ----------------------------------------------------------
+    employees: 'کارکنان',
+    employeesDescription:
+      'اطلاعات پایه کارکنان سازمان (کد، نام، واحد و شعبه). اطلاعات کامل منابع انسانی در دامنه این بخش نیست.',
+    employee: 'کارمند',
+    employeeDetail: 'مشخصات کارمند',
+    employeeCreateTitle: 'ایجاد کارمند',
+    employeeEditTitle: 'ویرایش کارمند',
+    employeeCreated: 'کارمند ایجاد شد.',
+    employeeUpdated: 'اطلاعات کارمند به‌روزرسانی شد.',
+    noEmployees: 'کارمندی مطابق فیلترهای انتخاب‌شده یافت نشد.',
+    employeesLoadFailed: 'دریافت فهرست کارکنان انجام نشد. دوباره تلاش کنید.',
+    employeeLoadFailed: 'دریافت مشخصات کارمند انجام نشد. دوباره تلاش کنید.',
+    newEmployee: 'کارمند جدید',
+    employeeCode: 'کد کارمندی',
+    firstName: 'نام',
+    lastName: 'نام خانوادگی',
+    fullName: 'نام و نام خانوادگی',
+    allDepartments: 'همه واحدهای سازمانی',
+    allBranches: 'همه شعبه‌ها',
+    noDepartmentAssigned: 'بدون واحد سازمانی',
+    noBranchAssigned: 'بدون شعبه',
+    departmentsUnavailable:
+      'فهرست واحدهای سازمانی در دسترس نیست؛ انتخاب واحد غیرفعال است.',
+    branchesUnavailable:
+      'فهرست شعبه‌ها در دسترس نیست؛ انتخاب شعبه غیرفعال است.',
+    referenceInactiveHint:
+      'تنها واحدها و شعبه‌های فعالِ همین سازمان قابل انتخاب هستند.',
+
+    // --- Party -------------------------------------------------------------
+    parties: 'طرف‌حساب‌ها',
+    partiesDescription:
+      'طرف‌حساب، یک رکورد واحد برای مشتری و تأمین‌کننده است؛ نقش‌ها به‌صورت قابلیت روی همان رکورد تعیین می‌شوند.',
+    party: 'طرف حساب',
+    partyDetail: 'مشخصات طرف حساب',
+    partyCreateTitle: 'ایجاد طرف حساب',
+    partyEditTitle: 'ویرایش طرف حساب',
+    partyCreated: 'طرف حساب ایجاد شد.',
+    partyUpdated: 'طرف حساب به‌روزرسانی شد.',
+    noParties: 'طرف حسابی مطابق فیلترهای انتخاب‌شده یافت نشد.',
+    partiesLoadFailed: 'دریافت فهرست طرف‌حساب‌ها انجام نشد. دوباره تلاش کنید.',
+    partyLoadFailed: 'دریافت مشخصات طرف حساب انجام نشد. دوباره تلاش کنید.',
+    newParty: 'طرف حساب جدید',
+    displayName: 'نام نمایشی',
+    legalName: 'نام حقوقی',
+    partyType: 'نوع',
+    partyTypePerson: 'شخص حقیقی',
+    partyTypeOrganization: 'شخص حقوقی',
+    allPartyTypes: 'همه انواع',
+    capabilities: 'قابلیت‌ها',
+    customer: 'مشتری',
+    supplier: 'تأمین‌کننده',
+    customerCapability: 'قابلیت مشتری',
+    supplierCapability: 'قابلیت تأمین‌کننده',
+    allCapabilities: 'همه قابلیت‌ها',
+    onlyCustomers: 'فقط مشتریان',
+    onlySuppliers: 'فقط تأمین‌کنندگان',
+    email: 'رایانامه',
+    phone: 'تلفن',
+
+    // --- Validation (client-side mirror of the backend DTO limits) ---------
+    validation: {
+      codeRequired: 'کد الزامی است.',
+      codeTooLong: 'کد نباید بیش از ۶۴ نویسه باشد.',
+      nameRequired: 'نام الزامی است.',
+      nameTooLong: 'نام نباید بیش از ۲۰۰ نویسه باشد.',
+      employeeCodeRequired: 'کد کارمندی الزامی است.',
+      employeeCodeTooLong: 'کد کارمندی نباید بیش از ۶۴ نویسه باشد.',
+      firstNameRequired: 'نام الزامی است.',
+      lastNameRequired: 'نام خانوادگی الزامی است.',
+      personNameTooLong: 'این نام نباید بیش از ۱۲۰ نویسه باشد.',
+      displayNameRequired: 'نام نمایشی الزامی است.',
+      partyNameTooLong: 'این نام نباید بیش از ۲۰۰ نویسه باشد.',
+      partyTypeRequired: 'نوع طرف حساب را انتخاب کنید.',
+      capabilityRequired:
+        'دست‌کم یکی از قابلیت‌های «مشتری» یا «تأمین‌کننده» باید انتخاب شود.',
+      emailInvalid: 'نشانی رایانامه معتبر نیست.',
+      emailTooLong: 'نشانی رایانامه نباید بیش از ۳۲۰ نویسه باشد.',
+      phoneTooLong: 'شماره تلفن نباید بیش از ۶۴ نویسه باشد.',
+      serverSummary:
+        'سامانه اطلاعات ارسالی را نپذیرفت. فیلدهای مشخص‌شده را اصلاح کنید.',
+      formSummary: 'برای ذخیره، خطاهای زیر را برطرف کنید.',
+    },
+
+    // --- Operation-scoped failures (mapped by error CODE, never by message)
+    errors: {
+      createFailed: 'ثبت رکورد انجام نشد. دوباره تلاش کنید.',
+      updateFailed: 'ذخیره تغییرات انجام نشد. دوباره تلاش کنید.',
+      enableFailed: 'فعال‌سازی انجام نشد. دوباره تلاش کنید.',
+      disableFailed: 'غیرفعال‌سازی انجام نشد. دوباره تلاش کنید.',
+      duplicateCode:
+        'این کد در سازمان جاری قبلاً ثبت شده است. کد دیگری بگذارید.',
+      businessRule:
+        'سامانه این تغییر را با قواعد کسب‌وکار سازگار ندانست. مقادیر انتخاب‌شده را بازبینی کنید.',
+      departmentParentRejected:
+        'واحد والد انتخاب‌شده پذیرفته نشد: والد باید در همان سازمان و فعال باشد و نباید حلقه ایجاد کند.',
+      employeeReferenceRejected:
+        'واحد سازمانی یا شعبه انتخاب‌شده پذیرفته نشد: باید متعلق به همین سازمان و فعال باشد.',
+      partyCapabilityRejected:
+        'طرف حساب باید دست‌کم یکی از قابلیت‌های «مشتری» یا «تأمین‌کننده» را داشته باشد.',
+      organizationUpdateRejected:
+        'سامانه این تغییر را روی سازمان نپذیرفت. مقدارهای واردشده را بازبینی کنید.',
+    },
+
+    // --- Deferred capabilities (no backend contract — see the report) ------
+    deferredTitle: 'قابلیت‌های خارج از دامنه این نسخه',
+    deferredBody:
+      'مدیریت عضویت کاربران سازمان، درون‌ریزی گروهی، خروجی اکسل، تاریخچه تغییرات و نمودار ساختار سازمانی در این نسخه ارائه نشده‌اند.',
+  },
   breadcrumb: {
     label: 'مسیر صفحه',
   },

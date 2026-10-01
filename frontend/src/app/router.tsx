@@ -16,6 +16,32 @@ import { FinancialAreasPage } from '@/features/accounting/master-data/financial-
 import { FiscalYearsPage } from '@/features/accounting/master-data/fiscal-years-page';
 import { TrialBalancePage } from '@/features/accounting/trial-balance/trial-balance-page';
 import { LoginPage } from '@/features/auth/login-page';
+import { BranchDetailPage } from '@/features/organization/admin/branches/branch-detail-page';
+import {
+  BranchCreatePage,
+  BranchEditPage,
+} from '@/features/organization/admin/branches/branch-form-page';
+import { BranchesPage } from '@/features/organization/admin/branches/branches-page';
+import { DepartmentDetailPage } from '@/features/organization/admin/departments/department-detail-page';
+import {
+  DepartmentCreatePage,
+  DepartmentEditPage,
+} from '@/features/organization/admin/departments/department-form-page';
+import { DepartmentsPage } from '@/features/organization/admin/departments/departments-page';
+import { EmployeeDetailPage } from '@/features/organization/admin/employees/employee-detail-page';
+import {
+  EmployeeCreatePage,
+  EmployeeEditPage,
+} from '@/features/organization/admin/employees/employee-form-page';
+import { EmployeesPage } from '@/features/organization/admin/employees/employees-page';
+import { OrganizationAdminHomePage } from '@/features/organization/admin/organization-admin-home-page';
+import { OrganizationProfilePage } from '@/features/organization/admin/organization-profile-page';
+import { PartiesPage } from '@/features/organization/admin/parties/parties-page';
+import { PartyDetailPage } from '@/features/organization/admin/parties/party-detail-page';
+import {
+  PartyCreatePage,
+  PartyEditPage,
+} from '@/features/organization/admin/parties/party-form-page';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { AppShell } from './layouts/app-shell';
 import { DashboardRoute } from './routes/dashboard-route';
@@ -171,6 +197,174 @@ export function AppRoutes() {
               }
             >
               <Route path="trial-balance" element={<TrialBalancePage />} />
+            </Route>
+          </Route>
+
+          {/*
+            Organization & master-data administration (FE-ORG-01).
+
+            Each group is gated by the exact permission its endpoints
+            enforce (`backend/src/modules/organization/domain/
+            organization-permissions.ts`). Two shapes matter:
+
+            - `…/new` is a SIBLING of the View-gated group, because
+              `POST /branches|departments|employees|parties` enforces only
+              `*.Create` — a Create-only principal must not be blocked;
+            - `…/:id/edit` requires View **and** Edit, because the edit
+              screen first reads the record (`GET /…/:id`, `*.View`) before
+              it can submit the change (`PATCH /…/:id`, `*.Edit`).
+
+            There is no delete route anywhere: the organization module
+            exposes no DELETE endpoint (lifecycle = enable/disable).
+          */}
+          <Route path="organization">
+            <Route index element={<OrganizationAdminHomePage />} />
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.organization.view]}
+                />
+              }
+            >
+              <Route path="profile" element={<OrganizationProfilePage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.organization.branchView]}
+                />
+              }
+            >
+              <Route path="branches" element={<BranchesPage />} />
+              <Route path="branches/:branchId" element={<BranchDetailPage />} />
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[PERMISSIONS.organization.branchEdit]}
+                  />
+                }
+              >
+                <Route
+                  path="branches/:branchId/edit"
+                  element={<BranchEditPage />}
+                />
+              </Route>
+            </Route>
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.organization.branchCreate]}
+                />
+              }
+            >
+              <Route path="branches/new" element={<BranchCreatePage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.organization.departmentView]}
+                />
+              }
+            >
+              <Route path="departments" element={<DepartmentsPage />} />
+              <Route
+                path="departments/:departmentId"
+                element={<DepartmentDetailPage />}
+              />
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[PERMISSIONS.organization.departmentEdit]}
+                  />
+                }
+              >
+                <Route
+                  path="departments/:departmentId/edit"
+                  element={<DepartmentEditPage />}
+                />
+              </Route>
+            </Route>
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.organization.departmentCreate]}
+                />
+              }
+            >
+              <Route
+                path="departments/new"
+                element={<DepartmentCreatePage />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.organization.employeeView]}
+                />
+              }
+            >
+              <Route path="employees" element={<EmployeesPage />} />
+              <Route
+                path="employees/:employeeId"
+                element={<EmployeeDetailPage />}
+              />
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[PERMISSIONS.organization.employeeEdit]}
+                  />
+                }
+              >
+                <Route
+                  path="employees/:employeeId/edit"
+                  element={<EmployeeEditPage />}
+                />
+              </Route>
+            </Route>
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.organization.employeeCreate]}
+                />
+              }
+            >
+              <Route path="employees/new" element={<EmployeeCreatePage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.organization.partyView]}
+                />
+              }
+            >
+              <Route path="parties" element={<PartiesPage />} />
+              <Route path="parties/:partyId" element={<PartyDetailPage />} />
+              <Route
+                element={
+                  <RequirePermission
+                    permissions={[PERMISSIONS.organization.partyEdit]}
+                  />
+                }
+              >
+                <Route
+                  path="parties/:partyId/edit"
+                  element={<PartyEditPage />}
+                />
+              </Route>
+            </Route>
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.organization.partyCreate]}
+                />
+              }
+            >
+              <Route path="parties/new" element={<PartyCreatePage />} />
             </Route>
           </Route>
 
