@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { APP_CONFIG, loadAppConfig } from '../src/kernel/config/app-config.js';
@@ -153,6 +154,30 @@ describe.skipIf(DATABASE_URL === undefined)(
         'SELECT COUNT(*)::bigint AS count FROM "licensing"."installations" WHERE "is_self"',
       );
       expect(Number(installations[0]?.count)).toBe(1);
+
+      // The raw license code is never persisted: the column does not exist
+      // after the drop migration, only its irreversible SHA-256 does, and no
+      // other column of the row carries the code either.
+      const columns = await client.$queryRawUnsafe<Array<{ name: string }>>(
+        `SELECT column_name AS name FROM information_schema.columns
+           WHERE table_schema = 'licensing' AND table_name = 'licenses'`,
+      );
+      const names = columns.map((column) => column.name);
+      expect(names).toContain('code_hash');
+      expect(names).not.toContain('code');
+
+      const leaked = await client.$queryRawUnsafe<Array<{ count: bigint }>>(
+        `SELECT COUNT(*)::bigint AS count FROM "licensing"."licenses"
+           WHERE "licenses"::text LIKE '%VLIC1%'`,
+      );
+      expect(Number(leaked[0]?.count)).toBe(0);
+
+      const hashes = await client.$queryRawUnsafe<Array<{ code_hash: string }>>(
+        `SELECT "code_hash" FROM "licensing"."licenses" WHERE "replaced_at" IS NULL`,
+      );
+      expect(hashes[0]?.code_hash).toBe(
+        createHash('sha256').update(replacement, 'utf8').digest('hex'),
+      );
     }, 120_000);
 
     it('rejects a license bound to another installation against the real database', async () => {

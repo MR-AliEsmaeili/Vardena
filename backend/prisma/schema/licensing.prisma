@@ -56,9 +56,9 @@ model License {
   customerId        String        @map("customer_id")
   status            LicenseStatus
   provider          String        @db.VarChar(80)
-  /// The signed license code this row was activated from (audit/re-issue).
-  code              String
-  /// SHA-256 of the code: idempotent re-activation without comparing secrets.
+  /// SHA-256 of the activated license code. The raw code is NEVER persisted:
+  /// the hash is only an idempotency/identity marker, and it is irreversible,
+  /// so a leaked database discloses no usable license code.
   codeHash          String        @map("code_hash")
   validFrom         DateTime      @map("valid_from") @db.Timestamptz(6)
   validUntil        DateTime?     @map("valid_until") @db.Timestamptz(6)

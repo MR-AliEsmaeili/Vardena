@@ -16,6 +16,10 @@ import type {
  * `replaced_at IS NULL`; a partial unique index makes that a database
  * guarantee rather than a convention. Replacement never deletes history: the
  * previous row is stamped `replaced_at` and stays for audit.
+ *
+ * What is NOT stored: the raw license code. Only its SHA-256 hash is written
+ * (`code_hash`), which is all that idempotent re-activation needs. Nothing in
+ * these tables can be turned back into a usable license code.
  */
 
 export interface PersistedLicense extends InstallationLicense {
@@ -28,7 +32,10 @@ export interface ActivateLicenseCommand {
   customerId: string;
   customerName: string;
   license: InstallationLicense;
-  code: string;
+  /**
+   * SHA-256 of the submitted code. The raw code is deliberately NOT part of
+   * this command: it never leaves the activation service.
+   */
   codeHash: string;
   activatedBy: string | null;
   now: Date;
@@ -40,7 +47,6 @@ interface LicenseRow {
   customerId: string;
   status: LicenseStatus;
   provider: string;
-  code: string;
   codeHash: string;
   validFrom: Date;
   validUntil: Date | null;
@@ -66,7 +72,6 @@ interface LicenseDelegate {
       customerId: string;
       status: LicenseStatus;
       provider: string;
-      code: string;
       codeHash: string;
       validFrom: Date;
       validUntil: Date | null;
@@ -176,7 +181,6 @@ export class LicensesRepository {
           customerId: command.customerId,
           status: command.license.status,
           provider: command.license.provider,
-          code: command.code,
           codeHash: command.codeHash,
           validFrom: command.license.validFrom,
           validUntil: command.license.validUntil,

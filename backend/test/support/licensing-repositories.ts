@@ -31,7 +31,6 @@ export interface LicensingStores {
 interface LicenseRow extends PersistedLicense {
   replacedAt: Date | null;
   activatedBy: string | null;
-  code: string;
 }
 
 export function createLicensingStores(
@@ -101,7 +100,6 @@ export function createLicensingStores(
         codeHash: command.codeHash,
         activatedAt: command.now,
         activatedBy: command.activatedBy,
-        code: command.code,
         replacedAt: null,
       };
       rows.push(created);

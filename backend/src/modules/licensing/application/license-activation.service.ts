@@ -132,7 +132,8 @@ export class LicenseActivationService {
       customerId: payload.customerId,
       customerName: payload.customerName,
       license: candidate,
-      code,
+      // Only the hash is handed to persistence; the raw code stays in this
+      // method's scope and is never written anywhere.
       codeHash,
       activatedBy: principal?.userId ?? null,
       now: new Date(),

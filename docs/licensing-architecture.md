@@ -70,6 +70,19 @@ Rejection order, with nothing persisted unless all of it passes:
 5. lifecycle — `SUSPENDED`, expired or not-yet-valid licenses are refused at
    activation time.
 
+The submitted code itself is **never persisted**. It lives in memory for the
+length of the activation call; what reaches the database is the license it
+proves (status, validity, limits, entitlements, customer, installation) plus
+the irreversible `code_hash = SHA-256(code)` used for idempotency:
+
+```
+license code → verified server-side → SHA-256 → code_hash persisted
+```
+
+There is no encrypted, encoded or otherwise reversible copy of the code
+anywhere in the schema, so an inspected or leaked database yields no usable
+license code. Evaluation after a restart needs only the derived columns.
+
 Outcomes are deterministic: the same code again is an idempotent no-op
 (`changed: false`), a different valid code replaces the current license in one
 transaction and stamps `replaced_at` on the previous row, and an invalid code

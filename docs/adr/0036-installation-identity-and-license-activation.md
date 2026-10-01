@@ -41,10 +41,13 @@ left open: *who is this installation*, *how does it obtain a license*, and
    comma-separated so the authority can rotate). No activation server, no CRM
    call, no phone-home at startup or at any other time. An empty key list
    rejects every activation; an already-activated license keeps evaluating.
-5. **Persistence is the licensing schema, not configuration.** The activated
-   license is a row in `licensing.licenses` with typed entitlement rows; the
-   current license is the one with `replaced_at IS NULL` (partial unique index
-   per installation). Restarting, redeploying or rebuilding the container
+5. **Persistence is the licensing schema, not configuration — and the raw
+   code is not part of it.** The activated license is a row in
+   `licensing.licenses` with typed entitlement rows; the current license is
+   the one with `replaced_at IS NULL` (partial unique index per
+   installation). Only `code_hash = SHA-256(code)` is stored: it is all that
+   idempotent re-activation needs, it is irreversible, and no encrypted or
+   encoded copy of the code exists anywhere in the schema. Restarting, redeploying or rebuilding the container
    changes nothing — destroying the database volume does.
 6. **Deterministic replacement.** Re-activating the same code is an idempotent
    no-op (`changed: false`). A different valid code replaces the current one

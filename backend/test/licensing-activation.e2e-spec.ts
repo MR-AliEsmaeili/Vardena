@@ -1,4 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { APP_CONFIG, loadAppConfig } from '../src/kernel/config/app-config.js';
@@ -227,6 +228,40 @@ describe('Installation identity and license activation (e2e)', () => {
     await expect(
       agent.get('/api/v1/license/current').expect(200),
     ).resolves.toMatchObject({ body: { status: 'ACTIVE', active: true } });
+  });
+
+  it('persists only the SHA-256 of the code, never the code itself', async () => {
+    const id = await installationId();
+    const code = issue({ installationId: id, customerName: 'Acme Holding' });
+
+    const response = await activate(code).expect(200);
+
+    // C: the hash is persisted and identifies this exact code.
+    const row = licensing.rows.at(-1);
+    expect(row?.codeHash).toBe(
+      createHash('sha256').update(code, 'utf8').digest('hex'),
+    );
+
+    // B: nothing in the persisted row is (or contains) the raw code. The
+    // column is gone from the schema, so this is the repository-contract
+    // proof that no value carries it either — including any reversible
+    // encoding of it.
+    expect(Object.keys(row ?? {})).not.toContain('code');
+    const serialized = JSON.stringify(row);
+    expect(serialized).not.toContain(code);
+    expect(serialized).not.toContain(code.split('.')[1] ?? 'payload');
+    expect(serialized).not.toContain(
+      Buffer.from(code, 'utf8').toString('base64'),
+    );
+
+    // H: and the API never echoes the code or its hash back to the client.
+    expect(JSON.stringify(response.body)).not.toContain(code);
+    expect(response.body).not.toHaveProperty('code');
+    expect(response.body).not.toHaveProperty('codeHash');
+
+    const current = await agent.get('/api/v1/license/current').expect(200);
+    expect(JSON.stringify(current.body)).not.toContain(code);
+    expect(current.body).not.toHaveProperty('codeHash');
   });
 
   it('N re-activating the same code is idempotent and writes nothing new', async () => {

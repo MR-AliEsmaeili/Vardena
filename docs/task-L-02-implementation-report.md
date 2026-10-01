@@ -10,7 +10,7 @@ live.
 | Concern | L-01 | L-02 |
 | --- | --- | --- |
 | Installation identity | none (a string inside the configured license) | ULID row in `licensing.installations` with `is_self = true`, created once by the backend |
-| License source | environment variables | signed license code activated through the API, stored in `licensing.licenses` |
+| License source | environment variables | signed license code activated through the API; the derived license (not the code) is stored in `licensing.licenses` |
 | Default provider | `local-development` | `persistent` (`LICENSE_PROVIDER`; `NODE_ENV` has no licensing meaning) |
 | Fresh installation | ACTIVE in development | `UNLICENSED`, inactive, reporting its installation id |
 | Activation | none | `POST /api/v1/license/activate`, `Licensing.License.Activate` only |
@@ -25,6 +25,9 @@ live.
   verification against `LICENSE_SIGNING_PUBLIC_KEYS`, payload semantics
   (validity interval, positive-or-null limits, known entitlement codes) and
   the SHA-256 `codeHash` used for idempotency.
+- The raw license code is **never written to the database**. It exists only
+  in memory during activation; persistence receives the derived license plus
+  `code_hash = SHA-256(code)` for idempotency, and nothing reversible.
 - `LicenseActivationService` — fixed rejection order (authorization →
   authenticity → installation binding → semantics → lifecycle), idempotent
   no-op for the same code, transactional replacement stamping `replaced_at`,
