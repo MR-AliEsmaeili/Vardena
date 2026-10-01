@@ -154,6 +154,70 @@ export class OrganizationsService {
     );
   }
 
+  /**
+   * The organization BOOTSTRAP read (Organization Bootstrap & Context
+   * Foundation): the organizations the AUTHENTICATED SESSION may actually use
+   * as its working scope.
+   *
+   * This is deliberately a different authority than `listOrganizations`:
+   * `listOrganizations` is the `Organization.Organization.View`
+   * ADMINISTRATION catalog (every organization the deployment serves, for a
+   * principal who may manage them), while this method answers "which
+   * organizations is THIS principal a member of" — decided by
+   * `organization_memberships` alone, exactly like every other
+   * `assertOrganizationInScope` consumer, and carrying NO permission
+   * requirement of its own (mirrors `GET /license/current` and
+   * `GET /permissions/effective`: an authenticated self/bootstrap read).
+   *
+   * Conflating the two would mean an ordinary member who was never granted
+   * the administration permission could never resolve an organization
+   * context at all — the organization bootstrap gate would be permanently
+   * stuck behind an unrelated administrative grant. It would also mean a
+   * principal holding `Organization.Organization.View` without being a
+   * member of anything could see (and be offered to select) organizations it
+   * has no membership in, which the deployment pin / ODR-3 chokepoint would
+   * then reject on every subsequent scoped request — a context the user could
+   * "choose" and then use nowhere.
+   *
+   * Lifecycle: an inactive organization is excluded, exactly like a
+   * deactivated membership would be (`master-data-strategy.md` §7.4) — a
+   * disabled organization must not become, or remain, anyone's active
+   * working scope.
+   */
+  async listMyOrganizations(): Promise<OrganizationDto[]> {
+    const principal = getPrincipal();
+    if (principal === undefined) {
+      // Belt-and-braces: the route only reaches here behind `AuthGuard`.
+      throw AppException.unauthorized('Authentication is required.');
+    }
+
+    const pin = this.config.deploymentOrganizationId;
+    if (pin !== null) {
+      // A pinned deployment (ADR-0025) has exactly one organization to
+      // discover; membership of THAT organization is still required — the
+      // pin names the deployment's organization, it does not grant access
+      // to it.
+      const membership = await this.memberships.findMembership(
+        principal.userId,
+        pin,
+      );
+      if (membership === null) return [];
+      const organization = await this.repository.findById(pin);
+      return organization !== null && organization.isActive
+        ? [toOrganizationDto(organization)]
+        : [];
+    }
+
+    const organizationIds = await this.memberships.listOrganizationIdsForUser(
+      principal.userId,
+    );
+    if (organizationIds.length === 0) return [];
+    const organizations = await this.repository.listActiveByIds(
+      organizationIds,
+    );
+    return organizations.map(toOrganizationDto);
+  }
+
   async getOrganization(id: string): Promise<OrganizationDto> {
     await this.authorization.requireAllPermissions([
       ORGANIZATION_PERMISSIONS.VIEW,

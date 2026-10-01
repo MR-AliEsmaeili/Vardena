@@ -30,6 +30,7 @@ type OrganizationRow = {
 interface OrganizationWhere {
   code?: string;
   isActive?: boolean;
+  id?: { in: string[] };
   OR?: Array<SearchClause>;
 }
 
@@ -134,6 +135,31 @@ export class OrganizationsRepository {
   async countAll(): Promise<number> {
     const { organization } = await this.client();
     return organization.count({ where: {} });
+  }
+
+  /**
+   * The organization BOOTSTRAP read's second half
+   * (`OrganizationsService.listMyOrganizations`): the active organizations
+   * among a set of ids, code-ascending. The id set itself is never
+   * caller-supplied here — it is always the membership rows resolved for the
+   * authenticated principal, so this is not a general-purpose "fetch by ids"
+   * escape hatch from authorization.
+   *
+   * Inactive organizations are excluded at the query level: a disabled
+   * organization must not appear in the ordinary "choose your working
+   * organization" bootstrap list (master-data-strategy.md §7.4), even though
+   * its existing records stay readable through other, already-scoped paths.
+   */
+  async listActiveByIds(ids: readonly string[]): Promise<Organization[]> {
+    if (ids.length === 0) return [];
+    const { organization } = await this.client();
+    const rows = await organization.findMany({
+      where: { id: { in: [...ids] }, isActive: true },
+      orderBy: [{ code: 'asc' }],
+      skip: 0,
+      take: ids.length,
+    });
+    return rows.map(toDomain);
   }
 
   /**

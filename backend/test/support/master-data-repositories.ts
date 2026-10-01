@@ -323,6 +323,14 @@ export class InMemoryOrganizationsRepository {
     return this.table.size;
   }
 
+  /** Mirrors `OrganizationsRepository.listActiveByIds`. */
+  async listActiveByIds(ids: readonly string[]): Promise<Organization[]> {
+    const wanted = new Set(ids);
+    return this.table
+      .findMany((row) => wanted.has(row.id) && row.isActive)
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }
+
   async createWithinLicenseLimit(
     input: Organization,
     allocation: LicensedAllocation,
@@ -592,6 +600,14 @@ export class InMemoryOrganizationMembershipsRepository {
     organizationId: string,
   ): Promise<OrganizationMembershipRow | null> {
     return this.rows.get(this.key(userId, organizationId)) ?? null;
+  }
+
+  /** Mirrors `OrganizationMembershipsRepository.listOrganizationIdsForUser`. */
+  async listOrganizationIdsForUser(userId: string): Promise<string[]> {
+    return [...this.rows.values()]
+      .filter((row) => row.userId === userId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .map((row) => row.organizationId);
   }
 
   /** The bootstrap predicate: does this organization have ANY member? */

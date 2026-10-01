@@ -37,8 +37,8 @@ type Client = {
     findMany: (args: {
       where: MembershipWhere;
       orderBy: Array<Record<string, 'asc' | 'desc'>>;
-      skip: number;
-      take: number;
+      skip?: number;
+      take?: number;
     }) => Promise<OrganizationMembershipRow[]>;
     count: (args: { where: MembershipWhere }) => Promise<number>;
     create: (args: {
@@ -89,6 +89,28 @@ export class OrganizationMembershipsRepository {
       where: { organizationId },
     });
     return first !== null;
+  }
+
+  /**
+   * The organization BOOTSTRAP read's first half
+   * (`OrganizationsService.listMyOrganizations`): every organization id this
+   * user currently holds a membership row for, created-ascending. Membership
+   * EXISTENCE is the complete authorization fact (ODR-3) — this reads no
+   * permission and filters on nothing but the user id, unlike
+   * `OrganizationsService.listOrganizations`, which is the
+   * `Organization.Organization.View` administration catalog.
+   *
+   * Unbounded by design: a principal's own membership count is expected to
+   * stay small (one row per organization it actually belongs to), so this is
+   * a discovery read, not a paginated listing.
+   */
+  async listOrganizationIdsForUser(userId: string): Promise<string[]> {
+    const client = await this.prisma.getClient<Client>();
+    const rows = await client.organizationMembership.findMany({
+      where: { userId },
+      orderBy: [{ createdAt: 'asc' }],
+    });
+    return rows.map((row) => row.organizationId);
   }
 
   /** Members of one organization, created-ascending (the grant audit order). */
