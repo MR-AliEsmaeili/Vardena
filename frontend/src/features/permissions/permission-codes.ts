@@ -19,7 +19,34 @@ export const PERMISSIONS = {
   organization: {
     view: 'Organization.Organization.View',
     create: 'Organization.Organization.Create',
+    edit: 'Organization.Organization.Edit',
+    enable: 'Organization.Organization.Enable',
+    disable: 'Organization.Organization.Disable',
+
     branchView: 'Organization.Branch.View',
+    branchCreate: 'Organization.Branch.Create',
+    branchEdit: 'Organization.Branch.Edit',
+    branchEnable: 'Organization.Branch.Enable',
+    branchDisable: 'Organization.Branch.Disable',
+
+    departmentView: 'Organization.Department.View',
+    departmentCreate: 'Organization.Department.Create',
+    departmentEdit: 'Organization.Department.Edit',
+    departmentEnable: 'Organization.Department.Enable',
+    departmentDisable: 'Organization.Department.Disable',
+
+    employeeView: 'Organization.Employee.View',
+    employeeCreate: 'Organization.Employee.Create',
+    employeeEdit: 'Organization.Employee.Edit',
+    employeeEnable: 'Organization.Employee.Enable',
+    employeeDisable: 'Organization.Employee.Disable',
+
+    partyView: 'Organization.Party.View',
+    partyCreate: 'Organization.Party.Create',
+    partyEdit: 'Organization.Party.Edit',
+    partyEnable: 'Organization.Party.Enable',
+    partyDisable: 'Organization.Party.Disable',
+
     membershipGrant: 'Organization.Membership.Grant',
   },
   accounting: {

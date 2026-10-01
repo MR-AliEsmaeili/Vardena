@@ -74,7 +74,8 @@ src/
 ├── main.tsx                  # entry point
 ├── app/                      # composition root: providers, router, shell, route guards
 │   ├── App.tsx providers.tsx router.tsx query-client.ts navigation.ts
-│   ├── layouts/app-shell.tsx
+│   ├── layouts/              # app-shell + the bootstrap stages it runs:
+│   │                         #   license-gate, organization-gate, bootstrap-states
 │   └── routes/               # require-auth, require-permission, home, 404
 ├── api/                      # the ONLY HTTP layer
 │   ├── client.ts             #   single Axios instance + interceptors
@@ -84,7 +85,9 @@ src/
 │   ├── generated/            #   openapi-typescript output (committed, never edited)
 │   └── *.api.ts              #   per-module API functions
 ├── features/                 # one slice per backend module (AR-27)
-│   ├── auth/  permissions/  organization/  dashboard/
+│   ├── auth/  permissions/  dashboard/  licensing/
+│   ├── organization/         #   context/switcher + admin/ (profile, branches,
+│   │                         #   departments, employees, parties)
 │   └── accounting/{chart-tree,account-statement,general-ledger,trial-balance,shared}
 ├── ui/                       # primitives (button, card, input, table, …) + patterns/
 ├── lib/                      # i18n dictionary, formatters, cn(), small hooks
@@ -101,6 +104,39 @@ src/
 - **Permissions are UX only** (AR-21). `PermissionGate` / `RequirePermission`
   hide what a session cannot use; the backend authorizes every request. Codes
   are copied from the backend registry — no wildcards, no invented codes.
+- **Authenticated bootstrap runs in one fixed order** (`app/layouts/`):
+
+  ```
+  login → session (GET /auth/me) → license (GET /license/current)
+        → organization (GET /organizations) → organization context → workspace
+  ```
+
+  `LicenseGate` (`app/layouts/license-gate.tsx`) is the licensing stage and
+  sits between the session and the organization stage, so the installation
+  license state is known before any organization UI exists. It has exactly
+  four states — checking / active / inactive / failed read — and only the
+  active one renders its children (the organization gate and the workspace
+  behind it). A failed read is never treated as "inactive" and never as
+  "active": it is a retryable error state. **License ≠ permission:** an
+  inactive installation license also empties the effective permission set
+  server-side (`AuthorizationService.effectivePermissionCodes` →
+  `LicensingService.filterLicensedPermissions`), so without this stage the
+  user would be told they lack permission when the real cause is the
+  license; the stage exists so each cause gets its own Persian explainer.
+  The license is read **once per authenticated session** through the single
+  `useLicenseState()` hook / `queryKeys.licenseState()` entry
+  (`features/licensing/`) — not per route, page or feature — and the
+  session's existing logout/401 cache reset (`queryClient.clear()` in
+  `SessionProvider`) is what evicts it, so no license state can survive into
+  the next session.
+
+- **The license is never enforced in the browser** (AR-21, ADR-0030). The
+  stage routes the UI and nothing else: it compares no count against
+  `organizationLimit`/`userLimit`, derives no entitlement of its own (the
+  contract's `entitlements` collection is consumed as-is), stores nothing in
+  `localStorage`/env, and has no development fallback. Every licensed
+  capability is re-evaluated server-side on each call
+  (`LicensingService`, `OrganizationsService.createOrganization`).
 - **Organization scope follows the API.** `GET /organizations` decides whether
   the shell shows a fixed organization or a switcher (ADR-0025). The selection
   is in-memory, never persisted, and is only a query parameter — the backend
@@ -114,15 +150,12 @@ src/
   sees the first-organization bootstrap form instead
   (`features/organization/create-first-organization-form.tsx`), which calls
   the existing `POST /organizations` then `POST /organizations/:id/members`
-  endpoints — no new endpoint, no invented organization state, no bypass. That
-  gate first reads the existing, authenticated `GET /license/current`
-  self-read (`features/licensing/use-license-state.ts`, ADR-0030) to show an
-  accurate "license is not active" explainer instead of a misleading
-  "you lack permission" one when the installation license — not the
-  session's RBAC permission — is the actual reason the form is withheld; the
-  read is UX routing only (no count/limit math, no license state ever cached
-  outside TanStack Query) and enforces nothing — `OrganizationsService.
-createOrganization` is the sole enforcement point. See
+  endpoints — no new endpoint, no invented organization state, no bypass.
+  That form is reached only behind an active installation license, because
+  the licensing stage above the gate has already answered that question (see
+  the bootstrap order), which is why the gate itself only ever decides the
+  organization/permission question. `OrganizationsService.createOrganization`
+  remains the sole enforcement point. See
   `docs/task-33-organization-first-login-provisioning-report.md`.
 - **Amounts are exact decimal strings.** They are displayed digit-for-digit
   (grouping only, `lib/format.ts`), never parsed into a `number`, never summed
@@ -135,6 +168,47 @@ createOrganization` is the sole enforcement point. See
   is Persian/RTL (`<html lang="fa" dir="rtl">`); layout uses logical
   properties so one responsive layout serves every breakpoint.
 
+## Organization & master data administration (FE-ORG-01)
+
+`features/organization/admin/` administers the organization module's master
+data. Routes, and the permission each one needs — the same permission the
+endpoint behind it enforces:
+
+| Route                                     | Permission                                                     |
+| ----------------------------------------- | -------------------------------------------------------------- |
+| `/app/organization`                       | none (index; each card is gated individually)                  |
+| `/app/organization/profile`               | `Organization.Organization.View`                               |
+| `/app/organization/<x>s` and `…/<x>s/:id` | `Organization.<X>.View`                                        |
+| `/app/organization/<x>s/new`              | `Organization.<X>.Create` **only** — `POST` enforces no `View` |
+| `/app/organization/<x>s/:id/edit`         | `Organization.<X>.View` **and** `.Edit`                        |
+
+where `<x>` is `branch`, `department`, `employee` or `party`.
+
+- **There is no delete.** None of these controllers exposes `DELETE`: the
+  lifecycle of master data is the `is_active` flag
+  (`docs/architecture/domain/master-data-strategy.md` §7.4, OQ-36). Enable and
+  disable live on the detail pages behind `ConfirmDialog`.
+- **Create omits, update nulls.** The create DTOs have no `null` form for an
+  optional reference (it is omitted), while `UpdateDepartmentDto` and
+  `UpdateEmployeeDto` take an explicit `null` to detach one. A party's optional
+  text fields are omitted when empty — they accept no `null`. The backend runs
+  `whitelist` + `forbidNonWhitelisted`, so a request never carries an undeclared
+  field.
+- **The organization surface is the active context organization only** — no id
+  input, no URL id, no organization browser.
+- **Failures are classified by error code** in the context of the resource and
+  the operation (`admin/admin-error-messages.ts`). The organization services
+  raise `businessRule()` / `conflict()` without a `details` payload, so nothing
+  finer can be inferred honestly — and the backend `message` is never rendered.
+- Reference pickers (department parent, an employee's department/branch) offer
+  one bounded window of this organization's **active** records, are disabled
+  with an explanation when the session lacks the other resource's `View`, and
+  keep an existing inactive reference selectable so an edit cannot silently
+  detach it.
+
+Details, audit evidence and the deferred list:
+`docs/task-fe-org-01-implementation-report.md`.
+
 ## Tests
 
 `vitest` + `@testing-library/react` in jsdom. Tests render the real providers
@@ -143,10 +217,21 @@ with `vi.mock`, so what is verified is the application's own behavior:
 
 - login validation, server rejection, successful session, logout;
 - protected routing, permission-gated routes and menu entries, 404;
+- the licensing bootstrap stage (`app/layouts/license-gate.test.tsx`): no
+  license read before a session exists, the checking state, an active
+  license continuing into the organization gate, an inactive one stopping
+  before it with license — not permission — copy, a failed read with retry
+  and its recovery, single-source entitlement consumption, the
+  first-organization flow behind an active license, and license-cache
+  isolation across logout/login;
 - organization context (single vs. multiple, empty, missing permission);
 - API error normalization and session-expiry handling;
 - report filters → exact query parameters, paging, sorting, empty/error
-  states, and exact decimal rendering.
+  states, and exact decimal rendering;
+- organization administration: route ↔ endpoint permission alignment,
+  URL-owned server-side list state, the exact create/update request bodies,
+  the enable/disable confirmation and its failure path, and the error-code →
+  Persian copy mapping.
 
 There is no MSW/HTTP-level mock layer: the API modules are the seam, which
 keeps the tests fast and free of a second, drifting contract definition.
@@ -154,9 +239,19 @@ keeps the tests fast and free of a second, drifting contract definition.
 ## Not in this slice
 
 Treasury, Sales, Purchasing, base-chart administration, control roles,
-generic multi-dimension administration, posting rules, document
-create/finalize UI, Inventory administration, Workflow decision UI, RBAC admin,
-notifications, a generic Reporting UI, Excel/print, customization and audit UI.
+generic multi-dimension administration, posting rules, Inventory
+administration, Workflow decision UI, RBAC admin, notifications, a generic
+Reporting UI, Excel/print, customization and audit UI.
+
+Not in the organization administration slice either (FE-ORG-01): organization
+**membership** administration (deferred by design), an organization list or a
+second organization-creation path (`POST /organizations` is owned by the
+first-login bootstrap above), bulk import, Excel export, an advanced search
+builder, custom columns, saved filters, audit-history UI, attachments, notes,
+org-chart visualization, drag/drop hierarchy and bulk enable/disable. Party
+fields the DTOs do not declare — national id, economic code, tax
+classification, address, bank account (OQ-30, OQ-38) — are absent because the
+backend has no contract for them.
 The Dashboard does read bounded Inventory/Workflow/Accounting endpoints, but
 that does not make those administration or mutation surfaces implemented. The
 frontend is also not part of `docker-compose.yml` yet (documented follow-up).

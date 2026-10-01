@@ -35,9 +35,21 @@ System-administrator bootstrap still creates ordinary User/Role/Membership recor
 
 Typed `licensing.customers`, `installations`, `licenses`, and `license_entitlements` tables are **IMPLEMENTED** as the persistence foundation. Commercial activation/write APIs and a database/commercial provider are **DEFERRED**. The active provider in L-01 is configuration-backed local development.
 
-## PR #96
+## Frontend consumption
 
-PR #96 is open and not merged at implementation time. Follow-up: its `organization-gate` must fetch the authenticated license state first, route inactive states to a small activation/license state, and only then run existing Organization availability/first-create logic. It must not replace permission or membership checks.
+The frontend has exactly one license source: `GET /api/v1/license/current`, read once per authenticated session through `features/licensing/use-license-state.ts` under the single query key `queryKeys.licenseState()`. There is no second context, API client, entitlement registry, storage copy, environment variable or development fallback, and the session's existing logout/401 cache reset evicts it with everything else.
+
+The authenticated bootstrap order is fixed:
+
+`login → session (GET /auth/me) → license (GET /license/current) → organization (GET /organizations) → organization context → workspace`
+
+`app/layouts/license-gate.tsx` is that licensing stage. It renders its children — the organization gate and the workspace behind it — only while the evaluated license is active, and otherwise replaces them with one of three states: the read is in flight, the backend evaluated the license as not active, or the read failed (retryable, and never collapsed into "inactive" or "active"). Activation itself is not a frontend capability: no activation, renewal or license-administration UI exists, because no write contract exists.
+
+The stage is UX routing, never enforcement (AR-21). It compares no count against `organizationLimit`/`userLimit`, derives no entitlement semantics of its own (the contract's `entitlements` collection is consumed as-is), and changes nothing about who may do what — `LicensingService` and the owning application services remain the only enforcement points. Its necessity is a messaging one: because `AuthorizationService.effectivePermissionCodes` filters stored grants through the license, an inactive license yields an empty effective permission set, so without this stage an inactive installation is indistinguishable in the UI from a user who simply lacks permission. License and permission stay two different facts with two different Persian explainers.
+
+### PR #96
+
+PR #96 was open and not merged when L-01 landed. Its follow-up requirement — read the authenticated license state before offering organization provisioning, route inactive states to a license state, and keep permission/membership checks untouched — is implemented by the licensing stage above: the first-organization bootstrap in `organization-gate.tsx` is reachable only behind an active license, and that gate itself no longer evaluates the license, so there is exactly one place where license state is interpreted.
 
 ## Deferred / not implemented
 

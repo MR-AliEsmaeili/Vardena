@@ -11,7 +11,6 @@ import {
   secondOrganization,
   testAccountingDocument,
   testActiveLicenseState,
-  testInactiveLicenseState,
   testOrganization,
   testUser,
 } from '@/test/fixtures';
@@ -24,6 +23,13 @@ import { renderWithProviders } from '@/test/test-utils';
  * Everything between the API boundary and the DOM runs for real: the session
  * and organization providers, the permission gates, the query cache and the
  * shell's organization gate. Only `src/api/*` modules are stubbed.
+ *
+ * Every scenario here runs behind an ACTIVE installation license (the
+ * `beforeEach` default), because the licensing bootstrap stage now resolves
+ * before the organization stage (ADR-0030). The licensing stage itself — its
+ * loading, inactive and failed states, and the fact that an inactive license
+ * never reaches the organization gate — is covered by
+ * `license-gate.test.tsx`.
  */
 
 vi.mock('@/api/identity.api', () => ({
@@ -320,47 +326,6 @@ describe('organization resolution in the shell', () => {
       'org-created',
       { userId: testUser.id },
     );
-  });
-
-  it('blocks first-organization creation with the license explainer, not the permission explainer, when the installation license is inactive (ADR-0030)', async () => {
-    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
-      userId: testUser.id,
-      permissions: [
-        ...allAccountingPermissions,
-        'Organization.Organization.Create',
-        'Organization.Membership.Grant',
-      ],
-    });
-    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
-      paginated([]),
-    );
-    vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
-      testInactiveLicenseState,
-    );
-
-    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
-
-    const blocked = await screen.findByRole('main');
-    expect(
-      await within(blocked).findByText(t.organization.licenseInactiveTitle),
-    ).toBeInTheDocument();
-    expect(
-      within(blocked).getByText(t.organization.licenseInactiveBody),
-    ).toBeInTheDocument();
-    // A session that genuinely holds both permissions must not see the
-    // generic "you lack permission" explainer when the real cause is the
-    // license, and the actionable form (which the backend would reject
-    // anyway — `OrganizationsService.createOrganization` re-checks the
-    // license) must not render either.
-    expect(
-      within(blocked).queryByText(t.organization.emptyBody),
-    ).not.toBeInTheDocument();
-    expect(
-      within(blocked).queryByRole('heading', {
-        name: t.organization.createFirstTitle,
-      }),
-    ).not.toBeInTheDocument();
-    expect(organizationApi.createOrganization).not.toHaveBeenCalled();
   });
 
   it('blocks the workspace when the session cannot read the organization list', async () => {
