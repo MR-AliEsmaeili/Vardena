@@ -6,6 +6,7 @@ import { t } from '@/lib/i18n';
 import {
   allOrganizationAdminPermissions,
   paginated,
+  testActiveLicenseState,
   testBranch,
   testDepartment,
   testEmployee,
@@ -97,8 +98,13 @@ vi.mock('@/api/organization.api', () => ({
   disableParty: vi.fn(),
 }));
 
+vi.mock('@/api/licensing.api', () => ({
+  getLicenseState: vi.fn(),
+}));
+
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
+const licensingApi = await import('@/api/licensing.api');
 
 function session(permissions: string[]): void {
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
@@ -109,6 +115,12 @@ function session(permissions: string[]): void {
 }
 
 beforeEach(() => {
+  // The shell resolves the installation license before the organization
+  // stage (ADR-0030); these scenarios run behind the local provider's
+  // default active license.
+  vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
+    testActiveLicenseState,
+  );
   vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
     paginated([testOrganization]),
   );

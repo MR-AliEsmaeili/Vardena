@@ -1,80 +1,12 @@
-import { LogOut } from 'lucide-react';
 import { useSession } from '@/features/auth/use-session';
-import { useLicenseState } from '@/features/licensing/use-license-state';
 import { CreateFirstOrganizationForm } from '@/features/organization/create-first-organization-form';
 import { OrganizationSelection } from '@/features/organization/organization-selection';
 import { useOrganization } from '@/features/organization/use-organization';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
-import { Button } from '@/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/ui/card';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
-
-/** Centered resolving state while the organization scope is being determined. */
-function ResolvingState() {
-  return (
-    <output
-      className="flex flex-col items-center gap-3 py-16"
-      aria-live="polite"
-    >
-      <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600" />
-      <p className="text-sm text-slate-600">{t.organization.resolving}</p>
-    </output>
-  );
-}
-
-/** The logout affordance every blocked state shares. */
-function LogoutButton() {
-  const session = useSession();
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      disabled={session.isLoggingOut}
-      onClick={() => {
-        void session.logout();
-      }}
-    >
-      <LogOut className="h-4 w-4" aria-hidden />
-      {session.isLoggingOut ? t.auth.loggingOut : t.auth.logout}
-    </Button>
-  );
-}
-
-/**
- * Terminal blocked state (no organization / no permission to read the list).
- *
- * The workspace is never entered: no fake default organization is selected
- * and no organization-scoped request is sent. The only recovery paths the
- * contract actually offers are contacting an administrator and logging out.
- */
-function BlockedState({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <LogoutButton />
-      </CardContent>
-    </Card>
-  );
-}
+import { BlockedState, LogoutButton, ResolvingState } from './bootstrap-states';
 
 /**
  * The `empty` state (task §4/§7 — `GET /organizations` answered `[]`).
@@ -90,51 +22,18 @@ function BlockedState({
  * session without both codes still sees the unchanged terminal explainer,
  * exactly as before this form existed.
  *
- * ADR-0030 (L-01) added an installation license in front of organization
- * creation. `effectivePermissionCodes` already drops `Organization.*` codes
- * when the `organization` module is not entitled or the license is
- * inactive (`AuthorizationService.effectivePermissionCodes`), so
- * `canBootstrapFirstOrganization` below is already license-aware for that
- * case. The one gap that filtering does not close is messaging: a session
- * that simply lacks the RBAC permission and one blocked only because the
- * license is inactive would otherwise both see the identical generic
- * "you lack permission" explainer, which this follow-up's compatibility
- * audit treats as misleading per the license-state read this component now
- * does first (`docs/licensing-architecture.md` "PR #96" note). The license
- * read never enforces anything — it only decides which explainer to show;
- * `OrganizationsService.createOrganization` is the sole enforcement point.
+ * The installation license (ADR-0030) is NOT evaluated here: the licensing
+ * bootstrap stage (`license-gate.tsx`) runs before this gate is mounted, so
+ * everything below already happens under an active license and this
+ * component keeps exactly one question — the organization one. That is also
+ * what keeps the two explainers honest: "the license is not active" is
+ * decided one stage earlier and can never be confused with "you lack the
+ * organization permission" decided here.
  */
 function EmptyOrganizationState() {
   const { user } = useSession();
   const permissions = usePermissions();
   const { refresh } = useOrganization();
-  const license = useLicenseState();
-
-  if (license.loading) {
-    return <ResolvingState />;
-  }
-
-  if (license.isError) {
-    return (
-      <div className="space-y-4">
-        <ApiErrorAlert
-          error={license.error}
-          title={t.organization.licenseErrorTitle}
-          onRetry={license.refetch}
-        />
-        <LogoutButton />
-      </div>
-    );
-  }
-
-  if (!license.active) {
-    return (
-      <BlockedState
-        title={t.organization.licenseInactiveTitle}
-        description={t.organization.licenseInactiveBody}
-      />
-    );
-  }
 
   const canBootstrapFirstOrganization =
     user !== null &&
@@ -174,12 +73,15 @@ function EmptyOrganizationState() {
  * - `empty` — the terminal explainer, or the first-organization bootstrap
  *   form when the session can actually use it (see `EmptyOrganizationState`);
  * - `selecting` / `invalid` — the explicit organization selection step.
+ *
+ * This gate is reached only through `LicenseGate` (`license-gate.tsx`), i.e.
+ * only while the installation license is active.
  */
 export function OrganizationGate() {
   const { status, error, refresh } = useOrganization();
 
   if (status === 'loading') {
-    return <ResolvingState />;
+    return <ResolvingState label={t.organization.resolving} />;
   }
 
   if (status === 'forbidden') {

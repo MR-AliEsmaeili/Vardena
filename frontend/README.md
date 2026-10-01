@@ -74,7 +74,8 @@ src/
 ├── main.tsx                  # entry point
 ├── app/                      # composition root: providers, router, shell, route guards
 │   ├── App.tsx providers.tsx router.tsx query-client.ts navigation.ts
-│   ├── layouts/app-shell.tsx
+│   ├── layouts/              # app-shell + the bootstrap stages it runs:
+│   │                         #   license-gate, organization-gate, bootstrap-states
 │   └── routes/               # require-auth, require-permission, home, 404
 ├── api/                      # the ONLY HTTP layer
 │   ├── client.ts             #   single Axios instance + interceptors
@@ -103,6 +104,39 @@ src/
 - **Permissions are UX only** (AR-21). `PermissionGate` / `RequirePermission`
   hide what a session cannot use; the backend authorizes every request. Codes
   are copied from the backend registry — no wildcards, no invented codes.
+- **Authenticated bootstrap runs in one fixed order** (`app/layouts/`):
+
+  ```
+  login → session (GET /auth/me) → license (GET /license/current)
+        → organization (GET /organizations) → organization context → workspace
+  ```
+
+  `LicenseGate` (`app/layouts/license-gate.tsx`) is the licensing stage and
+  sits between the session and the organization stage, so the installation
+  license state is known before any organization UI exists. It has exactly
+  four states — checking / active / inactive / failed read — and only the
+  active one renders its children (the organization gate and the workspace
+  behind it). A failed read is never treated as "inactive" and never as
+  "active": it is a retryable error state. **License ≠ permission:** an
+  inactive installation license also empties the effective permission set
+  server-side (`AuthorizationService.effectivePermissionCodes` →
+  `LicensingService.filterLicensedPermissions`), so without this stage the
+  user would be told they lack permission when the real cause is the
+  license; the stage exists so each cause gets its own Persian explainer.
+  The license is read **once per authenticated session** through the single
+  `useLicenseState()` hook / `queryKeys.licenseState()` entry
+  (`features/licensing/`) — not per route, page or feature — and the
+  session's existing logout/401 cache reset (`queryClient.clear()` in
+  `SessionProvider`) is what evicts it, so no license state can survive into
+  the next session.
+
+- **The license is never enforced in the browser** (AR-21, ADR-0030). The
+  stage routes the UI and nothing else: it compares no count against
+  `organizationLimit`/`userLimit`, derives no entitlement of its own (the
+  contract's `entitlements` collection is consumed as-is), stores nothing in
+  `localStorage`/env, and has no development fallback. Every licensed
+  capability is re-evaluated server-side on each call
+  (`LicensingService`, `OrganizationsService.createOrganization`).
 - **Organization scope follows the API.** `GET /organizations` decides whether
   the shell shows a fixed organization or a switcher (ADR-0025). The selection
   is in-memory, never persisted, and is only a query parameter — the backend
@@ -116,15 +150,12 @@ src/
   sees the first-organization bootstrap form instead
   (`features/organization/create-first-organization-form.tsx`), which calls
   the existing `POST /organizations` then `POST /organizations/:id/members`
-  endpoints — no new endpoint, no invented organization state, no bypass. That
-  gate first reads the existing, authenticated `GET /license/current`
-  self-read (`features/licensing/use-license-state.ts`, ADR-0030) to show an
-  accurate "license is not active" explainer instead of a misleading
-  "you lack permission" one when the installation license — not the
-  session's RBAC permission — is the actual reason the form is withheld; the
-  read is UX routing only (no count/limit math, no license state ever cached
-  outside TanStack Query) and enforces nothing — `OrganizationsService.
-createOrganization` is the sole enforcement point. See
+  endpoints — no new endpoint, no invented organization state, no bypass.
+  That form is reached only behind an active installation license, because
+  the licensing stage above the gate has already answered that question (see
+  the bootstrap order), which is why the gate itself only ever decides the
+  organization/permission question. `OrganizationsService.createOrganization`
+  remains the sole enforcement point. See
   `docs/task-33-organization-first-login-provisioning-report.md`.
 - **Amounts are exact decimal strings.** They are displayed digit-for-digit
   (grouping only, `lib/format.ts`), never parsed into a `number`, never summed
@@ -186,6 +217,13 @@ with `vi.mock`, so what is verified is the application's own behavior:
 
 - login validation, server rejection, successful session, logout;
 - protected routing, permission-gated routes and menu entries, 404;
+- the licensing bootstrap stage (`app/layouts/license-gate.test.tsx`): no
+  license read before a session exists, the checking state, an active
+  license continuing into the organization gate, an inactive one stopping
+  before it with license — not permission — copy, a failed read with retry
+  and its recovery, single-source entitlement consumption, the
+  first-organization flow behind an active license, and license-cache
+  isolation across logout/login;
 - organization context (single vs. multiple, empty, missing permission);
 - API error normalization and session-expiry handling;
 - report filters → exact query parameters, paging, sorting, empty/error

@@ -897,3 +897,66 @@ historical project state above. Full audit evidence, decisions and verification:
   `crudApi<Entity>`, second HTTP client or new state library was introduced.**
 - **Not accepted by this addendum:** as with every other entry in this file,
   merge/CI-green is not Owner acceptance.
+
+## 15. FE-LICENSE-BOOTSTRAP — Licensing bootstrap & organization flow integration, frontend (2026-10-01)
+
+This addendum records a focused frontend task without rewriting or removing any
+historical project state above.
+
+- **Scope:** insert the licensing stage into the authenticated frontend
+  bootstrap, between the session and the existing organization stage, so the
+  fixed order is `login → session → license → organization → organization
+  context → workspace`. No new product surface, no license administration.
+- **Backend changes: none.** `git diff --stat -- backend/ prisma/` on the
+  implementation commit is empty. `GET /api/v1/license/current` was consumed
+  exactly as `LicenseStateController.current()` already returns it — not
+  renamed, not extended, no parallel endpoint, no DTO change. The frontend
+  contract type `LicenseState` (`frontend/src/api/contracts.ts`) was already
+  present and was not modified either.
+- **One license source.** `features/licensing/use-license-state.ts` remains the
+  only license abstraction (`queryKeys.licenseState()`, one query, read once
+  per authenticated session). No `useLicense()`/`useCurrentLicense()`, no
+  second context or API client, no entitlement registry, no `localStorage`/env
+  copy and no development fallback were introduced. The hook was extended
+  minimally: a four-value `status` (`loading | active | inactive | error`) so
+  the states cannot be conflated, and the raw `LicenseState` so the contract's
+  own `entitlements` collection can be consumed as-is.
+- **The misleading-message defect this fixes.** Because
+  `AuthorizationService.effectivePermissionCodes` filters stored grants through
+  `LicensingService.filterLicensedPermissions`, an inactive license yields an
+  empty effective permission set; the organization gate therefore reported
+  "you lack permission" for an installation whose license was simply not
+  active, and the license check added by §13.1 sat in a branch that state
+  could not reach. The licensing stage now answers first and owns its own
+  Persian copy, so license and permission are never confused.
+- **No client-side enforcement was added** (AR-21, ADR-0030): no count is
+  compared against `organizationLimit`/`userLimit`, no "remaining
+  organizations" math, no entitlement semantics invented, no
+  Customer/Installation/License identifier surfaced (the controller
+  deliberately does not serialize them), and no admin/role/NODE_ENV/storage
+  bypass. A failed license read is a retryable error state — never assumed
+  active and never reported as inactive.
+- **FE-ORG-01 / PR #96 preserved.** `OrganizationGate` is still the
+  organization boundary and still owns the first-organization bootstrap; the
+  licensing branches were removed from it (they moved up one stage, not
+  duplicated), and the create/membership sequence is unchanged and covered by
+  a regression test behind an active license.
+- **Frontend changes:** 3 new files (`app/layouts/license-gate.tsx`,
+  `app/layouts/bootstrap-states.tsx`, `app/layouts/license-gate.test.tsx`) and
+  9 touched (`app/layouts/app-shell.tsx`, `app/layouts/organization-gate.tsx`,
+  `features/licensing/use-license-state.ts`, `lib/i18n.ts`, plus five test
+  files that now mock the licensing read the shell performs). No backend,
+  no route, no accounting surface and no organization administration file was
+  touched.
+- **Local verification (executed):** `npm run lint` 0/0, `npm run typecheck`
+  exit 0, `npm run format:check` clean, `npm test` **40 files / 286 tests
+  passed** (baseline 39/277: +10 licensing-stage cases, 1 relocated),
+  `npm run build` exit 0. There is no frontend E2E suite in
+  `.github/workflows/ci.yml`; GitHub Actions is the authoritative signal.
+- **No new ADR.** ADR-0030 already decided that the backend is authoritative
+  and that the frontend must read the license state before offering
+  organization provisioning; this task implements that decision, so
+  `docs/licensing-architecture.md` (the owning document) and
+  `frontend/README.md` were updated instead of adding a competing record.
+- **Not accepted by this addendum:** as with every other entry in this file,
+  merge/CI-green is not Owner acceptance.

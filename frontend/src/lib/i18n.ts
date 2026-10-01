@@ -57,6 +57,16 @@ export const fa = {
     uxOnlyNote:
       'کنترل‌های دسترسی در رابط کاربری فقط جنبه نمایشی دارند؛ مرجع نهایی مجوزها سرور است.',
   },
+  // Installation licensing (ADR-0030). Deliberately separate from
+  // `permissions`: مجوز استقرار (license) و مجوز دسترسی (permission) دو
+  // واقعیت متفاوت‌اند و متن آن‌ها نباید جای یکدیگر را بگیرد.
+  license: {
+    checking: 'در حال بررسی مجوز…',
+    inactiveTitle: 'مجوز استقرار فعال نیست',
+    inactiveBody:
+      'مجوز این استقرار وردنا فعال نیست؛ تا زمان فعال‌شدن مجوز، بخش‌های کاری در دسترس نیستند. این وضعیت به سطح دسترسی حساب کاربری شما مربوط نمی‌شود؛ برای فعال‌سازی با مدیر سامانه تماس بگیرید.',
+    errorTitle: 'خطا در دریافت وضعیت مجوز',
+  },
   organization: {
     label: 'سازمان',
     switcher: 'انتخاب سازمان',
@@ -84,10 +94,6 @@ export const fa = {
     createFirstNameRequired: 'نام سازمان الزامی است.',
     createFirstSubmit: 'ایجاد سازمان',
     createFirstSubmitting: 'در حال ایجاد سازمان…',
-    licenseInactiveTitle: 'مجوز استقرار فعال نیست',
-    licenseInactiveBody:
-      'ایجاد سازمان تا زمانی که مجوز این استقرار فعال شود در دسترس نیست. این محدودیت به سطح دسترسی حساب کاربری شما مربوط نمی‌شود؛ با مدیر سامانه تماس بگیرید.',
-    licenseErrorTitle: 'خطا در دریافت وضعیت مجوز',
   },
   orgAdmin: {
     title: 'سازمان و اطلاعات پایه',
