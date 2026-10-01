@@ -35,7 +35,10 @@ import { LicensingModule } from '../licensing/licensing.module.js';
  * only use each other's public surface.
  */
 @Module({
-  imports: [forwardRef(() => IdentityModule), LicensingModule],
+  imports: [
+    forwardRef(() => IdentityModule),
+    forwardRef(() => LicensingModule),
+  ],
   controllers: [RolesController, PermissionsController],
   providers: [
     PermissionRegistry,

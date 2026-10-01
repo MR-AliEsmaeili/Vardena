@@ -7,6 +7,10 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '../../identity/application/auth.guard.js';
 import { LicensingService } from '../application/licensing.service.js';
+import {
+  toLicenseStateView,
+  type LicenseStateView,
+} from './license-state.view.js';
 
 @ApiTags('licensing')
 @ApiUnauthorizedResponse({ description: 'Not authenticated.' })
@@ -17,33 +21,13 @@ export class LicenseStateController {
   /** Authenticated self/bootstrap read; no RBAC permission is required. */
   @Get('current')
   @UseGuards(AuthGuard)
-  @ApiOperation({ summary: 'Current installation license capability state.' })
+  @ApiOperation({
+    summary: 'Current installation license capability state.',
+    description:
+      'Evaluates the persisted installation license on every call. An installation that has never activated a license answers status UNLICENSED with active=false; it is a state read, never an activation.',
+  })
   @ApiOkResponse({ description: 'Non-secret evaluated license state.' })
-  async current(): Promise<{
-    status: string;
-    active: boolean;
-    inactiveReason: string | null;
-    validFrom: string;
-    validUntil: string | null;
-    organizationLimit: number | null;
-    userLimit: number | null;
-    entitlements: Array<{ kind: string; code: string }>;
-    provider: string;
-  }> {
-    const license = await this.licensing.current();
-    return {
-      status: license.status,
-      active: license.active,
-      inactiveReason: license.inactiveReason,
-      validFrom: license.validFrom.toISOString(),
-      validUntil: license.validUntil?.toISOString() ?? null,
-      organizationLimit: license.organizationLimit,
-      userLimit: license.userLimit,
-      entitlements: license.entitlements.map(({ kind, code }) => ({
-        kind,
-        code,
-      })),
-      provider: license.provider,
-    };
+  async current(): Promise<LicenseStateView> {
+    return toLicenseStateView(await this.licensing.current());
   }
 }

@@ -25,6 +25,7 @@ model LicenseCustomer {
   updatedBy   String?  @map("updated_by")
 
   installations Installation[]
+  licenses      License[]
 
   @@map("customers")
   @@schema("licensing")
@@ -32,14 +33,16 @@ model LicenseCustomer {
 
 model Installation {
   id         String   @id
-  customerId String   @map("customer_id")
+  customerId String?  @map("customer_id")
   name       String   @db.VarChar(200)
+  /// Exactly one row may be the identity of THIS deployment (L-02).
+  isSelf     Boolean  @default(false) @map("is_self")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy  String?  @map("created_by")
   updatedBy  String?  @map("updated_by")
 
-  customer LicenseCustomer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  customer LicenseCustomer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
   licenses License[]
 
   @@index([customerId], map: "idx_installations_customer_id")
@@ -50,21 +53,32 @@ model Installation {
 model License {
   id                String        @id
   installationId    String        @map("installation_id")
+  customerId        String        @map("customer_id")
   status            LicenseStatus
   provider          String        @db.VarChar(80)
+  /// The signed license code this row was activated from (audit/re-issue).
+  code              String
+  /// SHA-256 of the code: idempotent re-activation without comparing secrets.
+  codeHash          String        @map("code_hash")
   validFrom         DateTime      @map("valid_from") @db.Timestamptz(6)
   validUntil        DateTime?     @map("valid_until") @db.Timestamptz(6)
   organizationLimit Int?          @map("organization_limit")
   userLimit         Int?          @map("user_limit")
+  activatedAt       DateTime      @default(now()) @map("activated_at") @db.Timestamptz(6)
+  activatedBy       String?       @map("activated_by")
+  /// Non-null once a later activation replaced this license.
+  replacedAt        DateTime?     @map("replaced_at") @db.Timestamptz(6)
   createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy         String?       @map("created_by")
   updatedBy         String?       @map("updated_by")
 
-  installation Installation       @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  installation Installation        @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  customer     LicenseCustomer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
   entitlements LicenseEntitlement[]
 
   @@index([installationId, status], map: "idx_licenses_installation_id_status")
+  @@index([installationId, replacedAt], map: "idx_licenses_installation_id_replaced_at")
   @@map("licenses")
   @@schema("licensing")
 }

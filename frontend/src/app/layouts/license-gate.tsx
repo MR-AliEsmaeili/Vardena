@@ -66,15 +66,31 @@ export function LicenseGate({ children }: { children: ReactNode }) {
         </BootstrapScreen>
       );
 
-    case 'inactive':
+    case 'inactive': {
+      // An installation that has never been licensed is a distinct, far more
+      // common situation than a license that stopped being valid (L-02): the
+      // operator needs the installation identity to obtain a license at all,
+      // so it is shown here instead of being hidden in the API response.
+      const unlicensed = license.license?.status === 'UNLICENSED';
+      const installationId = license.license?.installationId ?? null;
+      const body = unlicensed
+        ? t.license.unlicensedBody
+        : t.license.inactiveBody;
       return (
         <BootstrapScreen>
           <BlockedState
-            title={t.license.inactiveTitle}
-            description={t.license.inactiveBody}
+            title={
+              unlicensed ? t.license.unlicensedTitle : t.license.inactiveTitle
+            }
+            description={
+              installationId === null
+                ? body
+                : `${body} (${t.license.installationIdLabel}: ${installationId})`
+            }
           />
         </BootstrapScreen>
       );
+    }
 
     case 'active':
       return children;

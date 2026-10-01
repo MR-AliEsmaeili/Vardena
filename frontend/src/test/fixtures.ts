@@ -64,15 +64,32 @@ export const secondOrganization: Organization = {
 
 /** `GET /license/current` under the default, unconfigured local provider. */
 export const testActiveLicenseState: LicenseState = {
+  licensed: true,
   status: 'ACTIVE',
   active: true,
   inactiveReason: null,
+  installationId: '01K7INSTALLATIONAAAAAAAAAA',
+  customerId: '01K7CUSTOMERAAAAAAAAAAAAAA',
+  licenseId: '01K7LICENSEAAAAAAAAAAAAAAA',
   validFrom: '2026-01-01T00:00:00.000Z',
   validUntil: null,
   organizationLimit: null,
   userLimit: null,
   entitlements: [{ kind: 'MODULE', code: 'organization' }],
-  provider: 'local-development',
+  provider: 'persistent',
+};
+
+/** An installation that has never activated a license (L-02). */
+export const testUnlicensedLicenseState: LicenseState = {
+  ...testActiveLicenseState,
+  licensed: false,
+  status: 'UNLICENSED',
+  active: false,
+  inactiveReason: 'unlicensed',
+  customerId: null,
+  licenseId: null,
+  validFrom: null,
+  entitlements: [],
 };
 
 export const testInactiveLicenseState: LicenseState = {

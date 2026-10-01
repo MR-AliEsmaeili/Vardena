@@ -58,8 +58,26 @@ export interface AuthConfig {
   loginRateLimit: RateLimitConfig;
 }
 
+export type LicenseProviderName = 'persistent' | 'local-development';
+
 export interface LicensingConfig {
-  provider: 'local-development';
+  /**
+   * Which licensing authority evaluates this installation (L-02).
+   *
+   * `persistent` (the default) reads the license this installation actually
+   * activated; `local-development` reads the values below. Selection is
+   * explicit configuration and is NEVER derived from NODE_ENV: a development
+   * machine that configures nothing is unlicensed exactly like production.
+   */
+  provider: LicenseProviderName;
+  /**
+   * Accepted licensing-authority Ed25519 PUBLIC keys (PEM or base64 DER).
+   * Only public key material ever reaches the server; the private signing key
+   * belongs to the issuing authority and is never stored or logged here.
+   * More than one key is allowed so an authority key can be rotated without
+   * invalidating licenses signed by the previous one.
+   */
+  signingPublicKeys: string[];
   status: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED';
   validFrom: Date;
   validUntil: Date | null;
@@ -345,11 +363,20 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   // Explicit local provider configuration. It is selected by name, never by
   // NODE_ENV, administrator identity, role, or email.
-  const licenseProviderRaw =
-    env['LICENSE_PROVIDER']?.trim() || 'local-development';
-  if (licenseProviderRaw !== 'local-development') {
-    errors.push('LICENSE_PROVIDER currently supports only local-development.');
+  const licenseProviderRaw = env['LICENSE_PROVIDER']?.trim() || 'persistent';
+  if (
+    licenseProviderRaw !== 'persistent' &&
+    licenseProviderRaw !== 'local-development'
+  ) {
+    errors.push(
+      'LICENSE_PROVIDER must be persistent or local-development (got ' +
+        `${JSON.stringify(env['LICENSE_PROVIDER'])}).`,
+    );
   }
+  const licenseSigningPublicKeys = (env['LICENSE_SIGNING_PUBLIC_KEYS'] ?? '')
+    .split(',')
+    .map((key) => key.trim())
+    .filter((key) => key !== '');
   const licenseStatusRaw =
     env['LICENSE_STATUS']?.trim().toUpperCase() || 'ACTIVE';
   if (!['ACTIVE', 'EXPIRED', 'SUSPENDED'].includes(licenseStatusRaw)) {
@@ -409,7 +436,8 @@ export function loadAppConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     },
     deploymentOrganizationId,
     licensing: {
-      provider: 'local-development',
+      provider: licenseProviderRaw as LicenseProviderName,
+      signingPublicKeys: licenseSigningPublicKeys,
       status: licenseStatusRaw as LicensingConfig['status'],
       validFrom: licenseValidFrom,
       validUntil: licenseValidUntil,

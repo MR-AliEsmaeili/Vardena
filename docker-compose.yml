@@ -86,6 +86,18 @@ services:
       AUTH_SESSION_IDLE_TIMEOUT_MS: ${AUTH_SESSION_IDLE_TIMEOUT_MS:-1800000}
       AUTH_SESSION_ABSOLUTE_TIMEOUT_MS: ${AUTH_SESSION_ABSOLUTE_TIMEOUT_MS:-43200000}
       AUTH_LOGIN_RATE_LIMIT_WINDOW_MS: ${AUTH_LOGIN_RATE_LIMIT_WINDOW_MS:-900000}
+      # ---- Licensing (ADR-0030, L-02) ----
+      # The installation evaluates its OWN persisted license: the identity and
+      # the activated license live in the `licensing` schema of the database
+      # above, which is why the `pgdata` volume is what makes them survive a
+      # container rebuild. A fresh installation is UNLICENSED until an
+      # authorized administrator calls POST /api/v1/license/activate.
+      LICENSE_PROVIDER: ${LICENSE_PROVIDER:-persistent}
+      # Comma-separated Ed25519 public keys of the trusted license authority
+      # (PEM SPKI or base64 DER). PUBLIC keys only — the signing private key
+      # never belongs on an installation. An empty list rejects every
+      # activation while an already-activated license keeps evaluating.
+      LICENSE_SIGNING_PUBLIC_KEYS: ${LICENSE_SIGNING_PUBLIC_KEYS:-}
       AUTH_LOGIN_RATE_LIMIT_MAX: ${AUTH_LOGIN_RATE_LIMIT_MAX:-10}
     ports:
       - "${API_PORT:-3000}:3000"
@@ -106,6 +118,9 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql://vardena@postgres:5432/vardena}
       APP_VERSION: ${APP_VERSION:-0.0.0-dev}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # The worker evaluates the same installation license as the API.
+      LICENSE_PROVIDER: ${LICENSE_PROVIDER:-persistent}
+      LICENSE_SIGNING_PUBLIC_KEYS: ${LICENSE_SIGNING_PUBLIC_KEYS:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -113,4 +128,8 @@ services:
         condition: service_completed_successfully
 
 volumes:
+  # Installation identity and the activated license are ordinary rows in this
+  # database (licensing schema). Destroying this volume destroys the
+  # installation identity, and the existing license — issued for that identity
+  # — can no longer be activated against the new one.
   pgdata:

@@ -1,6 +1,6 @@
 # ADR-0030: Installation licensing precedes the RBAC capability catalog
 
-- **Status:** Accepted for L-01 (supersedes the earlier proposed enforcement-off text)
+- **Status:** Accepted for L-01; extended by ADR-0036 (L-02: persistent installation identity, signed license codes, activation endpoint, `persistent` provider by default)
 - **Date:** 2026-10-01
 
 ## Context
@@ -21,7 +21,7 @@ A module/feature Entitlement and an RBAC Permission are different facts. Licensi
 4. Unlicensed permissions are absent from the assignable catalog and assignment attempts are rejected server-side.
 5. Authorization filters stored RBAC grants through the current license. When entitlement disappears, grants remain stored but ineffective; restoration can make them effective again.
 6. Organization creation and active-user creation/re-enablement are license-gated in their owning application services. Existing Organization permissions and membership rules still apply.
-7. Consumers depend on `LicenseProvider` through `LicensingService`. The current `LocalDevelopmentLicenseProvider` is selected explicitly and reads validated configuration. It has no `NODE_ENV`, administrator, role, username, or email bypass.
+7. Consumers depend on `LicenseProvider` through `LicensingService`. Providers are selected explicitly by name (`persistent` by default since L-02; `LocalDevelopmentLicenseProvider` reads validated configuration and is for tests/local work). It has no `NODE_ENV`, administrator, role, username, or email bypass.
 8. Persistence uses typed Customer, Installation, License, and Entitlement tables in the `licensing` schema; no EAV or universal JSON payload.
 9. Finite organization and active-user allocations serialize on PostgreSQL transaction-scoped advisory locks keyed by installation and resource. Count plus mutation occur under that lock in one transaction, preventing concurrent over-allocation without a process-global or distributed lock.
 
@@ -35,6 +35,6 @@ A module/feature Entitlement and an RBAC Permission are different facts. Licensi
 ## Capability classification
 
 - **IMPLEMENTED:** provider boundary; local provider; lifecycle/validity evaluation; module and feature entitlements; assignable/effective RBAC filtering; organization/user limits; authenticated state API; typed persistence schema.
-- **FOUNDATION ONLY:** persisted commercial records (schema exists; no commercial activation/write API).
+- **FOUNDATION ONLY (L-01) / IMPLEMENTED (L-02, ADR-0036):** persisted installation identity and persisted activated license with a local signed-code activation API.
 - **DEFERRED/FUTURE:** CRM/commercial provider, billing, remote server, signed/offline licenses, hardware binding, marketplace, polished activation UI.
 - **NOT IMPLEMENTED:** hidden admin/development bypasses, EAV, frontend-authoritative licensing.

@@ -45,6 +45,21 @@ stateless trust; sessions-in-DB keep the future cloud path simple (stateless
 API nodes sharing Postgres). JWTs remain an option for future machine-to-machine
 integration APIs (would need an ADR).
 
+**Session continuity (L-02).** There is no separate access token to refresh:
+the opaque session *is* the credential, and continuity comes from the sliding
+idle deadline. Every authenticated request pushes `last_seen_at` forward
+(`SessionsService.touch`), so ordinary continuous use never signs a user out
+before the absolute cap; only real inactivity beyond the idle timeout, an
+explicit revocation, or the absolute cap ends it, and each of those requires a
+genuine login afterwards. The cookie carries the **absolute** lifetime as its
+`Max-Age` (Express takes milliseconds there — a bug that divided it by 1000
+expired the browser cookie after ~43 s of a 12 h session and produced
+spurious "logged out" reports). Both timeouts stay configurable
+(`AUTH_SESSION_IDLE_TIMEOUT_MS`, `AUTH_SESSION_ABSOLUTE_TIMEOUT_MS`); the
+defaults above are the security baseline, not a workaround. Licensing is an
+independent state machine: an expired or inactive installation license never
+ends a session and never forces a login (`docs/licensing-architecture.md`).
+
 **Login flow:** verify credentials → create session row → set cookie → return
 user + effective permissions (for UI bootstrapping; UI checks are UX-only,
 AR-21). **Lockout:** N (default 5) consecutive failed logins → lockout for
