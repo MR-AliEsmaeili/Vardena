@@ -104,7 +104,10 @@ PostgreSQL concurrency tests:
 - `commits exactly one of two concurrent inactive-to-active allocations for one available slot`
 - File: `backend/test/licensing-limits-live.e2e-spec.ts`
 - Local full live execution: intentionally deferred to GitHub Actions.
-- GitHub run/backend/E2E result: PENDING follow-up verification.
+- GitHub follow-up run: `36826952682` — PASS.
+- Backend job: `110254653391` — PASS (3m45s).
+- PostgreSQL E2E step: backend step 17, `E2E tests (incl. live-DB suites)` — PASS (2026-10-01 06:52:48Z–06:54:23Z); this command discovers `test/**/*.e2e-spec.ts`, including `licensing-limits-live.e2e-spec.ts`.
+- Frontend job: `110254653574` — PASS (1m55s).
 
 ## E2E verification
 
@@ -141,4 +144,4 @@ Deferred/not implemented: CRM, billing/payments, marketplace/subscriptions, remo
 
 ## Final status
 
-BLOCKED — follow-up PostgreSQL concurrency CI verification is pending.
+READY FOR REVIEW
