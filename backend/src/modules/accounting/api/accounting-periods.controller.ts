@@ -67,6 +67,10 @@ export class AccountingPeriodsController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedAccountingPeriodDto) }] },
   })
+  @ApiNotFoundResponse({
+    description:
+      'Organization or filtered fiscal year does not exist or is outside the caller scope.',
+  })
   async list(@Query() query: ListAccountingPeriodsQueryDto): Promise<{
     items: AccountingPeriodResponseDto[];
     total: number;

@@ -3,13 +3,17 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/errors';
 import type { AccountingDocument } from '@/api/contracts';
+import { queryKeys } from '@/api/query-keys';
 import { AppRoutes } from '@/app/router';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
   secondOrganization,
   testAccountingDocument,
+  testAccountingPeriod,
   testActiveLicenseState,
+  testFinancialArea,
+  testFiscalYear,
   testOrganization,
   testUser,
 } from '@/test/fixtures';
@@ -59,6 +63,9 @@ vi.mock('@/api/accounting.api', () => ({
   listAccountingPeriods: vi
     .fn()
     .mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 500 }),
+  createFinancialArea: vi.fn(),
+  createFiscalYear: vi.fn(),
+  createAccountingPeriod: vi.fn(),
   listPostableAccounts: vi.fn(),
   listGeneralLedger: vi.fn(),
   listTrialBalance: vi.fn(),
@@ -89,6 +96,7 @@ vi.mock('@/api/dashboard.api', () => ({
 
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
+const accountingApi = await import('@/api/accounting.api');
 const dashboardApi = await import('@/api/dashboard.api');
 const licensingApi = await import('@/api/licensing.api');
 
@@ -102,6 +110,56 @@ beforeEach(() => {
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
     testOrganization,
   ]);
+  // Keep each response internally scoped to the requested organization and
+  // parent so organization-switch tests exercise the real context boundary.
+  vi.mocked(accountingApi.listFinancialAreas).mockImplementation(
+    ({ organizationId }) =>
+      Promise.resolve({
+        items: [
+          {
+            ...testFinancialArea,
+            id: `${organizationId}-area`,
+            organizationId,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 500,
+      }),
+  );
+  vi.mocked(accountingApi.listFiscalYears).mockImplementation(
+    ({ organizationId, financialAreaId }) =>
+      Promise.resolve({
+        items: [
+          {
+            ...testFiscalYear,
+            id: `${organizationId}-year`,
+            organizationId,
+            financialAreaId: financialAreaId ?? `${organizationId}-area`,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 500,
+      }),
+  );
+  vi.mocked(accountingApi.listAccountingPeriods).mockImplementation(
+    ({ organizationId, fiscalYearId }) =>
+      Promise.resolve({
+        items: [
+          {
+            ...testAccountingPeriod,
+            id: `${organizationId}-period`,
+            organizationId,
+            financialAreaId: `${organizationId}-area`,
+            fiscalYearId,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 500,
+      }),
+  );
   // Default: an active, unlimited installation license (the local provider's
   // default — ADR-0030), so pre-L-01 scenarios are unaffected unless a test
   // explicitly exercises the license-inactive path.
@@ -235,7 +293,14 @@ describe('organization resolution in the shell', () => {
   it('blocks the workspace with a Persian explainer and logout when no organization exists', async () => {
     vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([]);
 
-    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+    const rendered = renderWithProviders(<AppRoutes />, {
+      initialEntries: ['/app'],
+    });
+    await waitFor(() => {
+      expect(
+        rendered.queryClient.getQueryData(queryKeys.licenseState()),
+      ).toEqual(testActiveLicenseState);
+    });
 
     const blocked = await screen.findByRole('main');
     expect(
@@ -279,7 +344,14 @@ describe('organization resolution in the shell', () => {
     vi.mocked(organizationApi.grantMembership).mockResolvedValue(undefined);
     const user = userEvent.setup();
 
-    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+    const rendered = renderWithProviders(<AppRoutes />, {
+      initialEntries: ['/app'],
+    });
+    await waitFor(() => {
+      expect(
+        rendered.queryClient.getQueryData(queryKeys.licenseState()),
+      ).toEqual(testActiveLicenseState);
+    });
 
     const blocked = await screen.findByRole('main');
     expect(

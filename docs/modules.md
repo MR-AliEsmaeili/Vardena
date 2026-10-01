@@ -328,6 +328,13 @@ Remove`. No `Rbac.Role.Delete` (OQ-20).
 > **Treasury is deferred and out of MVP** — Accounting must not implement cash,
 > bank, payment, receipt, cheque or settlement behavior implicitly.
 
+- **Frontend workspace context (2026-10-01 implementation slice):** the SPA
+  resolves the existing Accounting hierarchy only after session, evaluated
+  license, and Organization membership scope. It uses the existing Area → Year
+  → Period APIs, keeps the choice in memory only, requires an open/active
+  chain before a context-capable Accounting workspace, and adds no parallel
+  Organization or accounting concepts. See
+  [`accounting/financial-workspace-context.md`](./accounting/financial-workspace-context.md).
 - **Status:** Task 10.2 implemented the **bookkeeping scope** — financial areas,
   fiscal years, accounting periods (contract §4/§5/§6/§7, AC-D-01…AC-D-05,
   AC-I-01/03/04/16): schema `accounting` (`20260914000000_accounting_foundation`),

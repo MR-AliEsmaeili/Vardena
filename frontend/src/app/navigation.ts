@@ -72,6 +72,16 @@ export const navigationSections: readonly NavigationSection[] = [
         permissions: [PERMISSIONS.accounting.documentView],
       },
       {
+        to: '/app/accounting/context',
+        label: t.nav.financialContext,
+        icon: FolderKanban,
+        permissions: [
+          PERMISSIONS.accounting.financialAreaView,
+          PERMISSIONS.accounting.fiscalYearView,
+          PERMISSIONS.accounting.accountingPeriodView,
+        ],
+      },
+      {
         to: '/app/accounting/financial-areas',
         label: t.masterData.financialAreas,
         icon: FolderKanban,

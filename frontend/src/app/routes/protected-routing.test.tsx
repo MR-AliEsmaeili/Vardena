@@ -5,7 +5,10 @@ import { AppRoutes } from '@/app/router';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
+  testAccountingPeriod,
   testActiveLicenseState,
+  testFinancialArea,
+  testFiscalYear,
   testOrganization,
   testUser,
 } from '@/test/fixtures';
@@ -61,6 +64,9 @@ vi.mock('@/api/accounting.api', () => ({
   listFinancialAreas: vi.fn(),
   listFiscalYears: vi.fn(),
   listAccountingPeriods: vi.fn(),
+  createFinancialArea: vi.fn(),
+  createFiscalYear: vi.fn(),
+  createAccountingPeriod: vi.fn(),
   listPostableAccounts: vi.fn(),
   listGeneralLedger: vi.fn(),
   listTrialBalance: vi.fn(),
@@ -75,6 +81,7 @@ vi.mock('@/api/licensing.api', () => ({
 
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
+const accountingApi = await import('@/api/accounting.api');
 const licensingApi = await import('@/api/licensing.api');
 
 beforeEach(() => {
@@ -87,6 +94,24 @@ beforeEach(() => {
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
     testOrganization,
   ]);
+  vi.mocked(accountingApi.listFinancialAreas).mockResolvedValue({
+    items: [testFinancialArea],
+    total: 1,
+    page: 1,
+    pageSize: 500,
+  });
+  vi.mocked(accountingApi.listFiscalYears).mockResolvedValue({
+    items: [testFiscalYear],
+    total: 1,
+    page: 1,
+    pageSize: 500,
+  });
+  vi.mocked(accountingApi.listAccountingPeriods).mockResolvedValue({
+    items: [testAccountingPeriod],
+    total: 1,
+    page: 1,
+    pageSize: 500,
+  });
 });
 
 describe('protected routing', () => {

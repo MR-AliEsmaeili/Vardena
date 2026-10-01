@@ -10,6 +10,9 @@ import type {
   AccountingDocumentListQuery,
   AccountingPeriod,
   AccountingPeriodListQuery,
+  CreateAccountingPeriodRequest,
+  CreateFinancialAreaRequest,
+  CreateFiscalYearRequest,
   ChartTreeNode,
   ChartTreeQuery,
   CreateAccountingDocumentInput,
@@ -64,13 +67,20 @@ export function listFinancialAreas(
 }
 
 export function listFiscalYears(
-  params: { organizationId: string; financialAreaId?: string | undefined },
+  params: {
+    organizationId: string;
+    financialAreaId?: string | undefined;
+    isActive?: boolean | undefined;
+    status?: 'open' | 'closed' | 'sealed' | undefined;
+  },
   signal?: AbortSignal,
 ): Promise<Paginated<FiscalYear>> {
   return apiGet<Paginated<FiscalYear>>('/fiscal-years', {
     params: cleanParams({
       organizationId: params.organizationId,
       financialAreaId: params.financialAreaId,
+      isActive: params.isActive,
+      status: params.status,
       page: 1,
       pageSize: MAX_PAGE_SIZE,
       sort: 'code:asc',
@@ -80,13 +90,18 @@ export function listFiscalYears(
 }
 
 export function listAccountingPeriods(
-  params: { organizationId: string; fiscalYearId: string },
+  params: {
+    organizationId: string;
+    fiscalYearId: string;
+    status?: 'open' | 'closed' | 'sealed' | undefined;
+  },
   signal?: AbortSignal,
 ): Promise<Paginated<AccountingPeriod>> {
   return apiGet<Paginated<AccountingPeriod>>('/accounting-periods', {
     params: cleanParams({
       organizationId: params.organizationId,
       fiscalYearId: params.fiscalYearId,
+      status: params.status,
       page: 1,
       pageSize: MAX_PAGE_SIZE,
     }),
@@ -150,6 +165,35 @@ export function listAccountingPeriodsPage(
     params: cleanParams({ ...query }),
     ...(signal ? { signal } : {}),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Financial workspace context creation — real accounting contracts only
+// ---------------------------------------------------------------------------
+
+export function createFinancialArea(
+  body: CreateFinancialAreaRequest,
+): Promise<FinancialArea> {
+  return apiPost<FinancialArea, CreateFinancialAreaRequest>(
+    '/financial-areas',
+    body,
+  );
+}
+
+export function createFiscalYear(
+  body: CreateFiscalYearRequest,
+): Promise<FiscalYear> {
+  return apiPost<FiscalYear, CreateFiscalYearRequest>('/fiscal-years', body);
+}
+
+/** Opening an Accounting Period creates it in the mandated `open` state. */
+export function createAccountingPeriod(
+  body: CreateAccountingPeriodRequest,
+): Promise<AccountingPeriod> {
+  return apiPost<AccountingPeriod, CreateAccountingPeriodRequest>(
+    '/accounting-periods',
+    body,
+  );
 }
 
 export function listAccounts(

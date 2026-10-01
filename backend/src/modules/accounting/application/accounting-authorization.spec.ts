@@ -1091,6 +1091,19 @@ describe('FiscalYearsService', () => {
       }),
     );
     expect(listing.total).toBe(0);
+
+    // A parent filter is also organization-qualified: it must not turn a
+    // known foreign area into an ambiguous empty list.
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.years.listFiscalYears({
+          organizationId: orgB,
+          financialAreaId: areaA,
+          page: 1,
+          pageSize: 10,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
   });
 
   it('gates every year operation on its own permission', async () => {
@@ -1144,12 +1157,13 @@ describe('FiscalYearsService', () => {
 describe('AccountingPeriodsService', () => {
   let fixture: Fixture;
   let orgA: string;
+  let orgB: string;
   let yearId: string;
 
   beforeEach(async () => {
     fixture = await buildFixture();
     orgA = await createMemberOrg(fixture, 'ORGA', 'Org A');
-    await createMemberOrg(fixture, 'ORGB', 'Org B');
+    orgB = await createMemberOrg(fixture, 'ORGB', 'Org B');
     await fixture.grant(ACTOR, [
       ...ALL_FINANCIAL_AREA_CODES,
       ...ALL_FISCAL_YEAR_CODES,
@@ -1435,6 +1449,19 @@ describe('AccountingPeriodsService', () => {
     await expect(
       asActor(ACTOR, () =>
         fixture.periods.getAccountingPeriod(ORG_B, period.id),
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+
+    // The fiscal-year list filter carries the same ownership rule as a by-id
+    // read; a foreign parent must not be treated as an ordinary empty page.
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.periods.listAccountingPeriods({
+          organizationId: orgB,
+          fiscalYearId: yearId,
+          page: 1,
+          pageSize: 10,
+        }),
       ),
     ).rejects.toMatchObject({ code: 'EntityNotFound' });
 

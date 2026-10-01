@@ -135,6 +135,19 @@ export class AccountingPeriodsService {
       ACCOUNTING_PERIOD_PERMISSIONS.VIEW,
     ]);
     await this.organizations.assertOrganizationInScope(query.organizationId);
+    // A fiscal-year id is a scoped parent reference, not an untrusted list
+    // filter. Resolve it before reading child periods so a year from another
+    // organization is indistinguishable from an unknown year (404), rather
+    // than becoming an empty cross-tenant result. Historical periods of an
+    // inactive year remain readable, so this is intentionally not a usable
+    // (active/open) gate.
+    if (query.fiscalYearId !== undefined) {
+      await this.fiscalYears.requireUsableFiscalYearInOrganization(
+        query.fiscalYearId,
+        query.organizationId,
+        { allowInactive: true },
+      );
+    }
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {

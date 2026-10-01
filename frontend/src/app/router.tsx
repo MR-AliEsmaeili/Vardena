@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AccountStatementPage } from '@/features/accounting/account-statement/account-statement-page';
 import { AccountingHomePage } from '@/features/accounting/accounting-home-page';
 import { ChartTreePage } from '@/features/accounting/chart-tree/chart-tree-page';
+import { FinancialContextPage } from '@/features/accounting/context/financial-context-page';
 import { DocumentDetailPage } from '@/features/accounting/documents/document-detail-page';
 import {
   DocumentCreatePage,
@@ -119,6 +120,20 @@ export function AppRoutes() {
               }
             >
               <Route path="documents/new" element={<DocumentCreatePage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[
+                    PERMISSIONS.accounting.financialAreaView,
+                    PERMISSIONS.accounting.fiscalYearView,
+                    PERMISSIONS.accounting.accountingPeriodView,
+                  ]}
+                />
+              }
+            >
+              <Route path="context" element={<FinancialContextPage />} />
             </Route>
 
             <Route

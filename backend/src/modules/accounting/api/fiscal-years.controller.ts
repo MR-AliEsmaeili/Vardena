@@ -65,6 +65,10 @@ export class FiscalYearsController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedFiscalYearDto) }] },
   })
+  @ApiNotFoundResponse({
+    description:
+      'Organization or filtered financial area does not exist or is outside the caller scope.',
+  })
   async list(@Query() query: ListFiscalYearsQueryDto): Promise<{
     items: FiscalYearResponseDto[];
     total: number;

@@ -103,6 +103,44 @@ export const queryKeys = {
         fiscalYearId ?? 'all',
       ] as const,
 
+    /**
+     * Financial workspace context queries keep every ancestor in the key.
+     * They are intentionally distinct from report-reference keys above: the
+     * provider may evict a changed area/year's dependent choices without
+     * invalidating unrelated organization-scoped report data.
+     */
+    financialContextAreas: (organizationId: string) =>
+      ['accounting', organizationId, 'financial-context', 'areas'] as const,
+
+    financialContextFiscalYears: (
+      organizationId: string,
+      financialAreaId: string,
+    ) =>
+      [
+        'accounting',
+        organizationId,
+        'financial-context',
+        'areas',
+        financialAreaId,
+        'fiscal-years',
+      ] as const,
+
+    financialContextPeriods: (
+      organizationId: string,
+      financialAreaId: string,
+      fiscalYearId: string,
+    ) =>
+      [
+        'accounting',
+        organizationId,
+        'financial-context',
+        'areas',
+        financialAreaId,
+        'fiscal-years',
+        fiscalYearId,
+        'periods',
+      ] as const,
+
     postableAccounts: (organizationId: string, search: string) =>
       ['accounting', organizationId, 'accounts', 'postable', search] as const,
 

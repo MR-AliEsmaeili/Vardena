@@ -11,10 +11,20 @@ interface Surface {
   to: string;
   title: string;
   description: string;
-  permission: string;
+  permission: string | readonly string[];
 }
 
 const surfaces: readonly Surface[] = [
+  {
+    to: '/app/accounting/context',
+    title: t.nav.financialContext,
+    description: t.masterData.financialContext.description,
+    permission: [
+      PERMISSIONS.accounting.financialAreaView,
+      PERMISSIONS.accounting.fiscalYearView,
+      PERMISSIONS.accounting.accountingPeriodView,
+    ],
+  },
   {
     to: '/app/accounting/documents',
     title: t.nav.documents,

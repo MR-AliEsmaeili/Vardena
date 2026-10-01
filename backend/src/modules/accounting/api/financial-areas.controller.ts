@@ -65,6 +65,9 @@ export class FinancialAreasController {
   @ApiOkResponse({
     schema: { allOf: [{ $ref: getSchemaPath(PaginatedFinancialAreaDto) }] },
   })
+  @ApiNotFoundResponse({
+    description: 'Organization does not exist or is outside the caller scope.',
+  })
   async list(@Query() query: ListFinancialAreasQueryDto): Promise<{
     items: FinancialAreaResponseDto[];
     total: number;

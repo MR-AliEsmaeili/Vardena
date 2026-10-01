@@ -5,7 +5,11 @@ import { AppRoutes } from '@/app/router';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
+  paginated,
+  testAccountingPeriod,
   testActiveLicenseState,
+  testFinancialArea,
+  testFiscalYear,
   testOrganization,
   testUser,
 } from '@/test/fixtures';
@@ -88,6 +92,7 @@ vi.mock('@/api/licensing.api', () => ({
 
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
+const accountingApi = await import('@/api/accounting.api');
 const licensingApi = await import('@/api/licensing.api');
 
 beforeEach(() => {
@@ -106,6 +111,15 @@ beforeEach(() => {
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
     testOrganization,
   ]);
+  vi.mocked(accountingApi.listFinancialAreas).mockResolvedValue(
+    paginated([testFinancialArea]),
+  );
+  vi.mocked(accountingApi.listFiscalYears).mockResolvedValue(
+    paginated([testFiscalYear]),
+  );
+  vi.mocked(accountingApi.listAccountingPeriods).mockResolvedValue(
+    paginated([testAccountingPeriod]),
+  );
 });
 
 describe('session expiry', () => {

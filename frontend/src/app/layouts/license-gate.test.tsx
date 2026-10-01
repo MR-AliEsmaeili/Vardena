@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/errors';
@@ -8,7 +8,10 @@ import { useLicenseState } from '@/features/licensing/use-license-state';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
+  testAccountingPeriod,
   testActiveLicenseState,
+  testFinancialArea,
+  testFiscalYear,
   testInactiveLicenseState,
   testUnlicensedLicenseState,
   testOrganization,
@@ -73,6 +76,9 @@ vi.mock('@/api/accounting.api', () => ({
   listAccountingPeriods: vi
     .fn()
     .mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 500 }),
+  createFinancialArea: vi.fn(),
+  createFiscalYear: vi.fn(),
+  createAccountingPeriod: vi.fn(),
   listPostableAccounts: vi.fn(),
   listGeneralLedger: vi.fn(),
   listTrialBalance: vi.fn(),
@@ -87,6 +93,7 @@ vi.mock('@/api/accounting.api', () => ({
 
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
+const accountingApi = await import('@/api/accounting.api');
 const licensingApi = await import('@/api/licensing.api');
 
 /** Permissions of a session that may create the very first organization. */
@@ -106,6 +113,56 @@ beforeEach(() => {
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
     testOrganization,
   ]);
+  // Keep the stubbed Accounting hierarchy scoped to the requested
+  // organization and parent, just as the production provider requires.
+  vi.mocked(accountingApi.listFinancialAreas).mockImplementation(
+    ({ organizationId }) =>
+      Promise.resolve({
+        items: [
+          {
+            ...testFinancialArea,
+            id: `${organizationId}-area`,
+            organizationId,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 500,
+      }),
+  );
+  vi.mocked(accountingApi.listFiscalYears).mockImplementation(
+    ({ organizationId, financialAreaId }) =>
+      Promise.resolve({
+        items: [
+          {
+            ...testFiscalYear,
+            id: `${organizationId}-year`,
+            organizationId,
+            financialAreaId: financialAreaId ?? `${organizationId}-area`,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 500,
+      }),
+  );
+  vi.mocked(accountingApi.listAccountingPeriods).mockImplementation(
+    ({ organizationId, fiscalYearId }) =>
+      Promise.resolve({
+        items: [
+          {
+            ...testAccountingPeriod,
+            id: `${organizationId}-period`,
+            organizationId,
+            financialAreaId: `${organizationId}-area`,
+            fiscalYearId,
+          },
+        ],
+        total: 1,
+        page: 1,
+        pageSize: 500,
+      }),
+  );
   vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
     testActiveLicenseState,
   );
@@ -159,8 +216,15 @@ describe('licensing bootstrap stage', () => {
     // reached — through, not around, the licensing stage.
     vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([]);
 
-    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+    const rendered = renderWithProviders(<AppRoutes />, {
+      initialEntries: ['/app'],
+    });
 
+    await waitFor(() => {
+      expect(
+        rendered.queryClient.getQueryData(queryKeys.licenseState()),
+      ).toEqual(testActiveLicenseState);
+    });
     const main = await screen.findByRole('main');
     expect(
       await within(main).findByText(t.organization.emptyTitle),
@@ -451,7 +515,14 @@ describe('licensing bootstrap stage', () => {
     vi.mocked(organizationApi.grantMembership).mockResolvedValue(undefined);
     const user = userEvent.setup();
 
-    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+    const rendered = renderWithProviders(<AppRoutes />, {
+      initialEntries: ['/app'],
+    });
+    await waitFor(() => {
+      expect(
+        rendered.queryClient.getQueryData(queryKeys.licenseState()),
+      ).toEqual(testActiveLicenseState);
+    });
 
     const main = await screen.findByRole('main');
     expect(

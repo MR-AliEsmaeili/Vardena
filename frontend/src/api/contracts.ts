@@ -234,6 +234,10 @@ export type FiscalYearListQuery =
   operations['FiscalYearsController_list_v1']['parameters']['query'];
 export type AccountingPeriodListQuery =
   operations['AccountingPeriodsController_list_v1']['parameters']['query'];
+export type CreateFinancialAreaRequest = Schemas['CreateFinancialAreaDto'];
+export type CreateFiscalYearRequest = Schemas['CreateFiscalYearDto'];
+export type CreateAccountingPeriodRequest =
+  Schemas['CreateAccountingPeriodDto'];
 export type AccountListQuery =
   operations['AccountsController_list_v1']['parameters']['query'];
 

@@ -159,6 +159,18 @@ export class FiscalYearsService {
       FISCAL_YEAR_PERMISSIONS.VIEW,
     ]);
     await this.organizations.assertOrganizationInScope(query.organizationId);
+    // A parent id is a scoped reference, not merely a filter value. Resolve it
+    // before listing so an area from another organization answers the same
+    // 404 as every other cross-organization reference (contract §4), rather
+    // than silently looking like an empty fiscal-year list. Inactive areas
+    // remain readable with their history, hence `allowInactive: true`.
+    if (query.financialAreaId !== undefined) {
+      await this.financialAreas.requireUsableFinancialAreaInOrganization(
+        query.financialAreaId,
+        query.organizationId,
+        { allowInactive: true },
+      );
+    }
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {
