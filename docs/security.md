@@ -229,7 +229,30 @@ deployment shape (ADR-0025):
   is invented. The administrator creates the initial organization through the
   ordinary API and then grants their own membership through the existing
   empty-organization first-grant rule; until that membership exists, ODR-3 still
-  returns 404 from organization-scoped paths despite the full RBAC role.
+  returns 404 from organization-scoped paths despite the full RBAC role. The
+  frontend's organization gate (`OrganizationGate` /
+  `CreateFirstOrganizationForm`, `docs/task-33-organization-first-login-provisioning-report.md`)
+  surfaces exactly this two-call sequence as a small form when the session
+  holds both
+  `Organization.Organization.Create` and `Organization.Membership.Grant`; a
+  session without both codes still sees the unchanged terminal "no organization
+  available" explainer. The backend contract, the permission checks, and the
+  first-member exception are unchanged — the frontend adds no new endpoint, no
+  bypass, and no client-side organization state.
+  `OrganizationsService.createOrganization` is additionally gated by the
+  installation License (ADR-0030, `docs/licensing-architecture.md`): an
+  active license and an entitled `organization` module are required, and
+  organization creation is further limited by the license's organization
+  count (server-side, inside the same transaction as the count-and-create —
+  never a frontend count comparison). `AuthorizationService.
+  effectivePermissionCodes` already filters `Organization.Organization.Create`
+  / `Organization.Membership.Grant` out of the effective set whenever the
+  license disallows them, so the gate above is license-aware without any
+  frontend licensing logic; the one additional frontend behavior is a
+  read-only check of the authenticated `GET /license/current` self-read
+  (no RBAC permission required) used solely to show an accurate "license is
+  not active" explainer instead of a misleading "you lack permission" one —
+  it enforces nothing and the backend check above is unaffected by it.
 
 Authorization stays `required permission AND organization membership`: removing
 one permission from the `System Administrator` role denies exactly that

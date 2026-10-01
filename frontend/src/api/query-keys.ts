@@ -14,6 +14,7 @@
 export const queryKeys = {
   session: () => ['identity', 'session'] as const,
   effectivePermissions: () => ['rbac', 'permissions', 'effective'] as const,
+  licenseState: () => ['licensing', 'license', 'current'] as const,
 
   organizations: {
     all: () => ['organization', 'organizations'] as const,

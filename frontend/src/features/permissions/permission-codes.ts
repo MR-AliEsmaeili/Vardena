@@ -18,7 +18,9 @@
 export const PERMISSIONS = {
   organization: {
     view: 'Organization.Organization.View',
+    create: 'Organization.Organization.Create',
     branchView: 'Organization.Branch.View',
+    membershipGrant: 'Organization.Membership.Grant',
   },
   accounting: {
     accountView: 'Accounting.Account.View',

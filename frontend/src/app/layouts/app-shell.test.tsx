@@ -10,6 +10,8 @@ import {
   paginated,
   secondOrganization,
   testAccountingDocument,
+  testActiveLicenseState,
+  testInactiveLicenseState,
   testOrganization,
   testUser,
 } from '@/test/fixtures';
@@ -33,7 +35,13 @@ vi.mock('@/api/identity.api', () => ({
 
 vi.mock('@/api/organization.api', () => ({
   listOrganizations: vi.fn(),
+  createOrganization: vi.fn(),
+  grantMembership: vi.fn(),
   MAX_PAGE_SIZE: 500,
+}));
+
+vi.mock('@/api/licensing.api', () => ({
+  getLicenseState: vi.fn(),
 }));
 
 vi.mock('@/api/accounting.api', () => ({
@@ -77,6 +85,7 @@ vi.mock('@/api/dashboard.api', () => ({
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
 const dashboardApi = await import('@/api/dashboard.api');
+const licensingApi = await import('@/api/licensing.api');
 
 beforeEach(() => {
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
@@ -87,6 +96,12 @@ beforeEach(() => {
   vi.mocked(identityApi.logout).mockResolvedValue(undefined);
   vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
     paginated([testOrganization]),
+  );
+  // Default: an active, unlimited installation license (the local provider's
+  // default — ADR-0030), so pre-L-01 scenarios are unaffected unless a test
+  // explicitly exercises the license-inactive path.
+  vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
+    testActiveLicenseState,
   );
 });
 
@@ -233,6 +248,119 @@ describe('organization resolution in the shell', () => {
     expect(
       screen.queryByRole('button', { name: t.organization.selectingSubmit }),
     ).not.toBeInTheDocument();
+  });
+
+  it('lets a session holding organization Create + Membership.Grant create and enter the first organization (task §4/§7 unpinned lifecycle)', async () => {
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [
+        ...allAccountingPermissions,
+        'Organization.Organization.Create',
+        'Organization.Membership.Grant',
+      ],
+    });
+    vi.mocked(organizationApi.listOrganizations).mockResolvedValueOnce(
+      paginated([]),
+    );
+    const createdOrganization = {
+      ...testOrganization,
+      id: 'org-created',
+      code: 'MAIN',
+      name: 'سازمان اصلی',
+    };
+    vi.mocked(organizationApi.createOrganization).mockResolvedValue(
+      createdOrganization,
+    );
+    vi.mocked(organizationApi.grantMembership).mockResolvedValue(undefined);
+    const user = userEvent.setup();
+
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+
+    const blocked = await screen.findByRole('main');
+    expect(
+      await within(blocked).findByRole('heading', {
+        name: t.organization.createFirstTitle,
+      }),
+    ).toBeInTheDocument();
+    // The unreachable, permission-less explainer must not render alongside
+    // the actionable form.
+    expect(
+      within(blocked).queryByText(t.organization.emptyBody),
+    ).not.toBeInTheDocument();
+
+    await user.type(
+      within(blocked).getByLabelText(t.organization.createFirstCode),
+      'MAIN',
+    );
+    await user.type(
+      within(blocked).getByLabelText(t.organization.createFirstName),
+      'سازمان اصلی',
+    );
+
+    // The list now reflects the organization the backend created, exactly
+    // as a real `GET /organizations` refetch would after the two calls.
+    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
+      paginated([createdOrganization]),
+    );
+
+    await user.click(
+      within(blocked).getByRole('button', {
+        name: t.organization.createFirstSubmit,
+      }),
+    );
+
+    expect(
+      await screen.findByRole('heading', { level: 1, name: t.dashboard.title }),
+    ).toBeInTheDocument();
+    expect(organizationApi.createOrganization).toHaveBeenCalledWith({
+      code: 'MAIN',
+      name: 'سازمان اصلی',
+    });
+    expect(organizationApi.grantMembership).toHaveBeenCalledWith(
+      'org-created',
+      { userId: testUser.id },
+    );
+  });
+
+  it('blocks first-organization creation with the license explainer, not the permission explainer, when the installation license is inactive (ADR-0030)', async () => {
+    vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
+      userId: testUser.id,
+      permissions: [
+        ...allAccountingPermissions,
+        'Organization.Organization.Create',
+        'Organization.Membership.Grant',
+      ],
+    });
+    vi.mocked(organizationApi.listOrganizations).mockResolvedValue(
+      paginated([]),
+    );
+    vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
+      testInactiveLicenseState,
+    );
+
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+
+    const blocked = await screen.findByRole('main');
+    expect(
+      await within(blocked).findByText(t.organization.licenseInactiveTitle),
+    ).toBeInTheDocument();
+    expect(
+      within(blocked).getByText(t.organization.licenseInactiveBody),
+    ).toBeInTheDocument();
+    // A session that genuinely holds both permissions must not see the
+    // generic "you lack permission" explainer when the real cause is the
+    // license, and the actionable form (which the backend would reject
+    // anyway — `OrganizationsService.createOrganization` re-checks the
+    // license) must not render either.
+    expect(
+      within(blocked).queryByText(t.organization.emptyBody),
+    ).not.toBeInTheDocument();
+    expect(
+      within(blocked).queryByRole('heading', {
+        name: t.organization.createFirstTitle,
+      }),
+    ).not.toBeInTheDocument();
+    expect(organizationApi.createOrganization).not.toHaveBeenCalled();
   });
 
   it('blocks the workspace when the session cannot read the organization list', async () => {

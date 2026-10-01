@@ -9,6 +9,7 @@ import type {
   FiscalYear,
   GeneralLedgerRow,
   InventoryBalance,
+  LicenseState,
   Organization,
   Paginated,
   TrialBalanceRow,
@@ -55,6 +56,26 @@ export const secondOrganization: Organization = {
   id: 'org-2',
   code: 'ORG-2',
   name: 'سازمان دوم',
+};
+
+/** `GET /license/current` under the default, unconfigured local provider. */
+export const testActiveLicenseState: LicenseState = {
+  status: 'ACTIVE',
+  active: true,
+  inactiveReason: null,
+  validFrom: '2026-01-01T00:00:00.000Z',
+  validUntil: null,
+  organizationLimit: null,
+  userLimit: null,
+  entitlements: [{ kind: 'MODULE', code: 'organization' }],
+  provider: 'local-development',
+};
+
+export const testInactiveLicenseState: LicenseState = {
+  ...testActiveLicenseState,
+  status: 'SUSPENDED',
+  active: false,
+  inactiveReason: 'status',
 };
 
 export const testFinancialArea: FinancialArea = {

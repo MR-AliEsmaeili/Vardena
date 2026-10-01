@@ -1,5 +1,11 @@
-import { apiGet, cleanParams } from './client';
-import type { Branch, Organization, Paginated } from './contracts';
+import { apiGet, apiPost, cleanParams } from './client';
+import type {
+  Branch,
+  CreateOrganizationRequest,
+  GrantMembershipRequest,
+  Organization,
+  Paginated,
+} from './contracts';
 
 /**
  * Organization read surface (`backend/src/modules/organization`).
@@ -30,6 +36,45 @@ export function listOrganizations(
     }),
     ...(signal ? { signal } : {}),
   });
+}
+
+/**
+ * Create an organization (`POST /organizations`).
+ *
+ * Ordinary `Organization.Organization.Create` administration, not a
+ * first-install special case: the backend refuses this call outright when
+ * the deployment is pinned (`DEPLOYMENT_ORGANIZATION_ID`, ADR-0025) and
+ * otherwise applies its normal code/name validation. The caller does not
+ * become a member of the created organization by this call alone — that is
+ * `grantMembership`, a separate ODR-3 authorization act (Task 19).
+ */
+export function createOrganization(
+  body: CreateOrganizationRequest,
+): Promise<Organization> {
+  return apiPost<Organization, CreateOrganizationRequest>(
+    '/organizations',
+    body,
+  );
+}
+
+/**
+ * Grant a user membership of an organization
+ * (`POST /organizations/:id/members`).
+ *
+ * Ordinary `Organization.Membership.Grant` administration (Task 19, ODR-3).
+ * The backend's own first-member bootstrap exception is what lets a caller
+ * who is not yet a member of ANY organization grant themselves the first
+ * membership of a newly created, still-empty organization; nothing on the
+ * frontend re-implements or relaxes that rule.
+ */
+export function grantMembership(
+  organizationId: string,
+  body: GrantMembershipRequest,
+): Promise<void> {
+  return apiPost<void, GrantMembershipRequest>(
+    `/organizations/${encodeURIComponent(organizationId)}/members`,
+    body,
+  );
 }
 
 /**

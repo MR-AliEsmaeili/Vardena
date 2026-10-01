@@ -689,3 +689,150 @@ These frontend Open Questions remain open and require the owner's decision throu
 Task: docs/frontend-standards (v2.1)
 Status: ACCEPTED-PENDING-OWNER
 Owner Behavioral Verification: PENDING
+
+## 13. Task 33 — Organization Provisioning & First-Login Readiness (2026-09-30)
+
+This addendum records a focused implementation task without rewriting or
+removing any historical project state above. Full findings, root cause,
+decision and verification: `docs/task-33-organization-first-login-provisioning-report.md`.
+
+- **Reported symptom:** the bootstrap administrator (`مدیر`) authenticates
+  successfully but the frontend reaches the terminal "no organization
+  available" screen with no recovery path besides logging out.
+- **Root cause (verified, not assumed):** the repository's default
+  configuration is **unpinned** (`DEPLOYMENT_ORGANIZATION_ID` unset — commented
+  out in `backend/.env.example`, empty-default in `docker-compose.yml`).
+  Unpinned mode intentionally invents no organization (ADR-0021 structural
+  mode; Task 26 / ADR-0038 only provisions an organization + membership in
+  **pinned** mode). The backend has always allowed an authorized principal
+  (one holding `Organization.Organization.Create` and
+  `Organization.Membership.Grant` — which the bootstrap administrator's full
+  RBAC role already holds) to create the first organization and self-grant the
+  first membership through the existing, unmodified
+  `POST /organizations` + `POST /organizations/:id/members` endpoints and the
+  existing first-member bootstrap exception. **The frontend's `empty`
+  organization state offered no way to reach that path** — this was the actual
+  defect: a missing frontend integration of an existing, architecturally
+  correct backend capability.
+- **Decision:** Option C (both modes), matching what was already implemented.
+  Pinned mode (Task 26 / ADR-0038) is unchanged. Unpinned mode gets a small,
+  additive frontend capability only.
+- **Backend changes:** **none.** No schema, migration, endpoint, permission
+  code, or guard changed. Re-ran the full backend suite (113 unit spec files /
+  1,319 tests; 20 e2e spec files / 278 tests, 14 live-DB files correctly
+  skipped without `VARDENA_TEST_DATABASE_URL`) to confirm zero regression from
+  a zero-line backend diff.
+- **Frontend changes:** `OrganizationGate`'s `empty` state now renders a
+  first-organization bootstrap form (`CreateFirstOrganizationForm`) instead of
+  the unconditional terminal explainer, but **only** for a session holding
+  both `Organization.Organization.Create` and `Organization.Membership.Grant`
+  (UX-only gating, AR-21; the backend re-checks both permissions on both
+  calls). Every other session sees the unchanged terminal explainer. 3 new
+  frontend files, 8 files touched, +206/−10 lines; 5 new frontend tests (217/217
+  total frontend tests pass); frontend typecheck/lint/format/build all pass.
+- **No wildcard, bypass, frontend-only organization state, hardcoded
+  organization id, or new deployment model was introduced.**
+- **Scope:** frontend-only capability addition plus documentation; no
+  Financial Area, Fiscal Year, Accounting Period, RBAC, or organization-role
+  redesign was touched.
+- **Not accepted by this addendum:** as with every other entry in this file,
+  merge/CI-green is not Owner acceptance.
+
+### 13.1 PR #96 follow-up — rebase onto L-01 licensing foundation (2026-10-01)
+
+PR #97 ("L-01: licensing foundation and entitlement architecture",
+`docs/adr/0030-license-foundation.md`) merged into `main` after PR #96 (this
+Task 33 work) was opened, adding an installation License → Entitlement →
+assignable Permission catalog layer in front of RBAC. This follow-up rebased
+PR #96 onto the new `main`, audited §13's implementation against it, and
+applied the one compatibility fix the audit found necessary — full findings
+in `docs/task-33-organization-first-login-provisioning-report.md` §17–§25.
+
+- **No backend contract PR #96 depends on changed.**
+  `CreateOrganizationDto`/`GrantMembershipDto`/`OrganizationResponseDto` and
+  the whole membership module are byte-for-byte unchanged by L-01.
+- **Most of L-01's effect on PR #96 is already transparent.**
+  `AuthorizationService.effectivePermissionCodes` now intersects stored RBAC
+  grants with licensed modules, and PR #96's frontend already reads that
+  exact filtered set through the pre-existing `GET /permissions/effective`
+  contract — no code change was needed for `Organization.Organization.Create`
+  / `Organization.Membership.Grant` to stay license-aware.
+- **The one compatibility fix:** ADR-0030 explicitly calls out that "PR #96's
+  first-organization UX must call the license-state endpoint before offering
+  organization provisioning." Before this fix, a session holding both
+  organization permissions but blocked only because the installation license
+  was inactive saw the same generic "you lack permission" explainer as a
+  session with no permission at all. The frontend now reads the existing
+  `GET /license/current` self-read (already shipped by L-01, no RBAC
+  permission required, no new backend endpoint added) before evaluating the
+  RBAC-gated first-organization affordance, and shows a distinct "license is
+  not active" explainer when appropriate. This is read-only UX routing, not
+  enforcement — no count/limit comparison was added client-side, and
+  `OrganizationsService.createOrganization` remains the sole enforcement
+  point.
+- **No frontend-side license enforcement of any kind was added** — no
+  threshold checks, no reading license state from storage/env, no
+  admin/role/NODE_ENV bypass, no second "licensed permissions" mechanism.
+- Rebased cleanly (no conflicts) onto `main` `841b685`. The rebase itself
+  produced intermediate commit `f9477b6b770787cd5745a04323d38481b98c238f`
+  (the compatibility-fix implementation), verified at the time by GitHub
+  Actions CI run `36830490998` (backend incl. live-DB E2E, frontend, all
+  passing). A subsequent documentation-only commit moved the branch/PR HEAD
+  to `487d363c3bfe397f7480e992dbf6027c9108cbb9` — see §13.2 for the current,
+  authoritative head/CI evidence; `f9477b6`/`36830490998` are historical only
+  and are not the current state of PR #96.
+- **Not accepted by this addendum either** — same rule as every other entry
+  in this file.
+
+### 13.2 Documentation/evidence correction (2026-10-01)
+
+Follow-up to §13.1: after §13.1 was written, a documentation-only commit
+(adding `docs/task-33-organization-first-login-provisioning-report.md`,
+this §13.1/§13.2 addendum, and the `docs/security.md`/`frontend/README.md`
+clarifications) was pushed, moving PR #96's HEAD from `f9477b6` to
+`487d363`. §13.1's closing bullet still named `f9477b6`/`36830490998` as the
+"final"/current state after that happened; this entry corrects that without
+rewriting §13.1's history.
+
+- **Current PR #96 HEAD:** `487d363c3bfe397f7480e992dbf6027c9108cbb9`
+  (confirmed via `git rev-parse HEAD` and `gh pr view 96 --json
+  headRefOid`).
+- **Current PR #96 base:** `841b68545b6be36aeb65f523474b4261973875b8`
+  (`main`'s current tip — unchanged since §13.1; PR #96 was not re-rebased
+  for this correction, only a new commit was added on top).
+- **Current authoritative CI:** GitHub Actions run `36831107322`
+  (`.github/workflows/ci.yml`), confirmed tied to commit `487d363` via
+  `gh run view 36831107322 --json headSha`. Both jobs `success`: `backend`
+  (incl. Prisma validate/generate, unit tests, and **E2E tests incl.
+  live-DB suites**) and `frontend` (lint/typecheck/format/tests/build).
+- `f9477b6` and CI run `36830490998` remain valid as the historical record
+  of the compatibility-fix implementation commit (§13.1) but are
+  **superseded** as "current" evidence by the above.
+- **No production code, backend source, or implementation file changed** in
+  this correction — documentation only.
+
+### 13.3 Second evidence correction (2026-10-01, same day)
+
+Writing §13.2 itself required a commit, which moved PR #96's HEAD from
+`487d363` to `abd5134d793ef4b87088afad0f7f9fe04ace9127` — the same
+mechanical effect §13.2 corrected for `f9477b6`→`487d363`. Documenting a
+branch's own HEAD always trails by exactly the commit doing the documenting;
+see `docs/task-33-organization-first-login-provisioning-report.md` §27 for
+the full explanation and the rule adopted going forward (describe the
+implementation commit `f9477b6` as the verified baseline, treat every commit
+after it as an independently-CI-verified, production-behavior-unchanged
+documentation correction, and read `git rev-parse HEAD` /
+`gh pr view 96 --json headRefOid` for the literal current value instead of
+trusting a frozen SHA in prose).
+
+- **Current PR #96 HEAD at time of writing:**
+  `abd5134d793ef4b87088afad0f7f9fe04ace9127`.
+- **Current authoritative CI:** GitHub Actions run `36840117957`, tied to
+  `abd5134` (`gh run view 36840117957 --json status,conclusion,headSha` →
+  success/completed/`abd5134...`). Both jobs `success`, backend incl.
+  E2E/live-DB suites.
+- `487d363`/run `36831107322` (§13.2) and `f9477b6`/run `36830490998`
+  (§13.1) remain valid historical records, superseded only as "current."
+- `git diff --stat -- backend/` and `-- frontend/src/` between `487d363` and
+  `abd5134` are both empty — documentation-only, same as every correction in
+  this chain.

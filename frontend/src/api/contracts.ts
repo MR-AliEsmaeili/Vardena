@@ -74,12 +74,46 @@ export type LoginRequest = Schemas['LoginRequestDto'];
 export type EffectivePermissions = Schemas['EffectivePermissionsDto'];
 
 // ---------------------------------------------------------------------------
+// Licensing (ADR-0030 / L-01)
+//
+// `LicenseStateController.current()` (`backend/src/modules/licensing/api/
+// license-state.controller.ts`) answers `GET /api/v1/license/current` with an
+// inline return type, not a decorated response DTO class (`@ApiOkResponse`
+// carries no `type`), so the generated OpenAPI document has no schema for it
+// — the same annotation-gap category already described above for
+// `NullableString`/`AccountStatement*`. `LicenseState` is restored VERBATIM
+// from that controller's return type rather than derived from the generated
+// document.
+// ---------------------------------------------------------------------------
+
+export type LicenseEntitlementKind = 'MODULE' | 'FEATURE';
+
+export interface LicenseEntitlement {
+  kind: LicenseEntitlementKind;
+  code: string;
+}
+
+export interface LicenseState {
+  status: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED';
+  active: boolean;
+  inactiveReason: 'status' | 'not-yet-valid' | 'expired' | null;
+  validFrom: string;
+  validUntil: string | null;
+  organizationLimit: number | null;
+  userLimit: number | null;
+  entitlements: LicenseEntitlement[];
+  provider: string;
+}
+
+// ---------------------------------------------------------------------------
 // Organization
 // ---------------------------------------------------------------------------
 
 export type Organization = Schemas['OrganizationResponseDto'];
 export type OrganizationListQuery =
   operations['OrganizationsController_list_v1']['parameters']['query'];
+export type CreateOrganizationRequest = Schemas['CreateOrganizationDto'];
+export type GrantMembershipRequest = Schemas['GrantMembershipDto'];
 
 // ---------------------------------------------------------------------------
 // Accounting — reference data used by report filters

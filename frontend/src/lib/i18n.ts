@@ -75,6 +75,19 @@ export const fa = {
     errorTitle: 'خطا در دریافت سازمان',
     permissionHint:
       'دریافت فهرست سازمان‌ها به مجوز Organization.Organization.View نیاز دارد.',
+    createFirstTitle: 'ایجاد نخستین سازمان',
+    createFirstBody:
+      'هنوز هیچ سازمانی در این استقرار ایجاد نشده است. برای شروع کار، نخستین سازمان را ایجاد کنید؛ پس از ایجاد، به‌طور خودکار عضو آن خواهید شد.',
+    createFirstCode: 'کد سازمان',
+    createFirstName: 'نام سازمان',
+    createFirstCodeRequired: 'کد سازمان الزامی است.',
+    createFirstNameRequired: 'نام سازمان الزامی است.',
+    createFirstSubmit: 'ایجاد سازمان',
+    createFirstSubmitting: 'در حال ایجاد سازمان…',
+    licenseInactiveTitle: 'مجوز استقرار فعال نیست',
+    licenseInactiveBody:
+      'ایجاد سازمان تا زمانی که مجوز این استقرار فعال شود در دسترس نیست. این محدودیت به سطح دسترسی حساب کاربری شما مربوط نمی‌شود؛ با مدیر سامانه تماس بگیرید.',
+    licenseErrorTitle: 'خطا در دریافت وضعیت مجوز',
   },
   breadcrumb: {
     label: 'مسیر صفحه',

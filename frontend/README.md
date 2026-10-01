@@ -106,6 +106,24 @@ src/
   is in-memory, never persisted, and is only a query parameter — the backend
   re-asserts scope (`assertOrganizationInScope`) and answers 404 for anything
   out of scope.
+- **`GET /organizations` returning `[]` is not always a dead end.** In the
+  default unpinned deployment mode (ADR-0021) a fresh install legitimately
+  starts with zero organizations. `OrganizationGate` still shows the terminal
+  "no organization available" explainer by default, but a session that holds
+  both `Organization.Organization.Create` and `Organization.Membership.Grant`
+  sees the first-organization bootstrap form instead
+  (`features/organization/create-first-organization-form.tsx`), which calls
+  the existing `POST /organizations` then `POST /organizations/:id/members`
+  endpoints — no new endpoint, no invented organization state, no bypass. That
+  gate first reads the existing, authenticated `GET /license/current`
+  self-read (`features/licensing/use-license-state.ts`, ADR-0030) to show an
+  accurate "license is not active" explainer instead of a misleading
+  "you lack permission" one when the installation license — not the
+  session's RBAC permission — is the actual reason the form is withheld; the
+  read is UX routing only (no count/limit math, no license state ever cached
+  outside TanStack Query) and enforces nothing — `OrganizationsService.
+createOrganization` is the sole enforcement point. See
+  `docs/task-33-organization-first-login-provisioning-report.md`.
 - **Amounts are exact decimal strings.** They are displayed digit-for-digit
   (grouping only, `lib/format.ts`), never parsed into a `number`, never summed
   or recomputed. Dates are shown as the API returns them (`YYYY-MM-DD`); no
