@@ -7,9 +7,12 @@ import { AppRoutes } from '@/app/router';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
+  paginated,
   secondOrganization,
   testAccountingDocument,
   testActiveLicenseState,
+  testFinancialArea,
+  testFiscalYear,
   testOrganization,
   testUser,
 } from '@/test/fixtures';
@@ -90,6 +93,7 @@ vi.mock('@/api/dashboard.api', () => ({
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
 const dashboardApi = await import('@/api/dashboard.api');
+const accountingApi = await import('@/api/accounting.api');
 const licensingApi = await import('@/api/licensing.api');
 
 beforeEach(() => {
@@ -102,6 +106,12 @@ beforeEach(() => {
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
     testOrganization,
   ]);
+  vi.mocked(accountingApi.listFinancialAreas).mockResolvedValue(
+    paginated([testFinancialArea]),
+  );
+  vi.mocked(accountingApi.listFiscalYears).mockResolvedValue(
+    paginated([testFiscalYear]),
+  );
   // Default: an active, unlimited installation license (the local provider's
   // default — ADR-0030), so pre-L-01 scenarios are unaffected unless a test
   // explicitly exercises the license-inactive path.

@@ -358,15 +358,31 @@ export class FinancialAreasService {
    * cross-organization error, so the API never confirms that an id
    * belonging to a different organization exists.
    */
-  async requireUsableFinancialAreaInOrganization(
+  async requireFinancialAreaInOrganization(
     id: string,
     organizationId: string,
-    options: { allowInactive?: boolean } = {},
   ): Promise<FinancialArea> {
     const area = await this.repository.findById(id);
     if (area === null || area.organizationId !== organizationId) {
       throw AppException.notFound('FinancialArea', id);
     }
+    return area;
+  }
+
+  /**
+   * Resolve an area for a new writable reference. Historical reads use
+   * `requireFinancialAreaInOrganization` above so disabled areas remain
+   * readable without becoming selectable for ordinary work.
+   */
+  async requireUsableFinancialAreaInOrganization(
+    id: string,
+    organizationId: string,
+    options: { allowInactive?: boolean } = {},
+  ): Promise<FinancialArea> {
+    const area = await this.requireFinancialAreaInOrganization(
+      id,
+      organizationId,
+    );
     assertUsable('Financial area', area.isActive, {
       allowInactive: options.allowInactive ?? false,
     });

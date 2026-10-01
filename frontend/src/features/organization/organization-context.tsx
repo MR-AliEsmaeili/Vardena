@@ -2,34 +2,38 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createContext,
   useCallback,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
-import type { Organization } from '@/api/contracts';
+import { listFinancialAreas, listFiscalYears } from '@/api/accounting.api';
+import type { FinancialArea, FiscalYear, Organization } from '@/api/contracts';
 import { listMyOrganizations } from '@/api/organization.api';
 import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { useSession } from '@/features/auth/use-session';
 
-/**
- * The organization resolution state machine:
- *
- * - `loading` — the session or the bootstrap organization list is still
- *   pending;
- * - `error` — the list request failed (retryable);
- * - `empty` — the API returned no organization (terminal);
- * - `selecting` — several organizations exist and the user has not chosen one
- *   yet: no organization scope is active until they do;
- * - `invalid` — the previously confirmed selection is no longer in the list
- *   (deactivated / removed): the scope is dropped and the user re-chooses;
- * - `ready` — exactly one effective organization is active.
- *
- * There is no `forbidden` state: `GET /organizations/mine` (AR-21) requires
- * no `Organization.Organization.View` permission — membership alone decides
- * the result, so an authenticated session can never be denied this read.
- */
+/** The organization-only resolution state machine. */
 export type OrganizationContextStatus =
   'loading' | 'selecting' | 'ready' | 'empty' | 'invalid' | 'error';
+
+/**
+ * Financial context resolution, deliberately kept in the existing
+ * organization context instead of introducing a competing persisted scope.
+ * `forbidden` means the session cannot read the server-owned context data;
+ * the browser never treats a missing permission as an empty financial area.
+ */
+export type FinancialContextStatus =
+  | 'waiting'
+  | 'loading'
+  | 'selecting'
+  | 'ready'
+  | 'empty'
+  | 'invalid'
+  | 'error'
+  | 'forbidden';
 
 export interface OrganizationContextValue {
   /** Organizations the API returned for this session (never invented). */
@@ -43,55 +47,92 @@ export interface OrganizationContextValue {
   canSwitch: boolean;
   selectOrganization: (organizationId: string) => void;
   refresh: () => void;
+
+  /** Active, server-provided areas of the selected organization. */
+  financialAreas: readonly FinancialArea[];
+  financialArea: FinancialArea | null;
+  financialAreaId: string | null;
+  financialAreaStatus: FinancialContextStatus;
+  financialAreaError: unknown;
+  canSwitchFinancialArea: boolean;
+  selectFinancialArea: (financialAreaId: string) => void;
+  refreshFinancialAreas: () => void;
+
+  /** Open, active fiscal years of the selected financial area. */
+  fiscalYears: readonly FiscalYear[];
+  fiscalYear: FiscalYear | null;
+  fiscalYearId: string | null;
+  fiscalYearStatus: FinancialContextStatus;
+  fiscalYearError: unknown;
+  canSwitchFiscalYear: boolean;
+  selectFiscalYear: (fiscalYearId: string) => void;
+  refreshFiscalYears: () => void;
+
+  /** `ready` only after organization → area → fiscal-year is coherent. */
+  financialContextStatus: FinancialContextStatus;
 }
 
 export const OrganizationContext =
   createContext<OrganizationContextValue | null>(null);
 
-/** A selection confirmed by the user, scoped to the session's user id. */
-interface ConfirmedSelection {
+/** A user-confirmed organization selection; never persisted outside memory. */
+interface ConfirmedOrganizationSelection {
   userId: string;
   organizationId: string;
 }
 
 /**
- * Organization context (ADR-0021 / ADR-0025 / Task 19 ODR-3 / Organization
- * Bootstrap & Context Foundation).
+ * Browser navigation state for the existing Accounting hierarchy. It is not
+ * an authorization grant: each API request still carries the organization id
+ * and the server independently validates organization membership, parent
+ * ownership, permission and licensing.
+ */
+interface ConfirmedFinancialSelection {
+  userId: string;
+  organizationId: string;
+  financialAreaId: string;
+  fiscalYearId: string | null;
+}
+
+/**
+ * Organization and financial-workspace context.
  *
  * The only organization discovery this provider performs is
- * `GET /api/v1/organizations/mine` — the authenticated session's own active
- * memberships, decided by the backend alone. Its result is deployment-
- * defined: a deployment pinned with `DEPLOYMENT_ORGANIZATION_ID` answers with
- * exactly the pinned organization (still gated on membership), an unpinned
- * one answers with every organization the caller is an active member of.
- * This provider therefore does not invent a tenant model — it follows the
- * response:
+ * `GET /api/v1/organizations/mine`; areas and fiscal years are then obtained
+ * through the Accounting module's existing scope-qualified list contracts.
+ * This follows the governed hierarchy already present in the repository:
  *
- * - one organization ⇒ auto-selected, fixed context, no selection screen and
- *   no switcher rendered;
- * - several ⇒ an explicit selection is required before any scoped request is
- *   sent (`organizationId` stays `null` while unconfirmed), and the topbar
- *   switcher offers exactly the organizations the contract returned;
- * - none ⇒ `empty` — the app never enters the workspace with a fake default.
+ * `Organization → FinancialArea → FiscalYear → AccountingPeriod`.
  *
- * **The selection is never authorization.** It only decides which
- * `organizationId` query parameter the scoped requests carry; the backend
- * re-asserts membership and the deployment pin on every call
- * (`OrganizationsService.assertOrganizationInScope`) and answers 404 for
- * anything out of scope. Selecting is also not persisted anywhere: no
- * localStorage, no cookie — a reload re-reads the contract, and a selection
- * is only honored for the user who made it (a different session user starts
- * from a clean slate).
+ * The requested "fiscal period" workspace selection is represented by the
+ * existing Accounting-owned `FiscalYear` aggregate (the independently
+ * selectable dated fiscal range directly under a Financial Area). An
+ * `AccountingPeriod` remains a subordinate posting window within that year;
+ * no duplicate FiscalPeriod model or parallel context protocol is invented.
+ * Only active areas and open, active fiscal years are candidates for ordinary
+ * workspace entry. Closed, sealed and inactive history remains available only
+ * through its established administration/read surfaces.
  *
- * Switching organizations drops every cached query scoped to the previous
- * organization, so the old organization's data can never be displayed for
- * the new one (keys are organization-scoped anyway — the eviction is defense
- * in depth).
+ * No selection is stored in localStorage or cookies. A selection is scoped to
+ * the current user and organization, and parent changes synchronously clear
+ * every dependent selection and the dedicated dependent query cache.
  */
 export function OrganizationProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
-  const { status: sessionStatus, user } = useSession();
-  const [selected, setSelected] = useState<ConfirmedSelection | null>(null);
+  const {
+    status: sessionStatus,
+    user,
+    permissions,
+    permissionsLoaded,
+  } = useSession();
+  const [selected, setSelected] =
+    useState<ConfirmedOrganizationSelection | null>(null);
+  const [financialSelection, setFinancialSelection] =
+    useState<ConfirmedFinancialSelection | null>(null);
+  const previousFinancialArea = useRef<{
+    organizationId: string;
+    financialAreaId: string;
+  } | null>(null);
 
   const organizationsQuery = useQuery({
     queryKey: queryKeys.organizations.mine(),
@@ -106,8 +147,6 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     [organizationsQuery.data],
   );
 
-  // A confirmed selection only counts for the user who made it; anything
-  // else (no selection yet, another session user) is treated as unselected.
   const isSelectionForCurrentUser =
     selected !== null && selected.userId === user?.id;
   const selectedOrganization = useMemo<Organization | null>(() => {
@@ -118,39 +157,10 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   }, [isSelectionForCurrentUser, organizations, selected]);
 
   const organization = useMemo<Organization | null>(() => {
-    if (isSelectionForCurrentUser) {
-      // A confirmed selection that vanished from the list is INVALID — the
-      // scope is dropped instead of silently falling back to another
-      // organization the user never chose.
-      return selectedOrganization;
-    }
-    // Unconfirmed: exactly one organization auto-selects; several require an
-    // explicit choice before any scoped request is sent.
+    if (isSelectionForCurrentUser) return selectedOrganization;
     if (organizations.length === 1) return organizations[0] ?? null;
     return null;
   }, [isSelectionForCurrentUser, selectedOrganization, organizations]);
-
-  const selectOrganization = useCallback(
-    (organizationId: string) => {
-      // Only ids the API actually returned can be selected: a UI-supplied id
-      // must never become a scope the app sends blindly.
-      if (!organizations.some((item) => item.id === organizationId)) return;
-      if (user !== null) {
-        setSelected({ userId: user.id, organizationId });
-      }
-      // Evict the previous organization's cached server data so a switch can
-      // never render (or keep warm) the old organization's read models.
-      queryClient.removeQueries({
-        predicate: (query) =>
-          isOtherOrganizationScope(query.queryKey, organizationId),
-      });
-    },
-    [organizations, queryClient, user],
-  );
-
-  const refresh = useCallback(() => {
-    void organizationsQuery.refetch();
-  }, [organizationsQuery]);
 
   const status: OrganizationContextStatus =
     sessionStatus !== 'authenticated' || organizationsQuery.isPending
@@ -165,6 +175,244 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
               ? 'selecting'
               : 'ready';
 
+  const canReadFinancialAreas = permissions.includes(
+    PERMISSIONS.accounting.financialAreaView,
+  );
+  const canReadFiscalYears = permissions.includes(
+    PERMISSIONS.accounting.fiscalYearView,
+  );
+
+  const financialAreasQuery = useQuery({
+    queryKey: queryKeys.accounting.financialContextAreas(
+      organization?.id ?? 'none',
+    ),
+    queryFn: ({ signal }) =>
+      listFinancialAreas(
+        { organizationId: organization?.id as string, isActive: true },
+        signal,
+      ),
+    enabled:
+      status === 'ready' &&
+      organization !== null &&
+      permissionsLoaded &&
+      canReadFinancialAreas,
+    // Context gates surface a retryable state immediately. Background retries
+    // would hide an outage and can strand the user behind a loading screen.
+    retry: false,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+
+  const financialAreas = useMemo<readonly FinancialArea[]>(
+    () => financialAreasQuery.data?.items ?? [],
+    [financialAreasQuery.data],
+  );
+  const isFinancialSelectionForCurrentScope =
+    financialSelection !== null &&
+    financialSelection.userId === user?.id &&
+    financialSelection.organizationId === organization?.id;
+  const selectedFinancialArea = useMemo<FinancialArea | null>(() => {
+    if (!isFinancialSelectionForCurrentScope || financialSelection === null) {
+      return null;
+    }
+    return (
+      financialAreas.find(
+        (item) => item.id === financialSelection.financialAreaId,
+      ) ?? null
+    );
+  }, [financialAreas, financialSelection, isFinancialSelectionForCurrentScope]);
+  const financialArea = useMemo<FinancialArea | null>(() => {
+    if (isFinancialSelectionForCurrentScope) return selectedFinancialArea;
+    return financialAreas.length === 1 ? (financialAreas[0] ?? null) : null;
+  }, [
+    financialAreas,
+    isFinancialSelectionForCurrentScope,
+    selectedFinancialArea,
+  ]);
+
+  const financialAreaStatus: FinancialContextStatus =
+    status !== 'ready' || organization === null
+      ? 'waiting'
+      : !permissionsLoaded
+        ? 'loading'
+        : !canReadFinancialAreas
+          ? 'forbidden'
+          : financialAreasQuery.isPending
+            ? 'loading'
+            : financialAreasQuery.isError
+              ? 'error'
+              : financialAreas.length === 0
+                ? 'empty'
+                : isFinancialSelectionForCurrentScope &&
+                    selectedFinancialArea === null
+                  ? 'invalid'
+                  : financialAreas.length > 1 &&
+                      !isFinancialSelectionForCurrentScope
+                    ? 'selecting'
+                    : 'ready';
+
+  const fiscalYearsQuery = useQuery({
+    queryKey: queryKeys.accounting.financialContextFiscalYears(
+      organization?.id ?? 'none',
+      financialArea?.id ?? 'none',
+    ),
+    queryFn: ({ signal }) =>
+      listFiscalYears(
+        {
+          organizationId: organization?.id as string,
+          financialAreaId: financialArea?.id,
+          isActive: true,
+          status: 'open',
+        },
+        signal,
+      ),
+    enabled:
+      financialAreaStatus === 'ready' &&
+      organization !== null &&
+      financialArea !== null &&
+      permissionsLoaded &&
+      canReadFiscalYears,
+    retry: false,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
+
+  // Remove the *previous* child list only after React has committed the new
+  // parent selection. Removing it synchronously in the area click handler can
+  // wake the old query observer before the new key is rendered, leaving the
+  // switcher on the prior area. Query keys still prevent cross-area reuse.
+  useEffect(() => {
+    const current =
+      organization === null || financialArea === null
+        ? null
+        : {
+            organizationId: organization.id,
+            financialAreaId: financialArea.id,
+          };
+    const previous = previousFinancialArea.current;
+    if (
+      previous !== null &&
+      (current === null ||
+        previous.organizationId !== current.organizationId ||
+        previous.financialAreaId !== current.financialAreaId)
+    ) {
+      queryClient.removeQueries({
+        queryKey: queryKeys.accounting.financialContextFiscalYears(
+          previous.organizationId,
+          previous.financialAreaId,
+        ),
+      });
+    }
+    previousFinancialArea.current = current;
+  }, [financialArea, organization, queryClient]);
+
+  const fiscalYears = useMemo<readonly FiscalYear[]>(
+    () =>
+      (fiscalYearsQuery.data?.items ?? []).filter(
+        (year) => year.financialAreaId === financialArea?.id,
+      ),
+    [financialArea?.id, fiscalYearsQuery.data],
+  );
+  const selectedFiscalYear = useMemo<FiscalYear | null>(() => {
+    if (!isFinancialSelectionForCurrentScope || financialSelection === null) {
+      return null;
+    }
+    if (financialSelection.fiscalYearId === null) return null;
+    return (
+      fiscalYears.find((item) => item.id === financialSelection.fiscalYearId) ??
+      null
+    );
+  }, [financialSelection, fiscalYears, isFinancialSelectionForCurrentScope]);
+  const fiscalYear = useMemo<FiscalYear | null>(() => {
+    if (isFinancialSelectionForCurrentScope && selectedFiscalYear !== null) {
+      return selectedFiscalYear;
+    }
+    return fiscalYears.length === 1 ? (fiscalYears[0] ?? null) : null;
+  }, [fiscalYears, isFinancialSelectionForCurrentScope, selectedFiscalYear]);
+
+  const fiscalYearStatus: FinancialContextStatus =
+    financialAreaStatus !== 'ready' || financialArea === null
+      ? 'waiting'
+      : !permissionsLoaded
+        ? 'loading'
+        : !canReadFiscalYears
+          ? 'forbidden'
+          : fiscalYearsQuery.isPending
+            ? 'loading'
+            : fiscalYearsQuery.isError
+              ? 'error'
+              : fiscalYears.length === 0
+                ? 'empty'
+                : isFinancialSelectionForCurrentScope &&
+                    financialSelection?.fiscalYearId !== null &&
+                    selectedFiscalYear === null
+                  ? 'invalid'
+                  : fiscalYears.length > 1 && fiscalYear === null
+                    ? 'selecting'
+                    : 'ready';
+
+  const selectOrganization = useCallback(
+    (organizationId: string) => {
+      if (!organizations.some((item) => item.id === organizationId)) return;
+      if (user !== null) {
+        setSelected({ userId: user.id, organizationId });
+      }
+      // Parent context changes invalidate every downstream selection. The
+      // organization-scoped cache eviction is defense in depth over key scope.
+      setFinancialSelection(null);
+      queryClient.removeQueries({
+        predicate: (query) =>
+          isOtherOrganizationScope(query.queryKey, organizationId),
+      });
+    },
+    [organizations, queryClient, user],
+  );
+
+  const selectFinancialArea = useCallback(
+    (financialAreaId: string) => {
+      if (organization === null || user === null) return;
+      if (!financialAreas.some((item) => item.id === financialAreaId)) return;
+      // Selecting a parent synchronously clears the child selection. The
+      // previous child query is evicted by the committed-selection effect
+      // above, avoiding an old-observer race inside the click event.
+      setFinancialSelection({
+        userId: user.id,
+        organizationId: organization.id,
+        financialAreaId,
+        fiscalYearId: null,
+      });
+    },
+    [financialAreas, organization, user],
+  );
+
+  const selectFiscalYear = useCallback(
+    (fiscalYearId: string) => {
+      if (organization === null || user === null || financialArea === null)
+        return;
+      if (!fiscalYears.some((item) => item.id === fiscalYearId)) return;
+      setFinancialSelection({
+        userId: user.id,
+        organizationId: organization.id,
+        financialAreaId: financialArea.id,
+        fiscalYearId,
+      });
+    },
+    [financialArea, fiscalYears, organization, user],
+  );
+
+  const refresh = useCallback(() => {
+    void organizationsQuery.refetch();
+  }, [organizationsQuery]);
+  const refreshFinancialAreas = useCallback(() => {
+    void financialAreasQuery.refetch();
+  }, [financialAreasQuery]);
+  const refreshFiscalYears = useCallback(() => {
+    void fiscalYearsQuery.refetch();
+  }, [fiscalYearsQuery]);
+
+  const financialContextStatus =
+    financialAreaStatus !== 'ready' ? financialAreaStatus : fiscalYearStatus;
+
   const value = useMemo<OrganizationContextValue>(
     () => ({
       organizations,
@@ -175,14 +423,44 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       canSwitch: organizations.length > 1,
       selectOrganization,
       refresh,
+      financialAreas,
+      financialArea,
+      financialAreaId: financialArea?.id ?? null,
+      financialAreaStatus,
+      financialAreaError: financialAreasQuery.error,
+      canSwitchFinancialArea: financialAreas.length > 1,
+      selectFinancialArea,
+      refreshFinancialAreas,
+      fiscalYears,
+      fiscalYear,
+      fiscalYearId: fiscalYear?.id ?? null,
+      fiscalYearStatus,
+      fiscalYearError: fiscalYearsQuery.error,
+      canSwitchFiscalYear: fiscalYears.length > 1,
+      selectFiscalYear,
+      refreshFiscalYears,
+      financialContextStatus,
     }),
     [
-      organizations,
+      financialArea,
+      financialAreaStatus,
+      financialAreas,
+      financialAreasQuery.error,
+      financialContextStatus,
+      fiscalYear,
+      fiscalYearStatus,
+      fiscalYears,
+      fiscalYearsQuery.error,
       organization,
-      status,
+      organizations,
       organizationsQuery.error,
-      selectOrganization,
       refresh,
+      refreshFinancialAreas,
+      refreshFiscalYears,
+      selectFinancialArea,
+      selectFiscalYear,
+      selectOrganization,
+      status,
     ],
   );
 

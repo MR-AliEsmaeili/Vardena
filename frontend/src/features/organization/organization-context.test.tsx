@@ -5,7 +5,10 @@ import { ApiError } from '@/api/errors';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
+  paginated,
   secondOrganization,
+  testFinancialArea,
+  testFiscalYear,
   testOrganization,
   testUser,
 } from '@/test/fixtures';
@@ -26,8 +29,14 @@ vi.mock('@/api/organization.api', () => ({
   MAX_PAGE_SIZE: 500,
 }));
 
+vi.mock('@/api/accounting.api', () => ({
+  listFinancialAreas: vi.fn(),
+  listFiscalYears: vi.fn(),
+}));
+
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
+const accountingApi = await import('@/api/accounting.api');
 
 function OrganizationProbe() {
   const organization = useOrganization();
@@ -64,6 +73,12 @@ beforeEach(() => {
     userId: testUser.id,
     permissions: allAccountingPermissions,
   });
+  vi.mocked(accountingApi.listFinancialAreas).mockResolvedValue(
+    paginated([testFinancialArea]),
+  );
+  vi.mocked(accountingApi.listFiscalYears).mockResolvedValue(
+    paginated([testFiscalYear]),
+  );
 });
 
 describe('organization context', () => {

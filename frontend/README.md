@@ -1,8 +1,9 @@
 # Vardena Frontend
 
 React SPA for the Vardena ERP. It contains the accepted **Task 22 vertical
-slice** (login → authenticated session → RTL application shell → organization
-context → permission-aware navigation → Accounting read surfaces) and the
+slice** (login → authenticated session → license gate → RTL application shell
+→ organization context → Financial Area → Fiscal Year → permission-aware
+navigation → Accounting read surfaces) and the
 **Task 32 Dashboard**, whose final merged behavior is the corrective PR #86.
 Everything it shows comes from the real backend API; there is no mock
 authentication or production demo data. Exact backend decimal strings remain
@@ -75,7 +76,8 @@ src/
 ├── app/                      # composition root: providers, router, shell, route guards
 │   ├── App.tsx providers.tsx router.tsx query-client.ts navigation.ts
 │   ├── layouts/              # app-shell + the bootstrap stages it runs:
-│   │                         #   license-gate, organization-gate, bootstrap-states
+│   │                         #   license-gate, organization-gate,
+│   │                         #   financial-context-gate, bootstrap-states
 │   └── routes/               # require-auth, require-permission, home, 404
 ├── api/                      # the ONLY HTTP layer
 │   ├── client.ts             #   single Axios instance + interceptors
@@ -94,6 +96,12 @@ src/
 ├── styles/                   # Tailwind entry
 └── test/                     # setup, render helpers, fixtures
 ```
+
+## Financial workspace context
+
+See [`../docs/frontend/financial-context.md`](../docs/frontend/financial-context.md)
+for the Organization → Financial Area → Fiscal Year selection flow, cache-reset
+rules, server-side ownership/authorization boundary, and OpenAPI regeneration.
 
 ## Conventions
 

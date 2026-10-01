@@ -13478,6 +13478,8 @@ export interface operations {
                 /** @description Comma-separated field:(asc|desc) entries. */
                 sort?: string;
                 organizationId: string;
+                /** @description Optional parent financial area. When combined with fiscalYearId, the server rejects a mismatched pair. */
+                financialAreaId?: string;
                 fiscalYearId?: string;
                 status?: "open" | "closed" | "sealed";
             };

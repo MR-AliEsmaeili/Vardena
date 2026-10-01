@@ -165,6 +165,7 @@ async function buildFixture(): Promise<Fixture> {
   const periods = new AccountingPeriodsService(
     accountingStores.periods,
     years,
+    areas,
     organizations,
     authorization,
     loggerStub(),
@@ -650,6 +651,30 @@ describe('FiscalYearsService', () => {
       financialAreaId: areaA,
       code: 'Y1404',
     });
+  });
+
+  it('refuses a fiscal-year list whose financial-area filter belongs to another organization', async () => {
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.years.listFiscalYears({
+          organizationId: orgA,
+          financialAreaId: areaB,
+          page: 1,
+          pageSize: 10,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.years.listFiscalYears({
+          organizationId: orgA,
+          financialAreaId: areaA,
+          page: 1,
+          pageSize: 10,
+        }),
+      ),
+    ).resolves.toMatchObject({ total: 0 });
   });
 
   it('rejects an overlapping year and accepts touching boundaries', async () => {
@@ -1144,6 +1169,7 @@ describe('FiscalYearsService', () => {
 describe('AccountingPeriodsService', () => {
   let fixture: Fixture;
   let orgA: string;
+  let areaId: string;
   let yearId: string;
 
   beforeEach(async () => {
@@ -1172,8 +1198,43 @@ describe('AccountingPeriodsService', () => {
         endDate: '2026-03-20',
       }),
     );
+    areaId = area.id;
     yearId = year.id;
     fixture.events.length = 0;
+  });
+
+  it('refuses mismatched financial-area and fiscal-year list filters', async () => {
+    const otherArea = await asActor(ACTOR, () =>
+      fixture.areas.createFinancialArea({
+        organizationId: orgA,
+        code: 'GB',
+        title: 'Second Area',
+      }),
+    );
+
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.periods.listAccountingPeriods({
+          organizationId: orgA,
+          financialAreaId: otherArea.id,
+          fiscalYearId: yearId,
+          page: 1,
+          pageSize: 10,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+
+    await expect(
+      asActor(ACTOR, () =>
+        fixture.periods.listAccountingPeriods({
+          organizationId: orgA,
+          financialAreaId: areaId,
+          fiscalYearId: yearId,
+          page: 1,
+          pageSize: 10,
+        }),
+      ),
+    ).resolves.toMatchObject({ total: 0 });
   });
 
   it('opens a period and publishes AccountingPeriod.Opened', async () => {
@@ -1554,6 +1615,7 @@ describe('stale-state mapping', () => {
         typeof AccountingPeriodsService
       >[0],
       fixture.years,
+      fixture.areas,
       fixture.organizations,
       fixture.authorization,
       logger,
