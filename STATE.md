@@ -836,3 +836,64 @@ trusting a frozen SHA in prose).
 - `git diff --stat -- backend/` and `-- frontend/src/` between `487d363` and
   `abd5134` are both empty — documentation-only, same as every correction in
   this chain.
+
+## 14. FE-ORG-01 — Organization & Master Data Administration, frontend (2026-10-01)
+
+This addendum records a focused frontend task without rewriting or removing any
+historical project state above. Full audit evidence, decisions and verification:
+`docs/task-fe-org-01-implementation-report.md`.
+
+- **Scope:** a frontend vertical slice over the organization module's
+  **existing** HTTP contracts — organization profile, Branch, Department,
+  Employee and Party: list / detail / create / edit / enable / disable, with
+  server-side pagination, filtering, search and sorting, permission gating and
+  organization scoping.
+- **Backend changes: none.** No controller, service, DTO, permission code,
+  guard, schema or migration was touched (`git diff --stat -- backend/ prisma/`
+  on the implementation commit is empty). Every surface was built from the
+  contracts read out of
+  `backend/src/modules/organization/api/*.controller.ts` and their DTOs — not
+  from documentation and not from a service or Prisma-model name.
+- **No delete was invented.** None of these controllers exposes `DELETE`; the
+  lifecycle is the `is_active` flag
+  (`docs/architecture/domain/master-data-strategy.md` §7.4, OQ-36), so the UI
+  offers exactly enable/disable, on the detail pages, behind `ConfirmDialog`.
+- **Permission alignment follows the endpoints, not convention:** `…/new`
+  requires only `*.Create` (the `POST` routes enforce no `View`), while
+  `…/:id/edit` requires `View` + `Edit` because the screen reads before it
+  writes. Gates remain UX only (AR-21); the backend authorizes every request.
+- **Organization scope** always comes from the existing `OrganizationContext`
+  (no id input, no URL id, no organization browser, no second context
+  implementation), and an organization write also invalidates the
+  session-global organization list the switcher renders.
+- **Registered contract gap (no workaround applied):** the organization
+  services raise `AppException.businessRule(...)` / `.conflict(...)` **without**
+  a `details` payload, so a 409/422 carries no machine-readable discriminator.
+  The frontend therefore maps failures by error **code × resource × operation**
+  and never parses the backend `message`. No backend change was requested for
+  it in this slice.
+- **Deferred, recorded, not built:** organization **membership** administration
+  (deferred by design), a second organization-creation path (`POST
+  /organizations` is owned by the PR #96 first-login bootstrap), bulk import,
+  Excel export, advanced search builder, custom columns, saved filters,
+  audit-history UI, attachments, notes, org-chart visualization, drag/drop
+  hierarchy, bulk enable/disable, and every party field the DTOs do not declare
+  (national id, economic code, tax classification, address, bank account —
+  OQ-30, OQ-38).
+- **Frontend changes:** 29 new files under
+  `frontend/src/features/organization/admin/` plus 8 touched files
+  (`api/contracts.ts`, `api/organization.api.ts`, `api/query-keys.ts`,
+  `app/router.tsx`, `app/navigation.ts`, `features/permissions/permission-codes.ts`,
+  `lib/i18n.ts`, `test/fixtures.ts`). No accounting route, component or test was
+  modified; unknown routes behave exactly as before.
+- **Local verification (executed):** `npm run lint` 0/0, `npm run typecheck`
+  exit 0, `npm run format:check` clean, `npm test` **39 files / 277 tests
+  passed** (baseline before the change: 33 files / 218 tests — 6 new test files,
+  59 new cases, no pre-existing test modified or skipped), `npm run build`
+  exit 0. E2E was **not** run locally; the backend job of GitHub Actions is the
+  authoritative E2E signal, per `docs/testing/test-execution-policy.md`.
+- **No wildcard, admin/NODE_ENV/storage/email bypass, frontend-only
+  authorization, hard-coded license limit, mock endpoint, generic
+  `crudApi<Entity>`, second HTTP client or new state library was introduced.**
+- **Not accepted by this addendum:** as with every other entry in this file,
+  merge/CI-green is not Owner acceptance.

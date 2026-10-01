@@ -84,7 +84,9 @@ src/
 │   ├── generated/            #   openapi-typescript output (committed, never edited)
 │   └── *.api.ts              #   per-module API functions
 ├── features/                 # one slice per backend module (AR-27)
-│   ├── auth/  permissions/  organization/  dashboard/
+│   ├── auth/  permissions/  dashboard/  licensing/
+│   ├── organization/         #   context/switcher + admin/ (profile, branches,
+│   │                         #   departments, employees, parties)
 │   └── accounting/{chart-tree,account-statement,general-ledger,trial-balance,shared}
 ├── ui/                       # primitives (button, card, input, table, …) + patterns/
 ├── lib/                      # i18n dictionary, formatters, cn(), small hooks
@@ -135,6 +137,47 @@ createOrganization` is the sole enforcement point. See
   is Persian/RTL (`<html lang="fa" dir="rtl">`); layout uses logical
   properties so one responsive layout serves every breakpoint.
 
+## Organization & master data administration (FE-ORG-01)
+
+`features/organization/admin/` administers the organization module's master
+data. Routes, and the permission each one needs — the same permission the
+endpoint behind it enforces:
+
+| Route                                     | Permission                                                     |
+| ----------------------------------------- | -------------------------------------------------------------- |
+| `/app/organization`                       | none (index; each card is gated individually)                  |
+| `/app/organization/profile`               | `Organization.Organization.View`                               |
+| `/app/organization/<x>s` and `…/<x>s/:id` | `Organization.<X>.View`                                        |
+| `/app/organization/<x>s/new`              | `Organization.<X>.Create` **only** — `POST` enforces no `View` |
+| `/app/organization/<x>s/:id/edit`         | `Organization.<X>.View` **and** `.Edit`                        |
+
+where `<x>` is `branch`, `department`, `employee` or `party`.
+
+- **There is no delete.** None of these controllers exposes `DELETE`: the
+  lifecycle of master data is the `is_active` flag
+  (`docs/architecture/domain/master-data-strategy.md` §7.4, OQ-36). Enable and
+  disable live on the detail pages behind `ConfirmDialog`.
+- **Create omits, update nulls.** The create DTOs have no `null` form for an
+  optional reference (it is omitted), while `UpdateDepartmentDto` and
+  `UpdateEmployeeDto` take an explicit `null` to detach one. A party's optional
+  text fields are omitted when empty — they accept no `null`. The backend runs
+  `whitelist` + `forbidNonWhitelisted`, so a request never carries an undeclared
+  field.
+- **The organization surface is the active context organization only** — no id
+  input, no URL id, no organization browser.
+- **Failures are classified by error code** in the context of the resource and
+  the operation (`admin/admin-error-messages.ts`). The organization services
+  raise `businessRule()` / `conflict()` without a `details` payload, so nothing
+  finer can be inferred honestly — and the backend `message` is never rendered.
+- Reference pickers (department parent, an employee's department/branch) offer
+  one bounded window of this organization's **active** records, are disabled
+  with an explanation when the session lacks the other resource's `View`, and
+  keep an existing inactive reference selectable so an edit cannot silently
+  detach it.
+
+Details, audit evidence and the deferred list:
+`docs/task-fe-org-01-implementation-report.md`.
+
 ## Tests
 
 `vitest` + `@testing-library/react` in jsdom. Tests render the real providers
@@ -146,7 +189,11 @@ with `vi.mock`, so what is verified is the application's own behavior:
 - organization context (single vs. multiple, empty, missing permission);
 - API error normalization and session-expiry handling;
 - report filters → exact query parameters, paging, sorting, empty/error
-  states, and exact decimal rendering.
+  states, and exact decimal rendering;
+- organization administration: route ↔ endpoint permission alignment,
+  URL-owned server-side list state, the exact create/update request bodies,
+  the enable/disable confirmation and its failure path, and the error-code →
+  Persian copy mapping.
 
 There is no MSW/HTTP-level mock layer: the API modules are the seam, which
 keeps the tests fast and free of a second, drifting contract definition.
@@ -154,9 +201,19 @@ keeps the tests fast and free of a second, drifting contract definition.
 ## Not in this slice
 
 Treasury, Sales, Purchasing, base-chart administration, control roles,
-generic multi-dimension administration, posting rules, document
-create/finalize UI, Inventory administration, Workflow decision UI, RBAC admin,
-notifications, a generic Reporting UI, Excel/print, customization and audit UI.
+generic multi-dimension administration, posting rules, Inventory
+administration, Workflow decision UI, RBAC admin, notifications, a generic
+Reporting UI, Excel/print, customization and audit UI.
+
+Not in the organization administration slice either (FE-ORG-01): organization
+**membership** administration (deferred by design), an organization list or a
+second organization-creation path (`POST /organizations` is owned by the
+first-login bootstrap above), bulk import, Excel export, an advanced search
+builder, custom columns, saved filters, audit-history UI, attachments, notes,
+org-chart visualization, drag/drop hierarchy and bulk enable/disable. Party
+fields the DTOs do not declare — national id, economic code, tax
+classification, address, bank account (OQ-30, OQ-38) — are absent because the
+backend has no contract for them.
 The Dashboard does read bounded Inventory/Workflow/Accounting endpoints, but
 that does not make those administration or mutation surfaces implemented. The
 frontend is also not part of `docker-compose.yml` yet (documented follow-up).
