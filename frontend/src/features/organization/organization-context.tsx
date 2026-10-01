@@ -7,18 +7,15 @@ import {
   type ReactNode,
 } from 'react';
 import type { Organization } from '@/api/contracts';
-import { listOrganizations } from '@/api/organization.api';
+import { listMyOrganizations } from '@/api/organization.api';
 import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import { useSession } from '@/features/auth/use-session';
-import { PERMISSIONS } from '@/features/permissions/permission-codes';
-import { usePermissions } from '@/features/permissions/use-permissions';
 
 /**
  * The organization resolution state machine:
  *
- * - `loading` — session permissions or the organization list are still pending;
- * - `forbidden` — the session lacks `Organization.Organization.View`, so the
- *   list can never be fetched (terminal, needs an administrator);
+ * - `loading` — the session or the bootstrap organization list is still
+ *   pending;
  * - `error` — the list request failed (retryable);
  * - `empty` — the API returned no organization (terminal);
  * - `selecting` — several organizations exist and the user has not chosen one
@@ -26,15 +23,13 @@ import { usePermissions } from '@/features/permissions/use-permissions';
  * - `invalid` — the previously confirmed selection is no longer in the list
  *   (deactivated / removed): the scope is dropped and the user re-chooses;
  * - `ready` — exactly one effective organization is active.
+ *
+ * There is no `forbidden` state: `GET /organizations/mine` (AR-21) requires
+ * no `Organization.Organization.View` permission — membership alone decides
+ * the result, so an authenticated session can never be denied this read.
  */
 export type OrganizationContextStatus =
-  | 'loading'
-  | 'selecting'
-  | 'ready'
-  | 'empty'
-  | 'forbidden'
-  | 'invalid'
-  | 'error';
+  'loading' | 'selecting' | 'ready' | 'empty' | 'invalid' | 'error';
 
 export interface OrganizationContextValue {
   /** Organizations the API returned for this session (never invented). */
@@ -60,13 +55,17 @@ interface ConfirmedSelection {
 }
 
 /**
- * Organization context (ADR-0021 / ADR-0025 / Task 19 ODR-3).
+ * Organization context (ADR-0021 / ADR-0025 / Task 19 ODR-3 / Organization
+ * Bootstrap & Context Foundation).
  *
- * The only organization discovery the API exposes to a session is
- * `GET /api/v1/organizations`, and its result is deployment-defined: a
- * deployment pinned with `DEPLOYMENT_ORGANIZATION_ID` answers with exactly
- * one organization, an unpinned one answers with the list. This provider
- * therefore does not invent a tenant model — it follows the response:
+ * The only organization discovery this provider performs is
+ * `GET /api/v1/organizations/mine` — the authenticated session's own active
+ * memberships, decided by the backend alone. Its result is deployment-
+ * defined: a deployment pinned with `DEPLOYMENT_ORGANIZATION_ID` answers with
+ * exactly the pinned organization (still gated on membership), an unpinned
+ * one answers with every organization the caller is an active member of.
+ * This provider therefore does not invent a tenant model — it follows the
+ * response:
  *
  * - one organization ⇒ auto-selected, fixed context, no selection screen and
  *   no switcher rendered;
@@ -92,22 +91,18 @@ interface ConfirmedSelection {
 export function OrganizationProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const { status: sessionStatus, user } = useSession();
-  const permissions = usePermissions();
   const [selected, setSelected] = useState<ConfirmedSelection | null>(null);
 
-  const canReadOrganizations =
-    permissions.loaded && permissions.has(PERMISSIONS.organization.view);
-
   const organizationsQuery = useQuery({
-    queryKey: queryKeys.organizations.list({ isActive: true }),
-    queryFn: ({ signal }) => listOrganizations({ isActive: true }, signal),
-    enabled: sessionStatus === 'authenticated' && canReadOrganizations,
+    queryKey: queryKeys.organizations.mine(),
+    queryFn: ({ signal }) => listMyOrganizations(signal),
+    enabled: sessionStatus === 'authenticated',
     retry: false,
     staleTime: 5 * 60_000,
   });
 
   const organizations = useMemo<readonly Organization[]>(
-    () => organizationsQuery.data?.items ?? [],
+    () => organizationsQuery.data ?? [],
     [organizationsQuery.data],
   );
 
@@ -157,21 +152,18 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     void organizationsQuery.refetch();
   }, [organizationsQuery]);
 
-  const status: OrganizationContextStatus = !permissions.loaded
-    ? 'loading'
-    : !canReadOrganizations
-      ? 'forbidden'
-      : organizationsQuery.isPending
-        ? 'loading'
-        : organizationsQuery.isError
-          ? 'error'
-          : organizations.length === 0
-            ? 'empty'
-            : isSelectionForCurrentUser && selectedOrganization === null
-              ? 'invalid'
-              : organizations.length > 1 && !isSelectionForCurrentUser
-                ? 'selecting'
-                : 'ready';
+  const status: OrganizationContextStatus =
+    sessionStatus !== 'authenticated' || organizationsQuery.isPending
+      ? 'loading'
+      : organizationsQuery.isError
+        ? 'error'
+        : organizations.length === 0
+          ? 'empty'
+          : isSelectionForCurrentUser && selectedOrganization === null
+            ? 'invalid'
+            : organizations.length > 1 && !isSelectionForCurrentUser
+              ? 'selecting'
+              : 'ready';
 
   const value = useMemo<OrganizationContextValue>(
     () => ({

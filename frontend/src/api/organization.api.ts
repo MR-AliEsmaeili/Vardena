@@ -39,6 +39,33 @@ import type {
 /** Hard page cap of the backend list contract (`MAX_PAGE_SIZE`). */
 export const MAX_PAGE_SIZE = 500;
 
+/**
+ * The organization BOOTSTRAP read (`GET /organizations/mine`).
+ *
+ * This is the ONLY call the Organization Context (`organization-context.tsx`)
+ * is allowed to make: the organizations the authenticated session may use as
+ * its working scope, decided by the caller's own active memberships alone —
+ * no `Organization.Organization.View` permission required (AR-21, the same
+ * exception `GET /license/current` and `GET /permissions/effective` use). A
+ * deployment pinned with `DEPLOYMENT_ORGANIZATION_ID` (ADR-0025) narrows the
+ * result to that one organization, still gated on membership. It returns a
+ * plain array, never `Paginated<T>` — this is a session-bound bootstrap read,
+ * not a filterable administration list.
+ *
+ * It is NOT `listOrganizations` below (`GET /organizations`, the
+ * `Organization.Organization.View` administration catalog) — the two must
+ * never be conflated: this one answers "what can I use right now", that one
+ * answers "show me every organization an administrator may manage".
+ */
+export function listMyOrganizations(
+  signal?: AbortSignal,
+): Promise<Organization[]> {
+  return apiGet<Organization[]>(
+    '/organizations/mine',
+    signal ? { signal } : {},
+  );
+}
+
 export function listOrganizations(
   params: { isActive?: boolean; pageSize?: number } = {},
   signal?: AbortSignal,
