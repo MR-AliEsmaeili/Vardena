@@ -773,9 +773,40 @@ in `docs/task-33-organization-first-login-provisioning-report.md` §17–§25.
 - **No frontend-side license enforcement of any kind was added** — no
   threshold checks, no reading license state from storage/env, no
   admin/role/NODE_ENV bypass, no second "licensed permissions" mechanism.
-- Rebased cleanly (no conflicts) onto `main` `841b685`; final head
-  `f9477b6b770787cd5745a04323d38481b98c238f`; GitHub Actions CI run
-  `36830490998` passed in full (backend incl. live-DB E2E, frontend) on that
-  exact commit.
+- Rebased cleanly (no conflicts) onto `main` `841b685`. The rebase itself
+  produced intermediate commit `f9477b6b770787cd5745a04323d38481b98c238f`
+  (the compatibility-fix implementation), verified at the time by GitHub
+  Actions CI run `36830490998` (backend incl. live-DB E2E, frontend, all
+  passing). A subsequent documentation-only commit moved the branch/PR HEAD
+  to `487d363c3bfe397f7480e992dbf6027c9108cbb9` — see §13.2 for the current,
+  authoritative head/CI evidence; `f9477b6`/`36830490998` are historical only
+  and are not the current state of PR #96.
 - **Not accepted by this addendum either** — same rule as every other entry
   in this file.
+
+### 13.2 Documentation/evidence correction (2026-10-01)
+
+Follow-up to §13.1: after §13.1 was written, a documentation-only commit
+(adding `docs/task-33-organization-first-login-provisioning-report.md`,
+this §13.1/§13.2 addendum, and the `docs/security.md`/`frontend/README.md`
+clarifications) was pushed, moving PR #96's HEAD from `f9477b6` to
+`487d363`. §13.1's closing bullet still named `f9477b6`/`36830490998` as the
+"final"/current state after that happened; this entry corrects that without
+rewriting §13.1's history.
+
+- **Current PR #96 HEAD:** `487d363c3bfe397f7480e992dbf6027c9108cbb9`
+  (confirmed via `git rev-parse HEAD` and `gh pr view 96 --json
+  headRefOid`).
+- **Current PR #96 base:** `841b68545b6be36aeb65f523474b4261973875b8`
+  (`main`'s current tip — unchanged since §13.1; PR #96 was not re-rebased
+  for this correction, only a new commit was added on top).
+- **Current authoritative CI:** GitHub Actions run `36831107322`
+  (`.github/workflows/ci.yml`), confirmed tied to commit `487d363` via
+  `gh run view 36831107322 --json headSha`. Both jobs `success`: `backend`
+  (incl. Prisma validate/generate, unit tests, and **E2E tests incl.
+  live-DB suites**) and `frontend` (lint/typecheck/format/tests/build).
+- `f9477b6` and CI run `36830490998` remain valid as the historical record
+  of the compatibility-fix implementation commit (§13.1) but are
+  **superseded** as "current" evidence by the above.
+- **No production code, backend source, or implementation file changed** in
+  this correction — documentation only.

@@ -3,10 +3,17 @@
 Status: **READY FOR REVIEW**
 Base commit (original): `1d9a3c014a23775697b112bb8953cea943d0db52` (branch
 `arena/01a0f16d-vardena`, merge of PR #95 on `main`)
-Current head (after the PR #96 follow-up in §17–§25):
-`f9477b6b770787cd5745a04323d38481b98c238f`, rebased onto `main`
-`841b6851` (merge of PR #97 / L-01). See §17 for the rebase record and §18
-for the L-01 compatibility audit this follow-up performed.
+Current PR #96 base: `841b68545b6be36aeb65f523474b4261973875b8` (merge of
+PR #97 / L-01 into `main`).
+Current PR #96 HEAD (final, after the documentation correction in §26):
+`487d363c3bfe397f7480e992dbf6027c9108cbb9`.
+`f9477b6b770787cd5745a04323d38481b98c238f` was an earlier, now-superseded
+intermediate commit on this same branch (the L-01 compatibility-fix
+implementation commit, before the docs commit that produced `487d363` was
+added on top of it) — it is kept below only as a historical reference, never
+as the current head. See §17 for the rebase record, §18 for the L-01
+compatibility audit, and §26 for the evidence-correction pass that produced
+the current head.
 
 ## 0. Executive summary
 
@@ -541,14 +548,21 @@ to be factually wrong, so nothing there was rewritten.
   needed. `PR #96` was not closed; no new PR was opened; no unrelated history
   was rewritten (the rebase only replayed PR #96's own two commits onto the
   new base).
-- **Post-rebase head:** `f9477b6b770787cd5745a04323d38481b98c238f`, pushed to
+- **Post-rebase head (historical, intermediate):**
+  `f9477b6b770787cd5745a04323d38481b98c238f`, pushed to
   `origin/arena/01a0f16d-vardena` with `git push --force-with-lease` (a rebase
   of an already-pushed branch requires a forced update of that one branch;
-  no other branch or ref was touched).
-- **Post-rebase diff check:** `git diff --stat origin/main..HEAD` after the
-  rebase shows exactly the 17 files PR #96 + this follow-up ever touched
-  (frontend only, plus docs) — confirming the final diff is PR #96's original
-  functionality plus the one compatibility addition in §18, nothing else.
+  no other branch or ref was touched). This was the L-01 compatibility-fix
+  implementation commit (§18–§20 below). A subsequent, non-rebasing
+  documentation commit was pushed on top of it (§26), moving the branch/PR
+  HEAD forward to `487d363c3bfe397f7480e992dbf6027c9108cbb9` — see §26 for
+  why `f9477b6` is no longer the current head and must not be cited as such.
+- **Post-rebase diff check:** `git diff --stat origin/main..HEAD` at the time
+  of the rebase showed exactly the 17 files PR #96 + this follow-up had
+  touched (frontend only, plus docs) — confirming the diff at that point was
+  PR #96's original functionality plus the one compatibility addition in
+  §18, nothing else. §26 adds further documentation-only changes on top;
+  §26 restates the final file list.
 
 ## 18. L-01 compatibility audit
 
@@ -723,15 +737,23 @@ rebase, against the rebased `arena/01a0f16d-vardena` working tree:
   this sandbox); deferred to CI per the follow-up brief's explicit
   instruction, and verified there (§22/§23).
 
-## 22. GitHub CI (this follow-up)
+## 22. GitHub CI (historical — for the intermediate commit `f9477b6`, superseded by §26)
 
-- **Commit verified:** `f9477b6b770787cd5745a04323d38481b98c238f` — confirmed
-  via `gh pr view 96 --json headRefOid` to be PR #96's exact current head at
-  the time of this check (not a stale pre-rebase run).
-- **Workflow:** `.github/workflows/ci.yml`, run **#96**,
-  run id **36830490998**
-  (https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36830490998).
-- **Jobs:**
+This section records the CI evidence gathered immediately after the rebase
+in §17, when `f9477b6b770787cd5745a04323d38481b98c238f` was briefly the
+branch/PR HEAD. **It is retained only as the historical record of that
+intermediate state; it is NOT the authoritative evidence for the current PR
+HEAD.** The current, authoritative CI run (for `487d363`, the actual current
+head) is recorded in §26.
+
+- **Commit verified (historical):** `f9477b6b770787cd5745a04323d38481b98c238f`
+  — confirmed via `gh pr view 96 --json headRefOid` to be PR #96's head at
+  the time of this check, immediately after the §17 rebase and before the
+  §26 documentation commit was pushed on top of it.
+- **Workflow:** `.github/workflows/ci.yml`, run id **36830490998**
+  (https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36830490998) —
+  **historical; superseded by run `36831107322` in §26.**
+- **Jobs (on `f9477b6`):**
   - `backend` (job id `110265735253`): **success**, 3m17s. Steps included
     Prisma validate, Prisma generate, Lint, Typecheck, Format check, Unit
     tests, Build, Migrate test database, Bootstrap system administrator,
@@ -739,19 +761,25 @@ rebase, against the rebased `arena/01a0f16d-vardena` working tree:
     green.
   - `frontend` (job id `110265735804`): **success**, 1m56s. Steps included
     Lint, Typecheck, Format check, Tests, Build — all green.
-- **Overall run conclusion:** `success` (`gh run view 36830490998 --json
-  status,conclusion` → `{"conclusion":"success","status":"completed"}`).
+- **Overall run conclusion (historical):** `success` (`gh run view
+  36830490998 --json status,conclusion` →
+  `{"conclusion":"success","status":"completed"}`).
 
-## 23. E2E
+## 23. E2E (historical note)
+
+The statement below described the state as of commit `f9477b6` / run
+`36830490998`. §26 restates and re-verifies the same conclusion for the
+current head `487d363` / run `36831107322`, which is the evidence that
+actually applies to the PR today.
 
 Explicitly **deferred locally and verified in GitHub CI** — the backend
 job's "E2E tests (incl. live-DB suites)" step ran against a real Postgres
 service container in the Actions runner and passed on commit `f9477b6`
-(§22). This was not run as a separate local full-E2E pass in this sandbox
-(no local Postgres); per the follow-up brief this is not a blocker and not a
-basis for reporting anything other than READY FOR REVIEW, since the
-authoritative CI run already completed successfully against the exact final
-commit.
+(§22, historical). This was not run as a separate local full-E2E pass in
+this sandbox (no local Postgres); per the follow-up brief this is not a
+blocker. The same conclusion is re-verified for the current head `487d363`
+in §26, which is the evidence that actually governs the current READY FOR
+REVIEW status (see "Final status" below).
 
 ## 24. Known issues
 
@@ -788,15 +816,81 @@ decision recorded in §5 (Option C, frontend-only, no backend/ADR change)
 still stands; this follow-up did not reopen or redo that decision, it only
 added the one reactive UX read ADR-0030 itself called for.
 
+## 26. Documentation/evidence correction pass (no code change)
+
+After §17–§25 were written, one further commit
+(`docs(task-33): record PR #96 rebase + L-01 compatibility audit`) was
+pushed to the branch to add this report, the `STATE.md` §13.1 addendum, and
+the `docs/security.md`/`frontend/README.md` clarifications. That commit
+moved the branch/PR HEAD from `f9477b6` to `487d363` — a documentation-only
+change, not a rebase and not an implementation change, so it needed its own
+CI confirmation and its own correct evidence trail, which §22's text
+originally failed to update after the fact. This section is that correction;
+it changes no production code.
+
+**Evidence distinction (do not confuse these three):**
+
+| What | Value | Role |
+|---|---|---|
+| Historical intermediate commit | `f9477b6b770787cd5745a04323d38481b98c238f` | The L-01 compatibility-fix *implementation* commit (§18–§20). Real work happened here, but it is **not** the current PR HEAD. |
+| Current final PR #96 HEAD | `487d363c3bfe397f7480e992dbf6027c9108cbb9` | The actual current branch/PR HEAD, confirmed via `git rev-parse HEAD` and `gh pr view 96 --json headRefOid` at the time of this correction. One documentation-only commit ahead of `f9477b6`. |
+| Current PR #96 base | `841b68545b6be36aeb65f523474b4261973875b8` | `main`'s current tip (merge of PR #97 / L-01), confirmed via `git rev-parse origin/main` and `gh pr view 96 --json baseRefName` (PR #96's base branch is `main`, which is at this SHA). |
+| Current authoritative CI run | **36831107322** | `.github/workflows/ci.yml`, triggered for commit `487d363`. Confirmed via `gh pr view 96 --json headRefOid` returning `487d363...` and `gh run view 36831107322 --json headSha` returning the same SHA. |
+| Historical CI run (superseded) | `36830490998` | Ran against `f9477b6`; valid evidence for that historical intermediate state only, superseded as "current" by `36831107322`. |
+
+**Re-verified repository/PR state at the time of this correction:**
+
+- `git rev-parse HEAD` → `487d363c3bfe397f7480e992dbf6027c9108cbb9`.
+- Current branch → `arena/01a0f16d-vardena`.
+- `git rev-parse origin/main` → `841b68545b6be36aeb65f523474b4261973875b8`.
+- `gh pr view 96 --json headRefOid,baseRefName,state,mergeable,mergeStateStatus`
+  → head `487d363c3bfe397f7480e992dbf6027c9108cbb9`, base `main`, state
+  `OPEN`, mergeable `MERGEABLE`, merge state `CLEAN`.
+- `gh pr checks 96` → `backend` pass (3m7s), `frontend` pass (1m25s), both
+  tied to run `36831107322`.
+- `gh run view 36831107322 --json status,conclusion,headSha` →
+  `{"conclusion":"success","headSha":"487d363c3bfe397f7480e992dbf6027c9108cbb9","status":"completed"}`.
+- Backend job steps on that run included Prisma validate, Prisma generate,
+  Lint, Typecheck, Format check, Unit tests, Build, Migrate test database,
+  Bootstrap system administrator, Migration rehearsal, and **E2E tests
+  (incl. live-DB suites)** — all `success`.
+- Frontend job steps on that run: Lint, Typecheck, Format check, Tests,
+  Build — all `success`.
+- Changed-file list for the full PR #96 diff
+  (`git diff --stat origin/main..HEAD`, i.e. `841b685..487d363`): the same
+  17 files listed in §19, unchanged in count or content by this correction
+  pass except for the four documentation files this section itself
+  describes (`docs/task-33-organization-first-login-provisioning-report.md`,
+  `STATE.md`, `docs/security.md`, `frontend/README.md`). No backend source
+  file is part of the diff; `git diff --stat origin/main..HEAD -- backend/`
+  is empty.
+- No local full E2E re-run was performed for this documentation-only
+  correction — not required, since no implementation file changed and the
+  already-authoritative CI run `36831107322` remains the valid, current
+  evidence for the unchanged implementation.
+
+**Outcome:** this section corrects every place in this report and in
+`STATE.md` that previously described `f9477b6`/`36830490998` as the current
+PR HEAD/CI evidence. Those two values are preserved above and in §17/§22/§23
+strictly as labeled historical references to the intermediate compatibility-
+fix commit; they are no longer presented as the current or final state
+anywhere in this document.
+
 ## Final status
 
-**READY FOR REVIEW** — implementation (original Task 33 scope + this
-follow-up's one L-01 compatibility fix) is complete, no known defects remain,
-local fast verification passed (frontend: typecheck/lint/format/unit+
-component tests/build; backend: full unit suite — prisma validate deferred to
-CI per §21), the branch is pushed to `origin/arena/01a0f16d-vardena` at
-`f9477b6`, GitHub Actions CI passed in full on that exact commit (§22,
-run 36830490998), and E2E (including live-DB suites) is verified via that
-same CI run (§23). Documentation (`docs/task-33-organization-first-login-
-provisioning-report.md`, `docs/security.md`, `frontend/README.md`,
-`STATE.md`) is updated to reflect the post-L-01 reality.
+**READY FOR REVIEW** — implementation (original Task 33 scope + the L-01
+compatibility fix in §18–§20) is complete, no known defects remain, local
+fast verification passed at the time of the implementation commit (frontend:
+typecheck/lint/format/unit+component tests/build; backend: full unit suite —
+prisma validate deferred to CI per §21). The branch/PR #96 is pushed to
+`origin/arena/01a0f16d-vardena` with current HEAD
+`487d363c3bfe397f7480e992dbf6027c9108cbb9` against base
+`841b68545b6be36aeb65f523474b4261973875b8`; GitHub Actions CI run
+**36831107322** passed in full (backend incl. E2E/live-DB suites, and
+frontend) on that exact current commit (§26). E2E (including live-DB
+suites) is verified via that same, current CI run — not via the superseded
+historical run `36830490998`. Documentation
+(`docs/task-33-organization-first-login-provisioning-report.md`,
+`docs/security.md`, `frontend/README.md`, `STATE.md`) is updated to reflect
+the post-L-01 reality and this evidence correction. No production behavior,
+backend source, or implementation file changed in this correction pass.
