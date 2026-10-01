@@ -200,8 +200,8 @@ Vardena/
 
 > **Implementation status:** the conventions below are implemented by the
 > Task 22 slice and the Task 32 Dashboard corrected by PR #86 (login/session,
-> RTL app shell, organization context, permission-aware navigation, Accounting
-> read surfaces and bounded Dashboard reads). Everything else —
+> license and organization gates, Financial Area → Fiscal Year workspace context,
+> RTL app shell, permission-aware navigation, Accounting read surfaces and bounded Dashboard reads). Everything else —
 > other feature slices, grid-state persistence via the customization module,
 > the localization decision (OQ-02) — is still target state. Setup, scripts and
 > the file layout are documented in [`frontend/README.md`](../frontend/README.md).
@@ -218,7 +218,11 @@ Vardena/
   **Day.js** for all date handling; **React Router** for routing; Tailwind +
   shadcn/ui for UI.
 - Frontend authorization (hiding buttons/menus by permission) is **UX only** —
-  the backend enforces everything (AR-21).
+  the backend enforces everything (AR-21). The scoped workspace selection is
+  `Organization → Financial Area → Fiscal Year`; it is ephemeral browser state,
+  clears descendants on each parent transition, and never substitutes for
+  server-side organization/parent-chain validation. See
+  [`frontend/financial-context.md`](frontend/financial-context.md).
 - Localization (UI language, Jalali calendar, number formatting) is **OQ-02**;
   the architecture requirement is that all user-facing strings live in one i18n
   dictionary and all date/number display goes through `lib/` formatters so the

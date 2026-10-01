@@ -6,7 +6,10 @@ import { AppRoutes } from '@/app/router';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
+  paginated,
   testActiveLicenseState,
+  testFinancialArea,
+  testFiscalYear,
   testOrganization,
   testUser,
 } from '@/test/fixtures';
@@ -76,7 +79,9 @@ vi.mock('@/api/accounting.api', () => ({
   listTrialBalance: vi.fn(),
   getAccountStatement: vi.fn(),
   listChartTree: vi.fn(),
-  fetchChartTreePages: vi.fn(),
+  fetchChartTreePages: vi
+    .fn()
+    .mockResolvedValue({ nodes: [], total: 0, truncated: false }),
   MAX_PAGE_SIZE: 500,
   CHART_TREE_MAX_PAGES: 10,
 }));
@@ -88,6 +93,7 @@ vi.mock('@/api/licensing.api', () => ({
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
 const licensingApi = await import('@/api/licensing.api');
+const accountingApi = await import('@/api/accounting.api');
 
 const unauthorized = new ApiError({
   code: 'Unauthorized',
@@ -112,6 +118,12 @@ beforeEach(() => {
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
     testOrganization,
   ]);
+  vi.mocked(accountingApi.listFinancialAreas).mockResolvedValue(
+    paginated([testFinancialArea]),
+  );
+  vi.mocked(accountingApi.listFiscalYears).mockResolvedValue(
+    paginated([testFiscalYear]),
+  );
 });
 
 describe('login flow', () => {

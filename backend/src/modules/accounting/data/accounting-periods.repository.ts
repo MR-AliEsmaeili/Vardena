@@ -70,6 +70,7 @@ type Client = {
 export interface AccountingPeriodListFilter {
   /** Always set by the service: a period list is never cross-organization. */
   organizationId: string;
+  financialAreaId?: string | undefined;
   fiscalYearId?: string | undefined;
   status?: string | undefined;
 }
@@ -320,6 +321,9 @@ function toWhere(filter: AccountingPeriodListFilter): AccountingPeriodWhere {
   const where: AccountingPeriodWhere = {
     organizationId: filter.organizationId,
   };
+  if (filter.financialAreaId !== undefined) {
+    where.financialAreaId = filter.financialAreaId;
+  }
   if (filter.fiscalYearId !== undefined) {
     where.fiscalYearId = filter.fiscalYearId;
   }

@@ -3,8 +3,10 @@ import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useSession } from '@/features/auth/use-session';
 import { useLicenseState } from '@/features/licensing/use-license-state';
+import { FinancialContextSwitcher } from '@/features/accounting/context/financial-context-switcher';
 import { OrganizationSwitcher } from '@/features/organization/organization-switcher';
 import { useOrganization } from '@/features/organization/use-organization';
+import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
@@ -12,6 +14,7 @@ import { Button } from '@/ui/button';
 import { AppBreadcrumb } from '../breadcrumb';
 import { navigationSections } from '../navigation';
 import { BootstrapScreen } from './bootstrap-states';
+import { FinancialContextGate } from './financial-context-gate';
 import { LicenseGate } from './license-gate';
 import { OrganizationGate } from './organization-gate';
 
@@ -26,7 +29,7 @@ import { OrganizationGate } from './organization-gate';
  * Two bootstrap stages run under the top bar before the workspace, in this
  * order (ADR-0030, FE-UX-04):
  *
- * `authenticated session → LicenseGate → OrganizationGate → workspace`
+ * `authenticated session → LicenseGate → OrganizationGate → FinancialContextGate → workspace`
  *
  * `LicenseGate` resolves the installation license first, so no organization
  * UI exists before the license state is known; only when it is active does
@@ -59,12 +62,26 @@ export function AppShell() {
     }))
     .filter((section) => section.items.length > 0);
 
-  // The workspace needs BOTH bootstrap stages: an active installation
-  // license and a confirmed organization scope. A `ready` organization scope
-  // left over in the cache can therefore never render the workspace while
-  // the license is unknown, inactive or unreadable.
+  // The workspace needs every bootstrap stage: active installation license,
+  // confirmed organization and coherent Accounting context. A stale child
+  // selection cannot render the workspace while its parent is unresolved.
   const licenseActive = license.status === 'active';
-  const isWorkspaceReady = licenseActive && organization.status === 'ready';
+  const isOrganizationReady = organization.status === 'ready';
+  // Existing routes are independently permission-gated and the backend has
+  // no universal "active financial context" requirement for every module.
+  // Apply the new selection stage only to sessions that can actually resolve
+  // BOTH Accounting-owned parent lists; a user with, for example, only an
+  // Organization or Chart read permission retains the established route
+  // contract instead of being trapped behind an unrelated 403.
+  const canResolveFinancialContext =
+    permissions.loaded &&
+    permissions.has(PERMISSIONS.accounting.financialAreaView) &&
+    permissions.has(PERMISSIONS.accounting.fiscalYearView);
+  const isWorkspaceReady =
+    licenseActive &&
+    isOrganizationReady &&
+    (!canResolveFinancialContext ||
+      organization.financialContextStatus === 'ready');
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -110,6 +127,9 @@ export function AppShell() {
               resolved.
             */}
             {licenseActive && <OrganizationSwitcher />}
+            {licenseActive && isOrganizationReady && (
+              <FinancialContextSwitcher />
+            )}
             <span className="hidden items-center gap-1.5 text-sm text-slate-700 sm:flex">
               <UserRound className="h-4 w-4 text-slate-400" aria-hidden />
               <span className="font-medium" dir="ltr">
@@ -201,7 +221,11 @@ export function AppShell() {
           </div>
         ) : (
           <BootstrapScreen>
-            <OrganizationGate />
+            {isOrganizationReady ? (
+              <FinancialContextGate />
+            ) : (
+              <OrganizationGate />
+            )}
           </BootstrapScreen>
         )}
       </LicenseGate>

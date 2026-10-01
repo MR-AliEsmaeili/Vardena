@@ -159,6 +159,16 @@ export class FiscalYearsService {
       FISCAL_YEAR_PERMISSIONS.VIEW,
     ]);
     await this.organizations.assertOrganizationInScope(query.organizationId);
+    // A supplied parent id is a scope assertion, not a harmless filter:
+    // otherwise a valid foreign area would incorrectly look like an empty
+    // list and leak hierarchy behavior. Keep historical inactive areas
+    // readable; this is ownership validation, not a writable-reference gate.
+    if (query.financialAreaId !== undefined) {
+      await this.financialAreas.requireFinancialAreaInOrganization(
+        query.financialAreaId,
+        query.organizationId,
+      );
+    }
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {
@@ -512,15 +522,28 @@ export class FiscalYearsService {
    *
    * A year from another organization answers 404 (AC-I-16).
    */
-  async requireUsableFiscalYearInOrganization(
+  async requireFiscalYearInOrganization(
     id: string,
     organizationId: string,
-    options: { allowInactive?: boolean } = {},
   ): Promise<FiscalYear> {
     const year = await this.repository.findById(id);
     if (year === null || year.organizationId !== organizationId) {
       throw AppException.notFound('FiscalYear', id);
     }
+    return year;
+  }
+
+  /**
+   * Resolve a year for a new writable reference. Historical reads use
+   * `requireFiscalYearInOrganization` above so inactive years remain
+   * inspectable without becoming usable for ordinary work.
+   */
+  async requireUsableFiscalYearInOrganization(
+    id: string,
+    organizationId: string,
+    options: { allowInactive?: boolean } = {},
+  ): Promise<FiscalYear> {
+    const year = await this.requireFiscalYearInOrganization(id, organizationId);
     assertUsable('Fiscal year', year.isActive, {
       allowInactive: options.allowInactive ?? false,
     });

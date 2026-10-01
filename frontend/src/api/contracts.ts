@@ -218,8 +218,13 @@ export type UpdatePartyRequest = Schemas['UpdatePartyDto'];
 // ---------------------------------------------------------------------------
 
 export type FinancialArea = Schemas['FinancialAreaResponseDto'];
+export type CreateFinancialAreaRequest = Schemas['CreateFinancialAreaDto'];
 export type FiscalYear = NullableString<
   Schemas['FiscalYearResponseDto'],
+  'priorYearId'
+>;
+export type CreateFiscalYearRequest = OptionalNullableString<
+  Schemas['CreateFiscalYearDto'],
   'priorYearId'
 >;
 export type AccountingPeriod = Schemas['AccountingPeriodResponseDto'];

@@ -739,6 +739,58 @@ export const fa = {
     detailGroup: 'گروه تفصیلی',
     notAssigned: 'تعیین نشده',
   },
+  financialContext: {
+    areaResolving: 'در حال دریافت حوزه‌های مالی فعال…',
+    yearResolving: 'در حال دریافت سال‌های مالی باز…',
+    areaTitle: 'انتخاب حوزه مالی',
+    areaBody:
+      'برای ورود به فضای کاری، یک حوزه مالی فعال از سازمان جاری انتخاب کنید.',
+    areaInvalidTitle: 'حوزه مالی انتخاب‌شده دیگر در دسترس نیست',
+    areaInvalidBody:
+      'حوزه مالی پیشین غیرفعال شده یا دسترسی آن تغییر کرده است. یک حوزه مالی فعال انتخاب کنید.',
+    areaEmptyTitle: 'حوزه مالی فعالی وجود ندارد',
+    areaEmptyBody:
+      'برای سازمان جاری هنوز حوزه مالی فعال تعریف نشده است. هیچ حوزه‌ای به‌صورت خودکار ایجاد نمی‌شود.',
+    fiscalYearTitle: 'انتخاب سال مالی',
+    fiscalYearBody:
+      'یک سال مالی باز و فعال در حوزه مالی انتخاب‌شده تعیین کنید.',
+    fiscalYearInvalidTitle: 'سال مالی انتخاب‌شده دیگر در دسترس نیست',
+    fiscalYearInvalidBody:
+      'سال مالی پیشین بسته، غیرفعال یا خارج از حوزه مالی انتخاب‌شده است. یک سال مالی باز انتخاب کنید.',
+    fiscalYearEmptyTitle: 'سال مالی باز و فعالی وجود ندارد',
+    fiscalYearEmptyBody:
+      'برای این حوزه مالی سال مالی باز و فعال تعریف نشده است. ورود به فضای کاری بدون این زمینه مجاز نیست.',
+    contextForbiddenTitle: 'زمینه مالی در دسترس نیست',
+    contextForbiddenBody:
+      'مجوز مشاهده حوزه‌های مالی یا سال‌های مالی در دسترس شما نیست. با مدیر سامانه تماس بگیرید.',
+    areaLoadFailed: 'دریافت حوزه‌های مالی انجام نشد. دوباره تلاش کنید.',
+    fiscalYearLoadFailed: 'دریافت سال‌های مالی انجام نشد. دوباره تلاش کنید.',
+    continue: 'ادامه',
+    createAreaTitle: 'ایجاد حوزه مالی',
+    createAreaBody:
+      'این حوزه به سازمان جاری تعلق خواهد داشت و فقط پس از تأیید سرور قابل انتخاب است.',
+    createFiscalYearTitle: 'ایجاد سال مالی',
+    createFiscalYearBody:
+      'این سال مالی به حوزه مالی انتخاب‌شده تعلق خواهد داشت و فقط پس از تأیید سرور قابل انتخاب است.',
+    createArea: 'ایجاد حوزه مالی',
+    createFiscalYear: 'ایجاد سال مالی',
+    creating: 'در حال ایجاد…',
+    code: 'کد',
+    title: 'نام',
+    startDate: 'تاریخ شروع',
+    endDate: 'تاریخ پایان',
+    dateHint: 'قالب تاریخ: YYYY-MM-DD',
+    codeRequired: 'کد الزامی است.',
+    titleRequired: 'نام الزامی است.',
+    startDateRequired: 'تاریخ شروع الزامی است.',
+    endDateRequired: 'تاریخ پایان الزامی است.',
+    dateFormat: 'تاریخ باید به قالب YYYY-MM-DD باشد.',
+    dateRange: 'تاریخ پایان باید برابر یا پس از تاریخ شروع باشد.',
+    areaSwitcher: 'تغییر حوزه مالی',
+    fiscalYearSwitcher: 'تغییر سال مالی',
+    currentArea: 'حوزه مالی جاری',
+    currentFiscalYear: 'سال مالی جاری',
+  },
   filters: {
     title: 'فیلترها',
     financialArea: 'حوزه مالی',

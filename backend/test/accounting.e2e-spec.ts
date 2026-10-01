@@ -413,6 +413,54 @@ describe('Accounting foundation (e2e)', () => {
     expect(inverted.body.code).toBe('BusinessRuleViolation');
   });
 
+  it('rejects forged organization/area and area/year list combinations over HTTP', async () => {
+    const otherArea = await root
+      .post('/api/v1/financial-areas')
+      .send({
+        organizationId: state.otherOrgId,
+        code: 'OTHER-GA',
+        title: 'Other General Area',
+      })
+      .expect(201);
+
+    const foreignAreaFilter = await root
+      .get('/api/v1/fiscal-years')
+      .query({
+        organizationId: state.orgId,
+        financialAreaId: otherArea.body.id,
+      })
+      .expect(404);
+    expect(foreignAreaFilter.body.code).toBe('EntityNotFound');
+
+    const alternateArea = await root
+      .post('/api/v1/financial-areas')
+      .send({
+        organizationId: state.orgId,
+        code: 'ALT-GA',
+        title: 'Alternate General Area',
+      })
+      .expect(201);
+
+    const mismatchedParents = await root
+      .get('/api/v1/accounting-periods')
+      .query({
+        organizationId: state.orgId,
+        financialAreaId: alternateArea.body.id,
+        fiscalYearId: state.yearId,
+      })
+      .expect(404);
+    expect(mismatchedParents.body.code).toBe('EntityNotFound');
+
+    await root
+      .get('/api/v1/accounting-periods')
+      .query({
+        organizationId: state.orgId,
+        financialAreaId: state.areaId,
+        fiscalYearId: state.yearId,
+      })
+      .expect(200);
+  });
+
   it('opens periods; containment and overlap are enforced', async () => {
     const res = await root
       .post('/api/v1/accounting-periods')

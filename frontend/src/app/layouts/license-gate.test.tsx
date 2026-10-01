@@ -8,7 +8,10 @@ import { useLicenseState } from '@/features/licensing/use-license-state';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
+  paginated,
   testActiveLicenseState,
+  testFinancialArea,
+  testFiscalYear,
   testInactiveLicenseState,
   testUnlicensedLicenseState,
   testOrganization,
@@ -88,6 +91,7 @@ vi.mock('@/api/accounting.api', () => ({
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
 const licensingApi = await import('@/api/licensing.api');
+const accountingApi = await import('@/api/accounting.api');
 
 /** Permissions of a session that may create the very first organization. */
 const firstOrganizationPermissions = [
@@ -106,6 +110,14 @@ beforeEach(() => {
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
     testOrganization,
   ]);
+  // Authenticated happy-path suites now traverse the Accounting context gate
+  // before their established workspace assertion.
+  vi.mocked(accountingApi.listFinancialAreas).mockResolvedValue(
+    paginated([testFinancialArea]),
+  );
+  vi.mocked(accountingApi.listFiscalYears).mockResolvedValue(
+    paginated([testFiscalYear]),
+  );
   vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
     testActiveLicenseState,
   );

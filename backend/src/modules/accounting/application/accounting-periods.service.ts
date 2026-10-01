@@ -49,6 +49,7 @@ import {
   publishEvent,
   resolveSort,
 } from './accounting-support.js';
+import { FinancialAreasService } from './financial-areas.service.js';
 import { FiscalYearsService } from './fiscal-years.service.js';
 
 const SORTABLE_FIELDS: Record<string, string> = {
@@ -75,6 +76,8 @@ export interface ListAccountingPeriodsQuery {
   organizationId: string;
   page: number;
   pageSize: number;
+  /** Optional parent area; paired scope is verified server-side. */
+  financialAreaId?: string | undefined;
   fiscalYearId?: string | undefined;
   status?: AccountingPeriodStatus | undefined;
   sort?: string | undefined;
@@ -122,6 +125,7 @@ export class AccountingPeriodsService {
   constructor(
     private readonly repository: AccountingPeriodsRepository,
     private readonly fiscalYears: FiscalYearsService,
+    private readonly financialAreas: FinancialAreasService,
     private readonly organizations: OrganizationsService,
     private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
@@ -135,10 +139,38 @@ export class AccountingPeriodsService {
       ACCOUNTING_PERIOD_PERMISSIONS.VIEW,
     ]);
     await this.organizations.assertOrganizationInScope(query.organizationId);
+
+    // Optional parent filters are validated as one hierarchy, rather than
+    // being trusted as independent browser-supplied ids. This makes forged
+    // `(organization, area)` and `(area, fiscalYear)` combinations fail with
+    // the established 404 no-disclosure posture instead of returning a
+    // misleading empty list.
+    if (query.financialAreaId !== undefined) {
+      await this.financialAreas.requireFinancialAreaInOrganization(
+        query.financialAreaId,
+        query.organizationId,
+      );
+    }
+    const year =
+      query.fiscalYearId === undefined
+        ? null
+        : await this.fiscalYears.requireFiscalYearInOrganization(
+            query.fiscalYearId,
+            query.organizationId,
+          );
+    if (
+      query.financialAreaId !== undefined &&
+      year !== null &&
+      year.financialAreaId !== query.financialAreaId
+    ) {
+      throw AppException.notFound('FiscalYear', query.fiscalYearId as string);
+    }
+
     const { skip, take } = toOffset(query.page, query.pageSize);
     const { items, total } = await this.repository.list({
       where: {
         organizationId: query.organizationId,
+        financialAreaId: query.financialAreaId,
         fiscalYearId: query.fiscalYearId,
         status: query.status,
       },

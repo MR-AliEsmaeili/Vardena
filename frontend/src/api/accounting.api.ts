@@ -13,6 +13,8 @@ import type {
   ChartTreeNode,
   ChartTreeQuery,
   CreateAccountingDocumentInput,
+  CreateFinancialAreaRequest,
+  CreateFiscalYearRequest,
   DocumentTransitionInput,
   FinancialArea,
   FinancialAreaListQuery,
@@ -63,14 +65,30 @@ export function listFinancialAreas(
   });
 }
 
+export function createFinancialArea(
+  body: CreateFinancialAreaRequest,
+): Promise<FinancialArea> {
+  return apiPost<FinancialArea, CreateFinancialAreaRequest>(
+    '/financial-areas',
+    body,
+  );
+}
+
 export function listFiscalYears(
-  params: { organizationId: string; financialAreaId?: string | undefined },
+  params: {
+    organizationId: string;
+    financialAreaId?: string | undefined;
+    isActive?: boolean | undefined;
+    status?: FiscalYear['status'] | undefined;
+  },
   signal?: AbortSignal,
 ): Promise<Paginated<FiscalYear>> {
   return apiGet<Paginated<FiscalYear>>('/fiscal-years', {
     params: cleanParams({
       organizationId: params.organizationId,
       financialAreaId: params.financialAreaId,
+      isActive: params.isActive,
+      status: params.status,
       page: 1,
       pageSize: MAX_PAGE_SIZE,
       sort: 'code:asc',
@@ -79,13 +97,24 @@ export function listFiscalYears(
   });
 }
 
+export function createFiscalYear(
+  body: CreateFiscalYearRequest,
+): Promise<FiscalYear> {
+  return apiPost<FiscalYear, CreateFiscalYearRequest>('/fiscal-years', body);
+}
+
 export function listAccountingPeriods(
-  params: { organizationId: string; fiscalYearId: string },
+  params: {
+    organizationId: string;
+    financialAreaId?: string | undefined;
+    fiscalYearId: string;
+  },
   signal?: AbortSignal,
 ): Promise<Paginated<AccountingPeriod>> {
   return apiGet<Paginated<AccountingPeriod>>('/accounting-periods', {
     params: cleanParams({
       organizationId: params.organizationId,
+      financialAreaId: params.financialAreaId,
       fiscalYearId: params.fiscalYearId,
       page: 1,
       pageSize: MAX_PAGE_SIZE,

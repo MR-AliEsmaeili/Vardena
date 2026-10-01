@@ -1,11 +1,14 @@
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/errors';
 import { AppRoutes } from '@/app/router';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
+  paginated,
   testActiveLicenseState,
+  testFinancialArea,
+  testFiscalYear,
   testOrganization,
   testUser,
 } from '@/test/fixtures';
@@ -75,6 +78,7 @@ vi.mock('@/api/licensing.api', () => ({
 
 const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
+const accountingApi = await import('@/api/accounting.api');
 const licensingApi = await import('@/api/licensing.api');
 
 beforeEach(() => {
@@ -87,6 +91,12 @@ beforeEach(() => {
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
     testOrganization,
   ]);
+  vi.mocked(accountingApi.listFinancialAreas).mockResolvedValue(
+    paginated([testFinancialArea]),
+  );
+  vi.mocked(accountingApi.listFiscalYears).mockResolvedValue(
+    paginated([testFiscalYear]),
+  );
 });
 
 describe('protected routing', () => {
@@ -269,6 +279,11 @@ describe('protected routing', () => {
       initialEntries: ['/app/does-not-exist'],
     });
 
+    // The new Accounting-context bootstrap has one dependent query after the
+    // area has resolved; wait through it before asserting the routed 404.
+    await waitFor(() => {
+      expect(accountingApi.listFiscalYears).toHaveBeenCalled();
+    });
     expect(await screen.findByText(t.app.notFoundTitle)).toBeInTheDocument();
   });
 

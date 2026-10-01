@@ -87,6 +87,25 @@ export const queryKeys = {
     financialAreas: (organizationId: string) =>
       ['accounting', organizationId, 'financial-areas'] as const,
 
+    /**
+     * Bootstrap selection data, kept separate from report/master-data reads
+     * so changing the active area can evict only its dependent context cache.
+     */
+    financialContextAreas: (organizationId: string) =>
+      ['accounting', organizationId, 'financial-context', 'areas'] as const,
+
+    financialContextFiscalYears: (
+      organizationId: string,
+      financialAreaId: string,
+    ) =>
+      [
+        'accounting',
+        organizationId,
+        'financial-context',
+        'fiscal-years',
+        financialAreaId,
+      ] as const,
+
     fiscalYears: (organizationId: string, financialAreaId: string | null) =>
       [
         'accounting',

@@ -98,6 +98,15 @@ export class ListAccountingPeriodsQueryDto extends PageQueryDto {
   @IsUlid()
   organizationId!: string;
 
+  @ApiPropertyOptional({
+    format: 'ulid',
+    description:
+      'Optional parent financial area. When combined with fiscalYearId, the server rejects a mismatched pair.',
+  })
+  @IsOptional()
+  @IsUlid()
+  financialAreaId?: string;
+
   @ApiPropertyOptional({ format: 'ulid' })
   @IsOptional()
   @IsUlid()

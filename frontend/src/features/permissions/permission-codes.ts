@@ -66,7 +66,9 @@ export const PERMISSIONS = {
   accounting: {
     accountView: 'Accounting.Account.View',
     financialAreaView: 'Accounting.FinancialArea.View',
+    financialAreaCreate: 'Accounting.FinancialArea.Create',
     fiscalYearView: 'Accounting.FiscalYear.View',
+    fiscalYearCreate: 'Accounting.FiscalYear.Create',
     accountingPeriodView: 'Accounting.AccountingPeriod.View',
     accountStatementView: 'Accounting.AccountStatement.View',
     generalLedgerView: 'Accounting.GeneralLedger.View',
