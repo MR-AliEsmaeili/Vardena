@@ -177,18 +177,22 @@ and any frontend UI change. None were implemented; none were found to be a
 hidden dependency of this work.
 
 CI EVIDENCE: PR [#104](https://github.com/MR-AliEsmaeili/Vardena/pull/104)
-(`arena/01a0f91f-vardena` → `main`), run
-[36922724152](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36922724152),
-head SHA `8dfc8556b71db65821c104e0d11648e762a13962`. `backend` job
+(`arena/01a0f91f-vardena` → `main`). Two green CI runs were observed as this
+work was pushed: run
+[36922724152](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36922724152)
+on the implementation commit `8dfc8556b71db65821c104e0d11648e762a13962`, and
+run [36923665011](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36923665011)
+on the final commit `108a27fccfd95609038f195d287d79962509b52c` (adds only
+this evidence file and this section). Both runs: `backend` job
 `conclusion=success` (all 17 real steps succeeded, including step 17 "E2E
 tests (incl. live-DB suites)" = `timeout 540 npm run test:e2e` against the
 job's real `postgres:16` service); `frontend` job `conclusion=success`
 (unaffected, included for completeness). Retrieved directly from the GitHub
-REST API (`gh api repos/.../actions/jobs/110572464981`), not assumed from
-the workflow file. Full per-step status table and a disclosed limitation
-(this sandbox cannot reach the Azure Blob Storage host GitHub uses to serve
-raw log text, so the literal vitest output lines could not be quoted — only
-the authoritative step exit status could be retrieved) are in
+REST API (`gh api repos/.../actions/jobs/{id}`), not assumed from the
+workflow file. Full per-step status tables and a disclosed limitation (this
+sandbox cannot reach the Azure Blob Storage host GitHub uses to serve raw
+log text, so the literal vitest output lines could not be quoted — only the
+authoritative step exit status could be retrieved) are in
 `test-evidence.md`.
 
 READY FOR REVIEW: Implementation complete, focused local verification

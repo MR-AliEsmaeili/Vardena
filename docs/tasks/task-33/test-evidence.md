@@ -108,3 +108,33 @@ and read the literal vitest output directly.
 
 No CI failure was encountered on this run; no fix-forward commit was
 required.
+
+### Follow-up run on the final commit (after adding this evidence file)
+
+Documenting the CI evidence above required one more commit (this file and
+`implementation-report.md`'s CI EVIDENCE section), which re-triggered CI on
+the same PR. That run was also inspected directly via the GitHub REST API
+and is green on the branch's actual final commit:
+
+- Run [36923665011](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36923665011),
+  head SHA `108a27fccfd95609038f195d287d79962509b52c` (HEAD of
+  `arena/01a0f91f-vardena` as of this writing).
+- `backend` job (ID `110575573247`): `conclusion=success`,
+  2026-10-01T20:43:31Z → 20:48:08Z (4m37s), identical step list to the first
+  run, all `success` except the correctly-`skipped` failure-only log-upload
+  step — including step 17 "E2E tests (incl. live-DB suites)".
+- `frontend` job (ID `110575572860`): `conclusion=success`, 1m34s.
+- Same disclosed limitation applies: step-level status was retrieved from
+  `api.github.com` (reachable); raw log text from Azure Blob Storage was
+  not (unreachable from this sandbox).
+
+This document itself was then amended once more (this paragraph and the one
+above it) to record that second run's result, which produces a further
+commit on top of `108a27f` that was intentionally **not** chased with a
+third CI run: it changes only these two doc files, touches no code under
+test, and re-triggering CI for a documentation-only diff would not add any
+verification value (and would otherwise recurse indefinitely, since
+recording a run's result is itself a commit). The two runs above are
+representative: every commit that changed `backend/**` in this task was
+covered by run `36922724152`, and the PR will run CI again regardless on
+`main` once merged.
