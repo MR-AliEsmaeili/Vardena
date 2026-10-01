@@ -76,10 +76,12 @@ Local full E2E: **intentionally not awaited** because the repository live suite 
 
 GitHub Actions workflow: `.github/workflows/ci.yml` (`CI`, backend job including migrate/bootstrap/full E2E).
 
-- Run ID: PENDING
-- Backend check/result: PENDING
-- E2E result: PENDING
-- Frontend check/result: PENDING
+- Run ID: `36825170059`
+- Backend check/job: `110249120134` — PASS (3m47s)
+- E2E result: PASS — existing full E2E step, including live PostgreSQL suites and `test/licensing.e2e-spec.ts`
+- Frontend check/job: `110249120297` — PASS (1m46s)
+
+An initial run (`36824731136`, backend job `110247762172`) exposed the real `Document.*` permission-prefix versus `documents` entitlement-code mapping. The mapping was made explicit and the complete replacement run above passed; no tests were mocked or removed.
 
 ## Documentation
 
@@ -103,4 +105,4 @@ Deferred/not implemented: CRM, billing/payments, marketplace/subscriptions, remo
 
 ## Final status
 
-READY FOR CI VERIFICATION
+READY FOR REVIEW
