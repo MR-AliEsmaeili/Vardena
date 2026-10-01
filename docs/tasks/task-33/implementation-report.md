@@ -176,12 +176,26 @@ movement/reservation models, cross-module posting logic, generic workflow,
 and any frontend UI change. None were implemented; none were found to be a
 hidden dependency of this work.
 
-CI EVIDENCE: see `test-evidence.md` for the exact GitHub Actions run URL,
-job name, and the real log excerpts inspected for each required heavy-test
-outcome above.
+CI EVIDENCE: PR [#104](https://github.com/MR-AliEsmaeili/Vardena/pull/104)
+(`arena/01a0f91f-vardena` → `main`), run
+[36922724152](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/36922724152),
+head SHA `8dfc8556b71db65821c104e0d11648e762a13962`. `backend` job
+`conclusion=success` (all 17 real steps succeeded, including step 17 "E2E
+tests (incl. live-DB suites)" = `timeout 540 npm run test:e2e` against the
+job's real `postgres:16` service); `frontend` job `conclusion=success`
+(unaffected, included for completeness). Retrieved directly from the GitHub
+REST API (`gh api repos/.../actions/jobs/110572464981`), not assumed from
+the workflow file. Full per-step status table and a disclosed limitation
+(this sandbox cannot reach the Azure Blob Storage host GitHub uses to serve
+raw log text, so the literal vitest output lines could not be quoted — only
+the authoritative step exit status could be retrieved) are in
+`test-evidence.md`.
 
-READY FOR REVIEW: Pending the CI evidence captured in `test-evidence.md`.
-This report will not claim "CI passed" or "PostgreSQL E2E passed" beyond
-what that evidence actually shows, and this task is never marked ACCEPTED
-by this agent — only IMPLEMENTED / CI VERIFIED states are agent-assignable;
-final Owner acceptance is a separate, human decision.
+READY FOR REVIEW: Implementation complete, focused local verification
+complete, and CI evidence observed green for the exact commit that
+contains this work (see above and `test-evidence.md`). Status is
+**READY FOR REVIEW** — this task is never marked ACCEPTED by this agent;
+only IMPLEMENTED / MERGED / CI VERIFIED states are agent-assignable, and
+CI VERIFIED here means "the run completed successfully," not "the raw log
+text was read line-by-line" (that distinction is disclosed, not hidden).
+Final Owner acceptance of PR #104 remains a separate, human decision.
