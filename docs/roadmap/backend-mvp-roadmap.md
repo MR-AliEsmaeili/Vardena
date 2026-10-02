@@ -38,11 +38,17 @@
 > implementation**; no OQ or ADR was resolved and no implementation was authorized.
 >
 > **C-50 implementation-status follow-up (2026-10-02, later, unmerged):** a
-> non-valued, non-posting, no-stock-reservation Material Request vertical
-> slice was subsequently opened as [PR #112](https://github.com/MR-AliEsmaeili/Vardena/pull/112)
-> without a recorded Owner answer to the blockers above; see the investigation
-> brief's **§19** for the full, honestly-caveated record. `main` is unchanged;
-> this is not an authorization record and resolves no OQ.
+> non-valued, non-posting Material Request vertical slice was subsequently
+> opened as [PR #112](https://github.com/MR-AliEsmaeili/Vardena/pull/112)
+> without a recorded Owner answer to the blockers above. **Correction:** an
+> earlier version of this line described the slice as "no-stock-reservation";
+> that was inaccurate — the shipped code does reserve stock on approval
+> (optional per-line flag, all-or-nothing, released only by approver
+> reversal), which is §11.4's "Require" branch, not "Defer", and was never
+> Owner-ratified either way. See the investigation brief's **§19** (item 2
+> correction, item 4) for the full, honestly-caveated record. `main` is
+> unchanged; this is not an authorization record and resolves no OQ, and does
+> not retroactively bless the reservation shape either.
 >
 > **Current-state addendum (2026-09-29):** the original inspection baseline and
 > inventory below are a dated planning snapshot. Current `main` is

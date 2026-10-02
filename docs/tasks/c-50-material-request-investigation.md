@@ -901,34 +901,86 @@ Owner acceptance.
    relying on this document should treat the implementation as having
    proceeded on an assumed-safe subset, not as evidence those questions are
    answered.
-2. **The contract actually implemented is deliberately the narrowest reading
-   consistent with the brief:** the Material Request aggregate is
-   **non-valued and non-posting** (no stock, costing, or accounting effect) —
-   the one shape this brief identified (§1 item 4) as avoiding the
-   valuation/costing/durable-posting gates shared with C-48/C-49/C-51/C-52.
-   It does not reserve stock, does not create or drive a Warehouse Issue
-   (C-52 remains untouched), and its document type is registered with
-   Documents **for numbering only**. A single-level approve/reject/reverse
-   lifecycle reuses existing primitives rather than inventing new ones; it is
-   not a claim that OQ-13/OQ-26 (who may approve, requester-approves-own-
-   request) have been decided — the implementation picked one reversible
-   behavior and left it change-compatible.
+2. **The contract actually implemented is narrower than C-52 in one
+   dimension (valuation/posting) but is NOT the "Defer" option §11.4 offered
+   for stock reservation — correcting an inaccuracy in an earlier version of
+   this addendum.** The Material Request aggregate is **non-valued and
+   non-posting** (no costing or accounting effect) — the shape this brief
+   identified (§1 item 4) as avoiding the valuation/costing/durable-posting
+   gates shared with C-48/C-49/C-51/C-52. It does **not** create or drive a
+   Warehouse Issue, and its document type is registered with Documents for
+   numbering (and, see below, for Document Relations) only — C-52 itself
+   remains untouched. **However, the implementation DOES reserve stock**:
+   each line carries an optional `reservationRequested` flag (Owner-shaped
+   as "per line, never auto-split across warehouses" per the line's own
+   `itemId`/`warehouseId`); approving a submitted request atomically reserves
+   every flagged line's exact quantity in its own warehouse, and refuses the
+   **whole** approval (no partial reservation) if any flagged line lacks
+   available stock; a reservation is released only when the approving user
+   explicitly reverses that approval (and reversal is itself refused once
+   any line has been invoked). This is squarely the **"Require"** branch of
+   §11.4, naming most of the questions §11.1 asked (all-or-nothing across
+   lines: yes; which warehouse: the line's own, never chosen by the system;
+   current negative-availability policy: reused as-is; release: approver
+   reversal only, not edit/withdrawal/expiry) — **but no artifact in this
+   repository records an Owner choosing "Require" over "Defer", or
+   authorizing this specific shape.** This addendum is not that
+   authorization either; it only corrects the record to say what was built.
+   Separately, "invocation" (`PUT .../lines/invoke`) records — via an
+   ordinary Document Relation, the same mechanism every other
+   document-to-document reference in this codebase uses — that an approved
+   line was carried into another document; it does not itself touch stock,
+   does not require or imply a reservation, and does not create or validate
+   any C-52 Warehouse Issue (today the only invocation destination this
+   module can honestly verify is another Material Request — see
+   `material-requests.service.ts`'s own documented limitation). A
+   single-level approve/reject/reverse lifecycle reuses existing primitives
+   rather than inventing new ones; none of this is a claim that OQ-13/OQ-26
+   (who may approve, requester-approves-own-request) have been decided — the
+   implementation picked one reversible behavior and left it
+   change-compatible.
 3. **A later review pass on PR #112 found and fixed four implementation
    defects** unrelated to the OQ/authorization question above (an
    unintended cross-module permission dependency in mutation responses, a
    missing destination-existence check before downstream invocation, an
    availability/reservation inconsistency across endpoints, and an
    invocation-accounting page-size cap) — see the PR's commit history for
-   detail. As of this addendum, PR #112's CI (lint, typecheck, format,
-   backend unit tests, build, migrations, migration rehearsal, and the
-   live-Postgres E2E suite; frontend quality gates) is **green**, but the PR
-   is **not merged** and carries no Owner sign-off on the open product
-   questions above.
+   detail. A follow-up session added dedicated live-PostgreSQL E2E coverage
+   (`backend/test/material-requests-live.e2e-spec.ts`) exercising, against a
+   real database, the exact reservation/invocation behavior described in
+   item 2 above: all-or-nothing approval atomicity (including the
+   insufficient-stock rollback case), organization isolation, invocation
+   destination validation, invocation capacity under real concurrent
+   requests, and approver-only/post-invocation reversal restrictions. **This
+   is verification that the shipped code behaves as item 2 describes — it is
+   not, and must not be read as, Owner authorization for that behavior.** As
+   of this addendum, PR #112's CI (lint, typecheck, format, backend unit
+   tests, build, migrations, migration rehearsal, and the live-Postgres E2E
+   suite; frontend quality gates) is **green** on the PR's latest commit at
+   the time of writing, but the PR is **not merged** and carries no Owner
+   sign-off on the open product questions above.
 4. **Outstanding before this can be treated as an accepted MVP deliverable:**
-   an explicit Owner decision on OQ-54 and OQ-13/OQ-26, and an explicit
-   product answer to the stock-reservation/C-52 wiring question (§1 item 6),
-   ideally recorded as dedicated OQs if they are not already. Until then,
-   §§1–18 of this brief remain the accurate record of what was and was not
-   decided; this addendum only records that unauthorized-pending-decision
-   implementation work exists on an open PR, and should not be read as
-   closing any OPEN item above.
+   an explicit Owner decision on OQ-54 and OQ-13/OQ-26; and — now more
+   pointed than before this correction — an explicit Owner ratification (or
+   rejection) of the SPECIFIC stock-reservation shape already shipped in PR
+   #112 (item 2 above), since §11.4 required that choice to be made and
+   recorded BEFORE implementation, not after. If the Owner does not ratify
+   this shape, the reservation code path (not just the lifecycle/approval
+   questions) would need to be reworked or disabled, not merely documented
+   around. Until then, §§1–18 of this brief remain the accurate record of
+   what was and was not decided; this addendum only records that
+   unauthorized-pending-decision implementation work exists on an open PR,
+   and should not be read as closing any OPEN item above — including, now
+   explicitly, §11's reservation question, now also tracked as
+   **OQ-66** in `docs/open-questions.md`.
+5. **Frontend Material Request UI and OpenAPI/generated-client regeneration
+   remain BLOCKED**, for two independent reasons: (a) environment — the
+   Prisma CLI's schema-engine binary download (required by `prisma
+   generate`/`validate`, which the API-docs-to-OpenAPI generation workflow
+   depends on) could not reach `binaries.prisma.sh` from the sandbox used for
+   this work; (b) governance — `docs/frontend/standards.md` §2 requires API
+   response types to come ONLY from the generated OpenAPI contract, and the
+   environment gap in (a) means that contract cannot be regenerated for
+   Material Request, so no compliant typed frontend surface can be built
+   yet. Neither gap was worked around by hand-typing a contract or
+   fabricating a destination document.
