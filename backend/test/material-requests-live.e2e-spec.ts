@@ -159,7 +159,12 @@ describe.skipIf(DATABASE_URL === undefined)(
         expect(Number(listRow['reserved'])).toBe(reserved);
         expect(Number(listRow['available'])).toBe(available);
       }
-      expect(available).toBeCloseTo(onHand - reserved, 6);
+      // NOTE: `available` is only `onHand - reserved` when this warehouse's
+      // `reservationsReduceAvailable` is true — it equals `onHand` unchanged
+      // otherwise (finding #3's whole point). That per-warehouse rule is
+      // asserted by the caller, which knows which warehouse and setting are
+      // in play; asserting a fixed formula here would be wrong for a
+      // warehouse configured the other way.
       return { onHand, reserved, available };
     }
 
@@ -398,6 +403,10 @@ describe.skipIf(DATABASE_URL === undefined)(
             deleteMany: (args: unknown) => Promise<unknown>;
           };
           organization: { deleteMany: (args: unknown) => Promise<unknown> };
+          numberingAllocation: {
+            deleteMany: (args: unknown) => Promise<unknown>;
+          };
+          numberingSeries: { deleteMany: (args: unknown) => Promise<unknown> };
           userRole: { deleteMany: (args: unknown) => Promise<unknown> };
           rolePermission: { deleteMany: (args: unknown) => Promise<unknown> };
           role: { deleteMany: (args: unknown) => Promise<unknown> };
@@ -416,6 +425,12 @@ describe.skipIf(DATABASE_URL === undefined)(
           where: { organizationId: { in: orgIds } },
         });
         await client.materialRequest.deleteMany({
+          where: { organizationId: { in: orgIds } },
+        });
+        await client.numberingAllocation.deleteMany({
+          where: { organizationId: { in: orgIds } },
+        });
+        await client.numberingSeries.deleteMany({
           where: { organizationId: { in: orgIds } },
         });
         await client.inventoryReservation.deleteMany({
@@ -1043,6 +1058,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           .query({ organizationId: orgAId })
           .expect(200);
         expect(approved.body.approvedBy).toBe(bobId);
+        const reservationId = approved.body.lines[0].reservationId as string;
+        expect(reservationId).not.toBeNull();
 
         const afterApproval = await availabilitySnapshot(
           alice,
@@ -1074,7 +1091,12 @@ describe.skipIf(DATABASE_URL === undefined)(
           .send({ reason: 'Changed plans.' })
           .expect(200);
         expect(reversed.body.status).toBe('submitted');
-        expect(reversed.body.lines[0].reservationId).toBeNull();
+        // The line keeps its (now-released) reservation reference for audit
+        // history — reverseApproval marks the InventoryReservation row
+        // `released`, it does not erase the line's link to it. The real
+        // proof of release is availability returning to its pre-reservation
+        // state, checked below.
+        expect(reversed.body.lines[0].reservationId).toBe(reservationId);
 
         const afterReversal = await availabilitySnapshot(
           alice,
