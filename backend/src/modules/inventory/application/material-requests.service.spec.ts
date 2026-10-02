@@ -1982,7 +1982,8 @@ describe('Owner decision — invocation consumes the active reservation', () => 
 
     // The reservation remains active and usable by a LATER invocation — it
     // is not a one-shot claim.
-    await invoke('25');
+    const second = await invoke('25');
+    expect(second.invokedBaseQuantity).toBe('85');
     expect(fixture.repository.reservations.get(reservationId)).toMatchObject({
       status: 'active',
       quantity: '15',
@@ -2040,6 +2041,56 @@ describe('Owner decision — invocation consumes the active reservation', () => 
     expect(reservation?.status).toBe('released');
     expect(reservation?.quantity).toBe('0');
     expect(reservation?.baseQuantity).toBe('0');
+  });
+
+  it('a reserved line supports many invocations with no fixed count limit — only the total quantity caps it', async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      quantity: '200',
+      reservationRequested: true,
+    });
+    const [lineBefore] = await fixture.repository.listLines(materialRequestId);
+    const reservationId = lineBefore!.reservationId!;
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '200',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    // 100 invocations of 2 units each — far past any plausible artificial
+    // limit (1, 10, 100...) — consuming the reservation in lockstep every
+    // single time, never rejected merely because the invocation COUNT is
+    // high; only the cumulative quantity (200) is ever the cap.
+    const total = 100;
+    for (let i = 0; i < total; i += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      await asActor(() =>
+        fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+          lineId,
+          destinationModule: 'inventory',
+          destinationDocumentType:
+            MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+          destinationDocumentId: destination.id,
+          quantity: '2',
+        }),
+      );
+    }
+    const lines = await fixture.repository.listLines(materialRequestId);
+    expect(lines[0]?.invocationCount).toBe(total);
+    expect(lines[0]?.invokedBaseQuantity).toBe('200');
+    const finalReservation = fixture.repository.reservations.get(reservationId);
+    // Fully consumed by the 100th invocation: closed, never left ACTIVE at
+    // zero, regardless of how many invocations it took to get there.
+    expect(finalReservation?.status).toBe('released');
+    expect(finalReservation?.quantity).toBe('0');
+    expect(finalReservation?.baseQuantity).toBe('0');
   });
 
   it('refuses an invocation whose cumulative total would exceed the line quantity, leaving the reservation untouched', async () => {

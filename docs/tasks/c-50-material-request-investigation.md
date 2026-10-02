@@ -1199,16 +1199,18 @@ every invocation that touches it.
   compensation call on a `linkDocuments` failure.
 - Tests: `material-requests.service.spec.ts` gained a
   `FakeMaterialRequestsRepository` reservation model (quantity/baseQuantity/
-  status) and 8 new unit tests (partial consumption, multiple consumptions
+  status) and 9 new unit tests (partial consumption, multiple consumptions
   down to closure, single full-amount consumption, exceeding remaining
   capacity, no-reservation invocation, compensation restoring a partial
-  consumption, compensation reopening a closed reservation, and
+  consumption, compensation reopening a closed reservation,
   cancellation/reversal still blocked with the reservation correctly showing
-  only the uninvoked remainder). `material-requests-live.e2e-spec.ts` gained
-  4 new real-Postgres scenarios covering the same ground end to end
-  (including a genuine — not mocked — downstream-relation failure via a
-  self-referencing invocation, and a real concurrent-invocation race against
-  one reservation).
+  only the uninvoked remainder, and a 100-invocation stress test proving a
+  RESERVED line has no fixed invocation-count limit either — only the total
+  quantity caps it). `material-requests-live.e2e-spec.ts` gained 4 new
+  real-Postgres scenarios covering the same ground end to end (including a
+  genuine — not mocked — downstream-relation failure via a self-referencing
+  invocation, and a real concurrent-invocation race against one
+  reservation).
 
 ### 21.5 OQ-66 disposition
 
