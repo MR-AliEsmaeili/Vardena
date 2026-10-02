@@ -12,6 +12,24 @@
 > constraint in the work order, and `docs/testing/test-execution-policy.md`.
 > **No heavy E2E/live-DB test was executed locally unless explicitly authorized.**
 
+> **Follow-up note (2026-10-02) — Owner decisions now recorded; this report is
+> unchanged.** The §6/§7 decision briefs have been answered by the Owner:
+> **OD-C47-01** selects OQ-29 **Option A** (the fail-closed behaviour this
+> report describes as *business-unapproved interim* is now the **approved
+> rule** for fixed four-decimal quantity precision, exact-or-reject, no
+> rounding/truncation, effective-dated factor versions and preserved history);
+> **OD-C47-02** selects OQ-33 **Option D** (new kinds/flags only on an accepted
+> concrete need) and explicitly does **not** approve Option A — the eight-kind
+> list and the per-item capability model stay **unconfirmed**; **OD-C47-03 /
+> PDR-01** decides the barcode policy this report left open (§7 item 5), and
+> its lifecycle residue is the new **OQ-65**; **OD-C47-04** selects OQ-36
+> **Option C** without deciding code reuse. **OQ-29, OQ-33 and OQ-36 all remain
+> OPEN.** Canonical records:
+> [`c-47-item-master-owner-decision-record.md`](./c-47-item-master-owner-decision-record.md)
+> and [`PDR-01`](../decisions/product/PDR-01-item-barcode-policy.md). The §10
+> "next candidate" paragraph is superseded for dependency purposes by
+> [`../roadmap/c-47-c-54-dependency-review.md`](../roadmap/c-47-c-54-dependency-review.md).
+
 ## 1. Executive summary
 
 The item master (items, item kinds/capabilities, units, global + item-specific

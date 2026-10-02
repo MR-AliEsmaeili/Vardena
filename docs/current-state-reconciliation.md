@@ -8,6 +8,55 @@
 | Repository        | `MR-AliEsmaeili/Vardena`                   |
 | Change type       | Documentation and governance only          |
 
+> **Current-state addendum — 2026-10-02 (C-47 Owner decisions and inventory
+> correction).** The table above is the 2026-09-29 audit baseline and is kept
+> as the dated record of that audit. Current `main` is
+> `4cf481efa2de5ca9863d9d434c2ab707de23301a` (merge of **PR #107**). Verified
+> deltas since `34dddfd`, inspected statically at the new SHA:
+>
+> - **Registered backend modules: ten, not nine.** `backend/src/app.module.ts`
+>   registers `health`, `licensing`, `users`, `identity`, `rbac`,
+>   `organization`, `inventory`, `documents`, `workflow`, `accounting`. The
+>   `licensing` module and the `licensing` Prisma schema were added by the
+>   licensing bootstrap work (STATE.md §15) after the 2026-09-29 audit.
+> - **Counts at this SHA:** 10 Prisma schema files, **59** models, **21**
+>   migrations (latest `20261003000000_licensing_drop_raw_license_code`),
+>   **50** controllers, **122** backend unit-spec files, **43** backend
+>   E2E-spec files, **42** frontend test files. The §2.2 figures below are the
+>   2026-09-29 snapshot and are not rewritten.
+> - **C-46 / C-47 (Inventory master data).** PR #104 (warehouse master
+>   hardening) and PR #106/#107 (item master investigation, defect fixes and
+>   regression hardening) are **merged with green CI**. PR #107 fixed a
+>   conversion-supersession race, a `resolveConversion` cross-organization
+>   leak, and a generated-frontend-type drift, and added hermetic plus
+>   live-PostgreSQL coverage (`backend/test/item-master-live.e2e-spec.ts`).
+>   **Merge and green CI are not Owner acceptance**: no Owner acceptance record
+>   exists for C-46, C-47, PR #106 or PR #107, and the §2.1 rule ("Merge and
+>   green CI are not silently relabeled `ACCEPTED`") applies unchanged.
+> - **Owner decisions recorded (governance, not acceptance).** OD-C47-01
+>   (OQ-29 Option A), OD-C47-02 (OQ-33 Option D), OD-C47-03 / **PDR-01**
+>   (barcode Option A) and OD-C47-04 (OQ-36 Option C) —
+>   [`tasks/c-47-item-master-owner-decision-record.md`](tasks/c-47-item-master-owner-decision-record.md),
+>   [`decisions/product/PDR-01-item-barcode-policy.md`](decisions/product/PDR-01-item-barcode-policy.md).
+>   **OQ-29, OQ-33 and OQ-36 all remain OPEN**; **OQ-65** (barcode
+>   lifecycle/reuse) is new and OPEN. The §3 Truth-Matrix row "item/unit policy
+>   OQ-29/OQ-33, deletion/code reuse OQ-36 remain open" therefore still holds,
+>   now with recorded partial decisions rather than nothing.
+> - **New contract gap (decided ≠ implemented).** PDR-01 requires barcode
+>   uniqueness within an organization among active items. Nothing enforces it:
+>   `backend/prisma/schema/inventory.prisma` has no barcode unique index and
+>   `backend/src/modules/inventory/application/items.service.ts` has no barcode
+>   uniqueness pre-check. The exact constraint shape is blocked by OQ-65.
+> - **Dependency re-review.** C-47…C-54 were re-reviewed against the actual
+>   registry scope of OQ-11, OQ-24, OQ-39, OQ-42 and OQ-54:
+>   [`roadmap/c-47-c-54-dependency-review.md`](roadmap/c-47-c-54-dependency-review.md).
+>   No candidate is admitted; **OD-27-03 (next-track selection) remains
+>   PENDING**, so the §9 gate — *FOUNDATION IMPLEMENTED; NEXT PRODUCTION
+>   DIRECTION REQUIRES EXPLICIT OWNER AUTHORIZATION* — is unchanged.
+> - **No warehouse operational implementation** (receipt, issue, opening
+>   balances, material request or any other operational warehouse document)
+>   exists or was started.
+
 ## 1. Purpose, authority, and method
 
 This report reconciles the repository after Tasks 30–32 and frontend follow-up work without changing runtime behavior. It is the current cross-repository reference; dated task reports remain evidence of the state and claims made when those tasks closed.
@@ -301,3 +350,7 @@ Validation result:
 The repository contains a materially broader current implementation than the pre-Task-30 roadmap snapshots: Task 30 added Account Nature/Type and a bounded Detail foundation, Task 32 added a real Dashboard, and PR #86—not PR #85—is the final merged Dashboard behavior. None of those facts closes the remaining OQs, promotes Proposed ADRs, admits Treasury/Purchasing to MVP, turns FaraPayam into architecture, supplies Base Chart content, or authorizes a new production task.
 
 **READY FOR REVIEW**
+
+> **Addendum status (2026-10-02):** the C-47 addendum above is **READY FOR
+> REVIEW — NOT ACCEPTED**. It closes no Open Question, promotes no ADR, accepts
+> no PR or task, and authorizes no implementation.

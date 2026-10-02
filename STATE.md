@@ -1150,3 +1150,145 @@ merged `docs/tasks/c-47-item-master-preflight-investigation.md`, PR #106).
   Owner acceptance. C-47 remains **BLOCKED BY OQ (OQ-29/OQ-33)** in the
   candidate register; this section does not accept, re-accept, or alter the
   status of §13/§16, C-01..C-46, or any other candidate.
+
+## 18. C-47 — Owner Decisions Recorded and C-47…C-54 Dependency Reconciliation (2026-10-02)
+
+Documentation/governance only. Baseline: `main` @
+`4cf481efa2de5ca9863d9d434c2ab707de23301a` (merge of PR #107). **No production
+code, Prisma schema, migration, API, generated type, permission, dependency, UI
+or test was touched.** This section records Owner *decisions*; it is **not** an
+Owner acceptance of §17, PR #106, PR #107, C-46, C-47 or any other candidate
+(STATE.md §1/§6: merged + green CI ≠ ACCEPTED).
+
+### 18.1 Owner decisions recorded
+
+Canonical record: `docs/tasks/c-47-item-master-owner-decision-record.md`.
+
+- **OD-C47-01 — OQ-29, Option A (quantity precision and conversion).** Fixed
+  quantity precision of **four fractional decimal places**; conversion results
+  that cannot be represented exactly at the supported precision are
+  **rejected**; **no rounding and no silent truncation**; conversion-factor
+  changes must use **effective-dated versions**; historical conversion versions
+  and the data needed to interpret prior transactions are **preserved**. This
+  converts the previously unapproved fail-closed interim behaviour into the
+  approved rule and requires **no code change**. **OQ-29 stays OPEN**: global
+  vs item-specific scope and precedence, factor scale, derived/reverse pairs,
+  which boundaries the exactness gate governs, correction of a factor version
+  entered in error, and display-vs-storage rounding are **not** answered and
+  are not inferred. Monetary/valuation rounding stays with OQ-24/OQ-30.
+- **OD-C47-02 — OQ-33, Option D (item taxonomy and capabilities).** New item
+  kinds or capability flags may be introduced **only** when a concrete need has
+  been identified and accepted through the project's decision/governance
+  process. **Option A is NOT approved and must not be recorded as approved.**
+  The Owner **has not confirmed** that the existing eight item kinds and the
+  current per-item configurable capability model are accepted without change;
+  **that confirmation is OPEN**. **OQ-33 stays OPEN.**
+- **OD-C47-03 — Barcode policy, Option A (confirmed).** Full record:
+  `docs/decisions/product/PDR-01-item-barcode-policy.md` (**Decided**). A
+  barcode is optional; uniqueness is enforced within an organization; **two
+  active items in the same organization must not have the same barcode**;
+  different organizations may use the same barcode; multiple barcode formats
+  are supported with **no strict symbology validation unless separately
+  approved**; **no multi-barcode-per-item support**; **no production code or
+  schema change** under this decision. **Decided but NOT enforced** —
+  `backend/prisma/schema/inventory.prisma` has no barcode unique index and
+  `backend/src/modules/inventory/application/items.service.ts` has no barcode
+  uniqueness pre-check.
+- **OD-C47-04 — OQ-36, Option C (item deletion).** Physical deletion is
+  permitted **only** when the item has never been referenced by any
+  operational, ledger or historical record; a referenced item **must not** be
+  physically deleted; history and organization-scoped identity constraints are
+  preserved. **OQ-36 stays OPEN**: reuse of a code after physical deletion of a
+  never-referenced item is **unanswered and not inferred from Option C**, as
+  are code reuse after deactivation, code case-sensitivity, hard-delete vs
+  tombstone mechanics, how "never referenced" is proven, whether any DELETE
+  endpoint/permission is introduced, and everything outside the item.
+
+### 18.2 New Open Question
+
+- **OQ-65 (OPEN) — barcode lifecycle, reuse and comparison semantics.** The
+  approved wording constrains *two **active** items* and therefore does **not**
+  answer whether a barcode belonging to a **deactivated** item may be reused by
+  another item in the same organization. Neither direction is inferred. OQ-65
+  also carries reactivation-collision behaviour, normalization/comparison
+  semantics, enforcement authority (partial unique index vs application check),
+  applicability to non-stockable kinds, interaction with OD-C47-04 deletion,
+  and the migration posture for pre-existing duplicates. Registered in
+  `docs/open-questions.md`; context in PDR-01 §6.
+
+### 18.3 C-47 status reconciliation
+
+PR #107 is merged and its CI runs are green (§17). **That is not Owner
+acceptance of the item master.** C-47's candidate status is now: *MVP REQUIRED
+— IMPLEMENTED-STYLE RECONNAISSANCE + REGRESSION HARDENING — NOT ACCEPTED —
+OWNER DECISIONS RECORDED (OD-C47-01…04) — REMAINS BLOCKED BY OQ (OQ-29 residue,
+OQ-33 taxonomy confirmation, OQ-65 barcode lifecycle, OQ-36 code-reuse
+residue).* **OQ-33 is not marked resolved** while the taxonomy/capability
+confirmation is open; **OQ-36 is not marked resolved** while code-reuse
+semantics are unanswered; **OQ-29 is not marked resolved** while its residue
+stands.
+
+### 18.4 Dependency reconciliation (C-47…C-54) — no operational implementation
+
+Full review: `docs/roadmap/c-47-c-54-dependency-review.md`. Prerequisite scope
+was read from the registry text, never inferred from identifiers: **OQ-11**
+(opening-balance import + costing method), **OQ-24** (valuation method +
+negative-stock permissibility; interim posture is *reject*), **OQ-39** (durable
+delivery semantics — gates all system-generated posting), **OQ-42** (posting
+mode A/B — inert until OQ-39 admits posting), **OQ-54** (finalized-document
+cancel/edit policy — cancel-only is a *recommendation, not a decision*; its own
+record states the Document Foundation already supplies the mechanism, so this
+is policy, not mechanism).
+
+- **C-48 opening quantity** — BLOCKED BY OQ (OQ-11 opening half; OQ-24 where
+  cost is involved; plus OQ-54/OQ-12/OQ-13/OQ-26 for the document lifecycle).
+- **C-49 opening rial** — BLOCKED; deepest chain (C-48 + valuation + durable
+  integration; OD-28-04 pending).
+- **C-50 Material Request** — **the next dependency-ready candidate, for a
+  bounded INVESTIGATION only.** Its foundations (ADR-0023 Document Foundation,
+  ADR-0024 Workflow Foundation) are Accepted *and* implemented; its blockers
+  are lifecycle **policy**. The candidate row's "OQ-54 as applicable"
+  **under-states** the prerequisites: **OQ-13** (do inventory documents have
+  approval states at all?) is the primary question, with OQ-26, OQ-54, OQ-12
+  and OQ-15 following. OQ-24/OQ-39/OQ-42 are **verified not blocking** while
+  the request moves no stock and produces no accounting effect.
+- **C-51 receipt / C-52 issue** — BLOCKED BY OQ (OQ-24 rial half, OQ-39/OQ-42
+  for any accounting effect, plus OQ-54/OQ-13/OQ-26/OQ-12). ADR-0017 is
+  **Proposed** and is not authorization; ADR-0022 (Accepted) governs the ledger.
+- **C-53 stock/settings** — BLOCKED BY OQ **and undefined scope**; no accepted
+  definition of "inventory settings" content exists.
+- **C-54 Kardex/reports** — BLOCKED BY DEPENDENCY (no reporting foundation
+  exists) and by OQ-24 for any rial Kardex; **OQ-49 blocks a report *builder*,
+  not a bounded code-defined report**.
+
+A **bounded C-47 implementation follow-up is justified** — enforcing the
+decided organization-scoped barcode uniqueness — because it is the only
+decision in OD-C47-01…04 with a verified decided-but-unimplemented gap. It is
+**blocked by OQ-65**, since the unique-index predicate depends on whether a
+deactivated item's barcode is reusable, and it would require a Prisma
+migration.
+
+**Admission gate unchanged.** `OD-27-03` (Owner next-track selection) remains
+**PENDING**; no task number is created by this section, no candidate is
+admitted, no ADR is promoted, and **no warehouse operational implementation —
+warehouse receipt, warehouse issue, opening balances, material request or any
+other operational warehouse document — was started.**
+
+### 18.5 Repository inventory correction (verified at this SHA)
+
+The 2026-09-29 reconciliation's "nine modules / 55 models / 18 migrations"
+figures are a dated snapshot. Verified now: **ten** registered backend modules
+(`licensing` added by the licensing bootstrap work, §15), 10 Prisma schema
+files, **59** models, **21** migrations, **50** controllers, **122** backend
+unit-spec files, **43** backend E2E-spec files, **42** frontend test files.
+Recorded as a dated addendum in `docs/current-state-reconciliation.md`;
+historical task records are not rewritten.
+
+### 18.6 Verification
+
+Documentation consistency checks only: changed-path audit (documentation
+paths only), `git diff --check`, relative-link resolution for every changed
+Markdown file, and registry-id uniqueness. **No full E2E, live PostgreSQL,
+migration or migration-rehearsal command was run**, per the work order and
+`docs/testing/test-execution-policy.md`. No test pass/fail is claimed; CI
+results quoted in §17 are transcriptions.

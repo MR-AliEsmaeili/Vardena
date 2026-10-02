@@ -121,6 +121,13 @@ changes (AR-29) and must not be pre-added as nullable columns "just in case"
 - `item_kind` — closed, code-managed: `goods`, `service`, `consumable`, `asset`,
   `raw_material`, `semi_finished`, `finished_good`, `other`. *(OQ-33 confirms the list
   and the naming with the project owner.)*
+  *(**Status 2026-10-02 — still unconfirmed.** OD-C47-02 decided OQ-33
+  **Option D**: a new kind or capability flag may be introduced **only** on a
+  concrete need accepted through the decision/governance process. The Owner
+  **did not** approve Option A and has **not** confirmed that these eight kinds
+  or the per-item capability model are accepted without change — that
+  confirmation stays **OPEN** under OQ-33. Record:
+  [`../../tasks/c-47-item-master-owner-decision-record.md`](../../tasks/c-47-item-master-owner-decision-record.md) §2.)*
 - **Capability flags** (stored, authoritative):
   `is_stockable`, `is_purchasable`, `is_sellable`, `is_valued`,
   `requires_lot`, `requires_serial`, `requires_expiry`.
@@ -129,6 +136,14 @@ changes (AR-29) and must not be pre-added as nullable columns "just in case"
 - Standard attributes that are *not* capabilities: `barcode` (optional),
   `default_supplier_id`, `default_tax_id`, `min_stock`/`reorder_point` (planning
   placeholders — no planning logic in v1).
+  *(**Barcode — DECIDED 2026-10-02, PDR-01 / OD-C47-03:** optional; unique
+  within an organization — two **active** items in one organization must not
+  share a barcode; different organizations may reuse the same value; multiple
+  formats supported with no strict symbology validation unless separately
+  approved; **one barcode per item** — no alias/multi-barcode model. The rule
+  is **not yet enforced in code or schema**, and whether a **deactivated**
+  item's barcode may be reused is **OPEN — OQ-65**. Full record:
+  [`../../decisions/product/PDR-01-item-barcode-policy.md`](../../decisions/product/PDR-01-item-barcode-policy.md).)*
 - **No** variant/BOM/kit columns in v1; those are later modules (§3.5).
 
 **Validation rules derived from capabilities (examples):**
@@ -170,6 +185,16 @@ are **capability-driven**, not table-driven.
 - **Expert-gated:** rounding of fractional conversions, whether conversion factors
   may change over time (and what that means for history — recommendation: effective
   dated, like other configuration), and per-unit decimal precision (OQ-29).
+  *(**Partly DECIDED 2026-10-02, OD-C47-01 — OQ-29 Option A:** quantity
+  precision is **fixed at four fractional decimals** (so there is no per-unit
+  precision model); a conversion result that cannot be represented exactly is
+  **rejected** — **no rounding, no silent truncation**; factor changes must use
+  **effective-dated versions**; historical versions and the data needed to
+  interpret prior transactions are preserved. **OQ-29 remains OPEN** for the
+  global-vs-item-specific scope and precedence, the factor's own scale, derived
+  reverse pairs, which boundaries the exactness gate governs, correction of a
+  factor version entered in error, and display-vs-storage rounding. Record:
+  [`../../tasks/c-47-item-master-owner-decision-record.md`](../../tasks/c-47-item-master-owner-decision-record.md) §1.)*
 
 ### 3.5 Extension points (deliberately not designed now)
 
@@ -266,6 +291,16 @@ master record.*
 9. **Reuse of a code** after soft delete: allowed only if the owning module documents
    it and history remains unambiguous (partial unique index makes this technically
    possible; whether it is *business-desirable* is per entity — default: **no reuse**).
+   *(**Partly DECIDED 2026-10-02, OD-C47-04 — OQ-36 Option C, for the Item
+   only:** physical deletion is permitted **only** when the item has never been
+   referenced by any operational, ledger or historical record; a referenced
+   item must **not** be physically deleted; history and organization-scoped
+   identity constraints are preserved. **Code reuse after such a deletion is
+   NOT decided** and must not be inferred from the eligibility rule; rule 9's
+   "default: no reuse" therefore remains the documented default, not an Owner
+   decision. Nothing outside the Item is decided — in particular §7.6's "never
+   delete" for accounting dimensions is unchanged. Record:
+   [`../../tasks/c-47-item-master-owner-decision-record.md`](../../tasks/c-47-item-master-owner-decision-record.md) §4.)*
 10. **Audit:** lifecycle changes emit domain events (`Item.Updated`, `Item.Disabled`,
     …) consumed by Audit/Notifications; no parallel audit table (§ AR-23).
 
@@ -286,5 +321,7 @@ master record.*
 ## 9. Open questions introduced here
 
 OQ-22 (organization/branch scope & multi-company), OQ-24 (negative stock part),
-OQ-29 (unit conversion semantics & rounding), OQ-31 (inter-branch/internal
-settlement), OQ-32 (employee/HR scope). See [`../open-questions.md`](../../open-questions.md).
+OQ-29 (unit conversion semantics & rounding — **partly decided by OD-C47-01,
+still OPEN**), OQ-31 (inter-branch/internal settlement), OQ-32 (employee/HR
+scope), and **OQ-65** (barcode lifecycle/reuse — residue of the Decided
+**PDR-01** barcode policy). See [`../open-questions.md`](../../open-questions.md).

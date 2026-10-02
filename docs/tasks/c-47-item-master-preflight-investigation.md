@@ -8,6 +8,16 @@
 | Roadmap identity | **C-47 Product/item master completion** — not Task 33 |
 | Scope | Reconnaissance and decision brief only; production code, schema, migrations, permissions, tests and frontend unchanged by this report |
 
+> **Follow-up note (2026-10-02).** The decisions this investigation requested
+> in §9 have been recorded: **OD-C47-01** (OQ-29 Option A), **OD-C47-02**
+> (OQ-33 Option D — Option A explicitly **not** approved), **OD-C47-03 /
+> PDR-01** (barcode Option A — answering the §3.2 "explicit decision gap", with
+> the reuse-after-deactivation residue registered as **OQ-65**) and
+> **OD-C47-04** (OQ-36 Option C — code reuse still unanswered). **OQ-29, OQ-33
+> and OQ-36 remain OPEN.** Records:
+> [`c-47-item-master-owner-decision-record.md`](./c-47-item-master-owner-decision-record.md),
+> [`PDR-01`](../decisions/product/PDR-01-item-barcode-policy.md).
+
 ## 1. Executive finding
 
 The current repository already contains a substantial, wired Inventory master-data

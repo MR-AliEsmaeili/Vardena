@@ -9,6 +9,23 @@
 | Companion documents | [backend-mvp-dependency-matrix.md](./backend-mvp-dependency-matrix.md) · [future-task-candidates.md](./future-task-candidates.md) |
 | Production code changed by this roadmap | **NONE** |
 
+> **Current-state addendum (2026-10-02 — C-47 Owner decisions):** on `main` @
+> `4cf481e` (merge of PR #107) the Inventory item master is implemented,
+> regression-hardened and **not Owner-accepted**. Four Owner decisions are
+> recorded — OD-C47-01 (OQ-29 Option A: fixed 4-decimal quantity precision,
+> exact-or-reject, no rounding, effective-dated factor versions, history
+> preserved), OD-C47-02 (OQ-33 Option D: new kinds/flags only on an accepted
+> concrete need — **Option A is not approved and the eight-kind/per-item
+> capability model is explicitly unconfirmed**), OD-C47-03 / PDR-01 (barcode
+> Option A: optional, organization-scoped uniqueness among active items,
+> multi-format, single barcode per item — **decided but not enforced**) and
+> OD-C47-04 (OQ-36 Option C: item physical deletion only when never referenced
+> — **code reuse unanswered**). **OQ-29, OQ-33 and OQ-36 remain OPEN and the new
+> OQ-65 is OPEN** (§1.7 is amended accordingly). Records:
+> [`../tasks/c-47-item-master-owner-decision-record.md`](../tasks/c-47-item-master-owner-decision-record.md),
+> [`../decisions/product/PDR-01-item-barcode-policy.md`](../decisions/product/PDR-01-item-barcode-policy.md),
+> [`c-47-c-54-dependency-review.md`](./c-47-c-54-dependency-review.md).
+>
 > **Current-state addendum (2026-09-29):** the original inspection baseline and
 > inventory below are a dated planning snapshot. Current `main` is
 > `34dddfd60d6ce2f9d4599bd05b440556a80aa847`: Task 30 adds Account Nature/Type
@@ -134,6 +151,20 @@ Implemented and accepted: login/session (`/auth/login`, `/auth/me`, `/auth/logou
 ### 1.7 Load-bearing OQs (status from `docs/open-questions.md`)
 
 All remain **OPEN** in the registry: OQ-01 (tenancy — product question; the ODR-3 *invariant* is implemented, the *product* question is not answered), OQ-02 (UI language/Jalali), OQ-03 (currency), OQ-11 (opening balances/costing), OQ-12 (numbering policy), OQ-14 (occupational roles), OQ-15 (notification channels), OQ-16 (purchasing posture: post-v1), OQ-19 (administrator safety), OQ-22 (organizational scope/branches), OQ-23 (fiscal calendar policy), OQ-24 (inventory valuation), OQ-25 (chart content/control roles — **substantially narrowed by Tasks 20/21; content values and role catalog remain open**), OQ-27 (correction windows), OQ-30 (tax model), OQ-36 (master-data lifecycle: deletion/code reuse — **Task 21 records explicit prerequisites**), OQ-38 (party detail), OQ-39 (**durable integration semantics — gates all system posting**), OQ-40 (financial areas), OQ-41 (detail dimensions — line-level boundary decided by OD-20-6; count/defaults/binding open), OQ-42 (posting modes), OQ-43 (Iranian statutory — architecture decided as Proposed ADR-0036; **every legal fact requires validation**), OQ-49 (report builder depth), OQ-54 (finalized document policy), OQ-62/OQ-63 (pin divergence/legacy fallback — ODR-1 enforces coherence on writes; repair of existing rows undecided), and others. OQ-64 is RESOLVED (Task 13).
+
+**Amendment (2026-10-02).** Three of these rows now carry recorded Owner
+decisions and **all three remain OPEN**: **OQ-29** (narrowed by OD-C47-01 —
+fixed four-decimal quantity precision, exact-or-reject, no rounding/silent
+truncation, effective-dated conversion versions, history preserved; the
+global-vs-item-specific scope and precedence, factor scale, derived pairs,
+boundary applicability, factor correction and display rounding are **not**
+answered); **OQ-33** (OD-C47-02 decides only that new kinds/capability flags
+require an accepted concrete need — **Option A is explicitly not approved** and
+the eight-kind list plus the per-item capability model are **explicitly
+unconfirmed**); **OQ-36** (OD-C47-04 decides item physical-deletion eligibility
+only — **code reuse after physical deletion is unanswered** and nothing outside
+the item is decided). **OQ-65** is added and OPEN (barcode lifecycle/reuse,
+residue of the Decided **PDR-01** barcode policy).
 
 ---
 

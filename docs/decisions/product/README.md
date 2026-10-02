@@ -28,6 +28,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 
 | ID | Title | Type | Status | Blocks MVP |
 |---|---|---|---|---|
+| [PDR-01](./PDR-01-item-barcode-policy.md) | Item barcode policy (optional; organization-scoped uniqueness among active items; multi-format; single barcode per item) | PDR | **Decided 2026-10-02** (OD-C47-03) | No — but **decided and not yet enforced** (see PDR-01 §5) |
 | [OQ-44](./OQ-44-multi-device-offline-sync.md) | Multi-device offline sync: scope and timing | OQ | Open | No (excluded from MVP) |
 | [OQ-45](./OQ-45-license-expiry-behavior.md) | License expiry behavior (incl. internet outage, post-termination mode) | OQ | Open | Foundation only |
 | [OQ-46](./OQ-46-customer-data-export-format.md) | Customer data export format and completeness | OQ | Open | No (Excel confirmed) |
@@ -46,6 +47,16 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 | [OQ-59](./OQ-59-product-family-vs-consolidation.md) | One ERP + products vs product family / consolidation strategy | OQ | Open | No (strategic) |
 | [OQ-60](./OQ-60-mvp-acceptance-thresholds.md) | MVP acceptance thresholds | OQ | Open | Yes (ratification) |
 | [OQ-61](./OQ-61-crm-ticketing-timing-ownership.md) | CRM/ticketing timing and ownership | OQ | Open | No |
+
+### Open questions created by records here but held in the central registry
+
+| ID | Title | Where it lives | Status |
+|---|---|---|---|
+| OQ-65 | Barcode lifecycle, reuse and comparison semantics (residue of PDR-01) | [`docs/open-questions.md`](../../open-questions.md) — Open table | **Open** |
+
+OQ-65 is a domain/inventory question raised by PDR-01, not a product OQ in the
+OQ-44+ series, so its one-row registry entry is the central registry and its
+decision context is PDR-01 §6. It has no file in this directory by design.
 
 ## Related architecture records
 
