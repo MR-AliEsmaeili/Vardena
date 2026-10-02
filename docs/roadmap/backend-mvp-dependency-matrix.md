@@ -16,6 +16,20 @@
 > Inventory→Accounting integration, Sales, Purchasing and Treasury remain absent.
 > See [`../current-state-reconciliation.md`](../current-state-reconciliation.md).
 >
+> **Owner-decision addendum (2026-10-02):** the Owner decided parts of the
+> C-47 decision chain (records in `docs/decisions/product/`): OQ-29 **Option A**
+> (fixed 4-fractional-digit precision, exact-fit-or-reject, effective-dated
+> factor versions, history preserved — row stays OPEN for global-vs-item-specific
+> precedence); OQ-33 **Option D** (new kinds/flags only through the
+> decision/governance process — Option A NOT approved, taxonomy confirmation
+> OPEN); **PDR-01** item barcode policy (optional; unique among active items per
+> organization; no symbology validation; no multi-barcode; enforcement NOT
+> implemented); OQ-36 **Option C for items** (physical deletion only if never
+> referenced — code reuse OPEN); barcode lifecycle reuse registered as **OQ-65**.
+> No OQ is fully resolved, C-47 is not accepted (PR #107 merged/CI green is not
+> acceptance), and nothing here authorizes implementation. See
+> `docs/tasks/c-47-c-54-inventory-dependency-review.md`.
+>
 > Companion to the Backend MVP Roadmap. Classifies modules, capabilities,
 > dependencies, gating OQs/ADRs and MVP posture **as verified on `main`**. It
 > authorizes nothing; statuses are transcribed, not promoted. Status
@@ -88,7 +102,7 @@ Verified against `docs/accounting/task-index.md` §4 (authoritative candidate ma
 | Capability | State on `main` | Dependency / boundary | Blocking OQ/ADR | MVP posture |
 |---|---|---|---|---|
 | Warehouse coding/master | VERIFIED COMPLETE as master data (list/get/create/update/enable/disable, organization + branch scope, org-scoped code uniqueness, lifecycle freeze guards) — `docs/tasks/task-33/*`, no separate Owner acceptance record; stock locations/bins, costing, valuation and opening remain future slices | organization scope; Inventory ownership | OQ-22/OQ-33 (preserved, not resolved) | **MVP REQUIRED — master-data candidate hardened; broader Full Inventory/Warehouse operational flow still a candidate** |
-| Product/item coding, attributes, units, barcode | **PARTIAL — master implemented + regression-hardened (C-47 hardening slice); barcode policy undecided** | item model and unit/conversion contracts | OQ-29/OQ-33 | **MVP REQUIRED — candidate (remains blocked by OQ)** |
+| Product/item coding, attributes, units, barcode | **PARTIAL — master implemented + regression-hardened (C-47 hardening slice, PR #107 merged, CI green — NOT accepted); Owner decisions recorded 2026-10-02: OQ-29 Option A (precision/rounding/history decided — conforms to shipped behavior), OQ-33 Option D (extension mechanism; confirmation OPEN), PDR-01 barcode policy (decided, enforcement NOT implemented), OQ-36 item-scope Option C (eligibility decided, not implemented)** | item model and unit/conversion contracts | OQ-29 (partially decided), OQ-33 (confirmation OPEN), OQ-36 (code reuse OPEN), OQ-65 (barcode lifecycle OPEN) | **MVP REQUIRED — candidate (blocked by the remaining open subquestions; bounded implementation follow-up justified once they are collected)** |
 | Opening quantity | NOT PRESENT as complete operational flow | Inventory master/movement and opening policy | OQ-11/OQ-24 | **MVP REQUIRED — candidate** |
 | Opening rial | NOT PRESENT as complete operational flow | Inventory + Accounting + valuation | OQ-11/OQ-24 | **MVP REQUIRED — candidate** |
 | Material Request | NOT PRESENT | Inventory document/lifecycle/permissions | OQ-54 as applicable | **MVP REQUIRED — candidate** |
@@ -120,7 +134,10 @@ Only OQs load-bearing for Backend MVP, inspected on `main`. **None is closed by 
 | OQ-25 | Chart content / control roles / layouts | OPEN — substantially narrowed (Tasks 20/21); content values + role catalog remain. **OD-27-02 (DECIDED 2026-09-27): MVP-scope sub-question decided — Base Chart mechanism in MVP, concrete content set NOT MVP-required** | Base Chart content (Phase 1A loading), control roles, new report layouts | Yes for the MVP boundary (OD-27-02: concrete content not required); Phase 1A loading remains decision-gated | **No for the Base Chart content set (OD-27-02, 2026-09-27)** — the remaining OQ-25 content decisions gate Phase 1A content loading and content-dependent consumers (e.g. C-13 posting-rule mapping), not the MVP mechanism boundary |
 | OQ-27 | Correction windows / cross-period corrections | OPEN | corrections beyond reversal | Partially | Only if Phase 1E admitted |
 | OQ-30 | Tax model | OPEN | Sales tax fields, Sales → Accounting, legal/tax outputs | Yes for rules, not capability admission | **Yes — implementation gate** |
-| OQ-36 | Master-data lifecycle (deletion, code reuse) | OPEN (Task 21 records explicit Base Chart prerequisites) | Base Chart content loading, code history producer | No — Task 21 §10 lists the three prerequisites | **Yes for Phase 1A/1B** |
+| OQ-29 | Units/conversions — quantity precision & conversion semantics | **PARTIALLY DECIDED (2026-10-02, Option A)**: fixed 4-fractional-digit precision, exact-fit-or-reject, effective-dated factor versions, history preserved; **global-vs-item-specific precedence remains OPEN** (record: `docs/decisions/product/OQ-29-quantity-precision-and-conversion.md`) | C-47 completion, C-48–C-52 quantity line math | Yes (precedence subquestion) | Yes for C-47; the decided precision rule must be inherited by every quantity-bearing candidate |
+| OQ-33 | Item taxonomy & capabilities | **PARTIALLY DECIDED (2026-10-02, Option D — extension mechanism only)**: new kinds/flags only through the decision/governance process; **Option A NOT approved; the eight-kind list + per-item capability model are NOT confirmed — confirmation OPEN** (record: `docs/decisions/product/OQ-33-item-taxonomy-and-capabilities.md`) | C-47 completion, item import, Sales/Purchasing taxonomy alignment | Yes (confirmation) | Yes for C-47 |
+| OQ-36 | Master-data lifecycle (deletion, code reuse) | OPEN (Task 21 records explicit Base Chart prerequisites). **Partially decided 2026-10-02 for items only (Option C):** physical deletion permitted only if never referenced by any operational/ledger/historical record; **code reuse after deletion/deactivation and case policy remain OPEN; the account-scoped Base Chart prerequisites are NOT answered** (record: `docs/decisions/product/OQ-36-item-deletion-and-code-reuse.md`) | Base Chart content loading, code history producer, C-47 item deletion endpoint | Yes — Task 21 §10 prerequisites remain for accounts | **Yes for Phase 1A/1B** (account scope); item-scope eligibility decided but unimplemented |
+| OQ-65 | Item barcode lifecycle (reuse after deactivation; comparison semantics) | OPEN (registered 2026-10-02 when PDR-01 was decided; record: `docs/decisions/product/OQ-65-item-barcode-lifecycle.md`) | C-47 barcode enforcement (constraint shape, re-enable conflicts), item import | Yes | Yes for C-47 barcode enforcement |
 | OQ-38 | Party detail (contacts/addresses/identifiers) | OPEN | party completion, statutory-facing sales docs | Yes (flat party works for MVP) | Only if Sales with statutory fields admitted |
 | OQ-39 | Durable integration semantics | OPEN — **gates all system-generated posting** | Inventory/Sales → Accounting, outbox admission, rejected-posting semantics | No for required capability; yes for implementation shape | **Yes — implementation gate** |
 | OQ-40 | Financial areas (count, grants, default) | OPEN (interim: one area, structural access) | area grants, per-area charts | Yes | No — interim posture stands |

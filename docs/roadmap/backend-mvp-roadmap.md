@@ -20,6 +20,25 @@
 > [`../current-state-reconciliation.md`](../current-state-reconciliation.md) for
 > current truth; the roadmap remains the future planning map.
 >
+> **Owner-decision addendum (2026-10-02):** the Owner recorded decisions on the
+> Full Inventory/Warehouse item-master gates (records in
+> `docs/decisions/product/`): **OQ-29 Option A** (fixed four-fractional-digit
+> quantity precision; conversion results that cannot be represented exactly are
+> rejected — no rounding/truncation; effective-dated factor versions; history
+> preserved; global-vs-item-specific precedence stays OPEN), **OQ-33 Option D**
+> (new item kinds/capability flags only through the decision/governance process;
+> Option A NOT approved; the eight-kind list and per-item capability model are
+> NOT confirmed — stays OPEN), **PDR-01** item barcode policy (optional; unique
+> among active items within one organization; no strict symbology validation; no
+> multi-barcode support; enforcement not implemented), and **OQ-36 Option C for
+> items** (physical deletion only if never referenced by any
+> operational/ledger/historical record; code reuse stays OPEN). Barcode
+> lifecycle reuse is registered as **OQ-65**. These decisions close no OQ fully,
+> accept nothing (C-47's merged PR #107 + green CI is not Owner acceptance), and
+> authorize no implementation; §2.3/§3C candidates remain gated by their
+> remaining open subquestions. Dependency reconciliation for C-47–C-54:
+> `docs/tasks/c-47-c-54-inventory-dependency-review.md`.
+>
 > **This roadmap describes the planned path from the current repository state to
 > Backend MVP. It does not itself authorize implementation or accept future
 > work.** No task number is created, no Open Question is closed, no ADR is

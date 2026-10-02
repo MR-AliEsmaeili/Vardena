@@ -16,6 +16,22 @@
 > Owner-approved brief elsewhere). "Implementation?" records whether any
 > implementation exists on `main` today.
 >
+> **Owner-decision addendum (2026-10-02):** the Owner recorded decisions on the
+> C-47 chain (records in `docs/decisions/product/`): **OQ-29 Option A** (fixed
+> 4-fractional-digit precision; exact-fit-or-reject; effective-dated factor
+> versions; history preserved — partial, global-vs-item-specific precedence
+> open), **OQ-33 Option D** (kinds/flags only via an identified, accepted
+> concrete need — taxonomy confirmation stays OPEN; Option A NOT approved),
+> **PDR-01 barcode policy** (optional; unique among active items per
+> organization; no symbology validation; no multi-barcode), and **OQ-36 Option C
+> for items** (physical deletion only if never referenced; code reuse OPEN).
+> Barcode lifecycle reuse is registered as **OQ-65**. These decisions record
+> policy only: no production code/schema change was made, C-47 is **not**
+> accepted (PR #107 merged + CI green ≠ Owner acceptance), and no candidate is
+> promoted or authorized by them. See
+> `docs/tasks/c-47-c-54-inventory-dependency-review.md` for the C-47–C-54
+> dependency reconciliation.
+>
 > Statuses: `CURRENT` (actively awaiting Owner action) · `ACCEPTED` ·
 > `IMPLEMENTED — NOT ACCEPTED` · `READY TO INVESTIGATE` · `BLOCKED BY OQ` ·
 > `BLOCKED BY ADR` · `BLOCKED BY OWNER ADMISSION` · `BLOCKED BY DEPENDENCY` ·
@@ -46,7 +62,7 @@
 | C-17 Party completion (contacts/addresses/bank accounts/legal identifiers) | Extend `organization.parties` for statutory-facing documents | — | **OQ-38** | — | flat party only | **BLOCKED BY OQ** |
 | C-18 Sales module (MVP-required full admitted scope) | Party/Customer, sales document/invoice, lines, quantities, prices, approved tax fields, numbering, lifecycle/finalization, applicable inventory effect and accounting effect | C-17, Documents, Workflow, Full Inventory (C-46…C-54) | OQ-54, OQ-30, OQ-34, OQ-35, OQ-38; OQ-15 (stock-on-sale) | — | NO | **BLOCKED BY OQ / READY TO INVESTIGATE** (capability admitted; implementation not authorized) |
 | C-46 Warehouse coding / master completion | Complete operational warehouse coding and management on Inventory Core | organization scope, Inventory Core | OQ-22/OQ-33 (preserved, not resolved) | ADR-0022 Accepted; ADR-0017 Proposed | **YES — list/get/create/update/enable/disable, organization + branch scope, uniqueness, lifecycle freeze guards all verified against the existing contract; zero production code changed; regression coverage added** (`docs/tasks/task-33/*`, work order titled "Task 33 — Inventory / Warehouse Master Completion"; no separate Owner acceptance record) | **MVP REQUIRED — IMPLEMENTED (reconnaissance + regression-test hardening only) — NOT ACCEPTED — CI VERIFICATION PENDING** |
-| C-47 Product/item master completion | Product coding, attributes, units and barcode without inventing unsupported rules | Inventory master, unit/conversion contract | OQ-29/OQ-33 (preserved, not resolved) | ADR-0022 Accepted | **PARTIAL — item/unit/conversion master already implemented and hardened; conversion supersession race + resolve-path org leak fixed; hermetic + live-PG regression coverage added (`docs/tasks/c-47-item-master-readiness-hardening-report.md`, preflight `c-47-item-master-preflight-investigation.md`); barcode policy untouched (needs OQ-33 chain decision); no separate Owner acceptance record** | **MVP REQUIRED — IMPLEMENTED-STYLE RECONNAISSANCE + REGRESSION HARDENING — NOT ACCEPTED — REMAINS BLOCKED BY OQ (OQ-29/OQ-33) — CI PASSED (PR #107: backend incl. live-DB suites + frontend green, runs `36992098706`/`36992935996`)** |
+| C-47 Product/item master completion | Product coding, attributes, units and barcode without inventing unsupported rules | Inventory master, unit/conversion contract | OQ-29 (Option A decided 2026-10-02 for precision/rounding/history; global-vs-item-specific precedence OPEN) / OQ-33 (extension mechanism decided — Option D; taxonomy/capability confirmation OPEN) / OQ-36 (item deletion eligibility decided — Option C; code reuse OPEN) / OQ-65 (barcode lifecycle, OPEN) | ADR-0022 Accepted | **PARTIAL — item/unit/conversion master already implemented and hardened; conversion supersession race + resolve-path org leak fixed; hermetic + live-PG regression coverage added (`docs/tasks/c-47-item-master-readiness-hardening-report.md`, preflight `c-47-item-master-preflight-investigation.md`); Owner decisions recorded 2026-10-02 (`docs/decisions/product/`: OQ-29 Option A, OQ-33 Option D, PDR-01 barcode, OQ-36 item-scope Option C) — the decided barcode uniqueness and deletion eligibility are NOT yet implemented (policy only, no code/schema change); no separate Owner acceptance record** | **MVP REQUIRED — IMPLEMENTED-STYLE RECONNAISSANCE + REGRESSION HARDENING — NOT ACCEPTED (PR #107 merged and CI green is NOT Owner acceptance) — REMAINS BLOCKED BY OQ for its remaining open subquestions (OQ-33 taxonomy/capability confirmation, OQ-36 code reuse/case policy, OQ-65 barcode lifecycle, OQ-29 global-vs-item-specific precedence) — CI PASSED (PR #107: backend incl. live-DB suites + frontend green, runs `36992098706`/`36992935996`)** |
 | C-48 Opening quantity flow | Operational quantity opening balance | product/warehouse, movement ledger | OQ-11/OQ-24 | ADR-0022 Accepted | NO | **MVP REQUIRED — BLOCKED BY OQ** |
 | C-49 Opening rial flow | Separate rial opening balance and accounting relationship | opening quantity, Accounting, valuation | OQ-11/OQ-24/OQ-25 | ADR-0022 Accepted | NO | **MVP REQUIRED — BLOCKED BY OQ** |
 | C-50 Material Request | Inventory material-request document and lifecycle | Documents, permissions, Inventory | OQ-54 as applicable | ADR-0023 Accepted | NO | **MVP REQUIRED — READY TO INVESTIGATE** |

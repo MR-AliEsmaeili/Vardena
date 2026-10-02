@@ -8,6 +8,44 @@
 | Repository        | `MR-AliEsmaeili/Vardena`                   |
 | Change type       | Documentation and governance only          |
 
+> **Dated addendum (2026-10-02) — Owner decisions on the C-47 chain and C-47
+> status; no re-audit.** Since the audited SHA, `main` advanced to
+> `4cf481efa2de5ca9863d9d434c2ab707de23301a` (merge of PR #107) through merged
+> PRs #89–#101, #103–#104, #106–#107 (frontend UX/workspace work, organization
+> bootstrap completion, licensing foundation L-01/L-02, financial workspace
+> context, C-46 warehouse-master hardening, and the C-47 preflight +
+> item-master hardening; PRs #102/#105 closed unmerged). This addendum does not
+> re-audit that span; it records only:
+>
+> 1. **Owner decisions (2026-10-02)**, recorded in `docs/decisions/product/`
+>    and the OQ registry: **OQ-29 Option A** (fixed four-fractional-digit
+>    quantity precision; exact-fit-or-reject with no rounding/truncation;
+>    effective-dated conversion-factor versions; history preserved — the
+>    global-vs-item-specific precedence subquestion stays OPEN), **OQ-33
+>    Option D** (new item kinds/capability flags only via an identified,
+>    accepted concrete need through the decision/governance process; Option A
+>    NOT approved; the eight-kind taxonomy + per-item capability confirmation
+>    stays OPEN), **PDR-01 item barcode policy** (optional; unique among active
+>    items within one organization; no cross-organization restriction; no
+>    strict symbology validation; no multi-barcode support; enforcement not
+>    implemented), and **OQ-36 Option C for items** (physical deletion
+>    permitted only when never referenced by any operational/ledger/historical
+>    record; code-reuse semantics stay OPEN). Barcode lifecycle reuse is
+>    registered as **OQ-65**. None of these fully resolves an OQ; none changes
+>    production code or schema.
+> 2. **C-47 status:** the C-47 item-master hardening slice is merged (PR #107)
+>    with green CI including the live-DB suites. **Merged + CI green is not
+>    Owner acceptance** — C-47 remains **NOT ACCEPTED** and remains blocked by
+>    its remaining open subquestions (OQ-33 taxonomy/capability confirmation,
+>    OQ-36 code reuse/case policy, OQ-65 barcode lifecycle, OQ-29
+>    global-vs-item-specific precedence); the decided barcode-uniqueness and
+>    deletion-eligibility policies are not yet implemented.
+> 3. **Dependency reconciliation for C-47–C-54:**
+>    `docs/tasks/c-47-c-54-inventory-dependency-review.md` (next
+>    dependency-ready candidate: a bounded **C-50 Material Request
+>    investigation**, with a bounded C-47 implementation follow-up justified
+>    once the outstanding Owner decisions are collected).
+
 ## 1. Purpose, authority, and method
 
 This report reconciles the repository after Tasks 30–32 and frontend follow-up work without changing runtime behavior. It is the current cross-repository reference; dated task reports remain evidence of the state and claims made when those tasks closed.

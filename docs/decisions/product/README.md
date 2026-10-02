@@ -14,10 +14,15 @@ one-row registry entry pointing here.
 
 - **OQ-xx** — product/business open question. Created when the product owner
   must answer a business question with multiple valid directions. IDs continue
-  the central registry (`docs/open-questions.md`): product OQs start at OQ-44.
+  the central registry (`docs/open-questions.md`): originally-created product
+  OQs start at OQ-44; since 2026-10-02, decision records for **pre-OQ-44
+  central-registry OQs** (e.g. OQ-29/OQ-33/OQ-36, Inventory domain) are also
+  kept here when the Owner decides them, with the registry row in
+  `docs/open-questions.md` pointing here.
 - **PDR-xx** — *Product Decision Record*: a decided product/business matter,
   recorded like an ADR but for product/commercial decisions (ADR-0001 style
-  process does not apply to these; they are not architectural).
+  process does not apply to these; they are not architectural). First used
+  2026-10-02 (PDR-01, item barcode policy).
 - **ADR-xxxx** — architecture decision records, in `docs/adr/`. Product records
   here may *require* or *cite* ADRs but never modify them.
 
@@ -46,6 +51,11 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 | [OQ-59](./OQ-59-product-family-vs-consolidation.md) | One ERP + products vs product family / consolidation strategy | OQ | Open | No (strategic) |
 | [OQ-60](./OQ-60-mvp-acceptance-thresholds.md) | MVP acceptance thresholds | OQ | Open | Yes (ratification) |
 | [OQ-61](./OQ-61-crm-ticketing-timing-ownership.md) | CRM/ticketing timing and ownership | OQ | Open | No |
+| [OQ-29](./OQ-29-quantity-precision-and-conversion.md) | Quantity precision and conversion semantics (Inventory units/conversions) | OQ decision record | **Decided (Option A) — partial** (global-vs-item-specific precedence remains Open) | Yes (C-47; C-48–C-52 line math) |
+| [OQ-33](./OQ-33-item-taxonomy-and-capabilities.md) | Item taxonomy and capabilities | OQ decision record | **Open** (extension mechanism Decided — Option D; Option A NOT approved; confirmation Open) | Yes (C-47) |
+| [PDR-01](./PDR-01-item-barcode-policy.md) | Item barcode policy | PDR | **Decided (Option A)** (lifecycle detail → OQ-65) | Yes (C-47 barcode enforcement) |
+| [OQ-36](./OQ-36-item-deletion-and-code-reuse.md) | Master-data lifecycle — item deletion and code reuse | OQ decision record | **Open** (item deletion eligibility Decided — Option C; code reuse/case policy Open) | Yes (C-47; Phase 1A/1B account-scoped prerequisites remain) |
+| [OQ-65](./OQ-65-item-barcode-lifecycle.md) | Item barcode lifecycle — reuse after deactivation and comparison semantics | OQ | Open | Yes (C-47 barcode enforcement) |
 
 ## Related architecture records
 

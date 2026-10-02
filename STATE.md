@@ -470,6 +470,8 @@ changed by this acceptance synchronization.
 
 The existing canonical product/domain registry is `docs/open-questions.md` (OQ-01…OQ-63 in the open table; OQ-64 in Resolved). The following are relevant unresolved questions; other registry entries remain unchanged. BOOT identifiers below are new documentation observations, not renumbered product OQs.
 
+**2026-10-02 update:** the Owner recorded partial decisions on the C-47 chain — OQ-29 **Option A** (precision/rounding/history decided; global-vs-item-specific precedence stays open), OQ-33 **Option D** (extension mechanism; Option A NOT approved; taxonomy/capability confirmation stays open), **PDR-01** item barcode policy (decided; enforcement not implemented), OQ-36 **Option C for items** (deletion eligibility; code reuse stays open) — and **OQ-65** (item barcode lifecycle reuse) was registered in the open table. No OQ moved to Resolved; records live in `docs/decisions/product/` and §18.
+
 | ID                    | Question / why it matters                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Evidence / related area                                                                                                                                      | Decision needed                                                                                              | Status                                                                                                                                                                                                                                                                   |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | BOOT-OQ-01            | Should future architectural ADRs use docs/adr or docs/decisions/ADR-*? Two conventions would split decision authority                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `docs/adr/README.md`, `.vardena/agent-rules.md` AG-07, requested structure in §3                                                                             | Repository convention is canonical: use `docs/adr/`; preserve existing ADRs                                  | RESOLVED BY REPOSITORY EVIDENCE 2026-09-24                                                                                                                                                                                                                               |
@@ -1150,3 +1152,136 @@ merged `docs/tasks/c-47-item-master-preflight-investigation.md`, PR #106).
   Owner acceptance. C-47 remains **BLOCKED BY OQ (OQ-29/OQ-33)** in the
   candidate register; this section does not accept, re-accept, or alter the
   status of §13/§16, C-01..C-46, or any other candidate.
+
+## 18. C-47 Owner Decisions, Status Reconciliation & C-47–C-54 Dependency Review (2026-10-02, documentation only)
+
+This addendum records a documentation/governance task at `main` @
+`4cf481efa2de5ca9863d9d434c2ab707de23301a` (merge of PR #107). Full
+dependency-review evidence:
+`docs/tasks/c-47-c-54-inventory-dependency-review.md`. No production code,
+schema, migration, API, generated type, permission or test was changed; no
+heavy E2E/live-PostgreSQL/migration command was run (fast documentation
+consistency checks only: changed-path audit, `git diff --check`, relative-link
+validation, terminology greps).
+
+### 18.1 Owner decisions recorded (2026-10-02)
+
+Recorded in the decision register `docs/decisions/product/` with
+`docs/open-questions.md` rows updated; each decision is scoped to exactly what
+the Owner answered and closes no independent subquestion beyond that:
+
+- **OQ-29 — Option A (partial; row stays OPEN):** fixed quantity precision of
+  four fractional decimal places (`numeric(18,4)`); conversion results that
+  cannot be represented exactly at that precision are **rejected** — no
+  rounding, no silent truncation; conversion-factor changes only through new
+  effective-dated versions; historical conversion versions and the data needed
+  to interpret prior transactions are preserved. This approves the previously
+  interim fail-closed behavior shipped by the C-47 hardening as the decided
+  rule. Still open: global-vs-item-specific precedence/scope (incl.
+  item-specific-over-global override and reverse-pair derivation). Record:
+  `docs/decisions/product/OQ-29-quantity-precision-and-conversion.md`.
+- **OQ-33 — Option D (extension mechanism only; row stays OPEN):** new item
+  kinds or capability flags may be introduced only when a concrete need has
+  been identified and accepted through the project's decision/governance
+  process. **Option A is NOT approved**; the Owner has not confirmed the
+  existing eight item kinds and the current per-item configurable capability
+  model — that confirmation remains OPEN. Record:
+  `docs/decisions/product/OQ-33-item-taxonomy-and-capabilities.md`.
+- **Item barcode policy — Option A (decided, PDR-01):** barcode optional;
+  uniqueness enforced within an organization; two **active** items in the same
+  organization must not share a barcode; different organizations may use the
+  same barcode; multiple formats supported with **no strict symbology
+  validation** unless separately approved; **no multi-barcode-per-item
+  support**. No production code/schema change was made in the documentation
+  task; enforcement (a database/service uniqueness guarantee over active
+  items' non-null barcodes) is a future bounded task. The unresolved lifecycle
+  detail — **whether a barcode assigned to a deactivated item may be reused**,
+  plus re-enable conflicts and comparison/normalization semantics — is not
+  answered by the active-scoped uniqueness wording and is registered as
+  **OQ-65** (open). Records:
+  `docs/decisions/product/PDR-01-item-barcode-policy.md`,
+  `docs/decisions/product/OQ-65-item-barcode-lifecycle.md`.
+- **OQ-36 — Option C, item scope (partial; row stays OPEN):** physical
+  deletion of an item is permitted **only when the item has never been
+  referenced by any operational, ledger, or historical record**; a referenced
+  item must not be physically deleted; history and organization-scoped
+  identity constraints are preserved. Recorded policy only — no delete
+  endpoint/permission exists or was added. Still open (do not infer from
+  Option C): code reuse after physical deletion of a never-referenced item;
+  code reuse after deactivation; case sensitivity; soft-delete posture;
+  non-item master data, including the account-scoped Base Chart prerequisites
+  (Task 21 §10) which this item-scoped decision does not answer. Record:
+  `docs/decisions/product/OQ-36-item-deletion-and-code-reuse.md`.
+
+The decision-register index (`docs/decisions/product/README.md`) was updated
+with the five new records (OQ-29, OQ-33, PDR-01, OQ-36, OQ-65).
+
+### 18.2 C-47 status reconciliation
+
+PR #107 (item-master hardening) is **merged** and CI is **green** including the
+live-DB suites — and that is **not** Owner acceptance. No Owner acceptance
+record exists; C-47 remains **NOT ACCEPTED**. After the 2026-10-02 decisions
+its blocker set is narrowed but not cleared: the OQ-33 taxonomy/capability
+confirmation, the OQ-36 code-reuse/case policy, the OQ-65 barcode lifecycle
+detail and the OQ-29 precedence subquestion remain open, and the decided
+barcode-uniqueness/deletion-eligibility policies are not yet implemented. The
+candidate register (C-47 row) and dependency matrix (§3 item-master row, §4
+OQ-29/33/36/65 rows) were updated to exactly this state.
+
+### 18.3 Dependency review findings (C-47–C-54)
+
+Verified against the registry and code, not identifiers (full matrix in the
+report):
+
+- **Prerequisites verified:** OQ-11 (opening import/costing policy) OPEN;
+  OQ-24 (costing method, negative-stock policy) OPEN; OQ-39 (durable
+  integration semantics) OPEN — no production system-generated posting, in-memory
+  bus only; OQ-42 (posting Mode A/B) OPEN — nothing system-posted, Mode B only
+  a recorded assumption. These gate C-48/C-49 (OQ-11/OQ-24, OQ-25 for C-49)
+  and the rial halves of C-51/C-52 (OQ-24/OQ-39/OQ-42).
+- **C-48 opening quantity, C-49 opening rial, C-51 receipt, C-52 issue, C-53
+  stock/settings, C-54 Kardex/reports: BLOCKED** by the open OQs above. The
+  quantity-side movement/conversion foundation for C-51/C-52 is implemented
+  and CI-proven (PR #107 live suites); the operational documents, openings,
+  settings and reports do not exist (no material-request/receipt/issue/
+  opening/Kardex code — verified by inspection; the movement vocabulary
+  deliberately has no `opening` or document-flavoured types yet).
+- **C-50 Material Request: READY TO INVESTIGATE — the next dependency-ready
+  candidate.** All structural dependencies are implemented with Accepted ADRs
+  (Documents ADR-0023, Workflow ADR-0024, Inventory Core ADR-0022); its
+  blocking policy question is OQ-54 (verified OPEN; cancel-only is a
+  recommendation, not decided), with OQ-13/OQ-26 (approval coupling) and
+  OQ-12 (numbering gaps) as investigation inputs. A C-50 investigation must
+  prepare those decision packs without selecting options. OQ-54's own record
+  also names warehouse receipts/issues, so it gates C-51/C-52 document
+  lifecycles as well — a finding beyond the register's current Blocking-OQ
+  column for those rows (recorded in the report; the register rows were left
+  unchanged).
+- **Bounded C-47 implementation follow-up: justified after the outstanding
+  Owner decisions are collected** (OQ-65, OQ-36 code-reuse/case, OQ-33
+  confirmation). OQ-29 Option A requires no code change (current behavior
+  conforms). Expected bounded scope: barcode uniqueness enforcement, item
+  delete endpoint implementing the never-referenced eligibility rule with
+  permissions/tests, any approved taxonomy delta, OpenAPI/generated-type sync
+  — no receipt/issue/opening/material-request capability. It is not authorized
+  by this addendum; the candidate-register promotion rule applies.
+
+### 18.4 Changed paths (this task, documentation only)
+
+`docs/decisions/product/` (new: OQ-29, OQ-33, PDR-01, OQ-36, OQ-65 records;
+updated: `README.md` index), `docs/open-questions.md` (OQ-29/OQ-33/OQ-36 rows
+narrowed, OQ-65 added, header note), `docs/roadmap/future-task-candidates.md`
+(C-47 row + dated addendum), `docs/roadmap/backend-mvp-dependency-matrix.md`
+(§3 item-master row, §4 OQ-29/33/36/65, dated addendum),
+`docs/roadmap/backend-mvp-roadmap.md` (dated addendum),
+`docs/current-state-reconciliation.md` (dated addendum),
+`docs/tasks/c-47-c-54-inventory-dependency-review.md` (new report), this
+section of `STATE.md`.
+
+### 18.5 Not accepted by this addendum
+
+Recording Owner decisions is not accepting C-47, PR #107, or any other merged
+work item. Nothing here promotes an ADR, closes an OQ beyond the explicitly
+decided partial scopes, authorizes implementation of warehouse receipt, issue,
+opening balances, material request, stock/settings, Kardex or reporting, or
+accepts this documentation task itself.
