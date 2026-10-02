@@ -31,6 +31,12 @@
 > and [`../decisions/product/README.md`](../decisions/product/README.md).
 > This addendum closes no OQ, promotes no ADR and authorizes no implementation.
 >
+> **C-50 investigation addendum (2026-10-02, `main` @ `0e600689`):** the
+> Material Request investigation is complete and
+> [`../tasks/c-50-material-request-investigation.md`](../tasks/c-50-material-request-investigation.md)
+> is the evidence/decision brief. C-50 remains MVP-required but **blocked for
+> implementation**; no OQ or ADR was resolved and no implementation was authorized.
+>
 > **Current-state addendum (2026-09-29):** the original inspection baseline and
 > inventory below are a dated planning snapshot. Current `main` is
 > `34dddfd60d6ce2f9d4599bd05b440556a80aa847`: Task 30 adds Account Nature/Type

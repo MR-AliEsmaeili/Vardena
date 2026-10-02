@@ -1221,10 +1221,12 @@ removes nothing above. Full record:
   inventory ledger has **no cost column**, there is deliberately **no `opening`
   movement type**, and Inventory has registered **no** document type (only
   Accounting uses the Documents type registry).
-- **Next dependency-ready candidate: C-50 (Material Request) — INVESTIGATION
-  ONLY.** It is the only C-48…C-54 candidate with no valuation, costing or
-  durable-posting gate; its implementation still requires OQ-54, OQ-13/OQ-26 and
-  an explicit decision on whether a material request reserves stock.
+- **C-50 (Material Request) investigation complete — implementation BLOCKED.**
+  The evidence/decision brief is
+  `docs/tasks/c-50-material-request-investigation.md`. C-50 remains the only
+  C-48…C-54 candidate with no valuation, costing or durable-posting gate, but
+  implementation still requires OQ-54, OQ-13/OQ-26, an explicit reservation/C-52
+  answer, the minimum domain contract, and separate Owner admission.
 - **Bounded C-47 implementation follow-up:** justified in principle for barcode
   uniqueness (candidate **C-55**) and item physical deletion (candidate
   **C-56**), but **both are blocked** — C-55 by OQ-65 (every index shape
