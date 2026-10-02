@@ -35,6 +35,7 @@ import {
   MaterialRequestStatusError,
   MaterialRequestApproverMismatchError,
   MaterialRequestLineNotFoundError,
+  MaterialRequestLinesInvokedError,
   MaterialRequestInvocationCapacityError,
   type ApproveLineInput,
   type CreateDraftHeaderInput,
@@ -153,6 +154,9 @@ class FakeMaterialRequestsRepository {
       requestedBy: header.requestedBy,
       submittedAt: null,
       submittedBy: null,
+      returnedAt: null,
+      returnedBy: null,
+      returnReason: null,
       approvedAt: null,
       approvedBy: null,
       rejectedAt: null,
@@ -161,6 +165,9 @@ class FakeMaterialRequestsRepository {
       approvalReversedAt: null,
       approvalReversedBy: null,
       approvalReversalReason: null,
+      cancelledAt: null,
+      cancelledBy: null,
+      cancellationReason: null,
       createdAt: header.createdAt,
       updatedAt: header.createdAt,
     };
@@ -209,7 +216,7 @@ class FakeMaterialRequestsRepository {
   }): Promise<{ header: MaterialRequest; lines: MaterialRequestLine[] }> {
     return this.withLock(input.id, () => {
       const current = this.requireHeader(input.id);
-      this.assertStatus(current, 'draft');
+      this.assertStatusIn(current, ['draft', 'returned']);
       const updated: MaterialRequest = {
         ...current,
         description:
@@ -260,7 +267,7 @@ class FakeMaterialRequestsRepository {
   async submit(input: SubmitInput): Promise<MaterialRequest> {
     return this.withLock(input.id, () => {
       const current = this.requireHeader(input.id);
-      this.assertStatus(current, 'draft');
+      this.assertStatusIn(current, ['draft', 'returned']);
       const updated: MaterialRequest = {
         ...current,
         number: input.number,
@@ -272,7 +279,7 @@ class FakeMaterialRequestsRepository {
       this.headers.set(input.id, updated);
       this.appendEvent(input.id, input.organizationId, {
         eventType: 'submitted',
-        fromStatus: 'draft',
+        fromStatus: current.status,
         toStatus: 'submitted',
         actorId: input.submittedBy,
         reason: null,
@@ -280,6 +287,77 @@ class FakeMaterialRequestsRepository {
         occurredAt: input.submittedAt,
       });
       return updated;
+    });
+  }
+
+  async returnForCorrection(input: {
+    id: string;
+    organizationId: string;
+    returnedAt: Date;
+    returnedBy: string | null;
+    reason: string;
+  }): Promise<MaterialRequest> {
+    return this.withLock(input.id, () => {
+      const current = this.requireHeader(input.id);
+      this.assertStatus(current, 'submitted');
+      const updated: MaterialRequest = {
+        ...current,
+        status: 'returned',
+        returnedAt: input.returnedAt,
+        returnedBy: input.returnedBy,
+        returnReason: input.reason,
+        updatedAt: input.returnedAt,
+      };
+      this.headers.set(input.id, updated);
+      this.appendEvent(input.id, input.organizationId, {
+        eventType: 'returned_for_correction',
+        fromStatus: 'submitted',
+        toStatus: 'returned',
+        actorId: input.returnedBy,
+        reason: input.reason,
+        referenceId: null,
+        occurredAt: input.returnedAt,
+      });
+      return updated;
+    });
+  }
+
+  async cancel(input: {
+    id: string;
+    organizationId: string;
+    cancelledAt: Date;
+    cancelledBy: string | null;
+    reason: string | null;
+  }): Promise<{ header: MaterialRequest; releasedReservationIds: string[] }> {
+    return this.withLock(input.id, () => {
+      const current = this.requireHeader(input.id);
+      this.assertStatus(current, 'approved');
+      const lines = this.lines.get(input.id) ?? [];
+      if (lines.some((line) => line.invocationCount > 0)) {
+        throw new MaterialRequestLinesInvokedError();
+      }
+      const releasedReservationIds = lines
+        .map((line) => line.reservationId)
+        .filter((id): id is string => id !== null);
+      const updated: MaterialRequest = {
+        ...current,
+        status: 'cancelled',
+        cancelledAt: input.cancelledAt,
+        cancelledBy: input.cancelledBy,
+        cancellationReason: input.reason,
+        updatedAt: input.cancelledAt,
+      };
+      this.headers.set(input.id, updated);
+      this.appendEvent(input.id, input.organizationId, {
+        eventType: 'cancelled',
+        fromStatus: 'approved',
+        toStatus: 'cancelled',
+        actorId: input.cancelledBy,
+        reason: input.reason,
+        referenceId: null,
+        occurredAt: input.cancelledAt,
+      });
+      return { header: updated, releasedReservationIds };
     });
   }
 
@@ -366,6 +444,10 @@ class FakeMaterialRequestsRepository {
       if (current.approvedBy !== input.expectedApprovedBy) {
         throw new MaterialRequestApproverMismatchError();
       }
+      const lines = this.lines.get(input.id) ?? [];
+      if (lines.some((line) => line.invocationCount > 0)) {
+        throw new MaterialRequestLinesInvokedError();
+      }
       const updated: MaterialRequest = {
         ...current,
         status: 'submitted',
@@ -384,7 +466,10 @@ class FakeMaterialRequestsRepository {
         referenceId: null,
         occurredAt: input.reversedAt,
       });
-      return { header: updated, releasedReservationIds: [] };
+      const releasedReservationIds = lines
+        .map((line) => line.reservationId)
+        .filter((id): id is string => id !== null);
+      return { header: updated, releasedReservationIds };
     });
   }
 
@@ -499,7 +584,14 @@ class FakeMaterialRequestsRepository {
     header: MaterialRequest,
     expected: MaterialRequest['status'],
   ): void {
-    if (header.status !== expected) {
+    this.assertStatusIn(header, [expected]);
+  }
+
+  private assertStatusIn(
+    header: MaterialRequest,
+    expected: readonly MaterialRequest['status'][],
+  ): void {
+    if (!(expected as readonly string[]).includes(header.status)) {
       throw new MaterialRequestStatusError(header.status, expected);
     }
   }
@@ -628,8 +720,22 @@ async function buildFixture(options: BuildOptions = {}) {
 
   const repository = new FakeMaterialRequestsRepository();
 
+  // Idempotent by `allocationKey`, matching the real `NumberingService`
+  // contract (see its class docs): a resubmission after return-for-
+  // correction calls `allocateNumber` again with the SAME key (the Material
+  // Request id) and must replay the already-allocated number rather than
+  // minting a new one.
+  const numberingAllocations = new Map<string, string>();
   const numbering = {
-    allocateNumber: async () => ({ number: `MR-${generateId()}` }),
+    allocateNumber: async (input: { allocationKey: string }) => {
+      const existing = numberingAllocations.get(input.allocationKey);
+      if (existing !== undefined) {
+        return { number: existing };
+      }
+      const number = `MR-${generateId()}`;
+      numberingAllocations.set(input.allocationKey, number);
+      return { number };
+    },
   } as unknown as NumberingService;
 
   const registry = new DocumentTypeRegistry();
@@ -759,6 +865,12 @@ async function buildFixture(options: BuildOptions = {}) {
     itemId,
     warehouseId,
     relationCalls,
+    // Exposed so tests exercising a SECOND principal (e.g. "cancellation
+    // does not require the original approver") can seed that principal's
+    // membership — ODR-3 requires an actual membership row for every
+    // request-context caller, same as the fixed ACTOR above.
+    seedMembership: (userId: string) =>
+      stores.raw.memberships.seed(userId, organizationId),
   };
 }
 
@@ -1313,5 +1425,338 @@ describe('Finding #4 — invocation accounting correctness and concurrency', () 
     const lines = await fixture.repository.listLines(materialRequestId);
     expect(lines[0]?.invokedBaseQuantity).toBe('7');
     expect(lines[0]?.invocationCount).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Owner-confirmed decisions: reservation shape, lifecycle, approval
+// authority, return-for-correction, cancellation (see
+// docs/tasks/c-50-material-request-investigation.md §19 and OQ-66).
+// ---------------------------------------------------------------------------
+
+describe('Owner decision — approval authority has no requester/approver separation', () => {
+  it('lets the SAME principal create, submit, AND approve its own request', async () => {
+    const fixture = await buildFixture();
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '5',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    expect(created.requestedBy).toBe(ACTOR.userId);
+    await asActor(() =>
+      fixture.service.submit(created.id, fixture.organizationId),
+    );
+    // Self-approval must succeed — no requester/approver separation is
+    // enforced anywhere in this service (Owner decision).
+    const approved = await asActor(() =>
+      fixture.service.approve(created.id, fixture.organizationId),
+    );
+    expect(approved.status).toBe('approved');
+    expect(approved.approvedBy).toBe(ACTOR.userId);
+    expect(approved.requestedBy).toBe(approved.approvedBy);
+  });
+});
+
+describe('Owner decision — return for correction and resubmission', () => {
+  it('returns a submitted request for correction with a required reason, then allows edit and resubmission', async () => {
+    const fixture = await buildFixture();
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '5',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    const submitted = await asActor(() =>
+      fixture.service.submit(created.id, fixture.organizationId),
+    );
+    const originalNumber = submitted.number;
+    expect(originalNumber).not.toBeNull();
+
+    const returned = await asActor(() =>
+      fixture.service.returnForCorrection(created.id, fixture.organizationId, {
+        reason: 'Wrong warehouse on line 1',
+      }),
+    );
+    expect(returned.status).toBe('returned');
+    expect(returned.returnedBy).toBe(ACTOR.userId);
+    expect(returned.returnReason).toBe('Wrong warehouse on line 1');
+
+    // The requester may edit a returned request (same editable state as draft).
+    const edited = await asActor(() =>
+      fixture.service.updateDraft(created.id, fixture.organizationId, {
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '7',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    expect(edited.lines[0]?.quantity).toBe('7');
+
+    // Resubmission replays the SAME allocated number (never a new one).
+    const resubmitted = await asActor(() =>
+      fixture.service.submit(created.id, fixture.organizationId),
+    );
+    expect(resubmitted.status).toBe('submitted');
+    expect(resubmitted.number).toBe(originalNumber);
+
+    const events = await fixture.repository.listEvents(created.id);
+    const returnEvent = events.find(
+      (e) => e.eventType === 'returned_for_correction',
+    );
+    expect(returnEvent?.fromStatus).toBe('submitted');
+    expect(returnEvent?.toStatus).toBe('returned');
+    // The resubmission event is a plain 'submitted' event, distinguished by
+    // fromStatus (never a new event type) — preserving the full cycle
+    // history without inventing a parallel narrative.
+    const resubmitEvent = [...events]
+      .reverse()
+      .find((e) => e.eventType === 'submitted');
+    expect(resubmitEvent?.fromStatus).toBe('returned');
+  });
+
+  it('rejects an empty return reason', async () => {
+    const fixture = await buildFixture();
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '5',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.submit(created.id, fixture.organizationId),
+    );
+    await expect(
+      asActor(() =>
+        fixture.service.returnForCorrection(
+          created.id,
+          fixture.organizationId,
+          {
+            reason: '   ',
+          },
+        ),
+      ),
+    ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('refuses to return a request that is not submitted', async () => {
+    const fixture = await buildFixture();
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '5',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await expect(
+      asActor(() =>
+        fixture.service.returnForCorrection(
+          created.id,
+          fixture.organizationId,
+          {
+            reason: 'Too early',
+          },
+        ),
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+  });
+});
+
+describe('Owner decision — cancellation is distinct from approval reversal', () => {
+  it('cancels an approved request with no reservation, releasing nothing', async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId } = await createAndApprove(fixture, {
+      reservationRequested: false,
+    });
+    const cancelled = await asActor(() =>
+      fixture.service.cancel(materialRequestId, fixture.organizationId, {
+        reason: 'No longer needed',
+      }),
+    );
+    expect(cancelled.status).toBe('cancelled');
+    expect(cancelled.cancelledBy).toBe(ACTOR.userId);
+    expect(cancelled.cancellationReason).toBe('No longer needed');
+    // Cancellation must NEVER touch the separate approval-reversal columns.
+    expect(cancelled.approvalReversedAt).toBeNull();
+    expect(cancelled.approvalReversedBy).toBeNull();
+  });
+
+  it("releases a flagged line's reservation on cancellation (never leaves a dangling claim)", async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      reservationRequested: true,
+    });
+    const beforeCancel = await fixture.repository.listLines(materialRequestId);
+    const reservationId = beforeCancel.find(
+      (l) => l.id === lineId,
+    )?.reservationId;
+    expect(reservationId).not.toBeNull();
+
+    // Exercise the repository contract directly: `cancel` must report every
+    // reservation id it released so the caller (and, in the real
+    // repository, `InventoryReservationsRepository`, under the same
+    // Material Request row lock `approve` used to create the reservation)
+    // can restore `inventory_balances.reserved` — exercised end-to-end
+    // against real Postgres by the live E2E suite.
+    const result = await fixture.repository.cancel({
+      id: materialRequestId,
+      organizationId: fixture.organizationId,
+      cancelledAt: new Date(),
+      cancelledBy: ACTOR.userId,
+      reason: null,
+    });
+    expect(result.header.status).toBe('cancelled');
+    expect(result.releasedReservationIds).toContain(reservationId);
+  });
+
+  it('cancellation does NOT reverse approval and does not require the original approver', async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId } = await createAndApprove(fixture);
+    // A different actor than the approver still succeeds — unlike
+    // reverseApproval, cancel carries no original-approver restriction
+    // (Owner decision: no actor restriction is named for cancellation).
+    const otherActor: AuthenticatedPrincipal = {
+      userId: 'user-2',
+      sessionId: 'session-2',
+    };
+    fixture.seedMembership(otherActor.userId);
+    const cancelled = await runWithRequestContext(
+      { correlationId: 'test-correlation-2', principal: otherActor },
+      () =>
+        fixture.service.cancel(materialRequestId, fixture.organizationId, {
+          reason: 'Cancelled by someone else entirely',
+        }),
+    );
+    expect(cancelled.status).toBe('cancelled');
+    expect(cancelled.cancelledBy).toBe('user-2');
+  });
+
+  it('refuses to cancel a request that is not approved', async () => {
+    const fixture = await buildFixture();
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '5',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await expect(
+      asActor(() =>
+        fixture.service.cancel(created.id, fixture.organizationId, {}),
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+  });
+
+  it('refuses to cancel once ANY line has been invoked, even partially', async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      quantity: '10',
+    });
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '100',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+        lineId,
+        destinationModule: 'inventory',
+        destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+        destinationDocumentId: destination.id,
+        // Partial invocation only — must still block cancellation entirely.
+        quantity: '3',
+      }),
+    );
+    await expect(
+      asActor(() =>
+        fixture.service.cancel(materialRequestId, fixture.organizationId, {}),
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+    // The request must still be approved, not silently cancelled.
+    const current = await fixture.repository.findById(materialRequestId);
+    expect(current?.status).toBe('approved');
+  });
+
+  it('reverseApproval is likewise refused once any line has been invoked, even partially', async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      quantity: '10',
+    });
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '100',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+        lineId,
+        destinationModule: 'inventory',
+        destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+        destinationDocumentId: destination.id,
+        quantity: '3',
+      }),
+    );
+    await expect(
+      asActor(() =>
+        fixture.service.reverseApproval(
+          materialRequestId,
+          fixture.organizationId,
+          {},
+        ),
+      ),
+    ).rejects.toMatchObject({ status: 422 });
   });
 });

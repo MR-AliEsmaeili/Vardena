@@ -136,7 +136,26 @@ export class RejectMaterialRequestDto {
   reason!: string;
 }
 
+export class ReturnMaterialRequestForCorrectionDto {
+  @ApiProperty({
+    maxLength: MAX_REASON_LENGTH,
+    description:
+      'Required — the requester needs a reason to know what to correct.',
+  })
+  @IsString()
+  @MaxLength(MAX_REASON_LENGTH)
+  reason!: string;
+}
+
 export class ReverseMaterialRequestApprovalDto {
+  @ApiPropertyOptional({ maxLength: MAX_REASON_LENGTH })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_REASON_LENGTH)
+  reason?: string;
+}
+
+export class CancelMaterialRequestDto {
   @ApiPropertyOptional({ maxLength: MAX_REASON_LENGTH })
   @IsOptional()
   @IsString()
@@ -278,6 +297,19 @@ export class MaterialRequestResponseDto {
   @ApiProperty({ nullable: true, format: 'ulid' })
   submittedBy!: string | null;
 
+  @ApiProperty({
+    nullable: true,
+    format: 'date-time',
+    description: 'Set by the MOST RECENT return for correction, if any.',
+  })
+  returnedAt!: string | null;
+
+  @ApiProperty({ nullable: true, format: 'ulid' })
+  returnedBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  returnReason!: string | null;
+
   @ApiProperty({ nullable: true, format: 'date-time' })
   approvedAt!: string | null;
 
@@ -301,6 +333,20 @@ export class MaterialRequestResponseDto {
 
   @ApiProperty({ nullable: true })
   approvalReversalReason!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    format: 'date-time',
+    description:
+      'Set once, terminally, by Cancel — distinct from approval reversal.',
+  })
+  cancelledAt!: string | null;
+
+  @ApiProperty({ nullable: true, format: 'ulid' })
+  cancelledBy!: string | null;
+
+  @ApiProperty({ nullable: true })
+  cancellationReason!: string | null;
 
   @ApiProperty({ format: 'date-time' })
   createdAt!: string;

@@ -53,6 +53,15 @@ import type { OrderBy } from './master-data-rows.js';
  * non-composable transaction) — this is what makes "approve the header AND
  * reserve every flagged line" one atomic unit (C-50 blocker #1): any line's
  * insufficient stock rolls back the WHOLE approval, never a partial one.
+ *
+ * `reverseApproval` and `cancel` are the two operations that RELEASE a
+ * reservation `approve` created (Owner decision: these are distinct,
+ * separately-permissioned, separately-audited transitions — reversal goes
+ * back to `submitted`, cancellation goes to the terminal `cancelled`); both
+ * share `releaseActiveReservationsForLines` below and both refuse to run at
+ * all if any line has already been invoked, checked under the SAME Material
+ * Request row lock `reserveInvocationCapacity` takes — so neither can race a
+ * concurrent first invocation.
  */
 
 export interface MaterialRequestListFilter {
@@ -140,17 +149,57 @@ export interface ReverseApprovalInput {
   reason: string | null;
 }
 
+export interface ReturnForCorrectionInput {
+  id: string;
+  organizationId: string;
+  returnedAt: Date;
+  returnedBy: string | null;
+  reason: string;
+}
+
+export interface CancelInput {
+  id: string;
+  organizationId: string;
+  cancelledAt: Date;
+  cancelledBy: string | null;
+  reason: string | null;
+}
+
 export class MaterialRequestStatusError extends Error {
   readonly current: string;
-  readonly expected: MaterialRequestStatus;
+  readonly expected: readonly MaterialRequestStatus[];
 
-  constructor(current: string, expected: MaterialRequestStatus) {
+  constructor(
+    current: string,
+    expected: MaterialRequestStatus | readonly MaterialRequestStatus[],
+  ) {
+    const expectedList = Array.isArray(expected) ? expected : [expected];
+    const expectedText =
+      expectedList.length === 1
+        ? `"${expectedList[0]}"`
+        : expectedList.map((status) => `"${status}"`).join(' or ');
     super(
-      `Material Request is "${current}", but this action requires "${expected}".`,
+      `Material Request is "${current}", but this action requires ${expectedText}.`,
     );
     this.name = 'MaterialRequestStatusError';
     this.current = current;
-    this.expected = expected;
+    this.expected = expectedList;
+  }
+}
+
+/** Thrown by `reverseApproval`/`cancel` when at least one line has already
+ *  been invoked into a subsequent process — checked under the SAME
+ *  Material Request row lock the invocation path itself takes
+ *  (`reserveInvocationCapacity`), so this is race-free: a concurrent
+ *  `invokeLine` call for this request can never slip in between the check
+ *  and the release/cancel it guards. */
+export class MaterialRequestLinesInvokedError extends Error {
+  constructor() {
+    super(
+      'This action cannot be completed: at least one line has already ' +
+        'been invoked into a subsequent process.',
+    );
+    this.name = 'MaterialRequestLinesInvokedError';
   }
 }
 
@@ -323,12 +372,14 @@ export class MaterialRequestsRepository {
   }
 
   /**
-   * Replace a draft's header fields and/or its full line set. Lines are
-   * replaced wholesale (delete-then-recreate) rather than diffed — a draft
-   * has no history to preserve yet, and this keeps the write shape simple
-   * and race-free under the request's own row lock.
+   * Replace a draft's (or a returned-for-correction request's) header
+   * fields and/or its full line set. Lines are replaced wholesale
+   * (delete-then-recreate) rather than diffed — neither state has history
+   * worth preserving at the line level yet, and this keeps the write shape
+   * simple and race-free under the request's own row lock.
    *
-   * @throws MaterialRequestStatusError when the request is not a draft.
+   * @throws MaterialRequestStatusError when the request is neither a draft
+   *   nor returned for correction.
    */
   async updateDraft(input: {
     id: string;
@@ -341,7 +392,7 @@ export class MaterialRequestsRepository {
     const client = await this.transacting();
     return client.$transaction(async (tx) => {
       const locked = await lockMaterialRequestRow(tx, input.id);
-      assertStatus(locked, 'draft');
+      assertStatusIn(locked, ['draft', 'returned']);
 
       if (input.header.description !== undefined) {
         await tx.materialRequest.update({
@@ -414,12 +465,21 @@ export class MaterialRequestsRepository {
 
   // ---- lifecycle ----------------------------------------------------------
 
-  /** @throws MaterialRequestStatusError when the request is not a draft. */
+  /**
+   * Submit a draft for the first time, OR resubmit a request returned for
+   * correction — the SAME action and the SAME allocated/replayed number
+   * either way (Owner decision: "the requester must resubmit the corrected
+   * request"; `fromStatus` on the recorded event is what tells the two
+   * apart — see `material-request-event.ts`).
+   *
+   * @throws MaterialRequestStatusError when the request is neither a draft
+   *   nor returned for correction.
+   */
   async submit(input: SubmitInput): Promise<MaterialRequest> {
     const client = await this.transacting();
     return client.$transaction(async (tx) => {
       const locked = await lockMaterialRequestRow(tx, input.id);
-      assertStatus(locked, 'draft');
+      assertStatusIn(locked, ['draft', 'returned']);
       const updated = await tx.materialRequest.update({
         where: { id: input.id },
         data: {
@@ -437,7 +497,7 @@ export class MaterialRequestsRepository {
           materialRequestId: input.id,
           organizationId: input.organizationId,
           eventType: 'submitted',
-          fromStatus: 'draft',
+          fromStatus: locked.status,
           toStatus: 'submitted',
           actorId: input.submittedBy,
           reason: null,
@@ -618,23 +678,70 @@ export class MaterialRequestsRepository {
   }
 
   /**
-   * Reverse an approval: releases every ACTIVE reservation this approval
-   * created, then moves the request back to `submitted`.
+   * Return a submitted request to its requester for correction (Owner
+   * decision: "the approver can return it to the requester for
+   * correction"). The requester must edit and resubmit (`submit`, from
+   * `returned`) before it can be approved, rejected, or returned again.
    *
-   * The caller (`MaterialRequestsService`) has already verified, outside this
-   * transaction, that NO line has been invoked yet (C-50 §3.4's "must not
-   * silently permit reversal if it would invalidate a downstream
-   * invocation") — that check reads `documents.document_relations` through
-   * `DocumentRelationsService`, a different module's own transaction, so it
-   * cannot be composed into this one. A reversal racing a concurrent
-   * first-invocation of a line is an accepted, documented gap (the same
-   * category as the already-accepted non-atomicity of numbering allocation
-   * and invocation-cap checking) — not a silent one: it is reported in the
-   * final report, not hidden.
+   * @throws MaterialRequestStatusError when the request is not submitted.
+   */
+  async returnForCorrection(
+    input: ReturnForCorrectionInput,
+  ): Promise<MaterialRequest> {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
+      const locked = await lockMaterialRequestRow(tx, input.id);
+      assertStatus(locked, 'submitted');
+      const updated = await tx.materialRequest.update({
+        where: { id: input.id },
+        data: {
+          status: 'returned',
+          returnedAt: input.returnedAt,
+          returnedBy: input.returnedBy,
+          returnReason: input.reason,
+          updatedAt: input.returnedAt,
+          updatedBy: input.returnedBy,
+        },
+      });
+      await tx.materialRequestEvent.create({
+        data: {
+          id: generateId(),
+          materialRequestId: input.id,
+          organizationId: input.organizationId,
+          eventType: 'returned_for_correction',
+          fromStatus: 'submitted',
+          toStatus: 'returned',
+          actorId: input.returnedBy,
+          reason: input.reason,
+          referenceId: null,
+          occurredAt: input.returnedAt,
+          createdAt: input.returnedAt,
+        },
+      });
+      return toHeaderDomain(updated);
+    });
+  }
+
+  /**
+   * Reverse an approval: releases every ACTIVE reservation this approval
+   * created, then moves the request back to `submitted` (NOT a terminal
+   * state — it can be approved again, or rejected/returned).
+   *
+   * Refused outright (`MaterialRequestLinesInvokedError`) if any line has
+   * already been invoked into a subsequent process — checked HERE, under
+   * the same Material Request row lock `reserveInvocationCapacity` itself
+   * takes, so this is fully race-free: a concurrent first-invocation of a
+   * line cannot slip in between the check and the release (earlier versions
+   * of this method checked outside the transaction, via
+   * `documents.document_relations`, and accepted a race window; that
+   * compromise is no longer necessary now that invocation state lives on
+   * this module's own, lockable rows — see `material-request-line.ts`).
    *
    * @throws MaterialRequestStatusError when the request is not approved.
    * @throws MaterialRequestApproverMismatchError when `expectedApprovedBy`
    *   does not match the row's `approvedBy` under the lock.
+   * @throws MaterialRequestLinesInvokedError when at least one line has
+   *   already been invoked.
    */
   async reverseApproval(
     input: ReverseApprovalInput,
@@ -651,69 +758,19 @@ export class MaterialRequestsRepository {
         where: { materialRequestId: input.id },
         orderBy: [{ lineNumber: 'asc' }],
       });
-      const releasedReservationIds: string[] = [];
-      for (const line of lines) {
-        if (line.reservationId === null) continue;
-        const reservationLock = await lockReservationRow(
-          tx,
-          line.reservationId,
-        );
-        if (reservationLock === null || reservationLock.status !== 'active') {
-          // Already released (or, defensively, missing) — nothing to undo.
-          continue;
-        }
-        const { balance } = await lockBalanceRow(
-          tx,
-          {
-            organizationId: reservationLock.organizationId,
-            branchId: reservationLock.branchId,
-            warehouseId: reservationLock.warehouseId,
-            itemId: reservationLock.itemId,
-          },
-          input.reversedBy,
-        );
-        const resultingReserved = subtractDecimalStrings(
-          balance.reserved,
-          reservationLock.baseQuantity,
-        );
-        if (compareDecimalStrings(resultingReserved, '0') < 0) {
-          throw new BalanceDriftError();
-        }
-        const releaseOperationKey = `material-request-reverse:${input.id}:${line.id}`;
-        await tx.inventoryReservation.update({
-          where: { id: line.reservationId },
-          data: {
-            status: 'released',
-            releasedAt: input.reversedAt,
-            releasedBy: input.reversedBy,
-            releaseOperationKey,
-            updatedAt: input.reversedAt,
-            updatedBy: input.reversedBy,
-          },
-        });
-        await adjustBalanceCounters(tx, {
-          balanceId: balance.id,
-          onHandDelta: '0',
-          reservedDelta: `-${reservationLock.baseQuantity}`,
-          lastMovementAt: balance.lastMovementAt,
-          updatedAt: input.reversedAt,
-          updatedBy: input.reversedBy,
-        });
-        await tx.inventoryOperation.create({
-          data: {
-            id: generateId(),
-            organizationId: input.organizationId,
-            operationKey: releaseOperationKey,
-            operation: 'reservation_release',
-            requestHash: sha256Hex(releaseOperationKey),
-            result: { kind: 'reservation', reservationId: line.reservationId },
-            createdAt: input.reversedAt,
-            updatedAt: input.reversedAt,
-            createdBy: input.reversedBy,
-          },
-        });
-        releasedReservationIds.push(line.reservationId);
+      if (lines.some((line) => line.invocationCount > 0)) {
+        throw new MaterialRequestLinesInvokedError();
       }
+      const releasedReservationIds = await releaseActiveReservationsForLines(
+        tx,
+        {
+          lines,
+          organizationId: input.organizationId,
+          releasedAt: input.reversedAt,
+          releasedBy: input.reversedBy,
+          operationPrefix: `material-request-reverse:${input.id}`,
+        },
+      );
 
       const updated = await tx.materialRequest.update({
         where: { id: input.id },
@@ -739,6 +796,84 @@ export class MaterialRequestsRepository {
           referenceId: null,
           occurredAt: input.reversedAt,
           createdAt: input.reversedAt,
+        },
+      });
+      return {
+        header: toHeaderDomain(updated),
+        releasedReservationIds,
+      };
+    });
+  }
+
+  /**
+   * Cancel an APPROVED request outright — a DISTINCT, TERMINAL transition
+   * from `reverseApproval` (Owner decision: "cancellation and reversal of
+   * approval are distinct operations... with explicit, auditable state
+   * transitions"). Releases every ACTIVE reservation the same way
+   * `reverseApproval` does (reservations never represent anything
+   * "consumed", only a soft claim — releasing one on cancellation never
+   * undoes a real movement). Refused outright if any line has already been
+   * invoked, even partially — checked under the SAME row lock as
+   * `reverseApproval`/`reserveInvocationCapacity`, so this is race-free for
+   * the same reason. Unlike `reverseApproval`, there is no
+   * original-approver restriction: any caller holding
+   * `Inventory.MaterialRequest.Cancel` may cancel (Owner decisions name no
+   * actor restriction for cancellation, unlike reversal's explicit one).
+   *
+   * @throws MaterialRequestStatusError when the request is not approved.
+   * @throws MaterialRequestLinesInvokedError when at least one line has
+   *   already been invoked.
+   */
+  async cancel(
+    input: CancelInput,
+  ): Promise<{ header: MaterialRequest; releasedReservationIds: string[] }> {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
+      const locked = await lockMaterialRequestRow(tx, input.id);
+      assertStatus(locked, 'approved');
+
+      const lines = await tx.materialRequestLine.findMany({
+        where: { materialRequestId: input.id },
+        orderBy: [{ lineNumber: 'asc' }],
+      });
+      if (lines.some((line) => line.invocationCount > 0)) {
+        throw new MaterialRequestLinesInvokedError();
+      }
+      const releasedReservationIds = await releaseActiveReservationsForLines(
+        tx,
+        {
+          lines,
+          organizationId: input.organizationId,
+          releasedAt: input.cancelledAt,
+          releasedBy: input.cancelledBy,
+          operationPrefix: `material-request-cancel:${input.id}`,
+        },
+      );
+
+      const updated = await tx.materialRequest.update({
+        where: { id: input.id },
+        data: {
+          status: 'cancelled',
+          cancelledAt: input.cancelledAt,
+          cancelledBy: input.cancelledBy,
+          cancellationReason: input.reason,
+          updatedAt: input.cancelledAt,
+          updatedBy: input.cancelledBy,
+        },
+      });
+      await tx.materialRequestEvent.create({
+        data: {
+          id: generateId(),
+          materialRequestId: input.id,
+          organizationId: input.organizationId,
+          eventType: 'cancelled',
+          fromStatus: 'approved',
+          toStatus: 'cancelled',
+          actorId: input.cancelledBy,
+          reason: input.reason,
+          referenceId: null,
+          occurredAt: input.cancelledAt,
+          createdAt: input.cancelledAt,
         },
       });
       return {
@@ -906,6 +1041,97 @@ function sha256Hex(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+/**
+ * Shared by `reverseApproval` and `cancel`: release every ACTIVE reservation
+ * among `lines`, under the caller's own transaction/row lock. A reservation
+ * never represents anything physically consumed (it never touches
+ * `on_hand`), so releasing it here — for either operation — is always safe
+ * once the caller has already established no line has been invoked.
+ *
+ * Idempotent against an already-released (or, defensively, missing)
+ * reservation: both are silently skipped, never an error — the same
+ * tolerance the original `reverseApproval` implementation had.
+ *
+ * @throws BalanceDriftError if releasing a reservation would drive
+ *   `reserved` negative (defense in depth; should never happen under this
+ *   module's own locked arithmetic).
+ */
+async function releaseActiveReservationsForLines(
+  tx: MrTxClient,
+  input: {
+    lines: readonly { id: string; reservationId: string | null }[];
+    organizationId: string;
+    releasedAt: Date;
+    releasedBy: string | null;
+    /** Unique per call (embeds the request id and which operation this is,
+     *  e.g. `material-request-reverse:<id>` or `material-request-cancel:<id>`);
+     *  combined with each line's id for `inventory_operations.operation_key`. */
+    operationPrefix: string;
+  },
+): Promise<string[]> {
+  const releasedReservationIds: string[] = [];
+  for (const line of input.lines) {
+    if (line.reservationId === null) continue;
+    const reservationLock = await lockReservationRow(tx, line.reservationId);
+    if (reservationLock === null || reservationLock.status !== 'active') {
+      // Already released (or, defensively, missing) — nothing to undo.
+      continue;
+    }
+    const { balance } = await lockBalanceRow(
+      tx,
+      {
+        organizationId: reservationLock.organizationId,
+        branchId: reservationLock.branchId,
+        warehouseId: reservationLock.warehouseId,
+        itemId: reservationLock.itemId,
+      },
+      input.releasedBy,
+    );
+    const resultingReserved = subtractDecimalStrings(
+      balance.reserved,
+      reservationLock.baseQuantity,
+    );
+    if (compareDecimalStrings(resultingReserved, '0') < 0) {
+      throw new BalanceDriftError();
+    }
+    const releaseOperationKey = `${input.operationPrefix}:${line.id}`;
+    await tx.inventoryReservation.update({
+      where: { id: line.reservationId },
+      data: {
+        status: 'released',
+        releasedAt: input.releasedAt,
+        releasedBy: input.releasedBy,
+        releaseOperationKey,
+        updatedAt: input.releasedAt,
+        updatedBy: input.releasedBy,
+      },
+    });
+    await adjustBalanceCounters(tx, {
+      balanceId: balance.id,
+      onHandDelta: '0',
+      reservedDelta: `-${reservationLock.baseQuantity}`,
+      lastMovementAt: balance.lastMovementAt,
+      updatedAt: input.releasedAt,
+      updatedBy: input.releasedBy,
+    });
+    await tx.inventoryOperation.create({
+      data: {
+        id: generateId(),
+        organizationId: input.organizationId,
+        operationKey: releaseOperationKey,
+        operation: 'reservation_release',
+        requestHash: sha256Hex(releaseOperationKey),
+        result: { kind: 'reservation', reservationId: line.reservationId },
+        createdAt: input.releasedAt,
+        updatedAt: input.releasedAt,
+        createdBy: input.releasedBy,
+      },
+    });
+    releasedReservationIds.push(line.reservationId);
+  }
+  return releasedReservationIds;
+}
+
 interface LockedMaterialRequestRow {
   id: string;
   status: string;
@@ -937,7 +1163,18 @@ function assertStatus(
   locked: LockedMaterialRequestRow,
   expected: MaterialRequestStatus,
 ): void {
-  if (locked.status !== expected) {
+  assertStatusIn(locked, [expected]);
+}
+
+/** Same as `assertStatus`, but accepts more than one acceptable current
+ *  status — used by `submit` (first submission from `draft`, or
+ *  resubmission from `returned`) and `updateDraft` (editable while `draft`
+ *  OR `returned`). */
+function assertStatusIn(
+  locked: LockedMaterialRequestRow,
+  expected: readonly MaterialRequestStatus[],
+): void {
+  if (!(expected as readonly string[]).includes(locked.status)) {
     throw new MaterialRequestStatusError(locked.status, expected);
   }
 }
@@ -983,6 +1220,9 @@ function toHeaderDomain(row: {
   requestedBy: string;
   submittedAt: Date | null;
   submittedBy: string | null;
+  returnedAt: Date | null;
+  returnedBy: string | null;
+  returnReason: string | null;
   approvedAt: Date | null;
   approvedBy: string | null;
   rejectedAt: Date | null;
@@ -991,6 +1231,9 @@ function toHeaderDomain(row: {
   approvalReversedAt: Date | null;
   approvalReversedBy: string | null;
   approvalReversalReason: string | null;
+  cancelledAt: Date | null;
+  cancelledBy: string | null;
+  cancellationReason: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): MaterialRequest {
@@ -1008,6 +1251,9 @@ function toHeaderDomain(row: {
     requestedBy: row.requestedBy,
     submittedAt: row.submittedAt,
     submittedBy: row.submittedBy,
+    returnedAt: row.returnedAt,
+    returnedBy: row.returnedBy,
+    returnReason: row.returnReason,
     approvedAt: row.approvedAt,
     approvedBy: row.approvedBy,
     rejectedAt: row.rejectedAt,
@@ -1016,6 +1262,9 @@ function toHeaderDomain(row: {
     approvalReversedAt: row.approvalReversedAt,
     approvalReversedBy: row.approvalReversedBy,
     approvalReversalReason: row.approvalReversalReason,
+    cancelledAt: row.cancelledAt,
+    cancelledBy: row.cancelledBy,
+    cancellationReason: row.cancellationReason,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

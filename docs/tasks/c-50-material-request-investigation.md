@@ -984,3 +984,123 @@ Owner acceptance.
    Material Request, so no compliant typed frontend surface can be built
    yet. Neither gap was worked around by hand-typing a contract or
    fabricating a destination document.
+
+## 20. Owner decisions recorded (2026-10-02, second follow-up session) — reconciliation against §§7/8/11
+
+> This section records **only** what the Owner explicitly decided in this round.
+> It does not retroactively close §7 (OQ-54), §8 (OQ-13/OQ-26), or §11.4 in
+> general — those remain open product-policy questions outside this round's
+> four named decisions. Nothing here resolves OQ-54 or OQ-13/OQ-26 as a whole;
+> `docs/open-questions.md` is updated **only** for OQ-66, per the Owner's
+> explicit scoping of this round.
+
+### 20.1 Decision 1 — reservation shape (answers §11.4 "Require", names the terms §11.4 asked for)
+
+The Owner selected the **"Require"** branch of §11.4 and named every term that
+branch requires:
+
+- Reservation is **optional**, controlled per line by `reservationRequested` —
+  not an automatic consequence of approval.
+- If selected, approval **must** reserve the exact requested item, warehouse,
+  quantity, organization, and applicable unit conversion named on the line —
+  no system-chosen warehouse, no fallback, no splitting across warehouses.
+- If a flagged line's reservation cannot be fulfilled in full, **approval of
+  the entire request fails** — no partial reservation for that line, and (this
+  was already the only way the code could behave, since `approve` is one
+  database transaction) no reservation for any other line either.
+- Reservation must **never** change physical On Hand, and existing
+  availability/concurrency guarantees are preserved unchanged.
+- No automatic warehouse fallback or splitting is introduced.
+
+This matches the shape already implemented and described in §19 item 2 — the
+Owner has now **ratified** that shape rather than it remaining an
+unauthorized-pending-decision implementation. `docs/open-questions.md`
+OQ-66 is updated accordingly (see §20.4 below for what still remains open).
+
+### 20.2 Decision 2 — document lifecycle and editing (narrows, but does not fully answer, §7/OQ-54)
+
+The Owner named a **specific lifecycle**: Draft (requester edits) → Submitted
+(awaiting approval; approver may return for correction) → Returned for
+correction (requester edits, must resubmit) → Approved (content immutable) →
+{Rejected | Cancelled}, plus the separate Approved → Submitted reversal edge.
+Cancellation of an **approved** request is permitted only if **no part** of it
+has entered a downstream process (zero invocation, including partial); once
+any invocation exists, cancellation of the **entire** request is prohibited
+(there is no partial-cancel concept). Cancellation and approval-reversal are
+distinct, independently auditable operations.
+
+This is **not** a selection of OQ-54's canonical Option A/B/C — the Owner was
+not asked that question in this round, and this report does not infer one.
+What this decision *does* settle, narrowly, for Material Request only:
+
+- there is no physical deletion of anything past `draft` (consistent with
+  Option A's "transactional documents are never soft-deleted" framing, but
+  not an adoption of Option A's full canonical content, e.g. configuration
+  surface, cross-document policy, or any other document type);
+- a canceled request stays visible with an explicit `cancelled` status and
+  its own audit columns (`cancelledAt`/`cancelledBy`/`cancellationReason`),
+  answering §7.2's "canceled visibility" concern for Material Request only;
+- the previously-undefined "posted" boundary that Option B would have needed
+  is moot for Material Request — invocation (downstream consumption), not an
+  accounting posting event, is the boundary that blocks cancellation.
+
+OQ-54 itself remains **OPEN** in `docs/open-questions.md` — this round answers
+Material Request's own lifecycle rules, not the cross-module canonical
+options §7 asks the Owner to pick from for the platform at large.
+
+### 20.3 Decisions 3 and 4 — approval authority and return-for-correction (narrows, but does not fully answer, §8/OQ-13/OQ-26)
+
+The Owner decided, for Material Request specifically: any holder of
+`Material Request Approve` may approve or reject within their authorized
+scope (no separately assigned approver role), self-approval is explicitly
+**permitted** (no requester/approver separation), and a holder of
+`Material Request Return For Correction` may return a submitted request to
+its requester, who must then resubmit before approval — with an auditable
+history of both the return and the resubmission.
+
+This answers several of §8.2's "missing semantics" bullets **for Material
+Request only**: creator/requester self-approval prohibition (answered: there
+is none), reject/resubmission/withdrawal-equivalent behavior (answered: via
+return-for-correction, not a generic workflow withdrawal), and who is
+approver (answered: any permission holder, not a named role). It does **not**
+answer §8.2's remaining bullets for the platform at large (role/permission
+mapping policy across document types, worklist/notification delivery,
+multi-level approval, delegation, escalation) and does not select a canonical
+OQ-13/OQ-26 option set. Those rows remain **OPEN** in
+`docs/open-questions.md`; this section only records that Material Request's
+own implementation now has an Owner-authorized approval-authority rule,
+narrower in scope than the platform-wide question.
+
+### 20.4 What remains genuinely open after this round (not decided, not invented)
+
+Per this round's explicit instruction to record undetermined edge cases as
+open questions rather than inventing policy:
+
+1. **Reservation consumption on invocation (C-52 handoff).** None of the four
+   decisions above say what happens to an **active** reservation once its
+   line has been invoked into a downstream document. The current
+   implementation leaves it untouched — `invokeLine` never reads or writes
+   `MaterialRequestLine.reservationId` — and, combined with Decision 2's rule
+   that cancellation and reversal are both blocked once *any* invocation
+   exists, there is **no implemented path** that ever releases a reservation
+   on a line that has been invoked (partially or fully). This is recorded as
+   the open remainder of **OQ-66** (`docs/open-questions.md`), not resolved
+   here. A future C-52 (Warehouse Issue) task must decide whether invocation
+   itself should consume/convert the reservation, whether a different
+   explicit operation is needed, or whether this is accepted as a durable
+   "reserved until Issue posts" state — none of that is decided by this
+   round's four Owner decisions.
+2. **Reservation release mechanics on cancellation/reversal, verified in
+   this round:** cancelling an approved request (with zero invocation) and
+   reversing its approval both release every active reservation the request
+   holds, restoring `inventory_balances.reserved` under the same Material
+   Request row lock `approve` used to create it
+   (`MaterialRequestsRepository.releaseActiveReservationsForLines`, shared by
+   both operations). Neither operation ever touches `onHand`, and neither
+   can run once any line has been invoked (enforced inside the same
+   transaction, under the same lock, so this is race-free). This is
+   implemented and tested (unit: `material-requests.service.spec.ts`;
+   intended for live-Postgres confirmation in
+   `material-requests-live.e2e-spec.ts`) — it is not a new open question, it
+   is the verified answer to this round's item 4 for the cases the Owner's
+   decisions actually cover (zero invocation).

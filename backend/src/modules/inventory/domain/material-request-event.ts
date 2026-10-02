@@ -1,6 +1,8 @@
 /**
  * Material Request event — the append-only lifecycle narrative for one
- * request (C-50: "preserve audit trail of approval and reversal").
+ * request (C-50: "preserve audit trail of approval and reversal", and the
+ * Owner's later decision: "preserve an auditable history of the return and
+ * subsequent resubmission").
  *
  * A narrow, typed-column audit trail — NOT a generic audit framework and NOT
  * bound to the Workflow module (no production module in this codebase
@@ -9,17 +11,27 @@
  * where appropriate" by not duplicating a generic engine nobody else uses
  * either).
  *
+ * Resubmission after a return for correction does NOT get its own event
+ * type: it reuses `submitted`, distinguished from a first submission by
+ * `fromStatus` (`'returned'` instead of `'draft'`) — the row already carries
+ * everything needed to tell the two apart, and every row is append-only, so
+ * a request returned and resubmitted multiple times has the full cycle
+ * history, not just the latest cycle.
+ *
  * Framework-free (AR-05).
  */
 
 export const MATERIAL_REQUEST_EVENT_TYPES = [
   'created',
   'submitted',
+  'returned_for_correction',
   'approved',
   'rejected',
   'approval_reversed',
+  'cancelled',
   'line_invoked',
 ] as const;
+
 
 export type MaterialRequestEventType =
   (typeof MATERIAL_REQUEST_EVENT_TYPES)[number];

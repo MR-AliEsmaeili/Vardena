@@ -2,25 +2,36 @@
  * Material Request (C-50) — an Inventory-owned business aggregate recording
  * DEMAND for stock.
  *
- * Owner decisions (docs/tasks/c-50-material-request-investigation.md §1,
- * reconciled with the Owner's C-50 confirmations):
+ * Owner decisions (docs/tasks/c-50-material-request-investigation.md §1 and
+ * §19, and the later confirmed lifecycle/reservation/approval-authority
+ * decisions recorded there — see OQ-66 for the reservation-shape
+ * ratification):
  *   - NOT a movement, receipt, issue, Purchase Request or accounting
- *     document. Draft/submitted/rejected/approved never touch `on_hand`.
- *   - Approval creates, AT MOST, a reservation per line (a soft claim), never
- *     a posted ledger effect — reservation ≠ physical movement.
- *   - Explicit approval stage; rejection requires a reason; immutable after
- *     approval except for an approver-only reversal.
+ *     document. No status ever touches `on_hand`.
+ *   - Reservation is OPTIONAL per line (never implied by the request
+ *     existing); approval creates, AT MOST, a reservation per flagged line
+ *     (a soft claim on `reserved`, never `on_hand`) — see
+ *     `material-request-line.ts`.
+ *   - Explicit approval stage; rejection requires a reason; content is
+ *     immutable once approved except for an approver-only reversal, and the
+ *     whole request is immutable once cancelled or rejected.
+ *   - Any user holding `Inventory.MaterialRequest.Approve` may approve or
+ *     reject within their authorized organization scope — there is no
+ *     separately assigned approver, and the requester MAY approve their own
+ *     request (role/permission is the only authority boundary; no
+ *     requester/approver separation is enforced).
+ *   - A submitted request may be returned to its requester for correction
+ *     (status `returned`); the requester edits and must resubmit (back to
+ *     `submitted`) before it can be approved or rejected.
+ *   - An approved request may be CANCELLED, but only while no part of it has
+ *     entered a downstream process (no line has been invoked, not even
+ *     partially) — cancellation and approval reversal are distinct,
+ *     separately permissioned, separately audited operations.
  *
  * Status is a closed, code-defined list — same convention as
- * `inventory_reservations.status` / `items.item_kind` — stored as plain text,
- * never a database enum (extending it later is an ordinary application
- * change, never a migration).
- *
- * There is deliberately NO `cancelled` status: no governance-confirmed rule
- * exists for what cancelling an approved (and possibly reserved) request
- * must do, so inventing one here would be exactly the kind of undocumented
- * business rule the investigation process forbids. See
- * `planMaterialRequestReversal` for the one reversal rule that IS resolved.
+ * `inventory_reservations.status` / `items.item_kind` — stored as plain
+ * text, never a database enum (extending it later is an ordinary
+ * application change, never a migration).
  *
  * Framework-free (AR-05).
  */
@@ -28,8 +39,10 @@
 export const MATERIAL_REQUEST_STATUSES = [
   'draft',
   'submitted',
+  'returned',
   'approved',
   'rejected',
+  'cancelled',
 ] as const;
 
 export type MaterialRequestStatus = (typeof MATERIAL_REQUEST_STATUSES)[number];
@@ -41,16 +54,22 @@ export function isMaterialRequestStatus(
 }
 
 export type MaterialRequestTransitionProblem =
-  'not_draft' | 'not_submitted' | 'not_approved' | 'already_terminal';
+  | 'not_editable'
+  | 'not_submitted'
+  | 'not_approved'
+  | 'already_terminal';
 
 export function materialRequestTransitionMessage(
   problem: MaterialRequestTransitionProblem,
 ): string {
   switch (problem) {
-    case 'not_draft':
-      return 'The request is not a draft and can no longer be edited, submitted or deleted.';
+    case 'not_editable':
+      return (
+        'The request can only be edited, submitted or deleted while it is ' +
+        'a draft or has been returned for correction.'
+      );
     case 'not_submitted':
-      return 'The request must be submitted before it can be approved or rejected.';
+      return 'The request must be submitted (awaiting approval) for this action.';
     case 'not_approved':
       return 'The request is not approved.';
     case 'already_terminal':
@@ -58,14 +77,28 @@ export function materialRequestTransitionMessage(
   }
 }
 
-/** Only a draft may be edited, submitted, or deleted. */
+/** The statuses in which the requester may still change the request's
+ *  content and either submit it for the first time or resubmit it after a
+ *  return for correction. */
+export const EDITABLE_MATERIAL_REQUEST_STATUSES: readonly MaterialRequestStatus[] =
+  ['draft', 'returned'];
+
+/** Only a draft, or a request returned for correction, may be edited or
+ *  (re)submitted. Deletion stays narrower (draft-only) — see
+ *  `MaterialRequestsRepository.deleteDraft`, unchanged by this decision. */
 export function planEdit(status: string): {
   problem: MaterialRequestTransitionProblem | null;
 } {
-  return status === 'draft' ? { problem: null } : { problem: 'not_draft' };
+  return (EDITABLE_MATERIAL_REQUEST_STATUSES as readonly string[]).includes(
+    status,
+  )
+    ? { problem: null }
+    : { problem: 'not_editable' };
 }
 
-/** Only a submitted request may be approved or rejected. */
+/** A submitted request may be approved, rejected, or returned for
+ *  correction — all three are outcomes of the same approval review, so they
+ *  share this one precondition. */
 export function planDecision(status: string): {
   problem: MaterialRequestTransitionProblem | null;
 } {
@@ -74,7 +107,10 @@ export function planDecision(status: string): {
     : { problem: 'not_submitted' };
 }
 
-/** Only an approved request may have its approval reversed. */
+/** An approved request may have its approval reversed, or be cancelled —
+ *  both require the SAME precondition (status = approved); the service
+ *  layer enforces the rest of each operation's own rules (original-approver
+ *  only for reversal; no invoked line for either). */
 export function planReversal(status: string): {
   problem: MaterialRequestTransitionProblem | null;
 } {
@@ -92,6 +128,9 @@ export interface MaterialRequest {
   requestedBy: string;
   submittedAt: Date | null;
   submittedBy: string | null;
+  returnedAt: Date | null;
+  returnedBy: string | null;
+  returnReason: string | null;
   approvedAt: Date | null;
   approvedBy: string | null;
   rejectedAt: Date | null;
@@ -100,6 +139,9 @@ export interface MaterialRequest {
   approvalReversedAt: Date | null;
   approvalReversedBy: string | null;
   approvalReversalReason: string | null;
+  cancelledAt: Date | null;
+  cancelledBy: string | null;
+  cancellationReason: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -113,6 +155,9 @@ export interface MaterialRequestDto {
   requestedBy: string;
   submittedAt: string | null;
   submittedBy: string | null;
+  returnedAt: string | null;
+  returnedBy: string | null;
+  returnReason: string | null;
   approvedAt: string | null;
   approvedBy: string | null;
   rejectedAt: string | null;
@@ -121,6 +166,9 @@ export interface MaterialRequestDto {
   approvalReversedAt: string | null;
   approvalReversedBy: string | null;
   approvalReversalReason: string | null;
+  cancelledAt: string | null;
+  cancelledBy: string | null;
+  cancellationReason: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -137,6 +185,9 @@ export function toMaterialRequestDto(
     requestedBy: request.requestedBy,
     submittedAt: request.submittedAt?.toISOString() ?? null,
     submittedBy: request.submittedBy,
+    returnedAt: request.returnedAt?.toISOString() ?? null,
+    returnedBy: request.returnedBy,
+    returnReason: request.returnReason,
     approvedAt: request.approvedAt?.toISOString() ?? null,
     approvedBy: request.approvedBy,
     rejectedAt: request.rejectedAt?.toISOString() ?? null,
@@ -145,6 +196,9 @@ export function toMaterialRequestDto(
     approvalReversedAt: request.approvalReversedAt?.toISOString() ?? null,
     approvalReversedBy: request.approvalReversedBy,
     approvalReversalReason: request.approvalReversalReason,
+    cancelledAt: request.cancelledAt?.toISOString() ?? null,
+    cancelledBy: request.cancelledBy,
+    cancellationReason: request.cancellationReason,
     createdAt: request.createdAt.toISOString(),
     updatedAt: request.updatedAt.toISOString(),
   };

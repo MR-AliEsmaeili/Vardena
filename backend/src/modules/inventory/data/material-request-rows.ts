@@ -33,6 +33,9 @@ export type MaterialRequestRow = {
   requestedBy: string;
   submittedAt: Date | null;
   submittedBy: string | null;
+  returnedAt: Date | null;
+  returnedBy: string | null;
+  returnReason: string | null;
   approvedAt: Date | null;
   approvedBy: string | null;
   rejectedAt: Date | null;
@@ -41,6 +44,9 @@ export type MaterialRequestRow = {
   approvalReversedAt: Date | null;
   approvalReversedBy: string | null;
   approvalReversalReason: string | null;
+  cancelledAt: Date | null;
+  cancelledBy: string | null;
+  cancellationReason: string | null;
 } & AuditColumns;
 
 export interface MaterialRequestWhere {
@@ -68,6 +74,9 @@ export interface MaterialRequestUpdate {
   description?: string | null;
   submittedAt?: Date | null;
   submittedBy?: string | null;
+  returnedAt?: Date | null;
+  returnedBy?: string | null;
+  returnReason?: string | null;
   approvedAt?: Date | null;
   approvedBy?: string | null;
   rejectedAt?: Date | null;
@@ -76,6 +85,9 @@ export interface MaterialRequestUpdate {
   approvalReversedAt?: Date | null;
   approvalReversedBy?: string | null;
   approvalReversalReason?: string | null;
+  cancelledAt?: Date | null;
+  cancelledBy?: string | null;
+  cancellationReason?: string | null;
   updatedAt: Date;
   updatedBy: string | null;
 }

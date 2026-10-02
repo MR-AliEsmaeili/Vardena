@@ -344,6 +344,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           MATERIAL_REQUEST_PERMISSIONS.APPROVE,
           MATERIAL_REQUEST_PERMISSIONS.REJECT,
           MATERIAL_REQUEST_PERMISSIONS.REVERSE_APPROVAL,
+          MATERIAL_REQUEST_PERMISSIONS.RETURN_FOR_CORRECTION,
+          MATERIAL_REQUEST_PERMISSIONS.CANCEL,
           MATERIAL_REQUEST_PERMISSIONS.INVOKE,
           BALANCE_PERMISSIONS.VIEW,
           MOVEMENT_PERMISSIONS.VIEW,
@@ -1170,6 +1172,367 @@ describe.skipIf(DATABASE_URL === undefined)(
             expect(after.available).toBeCloseTo(before.available, 6);
           }
         }
+      },
+    );
+
+    it(
+      'lets a user with ONLY Material Request Approve approve a request they ' +
+        'themselves created and submitted (self-approval is explicitly permitted)',
+      async () => {
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Self-approval is permitted',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '1',
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        expect(created.body.requestedBy).toBe(aliceId);
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        expect(approved.body.status).toBe('approved');
+        expect(approved.body.approvedBy).toBe(aliceId);
+        expect(approved.body.approvedBy).toBe(approved.body.requestedBy);
+      },
+    );
+
+    it(
+      'returns a submitted request for correction, lets the requester edit ' +
+        'it, and requires resubmission before it can be approved again',
+      async () => {
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Return for correction — original',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '2',
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        const submitted = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const originalNumber = submitted.body.number as string;
+        expect(originalNumber).not.toBeNull();
+
+        // Edits are refused while submitted (not draft, not returned).
+        await alice
+          .patch(`/api/v1/inventory/material-requests/${mrId}`)
+          .query({ organizationId: orgAId })
+          .send({ description: 'Should be refused while submitted' })
+          .expect(422);
+
+        const returned = await bob
+          .post(
+            `/api/v1/inventory/material-requests/${mrId}/return-for-correction`,
+          )
+          .query({ organizationId: orgAId })
+          .send({ reason: 'Wrong warehouse — please fix and resubmit.' })
+          .expect(200);
+        expect(returned.body.status).toBe('returned');
+        expect(returned.body.returnedBy).toBe(bobId);
+        expect(returned.body.returnReason).toBe(
+          'Wrong warehouse — please fix and resubmit.',
+        );
+
+        // A second return attempt is refused — it is no longer 'submitted'.
+        await bob
+          .post(
+            `/api/v1/inventory/material-requests/${mrId}/return-for-correction`,
+          )
+          .query({ organizationId: orgAId })
+          .send({ reason: 'Should be refused — already returned.' })
+          .expect(422);
+
+        // The requester may now edit a 'returned' request, same as a draft.
+        const edited = await alice
+          .patch(`/api/v1/inventory/material-requests/${mrId}`)
+          .query({ organizationId: orgAId })
+          .send({
+            description: 'Return for correction — corrected',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '3',
+              },
+            ],
+          })
+          .expect(200);
+        expect(edited.body.description).toBe(
+          'Return for correction — corrected',
+        );
+        expect(edited.body.lines[0].quantity).toBe('3');
+
+        const resubmitted = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        expect(resubmitted.body.status).toBe('submitted');
+        // Resubmission replays the SAME allocated number — it is the same
+        // document going through its lifecycle again, not a new one.
+        expect(resubmitted.body.number).toBe(originalNumber);
+
+        const approved = await bob
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        expect(approved.body.status).toBe('approved');
+
+        const events = await alice
+          .get(`/api/v1/inventory/material-requests/${mrId}/events`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const eventTypes = (events.body as Array<{ eventType: string }>).map(
+          (e) => e.eventType,
+        );
+        expect(eventTypes).toContain('returned_for_correction');
+        // submitted appears twice: the original submission and the
+        // resubmission after correction — both are auditable history.
+        expect(eventTypes.filter((t) => t === 'submitted').length).toBe(2);
+      },
+    );
+
+    it(
+      'refuses return-for-correction without a reason, and refuses it ' +
+        'outside the submitted status',
+      async () => {
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Return-for-correction validation',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '1',
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+
+        // Still draft — not submitted yet.
+        await alice
+          .post(
+            `/api/v1/inventory/material-requests/${mrId}/return-for-correction`,
+          )
+          .query({ organizationId: orgAId })
+          .send({ reason: 'Too early.' })
+          .expect(422);
+
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+
+        await alice
+          .post(
+            `/api/v1/inventory/material-requests/${mrId}/return-for-correction`,
+          )
+          .query({ organizationId: orgAId })
+          .send({ reason: '   ' })
+          .expect(400);
+      },
+    );
+
+    it(
+      'cancels an approved request with a reserved line, releasing the ' +
+        'reservation and restoring availability — distinct from reversal',
+      async () => {
+        const before = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Cancellation releases reservation',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '2',
+                reservationRequested: true,
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        expect(approved.body.lines[0].reservationId).not.toBeNull();
+
+        const afterApproval = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+        expect(afterApproval.reserved).toBeCloseTo(before.reserved + 2, 6);
+
+        // Cancellation needs no approver match — Bob, who never approved
+        // this request, can cancel it as long as he holds the permission.
+        const cancelled = await bob
+          .post(`/api/v1/inventory/material-requests/${mrId}/cancel`)
+          .query({ organizationId: orgAId })
+          .send({ reason: 'No longer needed.' })
+          .expect(200);
+        expect(cancelled.body.status).toBe('cancelled');
+        expect(cancelled.body.cancelledBy).toBe(bobId);
+        expect(cancelled.body.cancellationReason).toBe('No longer needed.');
+        // Cancellation must NEVER populate the separate reversal columns.
+        expect(cancelled.body.approvalReversedAt).toBeNull();
+        expect(cancelled.body.approvalReversedBy).toBeNull();
+
+        const afterCancel = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+        expect(afterCancel).toEqual(before);
+
+        // A cancelled request can never be cancelled, approved, or reversed
+        // again — it is terminal.
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/cancel`)
+          .query({ organizationId: orgAId })
+          .send({})
+          .expect(422);
+      },
+    );
+
+    it(
+      'refuses to cancel an approved request once ANY line has been ' +
+        'invoked, even partially — and never touches the physical On Hand',
+      async () => {
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Cancellation refused after partial invocation',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '6',
+                reservationRequested: true,
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        const lineId = created.body.lines[0].id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+
+        const before = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+
+        const destination = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Partial-invocation destination',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '6',
+              },
+            ],
+          })
+          .expect(201);
+
+        // A SINGLE unit invoked — partial, not full, consumption.
+        await alice
+          .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+          .query({ organizationId: orgAId })
+          .send({
+            lineId,
+            destinationModule: 'inventory',
+            destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+            destinationDocumentId: destination.body.id,
+            destinationLineId: destination.body.lines[0].id,
+            quantity: '1',
+          })
+          .expect(200);
+
+        const refused = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/cancel`)
+          .query({ organizationId: orgAId })
+          .send({ reason: 'Should be refused — partially invoked.' })
+          .expect(422);
+        expect(refused.body.code).toBe('BusinessRuleViolation');
+
+        const stillApproved = await alice
+          .get(`/api/v1/inventory/material-requests/${mrId}`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        expect(stillApproved.body.status).toBe('approved');
+        expect(stillApproved.body.lines[0].invocationCount).toBe(1);
+        expect(stillApproved.body.lines[0].invokedBaseQuantity).toBe('1');
+        expect(stillApproved.body.lines[0].remainingBaseQuantity).toBe('5');
+
+        // Cancellation never changes On Hand either way — confirm the
+        // refused attempt above left availability exactly as it was,
+        // including the reservation that is still fully intact.
+        const after = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+        expect(after).toEqual(before);
       },
     );
   },

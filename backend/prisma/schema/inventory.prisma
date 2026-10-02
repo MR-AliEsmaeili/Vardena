@@ -526,11 +526,14 @@ model InventoryOperation {
 model MaterialRequest {
   id             String   @id
   organizationId String   @map("organization_id")
-  /// Allocated via `documents.numbering_allocations` at submission; NULL
-  /// while still a draft (a draft is not yet a numbered document).
+  /// Allocated via `documents.numbering_allocations` at (re)submission; NULL
+  /// while still a draft (a draft is not yet a numbered document). The SAME
+  /// number is kept across a return-for-correction/resubmit cycle
+  /// (`NumberingService.allocateNumber` is replayed with the same
+  /// `allocationKey`, never re-allocated).
   number         String?  @db.VarChar(32)
   /// Closed, code-defined list (`domain/material-request.ts`): `draft`,
-  /// `submitted`, `approved`, `rejected`.
+  /// `submitted`, `returned`, `approved`, `rejected`, `cancelled`.
   status         String   @default("draft") @db.VarChar(16)
   description    String?  @db.VarChar(1000)
   /// The principal that created the draft (no Employee linkage — OQ-37 is
@@ -538,9 +541,21 @@ model MaterialRequest {
   requestedBy    String   @map("requested_by")
   submittedAt    DateTime? @map("submitted_at") @db.Timestamptz(6)
   submittedBy    String?   @map("submitted_by")
+  /// Set by `Inventory.MaterialRequest.ReturnForCorrection` (Owner decision:
+  /// "the approver can return it to the requester for correction").
+  /// Overwritten on each return — the full cycle history lives in
+  /// `material_request_events`, append-only.
+  returnedAt     DateTime? @map("returned_at") @db.Timestamptz(6)
+  returnedBy     String?   @map("returned_by")
+  /// Required by application logic whenever `status = returned` (same rule
+  /// as `rejectionReason`).
+  returnReason   String?  @map("return_reason") @db.VarChar(1000)
   approvedAt     DateTime? @map("approved_at") @db.Timestamptz(6)
   /// The ONLY principal later allowed to reverse this approval (Owner
   /// decision 3.4: "only the original approver may reverse approval").
+  /// Approving one's own request is explicitly allowed (Owner decision: no
+  /// requester/approver separation is enforced) — this column is simply
+  /// whoever held `Approve` and called it, which MAY be `requestedBy`.
   approvedBy     String?   @map("approved_by")
   rejectedAt     DateTime? @map("rejected_at") @db.Timestamptz(6)
   rejectedBy     String?   @map("rejected_by")
@@ -552,6 +567,13 @@ model MaterialRequest {
   approvalReversedAt     DateTime? @map("approval_reversed_at") @db.Timestamptz(6)
   approvalReversedBy     String?   @map("approval_reversed_by")
   approvalReversalReason String?   @map("approval_reversal_reason") @db.VarChar(1000)
+  /// Set by `Inventory.MaterialRequest.Cancel` — a DISTINCT, terminal
+  /// transition from approval reversal (Owner decision: "cancellation and
+  /// reversal of approval are distinct operations"). Only ever set once:
+  /// `cancelled` is terminal, never re-entered.
+  cancelledAt     DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  cancelledBy     String?   @map("cancelled_by")
+  cancellationReason String? @map("cancellation_reason") @db.VarChar(1000)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy String?  @map("created_by")
@@ -645,7 +667,9 @@ model MaterialRequestEvent {
   materialRequestId String   @map("material_request_id")
   organizationId    String   @map("organization_id")
   /// Closed, code-defined list (`domain/material-request-event.ts`):
-  /// `created`, `submitted`, `approved`, `rejected`, `approval_reversed`,
+  /// `created`, `submitted` (also used for a post-return RESUBMISSION,
+  /// distinguished by `fromStatus = 'returned'`), `returned_for_correction`,
+  /// `approved`, `rejected`, `approval_reversed`, `cancelled`,
   /// `line_invoked`.
   eventType  String   @map("event_type") @db.VarChar(32)
   fromStatus String?  @map("from_status") @db.VarChar(16)

@@ -32,6 +32,7 @@ import { MaterialRequestsService } from '../application/material-requests.servic
 import { MATERIAL_REQUEST_PERMISSIONS } from '../domain/material-request-permissions.js';
 import { InventoryScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
+  CancelMaterialRequestDto,
   CreateMaterialRequestDto,
   InvokeMaterialRequestLineDto,
   ListMaterialRequestsQueryDto,
@@ -40,6 +41,7 @@ import {
   MaterialRequestLineResponseDto,
   MaterialRequestResponseDto,
   RejectMaterialRequestDto,
+  ReturnMaterialRequestForCorrectionDto,
   ReverseMaterialRequestApprovalDto,
   UpdateMaterialRequestDto,
 } from './dto/material-request.dto.js';
@@ -53,10 +55,13 @@ const PaginatedMaterialRequestDto = paginatedResponseOf(
  * DEMAND for stock, never a movement/receipt/issue, Purchase Request or
  * accounting document.
  *
- * Transport-only (AR-03): every business rule — draft-only editing,
- * explicit approval/rejection, approver-only reversal, optional per-line
- * reservation with availability checked at approval time, and bounded
- * invocation into a subsequent process — lives in
+ * Transport-only (AR-03): every business rule — editing while draft/returned,
+ * approve/reject/return-for-correction open to any `Approve`/`Reject`/
+ * `ReturnForCorrection` holder (no separately assigned approver, self-
+ * approval allowed), approver-only reversal vs. permission-only
+ * cancellation (two distinct, auditable ways to release a reservation),
+ * optional per-line reservation with availability checked at approval time,
+ * and bounded invocation into a subsequent process — lives in
  * `MaterialRequestsService`/the domain layer.
  */
 @ApiTags('material-requests')
@@ -104,7 +109,9 @@ export class MaterialRequestsController {
   @ApiOperation({
     summary:
       'The append-only lifecycle narrative for one Material Request ' +
-      '(created, submitted, approved, rejected, approval_reversed, line_invoked).',
+      '(created, submitted — also used for a post-return resubmission, ' +
+      'returned_for_correction, approved, rejected, approval_reversed, ' +
+      'cancelled, line_invoked).',
   })
   @ApiOkResponse({ type: [MaterialRequestEventResponseDto] })
   @ApiNotFoundResponse({ description: 'Material Request does not exist.' })
@@ -147,13 +154,13 @@ export class MaterialRequestsController {
   @RequirePermission(MATERIAL_REQUEST_PERMISSIONS.EDIT)
   @ApiOperation({
     summary:
-      'Edit a draft Material Request. Only drafts can be edited; providing ' +
-      '`lines` replaces the whole line set.',
+      'Edit a Material Request while it is a draft or has been returned ' +
+      'for correction; providing `lines` replaces the whole line set.',
   })
   @ApiOkResponse({ type: MaterialRequestDetailResponseDto })
   @ApiNotFoundResponse({ description: 'Material Request does not exist.' })
   @ApiUnprocessableEntityResponse({
-    description: 'The request is not a draft.',
+    description: 'The request is neither a draft nor returned for correction.',
   })
   @ApiBadRequestResponse({ description: 'Validation failed.' })
   async update(
@@ -191,13 +198,16 @@ export class MaterialRequestsController {
   @RequirePermission(MATERIAL_REQUEST_PERMISSIONS.SUBMIT)
   @ApiOperation({
     summary:
-      'Submit a draft Material Request for approval, allocating its number.',
+      'Submit a draft Material Request for approval, allocating its ' +
+      'number — or RESUBMIT one returned for correction, replaying the ' +
+      'SAME allocated number.',
   })
   @ApiOkResponse({ type: MaterialRequestDetailResponseDto })
   @ApiNotFoundResponse({ description: 'Material Request does not exist.' })
   @ApiUnprocessableEntityResponse({
     description:
-      'The request is not a draft, or no numbering series is configured for it.',
+      'The request is neither a draft nor returned for correction, or no ' +
+      'numbering series is configured for it.',
   })
   async submit(
     @Param('id') id: string,
@@ -252,6 +262,33 @@ export class MaterialRequestsController {
     });
   }
 
+  @Post(':id/return-for-correction')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard, AuthorizationGuard)
+  @RequirePermission(MATERIAL_REQUEST_PERMISSIONS.RETURN_FOR_CORRECTION)
+  @ApiOperation({
+    summary:
+      'Return a submitted Material Request to its requester for ' +
+      'correction, with a required reason. The requester must edit and ' +
+      'resubmit it (POST .../submit again) before it can be approved, ' +
+      'rejected, or returned again.',
+  })
+  @ApiOkResponse({ type: MaterialRequestDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Material Request does not exist.' })
+  @ApiUnprocessableEntityResponse({
+    description: 'The request is not submitted.',
+  })
+  @ApiBadRequestResponse({ description: 'A return reason is required.' })
+  async returnForCorrection(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+    @Body() body: ReturnMaterialRequestForCorrectionDto,
+  ): Promise<MaterialRequestDetailResponseDto> {
+    return this.materialRequests.returnForCorrection(id, scope.organizationId, {
+      reason: body.reason,
+    });
+  }
+
   @Post(':id/reverse-approval')
   @HttpCode(HttpStatus.OK)
   @UseGuards(AuthGuard, AuthorizationGuard)
@@ -278,6 +315,34 @@ export class MaterialRequestsController {
     @Body() body: ReverseMaterialRequestApprovalDto,
   ): Promise<MaterialRequestDetailResponseDto> {
     return this.materialRequests.reverseApproval(id, scope.organizationId, {
+      reason: body.reason,
+    });
+  }
+
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard, AuthorizationGuard)
+  @RequirePermission(MATERIAL_REQUEST_PERMISSIONS.CANCEL)
+  @ApiOperation({
+    summary:
+      'Cancel an APPROVED Material Request outright, releasing any ' +
+      'reservations it holds. A DISTINCT, terminal operation from ' +
+      'reverse-approval (never returns to submitted); refused once any ' +
+      'line has been invoked, even partially. No original-approver ' +
+      'restriction.',
+  })
+  @ApiOkResponse({ type: MaterialRequestDetailResponseDto })
+  @ApiNotFoundResponse({ description: 'Material Request does not exist.' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'The request is not approved, or at least one line has already been invoked.',
+  })
+  async cancel(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+    @Body() body: CancelMaterialRequestDto,
+  ): Promise<MaterialRequestDetailResponseDto> {
+    return this.materialRequests.cancel(id, scope.organizationId, {
       reason: body.reason,
     });
   }

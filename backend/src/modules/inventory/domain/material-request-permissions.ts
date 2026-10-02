@@ -12,13 +12,28 @@ import type { PermissionDefinition } from '../../rbac/domain/permission-definiti
  *   only ever succeed while the request is still a draft (enforced in the
  *   service, not by the permission).
  * - `Submit` — moves a draft into the approval queue; allocates its number.
- * - `Approve`/`Reject` — the explicit approval stage (Owner decision: "role
- *   or admin status alone must NOT bypass approval authorization" — holding
- *   `Create`/`Edit` never implies holding `Approve`).
+ * - `Approve`/`Reject`/`ReturnForCorrection` — the explicit approval stage,
+ *   three independently grantable outcomes of reviewing a SUBMITTED
+ *   request. **Owner decision:** any user holding `Approve` may approve or
+ *   reject within their authorized organization scope — there is no
+ *   separately assigned approver, and holding `Approve` never requires NOT
+ *   being the requester (self-approval is explicitly allowed; this module
+ *   enforces no requester/approver separation). `ReturnForCorrection` sends
+ *   a submitted request back to the requester (status `returned`) with a
+ *   required reason instead of approving or rejecting it outright.
  * - `ReverseApproval` — holding this permission is NECESSARY but not
  *   SUFFICIENT: the service also enforces that only the ORIGINAL approver
  *   (`approvedBy`) may use it (Owner decision 3.4), and refuses it outright
  *   once any line has been invoked (see `material-requests.service.ts`).
+ * - `Cancel` — a DISTINCT operation from `ReverseApproval` (Owner decision:
+ *   "cancellation and reversal of approval are distinct operations... with
+ *   explicit, auditable state transitions"): cancels an APPROVED request
+ *   outright (terminal `cancelled` status, never returns to `submitted`),
+ *   releasing any reservations it holds, but — like reversal — is refused
+ *   outright once any line has been invoked, even partially. Unlike
+ *   `ReverseApproval`, holding this permission is sufficient on its own;
+ *   there is no original-approver restriction (no Owner decision imposes
+ *   one for cancellation).
  * - `Invoke` — record that an approved line has been carried into a
  *   subsequent process (C-50 §3.8), via a Document Relation.
  *
@@ -34,7 +49,9 @@ export const MATERIAL_REQUEST_PERMISSIONS = {
   SUBMIT: 'Inventory.MaterialRequest.Submit',
   APPROVE: 'Inventory.MaterialRequest.Approve',
   REJECT: 'Inventory.MaterialRequest.Reject',
+  RETURN_FOR_CORRECTION: 'Inventory.MaterialRequest.ReturnForCorrection',
   REVERSE_APPROVAL: 'Inventory.MaterialRequest.ReverseApproval',
+  CANCEL: 'Inventory.MaterialRequest.Cancel',
   INVOKE: 'Inventory.MaterialRequest.Invoke',
 } as const;
 
@@ -73,8 +90,16 @@ export const MATERIAL_REQUEST_PERMISSION_DEFINITIONS: readonly PermissionDefinit
       'Reject a submitted Material Request with a reason. A separate authority from Create/Edit.',
     ),
     def(
+      MATERIAL_REQUEST_PERMISSIONS.RETURN_FOR_CORRECTION,
+      'Return a submitted Material Request to its requester for correction, with a required reason. The requester must edit and resubmit it.',
+    ),
+    def(
       MATERIAL_REQUEST_PERMISSIONS.REVERSE_APPROVAL,
       'Reverse the approval of a Material Request. Necessary but not sufficient — only the original approver may use it, and it is refused once any line has been invoked.',
+    ),
+    def(
+      MATERIAL_REQUEST_PERMISSIONS.CANCEL,
+      'Cancel an approved Material Request, releasing any reservations it holds. Refused once any line has been invoked, even partially. Distinct from reversing approval.',
     ),
     def(
       MATERIAL_REQUEST_PERMISSIONS.INVOKE,

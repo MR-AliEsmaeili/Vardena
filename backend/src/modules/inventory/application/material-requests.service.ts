@@ -17,6 +17,7 @@ import {
   MaterialRequestApproverMismatchError,
   MaterialRequestInvocationCapacityError,
   MaterialRequestLineNotFoundError,
+  MaterialRequestLinesInvokedError,
   MaterialRequestStatusError,
   type ApproveLineInput,
   type DraftLineInput,
@@ -109,7 +110,15 @@ export interface RejectMaterialRequestInput {
   reason: string;
 }
 
+export interface ReturnMaterialRequestForCorrectionInput {
+  reason: string;
+}
+
 export interface ReverseMaterialRequestApprovalInput {
+  reason?: string | null | undefined;
+}
+
+export interface CancelMaterialRequestInput {
   reason?: string | null | undefined;
 }
 
@@ -128,12 +137,27 @@ export interface InvokeMaterialRequestLineInput {
 /**
  * Material Request (C-50) — application orchestration.
  *
- * Owns no stock effect of its own: draft/submitted/rejected/approved never
- * change `on_hand`; `approve` creates AT MOST a reservation per flagged line
- * (a soft claim), atomically with the header transition
+ * Owns no stock effect of its own: no status ever changes `on_hand`;
+ * `approve` creates AT MOST a reservation per flagged line (a soft claim),
+ * atomically with the header transition
  * (`MaterialRequestsRepository.approve`'s own `$transaction`) — see that
  * method's docs for the deadlock-avoidance contract this service must honor
  * (reservation lines sorted by `(warehouseId, itemId)` before calling it).
+ * `reverseApproval` and `cancel` are the two DISTINCT ways a reservation is
+ * released (Owner decision); both are refused outright once any line has
+ * been invoked, and `cancel` carries no original-approver restriction
+ * unlike `reverseApproval` (no Owner decision names one for cancellation).
+ *
+ * Lifecycle (Owner-confirmed, C-50 §19): `draft` → `submitted` →
+ * {`approved` | `rejected` | `returned`}; `returned` → `submitted` again
+ * (resubmission, same `submit()` action, same allocated number); `approved`
+ * → `submitted` (`reverseApproval`, original approver only) or → `cancelled`
+ * (`cancel`, terminal, no part invoked). Any holder of
+ * `Inventory.MaterialRequest.Approve` may approve/reject within their
+ * authorized organization scope — there is no separately assigned approver,
+ * and a requester MAY approve or reject their own request (no
+ * requester/approver separation is enforced; see `mustFind`/the permission
+ * checks below, which never compare `requestedBy` to the acting principal).
  *
  * Permission composition note (ADDITIVE, never a weakening): every mutation
  * response (create/update/submit/approve/reject) and `reverseApproval`'s
@@ -477,15 +501,58 @@ export class MaterialRequestsService {
   }
 
   /**
+   * Return a submitted request to its requester for correction (Owner
+   * decision). Any holder of `Inventory.MaterialRequest.ReturnForCorrection`
+   * may do this within their authorized organization scope — the same
+   * no-separately-assigned-approver posture as approve/reject. Requires a
+   * reason, same rule as rejection, so the requester knows what to fix.
+   */
+  async returnForCorrection(
+    id: string,
+    organizationId: string,
+    input: ReturnMaterialRequestForCorrectionInput,
+  ): Promise<MaterialRequestDetailDto> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.RETURN_FOR_CORRECTION,
+    ]);
+    const current = await this.mustFind(id, organizationId);
+    const plan = planDecision(current.status);
+    if (plan.problem !== null) {
+      throw AppException.businessRule(
+        materialRequestTransitionMessage(plan.problem),
+      );
+    }
+    const reason = normalizeRequiredReason(input.reason, 'return');
+    const actorId = this.requireActorId();
+    const now = new Date();
+    try {
+      const header = await this.repository.returnForCorrection({
+        id,
+        organizationId,
+        returnedAt: now,
+        returnedBy: actorId,
+        reason,
+      });
+      const lines = await this.repository.listLines(id);
+      return this.toDetailDto(header, lines);
+    } catch (error) {
+      throw mapStatusError(error);
+    }
+  }
+
+  /**
    * Reverse an approval. Necessary but NOT sufficient conditions (C-50
    * §3.4), checked here in order:
-   *   1. the request is approved (`planReversal`),
+   *   1. the request is approved (`planReversal`);
    *   2. the caller IS the original approver (`approvedBy`) — re-verified
    *      again under the row lock inside the repository as defense in
-   *      depth against a race on approval itself,
-   *   3. no line has been invoked yet — checked here, OUTSIDE the
-   *      repository's transaction (see class docs for why, and the accepted
-   *      race window this implies).
+   *      depth against a race on approval itself;
+   *   3. no line has been invoked yet — now checked INSIDE the repository's
+   *      transaction, under the same Material Request row lock invocation
+   *      itself takes (`MaterialRequestsRepository.reverseApproval`), so
+   *      this is fully race-free (an earlier version checked this here,
+   *      outside the transaction, and accepted a race window — that
+   *      compromise is no longer necessary).
    */
   async reverseApproval(
     id: string,
@@ -508,13 +575,6 @@ export class MaterialRequestsService {
         'Only the original approver may reverse this approval.',
       );
     }
-    const linesBeforeReversal = await this.repository.listLines(id);
-    if (linesBeforeReversal.some((line) => line.invocationCount > 0)) {
-      throw AppException.businessRule(
-        'This approval cannot be reversed: at least one line has already ' +
-          'been invoked into a subsequent process.',
-      );
-    }
     const reason =
       input.reason === undefined || input.reason === null
         ? null
@@ -534,6 +594,62 @@ export class MaterialRequestsService {
     } catch (error) {
       if (error instanceof MaterialRequestApproverMismatchError) {
         throw AppException.forbidden(error.message);
+      }
+      if (error instanceof MaterialRequestLinesInvokedError) {
+        throw AppException.businessRule(error.message);
+      }
+      if (error instanceof BalanceDriftError) {
+        throw AppException.conflict(error.message);
+      }
+      throw mapStatusError(error);
+    }
+  }
+
+  /**
+   * Cancel an APPROVED request outright (Owner decision: "an approved
+   * request may be cancelled only if no part of it has entered a downstream
+   * process", and "cancellation and reversal of approval are distinct
+   * operations"). Unlike `reverseApproval`, any holder of
+   * `Inventory.MaterialRequest.Cancel` may do this — there is no
+   * original-approver restriction, because no Owner decision names one for
+   * cancellation. The "no line invoked, even partially" gate is enforced
+   * atomically inside `MaterialRequestsRepository.cancel`, under the same
+   * row lock `reverseApproval`/invocation itself use.
+   */
+  async cancel(
+    id: string,
+    organizationId: string,
+    input: CancelMaterialRequestInput,
+  ): Promise<MaterialRequestDetailDto> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.CANCEL,
+    ]);
+    const current = await this.mustFind(id, organizationId);
+    const plan = planReversal(current.status);
+    if (plan.problem !== null) {
+      throw AppException.businessRule(
+        materialRequestTransitionMessage(plan.problem),
+      );
+    }
+    const reason =
+      input.reason === undefined || input.reason === null
+        ? null
+        : normalizeDescription(input.reason);
+    const actorId = this.requireActorId();
+    const now = new Date();
+    try {
+      const result = await this.repository.cancel({
+        id,
+        organizationId,
+        cancelledAt: now,
+        cancelledBy: actorId,
+        reason,
+      });
+      const lines = await this.repository.listLines(id);
+      return this.toDetailDto(result.header, lines);
+    } catch (error) {
+      if (error instanceof MaterialRequestLinesInvokedError) {
+        throw AppException.businessRule(error.message);
       }
       if (error instanceof BalanceDriftError) {
         throw AppException.conflict(error.message);
