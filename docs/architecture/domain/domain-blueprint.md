@@ -205,7 +205,7 @@ configuration* (Configurable), *what can be added without touching existing code
 | **Organization structure** | One organization per deployment; branch is a reporting/scope dimension (OQ-01) | Which branches/departments exist; whether warehouses/locations are enabled; department tree | Business-unit grouping; second legal entity (multi-company) | Whether branches need separate books/registers (OQ-22) |
 | **Fiscal calendar** | Fiscal year & periods exist; posting is period-bounded; periods can close | Start date, period count/length, open/close workflow, who may reopen | Multi-year calendars, 13-period calendars | Period definition and closing rules *(expert, OQ-23)* |
 | **Item / product** | One Item record + kind + capability flags + base unit | Which kinds/groups exist; which capabilities are allowed; required fields per group; lot/serial/expiry on/off | New *capabilities* (code change), kit/BOM, variants — later modules | Whether services/contracts need revenue recognition treatment *(expert)* |
-| **Units & conversions** | Quantities stored in one base unit; conversions are explicit data | Allowed units, their precision, global and item-specific conversions | Alternative packaging, catch-weight items | Fractional-unit rounding & presentation rules *(expert, OQ-29)* |
+| **Units & conversions** | Quantities stored in one base unit; conversions are explicit data; OQ-29 Option A fixes four fractional places and exact-fit rejection with no rounding/truncation | Allowed units, global and item-specific conversions; separate display/entry precision | Alternative packaging, catch-weight items | Remaining presentation, backdating/correction and downstream policy questions *(OQ-29)* |
 | **Warehouses & locations** | Stock is always per warehouse; movements immutable | Locations on/off, per-warehouse defaults, negative-stock policy | Automated/robotic location addressing | Whether negative stock is legally/semantically allowed *(expert, OQ-24)* |
 | **Document flows** (`quote → order → invoice → issue`) | Document types and their allowed transitions are code-defined; posting is irreversible | *Which* flow a business uses: which documents are required, which transitions auto-create which follow-up document, which are optional | New document types (new module/session), new relation kinds (code change) | Legal/statutory documents and their required sequence *(expert, OQ-27)* |
 | **Approvals** | A transition may require approval; the decision is recorded with actor + time | Thresholds, which transitions need approval, who approves (permission code), single vs multi-level | Delegation, escalation, parallel approval *(later, OQ-26)* | Segregation-of-duties expectations for finance roles *(expert, OQ-26)* |
@@ -596,7 +596,7 @@ reused rather than duplicated.
 | R5 | Reporting performance degrades as configuration grows | Slow reports, user distrust | Typed columns, indexed dimensions, materialized balances, view-first reporting (ADR-0009/0017) | Architecture |
 | R6 | Historical documents reinterpreted after config change | Audit/legal invalidation | Effective dating + pinning per document (§14) | Architecture + auditor |
 | R7 | Master-data deletion used as "cleanup" | Broken history | Lifecycle rules (§12) + permission separation (`*.Delete` rarely granted) + soft delete | Architecture |
-| R8 | Unit conversion/rounding errors | Quantity discrepancies | Base-unit storage, explicit conversions, precision config, expert sign-off (OQ-29) | Inventory expert |
+| R8 | Unit conversion/rounding errors | Quantity discrepancies | OQ-29 Option A: base-unit storage, four-place exact-fit validation, no rounding/truncation, effective-dated factors and preserved historical interpretation; keep remaining OQ-29 questions explicit | Inventory expert |
 | R9 | Branches silently acting as separate companies | Wrong consolidation/reporting | Branch ≠ legal entity is explicit; multi-company is a separate ADR (OQ-22) | Project owner + accountant |
 | R10 | Legacy ERP data imported with its structure | Model corruption | Import via module ImportSpecs (ADR-0011) after mapping decisions; never copy legacy tables | Project owner + architecture |
 
@@ -616,7 +616,7 @@ expert and the artefact that must be signed off.
 | Tax | Rates/groups, inclusive/exclusive, exemptions, liability accounts | Tax expert | OQ-30 |
 | E-invoicing / taxpayer system | Required fields, formats, submission flow, retention | Tax expert + integration owner | OQ-05 |
 | Legal documents | Which documents are statutory, required sequences, number formats/gaps, retention window | Accountant + legal | OQ-12/OQ-27 |
-| Unit & quantity precision | Fractional units, rounding/presentation rules | Inventory expert + accountant | OQ-29 |
+| Unit & quantity precision | OQ-29 Option A is recorded for four-place exact-fit quantity arithmetic; remaining presentation/entry and downstream conversion questions | Inventory expert + accountant | OQ-29 |
 | Inter-branch/inter-company | Whether internal transfers need invoicing/settlement; transfer pricing | Accountant | OQ-31 |
 | HR/payroll scope | Whether employees/payroll are part of Vardena at all | Project owner (+ HR/legal later) | OQ-32 |
 | Approval/segregation of duties | Which financial actions need independent approval; auditor expectations | Accountant + ERP implementation expert | OQ-26 |
@@ -690,8 +690,9 @@ migration) when a field turns out to matter for reporting or legality.
 **9. What decisions are still unsafe to make without a domain expert?**
 Chart of accounts content/structure, fiscal calendar and closing rules, posting
 mappings and recognition timing, valuation/costing method, tax treatment and rates,
-e-invoice/legal document requirements and retention, fractional-unit rounding,
-inter-branch/inter-company settlement, and HR/payroll scope. See §19.
+e-invoice/legal document requirements and retention, remaining unit presentation/
+backdating/correction questions under OQ-29, inter-branch/inter-company settlement,
+and HR/payroll scope. See §19.
 
 **10. What should be frozen before the first major ERP Prisma migration?**
 The list below — "Gate Before Core ERP Schema".
@@ -716,7 +717,7 @@ answer in `docs/open-questions.md`, or an explicit, dated owner decision):
    OQ-24, accountant sign-off. Without it the movement/valuation columns cannot be
    finalized (cost columns may be present, but their semantics must be agreed).
 4. **Item model**: one Item + kind + capability flags and the closed kind list →
-   OQ-33; unit/conversion semantics including precision and rounding → OQ-29.
+   OQ-33; remaining unit/conversion scope and presentation/backdating semantics → OQ-29.
 5. **Document foundation & relations**: accept ADR-0019 (typed tables + shared
    link/transition mechanics); confirm relation-kind vocabulary and the
    partial-quantity model.

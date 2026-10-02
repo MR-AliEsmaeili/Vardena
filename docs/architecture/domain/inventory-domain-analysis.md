@@ -199,7 +199,7 @@ All of these are plain SQL over typed columns — the design requirement from
 |---|---|
 | Balance drift under concurrency | One transaction per movement with a locked balance row; reconciliation query; rebuild tool |
 | Valuation method chosen late | Ledger shape keeps cost data method-agnostic; method state is rebuildable |
-| Fractional quantities/rounding | Base-unit storage, explicit conversions, precision config, expert sign-off (OQ-29) |
+| Fractional quantities/rounding | OQ-29 Option A: `numeric(18,4)` quantity precision, exact-fit conversion results only, no rounding/truncation, effective-dated factors with historical interpretation preserved; remaining scope questions stay open |
 | Negative stock "temporarily" allowed | Policy per warehouse + permission + audit event on each negative movement |
 | Lot/serial enforced inconsistently | Capability flags drive validation in one place (Inventory domain), not per document type |
 | Cross-branch transfers treated naively | Inter-branch flag + OQ-31 decision before enabling transfers across branches |

@@ -388,6 +388,19 @@ System submission flows (§19/OQ-51), multi-device offline sync (OQ-44),
 marketplace (§27), public API program (§28, ADR-0029/OQ-58), SaaS,
 CRM/ticketing products (§29). Detailed exclusions in the MVP proposal.
 
+### 15.4 Inventory item-master decisions recorded 2026-10-02
+
+These are explicit Owner decisions recorded for the canonical OQ/product
+records. They do not authorize production code, schema, migration, API, UI, or
+operational warehouse changes in this documentation task.
+
+| Decision surface | Owner decision | Current governance status | Canonical record / evidence |
+|---|---|---|---|
+| OQ-29 — quantity precision and conversion | **Option A:** fixed four fractional decimal places; reject exact conversion results that do not fit; no rounding or silent truncation; factor changes use effective-dated versions; preserve historical versions and interpretation data | **OQ remains OPEN** for independent subquestions not answered by this decision | [`OQ-29 record`](../decisions/product/OQ-29-quantity-precision-and-conversion.md); C-47 evidence: [`readiness report`](../tasks/c-47-item-master-readiness-hardening-report.md) |
+| OQ-33 — item taxonomy and capabilities | **Option D:** new kinds/flags require a concrete need and accepted governance decision. **Option A is not approved.** Existing eight kinds and current per-item capability model remain unconfirmed | **OQ remains OPEN** for current taxonomy/defaults/override confirmation | [`OQ-33 record`](../decisions/product/OQ-33-item-taxonomy-and-capabilities.md); implementation evidence in `backend/src/modules/inventory/domain/item-kind.ts` and `item-capabilities.ts` |
+| Barcode policy | **Option A confirmed:** optional; unique among active items within an organization; same barcode permitted across organizations; multiple formats; no strict symbology validation unless separately approved; no multi-barcode support | **Decided**, but deactivated-item barcode reuse remains OPEN | [`PDR-01`](../decisions/product/PDR-01-barcode-policy.md); item/schema evidence in `backend/src/modules/inventory/application/items.service.ts` and `backend/prisma/schema/inventory.prisma` |
+| OQ-36 — item deletion and code reuse | **Option C:** physical deletion only for never-referenced items; referenced items must not be physically deleted; preserve history and organization-scoped identity constraints | **OQ remains OPEN** for code reuse after physical deletion and after deactivation | [`OQ-36 record`](../decisions/product/OQ-36-item-deletion-and-code-reuse.md); current no-delete evidence in `backend/src/modules/inventory/application/items.service.ts` |
+
 ---
 
 ## 16. MVP Reference Business Scenario
@@ -909,6 +922,10 @@ Classifications: **D** = Decided · **DIR** = Directional · **A** = Assumed ·
 | PD-38 | Success criteria | §30 criteria as MVP acceptance spine (numbers proposed) | D (framework) + A (numbers) | Medium | Owner clarification | Ratify numbers with MVP approval |
 | PD-39 | Trade-off policy | Quality/architecture protected; selective deferral; case-by-case; scope cut over architecture damage; owner strategy review on delay | D | High | Owner clarification | None |
 | PD-40 | Non-goals | §32 list | D | High | Owner clarification | None |
+| PD-41 | Quantity precision and conversion | OQ-29 Option A: fixed four-place quantity precision, exact-fit rejection, no rounding/truncation, effective-dated factor versions, historical interpretability | D (partial OQ closure) | High | Owner decision recorded 2026-10-02; [`OQ-29 record`](../decisions/product/OQ-29-quantity-precision-and-conversion.md) | OQ-29 independent subquestions remain open |
+| PD-42 | Item taxonomy/capability change governance | OQ-33 Option D: new kinds/flags require concrete need plus accepted governance process; existing taxonomy/capability confirmation remains open; OQ-33 Option A not approved | D (partial OQ closure) | High | Owner decision recorded 2026-10-02; [`OQ-33 record`](../decisions/product/OQ-33-item-taxonomy-and-capabilities.md) | Confirm existing eight kinds/defaults/override model |
+| PD-43 | Barcode policy | PDR-01 Option A: optional, unique among active items within an organization, cross-organization duplicates allowed, multiple formats, no strict symbology validation, no multi-barcode support | D | High | Owner decision recorded 2026-10-02; [`PDR-01`](../decisions/product/PDR-01-barcode-policy.md) | Whether deactivated-item barcodes may be reused remains open |
+| PD-44 | Item deletion and code reuse | OQ-36 Option C: physical deletion only for never-referenced items; referenced items cannot be physically deleted; preserve history and organization-scoped identity | D (partial OQ closure) | High | Owner decision recorded 2026-10-02; [`OQ-36 record`](../decisions/product/OQ-36-item-deletion-and-code-reuse.md) | Code reuse after physical deletion/deactivation remains open |
 
 ---
 
@@ -938,6 +955,10 @@ records: `docs/decisions/product/` (OQs) and `docs/adr/` (proposed ADRs).
 
 | ID | Topic | Type | Blocks MVP? | Blocking stage |
 |---|---|---|---|---|
+| OQ-29 | Quantity precision and conversion — Option A recorded; independent subquestions remain open | OQ | Yes for quantity-dependent flows | Stage 3 / C-48–C-52 |
+| OQ-33 | Item taxonomy and capabilities — Option D recorded; existing taxonomy confirmation remains open | OQ | Yes for taxonomy-dependent changes | C-47 follow-up |
+| OQ-36 | Item deletion and code reuse — Option C recorded; code reuse remains open | OQ | Yes for delete/reuse-dependent changes | C-47 follow-up / Base Chart prerequisites |
+| PDR-01 | Barcode policy — Option A confirmed; deactivated-item reuse remains open | PDR | Yes for barcode enforcement implementation | C-47 follow-up |
 | OQ-44 | Multi-device offline sync scope & timing | OQ | No (excluded) | Post-MVP (Stage 7+) |
 | OQ-45 | License expiry behavior (incl. internet-outage behavior) + post-termination read-only mode | OQ | Foundation only | Stage 0/1 |
 | OQ-46 | Customer data export format & completeness beyond Excel | OQ | No (Excel confirmed) | Stage 5/6 |
@@ -973,3 +994,4 @@ OQ-32 (payroll post-MVP).
 | Date | Version | Change |
 |---|---|---|
 | 2026-09-22 | 1.0 | Initial baseline from product/business clarification answers. Proposed — pending owner approval. |
+| 2026-10-02 | 1.1 | Recorded Owner decisions for OQ-29 Option A, OQ-33 Option D, barcode PDR-01 Option A and OQ-36 Option C; preserved the remaining open subquestions and linked C-47 evidence. Documentation only; no production change or C-47 acceptance. |

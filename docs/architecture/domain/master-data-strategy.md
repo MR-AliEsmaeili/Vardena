@@ -1,10 +1,19 @@
 # Master Data Strategy — scope, ownership, item model, lifecycle
 
-Status: Proposed (design for review) · Updated: 2026-09-11
+Status: Proposed (design for review) · Updated: 2026-10-02
 Companion: [blueprint](./domain-blueprint.md) · [glossary](./domain-glossary.md) ·
 ADRs [0020](../../adr/0020-organizational-scope-and-master-data.md) (proposed),
 [0017](../../adr/0017-inventory-ledger-as-source-of-truth.md) (proposed) ·
-OQ-22, OQ-24, OQ-29, OQ-31, OQ-32
+OQ-22, OQ-24, OQ-29, OQ-31, OQ-32, OQ-33, OQ-36 ·
+[product decision records](../../decisions/product/README.md)
+
+> **2026-10-02 decision addendum:** OQ-29 Option A is recorded for fixed
+> four-place exact-fit quantity conversion; OQ-33 Option D governs future kind/
+> capability additions but does not confirm the existing taxonomy; OQ-36 Option C
+> governs physical-deletion eligibility but does not resolve code reuse. Barcode
+> policy Option A is recorded in PDR-01. The OQs remain open where their
+> independent subquestions are not answered. This document describes the current
+> model and does not authorize production changes.
 
 Master data is the part of the model that changes slowly and is referenced by
 everything else. Getting its shape wrong is expensive (migrations touch history);
@@ -28,8 +37,8 @@ Classification legend: **C** = core (stable spine), **G** = configurable,
 | Project | G + E | Accounting | organization | Analytical dimension (OQ-25) |
 | Account (chart of accounts) | C + G + E | Accounting | organization | See `accounting-domain-analysis.md` §2 |
 | Currency | C + G | Organization (kernel-ish reference) | organization | Precision/base currency OQ-03 |
-| Unit of measure (UoM) | C | Inventory (master data) | organization | Decimal precision per unit (OQ-29) |
-| Unit conversion | C + G | Inventory | organization and/or item | Global + item-specific pairs (OQ-29) |
+| Unit of measure (UoM) | C | Inventory (master data) | organization | Quantity precision is fixed at four fractional places; any separate display/entry precision remains OQ-29-open |
+| Unit conversion | C + G | Inventory | organization and/or item | Global + item-specific pairs; exact-fit, effective-dated versions under OQ-29 Option A |
 | Item group (category tree) | G | Inventory | organization | Defaults + reporting classification |
 | Item | C + G | Inventory | organization | Kind + capability flags (this doc §3) |
 | Warehouse | C + G | Inventory | branch | Belongs to exactly one branch |
@@ -118,17 +127,22 @@ changes (AR-29) and must not be pre-added as nullable columns "just in case"
 
 - Identity: `id` (ULID), `code` (human key, unique among non-deleted), `name`,
   `description`, `item_group_id`, `base_unit_id`, `is_active`, plus AR-12 columns.
-- `item_kind` — closed, code-managed: `goods`, `service`, `consumable`, `asset`,
-  `raw_material`, `semi_finished`, `finished_good`, `other`. *(OQ-33 confirms the list
-  and the naming with the project owner.)*
+- `item_kind` — currently code-managed as `goods`, `service`, `consumable`,
+  `asset`, `raw_material`, `semi_finished`, `finished_good`, `other`. OQ-33
+  Option D governs additions: a new kind requires a concrete need and accepted
+  governance decision. The completeness of this list and its naming remain
+  **OPEN**; the current list is implementation evidence, not Option A approval.
 - **Capability flags** (stored, authoritative):
   `is_stockable`, `is_purchasable`, `is_sellable`, `is_valued`,
   `requires_lot`, `requires_serial`, `requires_expiry`.
   Kind supplies defaults at creation; the flags are then what the code and the
   database constraints use.
-- Standard attributes that are *not* capabilities: `barcode` (optional),
-  `default_supplier_id`, `default_tax_id`, `min_stock`/`reorder_point` (planning
-  placeholders — no planning logic in v1).
+- Standard attributes that are *not* capabilities: `barcode` (optional; PDR-01
+  Option A: unique among active items within an organization, with no strict
+  symbology validation or multi-barcode support), `default_supplier_id`,
+  `default_tax_id`, `min_stock`/`reorder_point` (planning placeholders — no
+  planning logic in v1). Whether a barcode on a deactivated item may be reused
+  remains OPEN.
 - **No** variant/BOM/kit columns in v1; those are later modules (§3.5).
 
 **Validation rules derived from capabilities (examples):**
@@ -160,16 +174,20 @@ are **capability-driven**, not table-driven.
 - Each item has exactly one **base unit**; all quantities in movements, balances and
   ledger reports are stored in that base unit (AR-12 quantity precision
   `numeric(18,4)`).
-- **Global conversions** (`unit_conversions`): `from_unit`, `to_unit`, factor and
-  rounding rule — valid for any item (e.g. `KG ↔ G`).
+- **Global conversions** (`unit_conversions`): `from_unit`, `to_unit` and factor,
+  valid for any item (e.g. `KG ↔ G`).
 - **Item-specific conversions** (`item_unit_conversions`): e.g. `1 BOX(of THIS item)
-  = 12 PCS`. These are the common case in practice.
+  = 12 PCS`. The current implementation gives an item-specific pair precedence;
+  the complete global-versus-item-specific product policy remains an OQ-29
+  follow-up.
 - Document lines record the **entered unit** *and* the quantity converted to the base
   unit, so the business-facing value is preserved for printing while the ledger stays
   in one unit.
-- **Expert-gated:** rounding of fractional conversions, whether conversion factors
-  may change over time (and what that means for history — recommendation: effective
-  dated, like other configuration), and per-unit decimal precision (OQ-29).
+- **OQ-29 Option A:** quantity precision is fixed at four fractional decimal places;
+  a result that does not fit exactly is rejected, never rounded or silently
+  truncated; factor changes use effective-dated versions and prior versions/data
+  needed for interpretation are preserved. Separate unit-level display/entry,
+  complete backdating/correction, and downstream valuation semantics remain open.
 
 ### 3.5 Extension points (deliberately not designed now)
 
@@ -251,11 +269,15 @@ master record.*
 5. **Archive:** for records that must not be selectable again: disable + `archived_at`
    (if needed) and exclusion from pickers; historical reports still resolve the code
    and name.
-6. **Delete:** allowed **only** while no reference exists anywhere (checked by the
-   owning module across known referencing modules via their public services, or by
-   FK constraints where clean). Where any history exists: soft delete
-   (`deleted_at`/`deleted_by`, AR-13). For **accounting dimensions** (accounts, cost
-   centres, projects): **never delete** — disable/archive only *(expert)*.
+6. **Delete:** for items, physical deletion is permitted only when no
+   operational, ledger, or historical reference exists; a referenced item must
+   not be physically deleted, and history plus organization-scoped identity must
+   be preserved (OQ-36 Option C). The current item runtime remains disable-only;
+   no DELETE endpoint is authorized by this decision. Whether a code can be
+   reused after physical deletion or deactivation remains OPEN. For other master
+   entities, apply their explicit lifecycle decision; accounting dimensions
+   (accounts, cost centres, projects) remain disable/archive-only unless separately
+   decided.
 7. **Effective dating:** entities whose change alters interpretation
    (tax rates, conversions, price lists, mappings, workflow versions) are
    **versioned rows** with `valid_from`/`valid_to`; updates create a new version.
@@ -263,9 +285,9 @@ master record.*
    **snapshot values** they used (unit, unit price, tax rate, conversion factor,
    account mapping version). Reports use the snapshot for historical truth and the FK
    for grouping/joins.
-9. **Reuse of a code** after soft delete: allowed only if the owning module documents
-   it and history remains unambiguous (partial unique index makes this technically
-   possible; whether it is *business-desirable* is per entity — default: **no reuse**).
+9. **Reuse of a code:** OQ-36 Option C does not decide whether an item code may
+   be reused after physical deletion of a never-referenced item or after
+   deactivation. Both questions remain OPEN; no default reuse rule may be inferred.
 10. **Audit:** lifecycle changes emit domain events (`Item.Updated`, `Item.Disabled`,
     …) consumed by Audit/Notifications; no parallel audit table (§ AR-23).
 

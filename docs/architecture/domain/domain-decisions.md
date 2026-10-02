@@ -412,8 +412,12 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 - **Reason:** one identity for documents/reports/permissions, per-item exceptions
   possible, no type-based branching in code.
 - **Consequences:** validation rules keyed on capabilities; adding a kind or capability
-  is a code change (deliberate); variants/BOM are a later, designed extension.
-- **Docs:** [master data](./master-data-strategy.md) §3, OQ-33.
+  is a code change and, under OQ-33 Option D (Owner decision, 2026-10-02), also
+  requires a concrete need and accepted project governance. The existing eight
+  kinds/current per-item capability model is not confirmed without change;
+  variants/BOM are a later, designed extension.
+- **Docs:** [master data](./master-data-strategy.md) §3,
+  [OQ-33 product record](../../decisions/product/OQ-33-item-taxonomy-and-capabilities.md).
 - **Expert?** inventory (capability semantics for regulated goods).
 
 ## D-26 — Units: base-unit storage with explicit, effective-dated conversions
@@ -430,9 +434,14 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
   and factors are effective-dated configuration.
 - **Reason:** every stock report must aggregate one unit; printed documents must show
   what the user typed.
-- **Consequences:** rounding rules need expert sign-off (OQ-29); conversion changes
-  never reinterpret recorded quantities (D-21).
-- **Docs:** [master data](./master-data-strategy.md) §3.4, OQ-29.
+- **Consequences:** OQ-29 Option A (Owner decision, 2026-10-02) fixes four
+  fractional decimal places, rejects non-exact results, forbids rounding or
+  silent truncation, and requires effective-dated factors with preserved
+  historical interpretation. Separate presentation/entry, complete
+  backdating/correction, and downstream policy questions remain open; conversion
+  changes never reinterpret recorded quantities (D-21).
+- **Docs:** [master data](./master-data-strategy.md) §3.4,
+  [OQ-29 product record](../../decisions/product/OQ-29-quantity-precision-and-conversion.md).
 - **Expert?** inventory/accounting.
 
 ---

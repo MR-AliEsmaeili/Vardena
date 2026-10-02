@@ -173,9 +173,11 @@ first time — connect modules to Accounting *safely*, under the durable
 integration decision.
 
 **Included capabilities.**
-- Inventory completion: units/conversions precision per OQ-29; costing method
-  per OQ-24; opening inventory entry (A-10); valuation reports on decided
-  method.
+- Inventory completion: units/conversions follow recorded OQ-29 Option A
+  (four-place exact-fit quantities, no rounding/truncation, effective-dated
+  factors with historical interpretation); any remaining OQ-29 scope questions
+  must be resolved before they are needed; costing method per OQ-24; opening
+  inventory entry (A-10); valuation reports on the decided method.
 - **Durable integration decision lands (OQ-39):** transactional in-process
   subscription vs durable queued/outbox delivery for system-generated posting,
   with the rejection semantics (blocked source vs exception queue). Likely
@@ -206,8 +208,11 @@ code.
 **Explicit non-goals.** No Sales module; no taxpayer; no purchasing receipts
 (C-01); no FX inventory valuation (OQ-47).
 
-**Required OQ/ADR decisions.** OQ-39 (+ its ADR), OQ-42, OQ-24, OQ-29,
-OQ-30 (tax model inputs), OQ-25 (control accounts for posting rules).
+**Required OQ/ADR decisions.** OQ-39 (+ its ADR), OQ-42, OQ-24, OQ-30 (tax
+model inputs), OQ-25 (control accounts for posting rules), and any remaining
+OQ-29 subquestion needed by the admitted receipt/issue/opening scope. OQ-29
+Option A is already recorded for quantity arithmetic; this does not authorize
+warehouse implementation.
 
 ---
 

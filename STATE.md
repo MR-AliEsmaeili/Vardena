@@ -1150,3 +1150,60 @@ merged `docs/tasks/c-47-item-master-preflight-investigation.md`, PR #106).
   Owner acceptance. C-47 remains **BLOCKED BY OQ (OQ-29/OQ-33)** in the
   candidate register; this section does not accept, re-accept, or alter the
   status of §13/§16, C-01..C-46, or any other candidate.
+
+## 18. C-47 Owner-decision and dependency reconciliation (2026-10-02)
+
+This addendum supersedes only the current-status interpretation of the C-47
+section above; it does not rewrite historical task evidence. `main` is now
+`4cf481efa2de5ca9863d9d434c2ab707de23301a`, the merge of PR #107. PR #107's
+merge and green CI, including the CI-only live PostgreSQL item-master suite,
+prove implementation/verification evidence but **do not constitute Owner
+acceptance** of C-47.
+
+- C-47 is **implemented-style reconnaissance and regression hardening, merged,
+  CI-verified, NOT ACCEPTED**. The current item/unit/conversion master remains
+  on `main`; this documentation task adds no production code, schema, migration,
+  API, generated type, permission, or test change.
+- **OQ-29:** Owner Option A is recorded: four fractional decimal places; exact
+  non-fitting conversion results rejected; no rounding or silent truncation;
+  effective-dated factor versions; preserved historical versions and
+  interpretation data. OQ-29 remains OPEN for independent unanswered
+  subquestions.
+- **OQ-33:** Owner Option D is recorded: new kinds/capability flags require a
+  concrete need and accepted governance decision. Option A is not approved;
+  confirmation of the existing eight kinds/current per-item capability model
+  remains OPEN.
+- **Barcode:** Owner Option A is confirmed in PDR-01: optional, unique among
+  active items within an organization, cross-organization duplicates allowed,
+  multiple formats, no strict symbology validation unless separately approved,
+  and no multi-barcode support. Whether a barcode on a deactivated item may be
+  reused remains OPEN. No production enforcement change is made here.
+- **OQ-36:** Owner Option C is recorded: physical deletion only for a never-
+  referenced item; referenced items must not be physically deleted; preserve
+  history and organization-scoped identity constraints. Code reuse after
+  physical deletion or deactivation remains OPEN; current runtime remains
+  disable-only.
+
+Canonical records are `docs/open-questions.md`,
+`docs/decisions/product/{OQ-29-quantity-precision-and-conversion.md,OQ-33-item-taxonomy-and-capabilities.md,OQ-36-item-deletion-and-code-reuse.md,PDR-01-barcode-policy.md}`,
+and `docs/current-state-reconciliation.md`.
+
+### C-47–C-54 dependency outcome
+
+The next dependency-ready candidate is **C-50 Material Request — READY TO
+INVESTIGATE, not ready for implementation**. Its actual immediate dependencies
+are the existing Documents foundation (`ADR-0023`), Inventory ownership and
+permissions; OQ-54 is relevant to finalized request edit/cancel/delete
+semantics, while OQ-13/OQ-26 are conditional only if an approval workflow is
+included. C-50 investigation must not invent those policies.
+
+C-48/C-49 remain blocked for implementation by the exact opening/valuation
+policies in OQ-11/OQ-24 (and OQ-25 where rial/account mapping requires it).
+C-51/C-52 quantity/rial Receipt/Issue remain operationally absent: the quantity
+math now inherits OQ-29 Option A, but full implementation is blocked by OQ-24
+and, for accounting effects, OQ-39/OQ-42; OQ-54 also governs finalized document
+lifecycle. C-53 has balance core but not the full stock/settings/rial scope and
+is valuation-gated by OQ-24. C-54 reports are absent; valuation/unvalued
+report semantics require OQ-24, while OQ-49 is only a blocker if generic
+Report Builder depth is included rather than bounded Inventory reports.
+No warehouse operational implementation is authorized by this addendum.

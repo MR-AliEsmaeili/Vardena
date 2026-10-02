@@ -9,12 +9,17 @@
 | Parent | [backend-mvp-roadmap.md](./backend-mvp-roadmap.md) |
 | Production code changed | **NONE** |
 
-> **Current-state addendum (2026-09-29):** this matrix's original baseline is a
-> dated planning snapshot. Current `main` `34dddfd` includes Task 30's bounded
-> Account Nature/Type/Detail foundation and Task 32's Dashboard corrected by PR
-> #86. The generic multi-dimension model, Reporting module, durable
-> Inventory→Accounting integration, Sales, Purchasing and Treasury remain absent.
-> See [`../current-state-reconciliation.md`](../current-state-reconciliation.md).
+> **Current-state addenda (2026-09-29 and 2026-10-02):** this matrix's original
+> baseline is a dated planning snapshot. Current `main` `4cf481e` includes Task
+> 30's bounded Account Nature/Type/Detail foundation, Task 32's Dashboard
+> corrected by PR #86, and the merged/CI-verified C-47 item-master hardening
+> slice from PR #107. PR #107 merge/CI does **not** constitute Owner acceptance.
+> OQ-29 Option A, OQ-33 Option D, barcode PDR-01 Option A and OQ-36 Option C
+> are now recorded with their remaining open subquestions. The generic
+> multi-dimension model, Reporting module, durable Inventory→Accounting
+> integration, Sales, Purchasing and Treasury remain absent. See
+> [`../current-state-reconciliation.md`](../current-state-reconciliation.md) and
+> the detailed C-47–C-54 review below.
 >
 > Companion to the Backend MVP Roadmap. Classifies modules, capabilities,
 > dependencies, gating OQs/ADRs and MVP posture **as verified on `main`**. It
@@ -101,7 +106,38 @@ Verified against `docs/accounting/task-index.md` §4 (authoritative candidate ma
 
 Warehouse Receipt is Inventory/Warehouse MVP; Purchasing is POST-MVP. These are separate capabilities and dependencies.
 
-## 4. OQ dependency matrix
+## 4. C-47–C-54 dependency review (2026-10-02)
+
+The table below separates current implementation evidence from readiness. A
+merged change or green CI is not Owner acceptance. `READY TO INVESTIGATE` means
+a bounded investigation may define the contract and evidence; it does not mean
+production implementation is authorized.
+
+| Candidate | Current status and evidence paths | Upstream dependencies | Blocking OQs / ADRs | Readiness |
+|---|---|---|---|---|
+| **C-47 Item master** | Item, item group, unit, global/item-specific conversion and ledger-reference foundations exist. C-47 defects/coverage are on `main` via PR #107; evidence: [`C-47 readiness report`](../tasks/c-47-item-master-readiness-hardening-report.md), [`preflight`](../tasks/c-47-item-master-preflight-investigation.md), `backend/src/modules/inventory/{domain,application,data,api}`, `backend/prisma/schema/inventory.prisma`. No Owner acceptance record exists. | Organization scope, Inventory master and movement ledger | OQ-33 remains open for existing taxonomy/capability confirmation; OQ-36 remains open for code reuse. OQ-29 Option A and barcode PDR-01 are recorded, but no production enforcement change is authorized here. ADR-0022 remains the accepted core ledger decision; its item lifecycle addendum points to OQ-36. | **IMPLEMENTED-STYLE / CI-VERIFIED — NOT ACCEPTED; follow-up remains decision-gated** |
+| **C-48 Opening quantity** | No operational opening-quantity flow. Evidence: candidate row, roadmap §2.3/§5.3, `backend/src/modules/inventory/application/inventory-movements.service.ts` (movement foundation), and C-47 quantity record. | Product/warehouse master, movement ledger, likely Documents if represented as a business document | OQ-11 opening-balance/accounting treatment; OQ-24 valuation/negative-stock policy; OQ-29 Option A supplies exact quantity arithmetic but does not decide opening treatment; ADR-0022 accepted, ADR-0017 proposed. | **BLOCKED FOR IMPLEMENTATION; investigation should follow opening/valuation contract** |
+| **C-49 Opening rial** | No operational opening-rial flow. Evidence: candidate row, roadmap §2.3/§5.3, Accounting ledger/configuration sources, and OQ-11/OQ-24 registry rows. | Opening quantity, Inventory, Accounting ledger/configuration and posting mapping | OQ-11/OQ-24; OQ-25 if account/mapping/content semantics are required; OQ-39/OQ-42 only for any system-generated accounting effect; ADR-0022 accepted, ADR-0017 proposed. | **BLOCKED FOR IMPLEMENTATION** |
+| **C-50 Material Request** | No Material Request module, schema, API, permission or UI. Evidence: candidate row, roadmap §2.3/§5.3, `docs/architecture/domain/document-architecture.md`, `docs/adr/0023-document-foundation-implementation.md`. | Documents foundation, Inventory ownership and permissions; Workflow only if approvals are part of the bounded contract | OQ-54 is the actual policy gate for finalized request edit/cancel/delete semantics. OQ-13/OQ-26 are conditional only if approval transitions are included. OQ-12 is conditional only if numbering needs exceed the existing Document Foundation mechanism. | **READY TO INVESTIGATE (bounded); NOT READY FOR IMPLEMENTATION** |
+| **C-51 Warehouse Receipt quantity/rial** | Inventory movement/balance core exists, but receipt document/full quantity/rial flow is absent. Evidence: candidate row, roadmap §2.3/§5.3, `backend/src/modules/inventory/application/inventory-movements.service.ts`, `docs/adr/0022-inventory-core-ledger.md`. | Product/warehouse master, Documents, movement/balance ledger; Accounting only through approved cross-module integration | OQ-24 valuation/negative stock; OQ-39 durable integration and rejected-posting semantics; OQ-42 posting mode; OQ-54 finalized receipt lifecycle. OQ-29 Option A governs exact quantity arithmetic. ADR-0022 accepted, ADR-0017 proposed, ADR-0005 is a contract and has no consumer. | **BOUNDED INVESTIGATION POSSIBLE; IMPLEMENTATION BLOCKED BY OQ** |
+| **C-52 Warehouse Issue quantity/rial** | Inventory movement/balance core exists, but issue document/full quantity/rial flow is absent. Evidence: candidate row, roadmap §2.3/§5.3, movement service, and ADR-0022. | Product/warehouse master, Documents, movement/balance ledger; Accounting only through approved cross-module integration | OQ-24 valuation/negative stock; OQ-39 durable integration and rejected-posting semantics; OQ-42 posting mode; OQ-54 finalized issue lifecycle. OQ-29 Option A governs exact quantity arithmetic. ADR-0022 accepted, ADR-0017 proposed, ADR-0005 is a contract and has no consumer. | **BOUNDED INVESTIGATION POSSIBLE; IMPLEMENTATION BLOCKED BY OQ** |
+| **C-53 Stock/settings** | Balance, reservation and transfer foundations exist; full quantity/rial stock, settings and valuation scope do not. Evidence: candidate row, roadmap §2.3/§5.3, `backend/src/modules/inventory/application/inventory-balances.service.ts`, `inventory-reservations.service.ts`, and ADR-0022. | Movement → balance, warehouse/item master, organization isolation; bounded report reads as needed | OQ-24 for valuation/rial/negative-stock settings. OQ-39/OQ-42 are not prerequisites for quantity-only balance reads, but are relevant if settings activate accounting effects. | **BLOCKED FOR FULL IMPLEMENTATION; quantity-core evidence exists** |
+| **C-54 Kardex/inventory reports** | No complete quantity/rial Kardex or inventory reporting surface. Evidence: candidate row, roadmap §2.3/§5.3, `docs/reporting-strategy.md`, ADR-0009 and ADR-0022; existing balance/movement reads are foundations, not the complete report set. | Inventory read models/movement ledger, bounded reporting pipeline and module-owned views | OQ-24 for valuation/unvalued/rial semantics. OQ-49 blocks only a generic Report Builder; it does not block bounded Inventory reports by itself. OQ-43 applies only if a statutory/legal output is claimed. ADR-0009/0022 accepted. | **READY TO INVESTIGATE AS BOUNDED REPORT CONTRACT; IMPLEMENTATION GATED** |
+
+### C-50 next-investigation assessment
+
+C-50 is the next dependency-ready candidate for **investigation**, not for
+implementation. OQ-54's exact scope is finalized operational-document
+edit/delete/cancel policy, visibility of canceled documents, numbering gaps,
+and approval coupling; it is not a generic "Material Request" decision. The
+investigation can therefore define a minimal request lifecycle on the accepted
+Documents foundation, explicitly identify whether a request is finalized and
+whether it has stock/accounting effects, and isolate any OQ-54/OQ-13/OQ-26
+questions. It must not assume the recommended cancel-only policy or invent
+approval transitions. No warehouse operational implementation starts in this
+task.
+
+## 5. OQ dependency matrix
 
 Only OQs load-bearing for Backend MVP, inspected on `main`. **None is closed by the roadmap.**
 
@@ -117,10 +153,12 @@ Only OQs load-bearing for Backend MVP, inspected on `main`. **None is closed by 
 | OQ-22 | Organizational scope / branches / separate books | OPEN | branch semantics, multi-company | Yes | No — single-entity posture stands |
 | OQ-23 | Fiscal calendar policy (close/reopen authority, year-end entries) | OPEN (mechanism enforced by Task 14 behavior) | year-transition ops, opening carry-forward, closed-period policy | Partially | **Yes if Phase 1F admitted**; otherwise no |
 | OQ-24 | Inventory valuation / negative stock | OPEN | Full Inventory rial flows/reports and Inventory → Accounting | Yes for method, not for capability admission | **Yes — implementation gate** |
+| OQ-29 | Units and conversions | **OPEN — Option A recorded 2026-10-02:** four fractional decimal places; exact-fit rejection; no rounding/truncation; effective-dated factor versions; historical interpretation preserved. Independent subquestions remain open. | C-47 quantity contract; C-48/C-51/C-52 quantity arithmetic | C-48/C-51/C-52 must inherit this rule; global/item-specific policy and other downstream semantics remain open | **Partially decision-ready; no production change authorized by this record** |
+| OQ-33 | Item taxonomy and capabilities | **OPEN — Option D recorded 2026-10-02:** new kinds/flags require concrete need plus accepted governance; Option A is not approved; existing eight kinds/current per-item model remain unconfirmed. | C-47 item-master governance and future taxonomy-dependent documents | C-47 follow-up and any new kind/capability; barcode is separately PDR-01-decided with deactivated-item reuse open | **OPEN / blocks taxonomy-dependent implementation** |
 | OQ-25 | Chart content / control roles / layouts | OPEN — substantially narrowed (Tasks 20/21); content values + role catalog remain. **OD-27-02 (DECIDED 2026-09-27): MVP-scope sub-question decided — Base Chart mechanism in MVP, concrete content set NOT MVP-required** | Base Chart content (Phase 1A loading), control roles, new report layouts | Yes for the MVP boundary (OD-27-02: concrete content not required); Phase 1A loading remains decision-gated | **No for the Base Chart content set (OD-27-02, 2026-09-27)** — the remaining OQ-25 content decisions gate Phase 1A content loading and content-dependent consumers (e.g. C-13 posting-rule mapping), not the MVP mechanism boundary |
 | OQ-27 | Correction windows / cross-period corrections | OPEN | corrections beyond reversal | Partially | Only if Phase 1E admitted |
 | OQ-30 | Tax model | OPEN | Sales tax fields, Sales → Accounting, legal/tax outputs | Yes for rules, not capability admission | **Yes — implementation gate** |
-| OQ-36 | Master-data lifecycle (deletion, code reuse) | OPEN (Task 21 records explicit Base Chart prerequisites) | Base Chart content loading, code history producer | No — Task 21 §10 lists the three prerequisites | **Yes for Phase 1A/1B** |
+| OQ-36 | Master-data lifecycle (deletion, code reuse) | **OPEN — Option C recorded 2026-10-02:** physical deletion only for never-referenced items; referenced items not physically deleted; preserve history and organization-scoped identity. Code reuse after physical deletion/deactivation remains open. | C-47 lifecycle follow-up; Base Chart/code-history prerequisites | Delete/reuse implementation; barcode deactivated-item reuse remains open via PDR-01 | **Partially decision-ready; implementation remains blocked** |
 | OQ-38 | Party detail (contacts/addresses/identifiers) | OPEN | party completion, statutory-facing sales docs | Yes (flat party works for MVP) | Only if Sales with statutory fields admitted |
 | OQ-39 | Durable integration semantics | OPEN — **gates all system-generated posting** | Inventory/Sales → Accounting, outbox admission, rejected-posting semantics | No for required capability; yes for implementation shape | **Yes — implementation gate** |
 | OQ-40 | Financial areas (count, grants, default) | OPEN (interim: one area, structural access) | area grants, per-area charts | Yes | No — interim posture stands |
@@ -128,7 +166,7 @@ Only OQs load-bearing for Backend MVP, inspected on `main`. **None is closed by 
 | OQ-42 | Posting modes (A direct / B review) | OPEN | system posting activation | Yes (nothing system-posted today) | Only if Phase 4 admitted |
 | OQ-43 | Iranian statutory requirements | OPEN (architecture Proposed ADR-0036; every legal fact needs validation) | Electronic Books / Tax Accounting / legal layouts | No for capability admission; yes for legal implementation facts | **Yes — implementation gate** |
 | OQ-49 | Report Builder depth | OPEN (no depth committed) | generic builder | Yes (registry reports suffice) | **No — builder NOT required for MVP**; bounded reports only |
-| OQ-54 | Finalized document deletion/editing policy | OPEN (cancel-only recommended, not decided) | sales/inventory state machines | Yes until those modules admitted | Only if Phase 3B admitted |
+| OQ-54 | Finalized document deletion/editing policy | OPEN — exact scope is cancel-only vs edit-until-posted vs per-type policy, canceled-document visibility, numbering gaps, and cancel approval coupling | C-50 request lifecycle if finalized; C-51/C-52 receipt/issue lifecycle; Sales | OQ-13/OQ-26 only for approval coupling; OQ-12 for numbering gaps; current recommendation is not a decision | **OPEN; C-50 investigation may isolate it, implementation is gated where applicable** |
 | OQ-60 | MVP acceptance thresholds | OPEN (numbers are proposals) | the final gate's numeric criteria | Recommended no | **Yes for Phase 8** — the Owner should ratify or waive |
 | OQ-62 | Account pin compatibility (repair, authoritative pin) | OPEN (ODR-1 enforces on writes; existing divergent rows not repaired) | pin repair, migration preflight | Yes | No — write-time enforcement stands |
 | OQ-63 | LEGACY fallback shape | OPEN | legacy org migration correctness | Yes | No |

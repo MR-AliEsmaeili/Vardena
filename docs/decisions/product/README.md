@@ -14,7 +14,9 @@ one-row registry entry pointing here.
 
 - **OQ-xx** — product/business open question. Created when the product owner
   must answer a business question with multiple valid directions. IDs continue
-  the central registry (`docs/open-questions.md`): product OQs start at OQ-44.
+  the central registry (`docs/open-questions.md`). This directory originally
+  started with OQ-44; earlier cross-functional OQs may be added when their
+  canonical Owner decision needs a full product record.
 - **PDR-xx** — *Product Decision Record*: a decided product/business matter,
   recorded like an ADR but for product/commercial decisions (ADR-0001 style
   process does not apply to these; they are not architectural).
@@ -28,6 +30,10 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 
 | ID | Title | Type | Status | Blocks MVP |
 |---|---|---|---|---|
+| [OQ-29](./OQ-29-quantity-precision-and-conversion.md) | Quantity precision and conversion — Option A recorded | OQ | Open (partial decision) | Yes for quantity-dependent flows |
+| [OQ-33](./OQ-33-item-taxonomy-and-capabilities.md) | Item taxonomy and capabilities — Option D recorded | OQ | Open (partial decision) | Yes for taxonomy-dependent changes |
+| [OQ-36](./OQ-36-item-deletion-and-code-reuse.md) | Item deletion and code reuse — Option C recorded | OQ | Open (partial decision) | Yes for delete/reuse-dependent changes |
+| [PDR-01](./PDR-01-barcode-policy.md) | Barcode policy — Option A | PDR | Decided | Yes for barcode enforcement implementation |
 | [OQ-44](./OQ-44-multi-device-offline-sync.md) | Multi-device offline sync: scope and timing | OQ | Open | No (excluded from MVP) |
 | [OQ-45](./OQ-45-license-expiry-behavior.md) | License expiry behavior (incl. internet outage, post-termination mode) | OQ | Open | Foundation only |
 | [OQ-46](./OQ-46-customer-data-export-format.md) | Customer data export format and completeness | OQ | Open | No (Excel confirmed) |
@@ -61,7 +67,8 @@ Product/business clarification answers (owner)
         ↓
 PB-BASELINE v1 (docs/product/) — classification: DECIDED/DIRECTIONAL/…
         ↓  unresolved items only
-OQ-44…OQ-61 (here)  +  ADR-0029/ADR-0030 (docs/adr/, proposed)
+OQ-29/OQ-33/OQ-36/OQ-44…OQ-61 (here) + PDR-01
+        + ADR-0029/ADR-0030 (docs/adr/, proposed)
         ↓  owner answers / ratifies
 MVP scope (docs/product/mvp-scope-proposal-v1.md) + roadmap stages
         ↓  implementation (only after gates pass)

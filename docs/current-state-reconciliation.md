@@ -51,6 +51,45 @@ Merge and green CI are not silently relabeled `ACCEPTED`.
 - No `audit`, `notifications`, `sales`, `purchasing`, `reporting`, `excel`, `print`, `customization`, `integration`, `sync`, `jobs`, or `treasury` module exists. Architectural decisions for some of those names are not implementations.
 - The worker remains a startup-gated process without a durable dispatch loop. There is no transactional outbox, persistent jobs queue, or production Inventory→Accounting consumer.
 
+### 2.3 Current-state addendum — C-47 and Owner decision reconciliation (2026-10-02)
+
+Current `main` is `4cf481efa2de5ca9863d9d434c2ab707de23301a`, the merge of PR
+#107. PR #107 is merged and its backend/frontend CI is green, including the
+CI-only live PostgreSQL item-master suite. Those facts establish implementation
+and verification evidence; they do **not** establish Owner acceptance of C-47.
+
+C-47's item/unit/conversion master is therefore recorded as **implemented-style
+reconnaissance and regression hardening, merged, CI-verified, NOT ACCEPTED**.
+The production changes already on `main` are not being repeated here. A bounded
+follow-up remains decision/governance-gated; this documentation task introduces
+no production code, schema, migration, API, generated type, permission, or test
+change.
+
+The 2026-10-02 Owner decisions are reconciled as follows:
+
+- **OQ-29 — Option A recorded, OQ remains OPEN:** fixed four fractional decimal
+  places; exact non-fitting conversion results are rejected; no rounding or
+  silent truncation; factor changes are effective-dated; historical versions and
+  interpretation data are preserved. Independent unanswered subquestions remain
+  open.
+- **OQ-33 — Option D recorded, OQ remains OPEN:** new kinds/capability flags
+  require a concrete need and accepted governance process. Option A was not
+  approved; the existing eight kinds/current per-item capability model remain
+  unconfirmed.
+- **Barcode — PDR-01 Option A decided:** optional, unique among active items
+  within an organization, cross-organization duplicates allowed, multiple
+  formats, no strict symbology validation unless separately approved, and no
+  multi-barcode support. Whether a barcode on a deactivated item may be reused
+  remains OPEN. No production enforcement change was made by this task.
+- **OQ-36 — Option C recorded, OQ remains OPEN:** physical deletion is allowed
+  only for never-referenced items; referenced items must not be physically
+  deleted; history and organization-scoped identity constraints are preserved.
+  Code reuse after physical deletion or deactivation remains OPEN.
+
+Canonical records: [`docs/open-questions.md`](open-questions.md),
+[`docs/decisions/product/README.md`](decisions/product/README.md), the three
+OQ records and [`PDR-01`](decisions/product/PDR-01-barcode-policy.md).
+
 ## 3. Documentation Truth Matrix
 
 | Area                   | Current implementation truth                                                                                                                                                                                             | Governance / future truth                                                                                                                                                                                      | Canonical evidence                                                              |
@@ -59,7 +98,7 @@ Merge and green CI are not silently relabeled `ACCEPTED`.
 | Identity               | Opaque server-side session cookie; login/logout/me; bootstrap administrator                                                                                                                                              | Session listing/revocation, self password change, forced first-login change, MFA and final session policy remain gaps/OQ-06/OQ-19                                                                              | ADR-0007; Identity source; `docs/security.md`                                   |
 | RBAC                   | Granular registered permissions, no wildcard or role-name bypass; backend guard and application checks                                                                                                                   | Occupational role baselines and lifecycle policy remain OQ-14/OQ-20/OQ-21                                                                                                                                      | ADR-0006/0016; permission registries                                            |
 | Organization isolation | Principal membership + deployment pin + module permission; foreign scope is 404; first-member bootstrap is bounded                                                                                                       | Single- versus multi-organization product posture remains OQ-01/OQ-22                                                                                                                                          | Task 19 acceptance; Organization services/tests                                 |
-| Domains / master data  | Organization structures and flat Party master exist; Inventory item/unit/warehouse foundations exist                                                                                                                     | Party legal detail OQ-38, item/unit policy OQ-29/OQ-33, deletion/code reuse OQ-36 remain open                                                                                                                  | `docs/modules.md`; schemas/services                                             |
+| Domains / master data  | Organization structures and flat Party master exist; Inventory item/unit/warehouse foundations exist; C-47 item-master hardening is merged and CI-verified                                                                                                                     | Party legal detail OQ-38 remains open; OQ-29/OQ-33/OQ-36 carry partial Owner decisions but remain open; barcode PDR-01 is decided while deactivated-item reuse remains open                                                                                                                  | `docs/modules.md`; schemas/services; C-47 reports; product decision records                                             |
 | Inventory              | Immutable movement ledger, balances, reservations, transfers, backend-supported balance sort includes `onHand`                                                                                                           | Full Inventory/Warehouse is MVP-required but incomplete; valuation/opening/rial/reporting behavior remains OQ-11/OQ-24 gated                                                                                   | ADR-0022; Inventory API/services; roadmap                                       |
 | Documents              | Type registry, numbering, allocation ledger, relations implemented                                                                                                                                                       | Numbering extensions/gap policy remain OQ-12                                                                                                                                                                   | ADR-0023; Documents module                                                      |
 | Workflow               | Versioned definitions, instances, transitions, approvals foundation implemented                                                                                                                                          | Product approval policies, delegation/escalation and separation rules remain OQ-13/OQ-26                                                                                                                       | ADR-0024; Workflow module                                                       |
@@ -143,10 +182,13 @@ The registry contains OQ-01 through OQ-63 as Open and OQ-64 as Resolved. This au
 | OQ-04                                 | FaraPayam contract remains unknown; reference evidence is not integration architecture/content authority                                                                                    |
 | OQ-06 / OQ-14 / OQ-19 / OQ-20 / OQ-21 | Current sessions/RBAC/bootstrap behavior narrows facts but does not decide final security/session/role/lifecycle policy                                                                     |
 | OQ-11 / OQ-23 / OQ-24 / OQ-27         | Existing posting, close, projection, and reversal mechanics do not decide opening/carry-forward, costing, final period policy, or correction windows                                        |
+| OQ-29                                 | Option A is recorded: four fractional decimal places, exact-fit rejection, no rounding/truncation, effective-dated factors, and preserved historical interpretation data. Independent unit-scope/backdating/downstream questions remain Open; C-47 evidence does not itself accept the policy. |
+| OQ-33                                 | Option D is recorded as the governance rule for introducing new kinds/flags. Option A is not approved; the existing eight kinds and current per-item capability model remain unconfirmed and Open. |
 | OQ-16                                 | Remains Open with recorded post-v1 posture; Purchasing is not admitted to MVP                                                                                                               |
 | OQ-25                                 | Remains Open. Mechanism/content split and Nature/Type decisions are settled only to their recorded extent; chart content/control-role/statutory questions remain                            |
 | OQ-30 / OQ-38                         | Tax and statutory Party detail remain unresolved; no Sales implementation exists                                                                                                            |
-| OQ-36                                 | Current deactivate/freeze behavior and Base Chart adoption do not decide deletion/code reuse/history policy                                                                                 |
+| OQ-36                                 | Option C is recorded: physical deletion only for never-referenced items; referenced items are not physically deleted; history and organization-scoped identity are preserved. Code reuse after physical deletion or deactivation remains Open; runtime remains disable-only. |
+| Barcode / PDR-01                      | Barcode Option A is decided: optional, active-item uniqueness within an organization, cross-organization duplicates allowed, multiple formats, no strict symbology validation, no multi-barcode support. Reuse after deactivation remains Open. |
 | OQ-39 / OQ-42                         | No production source-module posting exists; delivery and posting mode remain hard gates                                                                                                     |
 | OQ-40                                 | Financial-area foundation exists; multiplicity/grants/default/consolidation policy remains Open                                                                                             |
 | OQ-41                                 | Task 30 implements a bounded first-class Detail hierarchy and line link. The broader count/requiredness/binding/area/reporting model remains Open; implementation does not close governance |
@@ -269,7 +311,9 @@ Current canonical summaries were corrected rather than retroactively rewriting h
 - `docs/architecture.md` — current frontend/Dashboard status pointer;
 - `docs/accounting/task-index.md` and `docs/accounting/domain-contract.md` — current Task 30 correction pointer while preserving historical body;
 - `docs/open-questions.md` — current Task 30/OQ-41 note without status change;
-- roadmap/dependency/MVP documents — dated current-state addenda and Dashboard status correction;
+- `docs/decisions/product/` and `docs/product/product-business-decision-baseline-v1.md` — canonical C-47 Owner decisions and remaining-open subquestions;
+- `docs/architecture/domain/master-data-strategy.md`, `docs/architecture/domain/domain-glossary.md`, and ADR-0022 — decision addenda reconciled with the implemented item-master evidence without authorizing runtime changes;
+- roadmap/dependency/MVP documents — dated current-state addenda, C-47 status and C-47–C-54 dependency review;
 - this report — current-state matrix, OQ/ADR reconciliation, Task 32 correction, and drift log.
 
 ## 11. Validation
@@ -298,6 +342,6 @@ Validation result:
 
 ## 12. Final Conclusion
 
-The repository contains a materially broader current implementation than the pre-Task-30 roadmap snapshots: Task 30 added Account Nature/Type and a bounded Detail foundation, Task 32 added a real Dashboard, and PR #86—not PR #85—is the final merged Dashboard behavior. None of those facts closes the remaining OQs, promotes Proposed ADRs, admits Treasury/Purchasing to MVP, turns FaraPayam into architecture, supplies Base Chart content, or authorizes a new production task.
+The repository contains a materially broader current implementation than the pre-Task-30 roadmap snapshots: Task 30 added Account Nature/Type and a bounded Detail foundation, Task 32 added a real Dashboard, and PR #86—not PR #85—is the final merged Dashboard behavior. PR #107 now also provides merged, CI-verified C-47 item-master hardening, but it is not Owner acceptance. The 2026-10-02 decisions record partial resolution of OQ-29/OQ-33/OQ-36 and the barcode policy without closing their remaining questions, promoting Proposed ADRs, admitting Treasury/Purchasing to MVP, turning FaraPayam into architecture, supplying Base Chart content, or authorizing warehouse operational implementation.
 
 **READY FOR REVIEW**

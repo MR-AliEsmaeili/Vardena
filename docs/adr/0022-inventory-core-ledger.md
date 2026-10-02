@@ -51,11 +51,17 @@ organization scoping.
 6. **Versioned unit conversion, resolved at the business date.** Postings
    resolve the conversion version covering the (possibly backdated) movement
    date; quantities are stored canonically in the item base unit.
-7. **Freeze over delete.** Items/warehouses are disabled, never deleted.
-   Disabling is blocked while non-zero balances exist
-   (`hasBlockingBalanceForItem/Warehouse`); postings against disabled
-   references are rejected. This preserves the ledger's history while
-   stopping new activity.
+7. **Freeze over delete in the implemented core.** Items/warehouses are
+   disabled by the current runtime, and disabling is blocked while non-zero
+   balances exist (`hasBlockingBalanceForItem/Warehouse`); postings against
+   disabled references are rejected. This preserves the ledger's history while
+   stopping new activity. The item-specific "never deleted" wording is
+   superseded by the Owner's OQ-36 Option C decision (2026-10-02): physical
+   deletion may be considered only for an item never referenced by any
+   operational, ledger, or historical record; referenced items must not be
+   physically deleted. No delete endpoint, permission, schema, migration, or
+   implementation is authorized by that decision. Warehouse deletion remains
+   outside that OQ-36 item decision and is not authorized here.
 8. **Structural organization scoping (ADR-0021) plus an optional deployment
    pin (ADR-0025).** Every ledger row carries `organization_id`; by-id reads
    and actions take `organizationId` and answer 404 — never 403 — on
@@ -83,5 +89,8 @@ organization scoping.
 
 - Implements: ADR-0017; scope: ADR-0021; deployment pin: ADR-0025
 - Design: `docs/architecture/domain/` (inventory domain analysis, D-04/D-07/D-24)
-- Open questions: OQ-24 (negative stock/valuation), OQ-29 (units)
+- Open questions/decision records: OQ-24 (negative stock/valuation), OQ-29
+  (units — Option A recorded; independent questions remain open), OQ-36
+  (item deletion/code reuse — Option C recorded; reuse remains open), and
+  PDR-01 (barcode policy; deactivated-item reuse remains open)
 - Tests: `test/inventory-core.e2e-spec.ts`, `inventory-posting-support.spec.ts`

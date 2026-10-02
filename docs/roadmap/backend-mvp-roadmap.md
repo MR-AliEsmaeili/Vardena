@@ -9,11 +9,15 @@
 | Companion documents | [backend-mvp-dependency-matrix.md](./backend-mvp-dependency-matrix.md) · [future-task-candidates.md](./future-task-candidates.md) |
 | Production code changed by this roadmap | **NONE** |
 
-> **Current-state addendum (2026-09-29):** the original inspection baseline and
-> inventory below are a dated planning snapshot. Current `main` is
-> `34dddfd60d6ce2f9d4599bd05b440556a80aa847`: Task 30 adds Account Nature/Type
-> and the bounded Detail foundation; Task 32 adds a Dashboard, with PR #86 as the
-> corrective final implementation. Current counts are 55 Prisma models, 18
+> **Current-state addenda (2026-09-29 and 2026-10-02):** the original
+> inspection baseline and inventory below are dated planning snapshots. Current
+> `main` is `4cf481efa2de5ca9863d9d434c2ab707de23301a`: Task 30 adds Account
+> Nature/Type and the bounded Detail foundation; Task 32 adds a Dashboard, with
+> PR #86 as the corrective final implementation; PR #107 merges the C-47
+> item-master hardening slice with green CI, including its CI-only live-PG suite.
+> PR #107 merge/CI does **not** constitute Owner acceptance. OQ-29 Option A,
+> OQ-33 Option D, barcode PDR-01 Option A and OQ-36 Option C are recorded with
+> their remaining open subquestions. Current counts are 55 Prisma models, 18
 > migrations, 48 controllers, 142 permissions, 113 backend unit-spec files and
 > 34 E2E-spec files. Dashboard existence does not create a Reporting module or
 > make frontend completion a Backend MVP gate. Use
@@ -133,7 +137,7 @@ Implemented and accepted: login/session (`/auth/login`, `/auth/me`, `/auth/logou
 
 ### 1.7 Load-bearing OQs (status from `docs/open-questions.md`)
 
-All remain **OPEN** in the registry: OQ-01 (tenancy — product question; the ODR-3 *invariant* is implemented, the *product* question is not answered), OQ-02 (UI language/Jalali), OQ-03 (currency), OQ-11 (opening balances/costing), OQ-12 (numbering policy), OQ-14 (occupational roles), OQ-15 (notification channels), OQ-16 (purchasing posture: post-v1), OQ-19 (administrator safety), OQ-22 (organizational scope/branches), OQ-23 (fiscal calendar policy), OQ-24 (inventory valuation), OQ-25 (chart content/control roles — **substantially narrowed by Tasks 20/21; content values and role catalog remain open**), OQ-27 (correction windows), OQ-30 (tax model), OQ-36 (master-data lifecycle: deletion/code reuse — **Task 21 records explicit prerequisites**), OQ-38 (party detail), OQ-39 (**durable integration semantics — gates all system posting**), OQ-40 (financial areas), OQ-41 (detail dimensions — line-level boundary decided by OD-20-6; count/defaults/binding open), OQ-42 (posting modes), OQ-43 (Iranian statutory — architecture decided as Proposed ADR-0036; **every legal fact requires validation**), OQ-49 (report builder depth), OQ-54 (finalized document policy), OQ-62/OQ-63 (pin divergence/legacy fallback — ODR-1 enforces coherence on writes; repair of existing rows undecided), and others. OQ-64 is RESOLVED (Task 13).
+All remain **OPEN** in the registry, although partial Owner decisions are now recorded: OQ-01 (tenancy — product question; the ODR-3 *invariant* is implemented, the *product* question is not answered), OQ-02 (UI language/Jalali), OQ-03 (currency), OQ-11 (opening balances/costing), OQ-12 (numbering policy), OQ-14 (occupational roles), OQ-15 (notification channels), OQ-16 (purchasing posture: post-v1), OQ-19 (administrator safety), OQ-22 (organizational scope/branches), OQ-23 (fiscal calendar policy), OQ-24 (inventory valuation), OQ-25 (chart content/control roles — **substantially narrowed by Tasks 20/21; content values and role catalog remain open**), OQ-27 (correction windows), OQ-29 (**Option A recorded 2026-10-02; independent quantity/conversion subquestions remain open**), OQ-30 (tax model), OQ-33 (**Option D recorded 2026-10-02; existing taxonomy/capability confirmation remains open and Option A is not approved**), OQ-36 (**Option C recorded 2026-10-02; code reuse remains open**), OQ-38 (party detail), OQ-39 (**durable integration semantics — gates all system posting**), OQ-40 (financial areas), OQ-41 (detail dimensions — line-level boundary decided by OD-20-6; count/defaults/binding open), OQ-42 (posting modes), OQ-43 (Iranian statutory — architecture decided as Proposed ADR-0036; **every legal fact requires validation**), OQ-49 (report builder depth), OQ-54 (finalized document policy), OQ-62/OQ-63 (pin divergence/legacy fallback — ODR-1 enforces coherence on writes; repair of existing rows undecided), and others. Barcode PDR-01 Option A is decided, but deactivated-item barcode reuse remains open. OQ-64 is RESOLVED (Task 13).
 
 ---
 
@@ -341,6 +345,20 @@ mechanism (exists — Task 23 merged)  ≠  content (OQ-25/OQ-36 — not approve
 - **3D — Purchasing**: POST-MVP per the OQ-16 recorded posture. This does not remove Warehouse Receipt or Warehouse Issue; no purchasing dependency is permitted in the Inventory MVP path.
 - **3E — Party / Customer foundation**: preserve the existing flat party master and complete the customer-facing foundation required by Sales; Supplier purchasing flow is not an MVP requirement.
 - **3F — AR/AP**: no accepted admission anywhere; not required to admit Sales. If later admitted, it must be separately designed.
+
+**Current C-47–C-54 dependency reconciliation (2026-10-02):** C-47 is
+merged/CI-verified implementation-style hardening but **not Owner-accepted**;
+OQ-29 Option A and barcode PDR-01 Option A are recorded, while OQ-33 and
+OQ-36 remain open for their stated follow-ups. C-48/C-49 are blocked by
+opening/valuation/accounting policy (OQ-11/OQ-24, plus OQ-25 where applicable).
+C-50 is the next **investigation-ready** candidate, not an implementation
+candidate: OQ-54 governs finalized request lifecycle, with OQ-13/OQ-26 only if
+approval is in scope. C-51/C-52 may receive bounded investigation, but their
+full implementation is blocked by OQ-24/OQ-39/OQ-42/OQ-54. C-53 has balance
+core but full stock/settings/rial scope is OQ-24-gated. C-54 may be investigated
+as bounded Inventory reports; OQ-49 is required only if a generic Report Builder
+is included. See the [dependency matrix C-47–C-54 review](backend-mvp-dependency-matrix.md#4-c-47c-54-dependency-review-2026-10-02).
+No warehouse operational implementation is authorized by this roadmap update.
 
 
 ### 5.4 Phase 4 — Cross-module Accounting integration
