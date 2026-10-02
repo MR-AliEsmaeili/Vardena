@@ -701,6 +701,145 @@ describe('Organization + Inventory master data (e2e)', () => {
     expect(res.body.code).toBe('ValidationFailed');
   });
 
+  it('journey 2: rejects a duplicate item code in one organization and allows it in another', async () => {
+    const duplicate = await root
+      .post('/api/v1/inventory/items')
+      .send({
+        organizationId: state.orgId,
+        code: 'ITM-0001',
+        name: 'Duplicate code',
+        itemKind: 'goods',
+        baseUnitId: state.unitPcsId,
+      })
+      .expect(409);
+    expect(duplicate.body.code).toBe('Conflict');
+
+    // The exact same code is fine in a DIFFERENT organization (a fresh one,
+    // so the shared `otherOrgId` journey state stays clean). Root's
+    // membership is seeded exactly like every other journey org.
+    const thirdOrg = await root
+      .post('/api/v1/organizations')
+      .send({ code: 'ORG-MISC-2', name: 'Third org' })
+      .expect(201);
+    master.raw.memberships.seed(state.rootId, thirdOrg.body.id as string);
+    const thirdUnit = await root
+      .post('/api/v1/inventory/units')
+      .send({ organizationId: thirdOrg.body.id, code: 'PCS', name: 'Piece' })
+      .expect(201);
+    const foreign = await root
+      .post('/api/v1/inventory/items')
+      .send({
+        organizationId: thirdOrg.body.id,
+        code: 'ITM-0001',
+        name: 'ITM-0001 in another organization',
+        itemKind: 'goods',
+        baseUnitId: thirdUnit.body.id,
+      })
+      .expect(201);
+    expect(foreign.body.code).toBe('ITM-0001');
+  });
+
+  it("answers 404 (not disclosure) for another organization's item by id (GET/PATCH/enable/disable IDOR)", async () => {
+    const id = state.itemId;
+    await root
+      .get(`/api/v1/inventory/items/${id}`)
+      .query({ organizationId: state.otherOrgId })
+      .expect(404);
+    await root
+      .patch(`/api/v1/inventory/items/${id}`)
+      .query({ organizationId: state.otherOrgId })
+      .send({ name: 'Hijacked' })
+      .expect(404);
+    await root
+      .post(`/api/v1/inventory/items/${id}/disable`)
+      .query({ organizationId: state.otherOrgId })
+      .expect(404);
+    await root
+      .post(`/api/v1/inventory/items/${id}/enable`)
+      .query({ organizationId: state.otherOrgId })
+      .expect(404);
+
+    // Nothing about the item changed (ADR-0022 §8: probes never disclose or mutate).
+    const untouched = await root
+      .get(`/api/v1/inventory/items/${id}`)
+      .query({ organizationId: state.orgId })
+      .expect(200);
+    expect(untouched.body.name).toBe('Steel bolt M8');
+    expect(untouched.body.isActive).toBe(true);
+  });
+
+  it('journey 2: rejects a duplicate unit code in one organization and allows it in another', async () => {
+    const duplicate = await root
+      .post('/api/v1/inventory/units')
+      .send({ organizationId: state.orgId, code: 'BOX', name: 'Box again' })
+      .expect(409);
+    expect(duplicate.body.code).toBe('Conflict');
+
+    const foreign = await root
+      .post('/api/v1/inventory/units')
+      .send({ organizationId: state.otherOrgId, code: 'BOX', name: 'Box (B)' })
+      .expect(201);
+    expect(foreign.body.code).toBe('BOX');
+  });
+
+  it('journey 2: rejects a conversion window that overlaps versions it cannot supersede', async () => {
+    // State: [2026-01-01, 2026-02-01) factor 12 (closed), [2026-02-01, ∞)
+    // factor 24 (open). A window spanning both cannot be resolved by closing
+    // "the last open-ended one", so it is rejected with 422 — the same
+    // message the single-threaded service has always given, now backed by
+    // the in-transaction plan (advisory-locked) as well.
+    const overlapping = await root
+      .post('/api/v1/inventory/unit-conversions')
+      .send({
+        organizationId: state.orgId,
+        fromUnitId: state.unitBoxId,
+        toUnitId: state.unitPcsId,
+        factor: '30',
+        validFrom: '2026-01-15T00:00:00.000Z',
+        validTo: '2026-02-15T00:00:00.000Z',
+      })
+      .expect(422);
+    expect(overlapping.body.code).toBe('BusinessRuleViolation');
+
+    // The pair's state is untouched: the two planned versions still resolve.
+    const january = await root
+      .get('/api/v1/inventory/unit-conversions/resolve')
+      .query({
+        organizationId: state.orgId,
+        fromUnitId: state.unitBoxId,
+        toUnitId: state.unitPcsId,
+        asOf: '2026-01-20T00:00:00.000Z',
+      })
+      .expect(200);
+    expect(january.body.conversion.factor).toBe('12');
+  });
+
+  it('answers 404 (not disclosure) for a conversion of another organization by id', async () => {
+    const res = await root
+      .get(`/api/v1/inventory/unit-conversions/${state.conversionId}`)
+      .query({ organizationId: state.otherOrgId })
+      .expect(404);
+    expect(res.body.code).toBe('EntityNotFound');
+  });
+
+  it("refuses to resolve conversion factors through another organization's item (no-disclosure)", async () => {
+    // The item belongs to the FIRST organization; resolving its factors under
+    // the other organization's scope must be not-found, never the foreign
+    // organization's factor. Regression for the resolve-path disclosure the
+    // C-47 fix closed.
+    const res = await root
+      .get('/api/v1/inventory/unit-conversions/resolve')
+      .query({
+        organizationId: state.otherOrgId,
+        itemId: state.itemId,
+        fromUnitId: state.unitBoxId,
+        toUnitId: state.unitPcsId,
+        asOf: '2026-03-01T00:00:00.000Z',
+      })
+      .expect(404);
+    expect(res.body.code).toBe('EntityNotFound');
+  });
+
   // ---- journey 3: organization → party -------------------------------------
 
   it('journey 3: creates a party holding both capabilities', async () => {

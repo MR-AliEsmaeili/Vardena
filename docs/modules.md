@@ -752,6 +752,15 @@ reservations,transfers}` — including `POST /movements/:id/reverse`,
   Unit conversions are the exception: **no PATCH and no enable/disable**, because
   effective-dated configuration is never edited in place — a change is a new version
   (`GET .../unit-conversions/resolve` answers "which version applies at instant X").
+  Conversion version writes are the module's second concurrency-critical raw-SQL
+  path (`data/unit-conversions.repository.ts`, AR-11): each create takes a
+  pair-scoped `pg_advisory_xact_lock(hashtextextended(<pair key>, 0))` inside its
+  transaction, re-reads the pair's versions, re-plans (`domain/planNewVersion`),
+  closes the superseded version and inserts — in that order. A pair can therefore
+  never be observed with two open-ended versions, under concurrency included.
+  The pair key distinguishes global-vs-item scope and the owner id, so unrelated
+  pairs never serialize, and a writer holds at most one such lock (no
+  lock-ordering cycle with the posting core's `data/inventory-locks.ts`).
 - **Permissions:** `Inventory.{Item,ItemGroup,Unit,Warehouse}` ×
   `{View,Create,Edit,Enable,Disable}` (20) plus `Inventory.UnitConversion.{View,Create}`
   (2) — 22 master-data codes, **plus the 10 core codes listed under Status =

@@ -598,4 +598,163 @@ describe('UnitConversionsService', () => {
       ),
     ).rejects.toMatchObject({ code: 'EntityNotFound' });
   });
+
+  it('treats validFrom as inclusive and validTo as exclusive at the boundary instant', async () => {
+    // A bounded first version, then the open-ended one starting exactly where
+    // the first ends. The instant FEB must resolve to the NEW factor (the old
+    // window excludes its end; the new window includes its start) — one
+    // unambiguous owner per instant, so a business-dated posting can never be
+    // factor-dependent on rounding an instant.
+    await fixture.conversions.createConversion({
+      organizationId: fixture.organizationId,
+      itemId: null,
+      fromUnitId: fixture.boxId,
+      toUnitId: fixture.pcsId,
+      factor: '12',
+      validFrom: JAN,
+      validTo: FEB,
+    });
+    await fixture.conversions.createConversion({
+      organizationId: fixture.organizationId,
+      itemId: null,
+      fromUnitId: fixture.boxId,
+      toUnitId: fixture.pcsId,
+      factor: '24',
+      validFrom: FEB,
+      validTo: null,
+    });
+
+    const beforeBoundary = await fixture.conversions.resolveConversion({
+      organizationId: fixture.organizationId,
+      itemId: null,
+      fromUnitId: fixture.boxId,
+      toUnitId: fixture.pcsId,
+      asOf: D('2026-01-31T23:59:59.999Z'),
+    });
+    expect(beforeBoundary?.factor).toBe('12');
+
+    const atBoundary = await fixture.conversions.resolveConversion({
+      organizationId: fixture.organizationId,
+      itemId: null,
+      fromUnitId: fixture.boxId,
+      toUnitId: fixture.pcsId,
+      asOf: FEB,
+    });
+    expect(atBoundary?.factor).toBe('24');
+  });
+
+  it("refuses to resolve conversions through another organization's item (no-disclosure)", async () => {
+    // Regression for the resolve-path disclosure: item-specific versions are
+    // keyed by the item (the item determines the organization), so resolving
+    // with a foreign item id must be a 404 — previously it silently returned
+    // the foreign organization's factor (ADR-0022 §8).
+    const otherOrg = (
+      await fixture.organizations.createOrganization({
+        code: 'ORG-B',
+        name: 'Org B',
+      })
+    ).id;
+    const foreignUnit = await fixture.units.createUnit({
+      organizationId: otherOrg,
+      code: 'PCS',
+      name: 'Piece',
+    });
+    const foreignBox = await fixture.units.createUnit({
+      organizationId: otherOrg,
+      code: 'BOX',
+      name: 'Box',
+    });
+    const foreignItem = await fixture.items.createItem({
+      organizationId: otherOrg,
+      code: 'ITM-X',
+      name: 'Foreign',
+      itemKind: 'goods',
+      baseUnitId: foreignUnit.id,
+    });
+    await fixture.conversions.createConversion({
+      organizationId: otherOrg,
+      itemId: foreignItem.id,
+      fromUnitId: foreignBox.id,
+      toUnitId: foreignUnit.id,
+      factor: '6',
+      validFrom: JAN,
+      validTo: null,
+    });
+
+    await expect(
+      fixture.conversions.resolveConversion({
+        organizationId: fixture.organizationId,
+        itemId: foreignItem.id,
+        fromUnitId: foreignBox.id,
+        toUnitId: foreignUnit.id,
+        asOf: FEB,
+      }),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+  });
+
+  it('still resolves conversions for a disabled item (history stays readable)', async () => {
+    // A disabled item blocks NEW usage (master-data-strategy §7.4), but its
+    // recorded conversions remain resolvable so past documents/ledger facts
+    // keep their meaning.
+    await fixture.conversions.createConversion({
+      organizationId: fixture.organizationId,
+      itemId: fixture.itemId,
+      fromUnitId: fixture.boxId,
+      toUnitId: fixture.pcsId,
+      factor: '6',
+      validFrom: JAN,
+      validTo: null,
+    });
+    await fixture.items.disableItem(fixture.organizationId, fixture.itemId);
+
+    const resolved = await fixture.conversions.resolveConversion({
+      organizationId: fixture.organizationId,
+      itemId: fixture.itemId,
+      fromUnitId: fixture.boxId,
+      toUnitId: fixture.pcsId,
+      asOf: FEB,
+    });
+    expect(resolved?.factor).toBe('6');
+    expect(resolved?.itemId).toBe(fixture.itemId);
+  });
+
+  it('filters the global resolve path by organization', async () => {
+    // A conversion that exists in org B is invisible to org A's resolution —
+    // the global path is org-filtered (and the scope assertion backstops it
+    // under a real principal; see master-data-authorization.spec.ts).
+    const otherOrg = (
+      await fixture.organizations.createOrganization({
+        code: 'ORG-B',
+        name: 'Org B',
+      })
+    ).id;
+    const foreignUnit = await fixture.units.createUnit({
+      organizationId: otherOrg,
+      code: 'PCS',
+      name: 'Piece',
+    });
+    const foreignBox = await fixture.units.createUnit({
+      organizationId: otherOrg,
+      code: 'BOX',
+      name: 'Box',
+    });
+    await fixture.conversions.createConversion({
+      organizationId: otherOrg,
+      itemId: null,
+      fromUnitId: foreignBox.id,
+      toUnitId: foreignUnit.id,
+      factor: '12',
+      validFrom: JAN,
+      validTo: null,
+    });
+
+    const fromOrgA = await fixture.conversions.resolveConversion({
+      organizationId: fixture.organizationId,
+      itemId: null,
+      fromUnitId: foreignBox.id,
+      toUnitId: foreignUnit.id,
+      asOf: FEB,
+    });
+    expect(fromOrgA).toBe(null);
+  });
 });

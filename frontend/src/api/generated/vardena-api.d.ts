@@ -3415,21 +3415,12 @@ export interface components {
             isSellable?: boolean;
             /** @description Omit to take the default for the item kind. A valued item must be stockable. */
             isValued?: boolean;
-            /**
-             * @description Requires a stockable item.
-             * @default false
-             */
-            requiresLot: boolean;
-            /**
-             * @description Requires a stockable item.
-             * @default false
-             */
-            requiresSerial: boolean;
-            /**
-             * @description Requires a stockable item.
-             * @default false
-             */
-            requiresExpiry: boolean;
+            /** @description Requires a stockable item. Omit to take the default for the item kind (false for every current kind). */
+            requiresLot?: boolean;
+            /** @description Requires a stockable item. Omit to take the default for the item kind (false for every current kind). */
+            requiresSerial?: boolean;
+            /** @description Requires a stockable item. Omit to take the default for the item kind (false for every current kind). */
+            requiresExpiry?: boolean;
             /** @description Item-level negative-stock override (ADR-0022). Omit to follow each warehouse policy; set explicitly to allow or forbid negative stock for this item everywhere. */
             allowNegativeStock?: boolean;
             barcode?: string;

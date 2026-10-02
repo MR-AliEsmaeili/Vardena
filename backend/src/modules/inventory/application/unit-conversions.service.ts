@@ -15,13 +15,15 @@ import {
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
-import { UnitConversionsRepository } from '../data/unit-conversions.repository.js';
+import {
+  ConversionPlanRejectedError,
+  UnitConversionsRepository,
+} from '../data/unit-conversions.repository.js';
 import type {
   UnitConversion,
   UnitConversionDto,
 } from '../domain/unit-conversion.js';
 import {
-  planNewVersion,
   resolveVersionAt,
   toUnitConversionDto,
 } from '../domain/unit-conversion.js';
@@ -194,13 +196,23 @@ export class UnitConversionsService {
   }
 
   /**
-   * Create a new version. Closes the version it supersedes in the same
-   * transaction.
+   * Create a new version. The repository plans and closes the version it
+   * supersedes behind a pair-scoped PostgreSQL advisory lock, in the same
+   * transaction as the insert — so the decision can never be made on a
+   * pre-lock snapshot that a concurrent create already changed.
+   *
+   * The plan is also validated here first (fail fast, stable messages): the
+   * window rule is pure and reading it early costs nothing. What the service
+   * deliberately does NOT do any more is PLAN from that early read — the
+   * repository re-plans after locking; this service only maps its typed
+   * rejection back onto the stable 422 model.
    *
    * @throws `BadRequest` for a malformed pair (same unit on both ends) or a
    *   non-positive/ill-formed factor.
    * @throws `BusinessRuleViolation` for an invalid window or an overlap that is
-   *   not a clean supersession.
+   *   not a clean supersession (single-threaded and concurrent alike).
+   * @throws `Conflict` when the database unique index fires (two versions
+   *   starting at the identical instant for one pair — a genuine race).
    */
   async createConversion(
     input: CreateConversionInput,
@@ -241,30 +253,11 @@ export class UnitConversionsService {
 
     const validFrom = input.validFrom;
     const validTo = input.validTo ?? null;
-    const existing =
-      itemId === null
-        ? await this.repository.findGlobalVersions(
-            input.organizationId,
-            input.fromUnitId,
-            input.toUnitId,
-          )
-        : await this.repository.findItemVersions(
-            itemId,
-            input.fromUnitId,
-            input.toUnitId,
-          );
 
-    const plan = planNewVersion({
-      candidate: { validFrom, validTo },
-      existing,
-    });
-    if (plan.problem === 'invalid_window') {
+    // Fail-fast validation of the pure window rule (also enforced — and this
+    // is the authoritative check — inside the repository transaction).
+    if (validTo !== null && validTo.getTime() <= validFrom.getTime()) {
       throw AppException.businessRule('validTo must be later than validFrom.');
-    }
-    if (plan.problem === 'overlapping_version') {
-      throw AppException.businessRule(
-        'A conversion version already covers part of that period. A new version must start after the current one and supersede it.',
-      );
     }
 
     const now = new Date();
@@ -281,27 +274,34 @@ export class UnitConversionsService {
       updatedAt: now,
       createdBy: actorId,
     };
-    const close = {
-      validTo: validFrom,
-      updatedAt: now,
-      updatedBy: actorId,
-    };
+    const closeAudit = { updatedAt: now, updatedBy: actorId };
 
-    let created: UnitConversion;
+    let write: {
+      conversion: UnitConversion;
+      supersededConversionId: string | null;
+    };
     try {
-      created =
+      write =
         itemId === null
           ? await this.repository.createGlobalVersion({
               create,
-              supersededId: plan.supersededId,
-              close,
+              closeAudit,
             })
           : await this.repository.createItemVersion({
               create: { ...create, itemId },
-              supersededId: plan.supersededId,
-              close,
+              closeAudit,
             });
     } catch (error) {
+      if (error instanceof ConversionPlanRejectedError) {
+        if (error.problem === 'invalid_window') {
+          throw AppException.businessRule(
+            'validTo must be later than validFrom.',
+          );
+        }
+        throw AppException.businessRule(
+          'A conversion version already covers part of that period. A new version must start after the current one and supersede it.',
+        );
+      }
       if (isUniqueViolation(error)) {
         throw AppException.conflict(
           'A conversion version already starts at that instant for this unit pair.',
@@ -309,6 +309,7 @@ export class UnitConversionsService {
       }
       throw error;
     }
+    const created = write.conversion;
 
     await publishEvent(this.events, {
       type: UNIT_CONVERSION_CREATED_EVENT,
@@ -322,7 +323,7 @@ export class UnitConversionsService {
         toUnitId: created.toUnitId,
         factor: created.factor,
         validFrom: created.validFrom.toISOString(),
-        supersededConversionId: plan.supersededId,
+        supersededConversionId: write.supersededConversionId,
       },
     });
     this.logger.log(
@@ -331,7 +332,7 @@ export class UnitConversionsService {
         unitConversionId: created.id,
         organizationId: created.organizationId,
         itemId: created.itemId,
-        supersededConversionId: plan.supersededId,
+        supersededConversionId: write.supersededConversionId,
       },
       UnitConversionsService.name,
     );
@@ -353,8 +354,20 @@ export class UnitConversionsService {
     await this.authorization.requireAllPermissions([
       UNIT_CONVERSION_PERMISSIONS.VIEW,
     ]);
+    await this.organizations.assertOrganizationInScope(input.organizationId);
 
     if (input.itemId !== undefined && input.itemId !== null) {
+      // The item determines which organization its conversions belong to:
+      // prove the item is really in the queried organization before reading
+      // any item-specific version, or a caller holding UnitConversion.View
+      // anywhere could resolve another organization's factors by id probing
+      // (ADR-0022 §8). History stays readable — a disabled item still
+      // resolves (master-data-strategy §7.4), hence allowInactive.
+      await this.items.requireUsableItemInOrganization(
+        input.itemId,
+        input.organizationId,
+        { allowInactive: true },
+      );
       const itemVersions = await this.repository.findItemVersions(
         input.itemId,
         input.fromUnitId,

@@ -88,7 +88,7 @@ Verified against `docs/accounting/task-index.md` §4 (authoritative candidate ma
 | Capability | State on `main` | Dependency / boundary | Blocking OQ/ADR | MVP posture |
 |---|---|---|---|---|
 | Warehouse coding/master | VERIFIED COMPLETE as master data (list/get/create/update/enable/disable, organization + branch scope, org-scoped code uniqueness, lifecycle freeze guards) — `docs/tasks/task-33/*`, no separate Owner acceptance record; stock locations/bins, costing, valuation and opening remain future slices | organization scope; Inventory ownership | OQ-22/OQ-33 (preserved, not resolved) | **MVP REQUIRED — master-data candidate hardened; broader Full Inventory/Warehouse operational flow still a candidate** |
-| Product/item coding, attributes, units, barcode | PARTIAL foundation | item model and unit/conversion contracts | OQ-29/OQ-33 | **MVP REQUIRED — candidate** |
+| Product/item coding, attributes, units, barcode | **PARTIAL — master implemented + regression-hardened (C-47 hardening slice); barcode policy undecided** | item model and unit/conversion contracts | OQ-29/OQ-33 | **MVP REQUIRED — candidate (remains blocked by OQ)** |
 | Opening quantity | NOT PRESENT as complete operational flow | Inventory master/movement and opening policy | OQ-11/OQ-24 | **MVP REQUIRED — candidate** |
 | Opening rial | NOT PRESENT as complete operational flow | Inventory + Accounting + valuation | OQ-11/OQ-24 | **MVP REQUIRED — candidate** |
 | Material Request | NOT PRESENT | Inventory document/lifecycle/permissions | OQ-54 as applicable | **MVP REQUIRED — candidate** |

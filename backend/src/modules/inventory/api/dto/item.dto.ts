@@ -114,24 +114,24 @@ export class CreateItemDto {
   isValued?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Requires a stockable item.',
-    default: false,
+    description:
+      'Requires a stockable item. Omit to take the default for the item kind (false for every current kind).',
   })
   @IsOptional()
   @IsBoolean()
   requiresLot?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Requires a stockable item.',
-    default: false,
+    description:
+      'Requires a stockable item. Omit to take the default for the item kind (false for every current kind).',
   })
   @IsOptional()
   @IsBoolean()
   requiresSerial?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Requires a stockable item.',
-    default: false,
+    description:
+      'Requires a stockable item. Omit to take the default for the item kind (false for every current kind).',
   })
   @IsOptional()
   @IsBoolean()

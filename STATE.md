@@ -1072,3 +1072,81 @@ changes and verification: `docs/tasks/task-33/`.
   does not accept, re-accept, or alter the status of §13 (the other "Task
   33"), C-01..C-45, or any other candidate in the Future Task Candidate
   Register beyond updating C-46's own row.
+## 17. C-47 — Inventory Item Master Readiness, Regression Hardening & Decision Preparation (2026-10-02)
+
+This addendum records a focused backend hardening task without rewriting or
+removing any historical project state above. Full findings, gap matrix,
+defects/fixes, OQ-29/OQ-33 decision briefs and verification:
+`docs/tasks/c-47-item-master-readiness-hardening-report.md` (companion to the
+merged `docs/tasks/c-47-item-master-preflight-investigation.md`, PR #106).
+
+- **Naming note.** The work order titled this task "C-47 — Inventory Item
+  Master Completion". As with §16, the repository registry for this candidate
+  is `docs/roadmap/future-task-candidates.md` row **C-47 (Product/item master
+  completion)**; the preflight investigation (§-titled report referenced
+  above) established that the item-master surface (items, eight-item kind
+  taxonomy with capability defaults, item groups, units, global +
+  item-specific effective-dated unit conversions, ledger freeze guards) was
+  **already implemented and merged** — so this task was executed as bounded
+  reconnaissance + regression hardening, exactly mirroring the C-46 pattern,
+  not as a new implementation.
+- **Scope:** verify the existing item-master vertical against the current
+  contract, close demonstrable decision-independent defects only, and prepare
+  OQ-29/OQ-33 for explicit Owner decision without selecting any option.
+- **Three verified defects fixed (production code, decision-independent):**
+  (1) **conversion supersession race** — version planning ran outside the
+  write transaction; the repository now takes a pair-scoped
+  `pg_advisory_xact_lock` inside the transaction, re-reads, re-plans with the
+  same already-approved invariant, closes + inserts, and maps a stale plan to
+  the same stable 422/409 contract (typed `ConversionPlanRejectedError`;
+  raw-SQL documented in `docs/modules.md` per AR-11);
+  (2) **`resolveConversion` cross-organization leak** — the item-scoped
+  history was resolvable by an identifier of another organization's item; the
+  path now enforces `assertOrganizationInScope` +
+  `requireUsableItemInOrganization` (allowInactive, so disabled-item history
+  stays resolvable exactly as before for searches; unauthorized scope remains
+  an opaque boundary proven via the real auth path);
+  (3) **generated frontend contract drift** — `CreateItemDto.requiresLot`/
+  `requiresSerial`/`requiresExpiry` were emitted REQUIRED in
+  `frontend/src/api/generated/vardena-api.d.ts` while the backend treats them
+  as optional (kind-defaulted at create); DTO metadata corrected (no business
+  semantics changed) and the types were **regenerated through the real
+  pipeline** with a diff of exactly the three property blocks. Regression
+  finding for the record: **no CI step checks OpenAPI/frontend-type drift**;
+  the work recommends, but does not install, one (tooling policy).
+- **Coverage added without changing business behavior:** new hermetic specs
+  `units.service.spec.ts` (12), `item-groups.service.spec.ts` (14);
+  `items.service.spec.ts` +9 (freeze guards — seams previously stubbed to
+  never fire); `unit-conversions.service.spec.ts` +3 (window boundary, Fix-2);
+  `inventory-posting-support.spec.ts` +8 (`resolveEnteredToBase`);
+  `master-data-authorization.spec.ts` +5 (item-master IDOR);
+  `master-data.e2e-spec.ts` +7 (47/47); new opt-in live-suite
+  `backend/test/item-master-live.e2e-spec.ts` (**9 cases**: concurrent item
+  code uniqueness, cross-org addressing with real rows, same-instant and
+  supersession conversion races with pair-invariant assertions, backdated
+  factor snapshot, no-conversion rejection, >4dp fail-closed rejection, real
+  freeze guards). No pre-existing test was modified, weakened or skipped.
+- **Deliberately unchanged (decision pending):** OQ-29 (per-unit precision,
+  fractional rounding — current fail-closed >4dp rejection stays an
+  implementation decision pending Owner sign-off; options A–D in the report),
+  OQ-33 (kind list completeness + per-item vs per-kind capabilities; options
+  A–D), barcode policy (no uniqueness/validation added), OQ-36 (item
+  deletion/code-reuse), no new kinds/flags/columns/migrations.
+- **Verification:** `npm test` 122 files / 1443 passed; full hermetic e2e
+  328 passed + 132 deterministically skipped (live suites, no
+  `VARDENA_TEST_DATABASE_URL` locally); typecheck/lint/prettier clean;
+  frontend 305 tests passed + typecheck/lint/prettier/build green.
+  Live-DB assertions are wired into the existing CI backend job
+  (postgres:16 service + `VARDENA_TEST_DATABASE_URL`, `test:e2e` glob) and
+  were **not** executed locally; CI is the authoritative execution
+  environment. **No heavy E2E/live-DB test was executed locally unless
+  explicitly authorized.** CI (PR #107): run `36991377976` executed the live
+  suite and caught a real `$queryRaw`-on-PostgreSQL-`void` defect in the
+  advisory-lock call (fixed via `$executeRaw` — exactly the defect class the
+  live suite exists to catch); run `36992098706` backend + frontend **green**,
+  live suite executed (`VARDENA_TEST_DATABASE_URL` is set in the backend job;
+  previous-run failure annotations prove the skip gates were inactive).
+- **Not accepted by this addendum:** implementation/merge/CI-green is not
+  Owner acceptance. C-47 remains **BLOCKED BY OQ (OQ-29/OQ-33)** in the
+  candidate register; this section does not accept, re-accept, or alter the
+  status of §13/§16, C-01..C-46, or any other candidate.
