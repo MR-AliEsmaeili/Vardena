@@ -17,6 +17,13 @@
 --   * `material_request_lines.reservation_id` is a real FK into
 --     `inventory_reservations` (both tables live in this module) with a
 --     UNIQUE index: a reservation belongs to at most one line.
+--   * `material_request_lines.invoked_base_quantity`/`invocation_count` are
+--     AUTHORITATIVE counters maintained transactionally by this module under
+--     the request's own row lock (never recomputed from
+--     `documents.document_relations`, which stays the cross-module
+--     traceability record only) — this is what makes the invoked-quantity
+--     cap race-free across concurrent invocations and immune to that other
+--     table's own page-size limits.
 --   * `material_request_lines.branch_id` is DENORMALIZED from
 --     `warehouses.branch_id` at line-creation time, same as the inventory
 --     core ledger tables — branch is a first-class reporting scope
@@ -96,6 +103,8 @@ CREATE TABLE "inventory"."material_request_lines" (
     "conversion_factor"      NUMERIC(18,6)   NOT NULL,
     "reservation_requested"  BOOLEAN         NOT NULL DEFAULT FALSE,
     "reservation_id"         TEXT,
+    "invoked_base_quantity"  NUMERIC(18,4)   NOT NULL DEFAULT 0,
+    "invocation_count"       INTEGER         NOT NULL DEFAULT 0,
     "created_at"             TIMESTAMPTZ(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at"             TIMESTAMPTZ(6)  NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_by"             TEXT,

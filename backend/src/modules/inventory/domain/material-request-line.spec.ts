@@ -4,7 +4,9 @@ import {
   type MaterialRequestLine,
 } from './material-request-line.js';
 
-function baseLine(overrides: Partial<MaterialRequestLine> = {}): MaterialRequestLine {
+function baseLine(
+  overrides: Partial<MaterialRequestLine> = {},
+): MaterialRequestLine {
   return {
     id: 'line-1',
     materialRequestId: 'mr-1',
@@ -20,6 +22,8 @@ function baseLine(overrides: Partial<MaterialRequestLine> = {}): MaterialRequest
     conversionFactor: '1',
     reservationRequested: false,
     reservationId: null,
+    invokedBaseQuantity: '0',
+    invocationCount: 0,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-01T00:00:00Z'),
     ...overrides,

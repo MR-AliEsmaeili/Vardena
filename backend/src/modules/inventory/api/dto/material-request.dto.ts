@@ -235,7 +235,9 @@ export class MaterialRequestLineResponseDto {
   })
   reservationId!: string | null;
 
-  @ApiProperty({ description: 'Derived from document relations, never stored.' })
+  @ApiProperty({
+    description: 'Derived from document relations, never stored.',
+  })
   invokedBaseQuantity!: string;
 
   @ApiProperty({ description: 'baseQuantity − invokedBaseQuantity.' })

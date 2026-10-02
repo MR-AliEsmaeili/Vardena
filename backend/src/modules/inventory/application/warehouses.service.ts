@@ -177,8 +177,7 @@ export class WarehousesService {
         code,
         name,
         allowNegativeStock: input.allowNegativeStock ?? false,
-        reservationsReduceAvailable:
-          input.reservationsReduceAvailable ?? true,
+        reservationsReduceAvailable: input.reservationsReduceAvailable ?? true,
         isActive: true,
         createdAt: now,
         updatedAt: now,

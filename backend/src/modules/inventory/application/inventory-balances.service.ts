@@ -14,7 +14,7 @@ import {
   type KeyRebuild,
 } from '../data/inventory-balances.repository.js';
 import {
-  availableQuantity,
+  resolveAvailableQuantity,
   toInventoryBalanceDto,
   type InventoryBalanceDto,
 } from '../domain/inventory-balance.js';
@@ -138,8 +138,30 @@ export class InventoryBalancesService {
       skip,
       take,
     });
+    // `available` must honor each row's own warehouse's C-50 §3.7 setting —
+    // the same rule `getAvailability` already applies for a single key —
+    // so this list can never disagree with it for the same (warehouse,
+    // item). Rows on one page span a bounded number of distinct warehouses;
+    // resolve each one once (same N+1-by-warehouse shape already accepted in
+    // `listItemAvailabilityAcrossWarehouses`), never per balance row.
+    const settingByWarehouse = new Map<string, boolean>();
+    for (const item of items) {
+      if (settingByWarehouse.has(item.warehouseId)) continue;
+      const warehouse = await this.warehouseRows.findById(item.warehouseId);
+      // A balance row's warehouse must exist (FK-backed); default to the
+      // conservative/default setting only if that invariant is ever broken.
+      settingByWarehouse.set(
+        item.warehouseId,
+        warehouse?.reservationsReduceAvailable ?? true,
+      );
+    }
     return toPaginatedResult(
-      items.map(toInventoryBalanceDto),
+      items.map((item) =>
+        toInventoryBalanceDto(
+          item,
+          settingByWarehouse.get(item.warehouseId) ?? true,
+        ),
+      ),
       total,
       query.page,
       query.pageSize,
@@ -180,9 +202,10 @@ export class InventoryBalancesService {
       itemId: query.itemId,
       onHand,
       reserved,
-      available: warehouse.reservationsReduceAvailable
-        ? availableQuantity({ onHand, reserved })
-        : onHand,
+      available: resolveAvailableQuantity(
+        { onHand, reserved },
+        warehouse.reservationsReduceAvailable,
+      ),
       allowNegativeStock: resolveEffectivePolicy({
         itemAllow: item.allowNegativeStock,
         warehouseAllow: warehouse.allowNegativeStock,
@@ -241,9 +264,10 @@ export class InventoryBalancesService {
         itemId,
         onHand,
         reserved,
-        available: warehouse.reservationsReduceAvailable
-          ? availableQuantity({ onHand, reserved })
-          : onHand,
+        available: resolveAvailableQuantity(
+          { onHand, reserved },
+          warehouse.reservationsReduceAvailable,
+        ),
         allowNegativeStock: resolveEffectivePolicy({
           itemAllow: item.allowNegativeStock,
           warehouseAllow: warehouse.allowNegativeStock,

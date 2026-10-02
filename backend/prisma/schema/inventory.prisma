@@ -600,6 +600,20 @@ model MaterialRequestLine {
   /// this line; otherwise permanently NULL. `@unique` — a reservation is
   /// created for exactly one line, never shared.
   reservationId     String? @unique @map("reservation_id")
+  /// Cumulative base-unit quantity successfully invoked into a downstream
+  /// process (C-50 §3.8). AUTHORITATIVE counter — maintained transactionally
+  /// by `MaterialRequestsRepository.reserveInvocationCapacity` /
+  /// `releaseInvocationCapacity` under this request's own row lock, NOT
+  /// recomputed by reading `documents.document_relations` on every request
+  /// (review finding: that read was both permission-gated — coupling every
+  /// mutation response to `Documents.Relation.View` for no reason — and
+  /// capped at a single page, silently under-counting past 1000 relations).
+  /// The Document Relation itself remains the cross-module traceability
+  /// record; this module simply never reads it back to derive its own state.
+  invokedBaseQuantity Decimal @default(0) @map("invoked_base_quantity") @db.Decimal(18, 4)
+  /// Cumulative count of successful invocations, maintained alongside
+  /// `invokedBaseQuantity` in the same locked update.
+  invocationCount     Int     @default(0) @map("invocation_count")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy String?  @map("created_by")

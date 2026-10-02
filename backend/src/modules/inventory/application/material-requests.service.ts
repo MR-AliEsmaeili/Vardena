@@ -15,9 +15,12 @@ import { DocumentTypesService } from '../../documents/application/document-types
 import {
   MaterialRequestsRepository,
   MaterialRequestApproverMismatchError,
+  MaterialRequestInvocationCapacityError,
+  MaterialRequestLineNotFoundError,
   MaterialRequestStatusError,
   type ApproveLineInput,
   type DraftLineInput,
+  type InvocationCapacityResult,
 } from '../data/material-requests.repository.js';
 import {
   BalanceDriftError,
@@ -31,8 +34,6 @@ import { resolveEnteredToBase } from './inventory-posting-support.js';
 import { assertPostableItem } from './inventory-movements.service.js';
 import { resolveSort } from './master-data-support.js';
 import {
-  addDecimalStrings,
-  compareDecimalStrings,
   subtractDecimalStrings,
   canonicalizeDecimal,
   fitsQuantity,
@@ -56,7 +57,6 @@ import {
   toMaterialRequestLineDto,
   type MaterialRequestLine,
   type MaterialRequestLineDto,
-  type MaterialRequestLineInvocationSummary,
 } from '../domain/material-request-line.js';
 import { toMaterialRequestEventDto } from '../domain/material-request-event.js';
 import type { MaterialRequestEventDto } from '../domain/material-request-event.js';
@@ -135,23 +135,35 @@ export interface InvokeMaterialRequestLineInput {
  * method's docs for the deadlock-avoidance contract this service must honor
  * (reservation lines sorted by `(warehouseId, itemId)` before calling it).
  *
- * Two permission-composition notes, both ADDITIVE (never a weakening):
- * - `getMaterialRequest` and `reverseApproval` both need to know whether any
- *   line has been invoked, which reads `documents.document_relations`
- *   through the Foundation's only public read method,
- *   `DocumentRelationsService.listRelations` — the ONE method on that
- *   service that is permission-gated (`Documents.Relation.View`). There is
- *   no permission-free internal read for this on the Foundation today, so a
- *   caller needs that permission in addition to the Material Request
- *   permission to reach either operation. `invokeLine` itself does NOT pick
- *   this up — it calls `linkDocuments`, the Foundation's no-permission
- *   module-internal write path.
- * - Submitting allocates a number via `NumberingService.allocateNumber`
- *   BEFORE calling `repository.submit()`, in a separate, non-composable
- *   transaction (same accepted gap as every other Documents consumer): a
- *   crash between the two leaves an orphaned allocation, never a duplicate
- *   number, and a retry with the same Material Request id replays the SAME
- *   allocation (its `allocationKey` is the request id).
+ * Permission composition note (ADDITIVE, never a weakening): every mutation
+ * response (create/update/submit/approve/reject) and `reverseApproval`'s
+ * invocation gate need each line's invoked-quantity state. That state is
+ * read from THIS module's own `material_request_lines` counters
+ * (`invokedBaseQuantity`/`invocationCount`, maintained by
+ * `MaterialRequestsRepository.reserveInvocationCapacity`), never from
+ * `documents.document_relations` — so none of those operations require
+ * `Documents.Relation.View`, a permission unrelated to the Material Request
+ * action the caller already holds (a prior version of this service read
+ * relations back for this and accidentally coupled every mutation's success
+ * response to that permission — see `material-request-line.ts` for the full
+ * rationale). `invokeLine` still calls `DocumentRelationsService.linkDocuments`
+ * (the Foundation's no-permission module-internal write path) to create the
+ * actual cross-module traceability record; it just never reads it back.
+ *
+ * `invokeLine` validates its destination (registered type, type/module
+ * match, and existence+organization ownership via the owning module's own
+ * API) BEFORE calling `reserveInvocationCapacity` — a destination that fails
+ * validation never touches the line's remaining capacity. If
+ * `linkDocuments` itself then fails AFTER capacity was reserved,
+ * `releaseInvocationCapacity` compensates so a failed invocation never
+ * consumes capacity, blocks a future one, or blocks approval reversal.
+ *
+ * Submitting allocates a number via `NumberingService.allocateNumber` BEFORE
+ * calling `repository.submit()`, in a separate, non-composable transaction
+ * (same accepted gap as every other Documents consumer): a crash between the
+ * two leaves an orphaned allocation, never a duplicate number, and a retry
+ * with the same Material Request id replays the SAME allocation (its
+ * `allocationKey` is the request id).
  */
 @Injectable()
 export class MaterialRequestsService {
@@ -317,7 +329,10 @@ export class MaterialRequestsService {
 
   // ---- lifecycle ----------------------------------------------------------
 
-  async submit(id: string, organizationId: string): Promise<MaterialRequestDetailDto> {
+  async submit(
+    id: string,
+    organizationId: string,
+  ): Promise<MaterialRequestDetailDto> {
     await this.authorization.requireAllPermissions([
       MATERIAL_REQUEST_PERMISSIONS.SUBMIT,
     ]);
@@ -382,10 +397,7 @@ export class MaterialRequestsService {
     const reservationLines: ApproveLineInput[] = [];
     for (const line of lines.filter((l) => l.reservationRequested)) {
       const [item, warehouse] = await Promise.all([
-        this.items.requireUsableItemInOrganization(
-          line.itemId,
-          organizationId,
-        ),
+        this.items.requireUsableItemInOrganization(line.itemId, organizationId),
         this.warehouses.requireUsableWarehouseInOrganization(
           line.warehouseId,
           organizationId,
@@ -496,8 +508,8 @@ export class MaterialRequestsService {
         'Only the original approver may reverse this approval.',
       );
     }
-    const anyInvoked = await this.anyLineInvoked(organizationId, id);
-    if (anyInvoked) {
+    const linesBeforeReversal = await this.repository.listLines(id);
+    if (linesBeforeReversal.some((line) => line.invocationCount > 0)) {
       throw AppException.businessRule(
         'This approval cannot be reversed: at least one line has already ' +
           'been invoked into a subsequent process.',
@@ -535,8 +547,20 @@ export class MaterialRequestsService {
    * (C-50 §3.8) via a Document Relation (`fulfill`, quantity = base-unit
    * equivalent of `input.quantity`). Multiple/partial invocations of the same
    * line are allowed as long as their total never exceeds the line's own
-   * `baseQuantity` — enforced here against the SAME read this method returns,
-   * never against a destination-side total this module has no way to see.
+   * `baseQuantity`.
+   *
+   * Order matters (review findings #2 and #4) and is deliberate:
+   *   1. validate the destination FULLY (registered type, type/module match,
+   *      existence + organization ownership) — nothing stateful is touched
+   *      yet, so a doomed-to-fail destination never consumes capacity;
+   *   2. `reserveInvocationCapacity` — the ONE atomic, lock-serialized
+   *      check-and-increment against this line's own counters, immune to
+   *      both a concurrent second invocation and `document_relations`'
+   *      page-size limits;
+   *   3. `linkDocuments` — the actual cross-module traceability write; if
+   *      this fails, `releaseInvocationCapacity` compensates so the failed
+   *      attempt never consumed capacity or blocked anything;
+   *   4. `recordInvocationEvent` — append-only audit narrative.
    */
   async invokeLine(
     id: string,
@@ -557,10 +581,8 @@ export class MaterialRequestsService {
     if (line === undefined) {
       throw AppException.notFound('Material Request line', input.lineId);
     }
-    // No-permission reference check: refuses an invocation into a
-    // destination type that is not even registered, before a relation is
-    // ever written (the relation layer itself does not validate this).
-    this.documentTypes.requireDocumentType(input.destinationDocumentType);
+
+    await this.validateInvocationDestination(organizationId, input);
 
     const problem = validateEnteredQuantity(input.quantity);
     if (problem !== null) {
@@ -574,41 +596,70 @@ export class MaterialRequestsService {
     );
     if (!fitsQuantity(invokedBase)) {
       throw AppException.badRequest(
-        'The invoked quantity, converted to the line\'s base unit, is out of range.',
-      );
-    }
-    const summary = await this.lineInvocationSummary(
-      organizationId,
-      id,
-      line,
-    );
-    if (compareDecimalStrings(invokedBase, summary.remainingBaseQuantity) > 0) {
-      throw AppException.businessRule(
-        `The invoked quantity exceeds the ${summary.remainingBaseQuantity} ` +
-          'still remaining on this line.',
+        "The invoked quantity, converted to the line's base unit, is out of range.",
       );
     }
 
     const actorId = this.requireActorId();
     const now = new Date();
-    const relation = await this.documentRelations.linkDocuments({
-      organizationId,
-      source: {
-        module: 'inventory',
-        documentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
-        documentId: id,
+
+    let reserved: InvocationCapacityResult;
+    try {
+      reserved = await this.repository.reserveInvocationCapacity({
+        id,
+        organizationId,
         lineId: line.id,
-      },
-      target: {
-        module: input.destinationModule,
-        documentType: input.destinationDocumentType,
-        documentId: input.destinationDocumentId,
-        lineId: input.destinationLineId ?? null,
-      },
-      relationKind: 'fulfill',
-      quantity: invokedBase,
-      createdByProcess: false,
-    });
+        invokedBase,
+        now,
+        actorId,
+      });
+    } catch (error) {
+      if (error instanceof MaterialRequestInvocationCapacityError) {
+        throw AppException.businessRule(
+          `The invoked quantity exceeds the ${error.remaining} still ` +
+            'remaining on this line.',
+        );
+      }
+      if (error instanceof MaterialRequestLineNotFoundError) {
+        throw AppException.notFound('Material Request line', input.lineId);
+      }
+      throw mapStatusError(error);
+    }
+
+    let relation: Awaited<
+      ReturnType<DocumentRelationsService['linkDocuments']>
+    >;
+    try {
+      relation = await this.documentRelations.linkDocuments({
+        organizationId,
+        source: {
+          module: 'inventory',
+          documentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+          documentId: id,
+          lineId: line.id,
+        },
+        target: {
+          module: input.destinationModule,
+          documentType: input.destinationDocumentType,
+          documentId: input.destinationDocumentId,
+          lineId: input.destinationLineId ?? null,
+        },
+        relationKind: 'fulfill',
+        quantity: invokedBase,
+        createdByProcess: false,
+      });
+    } catch (error) {
+      // The traceability record was never created — this attempt must not
+      // be treated as a successful invocation, so give the capacity back.
+      await this.repository.releaseInvocationCapacity({
+        id,
+        lineId: line.id,
+        invokedBase,
+        now: new Date(),
+        actorId,
+      });
+      throw error;
+    }
     await this.repository.recordInvocationEvent({
       materialRequestId: id,
       organizationId,
@@ -616,12 +667,11 @@ export class MaterialRequestsService {
       occurredAt: now,
       relationId: relation.id,
     });
-    const refreshed = await this.lineInvocationSummary(
-      organizationId,
-      id,
-      line,
-    );
-    return toMaterialRequestLineDto(line, refreshed);
+    return toMaterialRequestLineDto(line, {
+      invokedBaseQuantity: reserved.invokedBaseQuantity,
+      remainingBaseQuantity: reserved.remainingBaseQuantity,
+      invocationCount: reserved.invocationCount,
+    });
   }
 
   // ---- internals ------------------------------------------------------------
@@ -701,111 +751,99 @@ export class MaterialRequestsService {
     return resolved;
   }
 
-  /** Any `fulfill` relation sourced from this Material Request means at
-   *  least one line has been invoked — sufficient for the reversal gate,
-   *  which blocks on ANY invoked line, not a specific one. */
-  private async anyLineInvoked(
-    organizationId: string,
-    materialRequestId: string,
-  ): Promise<boolean> {
-    const result = await this.documentRelations.listRelations({
-      organizationId,
-      sourceModule: 'inventory',
-      sourceDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
-      sourceDocumentId: materialRequestId,
-      relationKind: 'fulfill',
-      page: 1,
-      pageSize: 1,
-    });
-    return result.total > 0;
-  }
-
   /**
-   * Derive one line's invocation summary from `document_relations` (never
-   * stored — `domain/material-request-line.ts`). Bounded-scale assumption:
-   * Material Request lines are human-authored and few, so a single page of
-   * up to 1000 relations for the WHOLE request is read once and grouped by
-   * line in memory, rather than a per-line query.
+   * Validate a downstream invocation target BEFORE any state changes
+   * (review finding #2): a registered document type is NOT proof the
+   * destination document actually exists. This module can never read
+   * another module's tables directly (AR-07), so it can only verify
+   * destinations a module-owned API exposes for exactly that purpose.
+   *
+   * Checks, in order:
+   *   1. the destination document type is registered at all;
+   *   2. it is registered to the `destinationModule` the caller supplied
+   *      (a registered type belonging to a DIFFERENT module than claimed is
+   *      rejected here, never treated as a match);
+   *   3. the destination document (and line, if supplied) actually exists,
+   *      in the expected organization, via that OWNING module's own API.
+   *
+   * Today the only (module, documentType) pair this module can honestly
+   * verify is Material Request itself — no other module in this codebase
+   * yet exposes a safe "does this document exist, in this org, owned by
+   * this module" read Material Request could call. Rather than fabricate a
+   * check for a destination process that does not exist yet (Purchase
+   * Request, Warehouse Issue, …), invocation into any other destination is
+   * explicitly refused with a clear "not supported" error — this is an
+   * honest, acknowledged limitation (see the implementation report), not a
+   * bypassed validation.
    */
-  private async lineInvocationSummary(
+  private async validateInvocationDestination(
     organizationId: string,
-    materialRequestId: string,
-    line: MaterialRequestLine,
-  ): Promise<MaterialRequestLineInvocationSummary> {
-    const summaries = await this.loadInvocationSummaries(
-      organizationId,
-      materialRequestId,
-      [line],
+    input: InvokeMaterialRequestLineInput,
+  ): Promise<void> {
+    const definition = this.documentTypes.requireDocumentType(
+      input.destinationDocumentType,
     );
-    return (
-      summaries.get(line.id) ?? {
-        invokedBaseQuantity: '0',
-        remainingBaseQuantity: line.baseQuantity,
-        invocationCount: 0,
+    if (definition.module !== input.destinationModule) {
+      throw AppException.badRequest(
+        `Document type "${input.destinationDocumentType}" belongs to module ` +
+          `"${definition.module}", not "${input.destinationModule}".`,
+      );
+    }
+    if (
+      input.destinationModule === 'inventory' &&
+      input.destinationDocumentType === MATERIAL_REQUEST_DOCUMENT_TYPE
+    ) {
+      const target = await this.repository.findById(
+        input.destinationDocumentId,
+      );
+      if (target === null || target.organizationId !== organizationId) {
+        throw AppException.notFound(
+          'Destination document',
+          input.destinationDocumentId,
+        );
       }
+      if (
+        input.destinationLineId !== null &&
+        input.destinationLineId !== undefined
+      ) {
+        const targetLines = await this.repository.listLines(
+          input.destinationDocumentId,
+        );
+        const found = targetLines.some(
+          (candidate) => candidate.id === input.destinationLineId,
+        );
+        if (!found) {
+          throw AppException.notFound(
+            'Destination document line',
+            input.destinationLineId,
+          );
+        }
+      }
+      return;
+    }
+    throw AppException.businessRule(
+      `Invocation into module "${input.destinationModule}" document type ` +
+        `"${input.destinationDocumentType}" is not supported yet: no ` +
+        'module-owned API exists to verify that destination exists. This ' +
+        'is a known limitation, not a bypassed check.',
     );
   }
 
-  private async loadInvocationSummaries(
-    organizationId: string,
-    materialRequestId: string,
-    lines: MaterialRequestLine[],
-  ): Promise<Map<string, MaterialRequestLineInvocationSummary>> {
-    const { items: relations } = await this.documentRelations.listRelations({
-      organizationId,
-      sourceModule: 'inventory',
-      sourceDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
-      sourceDocumentId: materialRequestId,
-      relationKind: 'fulfill',
-      page: 1,
-      pageSize: 1000,
-    });
-    const byLine = new Map<string, { sum: string; count: number }>();
-    for (const relation of relations) {
-      const lineId = relation.source.lineId;
-      if (lineId === null) continue;
-      const quantity = relation.quantity ?? '0';
-      const existing = byLine.get(lineId) ?? { sum: '0', count: 0 };
-      byLine.set(lineId, {
-        sum: addDecimalStrings(existing.sum, quantity),
-        count: existing.count + 1,
-      });
-    }
-    const summaries = new Map<string, MaterialRequestLineInvocationSummary>();
-    for (const line of lines) {
-      const entry = byLine.get(line.id) ?? { sum: '0', count: 0 };
-      summaries.set(line.id, {
-        invokedBaseQuantity: entry.sum,
-        remainingBaseQuantity: subtractDecimalStrings(
-          line.baseQuantity,
-          entry.sum,
-        ),
-        invocationCount: entry.count,
-      });
-    }
-    return summaries;
-  }
-
-  private async toDetailDto(
+  private toDetailDto(
     header: MaterialRequest,
     lines: MaterialRequestLine[],
-  ): Promise<MaterialRequestDetailDto> {
-    const summaries = await this.loadInvocationSummaries(
-      header.organizationId,
-      header.id,
-      lines,
-    );
+  ): MaterialRequestDetailDto {
     return {
       ...toMaterialRequestDto(header),
       lines: lines.map((line) =>
-        toMaterialRequestLineDto(
-          line,
-          summaries.get(line.id) ?? {
-            invokedBaseQuantity: '0',
-            remainingBaseQuantity: line.baseQuantity,
-            invocationCount: 0,
-          },
-        ),
+        toMaterialRequestLineDto(line, {
+          invokedBaseQuantity: line.invokedBaseQuantity,
+          remainingBaseQuantity: subtractDecimalStrings(
+            line.baseQuantity,
+            line.invokedBaseQuantity,
+          ),
+          invocationCount: line.invocationCount,
+        }),
       ),
     };
   }

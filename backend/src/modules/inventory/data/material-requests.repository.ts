@@ -161,6 +161,50 @@ export class MaterialRequestApproverMismatchError extends Error {
   }
 }
 
+export class MaterialRequestLineNotFoundError extends Error {
+  readonly lineId: string;
+
+  constructor(lineId: string) {
+    super(`Material Request line "${lineId}" does not exist on this request.`);
+    this.name = 'MaterialRequestLineNotFoundError';
+    this.lineId = lineId;
+  }
+}
+
+/** Thrown by `reserveInvocationCapacity` when the requested amount exceeds
+ *  what remains on the line — read under the SAME lock as the increment, so
+ *  this is never racing a concurrent invocation of the same line. */
+export class MaterialRequestInvocationCapacityError extends Error {
+  readonly remaining: string;
+  readonly requested: string;
+
+  constructor(input: { remaining: string; requested: string }) {
+    super(
+      `The invoked quantity ${input.requested} exceeds the ${input.remaining} still remaining on this line.`,
+    );
+    this.name = 'MaterialRequestInvocationCapacityError';
+    this.remaining = input.remaining;
+    this.requested = input.requested;
+  }
+}
+
+export interface ReserveInvocationCapacityInput {
+  id: string;
+  organizationId: string;
+  lineId: string;
+  /** Base-unit magnitude being invoked now. Decimal string, always > 0 —
+   *  validated by the caller before this is reached. */
+  invokedBase: string;
+  now: Date;
+  actorId: string | null;
+}
+
+export interface InvocationCapacityResult {
+  invokedBaseQuantity: string;
+  remainingBaseQuantity: string;
+  invocationCount: number;
+}
+
 @Injectable()
 export class MaterialRequestsRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -704,6 +748,122 @@ export class MaterialRequestsRepository {
     });
   }
 
+  /**
+   * Atomically reserve `invokedBase` units of one line's remaining
+   * invocation capacity (C-50 §3.8, review finding #4 — concurrency and the
+   * 1000-relation pagination cap).
+   *
+   * Locks the Material Request HEADER row for the lifetime of this
+   * transaction — the same row every other mutating method here locks — so
+   * two concurrent `invokeLine` calls (same line or not) always serialize:
+   * the second one's read of `invoked_base_quantity` is guaranteed to see
+   * the first's committed increment before it checks the cap. This is what
+   * makes the cap race-free WITHOUT needing a lock on
+   * `documents.document_relations` (a different module's table this
+   * repository must never touch directly, AR-07) and without depending on
+   * that table's page size at all: the authoritative total lives on this
+   * line, not in a query over an unbounded number of relation rows.
+   *
+   * The caller (`MaterialRequestsService.invokeLine`) must call this BEFORE
+   * writing the Document Relation, and `releaseInvocationCapacity` to
+   * compensate if that write then fails — a failed invocation must never
+   * have consumed capacity.
+   *
+   * @throws MaterialRequestStatusError when the request is not approved.
+   * @throws MaterialRequestLineNotFoundError when the line does not belong
+   *   to this request (defense in depth — the caller already resolved it).
+   * @throws MaterialRequestInvocationCapacityError when `invokedBase`
+   *   exceeds what remains on the line.
+   */
+  async reserveInvocationCapacity(
+    input: ReserveInvocationCapacityInput,
+  ): Promise<InvocationCapacityResult> {
+    const client = await this.transacting();
+    return client.$transaction(async (tx) => {
+      const locked = await lockMaterialRequestRow(tx, input.id);
+      assertStatus(locked, 'approved');
+      const line = await tx.materialRequestLine.findUnique({
+        where: { id: input.lineId },
+      });
+      if (line === null || line.materialRequestId !== input.id) {
+        throw new MaterialRequestLineNotFoundError(input.lineId);
+      }
+      const invokedSoFar = decimalToString(line.invokedBaseQuantity);
+      const remaining = subtractDecimalStrings(
+        decimalToString(line.baseQuantity),
+        invokedSoFar,
+      );
+      if (compareDecimalStrings(input.invokedBase, remaining) > 0) {
+        throw new MaterialRequestInvocationCapacityError({
+          remaining,
+          requested: input.invokedBase,
+        });
+      }
+      const nextInvoked = addDecimalStrings(invokedSoFar, input.invokedBase);
+      const nextCount = line.invocationCount + 1;
+      await tx.materialRequestLine.update({
+        where: { id: input.lineId },
+        data: {
+          invokedBaseQuantity: nextInvoked,
+          invocationCount: nextCount,
+          updatedAt: input.now,
+          updatedBy: input.actorId,
+        },
+      });
+      return {
+        invokedBaseQuantity: nextInvoked,
+        remainingBaseQuantity: subtractDecimalStrings(
+          remaining,
+          input.invokedBase,
+        ),
+        invocationCount: nextCount,
+      };
+    });
+  }
+
+  /**
+   * Compensate a reservation made by `reserveInvocationCapacity` whose
+   * Document Relation write then failed — the invocation never actually
+   * happened, so it must not have consumed capacity. No status assertion on
+   * purpose: a release must always be allowed to run, even if the request's
+   * status moved on around the failed attempt; the only invariant that
+   * matters is that capacity this attempt never truly used is given back.
+   * Floors at zero as defense in depth against a double-release.
+   */
+  async releaseInvocationCapacity(input: {
+    id: string;
+    lineId: string;
+    invokedBase: string;
+    now: Date;
+    actorId: string | null;
+  }): Promise<void> {
+    const client = await this.transacting();
+    await client.$transaction(async (tx) => {
+      await lockMaterialRequestRow(tx, input.id);
+      const line = await tx.materialRequestLine.findUnique({
+        where: { id: input.lineId },
+      });
+      if (line === null || line.materialRequestId !== input.id) {
+        // The reservation could not have been made against a line that
+        // does not exist — nothing to release.
+        return;
+      }
+      const invokedSoFar = decimalToString(line.invokedBaseQuantity);
+      const restored = subtractDecimalStrings(invokedSoFar, input.invokedBase);
+      const flooredRestored =
+        compareDecimalStrings(restored, '0') < 0 ? '0' : restored;
+      await tx.materialRequestLine.update({
+        where: { id: input.lineId },
+        data: {
+          invokedBaseQuantity: flooredRestored,
+          invocationCount: Math.max(line.invocationCount - 1, 0),
+          updatedAt: input.now,
+          updatedBy: input.actorId,
+        },
+      });
+    });
+  }
+
   /** Record an invocation event (C-50 §3.8) — the relation itself is created
    *  by `DocumentRelationsService`; this only appends the audit row. */
   async recordInvocationEvent(input: {
@@ -783,7 +943,12 @@ function assertStatus(
 }
 
 function lineCreateData(
-  header: { id: string; organizationId: string; createdAt: Date; createdBy: string | null },
+  header: {
+    id: string;
+    organizationId: string;
+    createdAt: Date;
+    createdBy: string | null;
+  },
   line: DraftLineInput,
 ): MaterialRequestLineCreate {
   return {
@@ -801,6 +966,8 @@ function lineCreateData(
     conversionFactor: line.conversionFactor,
     reservationRequested: line.reservationRequested,
     reservationId: null,
+    invokedBaseQuantity: '0',
+    invocationCount: 0,
     createdAt: header.createdAt,
     updatedAt: header.createdAt,
     createdBy: header.createdBy,
@@ -869,6 +1036,8 @@ function toLineDomain(row: {
   conversionFactor: DecimalLike;
   reservationRequested: boolean;
   reservationId: string | null;
+  invokedBaseQuantity: DecimalLike;
+  invocationCount: number;
   createdAt: Date;
   updatedAt: Date;
 }): MaterialRequestLine {
@@ -887,6 +1056,8 @@ function toLineDomain(row: {
     conversionFactor: decimalToString(row.conversionFactor),
     reservationRequested: row.reservationRequested,
     reservationId: row.reservationId,
+    invokedBaseQuantity: decimalToString(row.invokedBaseQuantity),
+    invocationCount: row.invocationCount,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -924,4 +1095,3 @@ function toEventDomain(row: {
     createdAt: row.createdAt,
   };
 }
-

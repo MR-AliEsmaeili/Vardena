@@ -118,6 +118,10 @@ export type MaterialRequestLineRow = {
   conversionFactor: DecimalLike;
   reservationRequested: boolean;
   reservationId: string | null;
+  /** Authoritative, transactionally-maintained counter (C-50 §3.8) — see
+   *  `material-requests.repository.ts#reserveInvocationCapacity`. */
+  invokedBaseQuantity: DecimalLike;
+  invocationCount: number;
 } & AuditColumns;
 
 export interface MaterialRequestLineWhere {
@@ -141,6 +145,8 @@ export interface MaterialRequestLineCreate {
   conversionFactor: string;
   reservationRequested: boolean;
   reservationId: string | null;
+  invokedBaseQuantity: string;
+  invocationCount: number;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
@@ -157,6 +163,8 @@ export interface MaterialRequestLineUpdate {
   conversionFactor?: string;
   reservationRequested?: boolean;
   reservationId?: string | null;
+  invokedBaseQuantity?: string;
+  invocationCount?: number;
   updatedAt: Date;
   updatedBy: string | null;
 }
@@ -246,6 +254,7 @@ export interface MrClient extends CoreClient {
 
 export interface MrTxClient extends CoreTxClient, MrClient {}
 
-export interface MrTransactionalClient extends CoreTransactionalClient, MrClient {
+export interface MrTransactionalClient
+  extends CoreTransactionalClient, MrClient {
   $transaction: <T>(fn: (tx: MrTxClient) => Promise<T>) => Promise<T>;
 }

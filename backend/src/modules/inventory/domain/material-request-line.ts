@@ -11,10 +11,21 @@
  * (`reservationRequested`), never implied by the request existing. A line
  * that does not request a reservation NEVER reserves stock on approval.
  *
- * Invocation status (C-50 §3.8) is intentionally NOT a column here — it is
- * DERIVED at read time from `documents.document_relations` (kind `fulfill`,
- * sourced from this line), so there is exactly one source of truth for how
- * much of a line has been invoked into a downstream process.
+ * Invocation totals (C-50 §3.8) — `invokedBaseQuantity`/`invocationCount` —
+ * ARE stored columns, maintained transactionally by
+ * `MaterialRequestsRepository.reserveInvocationCapacity`/
+ * `releaseInvocationCapacity` under this request's own row lock. This is a
+ * deliberate design, not a convenience: an earlier version derived them by
+ * reading `documents.document_relations` on every response, which (a) made
+ * every mutation's response-building depend on `Documents.Relation.View`, a
+ * permission unrelated to the Material Request action the caller actually
+ * holds, and (b) read only the first page (1000 rows) of relations, silently
+ * under-counting a heavily-invoked line. The Document Relation written by
+ * `invokeLine` remains the cross-module TRACEABILITY record (which
+ * downstream document/line, visible via the Documents module's own relation
+ * APIs to a caller who holds that permission) — this module just never reads
+ * it back to compute its own state, so there is exactly one place
+ * (this line's own counters) that decides how much of it has been invoked.
  *
  * Framework-free (AR-05).
  */
@@ -37,6 +48,11 @@ export interface MaterialRequestLine {
   reservationRequested: boolean;
   /** Set only once a flagged line's approval successfully reserved stock. */
   reservationId: string | null;
+  /** Authoritative, transactionally-maintained cumulative invoked base-unit
+   *  quantity (C-50 §3.8). Decimal string, always `<= baseQuantity`. */
+  invokedBaseQuantity: string;
+  /** Authoritative, transactionally-maintained cumulative invocation count. */
+  invocationCount: number;
   createdAt: Date;
   updatedAt: Date;
 }

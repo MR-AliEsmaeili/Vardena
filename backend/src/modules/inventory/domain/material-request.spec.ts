@@ -10,7 +10,9 @@ import {
   type MaterialRequest,
 } from './material-request.js';
 
-function baseRequest(overrides: Partial<MaterialRequest> = {}): MaterialRequest {
+function baseRequest(
+  overrides: Partial<MaterialRequest> = {},
+): MaterialRequest {
   return {
     id: 'mr-1',
     organizationId: 'org-1',
@@ -127,7 +129,7 @@ describe('toMaterialRequestDto', () => {
     expect(dto.approvalReversedAt).toBeNull();
   });
 
-  it('never clears a prior cycle\'s approval/rejection/reversal facts (header is cumulative, not reset)', () => {
+  it("never clears a prior cycle's approval/rejection/reversal facts (header is cumulative, not reset)", () => {
     // Owner-aligned decision: status is the sole "current state" signal;
     // approvedAt/rejectedAt/approvalReversedAt etc. accumulate across
     // cycles rather than being cleared when the request moves on.

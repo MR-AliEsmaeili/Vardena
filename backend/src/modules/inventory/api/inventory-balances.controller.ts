@@ -104,7 +104,7 @@ export class InventoryBalancesController {
   @RequirePermission(BALANCE_PERMISSIONS.VIEW)
   @ApiOperation({
     summary:
-      'Stock visibility for one item across every active warehouse of the organization (C-50 §3.2) — lets a caller inspect availability before manually choosing a warehouse for a Material Request line. The system never picks or splits a warehouse on the caller\'s behalf.',
+      "Stock visibility for one item across every active warehouse of the organization (C-50 §3.2) — lets a caller inspect availability before manually choosing a warehouse for a Material Request line. The system never picks or splits a warehouse on the caller's behalf.",
   })
   @ApiOkResponse({ type: [ItemWarehouseAvailabilityResponseDto] })
   @ApiNotFoundResponse({ description: 'Organization or item does not exist.' })

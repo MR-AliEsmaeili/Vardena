@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   availableQuantity,
+  resolveAvailableQuantity,
   toInventoryBalanceDto,
 } from './inventory-balance.js';
 import type { InventoryBalance } from './inventory-balance.js';
@@ -37,9 +38,49 @@ describe('availability', () => {
   });
 
   it('is derived on the DTO, never stored', () => {
-    const dto = toInventoryBalanceDto(balance({ onHand: '10', reserved: '4' }));
+    const dto = toInventoryBalanceDto(
+      balance({ onHand: '10', reserved: '4' }),
+      true,
+    );
     expect(dto.available).toBe('6');
     expect(dto.onHand).toBe('10');
     expect(dto.reserved).toBe('4');
+    expect(dto.reservationsReduceAvailable).toBe(true);
+  });
+});
+
+describe('resolveAvailableQuantity (C-50 §3.7)', () => {
+  it('subtracts reservations when the warehouse setting is true', () => {
+    expect(
+      resolveAvailableQuantity({ onHand: '10', reserved: '4' }, true),
+    ).toBe('6');
+  });
+
+  it('reports on-hand unchanged when the warehouse setting is false', () => {
+    expect(
+      resolveAvailableQuantity({ onHand: '10', reserved: '4' }, false),
+    ).toBe('10');
+  });
+
+  it('never mutates on-hand either way', () => {
+    const balanceInput = { onHand: '10', reserved: '4' };
+    resolveAvailableQuantity(balanceInput, false);
+    expect(balanceInput.onHand).toBe('10');
+  });
+
+  it('agrees with the DTO helper for the same inputs', () => {
+    const dtoTrue = toInventoryBalanceDto(
+      balance({ onHand: '10', reserved: '4' }),
+      true,
+    );
+    const dtoFalse = toInventoryBalanceDto(
+      balance({ onHand: '10', reserved: '4' }),
+      false,
+    );
+    expect(dtoTrue.available).toBe(
+      resolveAvailableQuantity({ onHand: '10', reserved: '4' }, true),
+    );
+    expect(dtoFalse.available).toBe('10');
+    expect(dtoFalse.onHand).toBe('10');
   });
 });

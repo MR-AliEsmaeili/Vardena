@@ -233,7 +233,9 @@ export class MaterialRequestsController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(AuthGuard, AuthorizationGuard)
   @RequirePermission(MATERIAL_REQUEST_PERMISSIONS.REJECT)
-  @ApiOperation({ summary: 'Reject a submitted Material Request with a reason.' })
+  @ApiOperation({
+    summary: 'Reject a submitted Material Request with a reason.',
+  })
   @ApiOkResponse({ type: MaterialRequestDetailResponseDto })
   @ApiNotFoundResponse({ description: 'Material Request does not exist.' })
   @ApiUnprocessableEntityResponse({
@@ -293,7 +295,8 @@ export class MaterialRequestsController {
   })
   @ApiOkResponse({ type: MaterialRequestLineResponseDto })
   @ApiNotFoundResponse({
-    description: 'Material Request, line, or destination document type does not exist.',
+    description:
+      'Material Request, line, or destination document type does not exist.',
   })
   @ApiUnprocessableEntityResponse({
     description:
