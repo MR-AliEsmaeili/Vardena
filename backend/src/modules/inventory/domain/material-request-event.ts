@@ -32,7 +32,6 @@ export const MATERIAL_REQUEST_EVENT_TYPES = [
   'line_invoked',
 ] as const;
 
-
 export type MaterialRequestEventType =
   (typeof MATERIAL_REQUEST_EVENT_TYPES)[number];
 

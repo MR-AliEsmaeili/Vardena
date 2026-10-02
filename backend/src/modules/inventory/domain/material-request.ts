@@ -54,10 +54,7 @@ export function isMaterialRequestStatus(
 }
 
 export type MaterialRequestTransitionProblem =
-  | 'not_editable'
-  | 'not_submitted'
-  | 'not_approved'
-  | 'already_terminal';
+  'not_editable' | 'not_submitted' | 'not_approved' | 'already_terminal';
 
 export function materialRequestTransitionMessage(
   problem: MaterialRequestTransitionProblem,
