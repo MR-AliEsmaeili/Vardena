@@ -399,6 +399,12 @@ describe.skipIf(DATABASE_URL === undefined)(
           // counter — still no Documents.* permission (finding #1 is
           // unaffected).
           RESERVATION_PERMISSIONS.VIEW,
+          // Generic release permission — needed ONLY to prove the C-50
+          // audit finding below: this permission must NOT let its holder
+          // bypass a Material Request line's own governed reservation
+          // lifecycle via the generic `/inventory/reservations/:id/release`
+          // endpoint.
+          RESERVATION_PERMISSIONS.RELEASE,
         ],
       });
       roleId = role.id;
@@ -2075,6 +2081,196 @@ describe.skipIf(DATABASE_URL === undefined)(
           itemAId,
         );
         expect(afterReal).toEqual(before);
+      },
+    );
+
+    it(
+      'two concurrent cancellations of different, multi-line reserved ' +
+        'requests that touch the same two (warehouse, item) balance rows ' +
+        'in OPPOSITE line order cannot deadlock — both release cleanly',
+      async () => {
+        // `cancel`/`reverseApproval` lock one `inventory_balances` row per
+        // reserved line; if that locking order followed each document's own
+        // `lineNumber` order instead of a document-independent, globally
+        // consistent key order, two concurrent cancellations whose lines
+        // reference the same two balance rows in reversed order could lock
+        // them in opposite order and deadlock in real Postgres — exactly
+        // the class of bug a hermetic/fake-repository test can never catch.
+        const items = app!.get(ItemsService);
+        const movements = app!.get(InventoryMovementsService);
+        const itemA2 = await items.createItem({
+          organizationId: orgAId,
+          code: `ITM-A2-${suffix}`,
+          name: 'Item A2 (deadlock-order probe)',
+          itemKind: 'goods',
+          baseUnitId: unitAId,
+        });
+        const itemA2Id = itemA2.id;
+        await movements.postMovement({
+          organizationId: orgAId,
+          operationKey: `seed-a3-item2-${suffix}`,
+          warehouseId: whA3Id,
+          itemId: itemA2Id,
+          movementType: 'inbound',
+          quantity: '1000',
+          unitId: unitAId,
+        });
+
+        const beforeA1 = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA3Id,
+          itemAId,
+        );
+        const beforeA2 = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA3Id,
+          itemA2Id,
+        );
+
+        async function createApprovedTwoLineRequest(
+          firstItemId: string,
+          secondItemId: string,
+          description: string,
+        ): Promise<string> {
+          const created = await alice
+            .post('/api/v1/inventory/material-requests')
+            .send({
+              organizationId: orgAId,
+              description,
+              lines: [
+                {
+                  itemId: firstItemId,
+                  warehouseId: whA3Id,
+                  unitId: unitAId,
+                  quantity: '5',
+                  reservationRequested: true,
+                },
+                {
+                  itemId: secondItemId,
+                  warehouseId: whA3Id,
+                  unitId: unitAId,
+                  quantity: '5',
+                  reservationRequested: true,
+                },
+              ],
+            })
+            .expect(201);
+          const mrId = created.body.id as string;
+          await alice
+            .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+            .query({ organizationId: orgAId })
+            .expect(200);
+          await alice
+            .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+            .query({ organizationId: orgAId })
+            .expect(200);
+          return mrId;
+        }
+
+        // MR1's lines are (item A, item A2); MR2's are the exact reverse —
+        // (item A2, item A) — so each document's own `lineNumber` order
+        // disagrees with the other's for the same two balance rows.
+        const mr1Id = await createApprovedTwoLineRequest(
+          itemAId,
+          itemA2Id,
+          'Deadlock-order probe — MR1 (A, A2)',
+        );
+        const mr2Id = await createApprovedTwoLineRequest(
+          itemA2Id,
+          itemAId,
+          'Deadlock-order probe — MR2 (A2, A)',
+        );
+
+        // If the two cancellations ever lock their shared balance rows in
+        // opposite order, Postgres's deadlock detector aborts one of them;
+        // a correct, consistent lock order lets both commit instead. A
+        // bounded timeout guards against a true hang if that detector were
+        // somehow disabled.
+        const results = await Promise.all([
+          alice
+            .post(`/api/v1/inventory/material-requests/${mr1Id}/cancel`)
+            .query({ organizationId: orgAId })
+            .send({ reason: 'Deadlock-order probe' })
+            .timeout({ deadline: 15000 }),
+          alice
+            .post(`/api/v1/inventory/material-requests/${mr2Id}/cancel`)
+            .query({ organizationId: orgAId })
+            .send({ reason: 'Deadlock-order probe' })
+            .timeout({ deadline: 15000 }),
+        ]);
+        expect(results[0].status).toBe(200);
+        expect(results[1].status).toBe(200);
+        expect(results[0].body.status).toBe('cancelled');
+        expect(results[1].body.status).toBe('cancelled');
+
+        // Every reservation on both requests released, and both balance
+        // rows restored to their pre-request state — nothing left dangling
+        // regardless of which cancellation's transaction committed first.
+        const afterA1 = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA3Id,
+          itemAId,
+        );
+        const afterA2 = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA3Id,
+          itemA2Id,
+        );
+        expect(afterA1).toEqual(beforeA1);
+        expect(afterA2).toEqual(beforeA2);
+      },
+      20000,
+    );
+
+    it(
+      'the generic reservation-release endpoint refuses to release a ' +
+        "Material Request line's reservation directly, even for a " +
+        'caller holding the generic release permission',
+      async () => {
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Generic release must not bypass MR governance',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '10',
+                reservationRequested: true,
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const reservationId = approved.body.lines[0].reservationId as string;
+
+        const refused = await alice
+          .post(`/api/v1/inventory/reservations/${reservationId}/release`)
+          .query({ organizationId: orgAId })
+          .send({ operationKey: `generic-release-probe-${reservationId}` });
+        expect(refused.status).toBe(422);
+
+        // Untouched: still active, full amount, and the Material Request
+        // itself is unaffected — the only ways to release it remain
+        // `cancel`/`reverseApproval`/invocation, never this endpoint.
+        const reservation = await getReservation(alice, orgAId, reservationId);
+        expect(reservation.status).toBe('active');
+        expect(reservation.quantity).toBe('10');
+        expect(reservation.baseQuantity).toBe('10');
       },
     );
   },

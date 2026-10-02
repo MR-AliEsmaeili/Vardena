@@ -1223,3 +1223,69 @@ need its own investigation for whatever is specific to posting a physical
 issue (costing, movement creation, document content) — but how an invoked
 Material Request line's reservation behaves is no longer one of those
 unknowns, regardless of what eventually invokes it.
+
+## 22. Final pre-merge audit (2026-10-03) — two real defects found and fixed
+
+A full source-level re-audit of the §21 implementation (never trusting green
+CI as proof of correctness) found the invocation/reservation-consumption
+logic itself (`reserveInvocationCapacity`/`releaseInvocationCapacity`)
+already correct against all 8 required invariants on re-inspection — but
+turned up two genuine, previously-unverified defects one level OUT from
+that transaction, both fixed in the same PR:
+
+1. **Lock-order inconsistency risk (real deadlock potential).**
+   `releaseActiveReservationsForLines` (shared by `cancel` and
+   `reverseApproval`) locked each reserved line's `inventory_balances` row
+   in the document's own stored `lineNumber` order — NOT the deterministic
+   `(warehouseId, itemId)` order `approve` already sorts its own
+   `reservationLines` by. Two different Material Requests, each with
+   multiple reserved lines touching the same two (warehouse, item) balance
+   rows but listed in opposite line order, could have their concurrent
+   `cancel`/`reverseApproval` calls lock those two rows in opposite order —
+   a genuine Postgres deadlock, not reproducible against the hermetic
+   fake-repository suite, only against real concurrent transactions. Fixed
+   by sorting `releaseActiveReservationsForLines`'s own working copy of the
+   line list by `(warehouseId, itemId)` before iterating — now every
+   mutation path that can lock more than one balance row in one transaction
+   (`approve`, `cancel`, `reverseApproval`) uses the exact same order,
+   closing the cycle. Covered by a new live-Postgres regression
+   (`material-requests-live.e2e-spec.ts`: "two concurrent cancellations of
+   different, multi-line reserved requests... cannot deadlock").
+2. **Generic reservation-release endpoint could bypass Material Request's
+   own governed lifecycle.** `POST /inventory/reservations/:id/release` (the
+   general-purpose D-07/ADR-0022 reservations API, gated only by the
+   generic `Inventory.Reservation.Release` permission) had no awareness that
+   a reservation might be owned by a Material Request line, and would
+   happily release one directly — decrementing `inventory_balances.reserved`
+   completely outside Material Request's own `cancel`/`reverseApproval`
+   paths, and without the "refused once any line has been invoked" check
+   those paths enforce. A caller holding only the generic release
+   permission (not any Material Request permission at all) could have used
+   this to silently unwind an approved, even partially invoked, request's
+   reservation. Fixed by adding one check in
+   `InventoryReservationsService.releaseReservation`: a reservation whose
+   `referenceType` is the new exported constant
+   `MATERIAL_REQUEST_LINE_RESERVATION_REFERENCE_TYPE` (`'material_request_line'`,
+   `domain/inventory-reservation.ts`) is refused with a clear business-rule
+   error directing the caller to the Material Request's own lifecycle
+   instead. `referenceType` is set once at creation and never mutated, so
+   this check is race-free even though it reads the row before the
+   transaction (no new locking abstraction needed). Covered by a new
+   live-Postgres regression in `material-requests-live.e2e-spec.ts`.
+
+Also closed two test-coverage gaps the audit's required test matrix named
+explicitly, with no production code change:
+
+- a line carrying an ACTIVE reservation had never been invoked through a
+  **non-1 unit conversion** (entered in a "Box" unit, consumed in the
+  item's base unit) — added to `material-requests.service.spec.ts`,
+  proving the reservation is decremented by the exact converted base
+  amount with no rounding drift across repeated invocations;
+- invocation being refused in every status OTHER than `approved` (draft,
+  submitted, returned, rejected, cancelled) had never been asserted
+  directly — added five tests to `material-requests.service.spec.ts`.
+
+No change was made to the reservation-consumption arithmetic itself, the
+Owner decision's worked example, or any permission/approval rule — this
+section only hardens what was already correct and closes the two bypass
+risks above, per the explicit audit scope (no C-50 redesign).

@@ -13,6 +13,22 @@
  * Framework-free (AR-05).
  */
 
+/**
+ * `referenceType` value Material Request (C-50) writes on every reservation
+ * it creates via its own `approve()` (inlined into that method's own
+ * transaction, never through `InventoryReservationsRepository.createReservation`
+ * — see that method's docs). A reservation carrying this value is owned by
+ * exactly one Material Request line's lifecycle (invocation consumes it;
+ * `cancel`/`reverseApproval` release it, refused once any line has been
+ * invoked) — the GENERIC release path below (`POST
+ * /inventory/reservations/:id/release`) must never release one directly,
+ * or a caller holding only the generic `Inventory.Reservation.Release`
+ * permission could bypass that whole governed lifecycle (and the
+ * "cancellation/reversal blocked once invoked" Owner decision) with it.
+ */
+export const MATERIAL_REQUEST_LINE_RESERVATION_REFERENCE_TYPE =
+  'material_request_line';
+
 export const RESERVATION_STATUSES = ['active', 'released'] as const;
 
 export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];

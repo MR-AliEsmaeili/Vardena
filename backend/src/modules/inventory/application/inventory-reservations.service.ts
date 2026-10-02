@@ -20,7 +20,10 @@ import { InventoryOperationsRepository } from '../data/inventory-operations.repo
 import { UnitConversionsRepository } from '../data/unit-conversions.repository.js';
 import { resolveEffectivePolicy } from '../domain/negative-stock-policy.js';
 import type { InventoryReservationDto } from '../domain/inventory-reservation.js';
-import { toInventoryReservationDto } from '../domain/inventory-reservation.js';
+import {
+  MATERIAL_REQUEST_LINE_RESERVATION_REFERENCE_TYPE,
+  toInventoryReservationDto,
+} from '../domain/inventory-reservation.js';
 import type { InventoryOperation } from '../domain/inventory-operation.js';
 import { RESERVATION_PERMISSIONS } from '../domain/inventory-core-permissions.js';
 import {
@@ -322,6 +325,24 @@ export class InventoryReservationsService {
     const current = await this.reservations.findById(id);
     if (current === null || current.organizationId !== organizationId) {
       throw AppException.notFound('Reservation', id);
+    }
+    // A Material Request line's reservation is governed entirely by that
+    // module's own lifecycle (invocation consumes it; `cancel`/
+    // `reverseApproval` release it, refused once any line has been
+    // invoked) — `referenceType` is set once at creation and never changes,
+    // so this check is race-free even though it reads an unlocked row.
+    // Releasing it through this GENERIC endpoint would bypass that
+    // lifecycle (and the Owner decision that cancellation/reversal are
+    // blocked once any invocation exists) for anyone holding only the
+    // generic `Inventory.Reservation.Release` permission.
+    if (
+      current.referenceType === MATERIAL_REQUEST_LINE_RESERVATION_REFERENCE_TYPE
+    ) {
+      throw AppException.businessRule(
+        'This reservation belongs to a Material Request line and can only ' +
+          'be released by cancelling or reversing approval of that ' +
+          'Material Request — it cannot be released directly.',
+      );
     }
 
     const requestHash = buildRequestHash('reservation_release', {

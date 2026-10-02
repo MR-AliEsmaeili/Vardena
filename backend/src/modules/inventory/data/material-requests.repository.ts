@@ -13,6 +13,7 @@ import type {
   MaterialRequestStatus,
 } from '../domain/material-request.js';
 import { isMaterialRequestStatus } from '../domain/material-request.js';
+import { MATERIAL_REQUEST_LINE_RESERVATION_REFERENCE_TYPE } from '../domain/inventory-reservation.js';
 import type { MaterialRequestLine } from '../domain/material-request-line.js';
 import type { MaterialRequestEvent } from '../domain/material-request-event.js';
 import { isMaterialRequestEventType } from '../domain/material-request-event.js';
@@ -628,7 +629,7 @@ export class MaterialRequestsRepository {
             baseUnitId: line.baseUnitId,
             conversionFactor: line.conversionFactor,
             status: 'active',
-            referenceType: 'material_request_line',
+            referenceType: MATERIAL_REQUEST_LINE_RESERVATION_REFERENCE_TYPE,
             referenceId: line.lineId,
             reason: null,
             operationKey,
@@ -1380,7 +1381,12 @@ function sha256Hex(value: string): string {
 async function releaseActiveReservationsForLines(
   tx: MrTxClient,
   input: {
-    lines: readonly { id: string; reservationId: string | null }[];
+    lines: readonly {
+      id: string;
+      reservationId: string | null;
+      warehouseId: string;
+      itemId: string;
+    }[];
     organizationId: string;
     releasedAt: Date;
     releasedBy: string | null;
@@ -1391,7 +1397,24 @@ async function releaseActiveReservationsForLines(
   },
 ): Promise<string[]> {
   const releasedReservationIds: string[] = [];
-  for (const line of input.lines) {
+  // Lock `inventory_balances` rows in the SAME deterministic
+  // `(warehouseId, itemId)` order `approve` already sorts its own
+  // `reservationLines` by (see `MaterialRequestsService.approve`) — never
+  // the document's own `lineNumber` order, which two different Material
+  // Requests touching the same warehouse/item pair could easily disagree
+  // on. Without this, two concurrent cancellations/reversals (or one of
+  // each) whose lines reference the same two (warehouse, item) balance
+  // rows in opposite line order could lock them in opposite order and
+  // deadlock in Postgres. Reservation rows themselves never need this —
+  // each line owns a unique reservation id, never shared across requests —
+  // only the balance row keyed by (warehouse, item) is ever contended
+  // across different Material Requests.
+  const sortedLines = [...input.lines].sort((a, b) =>
+    a.warehouseId === b.warehouseId
+      ? a.itemId.localeCompare(b.itemId)
+      : a.warehouseId.localeCompare(b.warehouseId),
+  );
+  for (const line of sortedLines) {
     if (line.reservationId === null) continue;
     const reservationLock = await lockReservationRow(tx, line.reservationId);
     if (reservationLock === null || reservationLock.status !== 'active') {

@@ -397,10 +397,18 @@ model InventoryReservation {
   branchId       String   @map("branch_id")
   warehouseId    String   @map("warehouse_id")
   itemId         String   @map("item_id")
-  /// Entered magnitude (always > 0) in `unit_id`.
+  /// Entered magnitude, in `unit_id` — unsigned, and strictly > 0 while
+  /// `status = 'active'`. Exactly 0 only once fully CONSUMED by invocation
+  /// (C-50 reservation-consumption), at which point `status` is always
+  /// `'released'` in the SAME write — never ACTIVE with a zero remainder. A
+  /// reservation released by cancellation/approval-reversal instead, never
+  /// having been invoked, keeps whatever positive amount remained, for
+  /// audit (see `material-requests.repository.ts`'s
+  /// `reserveInvocationCapacity` / `releaseActiveReservationsForLines`).
   quantity       Decimal  @db.Decimal(18, 4)
   unitId         String   @map("unit_id")
-  /// Base-unit claim (always > 0 — reservations are unsigned).
+  /// Base-unit claim — same "unsigned; 0 only once CONSUMED-and-closed"
+  /// shape as `quantity` above, in lockstep with it.
   baseQuantity   Decimal  @map("base_quantity") @db.Decimal(18, 4)
   baseUnitId     String   @map("base_unit_id")
   conversionFactor Decimal @map("conversion_factor") @db.Decimal(18, 6)

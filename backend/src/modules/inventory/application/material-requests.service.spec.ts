@@ -990,6 +990,28 @@ async function buildFixture(options: BuildOptions = {}) {
     // request-context caller, same as the fixed ACTOR above.
     seedMembership: (userId: string) =>
       stores.raw.memberships.seed(userId, organizationId),
+    // Exposed so a test can exercise a non-1 entered→base conversion
+    // through invocation (§8 of the C-50 audit) without reaching into the
+    // store bundle directly — a GLOBAL conversion, open-ended from
+    // `validFrom`, matching `resolveEnteredToBase`'s own lookup shape.
+    seedGlobalUnitConversion: (input: {
+      fromUnitId: string;
+      toUnitId: string;
+      factor: string;
+      validFrom: Date;
+    }) =>
+      stores.raw.unitConversions.globals.seed({
+        id: generateId(),
+        organizationId,
+        itemId: null,
+        fromUnitId: input.fromUnitId,
+        toUnitId: input.toUnitId,
+        factor: input.factor,
+        validFrom: input.validFrom,
+        validTo: null,
+        createdAt: input.validFrom,
+        updatedAt: input.validFrom,
+      }),
   };
 }
 
@@ -1548,6 +1570,155 @@ describe('Finding #4 — invocation accounting correctness and concurrency', () 
 });
 
 // ---------------------------------------------------------------------------
+// C-50 final audit — invocation is gated strictly by status (§22 test
+// matrix items 1-5): only an APPROVED request may be invoked, in every
+// OTHER status, every single time — no exceptions.
+// ---------------------------------------------------------------------------
+
+describe('C-50 audit — invocation requires an approved request, in every other status', () => {
+  async function attemptInvoke(
+    fixture: Fixture,
+    materialRequestId: string,
+    lineId: string,
+  ) {
+    // The status gate is checked BEFORE destination validation, so a
+    // deliberately nonexistent destination still proves the status refusal
+    // specifically — not a side effect of destination validation.
+    return fixture.service.invokeLine(
+      materialRequestId,
+      fixture.organizationId,
+      {
+        lineId,
+        destinationModule: 'inventory',
+        destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+        destinationDocumentId: 'does-not-exist',
+        quantity: '1',
+      },
+    );
+  }
+
+  it('a DRAFT request cannot be invoked', async () => {
+    const fixture = await buildFixture();
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '10',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await expect(
+      asActor(() => attemptInvoke(fixture, created.id, created.lines[0]!.id)),
+    ).rejects.toMatchObject({ status: 422 });
+    const lines = await fixture.repository.listLines(created.id);
+    expect(lines[0]?.invocationCount).toBe(0);
+  });
+
+  it('a SUBMITTED request cannot be invoked', async () => {
+    const fixture = await buildFixture();
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '10',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.submit(created.id, fixture.organizationId),
+    );
+    await expect(
+      asActor(() => attemptInvoke(fixture, created.id, created.lines[0]!.id)),
+    ).rejects.toMatchObject({ status: 422 });
+    const lines = await fixture.repository.listLines(created.id);
+    expect(lines[0]?.invocationCount).toBe(0);
+  });
+
+  it('a RETURNED-for-correction request cannot be invoked', async () => {
+    const fixture = await buildFixture();
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '10',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.submit(created.id, fixture.organizationId),
+    );
+    await asActor(() =>
+      fixture.service.returnForCorrection(created.id, fixture.organizationId, {
+        reason: 'Needs another look',
+      }),
+    );
+    await expect(
+      asActor(() => attemptInvoke(fixture, created.id, created.lines[0]!.id)),
+    ).rejects.toMatchObject({ status: 422 });
+    const lines = await fixture.repository.listLines(created.id);
+    expect(lines[0]?.invocationCount).toBe(0);
+  });
+
+  it('a REJECTED request cannot be invoked', async () => {
+    const fixture = await buildFixture();
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '10',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.submit(created.id, fixture.organizationId),
+    );
+    await asActor(() =>
+      fixture.service.reject(created.id, fixture.organizationId, {
+        reason: 'Not needed anymore',
+      }),
+    );
+    await expect(
+      asActor(() => attemptInvoke(fixture, created.id, created.lines[0]!.id)),
+    ).rejects.toMatchObject({ status: 422 });
+    const lines = await fixture.repository.listLines(created.id);
+    expect(lines[0]?.invocationCount).toBe(0);
+  });
+
+  it('a CANCELLED request cannot be invoked', async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId, lineId } = await createAndApprove(fixture);
+    await asActor(() =>
+      fixture.service.cancel(materialRequestId, fixture.organizationId, {}),
+    );
+    await expect(
+      asActor(() => attemptInvoke(fixture, materialRequestId, lineId)),
+    ).rejects.toMatchObject({ status: 422 });
+    const lines = await fixture.repository.listLines(materialRequestId);
+    expect(lines[0]?.invocationCount).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Owner-confirmed decisions: reservation shape, lifecycle, approval
 // authority, return-for-correction, cancellation (see
 // docs/tasks/c-50-material-request-investigation.md §19 and OQ-66).
@@ -2088,6 +2259,106 @@ describe('Owner decision — invocation consumes the active reservation', () => 
     const finalReservation = fixture.repository.reservations.get(reservationId);
     // Fully consumed by the 100th invocation: closed, never left ACTIVE at
     // zero, regardless of how many invocations it took to get there.
+    expect(finalReservation?.status).toBe('released');
+    expect(finalReservation?.quantity).toBe('0');
+    expect(finalReservation?.baseQuantity).toBe('0');
+  });
+
+  it('a non-1 unit conversion consumes the reservation using the exact base-unit amount, with no drift', async () => {
+    // §8 of the C-50 audit: the line is REQUESTED and INVOKED in a "Box"
+    // unit (1 Box = 12 Each, the item's base unit) — the reservation must be
+    // consumed by the exact converted base amount every time, never the
+    // entered-unit magnitude, and the entered/base pair must stay in exact
+    // lockstep (no rounding/truncation drift) across repeated invocations.
+    const fixture = await buildFixture();
+    const boxUnitId = (
+      await fixture.units.createUnit({
+        organizationId: fixture.organizationId,
+        code: 'BOX',
+        name: 'Box of 12',
+      })
+    ).id;
+    fixture.seedGlobalUnitConversion({
+      fromUnitId: boxUnitId,
+      toUnitId: fixture.unitId,
+      factor: '12',
+      validFrom: new Date('2020-01-01T00:00:00.000Z'),
+    });
+
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '10', // 10 Box
+            unitId: boxUnitId,
+            reservationRequested: true,
+          },
+        ],
+      }),
+    );
+    // Resolved to the item's base unit at draft time: 10 Box * 12 = 120.
+    expect(created.lines[0]?.baseQuantity).toBe('120');
+    expect(created.lines[0]?.conversionFactor).toBe('12');
+
+    const materialRequestId = created.id;
+    const lineId = created.lines[0]!.id;
+    await asActor(() =>
+      fixture.service.submit(materialRequestId, fixture.organizationId),
+    );
+    const approved = await asActor(() =>
+      fixture.service.approve(materialRequestId, fixture.organizationId),
+    );
+    const reservationId = approved.lines[0]!.reservationId!;
+    expect(fixture.repository.reservations.get(reservationId)).toMatchObject({
+      quantity: '10',
+      baseQuantity: '120',
+      status: 'active',
+    });
+
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '120',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    const invoke = (quantityInBoxes: string) =>
+      asActor(() =>
+        fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+          lineId,
+          destinationModule: 'inventory',
+          destinationDocumentType:
+            MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+          destinationDocumentId: destination.id,
+          quantity: quantityInBoxes,
+        }),
+      );
+
+    // Invoke 3 Box -> 36 Each consumed, 84 Each (7 Box) remain.
+    const first = await invoke('3');
+    expect(first.invokedBaseQuantity).toBe('36');
+    expect(first.remainingBaseQuantity).toBe('84');
+    expect(fixture.repository.reservations.get(reservationId)).toMatchObject({
+      status: 'active',
+      quantity: '7',
+      baseQuantity: '84',
+    });
+
+    // Invoke the remaining 7 Box -> 84 Each: closes the reservation exactly,
+    // with no leftover drift from the repeated multiplication.
+    const second = await invoke('7');
+    expect(second.invokedBaseQuantity).toBe('120');
+    expect(second.remainingBaseQuantity).toBe('0');
+    const finalReservation = fixture.repository.reservations.get(reservationId);
     expect(finalReservation?.status).toBe('released');
     expect(finalReservation?.quantity).toBe('0');
     expect(finalReservation?.baseQuantity).toBe('0');
