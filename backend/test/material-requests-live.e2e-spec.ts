@@ -84,6 +84,12 @@ describe.skipIf(DATABASE_URL === undefined)(
     let branchBId = '';
     let whA1Id = ''; // reservationsReduceAvailable: true
     let whA2Id = ''; // reservationsReduceAvailable: false
+    let whA3Id = ''; // dedicated to the reservation-consumption scenarios
+    // below (1000 on hand) — whA1/whA2 only ever carry 50 on hand, already
+    // shared/drawn down by the pre-existing scenarios above (some of which
+    // deliberately leave an active reservation behind, e.g. the refused-
+    // cancellation test), so reusing them here would make these tests'
+    // required headroom depend on execution order.
     let unitAId = '';
     let unitBId = '';
     let itemAId = '';
@@ -259,6 +265,13 @@ describe.skipIf(DATABASE_URL === undefined)(
         name: 'Warehouse A2 (reservations do not reduce available)',
         reservationsReduceAvailable: false,
       });
+      const whA3 = await warehouses.createWarehouse({
+        organizationId: orgAId,
+        branchId: branchAId,
+        code: 'WH-A3',
+        name: 'Warehouse A3 (dedicated to reservation-consumption tests)',
+        reservationsReduceAvailable: true,
+      });
       await warehouses.createWarehouse({
         organizationId: orgBId,
         branchId: branchBId,
@@ -267,6 +280,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       });
       whA1Id = whA1.id;
       whA2Id = whA2.id;
+      whA3Id = whA3.id;
 
       const unitA = await units.createUnit({
         organizationId: orgAId,
@@ -314,6 +328,19 @@ describe.skipIf(DATABASE_URL === undefined)(
         itemId: itemAId,
         movementType: 'inbound',
         quantity: '50',
+        unitId: unitAId,
+      });
+      // Generous headroom (1000) so the reservation-consumption scenarios
+      // below never contend with each other for availability regardless of
+      // execution order, including the one that deliberately leaves part of
+      // its reservation active at the end (the concurrent-invocation race).
+      await movements.postMovement({
+        organizationId: orgAId,
+        operationKey: `seed-a3-${suffix}`,
+        warehouseId: whA3Id,
+        itemId: itemAId,
+        movementType: 'inbound',
+        quantity: '1000',
         unitId: unitAId,
       });
 
@@ -1546,16 +1573,20 @@ describe.skipIf(DATABASE_URL === undefined)(
         expect(stillApproved.body.lines[0].invokedBaseQuantity).toBe('1');
         expect(stillApproved.body.lines[0].remainingBaseQuantity).toBe('5');
 
-        // Cancellation never changes On Hand either way — confirm the
-        // refused attempt above left availability exactly as it was,
-        // including the reservation that is still fully intact.
+        // The partial invocation itself CONSUMED 1 unit from the active
+        // reservation (Owner decision, C-50 §3.8 follow-up) — `reserved`
+        // drops by exactly that amount. The refused cancellation attempt
+        // after it changes nothing further: On Hand stays untouched
+        // throughout, and the remaining 5 units stay reserved (still
+        // invokable later, still blocking cancellation/reversal).
         const after = await availabilitySnapshot(
           alice,
           orgAId,
           whA1Id,
           itemAId,
         );
-        expect(after).toEqual(before);
+        expect(after.onHand).toBeCloseTo(before.onHand, 6);
+        expect(after.reserved).toBeCloseTo(before.reserved - 1, 6);
       },
     );
 
@@ -1567,7 +1598,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         const before = await availabilitySnapshot(
           alice,
           orgAId,
-          whA1Id,
+          whA3Id,
           itemAId,
         );
 
@@ -1579,7 +1610,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             lines: [
               {
                 itemId: itemAId,
-                warehouseId: whA1Id,
+                warehouseId: whA3Id,
                 unitId: unitAId,
                 quantity: '10',
                 reservationRequested: true,
@@ -1603,7 +1634,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         const afterApproval = await availabilitySnapshot(
           alice,
           orgAId,
-          whA1Id,
+          whA3Id,
           itemAId,
         );
         expect(afterApproval.onHand).toBeCloseTo(before.onHand, 6);
@@ -1617,7 +1648,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             lines: [
               {
                 itemId: itemAId,
-                warehouseId: whA1Id,
+                warehouseId: whA3Id,
                 unitId: unitAId,
                 quantity: '10',
               },
@@ -1654,7 +1685,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         const afterPartialInvoke = await availabilitySnapshot(
           alice,
           orgAId,
-          whA1Id,
+          whA3Id,
           itemAId,
         );
         expect(afterPartialInvoke.onHand).toBeCloseTo(before.onHand, 6);
@@ -1700,7 +1731,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         const afterFullInvoke = await availabilitySnapshot(
           alice,
           orgAId,
-          whA1Id,
+          whA3Id,
           itemAId,
         );
         // Fully consumed and carried downstream — back to the pre-request
@@ -1719,7 +1750,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         const before = await availabilitySnapshot(
           alice,
           orgAId,
-          whA1Id,
+          whA3Id,
           itemAId,
         );
 
@@ -1731,7 +1762,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             lines: [
               {
                 itemId: itemAId,
-                warehouseId: whA1Id,
+                warehouseId: whA3Id,
                 unitId: unitAId,
                 quantity: '7',
               },
@@ -1758,7 +1789,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             lines: [
               {
                 itemId: itemAId,
-                warehouseId: whA1Id,
+                warehouseId: whA3Id,
                 unitId: unitAId,
                 quantity: '7',
               },
@@ -1783,7 +1814,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         const after = await availabilitySnapshot(
           alice,
           orgAId,
-          whA1Id,
+          whA3Id,
           itemAId,
         );
         expect(after).toEqual(before);
@@ -1797,7 +1828,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         const before = await availabilitySnapshot(
           alice,
           orgAId,
-          whA1Id,
+          whA3Id,
           itemAId,
         );
 
@@ -1809,7 +1840,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             lines: [
               {
                 itemId: itemAId,
-                warehouseId: whA1Id,
+                warehouseId: whA3Id,
                 unitId: unitAId,
                 quantity: '100',
                 reservationRequested: true,
@@ -1840,7 +1871,7 @@ describe.skipIf(DATABASE_URL === undefined)(
               lines: [
                 {
                   itemId: itemAId,
-                  warehouseId: whA1Id,
+                  warehouseId: whA3Id,
                   unitId: unitAId,
                   quantity: '100',
                 },
@@ -1897,7 +1928,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         const afterRace = await availabilitySnapshot(
           alice,
           orgAId,
-          whA1Id,
+          whA3Id,
           itemAId,
         );
         expect(afterRace.onHand).toBeCloseTo(before.onHand, 6);
@@ -1916,7 +1947,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         const before = await availabilitySnapshot(
           alice,
           orgAId,
-          whA1Id,
+          whA3Id,
           itemAId,
         );
 
@@ -1928,7 +1959,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             lines: [
               {
                 itemId: itemAId,
-                warehouseId: whA1Id,
+                warehouseId: whA3Id,
                 unitId: unitAId,
                 quantity: '10',
                 reservationRequested: true,
@@ -1951,7 +1982,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         const afterApproval = await availabilitySnapshot(
           alice,
           orgAId,
-          whA1Id,
+          whA3Id,
           itemAId,
         );
         expect(afterApproval.reserved).toBeCloseTo(before.reserved + 10, 6);
@@ -1993,7 +2024,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         const afterCompensation = await availabilitySnapshot(
           alice,
           orgAId,
-          whA1Id,
+          whA3Id,
           itemAId,
         );
         expect(afterCompensation).toEqual(afterApproval);
@@ -2008,7 +2039,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             lines: [
               {
                 itemId: itemAId,
-                warehouseId: whA1Id,
+                warehouseId: whA3Id,
                 unitId: unitAId,
                 quantity: '10',
               },
@@ -2040,7 +2071,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         const afterReal = await availabilitySnapshot(
           alice,
           orgAId,
-          whA1Id,
+          whA3Id,
           itemAId,
         );
         expect(afterReal).toEqual(before);
