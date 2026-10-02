@@ -17,6 +17,8 @@ import type { InventoryBalancesRepository } from '../data/inventory-balances.rep
 import {
   ITEM_CREATED_EVENT,
   ITEM_UPDATED_EVENT,
+  ITEM_ENABLED_EVENT,
+  ITEM_DISABLED_EVENT,
 } from '../domain/inventory.events.js';
 
 /**
@@ -613,5 +615,277 @@ describe('ItemsService listing', () => {
         sort: 'itemKind:asc,name:sideways',
       }),
     ).rejects.toMatchObject({ code: 'ValidationFailed' });
+  });
+});
+
+/**
+ * Freeze guards (ADR-0022) with the guard seam flipped on.
+ *
+ * Every other `ItemsService` fixture wires the movement/balance seams to
+ * "nothing on record", so the guards never fired anywhere in the suite —
+ * exactly the path ADR-0022 calls load-bearing: once a ledger fact references
+ * an item, its stock identity (base unit, stockability) is owned by the
+ * ledger, and an item holding stock cannot be disabled while quantities
+ * remain. The seam objects below are deliberately mutable so each scenario
+ * flips one boolean instead of rebuilding the fixture.
+ */
+describe('ItemsService freeze guards (guards firing)', () => {
+  let fixture: Fixture;
+  let movementsExist: { value: boolean };
+  let balanceBlocks: { value: boolean };
+  let itemId: string;
+  let otherUnitId: string;
+
+  const EVENTS = [ITEM_ENABLED_EVENT, ITEM_DISABLED_EVENT] as const;
+
+  beforeEach(async () => {
+    const stores = createMasterDataStores();
+    const bus = new DomainEventBus();
+    const events: DomainEvent[] = [];
+    for (const type of [...EVENTS, ITEM_CREATED_EVENT, ITEM_UPDATED_EVENT]) {
+      bus.on(type, (event) => {
+        events.push(event);
+      });
+    }
+
+    const authorization = new AuthorizationService(
+      undefined as never,
+      loggerStub(),
+      licensingTestDouble(),
+    );
+    const organizations = new OrganizationsService(
+      stores.organizations,
+      stores.memberships,
+      authorization,
+      loggerStub(),
+      bus,
+      UNPINNED_APP_CONFIG,
+      licensingTestDouble(),
+    );
+    const units = new UnitsService(
+      stores.units,
+      organizations,
+      authorization,
+      loggerStub(),
+      bus,
+    );
+    const itemGroups = new ItemGroupsService(
+      stores.itemGroups,
+      organizations,
+      authorization,
+      loggerStub(),
+      bus,
+    );
+    // Controllable freeze-guard seam (same pattern as the warehouse spec):
+    // tests flip `.value` instead of rebuilding the fixture per scenario.
+    movementsExist = { value: false };
+    balanceBlocks = { value: false };
+    const movements = {
+      existsForItem: async () => movementsExist.value,
+    } as unknown as InventoryMovementsRepository;
+    const balances = {
+      hasBlockingBalanceForItem: async () => balanceBlocks.value,
+    } as unknown as InventoryBalancesRepository;
+    const items = new ItemsService(
+      stores.items,
+      organizations,
+      itemGroups,
+      units,
+      authorization,
+      loggerStub(),
+      bus,
+      movements,
+      balances,
+    );
+
+    const organizationId = (
+      await organizations.createOrganization({ code: 'ORG-A', name: 'Org A' })
+    ).id;
+    const unitId = (
+      await units.createUnit({ organizationId, code: 'PCS', name: 'Piece' })
+    ).id;
+    fixture = {
+      organizations,
+      units,
+      itemGroups,
+      items,
+      stores,
+      events,
+      organizationId,
+      unitId,
+    };
+    itemId = (
+      await items.createItem({
+        organizationId,
+        code: 'ITM-1',
+        name: 'Widget',
+        itemKind: 'goods',
+        baseUnitId: unitId,
+      })
+    ).id;
+    otherUnitId = (
+      await units.createUnit({ organizationId, code: 'KG', name: 'Kilogram' })
+    ).id;
+  });
+
+  function lifecycleEvents(): DomainEvent[] {
+    return fixture.events.filter((event) =>
+      (EVENTS as readonly string[]).includes(event.type),
+    );
+  }
+
+  it('blocks a base-unit change once movements exist (history keeps its unit meaning)', async () => {
+    movementsExist.value = true;
+    await expect(
+      fixture.items.updateItem(fixture.organizationId, itemId, {
+        baseUnitId: otherUnitId,
+      }),
+    ).rejects.toMatchObject({ code: 'BusinessRuleViolation' });
+
+    // The rejection is real: no half-written item.
+    const unchanged = await fixture.items.getItem(
+      fixture.organizationId,
+      itemId,
+    );
+    expect(unchanged.baseUnitId).toBe(fixture.unitId);
+    expect(fixture.events.some((e) => e.type === ITEM_UPDATED_EVENT)).toBe(
+      false,
+    );
+  });
+
+  it('allows a base-unit change while the item has no movements', async () => {
+    const updated = await fixture.items.updateItem(
+      fixture.organizationId,
+      itemId,
+      { baseUnitId: otherUnitId },
+    );
+    expect(updated.baseUnitId).toBe(otherUnitId);
+  });
+
+  it('does not fire the base-unit guard when the unit is unchanged', async () => {
+    movementsExist.value = true;
+    const updated = await fixture.items.updateItem(
+      fixture.organizationId,
+      itemId,
+      { baseUnitId: fixture.unitId, name: 'Renamed' },
+    );
+    expect(updated.name).toBe('Renamed');
+  });
+
+  it('blocks turning a stockable item non-stockable once movements exist', async () => {
+    // A goods item is valued, and a valued item must be stockable — so the
+    // capability-legal way to drop stockability unsets both. With movements
+    // on record the freeze guard must be the rule that answers, not the
+    // capability invariant.
+    const patch = { isStockable: false, isValued: false };
+    movementsExist.value = true;
+    await expect(
+      fixture.items.updateItem(fixture.organizationId, itemId, patch),
+    ).rejects.toMatchObject({
+      code: 'BusinessRuleViolation',
+      message: expect.stringContaining('non-stockable'),
+    });
+
+    movementsExist.value = false;
+    const updated = await fixture.items.updateItem(
+      fixture.organizationId,
+      itemId,
+      patch,
+    );
+    expect(updated.isStockable).toBe(false);
+  });
+
+  it('blocks disabling an item that still holds stock, until the quantity is gone', async () => {
+    balanceBlocks.value = true;
+    await expect(
+      fixture.items.disableItem(fixture.organizationId, itemId),
+    ).rejects.toMatchObject({ code: 'BusinessRuleViolation' });
+    expect(
+      (await fixture.items.getItem(fixture.organizationId, itemId)).isActive,
+    ).toBe(true);
+
+    // Once nothing remains, disabling succeeds — the guard is about
+    // quantities, not about history (movements may still exist).
+    balanceBlocks.value = false;
+    movementsExist.value = true;
+    const disabled = await fixture.items.disableItem(
+      fixture.organizationId,
+      itemId,
+    );
+    expect(disabled.isActive).toBe(false);
+    expect(lifecycleEvents()).toHaveLength(1);
+    expect(lifecycleEvents()[0]?.type).toBe(ITEM_DISABLED_EVENT);
+  });
+
+  it('is idempotent on lifecycle transitions and emits events only on real changes', async () => {
+    const again = await fixture.items.enableItem(
+      fixture.organizationId,
+      itemId,
+    );
+    expect(again.isActive).toBe(true);
+    expect(lifecycleEvents()).toHaveLength(0);
+
+    await fixture.items.disableItem(fixture.organizationId, itemId);
+    await fixture.items.disableItem(fixture.organizationId, itemId);
+    expect(lifecycleEvents()).toHaveLength(1);
+    expect(lifecycleEvents()[0]?.type).toBe(ITEM_DISABLED_EVENT);
+
+    await fixture.items.enableItem(fixture.organizationId, itemId);
+    await fixture.items.enableItem(fixture.organizationId, itemId);
+    expect(lifecycleEvents()).toHaveLength(2);
+    expect(lifecycleEvents()[1]?.type).toBe(ITEM_ENABLED_EVENT);
+  });
+
+  it('keeps a disabled item resolvable for history but rejects it for new usage', async () => {
+    await fixture.items.disableItem(fixture.organizationId, itemId);
+
+    await expect(
+      fixture.items.requireUsableItemInOrganization(
+        itemId,
+        fixture.organizationId,
+      ),
+    ).rejects.toMatchObject({ code: 'BusinessRuleViolation' });
+
+    const historical = await fixture.items.requireUsableItemInOrganization(
+      itemId,
+      fixture.organizationId,
+      { allowInactive: true },
+    );
+    expect(historical.id).toBe(itemId);
+  });
+
+  it('normalizes optional text: surrounding whitespace off, all-blank becomes null', async () => {
+    const created = await fixture.items.createItem({
+      organizationId: fixture.organizationId,
+      code: 'ITM-TXT',
+      name: '  Text  normalisation ',
+      itemKind: 'service',
+      baseUnitId: fixture.unitId,
+      description: '   ',
+      barcode: '  BC-9  ',
+    });
+    expect(created.name).toBe('Text normalisation');
+    expect(created.description).toBe(null);
+    expect(created.barcode).toBe('BC-9');
+
+    const updated = await fixture.items.updateItem(
+      fixture.organizationId,
+      created.id,
+      { barcode: '   ' },
+    );
+    expect(updated.barcode).toBe(null);
+  });
+
+  it('rejects a barcode beyond the 64-character column width', async () => {
+    await expect(
+      fixture.items.createItem({
+        organizationId: fixture.organizationId,
+        code: 'ITM-BAR',
+        name: 'Barcode too long',
+        itemKind: 'service',
+        baseUnitId: fixture.unitId,
+        barcode: 'X'.repeat(65),
+      }),
+    ).rejects.toMatchObject({ code: 'BadRequest' });
   });
 });

@@ -865,3 +865,363 @@ describe('WarehousesService authorization & cross-organization IDOR', () => {
     ).rejects.toMatchObject({ code: 'EntityNotFound' });
   });
 });
+
+describe('Inventory item-master authorization & cross-organization IDOR', () => {
+  let fixture: Fixture;
+  let organizations: OrganizationsService;
+  let authorization: AuthorizationService;
+  let orgA: string;
+  let orgB: string;
+  let unitA: string;
+  let boxA: string;
+  let groupA: string;
+  let itemA: string;
+  let unitsService: import('../../inventory/application/units.service.js').UnitsService;
+  let itemsService: import('../../inventory/application/items.service.js').ItemsService;
+  let itemGroupsService: import('../../inventory/application/item-groups.service.js').ItemGroupsService;
+  let conversionsService: import('../../inventory/application/unit-conversions.service.js').UnitConversionsService;
+
+  const ITEM = {
+    VIEW: 'Inventory.Item.View',
+    CREATE: 'Inventory.Item.Create',
+    EDIT: 'Inventory.Item.Edit',
+    ENABLE: 'Inventory.Item.Enable',
+    DISABLE: 'Inventory.Item.Disable',
+  };
+  const CONVERSION = {
+    VIEW: 'Inventory.UnitConversion.View',
+    CREATE: 'Inventory.UnitConversion.Create',
+  };
+
+  function loggerStub(): JsonLogger {
+    return {
+      log: () => {},
+      warn: () => {},
+      error: () => {},
+    } as unknown as JsonLogger;
+  }
+
+  beforeEach(async () => {
+    fixture = await buildFixture();
+    // The fixture's AuthorizationService instance is the same one its
+    // organizations service uses; rebuild the inventory services against the
+    // same instance so ALL checks run the real RBAC path.
+    const bus = new DomainEventBus();
+    authorization = new AuthorizationService(
+      fixture.rbacStores.userRoles,
+      loggerStub(),
+      licensingTestDouble(),
+    );
+    organizations = fixture.organizations;
+    unitsService = new (
+      await import('../../inventory/application/units.service.js')
+    ).UnitsService(
+      fixture.masterStores.units,
+      organizations,
+      authorization,
+      loggerStub(),
+      bus,
+    );
+    itemGroupsService = new (
+      await import('../../inventory/application/item-groups.service.js')
+    ).ItemGroupsService(
+      fixture.masterStores.itemGroups,
+      organizations,
+      authorization,
+      loggerStub(),
+      bus,
+    );
+    const noMovements = {
+      existsForItem: async () => false,
+    } as unknown as InventoryMovementsRepository;
+    const noBalances = {
+      hasBlockingBalanceForItem: async () => false,
+    } as unknown as InventoryBalancesRepository;
+    itemsService = new (
+      await import('../../inventory/application/items.service.js')
+    ).ItemsService(
+      fixture.masterStores.items,
+      organizations,
+      itemGroupsService,
+      unitsService,
+      authorization,
+      loggerStub(),
+      bus,
+      noMovements,
+      noBalances,
+    );
+    conversionsService = new (
+      await import('../../inventory/application/unit-conversions.service.js')
+    ).UnitConversionsService(
+      fixture.masterStores.unitConversions,
+      organizations,
+      unitsService,
+      itemsService,
+      authorization,
+      loggerStub(),
+      bus,
+    );
+
+    orgA = (
+      await asSystem(() =>
+        organizations.createOrganization({ code: 'ORG-A', name: 'Org A' }),
+      )
+    ).id;
+    orgB = (
+      await asSystem(() =>
+        organizations.createOrganization({ code: 'ORG-B', name: 'Org B' }),
+      )
+    ).id;
+    unitA = (
+      await asSystem(() =>
+        unitsService.createUnit({
+          organizationId: orgA,
+          code: 'PCS',
+          name: 'Piece',
+        }),
+      )
+    ).id;
+    boxA = (
+      await asSystem(() =>
+        unitsService.createUnit({
+          organizationId: orgA,
+          code: 'BOX',
+          name: 'Box',
+        }),
+      )
+    ).id;
+    groupA = (
+      await asSystem(() =>
+        itemGroupsService.createItemGroup({
+          organizationId: orgA,
+          code: 'RM',
+          name: 'Raw materials',
+        }),
+      )
+    ).id;
+    itemA = (
+      await asSystem(() =>
+        itemsService.createItem({
+          organizationId: orgA,
+          code: 'ITM-A',
+          name: 'Widget A',
+          itemKind: 'goods',
+          baseUnitId: unitA,
+        }),
+      )
+    ).id;
+  });
+
+  function asActorId<R>(userId: string, fn: () => Promise<R>): Promise<R> {
+    return runWithRequestContext(
+      { correlationId: 'corr-1', principal: { userId, sessionId: 'sess' } },
+      fn,
+    );
+  }
+
+  it('rejects anonymous item/conversion access with 401, not 403', async () => {
+    const anonymous = (fn: () => Promise<unknown>): Promise<unknown> =>
+      runWithRequestContext({ correlationId: 'corr-1' }, fn);
+    await expect(
+      anonymous(() =>
+        itemsService.listItems({ organizationId: orgA, page: 1, pageSize: 10 }),
+      ),
+    ).rejects.toMatchObject({ code: 'Unauthorized' });
+    await expect(
+      anonymous(() =>
+        conversionsService.resolveConversion({
+          organizationId: orgA,
+          fromUnitId: boxA,
+          toUnitId: unitA,
+          asOf: new Date(),
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'Unauthorized' });
+  });
+
+  it('requires the distinct Item permission codes per operation', async () => {
+    fixture.masterStores.raw.memberships.seed(ACTOR, orgA);
+    await fixture.grant(ACTOR, [ITEM.VIEW, ITEM.CREATE]);
+
+    await expect(
+      asActorId(ACTOR, () =>
+        itemsService.updateItem(orgA, itemA, { name: 'Renamed' }),
+      ),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+    await expect(
+      asActorId(ACTOR, () => itemsService.disableItem(orgA, itemA)),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+    await expect(
+      asActorId(ACTOR, () => itemsService.enableItem(orgA, itemA)),
+    ).rejects.toMatchObject({ code: 'PermissionDenied' });
+
+    const created = await asActorId(ACTOR, () =>
+      itemsService.createItem({
+        organizationId: orgA,
+        code: 'ITM-NEW',
+        name: 'Newly created',
+        itemKind: 'service',
+        baseUnitId: unitA,
+        itemGroupId: groupA,
+      }),
+    );
+    expect(created.isActive).toBe(true);
+  });
+
+  it("cannot read, edit, enable or disable another organization's item even with full Item permissions (IDOR)", async () => {
+    fixture.masterStores.raw.memberships.seed(ACTOR, orgA);
+    fixture.masterStores.raw.memberships.seed(ACTOR, orgB);
+    await fixture.grant(ACTOR, [
+      ITEM.VIEW,
+      ITEM.CREATE,
+      ITEM.EDIT,
+      ITEM.ENABLE,
+      ITEM.DISABLE,
+    ]);
+    // Org-B rows are fixture data (not the operation under test), so they are
+    // seeded in the trusted system context.
+    const unitB = (
+      await asSystem(() =>
+        unitsService.createUnit({
+          organizationId: orgB,
+          code: 'PCS',
+          name: 'Piece',
+        }),
+      )
+    ).id;
+    const itemB = (
+      await asSystem(() =>
+        itemsService.createItem({
+          organizationId: orgB,
+          code: 'ITM-B',
+          name: 'Widget B',
+          itemKind: 'goods',
+          baseUnitId: unitB,
+        }),
+      )
+    ).id;
+
+    await expect(
+      asActorId(ACTOR, () => itemsService.getItem(orgA, itemB)),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+    await expect(
+      asActorId(ACTOR, () =>
+        itemsService.updateItem(orgA, itemB, { name: 'Hijacked' }),
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+    await expect(
+      asActorId(ACTOR, () => itemsService.enableItem(orgA, itemB)),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+    await expect(
+      asActorId(ACTOR, () => itemsService.disableItem(orgA, itemB)),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+  });
+
+  it('requires UnitConversion.View/Create distinctly for resolve and create', async () => {
+    fixture.masterStores.raw.memberships.seed(ACTOR, orgA);
+    await fixture.grant(ACTOR, [CONVERSION.VIEW]);
+
+    await asActorId(ACTOR, () =>
+      conversionsService.createConversion({
+        organizationId: orgA,
+        itemId: null,
+        fromUnitId: boxA,
+        toUnitId: unitA,
+        factor: '12',
+        validFrom: new Date('2026-01-01T00:00:00Z'),
+        validTo: null,
+      }),
+    ).catch((error: { code?: string }) =>
+      expect(error.code).toBe('PermissionDenied'),
+    );
+
+    // View only: resolve works, create does not.
+    const resolved = await asActorId(ACTOR, () =>
+      conversionsService.resolveConversion({
+        organizationId: orgA,
+        fromUnitId: boxA,
+        toUnitId: unitA,
+        asOf: new Date('2026-06-01T00:00:00Z'),
+      }),
+    );
+    expect(resolved).toBe(null);
+  });
+
+  it('cannot resolve conversion factors of another organization even holding UnitConversion.View (no-disclosure)', async () => {
+    // Seed org-B data in system context.
+    const unitB = (
+      await asSystem(() =>
+        unitsService.createUnit({
+          organizationId: orgB,
+          code: 'PCS',
+          name: 'Piece',
+        }),
+      )
+    ).id;
+    const boxB = (
+      await asSystem(() =>
+        unitsService.createUnit({
+          organizationId: orgB,
+          code: 'BOX',
+          name: 'Box',
+        }),
+      )
+    ).id;
+    const itemB = (
+      await asSystem(() =>
+        itemsService.createItem({
+          organizationId: orgB,
+          code: 'ITM-B',
+          name: 'Widget B',
+          itemKind: 'goods',
+          baseUnitId: unitB,
+        }),
+      )
+    ).id;
+    await asSystem(() =>
+      conversionsService.createConversion({
+        organizationId: orgB,
+        itemId: itemB,
+        fromUnitId: boxB,
+        toUnitId: unitB,
+        factor: '6',
+        validFrom: new Date('2026-01-01T00:00:00Z'),
+        validTo: null,
+      }),
+    );
+
+    // A member of orgA holding View must not resolve org-B factors — neither
+    // through scope nor through a foreign item id (the pre-fix disclosure
+    // vector, regression-tested here through the real authorization path).
+    fixture.masterStores.raw.memberships.seed(ACTOR, orgA);
+    await fixture.grant(ACTOR, [CONVERSION.VIEW, ITEM.VIEW]);
+
+    await expect(
+      asActorId(ACTOR, () =>
+        conversionsService.resolveConversion({
+          organizationId: orgA,
+          itemId: itemB,
+          fromUnitId: boxB,
+          toUnitId: unitB,
+          asOf: new Date('2026-02-01T00:00:00Z'),
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+
+    // A member of NEITHER org gets the same opaque not-found through the
+    // scope assertion.
+    const outsider = `${ACTOR}-out`;
+    await fixture.grant(outsider, [CONVERSION.VIEW, ITEM.VIEW]);
+    await expect(
+      asActorId(outsider, () =>
+        conversionsService.resolveConversion({
+          organizationId: orgB,
+          itemId: itemB,
+          fromUnitId: boxB,
+          toUnitId: unitB,
+          asOf: new Date('2026-02-01T00:00:00Z'),
+        }),
+      ),
+    ).rejects.toMatchObject({ code: 'EntityNotFound' });
+  });
+});
