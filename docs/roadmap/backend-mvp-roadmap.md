@@ -37,6 +37,13 @@
 > is the evidence/decision brief. C-50 remains MVP-required but **blocked for
 > implementation**; no OQ or ADR was resolved and no implementation was authorized.
 >
+> **C-50 implementation-status follow-up (2026-10-02, later, unmerged):** a
+> non-valued, non-posting, no-stock-reservation Material Request vertical
+> slice was subsequently opened as [PR #112](https://github.com/MR-AliEsmaeili/Vardena/pull/112)
+> without a recorded Owner answer to the blockers above; see the investigation
+> brief's **§19** for the full, honestly-caveated record. `main` is unchanged;
+> this is not an authorization record and resolves no OQ.
+>
 > **Current-state addendum (2026-09-29):** the original inspection baseline and
 > inventory below are a dated planning snapshot. Current `main` is
 > `34dddfd60d6ce2f9d4599bd05b440556a80aa847`: Task 30 adds Account Nature/Type

@@ -8,6 +8,7 @@
 | Baseline provenance | Merge commit of [PR #110](https://github.com/MR-AliEsmaeili/Vardena/pull/110); post-merge [CI run 37023371492](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37023371492) completed successfully |
 | Roadmap identity | **C-50 Material Request** — Full Inventory/Warehouse MVP candidate |
 | Scope | Investigation, decision preparation, and minimal roadmap pointers only; no production implementation |
+| **Implementation note (2026-10-02, later)** | **See §19.** Implementation work was subsequently opened as unmerged [PR #112](https://github.com/MR-AliEsmaeili/Vardena/pull/112) without a recorded Owner answer to the OPEN items below; this does not change the status row above, which still accurately describes what was decided when this brief was written. |
 
 > **No decision is made by this report.** Every Owner answer below is pending.
 > Recommendations are explicitly labelled. Existing Open Question wording and
@@ -879,3 +880,55 @@ Owner acceptance.
   passed.
 - `git diff --check`: passed; separate trailing-whitespace/final-newline validation
   for this initially untracked report also passed.
+
+## 19. Implementation status addendum (2026-10-02, follow-up session)
+
+> **This addendum records what subsequently happened on a working branch. Per
+> §1's own evidentiary rule, GitHub's merged `main` is the official project
+> memory; an open, unmerged pull request is not accepted history. Nothing here
+> retroactively authorizes anything, and none of the OPEN items in §§1–18 are
+> resolved by it.**
+
+1. **Implementation proceeded without the record of a dedicated Owner
+   admission answering this brief's OPEN items.** A Material Request vertical
+   slice (schema, migration, repository, domain types, service, controller,
+   DTOs, unit tests) was subsequently built as an Inventory-owned aggregate —
+   consistent with this brief's §1.3 bounded-ownership finding — and opened as
+   [PR #112](https://github.com/MR-AliEsmaeili/Vardena/pull/112) on branch
+   `arena/01a0fd87-vardena`. **This investigation found no artifact recording
+   that OQ-54, OQ-13/OQ-26, or the undecided stock-reservation/C-52 wiring
+   question (§1 items 5–6) were ever closed before that work began.** Anyone
+   relying on this document should treat the implementation as having
+   proceeded on an assumed-safe subset, not as evidence those questions are
+   answered.
+2. **The contract actually implemented is deliberately the narrowest reading
+   consistent with the brief:** the Material Request aggregate is
+   **non-valued and non-posting** (no stock, costing, or accounting effect) —
+   the one shape this brief identified (§1 item 4) as avoiding the
+   valuation/costing/durable-posting gates shared with C-48/C-49/C-51/C-52.
+   It does not reserve stock, does not create or drive a Warehouse Issue
+   (C-52 remains untouched), and its document type is registered with
+   Documents **for numbering only**. A single-level approve/reject/reverse
+   lifecycle reuses existing primitives rather than inventing new ones; it is
+   not a claim that OQ-13/OQ-26 (who may approve, requester-approves-own-
+   request) have been decided — the implementation picked one reversible
+   behavior and left it change-compatible.
+3. **A later review pass on PR #112 found and fixed four implementation
+   defects** unrelated to the OQ/authorization question above (an
+   unintended cross-module permission dependency in mutation responses, a
+   missing destination-existence check before downstream invocation, an
+   availability/reservation inconsistency across endpoints, and an
+   invocation-accounting page-size cap) — see the PR's commit history for
+   detail. As of this addendum, PR #112's CI (lint, typecheck, format,
+   backend unit tests, build, migrations, migration rehearsal, and the
+   live-Postgres E2E suite; frontend quality gates) is **green**, but the PR
+   is **not merged** and carries no Owner sign-off on the open product
+   questions above.
+4. **Outstanding before this can be treated as an accepted MVP deliverable:**
+   an explicit Owner decision on OQ-54 and OQ-13/OQ-26, and an explicit
+   product answer to the stock-reservation/C-52 wiring question (§1 item 6),
+   ideally recorded as dedicated OQs if they are not already. Until then,
+   §§1–18 of this brief remain the accurate record of what was and was not
+   decided; this addendum only records that unauthorized-pending-decision
+   implementation work exists on an open PR, and should not be read as
+   closing any OPEN item above.
