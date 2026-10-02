@@ -119,6 +119,9 @@ class FakeMaterialRequestsRepository {
   private readonly events = new Map<string, MaterialRequestEvent[]>();
   private readonly tails = new Map<string, Promise<void>>();
   readonly reservations = new Map<string, FakeReservationRow>();
+  /** When set, `recordInvocationEvent` throws instead of appending — used
+   *  to exercise the §4 post-relation-success audit-event-loss window. */
+  failRecordInvocationEvent = false;
 
   /** Async mutex keyed by Material Request id — models the real
    *  `lockMaterialRequestRow` `SELECT … FOR UPDATE` serialization so
@@ -613,6 +616,13 @@ class FakeMaterialRequestsRepository {
     actorId: string | null;
     reservationConsumption: ReservationConsumptionResult | null;
   }): Promise<void> {
+    // Mirrors the real repository's `releaseInvocationCapacity`: always add
+    // this attempt's own captured deltas back to whatever the CURRENT
+    // (locked) state is — never branch on this attempt's own `closed`
+    // snapshot, which only ever described what THIS attempt did and is
+    // invalidated the moment a different concurrent attempt legitimately
+    // changes the reservation afterwards. See the real implementation's
+    // doc comment for the full reasoning.
     await this.withLock(input.id, () => {
       const lines = this.lines.get(input.id) ?? [];
       const index = lines.findIndex(
@@ -624,11 +634,13 @@ class FakeMaterialRequestsRepository {
           line.invokedBaseQuantity,
           input.invokedBase,
         );
-        const floored = compare(restored, '0') < 0 ? '0' : restored;
+        if (compare(restored, '0') < 0 || line.invocationCount - 1 < 0) {
+          throw new BalanceDriftError();
+        }
         lines[index] = {
           ...line,
-          invokedBaseQuantity: floored,
-          invocationCount: Math.max(line.invocationCount - 1, 0),
+          invokedBaseQuantity: restored,
+          invocationCount: line.invocationCount - 1,
           updatedAt: input.now,
         };
       }
@@ -637,36 +649,26 @@ class FakeMaterialRequestsRepository {
       if (consumption !== null) {
         const reservation = this.reservations.get(consumption.reservationId);
         if (reservation === undefined) return;
-        if (consumption.closed) {
-          if (
-            reservation.status !== 'released' ||
-            compare(reservation.quantity, '0') !== 0 ||
-            compare(reservation.baseQuantity, '0') !== 0
-          ) {
-            throw new BalanceDriftError();
-          }
-          this.reservations.set(consumption.reservationId, {
-            ...reservation,
-            status: 'active',
-            quantity: consumption.consumedEntered,
-            baseQuantity: consumption.consumedBase,
-          });
-        } else {
-          if (reservation.status !== 'active') {
-            throw new BalanceDriftError();
-          }
-          this.reservations.set(consumption.reservationId, {
-            ...reservation,
-            quantity: addDecimalStrings(
-              reservation.quantity,
-              consumption.consumedEntered,
-            ),
-            baseQuantity: addDecimalStrings(
-              reservation.baseQuantity,
-              consumption.consumedBase,
-            ),
-          });
+        const restoredQuantity = addDecimalStrings(
+          reservation.quantity,
+          consumption.consumedEntered,
+        );
+        const restoredBaseQuantity = addDecimalStrings(
+          reservation.baseQuantity,
+          consumption.consumedBase,
+        );
+        if (
+          compare(restoredQuantity, '0') <= 0 ||
+          compare(restoredBaseQuantity, '0') <= 0
+        ) {
+          throw new BalanceDriftError();
         }
+        this.reservations.set(consumption.reservationId, {
+          ...reservation,
+          status: 'active',
+          quantity: restoredQuantity,
+          baseQuantity: restoredBaseQuantity,
+        });
       }
     });
   }
@@ -678,6 +680,9 @@ class FakeMaterialRequestsRepository {
     occurredAt: Date;
     relationId: string;
   }): Promise<void> {
+    if (this.failRecordInvocationEvent) {
+      throw new Error('TEST DOUBLE: recordInvocationEvent forced failure.');
+    }
     this.appendEvent(input.materialRequestId, input.organizationId, {
       eventType: 'line_invoked',
       fromStatus: null,
@@ -755,6 +760,23 @@ interface BuildOptions {
   /** When true, `DocumentRelationsService.linkDocuments` always throws —
    *  used to test the finding #2/#4 compensation path. */
   failLinkDocuments?: boolean;
+  /** When provided, `DocumentRelationsService.linkDocuments` throws only for
+   *  calls where this predicate (given the attempt's own `quantity`) returns
+   *  true — lets a concurrency test fail exactly ONE of several genuinely
+   *  overlapping invocations (e.g. "the 60 attempt, not the 40 attempt") by
+   *  a property distinguishable from the outside, the same way a real
+   *  destination-side failure would single out one caller. */
+  failLinkDocumentsWhen?: (quantity: string | null | undefined) => boolean;
+  /** When provided, `linkDocuments` awaits this (keyed by the attempt's own
+   *  `quantity`) AFTER `reserveInvocationCapacity` has already committed but
+   *  BEFORE deciding success/failure — lets a test hold one genuinely
+   *  in-flight attempt open while a second, fully independent attempt races
+   *  ahead and commits against the same reservation, reproducing a true
+   *  "concurrent, not sequential" interleaving even though the fake runs on
+   *  a single event loop. */
+  beforeLinkDocuments?: (
+    quantity: string | null | undefined,
+  ) => Promise<void> | undefined;
 }
 
 async function buildFixture(options: BuildOptions = {}) {
@@ -901,7 +923,11 @@ async function buildFixture(options: BuildOptions = {}) {
       quantity?: string | null;
     }) => {
       relationCalls.push('linkDocuments');
+      await options.beforeLinkDocuments?.(input.quantity);
       if (options.failLinkDocuments === true) {
+        throw new Error('TEST DOUBLE: linkDocuments forced failure.');
+      }
+      if (options.failLinkDocumentsWhen?.(input.quantity) === true) {
         throw new Error('TEST DOUBLE: linkDocuments forced failure.');
       }
       return {
@@ -915,6 +941,15 @@ async function buildFixture(options: BuildOptions = {}) {
     },
   } as unknown as DocumentRelationsService;
 
+  const loggerErrors: Array<{ message: string; meta: unknown }> = [];
+  const serviceLogger = {
+    log: () => {},
+    warn: () => {},
+    error: (message: string, meta: unknown) => {
+      loggerErrors.push({ message, meta });
+    },
+  } as unknown as JsonLogger;
+
   const service = new MaterialRequestsService(
     repository as unknown as import('../data/material-requests.repository.js').MaterialRequestsRepository,
     organizations,
@@ -926,6 +961,7 @@ async function buildFixture(options: BuildOptions = {}) {
     documentRelations,
     documentTypes,
     authorization,
+    serviceLogger,
   );
 
   const organizationId = (
@@ -984,6 +1020,7 @@ async function buildFixture(options: BuildOptions = {}) {
     itemId,
     warehouseId,
     relationCalls,
+    loggerErrors,
     // Exposed so tests exercising a SECOND principal (e.g. "cancellation
     // does not require the original approver") can seed that principal's
     // membership — ODR-3 requires an actual membership row for every
@@ -1374,6 +1411,67 @@ describe('Finding #2 — invokeLine validates the destination before consuming c
     expect(result.invocationCount).toBe(1);
     expect(fixture.relationCalls).toContain('linkDocuments');
   });
+
+  it(
+    'a Document Relation success survives a failed audit-event write: the ' +
+      'invocation still reports success, capacity/relation stay committed, ' +
+      'nothing is compensated, and the failure is logged (§4 accepted trade-off)',
+    async () => {
+      const fixture = await buildFixture();
+      fixture.repository.failRecordInvocationEvent = true;
+      const { materialRequestId, lineId } = await createAndApprove(fixture, {
+        quantity: '10',
+      });
+      const destination = await asActor(() =>
+        fixture.service.createDraft({
+          organizationId: fixture.organizationId,
+          lines: [
+            {
+              itemId: fixture.itemId,
+              warehouseId: fixture.warehouseId,
+              quantity: '100',
+              unitId: fixture.unitId,
+            },
+          ],
+        }),
+      );
+      // The relation write itself (the real business effect) succeeds —
+      // only the append-only audit event write fails afterwards. This must
+      // NOT be surfaced as a failed invocation: doing so would both lie
+      // about what is actually committed and invite a caller retry that
+      // would double-consume capacity for an invocation that already
+      // succeeded.
+      const result = await asActor(() =>
+        fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+          lineId,
+          destinationModule: 'inventory',
+          destinationDocumentType:
+            MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+          destinationDocumentId: destination.id,
+          quantity: '4',
+        }),
+      );
+      expect(result.invokedBaseQuantity).toBe('4');
+      expect(result.invocationCount).toBe(1);
+
+      const lines = await fixture.repository.listLines(materialRequestId);
+      expect(lines[0]?.invokedBaseQuantity).toBe('4');
+      expect(lines[0]?.invocationCount).toBe(1);
+      expect(fixture.relationCalls).toContain('linkDocuments');
+
+      // The audit event itself is indeed missing — this is the accepted,
+      // OBSERVABLE gap (there is no outbox/durable-retry mechanism in this
+      // codebase to hand it off to), not a silent one: it must be logged.
+      const events = await fixture.repository.listEvents(materialRequestId);
+      expect(
+        events.filter((event) => event.eventType === 'line_invoked'),
+      ).toHaveLength(0);
+      expect(fixture.loggerErrors).toHaveLength(1);
+      expect(fixture.loggerErrors[0]?.message).toContain(
+        'Failed to record a Material Request invocation audit event',
+      );
+    },
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -1484,6 +1582,64 @@ describe('Finding #4 — invocation accounting correctness and concurrency', () 
     const lines = await fixture.repository.listLines(materialRequestId);
     expect(lines[0]?.invokedBaseQuantity).toBe('0');
     expect(lines[0]?.invocationCount).toBe(0);
+  });
+
+  it('retrying the same quantity after a compensated failure succeeds exactly once — no duplication', async () => {
+    // `failLinkDocumentsWhen` lets the FIRST call for this quantity fail
+    // and every subsequent one succeed — modelling an operator (or a
+    // caller with no idempotency key) retrying after seeing the first
+    // attempt's error, which `invokeLine` has already fully compensated.
+    let attempts = 0;
+    const fixture = await buildFixture({
+      failLinkDocumentsWhen: (quantity) => {
+        if (quantity !== '4') return false;
+        attempts += 1;
+        return attempts === 1;
+      },
+    });
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      quantity: '10',
+    });
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '100',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    const invoke = () =>
+      asActor(() =>
+        fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+          lineId,
+          destinationModule: 'inventory',
+          destinationDocumentType:
+            MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+          destinationDocumentId: destination.id,
+          quantity: '4',
+        }),
+      );
+    await expect(invoke()).rejects.toThrow();
+    const afterFailure = await fixture.repository.listLines(materialRequestId);
+    expect(afterFailure[0]?.invokedBaseQuantity).toBe('0');
+    expect(afterFailure[0]?.invocationCount).toBe(0);
+
+    // The retry is a brand new, independent attempt — it must succeed
+    // exactly once, counted exactly once, never stacking on top of the
+    // compensated-away first attempt.
+    await invoke();
+    const afterRetry = await fixture.repository.listLines(materialRequestId);
+    expect(afterRetry[0]?.invokedBaseQuantity).toBe('4');
+    expect(afterRetry[0]?.invocationCount).toBe(1);
+    const events = await fixture.repository.listEvents(materialRequestId);
+    expect(
+      events.filter((event) => event.eventType === 'line_invoked'),
+    ).toHaveLength(1);
   });
 
   it('aggregates correctly past 1000 invocations — no page-size cap (equivalent of the >1000-relation test)', async () => {
@@ -2558,6 +2714,131 @@ describe('Owner decision — invocation consumes the active reservation', () => 
     expect(lines[0]?.invokedBaseQuantity).toBe('0');
     expect(lines[0]?.invocationCount).toBe(0);
   });
+
+  // -------------------------------------------------------------------------
+  // Concurrency/compensation audit round — the bug: a failed attempt's
+  // compensation used to key off ITS OWN `closed` snapshot (did *I* close
+  // the reservation?) to decide whether the current reservation status
+  // "ought" to be `released` (reopen) or `active` (top up) — an invariant
+  // a DIFFERENT, later, legitimate concurrent invocation can break simply
+  // by doing its own, perfectly valid consumption in between. The fix:
+  // compensation now always adds its own captured amount back to whatever
+  // the CURRENT state is (never branching on the stale snapshot) and never
+  // floors counters at zero, so unexpected negative results fail closed
+  // instead of masking real corruption.
+  // -------------------------------------------------------------------------
+  it(
+    'a failed attempt is compensated correctly even though a DIFFERENT, ' +
+      'concurrent invocation legitimately closed the reservation in ' +
+      'between (A consumes 60, B consumes the remaining 40 and closes it, ' +
+      "THEN A's relation fails) — reproduces the compensation race",
+    async () => {
+      let resolveAReserved!: () => void;
+      const aReserved = new Promise<void>((resolve) => {
+        resolveAReserved = resolve;
+      });
+      let resolveBGate!: () => void;
+      const bGate = new Promise<void>((resolve) => {
+        resolveBGate = resolve;
+      });
+
+      const fixture = await buildFixture({
+        // A's `reserveInvocationCapacity` has ALREADY committed (60 taken,
+        // reservation down to 40) by the time `linkDocuments` runs — this
+        // is exactly where the real failure window sits. Signal that, then
+        // hold A open (genuinely in-flight, not yet failed) until the test
+        // has driven B's entirely separate, independent invocation to full
+        // completion — including closing the reservation — before A's
+        // relation write is even attempted.
+        beforeLinkDocuments: async (quantity) => {
+          if (quantity === '60') {
+            resolveAReserved();
+            await bGate;
+          }
+        },
+        failLinkDocumentsWhen: (quantity) => quantity === '60',
+      });
+      const { materialRequestId, lineId } = await createAndApprove(fixture, {
+        quantity: '100',
+        reservationRequested: true,
+      });
+      const [lineBefore] =
+        await fixture.repository.listLines(materialRequestId);
+      const reservationId = lineBefore!.reservationId!;
+      const destination = await asActor(() =>
+        fixture.service.createDraft({
+          organizationId: fixture.organizationId,
+          lines: [
+            {
+              itemId: fixture.itemId,
+              warehouseId: fixture.warehouseId,
+              quantity: '100',
+              unitId: fixture.unitId,
+            },
+          ],
+        }),
+      );
+      const invoke = (quantity: string) =>
+        asActor(() =>
+          fixture.service.invokeLine(
+            materialRequestId,
+            fixture.organizationId,
+            {
+              lineId,
+              destinationModule: 'inventory',
+              destinationDocumentType:
+                MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+              destinationDocumentId: destination.id,
+              quantity,
+            },
+          ),
+        );
+
+      const aPromise = invoke('60');
+      // Genuinely wait for A's OWN capacity reservation to have committed
+      // (not merely for A to have "started") before B is even issued.
+      await aReserved;
+      // B is a completely independent, fully successful invocation that
+      // races ahead of A and finishes entirely — including recording its
+      // own audit event — while A is still sitting inside its (about to
+      // fail) Document Relation call.
+      await invoke('40');
+      // Only now does A's relation attempt proceed, and fail.
+      resolveBGate();
+
+      await expect(aPromise).rejects.toThrow(
+        'TEST DOUBLE: linkDocuments forced failure.',
+      );
+
+      const lines = await fixture.repository.listLines(materialRequestId);
+      // B's successful 40 remains; A's 60 was fully compensated — never
+      // simply "whatever didn't error", computed from CURRENT state.
+      expect(lines[0]?.invokedBaseQuantity).toBe('40');
+      expect(lines[0]?.invocationCount).toBe(1);
+      // The reservation must be reopened (B's close undone by A's
+      // restoration), holding exactly the still-uninvoked remainder — not
+      // rejected as "drift" just because B legitimately changed it after
+      // A's own forward commit.
+      expect(fixture.repository.reservations.get(reservationId)).toEqual({
+        id: reservationId,
+        status: 'active',
+        quantity: '60',
+        baseQuantity: '60',
+      });
+      // Exactly one invocation event was ever recorded — B's. A's failed,
+      // compensated attempt left no audit trace of a success that never
+      // happened.
+      const events = await fixture.repository.listEvents(materialRequestId);
+      expect(
+        events.filter((event) => event.eventType === 'line_invoked'),
+      ).toHaveLength(1);
+      // Both attempts reached the destination exactly once each — no
+      // silent retry, no duplicate relation for either.
+      expect(
+        fixture.relationCalls.filter((call) => call === 'linkDocuments'),
+      ).toHaveLength(2);
+    },
+  );
 
   it('cancellation and approval reversal remain blocked after a PARTIAL invocation, and the reservation still shows only the uninvoked remainder', async () => {
     const fixture = await buildFixture();

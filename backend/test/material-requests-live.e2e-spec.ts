@@ -22,6 +22,7 @@ import {
 } from '../src/modules/inventory/domain/inventory-core-permissions.js';
 import { MATERIAL_REQUEST_DOCUMENT_TYPE } from '../src/modules/inventory/domain/material-request-document-type.js';
 import { NumberingSeriesService } from '../src/modules/documents/application/numbering-series.service.js';
+import { MaterialRequestsRepository } from '../src/modules/inventory/data/material-requests.repository.js';
 import { createTestApp } from './support/test-app.js';
 
 /**
@@ -2081,6 +2082,776 @@ describe.skipIf(DATABASE_URL === undefined)(
           itemAId,
         );
         expect(afterReal).toEqual(before);
+      },
+    );
+
+    // -------------------------------------------------------------------
+    // Concurrency/compensation audit round — the race: invocation A
+    // consumes part of a reservation, invocation B then consumes the
+    // remainder and legitimately closes it, THEN A's own Document Relation
+    // write fails and A's compensation runs. The compensation used to key
+    // off A's OWN `closed` snapshot (did *I* close it?) to decide whether
+    // the reservation "ought" to still be `active` or `released` — an
+    // assumption B's perfectly valid, concurrent consumption invalidates.
+    // The fix makes compensation add its captured amount back to whatever
+    // the CURRENT (locked) state is, never branching on that stale
+    // snapshot. See `MaterialRequestsRepository.releaseInvocationCapacity`.
+    // -------------------------------------------------------------------
+
+    it(
+      'a failed attempt is compensated correctly against real Postgres ' +
+        'even though a DIFFERENT, already-committed invocation legitimately ' +
+        'closed the reservation first (A reserves 60, B reserves the ' +
+        "remaining 40 and closes it, THEN A's relation fails) — exact " +
+        'scenario from the compensation-race finding, driven through the ' +
+        'real repository/transactions so the SQL/locking itself is proven, ' +
+        'not just the in-memory logic',
+      async () => {
+        const repository = app!.get(MaterialRequestsRepository);
+        const before = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA3Id,
+          itemAId,
+        );
+
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Compensation race — A(60)/B(40 closes)/A fails',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '100',
+                reservationRequested: true,
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        const lineId = created.body.lines[0].id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const reservationId = approved.body.lines[0].reservationId as string;
+
+        // These two calls are issued one after another (not via HTTP
+        // timing) specifically to PIN the exact ordering the finding
+        // describes — real concurrent HTTP requests cannot be forced to
+        // land in one specific order without a test-only interception
+        // hook, and the header-row lock serializes them into exactly this
+        // sequence regardless of which HTTP request started first anyway.
+        // The genuinely-overlapping HTTP-level race (order-independent
+        // safety) is covered separately below. Both calls go through the
+        // REAL `MaterialRequestsRepository` against the REAL database —
+        // this proves the actual SQL/`FOR UPDATE` locking/decimal
+        // arithmetic, which a hermetic fake-repository test cannot.
+        const now = new Date();
+        const reservedA = await repository.reserveInvocationCapacity({
+          id: mrId,
+          organizationId: orgAId,
+          lineId,
+          invokedBase: '60',
+          invokedEntered: '60',
+          now,
+          actorId: aliceId,
+        });
+        // A's own forward attempt did NOT close the reservation (40 of 100
+        // still remained) — this is the exact precondition the bug needed.
+        expect(reservedA.reservationConsumption?.closed).toBe(false);
+
+        const reservedB = await repository.reserveInvocationCapacity({
+          id: mrId,
+          organizationId: orgAId,
+          lineId,
+          invokedBase: '40',
+          invokedEntered: '40',
+          now,
+          actorId: aliceId,
+        });
+        expect(reservedB.reservationConsumption?.closed).toBe(true);
+        // B is a fully legitimate, independent, successful invocation —
+        // its Document Relation and audit event really do get recorded.
+        await repository.recordInvocationEvent({
+          materialRequestId: mrId,
+          organizationId: orgAId,
+          actorId: aliceId,
+          occurredAt: now,
+          relationId: generateId(),
+        });
+
+        const reservationAfterB = await getReservation(
+          alice,
+          orgAId,
+          reservationId,
+        );
+        expect(reservationAfterB).toEqual({
+          status: 'released',
+          quantity: '0',
+          baseQuantity: '0',
+        });
+
+        // A's Document Relation now fails — compensate EXACTLY A's own
+        // captured amount. Before the fix this threw `BalanceDriftError`
+        // because the reservation's CURRENT status (`released`, closed by
+        // B) no longer matched what A's OWN `closed: false` snapshot
+        // expected (`active`) — even though nothing is actually wrong.
+        await repository.releaseInvocationCapacity({
+          id: mrId,
+          lineId,
+          invokedBase: '60',
+          now: new Date(),
+          actorId: aliceId,
+          reservationConsumption: reservedA.reservationConsumption,
+        });
+
+        const lines = await repository.listLines(mrId);
+        // B's successful 40 remains; A's 60 was fully, correctly undone —
+        // computed from CURRENT state, never "whatever didn't error".
+        expect(lines[0]?.invokedBaseQuantity).toBe('40');
+        expect(lines[0]?.invocationCount).toBe(1);
+
+        const reservationAfterCompensation = await getReservation(
+          alice,
+          orgAId,
+          reservationId,
+        );
+        expect(reservationAfterCompensation).toEqual({
+          status: 'active',
+          quantity: '60',
+          baseQuantity: '60',
+        });
+
+        const afterRace = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA3Id,
+          itemAId,
+        );
+        // On Hand is never touched by invocation/compensation — only the
+        // `reserved` counter, which must land on exactly the reopened 60.
+        expect(afterRace.onHand).toBeCloseTo(before.onHand, 6);
+        expect(afterRace.reserved).toBeCloseTo(before.reserved + 60, 6);
+
+        // Counters, reservation, and events all agree with each other.
+        const refetched = await alice
+          .get(`/api/v1/inventory/material-requests/${mrId}`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        expect(refetched.body.lines[0].invokedBaseQuantity).toBe('40');
+        expect(refetched.body.lines[0].remainingBaseQuantity).toBe('60');
+        expect(refetched.body.lines[0].invocationCount).toBe(1);
+
+        // Multiple partial invocations remain correct AFTER the failed
+        // concurrent attempt was compensated — the reopened 60 is fully
+        // usable by further, independent invocations, split further.
+        const destination = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Compensation race — post-race partial C',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '100',
+              },
+            ],
+          })
+          .expect(201);
+        const cInvoked = await alice
+          .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+          .query({ organizationId: orgAId })
+          .send({
+            lineId,
+            destinationModule: 'inventory',
+            destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+            destinationDocumentId: destination.body.id,
+            destinationLineId: destination.body.lines[0].id,
+            quantity: '25',
+          })
+          .expect(200);
+        expect(cInvoked.body.invokedBaseQuantity).toBe('65');
+        expect(cInvoked.body.invocationCount).toBe(2);
+        const reservationAfterC = await getReservation(
+          alice,
+          orgAId,
+          reservationId,
+        );
+        expect(reservationAfterC).toEqual({
+          status: 'active',
+          quantity: '35',
+          baseQuantity: '35',
+        });
+
+        // Retrying A's originally-failed amount afterward succeeds exactly
+        // once — it is a brand new attempt, never a duplicate of anything.
+        const retryDestination = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description:
+              'Compensation race — retry of the failed 60 (now 35 remains, retried as 35)',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '100',
+              },
+            ],
+          })
+          .expect(201);
+        const retried = await alice
+          .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+          .query({ organizationId: orgAId })
+          .send({
+            lineId,
+            destinationModule: 'inventory',
+            destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+            destinationDocumentId: retryDestination.body.id,
+            destinationLineId: retryDestination.body.lines[0].id,
+            quantity: '35',
+          })
+          .expect(200);
+        expect(retried.body.invokedBaseQuantity).toBe('100');
+        expect(retried.body.invocationCount).toBe(3);
+        const reservationFinal = await getReservation(
+          alice,
+          orgAId,
+          reservationId,
+        );
+        expect(reservationFinal).toEqual({
+          status: 'released',
+          quantity: '0',
+          baseQuantity: '0',
+        });
+        const afterAll2 = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA3Id,
+          itemAId,
+        );
+        expect(afterAll2.onHand).toBeCloseTo(before.onHand, 6);
+        expect(afterAll2.reserved).toBeCloseTo(before.reserved + 100, 6);
+      },
+    );
+
+    it(
+      'a failed attempt that would have closed the reservation by ITSELF ' +
+        '(no concurrent attempt involved) is still compensated correctly ' +
+        'against real Postgres — reopened, not left released',
+      async () => {
+        const repository = app!.get(MaterialRequestsRepository);
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Solo failed attempt that would have closed it',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '30',
+                reservationRequested: true,
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        const lineId = created.body.lines[0].id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const reservationId = approved.body.lines[0].reservationId as string;
+
+        const reserved = await repository.reserveInvocationCapacity({
+          id: mrId,
+          organizationId: orgAId,
+          lineId,
+          invokedBase: '30',
+          invokedEntered: '30',
+          now: new Date(),
+          actorId: aliceId,
+        });
+        expect(reserved.reservationConsumption?.closed).toBe(true);
+        const closedReservation = await getReservation(
+          alice,
+          orgAId,
+          reservationId,
+        );
+        expect(closedReservation.status).toBe('released');
+
+        await repository.releaseInvocationCapacity({
+          id: mrId,
+          lineId,
+          invokedBase: '30',
+          now: new Date(),
+          actorId: aliceId,
+          reservationConsumption: reserved.reservationConsumption,
+        });
+
+        const reopened = await getReservation(alice, orgAId, reservationId);
+        expect(reopened).toEqual({
+          status: 'active',
+          quantity: '30',
+          baseQuantity: '30',
+        });
+        const lines = await repository.listLines(mrId);
+        expect(lines[0]?.invokedBaseQuantity).toBe('0');
+        expect(lines[0]?.invocationCount).toBe(0);
+      },
+    );
+
+    it(
+      'two concurrent invocations summing to EXACTLY the remaining ' +
+        'capacity both succeed and close the reservation correctly',
+      async () => {
+        const before = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA3Id,
+          itemAId,
+        );
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Concurrent pair exactly fills capacity',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '100',
+                reservationRequested: true,
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        const lineId = created.body.lines[0].id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const reservationId = approved.body.lines[0].reservationId as string;
+
+        const destinations: Array<{ id: string; lineId: string }> = [];
+        for (let i = 0; i < 2; i += 1) {
+          // eslint-disable-next-line no-await-in-loop
+          const destination = await alice
+            .post('/api/v1/inventory/material-requests')
+            .send({
+              organizationId: orgAId,
+              description: `Exact-capacity destination #${i}`,
+              lines: [
+                {
+                  itemId: itemAId,
+                  warehouseId: whA3Id,
+                  unitId: unitAId,
+                  quantity: '100',
+                },
+              ],
+            })
+            .expect(201);
+          destinations.push({
+            id: destination.body.id as string,
+            lineId: destination.body.lines[0].id as string,
+          });
+        }
+
+        // 50 + 50 = 100 exactly: BOTH must succeed, genuinely overlapping
+        // (not sequential awaits) — a correct atomic check-and-write must
+        // never reject one of two attempts that together exactly fit.
+        const results = await Promise.all(
+          destinations.map((destination) =>
+            alice
+              .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+              .query({ organizationId: orgAId })
+              .send({
+                lineId,
+                destinationModule: 'inventory',
+                destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+                destinationDocumentId: destination.id,
+                destinationLineId: destination.lineId,
+                quantity: '50',
+              }),
+          ),
+        );
+        expect(results.every((r) => r.status === 200)).toBe(true);
+
+        const refetched = await alice
+          .get(`/api/v1/inventory/material-requests/${mrId}`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        expect(refetched.body.lines[0].invokedBaseQuantity).toBe('100');
+        expect(refetched.body.lines[0].remainingBaseQuantity).toBe('0');
+        expect(refetched.body.lines[0].invocationCount).toBe(2);
+
+        const reservation = await getReservation(alice, orgAId, reservationId);
+        expect(reservation).toEqual({
+          status: 'released',
+          quantity: '0',
+          baseQuantity: '0',
+        });
+
+        const after = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA3Id,
+          itemAId,
+        );
+        expect(after.onHand).toBeCloseTo(before.onHand, 6);
+        expect(after.reserved).toBeCloseTo(before.reserved, 6);
+      },
+    );
+
+    it(
+      'a genuinely concurrent pair where one attempt is guaranteed to fail ' +
+        'its Document Relation (self-referencing) never corrupts the ' +
+        "other, successful attempt's state, regardless of which one the " +
+        'row lock happens to serialize first',
+      async () => {
+        const before = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA3Id,
+          itemAId,
+        );
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Concurrent HTTP race: one guaranteed-fail, one valid',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '100',
+                reservationRequested: true,
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        const lineId = created.body.lines[0].id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const reservationId = approved.body.lines[0].reservationId as string;
+
+        const validDestination = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Concurrent HTTP race — valid destination',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '100',
+              },
+            ],
+          })
+          .expect(201);
+
+        // A targets the Material Request ITSELF — a destination that is
+        // genuinely valid enough to pass every pre-reserve check
+        // (`validateInvocationDestination`) yet is ALWAYS refused by
+        // `DocumentRelationsService.linkDocuments` as a self-reference, a
+        // REAL failure happening strictly after `reserveInvocationCapacity`
+        // commits — no mocking. B targets a different, always-valid
+        // destination. 60 + 40 = 100 fits regardless of which one the
+        // header-row lock serializes first, so the correct final state
+        // (B's 40 invoked, A's 60 fully compensated and the reservation
+        // reopened at 60) is identical either way.
+        const [aResult, bResult] = await Promise.all([
+          alice
+            .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+            .query({ organizationId: orgAId })
+            .send({
+              lineId,
+              destinationModule: 'inventory',
+              destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+              destinationDocumentId: mrId,
+              destinationLineId: lineId,
+              quantity: '60',
+            }),
+          alice
+            .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+            .query({ organizationId: orgAId })
+            .send({
+              lineId,
+              destinationModule: 'inventory',
+              destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+              destinationDocumentId: validDestination.body.id,
+              destinationLineId: validDestination.body.lines[0].id,
+              quantity: '40',
+            }),
+        ]);
+        expect(aResult.status).toBe(422);
+        expect(bResult.status).toBe(200);
+
+        const refetched = await alice
+          .get(`/api/v1/inventory/material-requests/${mrId}`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        expect(refetched.body.lines[0].invokedBaseQuantity).toBe('40');
+        expect(refetched.body.lines[0].invocationCount).toBe(1);
+        const reservation = await getReservation(alice, orgAId, reservationId);
+        expect(reservation).toEqual({
+          status: 'active',
+          quantity: '60',
+          baseQuantity: '60',
+        });
+        const after = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA3Id,
+          itemAId,
+        );
+        expect(after.onHand).toBeCloseTo(before.onHand, 6);
+        expect(after.reserved).toBeCloseTo(before.reserved + 60, 6);
+      },
+    );
+
+    it(
+      'a concurrent invocation and a cancellation of the same Material ' +
+        'Request never produce an invalid combined outcome',
+      async () => {
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Concurrent invoke vs. cancel',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '10',
+                reservationRequested: true,
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        const lineId = created.body.lines[0].id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const reservationId = approved.body.lines[0].reservationId as string;
+
+        const destination = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Concurrent invoke vs. cancel — destination',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '100',
+              },
+            ],
+          })
+          .expect(201);
+
+        const [invokeResult, cancelResult] = await Promise.all([
+          alice
+            .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+            .query({ organizationId: orgAId })
+            .send({
+              lineId,
+              destinationModule: 'inventory',
+              destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+              destinationDocumentId: destination.body.id,
+              destinationLineId: destination.body.lines[0].id,
+              quantity: '10',
+            }),
+          alice
+            .post(`/api/v1/inventory/material-requests/${mrId}/cancel`)
+            .query({ organizationId: orgAId })
+            .send({ reason: 'Concurrent invoke vs. cancel probe' }),
+        ]);
+
+        const refetched = await alice
+          .get(`/api/v1/inventory/material-requests/${mrId}`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+
+        if (invokeResult.status === 200) {
+          // The invocation committed first (under the header lock) — the
+          // Owner decision then REQUIRES cancellation to be refused, never
+          // silently undoing an already-consumed quantity.
+          expect(cancelResult.status).toBe(422);
+          expect(refetched.body.status).toBe('approved');
+          expect(refetched.body.lines[0].invocationCount).toBe(1);
+          expect(refetched.body.lines[0].invokedBaseQuantity).toBe('10');
+          const reservation = await getReservation(
+            alice,
+            orgAId,
+            reservationId,
+          );
+          expect(reservation).toEqual({
+            status: 'released',
+            quantity: '0',
+            baseQuantity: '0',
+          });
+        } else {
+          // Cancellation committed first — the request is no longer
+          // `approved`, so the invocation must be refused, never silently
+          // succeeding against a cancelled request.
+          expect(cancelResult.status).toBe(200);
+          expect(invokeResult.status).toBe(422);
+          expect(refetched.body.status).toBe('cancelled');
+          expect(refetched.body.lines[0].invocationCount).toBe(0);
+          expect(refetched.body.lines[0].invokedBaseQuantity).toBe('0');
+          const reservation = await getReservation(
+            alice,
+            orgAId,
+            reservationId,
+          );
+          expect(reservation.status).toBe('released');
+        }
+      },
+    );
+
+    it(
+      'a concurrent invocation and an approval reversal of the same ' +
+        'Material Request never produce an invalid combined outcome',
+      async () => {
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Concurrent invoke vs. reverseApproval',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '10',
+                reservationRequested: true,
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        const lineId = created.body.lines[0].id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const reservationId = approved.body.lines[0].reservationId as string;
+
+        const destination = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Concurrent invoke vs. reverseApproval — destination',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '100',
+              },
+            ],
+          })
+          .expect(201);
+
+        const [invokeResult, reversalResult] = await Promise.all([
+          alice
+            .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+            .query({ organizationId: orgAId })
+            .send({
+              lineId,
+              destinationModule: 'inventory',
+              destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+              destinationDocumentId: destination.body.id,
+              destinationLineId: destination.body.lines[0].id,
+              quantity: '10',
+            }),
+          alice
+            .post(
+              `/api/v1/inventory/material-requests/${mrId}/reverse-approval`,
+            )
+            .query({ organizationId: orgAId })
+            .send({}),
+        ]);
+
+        const refetched = await alice
+          .get(`/api/v1/inventory/material-requests/${mrId}`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+
+        if (invokeResult.status === 200) {
+          expect(reversalResult.status).toBe(422);
+          expect(refetched.body.status).toBe('approved');
+          expect(refetched.body.lines[0].invocationCount).toBe(1);
+          const reservation = await getReservation(
+            alice,
+            orgAId,
+            reservationId,
+          );
+          expect(reservation).toEqual({
+            status: 'released',
+            quantity: '0',
+            baseQuantity: '0',
+          });
+        } else {
+          expect(reversalResult.status).toBe(200);
+          expect(invokeResult.status).toBe(422);
+          // Reversal returns the request to `submitted` (never back to
+          // `draft`) — it must never leave `approved` once reversed, which
+          // is the whole point of also refusing the invocation.
+          expect(refetched.body.status).toBe('submitted');
+          expect(refetched.body.lines[0].invocationCount).toBe(0);
+          const reservation = await getReservation(
+            alice,
+            orgAId,
+            reservationId,
+          );
+          expect(reservation.status).toBe('released');
+        }
       },
     );
 

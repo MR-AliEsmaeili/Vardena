@@ -1200,21 +1200,47 @@ export class MaterialRequestsRepository {
    * Compensate an attempt made by `reserveInvocationCapacity` whose
    * Document Relation write then failed — the invocation never actually
    * happened, so it must not have consumed capacity, reservation quantity,
-   * or balance `reserved`. No status assertion on purpose: a release must
-   * always be allowed to run, even if the request's status moved on around
-   * the failed attempt; the only invariant that matters is that nothing
-   * this attempt never truly used stays consumed.
+   * or balance `reserved`. No status assertion on this line's request on
+   * purpose: a release must always be allowed to run, even if the request's
+   * status moved on around the failed attempt; the only invariant that
+   * matters is that nothing this attempt never truly used stays consumed.
    *
-   * Line counters are floored at zero as defense in depth against a
-   * double-release. The reservation (when `reservationConsumption` is not
-   * `null`) is restored EXACTLY — `consumedEntered`/`consumedBase` added
-   * back, and, if this attempt had closed it, reopened (`status` → `active`,
-   * `releasedAt`/`releasedBy`/`releaseOperationKey` cleared) — using the
-   * caller-supplied amounts from the attempt being undone, never re-derived
-   * from the (by now already-mutated) stored state. If the reservation's
-   * observed state contradicts what this exact attempt should have left it
-   * in, that is stored-data corruption, never something to paper over: it
-   * fails closed with `BalanceDriftError` instead of forcing a value.
+   * This is intentionally a pure, commutative "add back exactly what this
+   * attempt took" operation, applied to whatever the line/reservation's
+   * CURRENT state is under the same row lock used by every other mutator —
+   * never a comparison against what this attempt expected to find. Between
+   * this attempt's forward commit and its compensation running, a DIFFERENT
+   * concurrent invocation against the same line/reservation may have
+   * legitimately consumed more of it (including closing it to `released`)
+   * or even been compensated itself; none of that is "drift" and must not
+   * be rejected as such — it is simply other attempts' valid state changes
+   * that happened to interleave with this one. Rejecting a compensation
+   * because the reservation's status no longer matches this attempt's own
+   * `closed` snapshot (taken when it ran) was the bug: `closed` only ever
+   * described what THIS attempt did to the reservation at that moment, not
+   * an invariant the reservation must still satisfy later.
+   *
+   * Because every forward consumption and every compensation here both
+   * operate strictly as "lock the row, then add/subtract this attempt's own
+   * amount from the current value", the set of operations is associative —
+   * the reservation's base quantity always converges to exactly
+   * `original - sum(amounts still genuinely consumed by attempts that were
+   * never compensated)`, regardless of the order in which concurrent
+   * attempts commit or compensate. A reservation only needs reopening
+   * (`released` → `active`) here because `consumedBase`/`consumedEntered`
+   * are always strictly positive (a zero-quantity invocation is rejected
+   * before any of this runs) — adding a positive amount back can never
+   * leave the reservation at zero, so the result is always active again.
+   *
+   * Line counters are NOT floored at zero: `invokedBaseQuantity` only ever
+   * grows by a forward attempt's own amount and shrinks by that exact same
+   * attempt's compensation, so a well-formed single compensation per
+   * attempt can never drive it negative. If it would, that means this
+   * exact attempt is being compensated more than once (or some other bug
+   * double-released it) — real stored-data corruption that must fail
+   * closed with `BalanceDriftError` rather than being silently clamped
+   * away, which would hide the defect and desynchronize the line from the
+   * reservation/balance it is supposed to mirror.
    */
   async releaseInvocationCapacity(
     input: ReleaseInvocationCapacityInput,
@@ -1232,13 +1258,22 @@ export class MaterialRequestsRepository {
       }
       const invokedSoFar = decimalToString(line.invokedBaseQuantity);
       const restored = subtractDecimalStrings(invokedSoFar, input.invokedBase);
-      const flooredRestored =
-        compareDecimalStrings(restored, '0') < 0 ? '0' : restored;
+      if (compareDecimalStrings(restored, '0') < 0) {
+        // This exact attempt's own contribution is larger than what the
+        // line currently reports as invoked in total — this attempt's
+        // forward consumption is not (fully) reflected any more, which
+        // means it was already compensated once, or something else
+        // corrupted the counter. Never clamp this away.
+        throw new BalanceDriftError();
+      }
+      if (line.invocationCount - 1 < 0) {
+        throw new BalanceDriftError();
+      }
       await tx.materialRequestLine.update({
         where: { id: input.lineId },
         data: {
-          invokedBaseQuantity: flooredRestored,
-          invocationCount: Math.max(line.invocationCount - 1, 0),
+          invokedBaseQuantity: restored,
+          invocationCount: line.invocationCount - 1,
           updatedAt: input.now,
           updatedBy: input.actorId,
         },
@@ -1255,50 +1290,38 @@ export class MaterialRequestsRepository {
           // practice) — nothing left to restore.
           return;
         }
-        if (consumption.closed) {
-          if (
-            reservationLock.status !== 'released' ||
-            compareDecimalStrings(reservationLock.quantity, '0') !== 0 ||
-            compareDecimalStrings(reservationLock.baseQuantity, '0') !== 0
-          ) {
-            // This attempt is supposed to have been the one that closed the
-            // reservation to zero; if it is not sitting exactly there now,
-            // something else already changed it — do not force a value.
-            throw new BalanceDriftError();
-          }
-          await tx.inventoryReservation.update({
-            where: { id: consumption.reservationId },
-            data: {
-              status: 'active',
-              quantity: consumption.consumedEntered,
-              baseQuantity: consumption.consumedBase,
-              releasedAt: null,
-              releasedBy: null,
-              releaseOperationKey: null,
-              updatedAt: input.now,
-              updatedBy: input.actorId,
-            },
-          });
-        } else {
-          if (reservationLock.status !== 'active') {
-            throw new BalanceDriftError();
-          }
-          await tx.inventoryReservation.update({
-            where: { id: consumption.reservationId },
-            data: {
-              quantity: addDecimalStrings(
-                reservationLock.quantity,
-                consumption.consumedEntered,
-              ),
-              baseQuantity: addDecimalStrings(
-                reservationLock.baseQuantity,
-                consumption.consumedBase,
-              ),
-              updatedAt: input.now,
-              updatedBy: input.actorId,
-            },
-          });
+        const restoredQuantity = addDecimalStrings(
+          reservationLock.quantity,
+          consumption.consumedEntered,
+        );
+        const restoredBaseQuantity = addDecimalStrings(
+          reservationLock.baseQuantity,
+          consumption.consumedBase,
+        );
+        if (
+          compareDecimalStrings(restoredQuantity, '0') <= 0 ||
+          compareDecimalStrings(restoredBaseQuantity, '0') <= 0
+        ) {
+          // `consumedEntered`/`consumedBase` are always strictly positive
+          // (enforced before any invocation attempt begins), so adding
+          // them back can never leave a non-positive result — if it does,
+          // the reservation's stored state has already been corrupted by
+          // something else. Fail closed rather than forcing a value.
+          throw new BalanceDriftError();
         }
+        await tx.inventoryReservation.update({
+          where: { id: consumption.reservationId },
+          data: {
+            status: 'active',
+            quantity: restoredQuantity,
+            baseQuantity: restoredBaseQuantity,
+            releasedAt: null,
+            releasedBy: null,
+            releaseOperationKey: null,
+            updatedAt: input.now,
+            updatedBy: input.actorId,
+          },
+        });
         const { balance } = await lockBalanceRow(
           tx,
           {

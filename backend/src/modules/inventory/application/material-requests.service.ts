@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { getPrincipal } from '../../../kernel/correlation/request-context.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
+import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import {
   toOffset,
   toPaginatedResult,
@@ -202,6 +203,7 @@ export class MaterialRequestsService {
     private readonly documentRelations: DocumentRelationsService,
     private readonly documentTypes: DocumentTypesService,
     private readonly authorization: AuthorizationService,
+    private readonly logger: JsonLogger,
   ) {}
 
   // ---- draft authoring ------------------------------------------------------
@@ -801,13 +803,43 @@ export class MaterialRequestsService {
       });
       throw error;
     }
-    await this.repository.recordInvocationEvent({
-      materialRequestId: id,
-      organizationId,
-      actorId,
-      occurredAt: now,
-      relationId: relation.id,
-    });
+    // The Document Relation is the durable proof that this invocation
+    // happened — capacity, reservation, and balance are already committed
+    // by this point. The event row below is append-only audit narrative
+    // only; it must never be allowed to turn an already-successful
+    // invocation into a reported failure (which would both lie to the
+    // caller and invite a retry that double-consumes capacity nothing was
+    // actually wrong with). There is no outbox/durable-retry mechanism in
+    // this codebase yet (see `kernel/events/domain-event-bus.ts`) to hand
+    // this off to, and building one is out of scope for this fix — so the
+    // accepted trade-off, matching the existing "never rethrow a
+    // non-essential side effect" convention (see
+    // `SessionRevocationConsumer.revokeAll`), is: log-and-continue. A
+    // missing event for an otherwise fully-committed invocation is a
+    // narrow, observable (logged) gap, not a silent one.
+    try {
+      await this.repository.recordInvocationEvent({
+        materialRequestId: id,
+        organizationId,
+        actorId,
+        occurredAt: now,
+        relationId: relation.id,
+      });
+    } catch (error) {
+      this.logger.error(
+        'Failed to record a Material Request invocation audit event after ' +
+          'the Document Relation and capacity consumption already ' +
+          'committed successfully — the invocation itself stands.',
+        {
+          materialRequestId: id,
+          organizationId,
+          lineId: line.id,
+          relationId: relation.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        MaterialRequestsService.name,
+      );
+    }
     return toMaterialRequestLineDto(line, {
       invokedBaseQuantity: reserved.invokedBaseQuantity,
       remainingBaseQuantity: reserved.remainingBaseQuantity,
