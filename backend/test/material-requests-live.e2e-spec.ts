@@ -193,11 +193,25 @@ describe.skipIf(DATABASE_URL === undefined)(
     }
 
     beforeAll(async () => {
+      const baseConfig = loadAppConfig();
       const built = await createTestApp({
         override: (builder) =>
-          builder
-            .overrideProvider(APP_CONFIG)
-            .useValue({ ...loadAppConfig(), databaseUrl: DATABASE_URL }),
+          builder.overrideProvider(APP_CONFIG).useValue({
+            ...baseConfig,
+            databaseUrl: DATABASE_URL,
+            // This file's own suite legitimately issues a large number of
+            // non-login API calls in quick succession (many Material
+            // Requests/destinations/invocations/availability reads across
+            // all its scenarios, including the concurrency/compensation
+            // audit round) — well beyond the general per-IP API budget
+            // (security.md §5) within its 60s window. That general budget
+            // is a production/abuse-prevention control, not a correctness
+            // rule this suite is testing (which is covered on its own by
+            // `rate-limit.e2e-spec.ts`); raising it for ONLY this test
+            // app's instance avoids spurious 429s without touching the
+            // separate, still-enforced `loginRateLimit`.
+            rateLimit: { ...baseConfig.rateLimit, max: 5000 },
+          }),
       });
       app = built.app;
       prisma = built.module.get(PrismaService);
@@ -2341,8 +2355,11 @@ describe.skipIf(DATABASE_URL === undefined)(
           whA3Id,
           itemAId,
         );
-        expect(afterAll2.onHand).toBeCloseTo(before.onHand, 6);
-        expect(afterAll2.reserved).toBeCloseTo(before.reserved + 100, 6);
+        // The reservation is now fully invoked (100 of 100) and closed —
+        // its `reserved` contribution returns all the way back to the
+        // ORIGINAL pre-approval baseline, exactly like a single successful
+        // full invocation would (see the existing compensation test above).
+        expect(afterAll2).toEqual(before);
       },
     );
 
