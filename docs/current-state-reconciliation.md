@@ -296,6 +296,74 @@ Validation result:
 | Inventory            | PASS — 9 modules, 8 schemas, 55 models, 18 migrations, 48 controllers, 113 backend unit-spec files, 34 E2E-spec files, 20 frontend test files                                  |
 | Heavy runtime suites | Intentionally not run — documentation-only task; GitHub CI is the authoritative full gate                                                                                      |
 
+## 11A. Addendum — 2026-10-02: Inventory item master (C-47) decisions and dependency reconciliation
+
+This dated addendum updates §§2–9 for current `main` without rewriting the
+2026-09-29 audit body above. Exact baseline: `main` /
+`4cf481efa2de5ca9863d9d434c2ab707de23301a` (merge of PR #107). Full record:
+[`docs/tasks/c-47-owner-decision-and-dependency-reconciliation.md`](tasks/c-47-owner-decision-and-dependency-reconciliation.md).
+
+### Merge evidence added
+
+| Work | Merge evidence | Current interpretation |
+|---|---|---|
+| C-46 warehouse master hardening | PR #104, merged 2026-10-01 | Implemented reconnaissance + regression hardening; **no Owner acceptance record** |
+| C-47 item-master preflight investigation | PR #106, merged 2026-10-02 | Documentation/investigation only |
+| C-47 item-master defect fixes + regression hardening | PR #107, merge `4cf481efa2de5ca9863d9d434c2ab707de23301a`, CI green | Implemented and merged; **no Owner acceptance record — merge + green CI is not acceptance of the item master** |
+
+### Owner decisions recorded 2026-10-02
+
+| Decision | Subject | Outcome | Registry effect |
+|---|---|---|---|
+| **OD-C47-01** | OQ-29 quantity precision and conversion | **Option A** — fixed four fractional decimals; reject results not exactly representable; no rounding/truncation; effective-dated factor versions; historical versions and interpretation data preserved | OQ-29 **PARTIALLY RESOLVED, stays OPEN** |
+| **OD-C47-02** | OQ-33 item taxonomy/capabilities | **Option D** governance rule only; **Option A explicitly not approved**; the eight-kind + per-item capability model is *frozen*, not *confirmed* | OQ-33 **stays OPEN** |
+| **OD-C47-03** | Barcode policy | **Option A** — optional; organization-scoped uniqueness; two active items must not collide; cross-organization reuse allowed; multiple formats, no strict symbology; no multi-barcode support | New **OQ-65 OPEN** for the deactivated-item reuse and comparison semantics |
+| **OD-C47-04** | OQ-36 item deletion/code reuse | **Option C** — physical deletion only for never-referenced items; referenced items never physically deleted; history and organization-scoped identity preserved; **code reuse left OPEN** | OQ-36 **PARTIALLY RESOLVED, stays OPEN** |
+
+Decision records: `docs/decisions/product/PDR-01…PDR-04` and
+`docs/decisions/product/OQ-65-barcode-lifecycle-and-reuse.md`. **No production
+code, schema, migration, API, generated type, permission or test was changed by
+the decision-recording task.**
+
+### Truth-matrix deltas (§3)
+
+- **Domains / master data:** the item/unit/conversion master is implemented and
+  regression-hardened; the barcode **policy** is now decided while the barcode
+  **constraint does not exist** — `inventory.items.barcode` is a nullable
+  `varchar(64)` with no unique index and no application uniqueness check
+  (`backend/prisma/schema/inventory.prisma`,
+  `backend/src/modules/inventory/application/items.service.ts`). Deletion is
+  still entirely absent (no DELETE route, no `*.Delete` permission, no
+  `deleted_at`).
+- **Inventory:** the ledger remains quantity-only — `InventoryMovement` has no
+  cost column — and there is deliberately **no `opening` movement type**
+  (`backend/src/modules/inventory/domain/movement-type.ts`). Inventory has
+  registered **no** document type; only Accounting uses the Documents type
+  registry.
+
+### OQ reconciliation delta (§6.1)
+
+| OQ | Reconciliation after 2026-10-02 |
+|---|---|
+| OQ-29 | Partially resolved (OD-C47-01) and **still Open**: per-unit entry precision, global-vs-item-specific precedence, reverse-pair derivation, the exactness boundary for future consumers, valuation precision and back-dated-version authority are unanswered |
+| OQ-33 | **Still Open and explicitly unconfirmed.** OD-C47-02 supplies a change-governance rule only; the Owner withheld confirmation of the eight kinds and the per-item capability model |
+| OQ-36 | Partially resolved (OD-C47-04) and **still Open**: code reuse after physical deletion, case-sensitivity policy, soft-vs-hard delete shape, the reference-proof obligation, the delete permission/audit model, and cross-entity scope. Task 21 §10 Base Chart prerequisites remain unsatisfied |
+| OQ-65 | **New, Open.** Barcode lifecycle/reuse and comparison semantics; blocks only the barcode-uniqueness candidate |
+| OQ-11 / OQ-24 / OQ-39 / OQ-42 | Unchanged and Open. Verified scope: OQ-11 is an *Accounting* question (opening balance import + inventory costing method); OQ-24 gates every valued/rial inventory flow and its negative-stock half has an implemented fail-closed default that is not a decided policy; OQ-39 and OQ-42 gate the accounting effect and are irrelevant to quantity-only flows |
+| OQ-54 | Unchanged and Open; verified to govern the lifecycle of Material Request, Warehouse Receipt/Issue and the opening documents |
+
+The registry still contains no Resolved row other than OQ-64. This addendum
+closes no OQ and promotes no ADR.
+
+### Governance gate (§9) after this addendum
+
+Unchanged in substance: **FOUNDATION IMPLEMENTED; NEXT PRODUCTION DIRECTION
+REQUIRES EXPLICIT OWNER AUTHORIZATION.** The reconciliation identifies **C-50
+(Material Request)** as the next dependency-ready candidate **for investigation
+only**, and records that a bounded C-47 implementation follow-up (barcode
+uniqueness, item deletion) is justified in principle but blocked by OQ-65 and the
+OQ-36 reuse question. No candidate in C-48…C-54 is ready for implementation.
+
 ## 12. Final Conclusion
 
 The repository contains a materially broader current implementation than the pre-Task-30 roadmap snapshots: Task 30 added Account Nature/Type and a bounded Detail foundation, Task 32 added a real Dashboard, and PR #86—not PR #85—is the final merged Dashboard behavior. None of those facts closes the remaining OQs, promotes Proposed ADRs, admits Treasury/Purchasing to MVP, turns FaraPayam into architecture, supplies Base Chart content, or authorizes a new production task.

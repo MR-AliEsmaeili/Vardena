@@ -121,12 +121,23 @@ changes (AR-29) and must not be pre-added as nullable columns "just in case"
 - `item_kind` — closed, code-managed: `goods`, `service`, `consumable`, `asset`,
   `raw_material`, `semi_finished`, `finished_good`, `other`. *(OQ-33 confirms the list
   and the naming with the project owner.)*
+  **Decision pointer (2026-10-02, OD-C47-02 / Option D — `docs/decisions/product/PDR-02-item-taxonomy-and-capabilities.md`):**
+  a new kind or capability flag may be introduced **only** through an identified and
+  accepted concrete need in the project's decision process. The Owner has **not**
+  confirmed the list above, so it is frozen, not approved — OQ-33 stays OPEN.
 - **Capability flags** (stored, authoritative):
   `is_stockable`, `is_purchasable`, `is_sellable`, `is_valued`,
   `requires_lot`, `requires_serial`, `requires_expiry`.
   Kind supplies defaults at creation; the flags are then what the code and the
   database constraints use.
-- Standard attributes that are *not* capabilities: `barcode` (optional),
+- Standard attributes that are *not* capabilities: `barcode` (optional —
+  **decided 2026-10-02 by OD-C47-03 / Option A, `docs/decisions/product/PDR-03-item-barcode-policy.md`:**
+  optional, unique **within an organization** such that two *active* items must not
+  share a barcode, reusable across organizations, multiple formats with no strict
+  symbology validation, and no multi-barcode-per-item support. The constraint is
+  **not implemented**: `inventory.items` has no barcode index today, and the index
+  shape is blocked by **OQ-65** — reuse of a deactivated item's barcode and the
+  comparison semantics are unresolved),
   `default_supplier_id`, `default_tax_id`, `min_stock`/`reorder_point` (planning
   placeholders — no planning logic in v1).
 - **No** variant/BOM/kit columns in v1; those are later modules (§3.5).
@@ -256,6 +267,15 @@ master record.*
    FK constraints where clean). Where any history exists: soft delete
    (`deleted_at`/`deleted_by`, AR-13). For **accounting dimensions** (accounts, cost
    centres, projects): **never delete** — disable/archive only *(expert)*.
+   **Decision pointer (2026-10-02, OD-C47-04 / OQ-36 Option C —
+   `docs/decisions/product/PDR-04-item-deletion-and-code-reuse.md`):** for **items**,
+   physical deletion is permitted **only** when the item has never been referenced by
+   any operational, ledger or historical record; a referenced item must never be
+   physically deleted; history and organization-scoped identity constraints are
+   preserved. The decision does **not** introduce a `deleted_at` column, does not
+   decide soft-vs-hard delete beyond that case, and does not extend to other
+   entities. Nothing is implemented: there is no DELETE route and no `*.Delete`
+   permission.
 7. **Effective dating:** entities whose change alters interpretation
    (tax rates, conversions, price lists, mappings, workflow versions) are
    **versioned rows** with `valid_from`/`valid_to`; updates create a new version.
@@ -266,6 +286,9 @@ master record.*
 9. **Reuse of a code** after soft delete: allowed only if the owning module documents
    it and history remains unambiguous (partial unique index makes this technically
    possible; whether it is *business-desirable* is per entity — default: **no reuse**).
+   **This default is a design default, never an Owner decision (2026-10-02).** OD-C47-04
+   explicitly leaves code reuse after physical deletion of a never-referenced item
+   **OPEN**; OQ-36 must not be read as resolved on this point.
 10. **Audit:** lifecycle changes emit domain events (`Item.Updated`, `Item.Disabled`,
     …) consumed by Audit/Notifications; no parallel audit table (§ AR-23).
 

@@ -46,6 +46,22 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 | [OQ-59](./OQ-59-product-family-vs-consolidation.md) | One ERP + products vs product family / consolidation strategy | OQ | Open | No (strategic) |
 | [OQ-60](./OQ-60-mvp-acceptance-thresholds.md) | MVP acceptance thresholds | OQ | Open | Yes (ratification) |
 | [OQ-61](./OQ-61-crm-ticketing-timing-ownership.md) | CRM/ticketing timing and ownership | OQ | Open | No |
+| [OQ-65](./OQ-65-barcode-lifecycle-and-reuse.md) | Item barcode lifecycle, reuse and comparison semantics | OQ | Open | No (blocks only the barcode-uniqueness candidate C-55) |
+| [PDR-01](./PDR-01-item-quantity-precision-and-conversions.md) | Quantity precision and unit-conversion semantics (OQ-29 Option A) | PDR | Decided (2026-10-02) | OQ-29 stays Open (partially resolved) |
+| [PDR-02](./PDR-02-item-taxonomy-and-capabilities.md) | Item taxonomy and capability governance (OQ-33 Option D) | PDR | Decided — governance rule only (2026-10-02) | OQ-33 stays Open (taxonomy confirmation withheld) |
+| [PDR-03](./PDR-03-item-barcode-policy.md) | Item barcode policy (Option A) | PDR | Decided (2026-10-02) | Lifecycle detail split out as OQ-65 |
+| [PDR-04](./PDR-04-item-deletion-and-code-reuse.md) | Item deletion eligibility (OQ-36 Option C) | PDR | Decided in part (2026-10-02) | OQ-36 stays Open (code reuse unanswered) |
+
+> **Numbering note (2026-10-02).** `OQ-62`, `OQ-63` and `OQ-64` are accounting /
+> migration questions that live only in the central registry
+> ([`docs/open-questions.md`](../../open-questions.md)); they have no record in
+> this directory. `OQ-65` is the next free id in the central registry and is a
+> product question, so its full record lives here.
+>
+> **PDR-01…PDR-04** are the first Product Decision Records created under the
+> `PDR-xx` convention above. Each one transcribes an explicit Owner decision
+> recorded on 2026-10-02 for the Inventory item master (candidate C-47); none of
+> them authorizes implementation, accepts merged work, or promotes an ADR.
 
 ## Related architecture records
 
