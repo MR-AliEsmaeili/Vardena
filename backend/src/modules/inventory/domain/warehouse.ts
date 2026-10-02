@@ -33,6 +33,16 @@ export interface Warehouse {
    * `Item.allowNegativeStock`.
    */
   allowNegativeStock: boolean;
+  /**
+   * Material Request warehouse setting (C-50 §3.7): whether ACTIVE
+   * reservations in this warehouse reduce the READ-time `available` figure
+   * (`onHand − reserved` vs `onHand`). Reservations never change `onHand`
+   * regardless of this setting; the write-time admission check that guards
+   * against over-reservation is unaffected by it (it always compares against
+   * `onHand − reserved`, same as before this setting existed). Default true
+   * preserves every existing consumer's current reading.
+   */
+  reservationsReduceAvailable: boolean;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -45,6 +55,7 @@ export interface WarehouseDto {
   code: string;
   name: string;
   allowNegativeStock: boolean;
+  reservationsReduceAvailable: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -58,6 +69,7 @@ export function toWarehouseDto(warehouse: Warehouse): WarehouseDto {
     code: warehouse.code,
     name: warehouse.name,
     allowNegativeStock: warehouse.allowNegativeStock,
+    reservationsReduceAvailable: warehouse.reservationsReduceAvailable,
     isActive: warehouse.isActive,
     createdAt: warehouse.createdAt.toISOString(),
     updatedAt: warehouse.updatedAt.toISOString(),

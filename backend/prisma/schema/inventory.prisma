@@ -54,6 +54,8 @@ model Unit {
   baseMovements        InventoryMovement[]   @relation("MovementBaseUnit")
   enteredReservations  InventoryReservation[] @relation("ReservationEnteredUnit")
   baseReservations     InventoryReservation[] @relation("ReservationBaseUnit")
+  enteredMaterialRequestLines MaterialRequestLine[] @relation("MaterialRequestLineEnteredUnit")
+  baseMaterialRequestLines    MaterialRequestLine[] @relation("MaterialRequestLineBaseUnit")
 
   @@unique([organizationId, code], map: "uq_units_organization_id_code")
   @@index([organizationId, isActive], map: "idx_units_organization_id_is_active")
@@ -189,6 +191,7 @@ model Item {
   movements    InventoryMovement[]
   balances     InventoryBalance[]
   reservations InventoryReservation[]
+  materialRequestLines MaterialRequestLine[]
 
   @@unique([organizationId, code], map: "uq_items_organization_id_code")
   @@index([organizationId, isActive], map: "idx_items_organization_id_is_active")
@@ -217,6 +220,19 @@ model Warehouse {
   code           String   @db.VarChar(64)
   name           String   @db.VarChar(200)
   allowNegativeStock Boolean @default(false) @map("allow_negative_stock")
+  /// Warehouse system setting (C-50, §3.7): whether ACTIVE reservations in
+  /// this warehouse reduce the CALCULATED `available` figure
+  /// (`on_hand − reserved` vs `on_hand`). Reservations NEVER change
+  /// `on_hand` regardless of this setting — only the derived `available`
+  /// read is affected. Defaults to TRUE: this is the behavior every current
+  /// consumer of `availableQuantity`/`resolveEffectivePolicy` already gets
+  /// (ADR-0022's `available` was unconditionally `on_hand − reserved`), so
+  /// turning the setting on for existing warehouses changes nothing. Scope is
+  /// per-warehouse — the same granularity already used for the sibling
+  /// negative-stock policy on this same row, which is the only precedent for
+  /// a "warehouse system setting" in this codebase (no organization-level or
+  /// global settings surface exists to attach this to instead).
+  reservationsReduceAvailable Boolean @default(true) @map("reservations_reduce_available")
   isActive       Boolean  @default(true) @map("is_active")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
@@ -229,6 +245,7 @@ model Warehouse {
   movements    InventoryMovement[]
   balances     InventoryBalance[]
   reservations InventoryReservation[]
+  materialRequestLines MaterialRequestLine[]
 
   @@unique([organizationId, code], map: "uq_warehouses_organization_id_code")
   @@index([organizationId, isActive], map: "idx_warehouses_organization_id_is_active")
@@ -408,6 +425,14 @@ model InventoryReservation {
   item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
   unit         Unit         @relation("ReservationEnteredUnit", fields: [unitId], references: [id], onDelete: Restrict)
   baseUnit     Unit         @relation("ReservationBaseUnit", fields: [baseUnitId], references: [id], onDelete: Restrict)
+  /// Virtual back-relation only (C-50): the real FK is the OTHER direction,
+  /// `material_request_lines.reservation_id` — the owning line references
+  /// its reservation, a reservation never references its owner (same
+  /// one-way-ownership shape as every other `(reference_type, reference_id)`
+  /// consumer of this table; `referenceType`/`referenceId` are ALSO set to
+  /// `'material_request_line'`/the line id for consistency with how every
+  /// other reservation is introspected, e.g. by `listReservations`).
+  materialRequestLine MaterialRequestLine?
 
   @@index([organizationId, warehouseId, itemId, status], map: "idx_reservations_org_warehouse_item_status")
   @@index([organizationId, status], map: "idx_reservations_org_status")
@@ -445,5 +470,187 @@ model InventoryOperation {
 
   @@unique([organizationId, operationKey], map: "uq_operations_org_operation_key")
   @@map("inventory_operations")
+  @@schema("inventory")
+}
+
+// =============================================================================
+// Material Request (C-50) — an Inventory-owned business aggregate recording
+// DEMAND for stock. It is NOT a movement, receipt, issue, Purchase Request or
+// accounting document (Owner decision, c-50-material-request-investigation.md
+// §1): draft/submitted/rejected/approved states never touch `on_hand`, and
+// approval creates, at most, a RESERVATION (a claim against future
+// availability) — never a posted ledger effect.
+//
+// Design notes:
+//   * No `cancelled` status: no governance-confirmed rule exists for what a
+//     cancellation must do to an already-created reservation, so the status
+//     list stays `draft | submitted | approved | rejected` (closed,
+//     code-defined list in `domain/material-request.ts`, same convention as
+//     `inventory_reservations.status`). Extending it later is an ordinary
+//     application change, never a migration.
+//   * No header-level `branch_id`/`department_id`: Owner decision 3.2 puts
+//     the warehouse (and therefore the branch it belongs to) at the LINE
+//     level — a single request can span several warehouses/branches by
+//     design (one line each, never an auto-split line, Owner decision 3.2).
+//   * `material_request_lines.branch_id` is DENORMALIZED from
+//     `warehouses.branch_id` at line-creation time — the same thing
+//     `inventory_movements`/`inventory_balances`/`inventory_reservations`
+//     already do, because branch is a first-class reporting scope
+//     (ADR-0020), not a new concept.
+//   * `material_request_lines.reservation_id` is a real FK to
+//     `inventory_reservations` (both tables live in this module) — set only
+//     when that line's `reservation_requested = true` flag was honored by a
+//     successful approval. Non-reservation lines keep it NULL forever
+//     (Owner decision 3.5: a non-reservation line must never reserve stock).
+//     Invocation status/remaining-quantity are DERIVED at read time from
+//     `documents.document_relations` (kind `fulfill`, source module
+//     `inventory`, source document type `inventory_material_request`) —
+//     never stored here, so there is exactly one source of truth for it.
+//   * `material_request_events` is a narrow, append-only, typed-column audit
+//     trail (no JSONB) — the Owner's "preserve audit trail of approval and
+//     rejection" requirement, without binding Material Request to the
+//     Workflow module (no production module consumes Workflow today, see
+//     c-50-material-request-investigation.md) or inventing a generic audit
+//     framework. `inventory_reservations`/`inventory_movements` already
+//     record `created_by`/timestamps per row; this table is for the
+//     REQUEST-level lifecycle narrative that spans many rows.
+//   * All foreign keys are ON DELETE RESTRICT, matching every other table in
+//     this module — history is never silently removed out from under a
+//     deleted master-data row.
+// =============================================================================
+
+/// A request for stock to be made available — demand, not a movement
+/// (C-50 §1). One row per request; `number` is allocated through the
+/// Documents numbering foundation at submission (Task 8), matching the
+/// Accounting documents precedent (`AccountingDocument.number`).
+model MaterialRequest {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  /// Allocated via `documents.numbering_allocations` at submission; NULL
+  /// while still a draft (a draft is not yet a numbered document).
+  number         String?  @db.VarChar(32)
+  /// Closed, code-defined list (`domain/material-request.ts`): `draft`,
+  /// `submitted`, `approved`, `rejected`.
+  status         String   @default("draft") @db.VarChar(16)
+  description    String?  @db.VarChar(1000)
+  /// The principal that created the draft (no Employee linkage — OQ-37 is
+  /// unresolved; this is the authenticated user id only).
+  requestedBy    String   @map("requested_by")
+  submittedAt    DateTime? @map("submitted_at") @db.Timestamptz(6)
+  submittedBy    String?   @map("submitted_by")
+  approvedAt     DateTime? @map("approved_at") @db.Timestamptz(6)
+  /// The ONLY principal later allowed to reverse this approval (Owner
+  /// decision 3.4: "only the original approver may reverse approval").
+  approvedBy     String?   @map("approved_by")
+  rejectedAt     DateTime? @map("rejected_at") @db.Timestamptz(6)
+  rejectedBy     String?   @map("rejected_by")
+  /// Required by application logic whenever `status = rejected` (Owner
+  /// decision: "rejection requires a reason"). No CHECK constraint, same
+  /// rule as every other value constraint in this module — Prisma cannot
+  /// express it, so it lives in the framework-free domain layer.
+  rejectionReason String?  @map("rejection_reason") @db.VarChar(1000)
+  approvalReversedAt     DateTime? @map("approval_reversed_at") @db.Timestamptz(6)
+  approvalReversedBy     String?   @map("approval_reversed_by")
+  approvalReversalReason String?   @map("approval_reversal_reason") @db.VarChar(1000)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  lines        MaterialRequestLine[]
+  events       MaterialRequestEvent[]
+
+  // NULLs do not clash (same trick as `inventory_movements.transfer_id` /
+  // `reversal_of_movement_id`): any number of NULL (draft) numbers coexist.
+  @@unique([organizationId, number], map: "uq_material_requests_org_number")
+  @@index([organizationId, status], map: "idx_material_requests_org_status")
+  @@index([organizationId, createdAt], map: "idx_material_requests_org_created_at")
+  @@index([organizationId, requestedBy], map: "idx_material_requests_org_requested_by")
+  @@map("material_requests")
+  @@schema("inventory")
+}
+
+/// One requested item × warehouse × quantity (Owner decision 3.2: every line
+/// picks its OWN warehouse; the system never auto-splits a line across
+/// warehouses — a 60/40 split is two lines the user created).
+model MaterialRequestLine {
+  id                String  @id
+  materialRequestId String  @map("material_request_id")
+  /// Denormalized from the parent for direct scoped queries/constraints
+  /// without a join — the same shape `inventory_movements` etc. use.
+  organizationId    String  @map("organization_id")
+  /// Denormalized from `warehouses.branch_id` at creation time (ADR-0020:
+  /// branch is a first-class reporting scope), not a new header concept.
+  branchId          String  @map("branch_id")
+  lineNumber        Int     @map("line_number")
+  itemId            String  @map("item_id")
+  warehouseId       String  @map("warehouse_id")
+  /// Entered magnitude (always > 0) in `unit_id`.
+  quantity          Decimal @db.Decimal(18, 4)
+  unitId            String  @map("unit_id")
+  /// Base-unit equivalent (always > 0) — the same entered/base/factor triple
+  /// `inventory_movements`/`inventory_reservations` already carry.
+  baseQuantity      Decimal @map("base_quantity") @db.Decimal(18, 4)
+  baseUnitId        String  @map("base_unit_id")
+  conversionFactor  Decimal @map("conversion_factor") @db.Decimal(18, 6)
+  /// Owner decision 3.5: reservation is OPTIONAL per line, never implied.
+  reservationRequested Boolean @default(false) @map("reservation_requested")
+  /// Set ONLY when `reservationRequested = true` AND approval succeeded for
+  /// this line; otherwise permanently NULL. `@unique` — a reservation is
+  /// created for exactly one line, never shared.
+  reservationId     String? @unique @map("reservation_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  materialRequest MaterialRequest     @relation(fields: [materialRequestId], references: [id], onDelete: Restrict)
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch          Branch              @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  item            Item                @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  warehouse       Warehouse           @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  unit            Unit                @relation("MaterialRequestLineEnteredUnit", fields: [unitId], references: [id], onDelete: Restrict)
+  baseUnit        Unit                @relation("MaterialRequestLineBaseUnit", fields: [baseUnitId], references: [id], onDelete: Restrict)
+  reservation     InventoryReservation? @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@unique([materialRequestId, lineNumber], map: "uq_material_request_lines_request_line_number")
+  @@index([organizationId, itemId], map: "idx_material_request_lines_org_item")
+  @@index([organizationId, warehouseId], map: "idx_material_request_lines_org_warehouse")
+  @@index([organizationId, branchId], map: "idx_material_request_lines_org_branch")
+  @@map("material_request_lines")
+  @@schema("inventory")
+}
+
+/// Append-only lifecycle narrative for a Material Request — "preserve audit
+/// trail of approval and reversal" without binding to Workflow or a generic
+/// audit framework (see module-level notes above). Rows are never updated or
+/// deleted.
+model MaterialRequestEvent {
+  id                String   @id
+  materialRequestId String   @map("material_request_id")
+  organizationId    String   @map("organization_id")
+  /// Closed, code-defined list (`domain/material-request-event.ts`):
+  /// `created`, `submitted`, `approved`, `rejected`, `approval_reversed`,
+  /// `line_invoked`.
+  eventType  String   @map("event_type") @db.VarChar(32)
+  fromStatus String?  @map("from_status") @db.VarChar(16)
+  toStatus   String?  @map("to_status") @db.VarChar(16)
+  /// The acting principal; NULL only for system-raised events (none today).
+  actorId    String?  @map("actor_id")
+  reason     String?  @db.VarChar(1000)
+  /// Opaque pointer to whatever the event is about beyond the request
+  /// itself — a line id, reservation id, or document-relation id. Never a
+  /// foreign key (the referenced row can live in another module, e.g. a
+  /// `line_invoked` event's reference is a `document_relations.id`).
+  referenceId String? @map("reference_id")
+  occurredAt  DateTime @map("occurred_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  materialRequest MaterialRequest @relation(fields: [materialRequestId], references: [id], onDelete: Restrict)
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, materialRequestId, occurredAt], map: "idx_material_request_events_request_time")
+  @@map("material_request_events")
   @@schema("inventory")
 }

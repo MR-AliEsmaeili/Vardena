@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { IdentityModule } from '../identity/identity.module.js';
 import { RbacModule } from '../rbac/rbac.module.js';
 import { OrganizationModule } from '../organization/organization.module.js';
+import { DocumentsModule } from '../documents/documents.module.js';
 import { UnitsRepository } from './data/units.repository.js';
 import { ItemGroupsRepository } from './data/item-groups.repository.js';
 import { ItemsRepository } from './data/items.repository.js';
@@ -11,6 +12,7 @@ import { InventoryMovementsRepository } from './data/inventory-movements.reposit
 import { InventoryReservationsRepository } from './data/inventory-reservations.repository.js';
 import { InventoryBalancesRepository } from './data/inventory-balances.repository.js';
 import { InventoryOperationsRepository } from './data/inventory-operations.repository.js';
+import { MaterialRequestsRepository } from './data/material-requests.repository.js';
 import { UnitsService } from './application/units.service.js';
 import { ItemGroupsService } from './application/item-groups.service.js';
 import { ItemsService } from './application/items.service.js';
@@ -21,6 +23,8 @@ import { InventoryTransfersService } from './application/inventory-transfers.ser
 import { InventoryReservationsService } from './application/inventory-reservations.service.js';
 import { InventoryBalancesService } from './application/inventory-balances.service.js';
 import { InventoryPermissionRegistration } from './application/inventory-permission-registration.js';
+import { MaterialRequestDocumentTypeRegistration } from './application/material-request-document-type-registration.js';
+import { MaterialRequestsService } from './application/material-requests.service.js';
 import { UnitsController } from './api/units.controller.js';
 import { ItemGroupsController } from './api/item-groups.controller.js';
 import { ItemsController } from './api/items.controller.js';
@@ -30,6 +34,7 @@ import { InventoryMovementsController } from './api/inventory-movements.controll
 import { InventoryTransfersController } from './api/inventory-transfers.controller.js';
 import { InventoryReservationsController } from './api/inventory-reservations.controller.js';
 import { InventoryBalancesController } from './api/inventory-balances.controller.js';
+import { MaterialRequestsController } from './api/material-requests.controller.js';
 
 /**
  * Inventory module (docs/modules.md §Inventory, ADR-0017, ADR-0020, ADR-0021,
@@ -58,9 +63,18 @@ import { InventoryBalancesController } from './api/inventory-balances.controller
  *   branch references are resolved through `OrganizationsService` /
  *   `BranchesService`. One direction only: Organization never imports
  *   Inventory, so there is no cycle here.
+ * - `DocumentsModule` (C-50) — Material Request allocates its number via
+ *   `NumberingService` and records invocation into a subsequent process via
+ *   `DocumentRelationsService`; one direction only, same as Accounting's own
+ *   `DocumentsModule` import.
  */
 @Module({
-  imports: [RbacModule, OrganizationModule, forwardRef(() => IdentityModule)],
+  imports: [
+    RbacModule,
+    OrganizationModule,
+    DocumentsModule,
+    forwardRef(() => IdentityModule),
+  ],
   controllers: [
     UnitsController,
     ItemGroupsController,
@@ -71,6 +85,7 @@ import { InventoryBalancesController } from './api/inventory-balances.controller
     InventoryTransfersController,
     InventoryReservationsController,
     InventoryBalancesController,
+    MaterialRequestsController,
   ],
   providers: [
     UnitsRepository,
@@ -82,6 +97,7 @@ import { InventoryBalancesController } from './api/inventory-balances.controller
     InventoryReservationsRepository,
     InventoryBalancesRepository,
     InventoryOperationsRepository,
+    MaterialRequestsRepository,
     UnitsService,
     ItemGroupsService,
     ItemsService,
@@ -91,7 +107,9 @@ import { InventoryBalancesController } from './api/inventory-balances.controller
     InventoryTransfersService,
     InventoryReservationsService,
     InventoryBalancesService,
+    MaterialRequestsService,
     InventoryPermissionRegistration,
+    MaterialRequestDocumentTypeRegistration,
   ],
   exports: [
     UnitsService,

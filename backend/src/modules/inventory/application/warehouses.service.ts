@@ -60,6 +60,8 @@ export interface CreateWarehouseInput {
   name: string;
   /** Default negative-stock policy for this warehouse; default false. */
   allowNegativeStock?: boolean | undefined;
+  /** C-50 §3.7 warehouse setting; default true (preserves current reads). */
+  reservationsReduceAvailable?: boolean | undefined;
 }
 
 export interface UpdateWarehouseInput {
@@ -67,6 +69,7 @@ export interface UpdateWarehouseInput {
   code?: string | undefined;
   name?: string | undefined;
   allowNegativeStock?: boolean | undefined;
+  reservationsReduceAvailable?: boolean | undefined;
 }
 
 /**
@@ -174,6 +177,8 @@ export class WarehousesService {
         code,
         name,
         allowNegativeStock: input.allowNegativeStock ?? false,
+        reservationsReduceAvailable:
+          input.reservationsReduceAvailable ?? true,
         isActive: true,
         createdAt: now,
         updatedAt: now,
@@ -243,6 +248,7 @@ export class WarehousesService {
       code?: string;
       name?: string;
       allowNegativeStock?: boolean;
+      reservationsReduceAvailable?: boolean;
       updatedAt: Date;
       updatedBy: string | null;
     } = { updatedAt: new Date(), updatedBy: getPrincipal()?.userId ?? null };
@@ -250,6 +256,9 @@ export class WarehousesService {
     if (name !== undefined) patch.name = name;
     if (input.allowNegativeStock !== undefined) {
       patch.allowNegativeStock = input.allowNegativeStock;
+    }
+    if (input.reservationsReduceAvailable !== undefined) {
+      patch.reservationsReduceAvailable = input.reservationsReduceAvailable;
     }
 
     // Only re-validate the branch when it changes: a warehouse whose branch was

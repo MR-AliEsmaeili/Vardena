@@ -1,0 +1,849 @@
+import { Injectable } from '@nestjs/common';
+import { AppException } from '../../../kernel/errors/app-exception.js';
+import { getPrincipal } from '../../../kernel/correlation/request-context.js';
+import { generateId } from '../../../kernel/ids/ulid.js';
+import {
+  toOffset,
+  toPaginatedResult,
+  type PaginatedResult,
+} from '../../../kernel/pagination/paginated-result.js';
+import { AuthorizationService } from '../../rbac/application/authorization.service.js';
+import { OrganizationsService } from '../../organization/application/organizations.service.js';
+import { NumberingService } from '../../documents/application/numbering.service.js';
+import { DocumentRelationsService } from '../../documents/application/document-relations.service.js';
+import { DocumentTypesService } from '../../documents/application/document-types.service.js';
+import {
+  MaterialRequestsRepository,
+  MaterialRequestApproverMismatchError,
+  MaterialRequestStatusError,
+  type ApproveLineInput,
+  type DraftLineInput,
+} from '../data/material-requests.repository.js';
+import {
+  BalanceDriftError,
+  ReservationAvailabilityError,
+} from '../data/inventory-posting-errors.js';
+import { ItemsService } from './items.service.js';
+import { WarehousesService } from './warehouses.service.js';
+import { UnitsService } from './units.service.js';
+import { UnitConversionsRepository } from '../data/unit-conversions.repository.js';
+import { resolveEnteredToBase } from './inventory-posting-support.js';
+import { assertPostableItem } from './inventory-movements.service.js';
+import { resolveSort } from './master-data-support.js';
+import {
+  addDecimalStrings,
+  compareDecimalStrings,
+  subtractDecimalStrings,
+  canonicalizeDecimal,
+  fitsQuantity,
+  multiplyDecimalStrings,
+  validateEnteredQuantity,
+  quantityProblemMessage,
+} from '../domain/quantities.js';
+import { resolveEffectivePolicy } from '../domain/negative-stock-policy.js';
+import {
+  MAX_DESCRIPTION_LENGTH,
+  MAX_REASON_LENGTH,
+  materialRequestTransitionMessage,
+  planDecision,
+  planEdit,
+  planReversal,
+  toMaterialRequestDto,
+  type MaterialRequest,
+  type MaterialRequestDto,
+} from '../domain/material-request.js';
+import {
+  toMaterialRequestLineDto,
+  type MaterialRequestLine,
+  type MaterialRequestLineDto,
+  type MaterialRequestLineInvocationSummary,
+} from '../domain/material-request-line.js';
+import { toMaterialRequestEventDto } from '../domain/material-request-event.js';
+import type { MaterialRequestEventDto } from '../domain/material-request-event.js';
+import { MATERIAL_REQUEST_PERMISSIONS } from '../domain/material-request-permissions.js';
+import { MATERIAL_REQUEST_DOCUMENT_TYPE } from '../domain/material-request-document-type.js';
+
+const SORTABLE_FIELDS: Record<string, string> = {
+  createdAt: 'createdAt',
+  number: 'number',
+  status: 'status',
+};
+
+export interface MaterialRequestDetailDto extends MaterialRequestDto {
+  lines: MaterialRequestLineDto[];
+}
+
+export interface CreateMaterialRequestLineInput {
+  itemId: string;
+  warehouseId: string;
+  /** Entered magnitude, in `unitId`. Decimal string. */
+  quantity: string;
+  unitId: string;
+  reservationRequested?: boolean | undefined;
+}
+
+export interface CreateMaterialRequestInput {
+  organizationId: string;
+  description?: string | null | undefined;
+  lines: CreateMaterialRequestLineInput[];
+}
+
+export interface UpdateMaterialRequestInput {
+  description?: string | null | undefined;
+  /** Omit to leave the line set unchanged; provide to REPLACE it wholesale
+   *  (Owner decision: the system never auto-splits a line — every line here
+   *  is exactly the warehouse/item/quantity the caller chose). */
+  lines?: CreateMaterialRequestLineInput[] | undefined;
+}
+
+export interface ListMaterialRequestsQuery {
+  organizationId: string;
+  status?: string | undefined;
+  requestedBy?: string | undefined;
+  page: number;
+  pageSize: number;
+  sort?: string | undefined;
+}
+
+export interface RejectMaterialRequestInput {
+  reason: string;
+}
+
+export interface ReverseMaterialRequestApprovalInput {
+  reason?: string | null | undefined;
+}
+
+export interface InvokeMaterialRequestLineInput {
+  lineId: string;
+  destinationModule: string;
+  destinationDocumentType: string;
+  destinationDocumentId: string;
+  destinationLineId?: string | null | undefined;
+  /** Entered in the LINE's own unit (`unitId`), not necessarily the base
+   *  unit — converted with the line's own recorded `conversionFactor`, never
+   *  re-resolved against (possibly since-changed) unit conversions. */
+  quantity: string;
+}
+
+/**
+ * Material Request (C-50) — application orchestration.
+ *
+ * Owns no stock effect of its own: draft/submitted/rejected/approved never
+ * change `on_hand`; `approve` creates AT MOST a reservation per flagged line
+ * (a soft claim), atomically with the header transition
+ * (`MaterialRequestsRepository.approve`'s own `$transaction`) — see that
+ * method's docs for the deadlock-avoidance contract this service must honor
+ * (reservation lines sorted by `(warehouseId, itemId)` before calling it).
+ *
+ * Two permission-composition notes, both ADDITIVE (never a weakening):
+ * - `getMaterialRequest` and `reverseApproval` both need to know whether any
+ *   line has been invoked, which reads `documents.document_relations`
+ *   through the Foundation's only public read method,
+ *   `DocumentRelationsService.listRelations` — the ONE method on that
+ *   service that is permission-gated (`Documents.Relation.View`). There is
+ *   no permission-free internal read for this on the Foundation today, so a
+ *   caller needs that permission in addition to the Material Request
+ *   permission to reach either operation. `invokeLine` itself does NOT pick
+ *   this up — it calls `linkDocuments`, the Foundation's no-permission
+ *   module-internal write path.
+ * - Submitting allocates a number via `NumberingService.allocateNumber`
+ *   BEFORE calling `repository.submit()`, in a separate, non-composable
+ *   transaction (same accepted gap as every other Documents consumer): a
+ *   crash between the two leaves an orphaned allocation, never a duplicate
+ *   number, and a retry with the same Material Request id replays the SAME
+ *   allocation (its `allocationKey` is the request id).
+ */
+@Injectable()
+export class MaterialRequestsService {
+  constructor(
+    private readonly repository: MaterialRequestsRepository,
+    private readonly organizations: OrganizationsService,
+    private readonly items: ItemsService,
+    private readonly warehouses: WarehousesService,
+    private readonly units: UnitsService,
+    private readonly conversions: UnitConversionsRepository,
+    private readonly numbering: NumberingService,
+    private readonly documentRelations: DocumentRelationsService,
+    private readonly documentTypes: DocumentTypesService,
+    private readonly authorization: AuthorizationService,
+  ) {}
+
+  // ---- draft authoring ------------------------------------------------------
+
+  async createDraft(
+    input: CreateMaterialRequestInput,
+  ): Promise<MaterialRequestDetailDto> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.CREATE,
+    ]);
+    await this.organizations.requireUsableOrganization(input.organizationId);
+    if (input.lines.length === 0) {
+      throw AppException.badRequest(
+        'A Material Request must have at least one line.',
+      );
+    }
+    const description = normalizeDescription(input.description);
+    const actorId = this.requireActorId();
+    const now = new Date();
+    const lines = await this.resolveLines(
+      input.organizationId,
+      input.lines,
+      now,
+    );
+    const created = await this.repository.createDraft(
+      {
+        id: generateId(),
+        organizationId: input.organizationId,
+        description,
+        requestedBy: actorId,
+        createdAt: now,
+        createdBy: actorId,
+      },
+      lines,
+    );
+    return this.toDetailDto(created.header, created.lines);
+  }
+
+  async updateDraft(
+    id: string,
+    organizationId: string,
+    input: UpdateMaterialRequestInput,
+  ): Promise<MaterialRequestDetailDto> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.EDIT,
+    ]);
+    const current = await this.mustFind(id, organizationId);
+    const plan = planEdit(current.status);
+    if (plan.problem !== null) {
+      throw AppException.businessRule(
+        materialRequestTransitionMessage(plan.problem),
+      );
+    }
+    const description =
+      input.description === undefined
+        ? undefined
+        : normalizeDescription(input.description);
+    const now = new Date();
+    let lines: DraftLineInput[] | undefined;
+    if (input.lines !== undefined) {
+      if (input.lines.length === 0) {
+        throw AppException.badRequest(
+          'A Material Request must have at least one line.',
+        );
+      }
+      lines = await this.resolveLines(organizationId, input.lines, now);
+    }
+    const actorId = this.requireActorId();
+    try {
+      const updated = await this.repository.updateDraft({
+        id,
+        organizationId,
+        header: { description },
+        lines,
+        updatedAt: now,
+        updatedBy: actorId,
+      });
+      return this.toDetailDto(updated.header, updated.lines);
+    } catch (error) {
+      throw mapStatusError(error);
+    }
+  }
+
+  async deleteDraft(id: string, organizationId: string): Promise<void> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.DELETE,
+    ]);
+    await this.mustFind(id, organizationId);
+    try {
+      await this.repository.deleteDraft(id);
+    } catch (error) {
+      throw mapStatusError(error);
+    }
+  }
+
+  // ---- reads ------------------------------------------------------------
+
+  async getMaterialRequest(
+    id: string,
+    organizationId: string,
+  ): Promise<MaterialRequestDetailDto> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.VIEW,
+    ]);
+    const header = await this.mustFind(id, organizationId);
+    const lines = await this.repository.listLines(id);
+    return this.toDetailDto(header, lines);
+  }
+
+  async listMaterialRequests(
+    query: ListMaterialRequestsQuery,
+  ): Promise<PaginatedResult<MaterialRequestDto>> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.VIEW,
+    ]);
+    await this.organizations.assertOrganizationInScope(query.organizationId);
+    const { skip, take } = toOffset(query.page, query.pageSize);
+    const { items, total } = await this.repository.list({
+      where: {
+        organizationId: query.organizationId,
+        status: query.status,
+        requestedBy: query.requestedBy,
+      },
+      orderBy: resolveSort(query.sort, SORTABLE_FIELDS, [
+        { createdAt: 'desc' },
+      ]),
+      skip,
+      take,
+    });
+    return toPaginatedResult(
+      items.map(toMaterialRequestDto),
+      total,
+      query.page,
+      query.pageSize,
+    );
+  }
+
+  async listEvents(
+    id: string,
+    organizationId: string,
+  ): Promise<MaterialRequestEventDto[]> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.VIEW,
+    ]);
+    await this.mustFind(id, organizationId);
+    const events = await this.repository.listEvents(id);
+    return events.map(toMaterialRequestEventDto);
+  }
+
+  // ---- lifecycle ----------------------------------------------------------
+
+  async submit(id: string, organizationId: string): Promise<MaterialRequestDetailDto> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.SUBMIT,
+    ]);
+    const current = await this.mustFind(id, organizationId);
+    const plan = planEdit(current.status);
+    if (plan.problem !== null) {
+      throw AppException.businessRule(
+        materialRequestTransitionMessage(plan.problem),
+      );
+    }
+    const actorId = this.requireActorId();
+    const now = new Date();
+    // Separate, non-composable transaction (see class docs for the accepted
+    // gap this implies on crash between the two steps).
+    const allocation = await this.numbering.allocateNumber({
+      organizationId,
+      documentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+      allocationKey: id,
+      referenceModule: 'inventory',
+      referenceDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+      referenceDocumentId: id,
+    });
+    try {
+      const header = await this.repository.submit({
+        id,
+        organizationId,
+        number: allocation.number,
+        submittedAt: now,
+        submittedBy: actorId,
+      });
+      const lines = await this.repository.listLines(id);
+      return this.toDetailDto(header, lines);
+    } catch (error) {
+      throw mapStatusError(error);
+    }
+  }
+
+  /**
+   * Approve the request AND reserve every flagged line atomically (C-50
+   * blocker #1). Lines are sorted by `(warehouseId, itemId)` before the call
+   * so concurrent approvals of overlapping keys always lock in the same
+   * order (deadlock avoidance — `ApproveInput.reservationLines`' contract).
+   */
+  async approve(
+    id: string,
+    organizationId: string,
+  ): Promise<MaterialRequestDetailDto> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.APPROVE,
+    ]);
+    const current = await this.mustFind(id, organizationId);
+    const plan = planDecision(current.status);
+    if (plan.problem !== null) {
+      throw AppException.businessRule(
+        materialRequestTransitionMessage(plan.problem),
+      );
+    }
+    const lines = await this.repository.listLines(id);
+    const actorId = this.requireActorId();
+    const now = new Date();
+
+    const reservationLines: ApproveLineInput[] = [];
+    for (const line of lines.filter((l) => l.reservationRequested)) {
+      const [item, warehouse] = await Promise.all([
+        this.items.requireUsableItemInOrganization(
+          line.itemId,
+          organizationId,
+        ),
+        this.warehouses.requireUsableWarehouseInOrganization(
+          line.warehouseId,
+          organizationId,
+        ),
+      ]);
+      reservationLines.push({
+        lineId: line.id,
+        itemId: line.itemId,
+        warehouseId: line.warehouseId,
+        branchId: warehouse.branchId,
+        quantity: line.quantity,
+        unitId: line.unitId,
+        baseQuantity: line.baseQuantity,
+        baseUnitId: line.baseUnitId,
+        conversionFactor: line.conversionFactor,
+        allowNegative: resolveEffectivePolicy({
+          itemAllow: item.allowNegativeStock,
+          warehouseAllow: warehouse.allowNegativeStock,
+        }),
+      });
+    }
+    reservationLines.sort((a, b) =>
+      a.warehouseId === b.warehouseId
+        ? a.itemId.localeCompare(b.itemId)
+        : a.warehouseId.localeCompare(b.warehouseId),
+    );
+
+    try {
+      const result = await this.repository.approve({
+        id,
+        organizationId,
+        approvedAt: now,
+        approvedBy: actorId,
+        reservationLines,
+      });
+      const updatedLines = await this.repository.listLines(id);
+      return this.toDetailDto(result.header, updatedLines);
+    } catch (error) {
+      if (error instanceof ReservationAvailabilityError) {
+        throw AppException.businessRule(error.message);
+      }
+      throw mapStatusError(error);
+    }
+  }
+
+  async reject(
+    id: string,
+    organizationId: string,
+    input: RejectMaterialRequestInput,
+  ): Promise<MaterialRequestDetailDto> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.REJECT,
+    ]);
+    const current = await this.mustFind(id, organizationId);
+    const plan = planDecision(current.status);
+    if (plan.problem !== null) {
+      throw AppException.businessRule(
+        materialRequestTransitionMessage(plan.problem),
+      );
+    }
+    const reason = normalizeRequiredReason(input.reason, 'rejection');
+    const actorId = this.requireActorId();
+    const now = new Date();
+    try {
+      const header = await this.repository.reject({
+        id,
+        organizationId,
+        rejectedAt: now,
+        rejectedBy: actorId,
+        reason,
+      });
+      const lines = await this.repository.listLines(id);
+      return this.toDetailDto(header, lines);
+    } catch (error) {
+      throw mapStatusError(error);
+    }
+  }
+
+  /**
+   * Reverse an approval. Necessary but NOT sufficient conditions (C-50
+   * §3.4), checked here in order:
+   *   1. the request is approved (`planReversal`),
+   *   2. the caller IS the original approver (`approvedBy`) — re-verified
+   *      again under the row lock inside the repository as defense in
+   *      depth against a race on approval itself,
+   *   3. no line has been invoked yet — checked here, OUTSIDE the
+   *      repository's transaction (see class docs for why, and the accepted
+   *      race window this implies).
+   */
+  async reverseApproval(
+    id: string,
+    organizationId: string,
+    input: ReverseMaterialRequestApprovalInput,
+  ): Promise<MaterialRequestDetailDto> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.REVERSE_APPROVAL,
+    ]);
+    const current = await this.mustFind(id, organizationId);
+    const plan = planReversal(current.status);
+    if (plan.problem !== null) {
+      throw AppException.businessRule(
+        materialRequestTransitionMessage(plan.problem),
+      );
+    }
+    const actorId = this.requireActorId();
+    if (current.approvedBy !== actorId) {
+      throw AppException.forbidden(
+        'Only the original approver may reverse this approval.',
+      );
+    }
+    const anyInvoked = await this.anyLineInvoked(organizationId, id);
+    if (anyInvoked) {
+      throw AppException.businessRule(
+        'This approval cannot be reversed: at least one line has already ' +
+          'been invoked into a subsequent process.',
+      );
+    }
+    const reason =
+      input.reason === undefined || input.reason === null
+        ? null
+        : normalizeDescription(input.reason);
+    const now = new Date();
+    try {
+      const result = await this.repository.reverseApproval({
+        id,
+        organizationId,
+        expectedApprovedBy: actorId,
+        reversedAt: now,
+        reversedBy: actorId,
+        reason,
+      });
+      const lines = await this.repository.listLines(id);
+      return this.toDetailDto(result.header, lines);
+    } catch (error) {
+      if (error instanceof MaterialRequestApproverMismatchError) {
+        throw AppException.forbidden(error.message);
+      }
+      if (error instanceof BalanceDriftError) {
+        throw AppException.conflict(error.message);
+      }
+      throw mapStatusError(error);
+    }
+  }
+
+  /**
+   * Record that an approved line has been carried into a subsequent process
+   * (C-50 §3.8) via a Document Relation (`fulfill`, quantity = base-unit
+   * equivalent of `input.quantity`). Multiple/partial invocations of the same
+   * line are allowed as long as their total never exceeds the line's own
+   * `baseQuantity` — enforced here against the SAME read this method returns,
+   * never against a destination-side total this module has no way to see.
+   */
+  async invokeLine(
+    id: string,
+    organizationId: string,
+    input: InvokeMaterialRequestLineInput,
+  ): Promise<MaterialRequestLineDto> {
+    await this.authorization.requireAllPermissions([
+      MATERIAL_REQUEST_PERMISSIONS.INVOKE,
+    ]);
+    const current = await this.mustFind(id, organizationId);
+    if (current.status !== 'approved') {
+      throw AppException.businessRule(
+        'Only an approved Material Request can be invoked.',
+      );
+    }
+    const lines = await this.repository.listLines(id);
+    const line = lines.find((candidate) => candidate.id === input.lineId);
+    if (line === undefined) {
+      throw AppException.notFound('Material Request line', input.lineId);
+    }
+    // No-permission reference check: refuses an invocation into a
+    // destination type that is not even registered, before a relation is
+    // ever written (the relation layer itself does not validate this).
+    this.documentTypes.requireDocumentType(input.destinationDocumentType);
+
+    const problem = validateEnteredQuantity(input.quantity);
+    if (problem !== null) {
+      throw AppException.badRequest(quantityProblemMessage(problem));
+    }
+    const invokedBase = canonicalizeDecimal(
+      multiplyDecimalStrings(
+        canonicalizeDecimal(input.quantity),
+        line.conversionFactor,
+      ),
+    );
+    if (!fitsQuantity(invokedBase)) {
+      throw AppException.badRequest(
+        'The invoked quantity, converted to the line\'s base unit, is out of range.',
+      );
+    }
+    const summary = await this.lineInvocationSummary(
+      organizationId,
+      id,
+      line,
+    );
+    if (compareDecimalStrings(invokedBase, summary.remainingBaseQuantity) > 0) {
+      throw AppException.businessRule(
+        `The invoked quantity exceeds the ${summary.remainingBaseQuantity} ` +
+          'still remaining on this line.',
+      );
+    }
+
+    const actorId = this.requireActorId();
+    const now = new Date();
+    const relation = await this.documentRelations.linkDocuments({
+      organizationId,
+      source: {
+        module: 'inventory',
+        documentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+        documentId: id,
+        lineId: line.id,
+      },
+      target: {
+        module: input.destinationModule,
+        documentType: input.destinationDocumentType,
+        documentId: input.destinationDocumentId,
+        lineId: input.destinationLineId ?? null,
+      },
+      relationKind: 'fulfill',
+      quantity: invokedBase,
+      createdByProcess: false,
+    });
+    await this.repository.recordInvocationEvent({
+      materialRequestId: id,
+      organizationId,
+      actorId,
+      occurredAt: now,
+      relationId: relation.id,
+    });
+    const refreshed = await this.lineInvocationSummary(
+      organizationId,
+      id,
+      line,
+    );
+    return toMaterialRequestLineDto(line, refreshed);
+  }
+
+  // ---- internals ------------------------------------------------------------
+
+  private requireActorId(): string {
+    const actorId = getPrincipal()?.userId;
+    if (actorId === undefined || actorId === null || actorId === '') {
+      throw AppException.unauthorized(
+        'A Material Request requires an authenticated principal.',
+      );
+    }
+    return actorId;
+  }
+
+  private async mustFind(
+    id: string,
+    organizationId: string,
+  ): Promise<MaterialRequest> {
+    await this.organizations.assertOrganizationInScope(organizationId);
+    const current = await this.repository.findById(id);
+    if (current === null || current.organizationId !== organizationId) {
+      throw AppException.notFound('Material Request', id);
+    }
+    return current;
+  }
+
+  private async resolveLines(
+    organizationId: string,
+    inputs: CreateMaterialRequestLineInput[],
+    asOf: Date,
+  ): Promise<DraftLineInput[]> {
+    const resolved: DraftLineInput[] = [];
+    let lineNumber = 1;
+    for (const input of inputs) {
+      const item = await this.items.requireUsableItemInOrganization(
+        input.itemId,
+        organizationId,
+      );
+      const warehouse =
+        await this.warehouses.requireUsableWarehouseInOrganization(
+          input.warehouseId,
+          organizationId,
+        );
+      assertPostableItem(item.code, {
+        isStockable: item.isStockable,
+        requiresLot: item.requiresLot,
+        requiresSerial: item.requiresSerial,
+        requiresExpiry: item.requiresExpiry,
+      });
+      await this.units.requireUsableUnitInOrganization(
+        input.unitId,
+        organizationId,
+      );
+      const resolvedQuantity = await resolveEnteredToBase({
+        conversions: this.conversions,
+        organizationId,
+        itemId: item.id,
+        baseUnitId: item.baseUnitId,
+        unitId: input.unitId,
+        quantity: input.quantity,
+        asOf,
+      });
+      resolved.push({
+        id: generateId(),
+        lineNumber: lineNumber++,
+        itemId: item.id,
+        warehouseId: warehouse.id,
+        branchId: warehouse.branchId,
+        quantity: resolvedQuantity.quantity,
+        unitId: input.unitId,
+        baseQuantity: resolvedQuantity.baseQuantity,
+        baseUnitId: item.baseUnitId,
+        conversionFactor: resolvedQuantity.conversionFactor,
+        reservationRequested: input.reservationRequested ?? false,
+      });
+    }
+    return resolved;
+  }
+
+  /** Any `fulfill` relation sourced from this Material Request means at
+   *  least one line has been invoked — sufficient for the reversal gate,
+   *  which blocks on ANY invoked line, not a specific one. */
+  private async anyLineInvoked(
+    organizationId: string,
+    materialRequestId: string,
+  ): Promise<boolean> {
+    const result = await this.documentRelations.listRelations({
+      organizationId,
+      sourceModule: 'inventory',
+      sourceDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+      sourceDocumentId: materialRequestId,
+      relationKind: 'fulfill',
+      page: 1,
+      pageSize: 1,
+    });
+    return result.total > 0;
+  }
+
+  /**
+   * Derive one line's invocation summary from `document_relations` (never
+   * stored — `domain/material-request-line.ts`). Bounded-scale assumption:
+   * Material Request lines are human-authored and few, so a single page of
+   * up to 1000 relations for the WHOLE request is read once and grouped by
+   * line in memory, rather than a per-line query.
+   */
+  private async lineInvocationSummary(
+    organizationId: string,
+    materialRequestId: string,
+    line: MaterialRequestLine,
+  ): Promise<MaterialRequestLineInvocationSummary> {
+    const summaries = await this.loadInvocationSummaries(
+      organizationId,
+      materialRequestId,
+      [line],
+    );
+    return (
+      summaries.get(line.id) ?? {
+        invokedBaseQuantity: '0',
+        remainingBaseQuantity: line.baseQuantity,
+        invocationCount: 0,
+      }
+    );
+  }
+
+  private async loadInvocationSummaries(
+    organizationId: string,
+    materialRequestId: string,
+    lines: MaterialRequestLine[],
+  ): Promise<Map<string, MaterialRequestLineInvocationSummary>> {
+    const { items: relations } = await this.documentRelations.listRelations({
+      organizationId,
+      sourceModule: 'inventory',
+      sourceDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+      sourceDocumentId: materialRequestId,
+      relationKind: 'fulfill',
+      page: 1,
+      pageSize: 1000,
+    });
+    const byLine = new Map<string, { sum: string; count: number }>();
+    for (const relation of relations) {
+      const lineId = relation.source.lineId;
+      if (lineId === null) continue;
+      const quantity = relation.quantity ?? '0';
+      const existing = byLine.get(lineId) ?? { sum: '0', count: 0 };
+      byLine.set(lineId, {
+        sum: addDecimalStrings(existing.sum, quantity),
+        count: existing.count + 1,
+      });
+    }
+    const summaries = new Map<string, MaterialRequestLineInvocationSummary>();
+    for (const line of lines) {
+      const entry = byLine.get(line.id) ?? { sum: '0', count: 0 };
+      summaries.set(line.id, {
+        invokedBaseQuantity: entry.sum,
+        remainingBaseQuantity: subtractDecimalStrings(
+          line.baseQuantity,
+          entry.sum,
+        ),
+        invocationCount: entry.count,
+      });
+    }
+    return summaries;
+  }
+
+  private async toDetailDto(
+    header: MaterialRequest,
+    lines: MaterialRequestLine[],
+  ): Promise<MaterialRequestDetailDto> {
+    const summaries = await this.loadInvocationSummaries(
+      header.organizationId,
+      header.id,
+      lines,
+    );
+    return {
+      ...toMaterialRequestDto(header),
+      lines: lines.map((line) =>
+        toMaterialRequestLineDto(
+          line,
+          summaries.get(line.id) ?? {
+            invokedBaseQuantity: '0',
+            remainingBaseQuantity: line.baseQuantity,
+            invocationCount: 0,
+          },
+        ),
+      ),
+    };
+  }
+}
+
+// ---- Internal helpers -------------------------------------------------------
+
+function normalizeDescription(value: string | null | undefined): string | null {
+  if (value === undefined || value === null) return null;
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  if (trimmed.length > MAX_DESCRIPTION_LENGTH) {
+    throw AppException.badRequest(
+      `Description must be at most ${MAX_DESCRIPTION_LENGTH} characters.`,
+    );
+  }
+  return trimmed;
+}
+
+function normalizeRequiredReason(
+  value: string | null | undefined,
+  label: string,
+): string {
+  const trimmed = value?.trim() ?? '';
+  if (trimmed === '') {
+    throw AppException.badRequest(`A ${label} reason is required.`);
+  }
+  if (trimmed.length > MAX_REASON_LENGTH) {
+    throw AppException.badRequest(
+      `Reason must be at most ${MAX_REASON_LENGTH} characters.`,
+    );
+  }
+  return trimmed;
+}
+
+function mapStatusError(error: unknown): unknown {
+  if (error instanceof MaterialRequestStatusError) {
+    return AppException.businessRule(error.message);
+  }
+  return error;
+}
