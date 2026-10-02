@@ -9,6 +9,28 @@
 | Companion documents | [backend-mvp-dependency-matrix.md](./backend-mvp-dependency-matrix.md) · [future-task-candidates.md](./future-task-candidates.md) |
 | Production code changed by this roadmap | **NONE** |
 
+> **Current-state addendum (2026-10-02, `main` @ `4cf481e`, merge of PR #107):**
+> the Inventory item master (C-47) is implemented, hardened and merged with green
+> CI, and is **not accepted** — merge and CI are not Owner acceptance (§0.1 rule
+> 2). Four Owner decisions were recorded that day for Phase 3C's product/item
+> master: **OD-C47-01** (OQ-29 Option A — fixed four-decimal quantity precision,
+> reject non-representable conversion results, no rounding/truncation,
+> effective-dated factor versions, preserved history), **OD-C47-02** (OQ-33
+> Option D — new kinds/flags only through an accepted concrete need; Option A
+> **not** approved), **OD-C47-03** (barcode Option A), and **OD-C47-04** (OQ-36
+> Option C — physical deletion only for never-referenced items). **OQ-29, OQ-33
+> and OQ-36 remain OPEN**; the new **OQ-65** records the barcode
+> lifecycle/reuse question. Verified prerequisite corrections for §5.3/3C:
+> OQ-11's inventory relevance is the accounting opening import and the costing
+> method (not quantity-opening mechanics); **OQ-23** and **OQ-54** are genuine
+> prerequisites of the opening and receipt/issue flows; **OQ-49 blocks only a
+> generic report builder**, not bounded code-defined inventory reports. **C-50
+> (Material Request) is the next dependency-ready candidate — investigation
+> only.** Records:
+> [`../tasks/c-47-owner-decision-and-dependency-reconciliation.md`](../tasks/c-47-owner-decision-and-dependency-reconciliation.md)
+> and [`../decisions/product/README.md`](../decisions/product/README.md).
+> This addendum closes no OQ, promotes no ADR and authorizes no implementation.
+>
 > **Current-state addendum (2026-09-29):** the original inspection baseline and
 > inventory below are a dated planning snapshot. Current `main` is
 > `34dddfd60d6ce2f9d4599bd05b440556a80aa847`: Task 30 adds Account Nature/Type

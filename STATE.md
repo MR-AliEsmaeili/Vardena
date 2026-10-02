@@ -1150,3 +1150,85 @@ merged `docs/tasks/c-47-item-master-preflight-investigation.md`, PR #106).
   Owner acceptance. C-47 remains **BLOCKED BY OQ (OQ-29/OQ-33)** in the
   candidate register; this section does not accept, re-accept, or alter the
   status of §13/§16, C-01..C-46, or any other candidate.
+
+## 18. C-47 — Owner Decisions, Status Reconciliation & Inventory Dependency Review (2026-10-02)
+
+Documentation/governance addendum recorded after §17, at baseline `main` /
+`4cf481efa2de5ca9863d9d434c2ab707de23301a` (merge of PR #107). It rewrites or
+removes nothing above. Full record:
+`docs/tasks/c-47-owner-decision-and-dependency-reconciliation.md`.
+
+- **Scope:** documentation/governance and dependency reconciliation only. **No
+  production code, Prisma schema, migration, API/DTO, generated type,
+  permission or test was changed.** No warehouse operational implementation
+  (receipt, issue, opening balances, other operational documents) was started.
+  No full E2E, live-PostgreSQL, migration or migration-rehearsal command was
+  executed.
+- **Four explicit Owner decisions recorded** (records:
+  `docs/decisions/product/PDR-01…PDR-04`, registry annotations in
+  `docs/open-questions.md`):
+  - **OD-C47-01 — OQ-29, Option A:** quantity precision fixed at **four
+    fractional decimal places**; conversion results that cannot be represented
+    exactly at the supported precision are **rejected**; **no rounding and no
+    silent truncation**; conversion-factor changes use **effective-dated
+    versions**; historical conversion versions and the data needed to interpret
+    prior transactions are **preserved**. No production delta identified — the
+    decided rule equals shipped behavior (`domain/quantities.ts`,
+    `domain/unit-conversion.ts`, `numeric(18,4)`/`numeric(18,6)` columns).
+    Independent sub-questions (per-unit entry precision, global-vs-item-specific
+    precedence, reverse-pair derivation, the exactness boundary for future
+    consumers, valuation precision, back-dated-version authority) are **not**
+    closed.
+  - **OD-C47-02 — OQ-33, Option D:** new item kinds or capability flags may be
+    introduced **only** through an identified and accepted concrete need in the
+    project's decision/governance process. **Option A is NOT recorded as
+    approved:** the Owner has not confirmed the existing eight kinds or the
+    current per-item configurable capability model, and that confirmation stays
+    **OPEN**. The model is frozen, not approved.
+  - **OD-C47-03 — Barcode, Option A (confirmed):** barcode optional; uniqueness
+    enforced within an organization; two active items in one organization must
+    not share a barcode; different organizations may; multiple formats with no
+    strict symbology validation unless separately approved; no
+    multi-barcode-per-item support. **No production code or schema changed.**
+    Canonical-wording inspection found the deactivated-item case unresolved, so
+    it is recorded, not inferred, as new **OQ-65** (reuse after deactivation,
+    comparison semantics, inactive-vs-inactive collisions, re-activation,
+    clear-and-reassign). Current `main` enforces **no** barcode uniqueness at
+    all.
+  - **OD-C47-04 — OQ-36, Option C:** physical deletion permitted **only** for an
+    item never referenced by any operational, ledger or historical record; a
+    referenced item must never be physically deleted; history and
+    organization-scoped identity constraints are preserved. **The item-code
+    reuse policy is NOT inferred from Option C** — reuse after physical deletion
+    of a never-referenced item stays **OPEN**, as do case-sensitivity policy,
+    soft-vs-hard delete shape, the reference-proof obligation, the delete
+    permission/audit model and cross-entity scope.
+- **OQ status after this addendum:** OQ-29, OQ-33 and OQ-36 are each
+  **PARTIALLY RESOLVED and remain OPEN**; **OQ-65 is new and OPEN**. OQ-64
+  remains the only Resolved row in the registry. No ADR was promoted.
+- **C-47 status reconciliation:** PR #107 is merged and CI is green; **this is
+  not Owner acceptance of the item master** (STATE.md §6). C-47 remains
+  **NOT ACCEPTED** and **BLOCKED BY OQ**, with its blocking set narrowed from
+  "OQ-29 + OQ-33" to "OQ-33 confirmation + OQ-65 + OQ-36 reuse".
+- **Dependency review C-47…C-54 (verified against code, not identifiers):**
+  OQ-11 is an *Accounting* question (opening balance **import** + inventory
+  **costing method**) and does not describe quantity-opening mechanics; OQ-24
+  gates every valued/rial flow and its negative-stock half has an implemented
+  fail-closed default that is not a decided policy; OQ-39/OQ-42 gate the
+  accounting effect only; **OQ-23 and OQ-54 are genuine, previously unlisted
+  prerequisites** of the opening and receipt/issue flows; **OQ-49 blocks only a
+  generic report builder**, not bounded code-defined inventory reports. The
+  inventory ledger has **no cost column**, there is deliberately **no `opening`
+  movement type**, and Inventory has registered **no** document type (only
+  Accounting uses the Documents type registry).
+- **Next dependency-ready candidate: C-50 (Material Request) — INVESTIGATION
+  ONLY.** It is the only C-48…C-54 candidate with no valuation, costing or
+  durable-posting gate; its implementation still requires OQ-54, OQ-13/OQ-26 and
+  an explicit decision on whether a material request reserves stock.
+- **Bounded C-47 implementation follow-up:** justified in principle for barcode
+  uniqueness (candidate **C-55**) and item physical deletion (candidate
+  **C-56**), but **both are blocked** — C-55 by OQ-65 (every index shape
+  silently answers it) and C-56 by the open code-reuse semantics. The only
+  non-blocked C-47 work was documentation, completed here.
+- **Not accepted by this addendum:** it accepts nothing, authorizes nothing, and
+  makes no claim of Owner acceptance for its own pull request.
