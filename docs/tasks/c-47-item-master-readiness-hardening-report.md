@@ -258,7 +258,7 @@ e.g. the asset/serial tension — those are source comments, **not** approval.)
 | `backend` full e2e (43 files incl. 18 live-suite skips without `VARDENA_TEST_DATABASE_URL`) | FAST-LOCAL subset | local | **328 passed, 132 deterministically skipped, 0 failed** (heavier live-DB assertions intentionally **not** executed locally; see below) |
 | `frontend` tests / typecheck / lint / prettier / build | FAST-LOCAL | local | **305 passed**; all gates clean; build succeeded |
 | OpenAPI regeneration probe | offline hermetic | local | diff proven surgically exact (3 blocks only) |
-| `item-master-live.e2e-spec.ts` (9 live-PG cases) | CI-HEAVY/LIVE-DB | **GitHub Actions backend job** (postgres:16 service, `VARDENA_TEST_DATABASE_URL`); local execution intentionally not used — CI is the authoritative execution environment | **pending CI verification** |
+| `item-master-live.e2e-spec.ts` (9 live-PG cases) | CI-HEAVY/LIVE-DB | **GitHub Actions backend job** (postgres:16 service, `VARDENA_TEST_DATABASE_URL`); local execution intentionally not used — CI is the authoritative execution environment | **CI PASSED** — PR #107: run `36991377976` executed the suite and caught a real `$queryRaw`-on-`void` defect in the lock call (fixed by `$executeRaw`, commit `e5fe53b`), run `36992098706` backend+frontend **green** (9/9 live cases executed — the suite's own failure annotations on the previous run prove execution) |
 
 **No heavy E2E/live-DB test was executed locally unless explicitly authorized.**
 
@@ -283,10 +283,13 @@ e.g. the asset/serial tension — those are source comments, **not** approval.)
 2. Advisory-lock key strings are deterministic; if the code ever runs several
    PostgreSQL backends (it is single-tenant monolith by design), the locks do
    not coordinate across databases. Out of scope for v1 architecture.
-3. CI live-DB suite will exercise Fix 1 under genuine races; if CI surfaces a
-   less-than-8-count of fulfilled creates in live case 4's race, that is the
-   designed behavior (fail-closed rejections) and the test asserts the
-   invariant, not a winner count.
+3. CI live-DB suite exercised Fix 1 under genuine races and PASSED (run
+   `36992098706`); it immediately caught one real defect class hermetic tests
+   could not see (`$queryRaw` cannot deserialize PostgreSQL `void` from
+   `pg_advisory_xact_lock`), now fixed via `$executeRaw`. If a future run
+   surfaces a less-than-8-count of fulfilled creates in live case 4's race,
+   that is the designed behavior (fail-closed rejections) — the test asserts
+   the invariant, not a winner count.
 
 ## 10. Next dependency-ready candidate
 

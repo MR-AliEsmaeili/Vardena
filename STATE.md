@@ -1140,7 +1140,12 @@ merged `docs/tasks/c-47-item-master-preflight-investigation.md`, PR #106).
   (postgres:16 service + `VARDENA_TEST_DATABASE_URL`, `test:e2e` glob) and
   were **not** executed locally; CI is the authoritative execution
   environment. **No heavy E2E/live-DB test was executed locally unless
-  explicitly authorized.**
+  explicitly authorized.** CI (PR #107): run `36991377976` executed the live
+  suite and caught a real `$queryRaw`-on-PostgreSQL-`void` defect in the
+  advisory-lock call (fixed via `$executeRaw` — exactly the defect class the
+  live suite exists to catch); run `36992098706` backend + frontend **green**,
+  live suite executed (`VARDENA_TEST_DATABASE_URL` is set in the backend job;
+  previous-run failure annotations prove the skip gates were inactive).
 - **Not accepted by this addendum:** implementation/merge/CI-green is not
   Owner acceptance. C-47 remains **BLOCKED BY OQ (OQ-29/OQ-33)** in the
   candidate register; this section does not accept, re-accept, or alter the
