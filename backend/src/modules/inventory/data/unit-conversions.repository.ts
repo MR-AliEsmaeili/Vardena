@@ -131,12 +131,16 @@ type Client = {
   itemUnitConversion: ItemDelegate;
 };
 
-type RawQuery = <T>(
+type RawExecute = (
   query: TemplateStringsArray,
   ...values: unknown[]
-) => Promise<T[]>;
+) => Promise<number>;
 
-type TxClient = Client & { $queryRaw: RawQuery };
+// The advisory lock uses $executeRaw on purpose: pg_advisory_xact_lock
+// returns 'void', which $queryRaw cannot deserialize ("Failed to
+// deserialize column of type 'void'"). $executeRaw never decodes row
+// values and simply returns a row count we ignore (CI live-suite finding).
+type TxClient = Client & { $executeRaw: RawExecute };
 
 /**
  * The version plan no longer holds against the rows re-read inside the
@@ -316,7 +320,7 @@ export class UnitConversionsRepository {
     >();
     return client.$transaction(async (tx) => {
       const scoped = tx as TxClient;
-      await scoped.$queryRaw`
+      await scoped.$executeRaw`
         SELECT pg_advisory_xact_lock(
           hashtextextended(
             ${`unit_conversions|${input.create.organizationId}|${input.create.fromUnitId}|${input.create.toUnitId}`},
@@ -373,7 +377,7 @@ export class UnitConversionsRepository {
     const supersessionScope = `${input.create.itemId}`;
     return client.$transaction(async (tx) => {
       const scoped = tx as TxClient;
-      await scoped.$queryRaw`
+      await scoped.$executeRaw`
         SELECT pg_advisory_xact_lock(
           hashtextextended(
             ${`item_unit_conversions|${supersessionScope}|${input.create.fromUnitId}|${input.create.toUnitId}`},
