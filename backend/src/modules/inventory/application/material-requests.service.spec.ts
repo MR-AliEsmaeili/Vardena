@@ -43,10 +43,12 @@ import {
   type InvocationCapacityResult,
   type MaterialRequestListFilter,
   type RejectInput,
+  type ReservationConsumptionResult,
   type ReverseApprovalInput,
   type SubmitInput,
   type UpdateDraftHeaderInput,
 } from '../data/material-requests.repository.js';
+import { BalanceDriftError } from '../data/inventory-posting-errors.js';
 import {
   addDecimalStrings,
   subtractDecimalStrings,
@@ -69,10 +71,23 @@ import {
  * test below depends on (`withLock` mirrors the real repository's
  * `SELECT … FOR UPDATE` header-row lock with an async mutex keyed by request
  * id, so two concurrent calls provably serialize instead of racing).
- * Reservation/balance arithmetic itself is OUT of scope for these findings
- * (already covered by `inventory-core.e2e-spec.ts`/the reservation suites),
- * so `approve()` here is a simplified stub that always succeeds for a
- * flagged line — never a redesign of the real `approve()` transaction.
+ * Availability/negative-policy arithmetic in `approve()` itself is OUT of
+ * scope for these findings (already covered by
+ * `inventory-core.e2e-spec.ts`/the reservation suites, and by
+ * `material-requests-live.e2e-spec.ts` against real Postgres), so `approve()`
+ * here is a simplified stub that always succeeds for a flagged line and
+ * never throws `ReservationAvailabilityError` — never a redesign of the
+ * real `approve()` transaction. It DOES seed a realistic reservation row
+ * (`quantity`/`baseQuantity` equal to the line's own, `status: 'active'`),
+ * because `reserveInvocationCapacity`'s reservation-consumption arithmetic
+ * (C-50 §3.8 follow-up: every invocation of a reserved line consumes the
+ * identical amount from its reservation) IS exercised at the unit level
+ * below — the fake's `reserveInvocationCapacity`/`releaseInvocationCapacity`
+ * mirror the real repository's reservation quantity/status transitions
+ * exactly (decrement while active, close at exactly zero, reopen on
+ * compensation), while `inventory_balances.reserved`/`onHand` themselves
+ * stay out of this fake's scope (verified against real Postgres by the live
+ * E2E suite instead).
  */
 
 function loggerStub(): JsonLogger {
@@ -87,11 +102,23 @@ function loggerStub(): JsonLogger {
 // Fake MaterialRequestsRepository
 // ---------------------------------------------------------------------------
 
+/** Just enough of `inventory_reservations` to exercise consumption
+ *  arithmetic — `FakeMaterialRequestsRepository` is not a general-purpose
+ *  reservation fake, only what `reserveInvocationCapacity`/
+ *  `releaseInvocationCapacity` need. */
+interface FakeReservationRow {
+  id: string;
+  quantity: string;
+  baseQuantity: string;
+  status: 'active' | 'released';
+}
+
 class FakeMaterialRequestsRepository {
   private readonly headers = new Map<string, MaterialRequest>();
   private readonly lines = new Map<string, MaterialRequestLine[]>();
   private readonly events = new Map<string, MaterialRequestEvent[]>();
   private readonly tails = new Map<string, Promise<void>>();
+  readonly reservations = new Map<string, FakeReservationRow>();
 
   /** Async mutex keyed by Material Request id — models the real
    *  `lockMaterialRequestRow` `SELECT … FOR UPDATE` serialization so
@@ -385,6 +412,14 @@ class FakeMaterialRequestsRepository {
         if (flagged === undefined) return line;
         const reservationId = generateId();
         reservationIds.set(line.id, reservationId);
+        // Exact reservation (Owner decision): the same item/warehouse/
+        // quantity/unit-conversion as the line itself.
+        this.reservations.set(reservationId, {
+          id: reservationId,
+          quantity: flagged.quantity,
+          baseQuantity: flagged.baseQuantity,
+          status: 'active',
+        });
         return { ...line, reservationId };
       });
       this.lines.set(input.id, updatedLines);
@@ -478,6 +513,7 @@ class FakeMaterialRequestsRepository {
     organizationId: string;
     lineId: string;
     invokedBase: string;
+    invokedEntered: string;
     now: Date;
     actorId: string | null;
   }): Promise<InvocationCapacityResult> {
@@ -502,6 +538,50 @@ class FakeMaterialRequestsRepository {
           requested: input.invokedBase,
         });
       }
+
+      let reservationConsumption: ReservationConsumptionResult | null = null;
+      if (line.reservationId !== null) {
+        const reservation = this.reservations.get(line.reservationId);
+        if (
+          reservation === undefined ||
+          reservation.status !== 'active' ||
+          compare(reservation.quantity, '0') <= 0 ||
+          compare(reservation.baseQuantity, '0') <= 0
+        ) {
+          throw new BalanceDriftError();
+        }
+        if (
+          compare(input.invokedBase, reservation.baseQuantity) > 0 ||
+          compare(input.invokedEntered, reservation.quantity) > 0
+        ) {
+          throw new BalanceDriftError();
+        }
+        const nextBase = subtractDecimalStrings(
+          reservation.baseQuantity,
+          input.invokedBase,
+        );
+        const nextQuantity = subtractDecimalStrings(
+          reservation.quantity,
+          input.invokedEntered,
+        );
+        const closed = compare(nextBase, '0') === 0;
+        if (closed !== (compare(nextQuantity, '0') === 0)) {
+          throw new BalanceDriftError();
+        }
+        this.reservations.set(line.reservationId, {
+          ...reservation,
+          quantity: nextQuantity,
+          baseQuantity: nextBase,
+          status: closed ? 'released' : 'active',
+        });
+        reservationConsumption = {
+          reservationId: line.reservationId,
+          consumedBase: input.invokedBase,
+          consumedEntered: input.invokedEntered,
+          closed,
+        };
+      }
+
       const nextInvoked = addDecimalStrings(
         line.invokedBaseQuantity,
         input.invokedBase,
@@ -520,6 +600,7 @@ class FakeMaterialRequestsRepository {
           input.invokedBase,
         ),
         invocationCount: nextCount,
+        reservationConsumption,
       };
     });
   }
@@ -530,25 +611,63 @@ class FakeMaterialRequestsRepository {
     invokedBase: string;
     now: Date;
     actorId: string | null;
+    reservationConsumption: ReservationConsumptionResult | null;
   }): Promise<void> {
     await this.withLock(input.id, () => {
       const lines = this.lines.get(input.id) ?? [];
       const index = lines.findIndex(
         (candidate) => candidate.id === input.lineId,
       );
-      if (index === -1) return;
-      const line = lines[index]!;
-      const restored = subtractDecimalStrings(
-        line.invokedBaseQuantity,
-        input.invokedBase,
-      );
-      const floored = compare(restored, '0') < 0 ? '0' : restored;
-      lines[index] = {
-        ...line,
-        invokedBaseQuantity: floored,
-        invocationCount: Math.max(line.invocationCount - 1, 0),
-        updatedAt: input.now,
-      };
+      if (index !== -1) {
+        const line = lines[index]!;
+        const restored = subtractDecimalStrings(
+          line.invokedBaseQuantity,
+          input.invokedBase,
+        );
+        const floored = compare(restored, '0') < 0 ? '0' : restored;
+        lines[index] = {
+          ...line,
+          invokedBaseQuantity: floored,
+          invocationCount: Math.max(line.invocationCount - 1, 0),
+          updatedAt: input.now,
+        };
+      }
+
+      const consumption = input.reservationConsumption;
+      if (consumption !== null) {
+        const reservation = this.reservations.get(consumption.reservationId);
+        if (reservation === undefined) return;
+        if (consumption.closed) {
+          if (
+            reservation.status !== 'released' ||
+            compare(reservation.quantity, '0') !== 0 ||
+            compare(reservation.baseQuantity, '0') !== 0
+          ) {
+            throw new BalanceDriftError();
+          }
+          this.reservations.set(consumption.reservationId, {
+            ...reservation,
+            status: 'active',
+            quantity: consumption.consumedEntered,
+            baseQuantity: consumption.consumedBase,
+          });
+        } else {
+          if (reservation.status !== 'active') {
+            throw new BalanceDriftError();
+          }
+          this.reservations.set(consumption.reservationId, {
+            ...reservation,
+            quantity: addDecimalStrings(
+              reservation.quantity,
+              consumption.consumedEntered,
+            ),
+            baseQuantity: addDecimalStrings(
+              reservation.baseQuantity,
+              consumption.consumedBase,
+            ),
+          });
+        }
+      }
     });
   }
 
@@ -1758,5 +1877,424 @@ describe('Owner decision — cancellation is distinct from approval reversal', (
         ),
       ),
     ).rejects.toMatchObject({ status: 422 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Owner decision — invocation consumes the line's active reservation
+// proportionally (C-50 §3.8 follow-up: "every successful invocation
+// consumes the corresponding amount from that active reservation").
+// ---------------------------------------------------------------------------
+
+describe('Owner decision — invocation consumes the active reservation', () => {
+  it('partial invocation reduces the reservation by exactly the invoked amount, leaving it ACTIVE', async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      quantity: '100',
+      reservationRequested: true,
+    });
+    const [lineBefore] = await fixture.repository.listLines(materialRequestId);
+    const reservationId = lineBefore!.reservationId!;
+    expect(reservationId).not.toBeNull();
+    expect(fixture.repository.reservations.get(reservationId)).toMatchObject({
+      status: 'active',
+      quantity: '100',
+      baseQuantity: '100',
+    });
+
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '100',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+        lineId,
+        destinationModule: 'inventory',
+        destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+        destinationDocumentId: destination.id,
+        quantity: '60',
+      }),
+    );
+
+    const lines = await fixture.repository.listLines(materialRequestId);
+    expect(lines[0]?.invokedBaseQuantity).toBe('60');
+    expect(
+      subtractDecimalStrings(
+        lines[0]!.baseQuantity,
+        lines[0]!.invokedBaseQuantity,
+      ),
+    ).toBe('40');
+    expect(fixture.repository.reservations.get(reservationId)).toMatchObject({
+      status: 'active',
+      quantity: '40',
+      baseQuantity: '40',
+    });
+  });
+
+  it('multiple invocations (100 -> 60 -> 25 -> 15) draw the reservation down to zero and close it', async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      quantity: '100',
+      reservationRequested: true,
+    });
+    const [lineBefore] = await fixture.repository.listLines(materialRequestId);
+    const reservationId = lineBefore!.reservationId!;
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '100',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    const invoke = (quantity: string) =>
+      asActor(() =>
+        fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+          lineId,
+          destinationModule: 'inventory',
+          destinationDocumentType:
+            MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+          destinationDocumentId: destination.id,
+          quantity,
+        }),
+      );
+
+    await invoke('60');
+    expect(fixture.repository.reservations.get(reservationId)).toMatchObject({
+      status: 'active',
+      quantity: '40',
+      baseQuantity: '40',
+    });
+
+    // The reservation remains active and usable by a LATER invocation — it
+    // is not a one-shot claim.
+    await invoke('25');
+    expect(fixture.repository.reservations.get(reservationId)).toMatchObject({
+      status: 'active',
+      quantity: '15',
+      baseQuantity: '15',
+    });
+
+    await invoke('15');
+    const lines = await fixture.repository.listLines(materialRequestId);
+    expect(lines[0]?.invokedBaseQuantity).toBe('100');
+    expect(
+      subtractDecimalStrings(
+        lines[0]!.baseQuantity,
+        lines[0]!.invokedBaseQuantity,
+      ),
+    ).toBe('0');
+    expect(lines[0]?.invocationCount).toBe(3);
+    // Fully consumed: closed, and — critically — never left ACTIVE at zero.
+    const finalReservation = fixture.repository.reservations.get(reservationId);
+    expect(finalReservation?.status).toBe('released');
+    expect(finalReservation?.quantity).toBe('0');
+    expect(finalReservation?.baseQuantity).toBe('0');
+  });
+
+  it('a single invocation for the full reserved amount closes the reservation directly', async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      quantity: '50',
+      reservationRequested: true,
+    });
+    const [lineBefore] = await fixture.repository.listLines(materialRequestId);
+    const reservationId = lineBefore!.reservationId!;
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '50',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+        lineId,
+        destinationModule: 'inventory',
+        destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+        destinationDocumentId: destination.id,
+        quantity: '50',
+      }),
+    );
+    const reservation = fixture.repository.reservations.get(reservationId);
+    expect(reservation?.status).toBe('released');
+    expect(reservation?.quantity).toBe('0');
+    expect(reservation?.baseQuantity).toBe('0');
+  });
+
+  it('refuses an invocation whose cumulative total would exceed the line quantity, leaving the reservation untouched', async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      quantity: '100',
+      reservationRequested: true,
+    });
+    const [lineBefore] = await fixture.repository.listLines(materialRequestId);
+    const reservationId = lineBefore!.reservationId!;
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '100',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+        lineId,
+        destinationModule: 'inventory',
+        destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+        destinationDocumentId: destination.id,
+        quantity: '60',
+      }),
+    );
+    await expect(
+      asActor(() =>
+        fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+          lineId,
+          destinationModule: 'inventory',
+          destinationDocumentType:
+            MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+          destinationDocumentId: destination.id,
+          quantity: '41',
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+
+    // Refused BEFORE touching the reservation — still exactly 40, active.
+    expect(fixture.repository.reservations.get(reservationId)).toMatchObject({
+      status: 'active',
+      quantity: '40',
+      baseQuantity: '40',
+    });
+    const lines = await fixture.repository.listLines(materialRequestId);
+    expect(lines[0]?.invokedBaseQuantity).toBe('60');
+  });
+
+  it('a line with NO reservation invokes normally without creating or touching any reservation', async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      quantity: '100',
+      reservationRequested: false,
+    });
+    const [lineBefore] = await fixture.repository.listLines(materialRequestId);
+    expect(lineBefore?.reservationId).toBeNull();
+    const reservationCountBefore = fixture.repository.reservations.size;
+
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '100',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+        lineId,
+        destinationModule: 'inventory',
+        destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+        destinationDocumentId: destination.id,
+        quantity: '60',
+      }),
+    );
+
+    const lines = await fixture.repository.listLines(materialRequestId);
+    expect(lines[0]?.invokedBaseQuantity).toBe('60');
+    expect(
+      subtractDecimalStrings(
+        lines[0]!.baseQuantity,
+        lines[0]!.invokedBaseQuantity,
+      ),
+    ).toBe('40');
+    expect(lines[0]?.reservationId).toBeNull();
+    // No reservation was created or mutated as a side effect.
+    expect(fixture.repository.reservations.size).toBe(reservationCountBefore);
+  });
+
+  it('a failed downstream relation restores the reservation to its exact pre-attempt state (partial consumption)', async () => {
+    const fixture = await buildFixture({ failLinkDocuments: true });
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      quantity: '100',
+      reservationRequested: true,
+    });
+    const [lineBefore] = await fixture.repository.listLines(materialRequestId);
+    const reservationId = lineBefore!.reservationId!;
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '100',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await expect(
+      asActor(() =>
+        fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+          lineId,
+          destinationModule: 'inventory',
+          destinationDocumentType:
+            MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+          destinationDocumentId: destination.id,
+          quantity: '40',
+        }),
+      ),
+    ).rejects.toThrow();
+
+    // The invocation never truly happened: counters AND the reservation are
+    // back to exactly their pre-attempt state — still fully active and, in
+    // a fixture where `linkDocuments` actually succeeded, still usable by a
+    // later invocation (proven separately by the multi-invocation test
+    // above, which uses the SAME repository-level consumption logic).
+    const lines = await fixture.repository.listLines(materialRequestId);
+    expect(lines[0]?.invokedBaseQuantity).toBe('0');
+    expect(lines[0]?.invocationCount).toBe(0);
+    expect(fixture.repository.reservations.get(reservationId)).toMatchObject({
+      status: 'active',
+      quantity: '100',
+      baseQuantity: '100',
+    });
+  });
+
+  it('a failed downstream relation reopens a reservation that the failed attempt had fully closed', async () => {
+    const fixture = await buildFixture({ failLinkDocuments: true });
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      quantity: '30',
+      reservationRequested: true,
+    });
+    const [lineBefore] = await fixture.repository.listLines(materialRequestId);
+    const reservationId = lineBefore!.reservationId!;
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '30',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    // A full-amount attempt that would have closed the reservation.
+    await expect(
+      asActor(() =>
+        fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+          lineId,
+          destinationModule: 'inventory',
+          destinationDocumentType:
+            MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+          destinationDocumentId: destination.id,
+          quantity: '30',
+        }),
+      ),
+    ).rejects.toThrow();
+
+    // Reopened, not left `released` — the failed attempt never truly
+    // happened, so the reservation must be exactly as it was before.
+    expect(fixture.repository.reservations.get(reservationId)).toMatchObject({
+      status: 'active',
+      quantity: '30',
+      baseQuantity: '30',
+    });
+    const lines = await fixture.repository.listLines(materialRequestId);
+    expect(lines[0]?.invokedBaseQuantity).toBe('0');
+    expect(lines[0]?.invocationCount).toBe(0);
+  });
+
+  it('cancellation and approval reversal remain blocked after a PARTIAL invocation, and the reservation still shows only the uninvoked remainder', async () => {
+    const fixture = await buildFixture();
+    const { materialRequestId, lineId } = await createAndApprove(fixture, {
+      quantity: '100',
+      reservationRequested: true,
+    });
+    const [lineBefore] = await fixture.repository.listLines(materialRequestId);
+    const reservationId = lineBefore!.reservationId!;
+    const destination = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            warehouseId: fixture.warehouseId,
+            quantity: '100',
+            unitId: fixture.unitId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.invokeLine(materialRequestId, fixture.organizationId, {
+        lineId,
+        destinationModule: 'inventory',
+        destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE_DEFINITION.code,
+        destinationDocumentId: destination.id,
+        quantity: '60',
+      }),
+    );
+
+    // Owner decision (unchanged by this round): once ANY line has been
+    // invoked, even partially, BOTH cancellation and approval reversal are
+    // blocked for the whole request.
+    await expect(
+      asActor(() =>
+        fixture.service.cancel(materialRequestId, fixture.organizationId, {}),
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+    await expect(
+      asActor(() =>
+        fixture.service.reverseApproval(
+          materialRequestId,
+          fixture.organizationId,
+          {},
+        ),
+      ),
+    ).rejects.toMatchObject({ status: 422 });
+
+    // The still-approved request's reservation reflects only the uninvoked
+    // remainder (40), never the original 100 — it remains reserved and
+    // invokable for whatever has not yet been carried downstream.
+    expect(fixture.repository.reservations.get(reservationId)).toMatchObject({
+      status: 'active',
+      quantity: '40',
+      baseQuantity: '40',
+    });
+    const current = await fixture.repository.findById(materialRequestId);
+    expect(current?.status).toBe('approved');
   });
 });

@@ -662,21 +662,34 @@ export class MaterialRequestsService {
    * Record that an approved line has been carried into a subsequent process
    * (C-50 §3.8) via a Document Relation (`fulfill`, quantity = base-unit
    * equivalent of `input.quantity`). Multiple/partial invocations of the same
-   * line are allowed as long as their total never exceeds the line's own
-   * `baseQuantity`.
+   * line are allowed, with NO fixed count limit, as long as their total
+   * never exceeds the line's own `baseQuantity`.
+   *
+   * Owner decision: when the line carries an ACTIVE reservation, every
+   * successful invocation ALSO consumes the identical amount from it —
+   * reducing its remaining quantity while it stays ACTIVE, or closing it the
+   * moment it reaches exactly zero (never left ACTIVE at zero). This never
+   * touches `onHand` and never requires a Warehouse Issue (C-52 remains
+   * separate); a line with no reservation invokes exactly as before.
    *
    * Order matters (review findings #2 and #4) and is deliberate:
    *   1. validate the destination FULLY (registered type, type/module match,
    *      existence + organization ownership) — nothing stateful is touched
-   *      yet, so a doomed-to-fail destination never consumes capacity;
+   *      yet, so a doomed-to-fail destination never consumes capacity or
+   *      reservation quantity;
    *   2. `reserveInvocationCapacity` — the ONE atomic, lock-serialized
-   *      check-and-increment against this line's own counters, immune to
-   *      both a concurrent second invocation and `document_relations`'
-   *      page-size limits;
+   *      check-and-increment against this line's own counters (and, when
+   *      flagged, its reservation and the balance's `reserved` counter),
+   *      immune to both a concurrent second invocation and
+   *      `document_relations`' page-size limits;
    *   3. `linkDocuments` — the actual cross-module traceability write; if
    *      this fails, `releaseInvocationCapacity` compensates so the failed
-   *      attempt never consumed capacity or blocked anything;
-   *   4. `recordInvocationEvent` — append-only audit narrative.
+   *      attempt never consumed capacity, reservation quantity, or
+   *      `reserved` — and reopens the reservation if this attempt had
+   *      closed it;
+   *   4. `recordInvocationEvent` — append-only audit narrative, written only
+   *      once the Document Relation itself is confirmed, never for an
+   *      attempt that was compensated away.
    */
   async invokeLine(
     id: string,
@@ -704,11 +717,15 @@ export class MaterialRequestsService {
     if (problem !== null) {
       throw AppException.badRequest(quantityProblemMessage(problem));
     }
+    // The invocation input is already expressed in the line's own entered
+    // unit (`line.unitId`) — the line's already-recorded `conversionFactor`
+    // converts it to base units; neither is re-resolved from current master
+    // data here, and `invokedEntered` is passed through verbatim to the
+    // repository so a line's ACTIVE reservation (if any) can be consumed by
+    // exactly this amount, in lockstep with `invokedBase` (Owner decision).
+    const invokedEntered = canonicalizeDecimal(input.quantity);
     const invokedBase = canonicalizeDecimal(
-      multiplyDecimalStrings(
-        canonicalizeDecimal(input.quantity),
-        line.conversionFactor,
-      ),
+      multiplyDecimalStrings(invokedEntered, line.conversionFactor),
     );
     if (!fitsQuantity(invokedBase)) {
       throw AppException.badRequest(
@@ -726,6 +743,7 @@ export class MaterialRequestsService {
         organizationId,
         lineId: line.id,
         invokedBase,
+        invokedEntered,
         now,
         actorId,
       });
@@ -738,6 +756,9 @@ export class MaterialRequestsService {
       }
       if (error instanceof MaterialRequestLineNotFoundError) {
         throw AppException.notFound('Material Request line', input.lineId);
+      }
+      if (error instanceof BalanceDriftError) {
+        throw AppException.conflict(error.message);
       }
       throw mapStatusError(error);
     }
@@ -766,13 +787,17 @@ export class MaterialRequestsService {
       });
     } catch (error) {
       // The traceability record was never created — this attempt must not
-      // be treated as a successful invocation, so give the capacity back.
+      // be treated as a successful invocation, so give the capacity back,
+      // AND — when this attempt had consumed (or fully closed) the line's
+      // reservation — restore that reservation and its balance `reserved`
+      // contribution to exactly their pre-attempt state.
       await this.repository.releaseInvocationCapacity({
         id,
         lineId: line.id,
         invokedBase,
         now: new Date(),
         actorId,
+        reservationConsumption: reserved.reservationConsumption,
       });
       throw error;
     }

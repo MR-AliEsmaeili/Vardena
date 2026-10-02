@@ -27,6 +27,16 @@
  * it back to compute its own state, so there is exactly one place
  * (this line's own counters) that decides how much of it has been invoked.
  *
+ * Owner decision (C-50 §3.8 follow-up): invocation is PARTIAL and MULTIPLE
+ * with no fixed count limit — the only cap is `invokedBaseQuantity <=
+ * baseQuantity`, enforced transactionally by `reserveInvocationCapacity`.
+ * When `reservationId` is set, every successful invocation ALSO consumes the
+ * identical amount from that reservation's own remaining quantity (reducing
+ * it while it stays `active`, or closing it the moment it reaches exactly
+ * zero) — a reservation never changes `on_hand`, and this consumption step
+ * never requires or implies a Warehouse Issue (C-52 remains a separate,
+ * later task).
+ *
  * Framework-free (AR-05).
  */
 

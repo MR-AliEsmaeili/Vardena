@@ -1104,3 +1104,120 @@ open questions rather than inventing policy:
    `material-requests-live.e2e-spec.ts`) — it is not a new open question, it
    is the verified answer to this round's item 4 for the cases the Owner's
    decisions actually cover (zero invocation).
+
+## 21. Owner decision recorded (2026-10-02, third follow-up session) — reservation consumption on invocation (closes §20.4 item 1 / OQ-66)
+
+> This section resolves the ONE item §20.4 flagged as genuinely undetermined
+> after the second follow-up session: what happens to a line's ACTIVE
+> reservation once it is invoked into a downstream document. It does not
+> reopen or revisit any other item in §§1–20 — OQ-54 and OQ-13/OQ-26 remain
+> exactly as scoped there.
+
+### 21.1 The decision
+
+The Owner decided: **every successful invocation of a line that carries an
+ACTIVE reservation consumes the identical amount from that reservation.**
+Concretely, for a line with `baseQuantity = 100` and an active reservation of
+the same amount:
+
+- an invocation of 60 reduces the reservation to 40 (still `active`);
+- a further invocation of 25 reduces it to 15 (still `active`);
+- a further invocation of 15 reduces it to exactly 0 — at that point the
+  reservation is CLOSED (`status` → `released`), because an ACTIVE
+  reservation must never show a zero remaining quantity.
+
+Invocation itself remains exactly what it already was: partial, repeatable,
+with no fixed count limit, bounded only by `invokedBaseQuantity <=
+baseQuantity`; it never touches `on_hand`; and it never requires or implies a
+Warehouse Issue (C-52 remains a wholly separate, later task — this decision
+only defines what the EXISTING, module-local `invokeLine` traceability
+primitive does to the EXISTING, module-local reservation it itself created;
+it does not design or admit anything about receipts, postings, or physical
+movement). A line with no reservation invokes exactly as before — only its
+own counters move.
+
+### 21.2 How this differs from reversal/cancellation's release
+
+`reverseApproval` and `cancel` RELEASE an unconsumed claim back to available
+stock — the released row keeps showing the full amount that was given back,
+for audit. Invocation CONSUMES a claim — nothing is given back, the stock
+was carried into a downstream process, so the terminal row shows zero
+remaining rather than the pre-consumption amount. Both are decrements of
+`inventory_balances.reserved` and both leave `on_hand` untouched, but they
+are recorded as distinct `inventory_operations` kinds
+(`reservation_release` vs. the new `reservation_consume`) precisely because
+reconciliation needs to tell "returned to the pool" apart from "carried
+downstream" — one new closed-list operation value was added for this
+(`backend/src/modules/inventory/domain/inventory-operation.ts`), not a new
+parallel audit mechanism.
+
+### 21.3 Interaction with the already-decided cancellation/reversal block
+
+Unchanged: once ANY line has been invoked, even partially, both cancellation
+and approval reversal of the whole request remain blocked (Owner decision,
+§20.2/§20.4). What changes is only what the reservation LOOKS LIKE while
+that block is in effect: it now accurately shows the uninvoked remainder
+(e.g. 40, not 100) rather than an amount that silently diverged from reality.
+This was the concrete risk §20.4 flagged — a reservation showing a stale
+total while part of it had already been carried downstream — and it is now
+closed by construction: the reservation's own quantity is the single source
+of truth for "how much remains claimed," updated in the same transaction as
+every invocation that touches it.
+
+### 21.4 Implementation
+
+- `backend/src/modules/inventory/data/inventory-locks.ts` —
+  `lockReservationRow` now also returns the reservation's entered-unit
+  `quantity` (previously only `baseQuantity`), needed to keep the
+  entered/base pair exact during a partial consumption.
+- `backend/src/modules/inventory/data/inventory-core-rows.ts` — the
+  `ReservationDelegate.update` data type gained three new precise update
+  shapes (`ReservationPartialConsumeUpdate`, `ReservationConsumedCloseUpdate`,
+  `ReservationReopenUpdate`) alongside the existing `ReservationReleaseUpdate`
+  — each names exactly one reservation-lifecycle transition, matching this
+  module's existing preference for precise named update shapes over a single
+  loose partial-update type.
+- `backend/src/modules/inventory/domain/inventory-operation.ts` — added
+  `reservation_consume` to the closed-list `INVENTORY_OPERATIONS` vocabulary.
+- `backend/src/modules/inventory/data/material-requests.repository.ts` —
+  `reserveInvocationCapacity` now, in the SAME transaction as its existing
+  line-counter check-and-increment: locks the reservation row (when one
+  exists), verifies it is ACTIVE/positive/consistent/sufficient (failing
+  closed with `BalanceDriftError` on any stored-data inconsistency — never
+  silently repaired), decrements it (and `inventory_balances.reserved` by the
+  same amount, never `on_hand`), and closes it at exactly zero.
+  `releaseInvocationCapacity` (the existing compensation path for a failed
+  downstream Document Relation write) now also restores the reservation —
+  and reopens it if the failed attempt had closed it — to precisely its
+  pre-attempt state, using the exact amounts the forward step recorded
+  (never re-derived from the by-then-mutated stored state).
+- `backend/src/modules/inventory/application/material-requests.service.ts`
+  — `invokeLine` passes the entered-unit invoked quantity through verbatim
+  (never re-resolving unit conversions from current master data — the
+  line's already-recorded `conversionFactor` is authoritative) and
+  propagates the repository's reservation-consumption result into the
+  compensation call on a `linkDocuments` failure.
+- Tests: `material-requests.service.spec.ts` gained a
+  `FakeMaterialRequestsRepository` reservation model (quantity/baseQuantity/
+  status) and 8 new unit tests (partial consumption, multiple consumptions
+  down to closure, single full-amount consumption, exceeding remaining
+  capacity, no-reservation invocation, compensation restoring a partial
+  consumption, compensation reopening a closed reservation, and
+  cancellation/reversal still blocked with the reservation correctly showing
+  only the uninvoked remainder). `material-requests-live.e2e-spec.ts` gained
+  4 new real-Postgres scenarios covering the same ground end to end
+  (including a genuine — not mocked — downstream-relation failure via a
+  self-referencing invocation, and a real concurrent-invocation race against
+  one reservation).
+
+### 21.5 OQ-66 disposition
+
+`docs/open-questions.md` OQ-66 is now marked RESOLVED (moved to the
+"Resolved" table) — every sub-question §11.1 originally asked about the
+reservation's shape, lifecycle, and what releases/consumes it is now an
+explicit, implemented, tested Owner decision. What remains unscoped is not a
+reservation question at all: a future C-52 Warehouse Issue task would still
+need its own investigation for whatever is specific to posting a physical
+issue (costing, movement creation, document content) — but how an invoked
+Material Request line's reservation behaves is no longer one of those
+unknowns, regardless of what eventually invokes it.

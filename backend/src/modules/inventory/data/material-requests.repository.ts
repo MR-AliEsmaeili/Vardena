@@ -62,6 +62,19 @@ import type { OrderBy } from './master-data-rows.js';
  * all if any line has already been invoked, checked under the SAME Material
  * Request row lock `reserveInvocationCapacity` takes — so neither can race a
  * concurrent first invocation.
+ *
+ * `reserveInvocationCapacity` is the THIRD, distinct way a reservation's
+ * quantity moves (Owner decision, C-50 §3.8): every successful invocation of
+ * a line that carries an ACTIVE reservation CONSUMES the invoked amount from
+ * it — proportionally reducing `quantity`/`baseQuantity` while it stays
+ * ACTIVE, or closing it (`status` → `released`) the moment it reaches
+ * exactly zero. Unlike `reverseApproval`/`cancel` (which release an
+ * UNCONSUMED claim back to available stock), consumption never happens more
+ * than once per invocation and never returns anything to the pool — the
+ * stock was carried into a downstream process, not given back. Invocation
+ * itself remains partial and repeatable with no fixed count limit, and never
+ * requires or implies a Warehouse Issue (C-52 remains a separate, later
+ * task) — this module only ever draws down its OWN reservation claim.
  */
 
 export interface MaterialRequestListFilter {
@@ -244,14 +257,61 @@ export interface ReserveInvocationCapacityInput {
   /** Base-unit magnitude being invoked now. Decimal string, always > 0 —
    *  validated by the caller before this is reached. */
   invokedBase: string;
+  /** The SAME magnitude, in the line's own entered unit (`line.unitId`) —
+   *  the exact value the caller validated and converted via
+   *  `multiplyDecimalStrings(invokedEntered, line.conversionFactor)` to
+   *  produce `invokedBase`. Passed through, never re-derived here (C-50
+   *  Owner decision: invocation uses the line's already-recorded
+   *  conversion, it never re-resolves unit conversions from current master
+   *  data), so the reservation's own entered-unit `quantity` column can be
+   *  decremented by exactly this amount, in lockstep with `invokedBase`. */
+  invokedEntered: string;
   now: Date;
   actorId: string | null;
+}
+
+/**
+ * Exactly what one invocation attempt took from a line's ACTIVE reservation
+ * (C-50 §3.8/Owner decision: every successful invocation consumes the
+ * corresponding amount from the active reservation). `null` when the line
+ * had no reservation at all — invocation then touches only the line's own
+ * counters, never `inventory_reservations`/`inventory_balances`.
+ *
+ * Carried verbatim into `releaseInvocationCapacity` so a failed downstream
+ * Document Relation write can compensate EXACTLY this amount (and reopen the
+ * reservation if this attempt had closed it) without re-deriving anything
+ * from the (by then mutated) stored state.
+ */
+export interface ReservationConsumptionResult {
+  reservationId: string;
+  /** Base-unit amount this attempt removed from the reservation. */
+  consumedBase: string;
+  /** Entered-unit amount this attempt removed from the reservation. */
+  consumedEntered: string;
+  /** `true` when this attempt reduced the reservation to exactly zero and
+   *  therefore closed it (`status` → `released`); `false` for a partial
+   *  consumption that left it ACTIVE with a smaller remaining quantity. */
+  closed: boolean;
 }
 
 export interface InvocationCapacityResult {
   invokedBaseQuantity: string;
   remainingBaseQuantity: string;
   invocationCount: number;
+  reservationConsumption: ReservationConsumptionResult | null;
+}
+
+export interface ReleaseInvocationCapacityInput {
+  id: string;
+  lineId: string;
+  invokedBase: string;
+  now: Date;
+  actorId: string | null;
+  /** The exact result `reserveInvocationCapacity` returned for the attempt
+   *  being compensated — `null` when that attempt touched no reservation.
+   *  Required to restore the reservation (and reopen it if this attempt had
+   *  closed it) to precisely its pre-attempt state. */
+  reservationConsumption: ReservationConsumptionResult | null;
 }
 
 @Injectable()
@@ -886,29 +946,71 @@ export class MaterialRequestsRepository {
   /**
    * Atomically reserve `invokedBase` units of one line's remaining
    * invocation capacity (C-50 §3.8, review finding #4 — concurrency and the
-   * 1000-relation pagination cap).
+   * 1000-relation pagination cap) AND, when the line carries an ACTIVE
+   * reservation, consume the identical amount from it in the SAME
+   * transaction (Owner decision: "every successful invocation consumes the
+   * corresponding amount from that active reservation"). A line with no
+   * reservation is invoked exactly as before — only its own counters move.
    *
    * Locks the Material Request HEADER row for the lifetime of this
    * transaction — the same row every other mutating method here locks — so
    * two concurrent `invokeLine` calls (same line or not) always serialize:
-   * the second one's read of `invoked_base_quantity` is guaranteed to see
-   * the first's committed increment before it checks the cap. This is what
+   * the second one's read of `invoked_base_quantity` (and, when a
+   * reservation exists, of the reservation row itself) is guaranteed to see
+   * the first's committed state before it checks capacity. This is what
    * makes the cap race-free WITHOUT needing a lock on
    * `documents.document_relations` (a different module's table this
    * repository must never touch directly, AR-07) and without depending on
    * that table's page size at all: the authoritative total lives on this
-   * line, not in a query over an unbounded number of relation rows.
+   * line (and, when flagged, its reservation), not in a query over an
+   * unbounded number of relation rows.
+   *
+   * Invocation is partial and repeatable with NO fixed count limit — a line
+   * may be invoked any number of times as long as the cumulative total
+   * never exceeds `baseQuantity`; the reservation (if any) is drawn down in
+   * lockstep, one invocation at a time, and closed — never left ACTIVE with
+   * a zero remaining quantity — the moment it reaches exactly zero.
+   *
+   * Reservation consumption, once the line's own capacity check passes:
+   *   1. lock the reservation row (`FOR UPDATE`, the same primitive
+   *      `approve`/`releaseActiveReservationsForLines` already use);
+   *   2. defensively verify it is ACTIVE, strictly positive, and actually
+   *      describes this line's own organization/branch/warehouse/item, and
+   *      that it can cover the invoked amount — any mismatch is stored-data
+   *      drift (ADR-0017), never a legitimate business outcome under this
+   *      module's own arithmetic, so it fails closed with
+   *      `BalanceDriftError` rather than silently tolerating or "fixing"
+   *      the inconsistency;
+   *   3. lock the corresponding balance row and decrement `reserved` by the
+   *      consumed base quantity — `onHand` is NEVER touched here, because a
+   *      reservation is a soft claim, not a movement, and invocation itself
+   *      is traceability, not a Warehouse Issue (C-52 remains separate);
+   *   4. reduce the reservation's own `quantity`/`baseQuantity` by the
+   *      consumed entered/base amounts (the entered-unit amount is the
+   *      caller's `invokedEntered`, NOT re-derived from current master
+   *      data — the line's already-recorded `conversionFactor` is
+   *      authoritative); if that reaches exactly zero, close it
+   *      (`status` → `released`, with zeroed quantities — nothing is
+   *      "released back" to available stock, it was consumed) instead of
+   *      leaving an ACTIVE reservation with nothing left.
    *
    * The caller (`MaterialRequestsService.invokeLine`) must call this BEFORE
    * writing the Document Relation, and `releaseInvocationCapacity` to
-   * compensate if that write then fails — a failed invocation must never
-   * have consumed capacity.
+   * compensate — restoring the line counters, the reservation's quantity,
+   * and the balance's `reserved` counter, and reopening the reservation if
+   * this attempt had closed it — if that write then fails: a failed
+   * invocation must never have consumed capacity or reservation quantity.
    *
    * @throws MaterialRequestStatusError when the request is not approved.
    * @throws MaterialRequestLineNotFoundError when the line does not belong
    *   to this request (defense in depth — the caller already resolved it).
    * @throws MaterialRequestInvocationCapacityError when `invokedBase`
    *   exceeds what remains on the line.
+   * @throws BalanceDriftError when the line's reservation (if any) does not
+   *   describe this exact line, is not ACTIVE, has a non-positive or
+   *   internally inconsistent quantity, cannot cover the invoked amount, or
+   *   would drive `reserved` negative — every case is stored-data
+   *   corruption, never a legitimate business outcome.
    */
   async reserveInvocationCapacity(
     input: ReserveInvocationCapacityInput,
@@ -934,6 +1036,142 @@ export class MaterialRequestsRepository {
           requested: input.invokedBase,
         });
       }
+
+      let reservationConsumption: ReservationConsumptionResult | null = null;
+      if (line.reservationId !== null) {
+        const reservationLock = await lockReservationRow(
+          tx,
+          line.reservationId,
+        );
+        if (
+          reservationLock === null ||
+          reservationLock.status !== 'active' ||
+          reservationLock.organizationId !== input.organizationId ||
+          reservationLock.branchId !== line.branchId ||
+          reservationLock.warehouseId !== line.warehouseId ||
+          reservationLock.itemId !== line.itemId ||
+          compareDecimalStrings(reservationLock.quantity, '0') <= 0 ||
+          compareDecimalStrings(reservationLock.baseQuantity, '0') <= 0
+        ) {
+          throw new BalanceDriftError();
+        }
+        if (
+          compareDecimalStrings(
+            input.invokedBase,
+            reservationLock.baseQuantity,
+          ) > 0 ||
+          compareDecimalStrings(
+            input.invokedEntered,
+            reservationLock.quantity,
+          ) > 0
+        ) {
+          throw new BalanceDriftError();
+        }
+
+        const nextReservationBase = subtractDecimalStrings(
+          reservationLock.baseQuantity,
+          input.invokedBase,
+        );
+        const nextReservationQuantity = subtractDecimalStrings(
+          reservationLock.quantity,
+          input.invokedEntered,
+        );
+        const baseClosed =
+          compareDecimalStrings(nextReservationBase, '0') === 0;
+        const enteredClosed =
+          compareDecimalStrings(nextReservationQuantity, '0') === 0;
+        if (
+          baseClosed !== enteredClosed ||
+          compareDecimalStrings(nextReservationBase, '0') < 0 ||
+          compareDecimalStrings(nextReservationQuantity, '0') < 0
+        ) {
+          // The entered/base pair drifted out of the proportional lockstep
+          // this module's own arithmetic always maintains — a defect, not a
+          // business outcome.
+          throw new BalanceDriftError();
+        }
+
+        const { balance } = await lockBalanceRow(
+          tx,
+          {
+            organizationId: reservationLock.organizationId,
+            branchId: reservationLock.branchId,
+            warehouseId: reservationLock.warehouseId,
+            itemId: reservationLock.itemId,
+          },
+          input.actorId,
+        );
+        const resultingReserved = subtractDecimalStrings(
+          balance.reserved,
+          input.invokedBase,
+        );
+        if (compareDecimalStrings(resultingReserved, '0') < 0) {
+          throw new BalanceDriftError();
+        }
+
+        // Globally unique (never reused, even across a compensated-and-
+        // retried attempt on the same line) — this operation row is a pure
+        // audit entry, never replayed by idempotency key, exactly like
+        // `reservation_create`/`reservation_release` above.
+        const consumeOperationKey = `material-request-invoke:${generateId()}`;
+        if (baseClosed) {
+          await tx.inventoryReservation.update({
+            where: { id: line.reservationId },
+            data: {
+              status: 'released',
+              quantity: '0',
+              baseQuantity: '0',
+              releasedAt: input.now,
+              releasedBy: input.actorId,
+              releaseOperationKey: consumeOperationKey,
+              updatedAt: input.now,
+              updatedBy: input.actorId,
+            },
+          });
+        } else {
+          await tx.inventoryReservation.update({
+            where: { id: line.reservationId },
+            data: {
+              quantity: nextReservationQuantity,
+              baseQuantity: nextReservationBase,
+              updatedAt: input.now,
+              updatedBy: input.actorId,
+            },
+          });
+        }
+        await adjustBalanceCounters(tx, {
+          balanceId: balance.id,
+          onHandDelta: '0',
+          reservedDelta: `-${input.invokedBase}`,
+          lastMovementAt: balance.lastMovementAt,
+          updatedAt: input.now,
+          updatedBy: input.actorId,
+        });
+        await tx.inventoryOperation.create({
+          data: {
+            id: generateId(),
+            organizationId: input.organizationId,
+            operationKey: consumeOperationKey,
+            operation: 'reservation_consume',
+            requestHash: sha256Hex(consumeOperationKey),
+            result: {
+              kind: 'reservation',
+              reservationId: line.reservationId,
+            },
+            createdAt: input.now,
+            updatedAt: input.now,
+            createdBy: input.actorId,
+          },
+        });
+
+        reservationConsumption = {
+          reservationId: line.reservationId,
+          consumedBase: input.invokedBase,
+          consumedEntered: input.invokedEntered,
+          closed: baseClosed,
+        };
+      }
+
       const nextInvoked = addDecimalStrings(invokedSoFar, input.invokedBase);
       const nextCount = line.invocationCount + 1;
       await tx.materialRequestLine.update({
@@ -952,26 +1190,34 @@ export class MaterialRequestsRepository {
           input.invokedBase,
         ),
         invocationCount: nextCount,
+        reservationConsumption,
       };
     });
   }
 
   /**
-   * Compensate a reservation made by `reserveInvocationCapacity` whose
+   * Compensate an attempt made by `reserveInvocationCapacity` whose
    * Document Relation write then failed — the invocation never actually
-   * happened, so it must not have consumed capacity. No status assertion on
-   * purpose: a release must always be allowed to run, even if the request's
-   * status moved on around the failed attempt; the only invariant that
-   * matters is that capacity this attempt never truly used is given back.
-   * Floors at zero as defense in depth against a double-release.
+   * happened, so it must not have consumed capacity, reservation quantity,
+   * or balance `reserved`. No status assertion on purpose: a release must
+   * always be allowed to run, even if the request's status moved on around
+   * the failed attempt; the only invariant that matters is that nothing
+   * this attempt never truly used stays consumed.
+   *
+   * Line counters are floored at zero as defense in depth against a
+   * double-release. The reservation (when `reservationConsumption` is not
+   * `null`) is restored EXACTLY — `consumedEntered`/`consumedBase` added
+   * back, and, if this attempt had closed it, reopened (`status` → `active`,
+   * `releasedAt`/`releasedBy`/`releaseOperationKey` cleared) — using the
+   * caller-supplied amounts from the attempt being undone, never re-derived
+   * from the (by now already-mutated) stored state. If the reservation's
+   * observed state contradicts what this exact attempt should have left it
+   * in, that is stored-data corruption, never something to paper over: it
+   * fails closed with `BalanceDriftError` instead of forcing a value.
    */
-  async releaseInvocationCapacity(input: {
-    id: string;
-    lineId: string;
-    invokedBase: string;
-    now: Date;
-    actorId: string | null;
-  }): Promise<void> {
+  async releaseInvocationCapacity(
+    input: ReleaseInvocationCapacityInput,
+  ): Promise<void> {
     const client = await this.transacting();
     await client.$transaction(async (tx) => {
       await lockMaterialRequestRow(tx, input.id);
@@ -996,6 +1242,81 @@ export class MaterialRequestsRepository {
           updatedBy: input.actorId,
         },
       });
+
+      const consumption = input.reservationConsumption;
+      if (consumption !== null) {
+        const reservationLock = await lockReservationRow(
+          tx,
+          consumption.reservationId,
+        );
+        if (reservationLock === null) {
+          // The reservation row itself is gone (FK prevents deletion in
+          // practice) — nothing left to restore.
+          return;
+        }
+        if (consumption.closed) {
+          if (
+            reservationLock.status !== 'released' ||
+            compareDecimalStrings(reservationLock.quantity, '0') !== 0 ||
+            compareDecimalStrings(reservationLock.baseQuantity, '0') !== 0
+          ) {
+            // This attempt is supposed to have been the one that closed the
+            // reservation to zero; if it is not sitting exactly there now,
+            // something else already changed it — do not force a value.
+            throw new BalanceDriftError();
+          }
+          await tx.inventoryReservation.update({
+            where: { id: consumption.reservationId },
+            data: {
+              status: 'active',
+              quantity: consumption.consumedEntered,
+              baseQuantity: consumption.consumedBase,
+              releasedAt: null,
+              releasedBy: null,
+              releaseOperationKey: null,
+              updatedAt: input.now,
+              updatedBy: input.actorId,
+            },
+          });
+        } else {
+          if (reservationLock.status !== 'active') {
+            throw new BalanceDriftError();
+          }
+          await tx.inventoryReservation.update({
+            where: { id: consumption.reservationId },
+            data: {
+              quantity: addDecimalStrings(
+                reservationLock.quantity,
+                consumption.consumedEntered,
+              ),
+              baseQuantity: addDecimalStrings(
+                reservationLock.baseQuantity,
+                consumption.consumedBase,
+              ),
+              updatedAt: input.now,
+              updatedBy: input.actorId,
+            },
+          });
+        }
+        const { balance } = await lockBalanceRow(
+          tx,
+          {
+            organizationId: reservationLock.organizationId,
+            branchId: reservationLock.branchId,
+            warehouseId: reservationLock.warehouseId,
+            itemId: reservationLock.itemId,
+          },
+          input.actorId,
+        );
+        await adjustBalanceCounters(tx, {
+          balanceId: balance.id,
+          onHandDelta: '0',
+          reservedDelta: consumption.consumedBase,
+          lastMovementAt: balance.lastMovementAt,
+          updatedAt: input.now,
+          updatedBy: input.actorId,
+        });
+      }
     });
   }
 

@@ -18,6 +18,7 @@ import { MATERIAL_REQUEST_PERMISSIONS } from '../src/modules/inventory/domain/ma
 import {
   BALANCE_PERMISSIONS,
   MOVEMENT_PERMISSIONS,
+  RESERVATION_PERMISSIONS,
 } from '../src/modules/inventory/domain/inventory-core-permissions.js';
 import { MATERIAL_REQUEST_DOCUMENT_TYPE } from '../src/modules/inventory/domain/material-request-document-type.js';
 import { NumberingSeriesService } from '../src/modules/documents/application/numbering-series.service.js';
@@ -166,6 +167,22 @@ describe.skipIf(DATABASE_URL === undefined)(
       // in play; asserting a fixed formula here would be wrong for a
       // warehouse configured the other way.
       return { onHand, reserved, available };
+    }
+
+    async function getReservation(
+      agent: ReturnType<typeof request.agent>,
+      organizationId: string,
+      reservationId: string,
+    ): Promise<{ status: string; quantity: string; baseQuantity: string }> {
+      const response = await agent
+        .get(`/api/v1/inventory/reservations/${reservationId}`)
+        .query({ organizationId })
+        .expect(200);
+      return {
+        status: response.body.status as string,
+        quantity: response.body.quantity as string,
+        baseQuantity: response.body.baseQuantity as string,
+      };
     }
 
     beforeAll(async () => {
@@ -349,6 +366,12 @@ describe.skipIf(DATABASE_URL === undefined)(
           MATERIAL_REQUEST_PERMISSIONS.INVOKE,
           BALANCE_PERMISSIONS.VIEW,
           MOVEMENT_PERMISSIONS.VIEW,
+          // Read-only, so the new reservation-consumption scenarios below
+          // can assert the reservation's own quantity/status directly
+          // instead of only inferring it from the balance's `reserved`
+          // counter — still no Documents.* permission (finding #1 is
+          // unaffected).
+          RESERVATION_PERMISSIONS.VIEW,
         ],
       });
       roleId = role.id;
@@ -1533,6 +1556,494 @@ describe.skipIf(DATABASE_URL === undefined)(
           itemAId,
         );
         expect(after).toEqual(before);
+      },
+    );
+
+    it(
+      'a partial invocation consumes the reservation by exactly the ' +
+        'invoked amount, decreasing inventory reserved, leaving On Hand ' +
+        'and the request still approved',
+      async () => {
+        const before = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Invocation consumes reservation — partial',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '10',
+                reservationRequested: true,
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        const lineId = created.body.lines[0].id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const reservationId = approved.body.lines[0].reservationId as string;
+        expect(reservationId).not.toBeNull();
+
+        const afterApproval = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+        expect(afterApproval.onHand).toBeCloseTo(before.onHand, 6);
+        expect(afterApproval.reserved).toBeCloseTo(before.reserved + 10, 6);
+
+        const destination = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Invocation consumes reservation — destination',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '10',
+              },
+            ],
+          })
+          .expect(201);
+
+        const invoked = await alice
+          .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+          .query({ organizationId: orgAId })
+          .send({
+            lineId,
+            destinationModule: 'inventory',
+            destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+            destinationDocumentId: destination.body.id,
+            destinationLineId: destination.body.lines[0].id,
+            quantity: '6',
+          })
+          .expect(200);
+        expect(invoked.body.invokedBaseQuantity).toBe('6');
+        expect(invoked.body.remainingBaseQuantity).toBe('4');
+
+        const reservationAfterPartial = await getReservation(
+          alice,
+          orgAId,
+          reservationId,
+        );
+        expect(reservationAfterPartial.status).toBe('active');
+        expect(reservationAfterPartial.quantity).toBe('4');
+        expect(reservationAfterPartial.baseQuantity).toBe('4');
+
+        // `reserved` dropped by exactly the consumed amount; On Hand is
+        // untouched by invocation — it is traceability, not a movement.
+        const afterPartialInvoke = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+        expect(afterPartialInvoke.onHand).toBeCloseTo(before.onHand, 6);
+        expect(afterPartialInvoke.reserved).toBeCloseTo(before.reserved + 4, 6);
+
+        // The request is still approved — a partial invocation never
+        // changes its lifecycle status.
+        const stillApproved = await alice
+          .get(`/api/v1/inventory/material-requests/${mrId}`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        expect(stillApproved.body.status).toBe('approved');
+
+        // The remaining 4 units of reservation are still usable by a LATER
+        // invocation (no fixed invocation-count limit).
+        const second = await alice
+          .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+          .query({ organizationId: orgAId })
+          .send({
+            lineId,
+            destinationModule: 'inventory',
+            destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+            destinationDocumentId: destination.body.id,
+            destinationLineId: destination.body.lines[0].id,
+            quantity: '4',
+          })
+          .expect(200);
+        expect(second.body.invokedBaseQuantity).toBe('10');
+        expect(second.body.remainingBaseQuantity).toBe('0');
+        expect(second.body.invocationCount).toBe(2);
+
+        // Fully consumed: the reservation is now closed, never left ACTIVE
+        // with a zero remaining quantity.
+        const reservationAfterFull = await getReservation(
+          alice,
+          orgAId,
+          reservationId,
+        );
+        expect(reservationAfterFull.status).toBe('released');
+        expect(reservationAfterFull.quantity).toBe('0');
+        expect(reservationAfterFull.baseQuantity).toBe('0');
+
+        const afterFullInvoke = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+        // Fully consumed and carried downstream — back to the pre-request
+        // baseline, exactly like a real fulfillment would leave it (On Hand
+        // unaffected throughout; `reserved` returns to its starting point
+        // because nothing remains reserved, not because anything was
+        // "released back").
+        expect(afterFullInvoke).toEqual(before);
+      },
+    );
+
+    it(
+      'invoking a line with NO reservation never creates or mutates any ' +
+        "reservation, and never touches the item's reserved/On Hand balance",
+      async () => {
+        const before = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Invocation without a reservation',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '7',
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        const lineId = created.body.lines[0].id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        expect(approved.body.lines[0].reservationId).toBeNull();
+
+        const destination = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Invocation without a reservation — destination',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '7',
+              },
+            ],
+          })
+          .expect(201);
+        const invoked = await alice
+          .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+          .query({ organizationId: orgAId })
+          .send({
+            lineId,
+            destinationModule: 'inventory',
+            destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+            destinationDocumentId: destination.body.id,
+            destinationLineId: destination.body.lines[0].id,
+            quantity: '7',
+          })
+          .expect(200);
+        expect(invoked.body.invokedBaseQuantity).toBe('7');
+        expect(invoked.body.reservationId).toBeNull();
+
+        const after = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+        expect(after).toEqual(before);
+      },
+    );
+
+    it(
+      'two concurrent invocations of a reserved line cannot jointly over-' +
+        'consume either the invocation capacity or the reservation itself',
+      async () => {
+        const before = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Concurrent invocation vs. reservation',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '100',
+                reservationRequested: true,
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        const lineId = created.body.lines[0].id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const reservationId = approved.body.lines[0].reservationId as string;
+
+        const destinations: Array<{ id: string; lineId: string }> = [];
+        for (let i = 0; i < 2; i += 1) {
+          // eslint-disable-next-line no-await-in-loop
+          const destination = await alice
+            .post('/api/v1/inventory/material-requests')
+            .send({
+              organizationId: orgAId,
+              description: `Concurrent reservation-consumption destination #${i}`,
+              lines: [
+                {
+                  itemId: itemAId,
+                  warehouseId: whA1Id,
+                  unitId: unitAId,
+                  quantity: '100',
+                },
+              ],
+            })
+            .expect(201);
+          destinations.push({
+            id: destination.body.id as string,
+            lineId: destination.body.lines[0].id as string,
+          });
+        }
+
+        // 60 + 50 = 110 > 100: at most one of these may fully succeed.
+        const results = await Promise.allSettled(
+          destinations.map((destination, index) =>
+            alice
+              .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+              .query({ organizationId: orgAId })
+              .send({
+                lineId,
+                destinationModule: 'inventory',
+                destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+                destinationDocumentId: destination.id,
+                destinationLineId: destination.lineId,
+                quantity: index === 0 ? '60' : '50',
+              }),
+          ),
+        );
+        const succeeded = results.filter(
+          (r) => r.status === 'fulfilled' && r.value.status === 200,
+        );
+        const refused = results.filter(
+          (r) => r.status === 'fulfilled' && r.value.status === 422,
+        );
+        expect(results.every((r) => r.status === 'fulfilled')).toBe(true);
+        expect(succeeded).toHaveLength(1);
+        expect(refused).toHaveLength(1);
+
+        const refetched = await alice
+          .get(`/api/v1/inventory/material-requests/${mrId}`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const line = refetched.body.lines[0];
+        // Whichever one invocation won, the reservation and the line's own
+        // counters must agree exactly — neither over- nor under-consumed.
+        const reservation = await getReservation(alice, orgAId, reservationId);
+        expect(reservation.status).toBe('active');
+        expect(reservation.baseQuantity).toBe(line.remainingBaseQuantity);
+        expect(
+          Number(line.invokedBaseQuantity) + Number(reservation.baseQuantity),
+        ).toBeCloseTo(100, 6);
+        expect(Number(reservation.baseQuantity)).toBeGreaterThanOrEqual(0);
+
+        const afterRace = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+        expect(afterRace.onHand).toBeCloseTo(before.onHand, 6);
+        expect(afterRace.reserved).toBeCloseTo(
+          before.reserved + Number(reservation.baseQuantity),
+          6,
+        );
+      },
+    );
+
+    it(
+      'a downstream relation write that fails AFTER invocation capacity is ' +
+        'reserved restores the reservation, its balance contribution, and ' +
+        'the invocation counters to their exact pre-attempt state',
+      async () => {
+        const before = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+
+        const created = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Compensation restores reservation',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '10',
+                reservationRequested: true,
+              },
+            ],
+          })
+          .expect(201);
+        const mrId = created.body.id as string;
+        const lineId = created.body.lines[0].id as string;
+        await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/submit`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const approved = await alice
+          .post(`/api/v1/inventory/material-requests/${mrId}/approve`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        const reservationId = approved.body.lines[0].reservationId as string;
+
+        const afterApproval = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+        expect(afterApproval.reserved).toBeCloseTo(before.reserved + 10, 6);
+
+        // Invoking a Material Request line INTO ITSELF passes every
+        // pre-invocation destination check (the document genuinely exists,
+        // belongs to this organization, and the line genuinely exists on
+        // it) but is refused by `DocumentRelationsService.linkDocuments`
+        // itself as a self-referencing relation — a REAL failure that
+        // happens strictly AFTER `reserveInvocationCapacity` has already
+        // committed, exercising the actual compensation path end to end
+        // (not a mocked failure).
+        const refused = await alice
+          .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+          .query({ organizationId: orgAId })
+          .send({
+            lineId,
+            destinationModule: 'inventory',
+            destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+            destinationDocumentId: mrId,
+            destinationLineId: lineId,
+            quantity: '6',
+          });
+        expect(refused.status).toBe(422);
+
+        const refetched = await alice
+          .get(`/api/v1/inventory/material-requests/${mrId}`)
+          .query({ organizationId: orgAId })
+          .expect(200);
+        expect(refetched.body.lines[0].invokedBaseQuantity).toBe('0');
+        expect(refetched.body.lines[0].invocationCount).toBe(0);
+        expect(refetched.body.lines[0].remainingBaseQuantity).toBe('10');
+
+        const reservation = await getReservation(alice, orgAId, reservationId);
+        expect(reservation.status).toBe('active');
+        expect(reservation.quantity).toBe('10');
+        expect(reservation.baseQuantity).toBe('10');
+
+        const afterCompensation = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+        expect(afterCompensation).toEqual(afterApproval);
+
+        // The reservation is still fully intact and usable by a real,
+        // valid invocation afterwards.
+        const destination = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Compensation restores reservation — destination',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA1Id,
+                unitId: unitAId,
+                quantity: '10',
+              },
+            ],
+          })
+          .expect(201);
+        const succeeded = await alice
+          .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+          .query({ organizationId: orgAId })
+          .send({
+            lineId,
+            destinationModule: 'inventory',
+            destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+            destinationDocumentId: destination.body.id,
+            destinationLineId: destination.body.lines[0].id,
+            quantity: '10',
+          })
+          .expect(200);
+        expect(succeeded.body.invokedBaseQuantity).toBe('10');
+        const reservationAfterReal = await getReservation(
+          alice,
+          orgAId,
+          reservationId,
+        );
+        expect(reservationAfterReal.status).toBe('released');
+        expect(reservationAfterReal.quantity).toBe('0');
+        expect(reservationAfterReal.baseQuantity).toBe('0');
+
+        const afterReal = await availabilitySnapshot(
+          alice,
+          orgAId,
+          whA1Id,
+          itemAId,
+        );
+        expect(afterReal).toEqual(before);
       },
     );
   },
