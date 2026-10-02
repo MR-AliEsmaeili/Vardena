@@ -20,6 +20,7 @@ import {
   MOVEMENT_PERMISSIONS,
 } from '../src/modules/inventory/domain/inventory-core-permissions.js';
 import { MATERIAL_REQUEST_DOCUMENT_TYPE } from '../src/modules/inventory/domain/material-request-document-type.js';
+import { NumberingSeriesService } from '../src/modules/documents/application/numbering-series.service.js';
 import { createTestApp } from './support/test-app.js';
 
 /**
@@ -96,6 +97,14 @@ describe.skipIf(DATABASE_URL === undefined)(
     const bobPassword = 'Bob-live-password-1';
 
     const http = () => app!.getHttpServer();
+
+    // Logged in ONCE in `beforeAll` and reused by every `it()` below (each
+    // `request.agent` keeps its own session cookie across calls): POST
+    // /auth/login carries a strict per-window rate limit (security.md §5,
+    // 10 attempts / 15 minutes by default) that a fresh login per test would
+    // exhaust well before this suite finishes.
+    let alice: ReturnType<typeof request.agent>;
+    let bob: ReturnType<typeof request.agent>;
 
     async function loggedInAgent(
       username: string,
@@ -174,6 +183,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       const users = app.get(UsersService);
       const roles = app.get(RolesService);
       const userRoles = app.get(UserRolesService);
+      const numberingSeries = app.get(NumberingSeriesService);
 
       // ---- Master data (system context, same posture as every other
       // *-live.e2e-spec.ts: trusted setup, not itself under test). ----
@@ -187,6 +197,18 @@ describe.skipIf(DATABASE_URL === undefined)(
       });
       orgAId = orgA.id;
       orgBId = orgB.id;
+
+      // `submit()` allocates a number via the Documents Foundation's own
+      // numbering series (default, org-wide scope — the Material Request
+      // service passes no `scopeKey`); without this, every submit in this
+      // suite would fail with "no numbering series configured" — a fixture
+      // requirement, not a Material Request business rule under test here.
+      await numberingSeries.createNumberingSeries({
+        organizationId: orgAId,
+        documentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+        name: `Material Request live ${suffix}`,
+        width: 4,
+      });
 
       const branchA = await branches.createBranch({
         organizationId: orgAId,
@@ -324,16 +346,16 @@ describe.skipIf(DATABASE_URL === undefined)(
       });
       roleId = role.id;
 
-      const alice = await users.createUser({
+      const aliceUser = await users.createUser({
         username: aliceUsername,
         password: alicePassword,
       });
-      const bob = await users.createUser({
+      const bobUser = await users.createUser({
         username: bobUsername,
         password: bobPassword,
       });
-      aliceId = alice.id;
-      bobId = bob.id;
+      aliceId = aliceUser.id;
+      bobId = bobUser.id;
 
       await userRoles.assignRoleToUser(roleId, aliceId);
       await userRoles.assignRoleToUser(roleId, bobId);
@@ -341,6 +363,9 @@ describe.skipIf(DATABASE_URL === undefined)(
       // Both are members of org A ONLY (org isolation fixture).
       await memberships.grantMembership(orgAId, aliceId);
       await memberships.grantMembership(orgAId, bobId);
+
+      alice = await loggedInAgent(aliceUsername, alicePassword);
+      bob = await loggedInAgent(bobUsername, bobPassword);
     }, 120_000);
 
     afterAll(async () => {
@@ -436,7 +461,6 @@ describe.skipIf(DATABASE_URL === undefined)(
     }, 120_000);
 
     it('holds no Documents permission of any kind (finding #1 fixture guard)', async () => {
-      const alice = await loggedInAgent(aliceUsername, alicePassword);
       const effective = await alice
         .get('/api/v1/permissions/effective')
         .expect(200);
@@ -455,8 +479,6 @@ describe.skipIf(DATABASE_URL === undefined)(
       'runs the full draft → submit → approve lifecycle, and reject, with ONLY ' +
         'Material Request permissions — no Documents.Relation.View dependency (finding #1)',
       async () => {
-        const alice = await loggedInAgent(aliceUsername, alicePassword);
-
         const created = await alice
           .post('/api/v1/inventory/material-requests')
           .send({
@@ -539,7 +561,6 @@ describe.skipIf(DATABASE_URL === undefined)(
       'refuses the WHOLE approval when a flagged line has insufficient stock, ' +
         'leaving availability and status unchanged (atomicity, no partial reservation)',
       async () => {
-        const alice = await loggedInAgent(aliceUsername, alicePassword);
         const before = await availabilitySnapshot(
           alice,
           orgAId,
@@ -594,7 +615,6 @@ describe.skipIf(DATABASE_URL === undefined)(
       'refuses the WHOLE approval when ONE of several flagged lines has ' +
         'insufficient stock — the satisfiable line is NOT partially reserved',
       async () => {
-        const alice = await loggedInAgent(aliceUsername, alicePassword);
         const before = await availabilitySnapshot(
           alice,
           orgAId,
@@ -657,8 +677,6 @@ describe.skipIf(DATABASE_URL === undefined)(
     );
 
     it("never reveals another organization's Material Requests to a non-member (404, not 403)", async () => {
-      const alice = await loggedInAgent(aliceUsername, alicePassword);
-
       await alice
         .get('/api/v1/inventory/material-requests')
         .query({ organizationId: orgBId })
@@ -699,8 +717,6 @@ describe.skipIf(DATABASE_URL === undefined)(
         '(finding #2): unregistered type, module mismatch, nonexistent / cross-org ' +
         'document, nonexistent line, and an honestly-unsupported destination',
       async () => {
-        const alice = await loggedInAgent(aliceUsername, alicePassword);
-
         const created = await alice
           .post('/api/v1/inventory/material-requests')
           .send({
@@ -818,8 +834,6 @@ describe.skipIf(DATABASE_URL === undefined)(
       'never lets concurrent invocations exceed the remaining line quantity ' +
         '(finding #4: atomic check-and-write under real concurrency)',
       async () => {
-        const alice = await loggedInAgent(aliceUsername, alicePassword);
-
         const created = await alice
           .post('/api/v1/inventory/material-requests')
           .send({
@@ -920,8 +934,6 @@ describe.skipIf(DATABASE_URL === undefined)(
       'refuses approval reversal once any line has been invoked, for the ' +
         'ORIGINAL approver too (necessary but not sufficient)',
       async () => {
-        const alice = await loggedInAgent(aliceUsername, alicePassword);
-
         const created = await alice
           .post('/api/v1/inventory/material-requests')
           .send({
@@ -996,8 +1008,6 @@ describe.skipIf(DATABASE_URL === undefined)(
       'restricts approval reversal to the ORIGINAL approver, releasing the ' +
         'reservation once that approver reverses it',
       async () => {
-        const alice = await loggedInAgent(aliceUsername, alicePassword);
-        const bob = await loggedInAgent(bobUsername, bobPassword);
         const before = await availabilitySnapshot(
           alice,
           orgAId,
@@ -1080,8 +1090,6 @@ describe.skipIf(DATABASE_URL === undefined)(
       'applies the same available-quantity rule consistently whether the ' +
         "warehouse's reservationsReduceAvailable is true or false (finding #3)",
       async () => {
-        const alice = await loggedInAgent(aliceUsername, alicePassword);
-
         for (const warehouseId of [whA1Id, whA2Id]) {
           // eslint-disable-next-line no-await-in-loop
           const before = await availabilitySnapshot(
