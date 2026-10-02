@@ -38,6 +38,11 @@ import type { Unit } from '../../src/modules/inventory/domain/unit.js';
 import type { ItemGroup } from '../../src/modules/inventory/domain/item-group.js';
 import type { Item } from '../../src/modules/inventory/domain/item.js';
 import type { UnitConversion } from '../../src/modules/inventory/domain/unit-conversion.js';
+import { planNewVersion } from '../../src/modules/inventory/domain/unit-conversion.js';
+import {
+  ConversionPlanRejectedError,
+  type PlannedVersionWrite,
+} from '../../src/modules/inventory/data/unit-conversions.repository.js';
 import type { Warehouse } from '../../src/modules/inventory/domain/warehouse.js';
 import type { HierarchyEdge } from '../../src/modules/organization/domain/hierarchy.js';
 import type { OrganizationsRepository } from '../../src/modules/organization/data/organizations.repository.js';
@@ -510,49 +515,79 @@ export class InMemoryUnitConversionsRepository {
   }
 
   /**
-   * Close the superseded version and insert the new one together, mirroring the
-   * real repository's single `$transaction`: a unit pair is never observable
-   * with two open-ended versions.
+   * Plan, close the superseded version and insert the new one together,
+   * mirroring the real repository's in-transaction behavior (advisory lock →
+   * fresh read → plan → close+insert): a unit pair is never observable with
+   * two open-ended versions, and a plan that no longer fits is rejected with
+   * the same typed error the database path throws.
    *
-   * The signature matches the real repository exactly (`create` / `supersededId`
-   * / `close`) so a drift in that contract fails to compile here rather than
-   * silently passing in a test.
+   * The contract matches the real repository (`create` / `closeAudit` in,
+   * `PlannedVersionWrite` out) so a drift in that contract fails to compile
+   * here rather than silently passing in a test.
    */
   async createGlobalVersion(input: {
     create: UnitConversion;
-    supersededId: string | null;
-    close: { validTo: Date; updatedAt: Date; updatedBy: string | null };
-  }): Promise<UnitConversion> {
+    closeAudit: { updatedAt: Date; updatedBy: string | null };
+  }): Promise<PlannedVersionWrite> {
     // `inventory.unit_conversions` has no `item_id` column; the real
     // repository's row→domain mapping fills `itemId: null`. Without this the
     // fake would return `undefined` and a global conversion would be
     // indistinguishable from a malformed one.
+    const versions = this.globals.findMany(
+      (row) =>
+        row.organizationId === input.create.organizationId &&
+        row.fromUnitId === input.create.fromUnitId &&
+        row.toUnitId === input.create.toUnitId,
+    );
     return this.writeVersion(this.globals, {
       ...input,
+      versions,
       create: { ...input.create, itemId: null },
     });
   }
 
   async createItemVersion(input: {
     create: UnitConversion;
-    supersededId: string | null;
-    close: { validTo: Date; updatedAt: Date; updatedBy: string | null };
-  }): Promise<UnitConversion> {
-    return this.writeVersion(this.items, input);
+    closeAudit: { updatedAt: Date; updatedBy: string | null };
+  }): Promise<PlannedVersionWrite> {
+    const versions = this.items.findMany(
+      (row) =>
+        row.itemId === input.create.itemId &&
+        row.fromUnitId === input.create.fromUnitId &&
+        row.toUnitId === input.create.toUnitId,
+    );
+    return this.writeVersion(this.items, { ...input, versions });
   }
 
   private writeVersion(
     table: InMemoryTable<UnitConversion>,
     input: {
       create: UnitConversion;
-      supersededId: string | null;
-      close: { validTo: Date; updatedAt: Date; updatedBy: string | null };
+      closeAudit: { updatedAt: Date; updatedBy: string | null };
+      versions: UnitConversion[];
     },
-  ): UnitConversion {
-    if (input.supersededId !== null) {
-      table.patch(input.supersededId, { ...input.close });
+  ): PlannedVersionWrite {
+    // Same planner, same detectable failure, same rollback semantics as the
+    // real in-transaction plan (in-memory is single-threaded, so the current
+    // contents ARE the post-lock snapshot).
+    const plan = planNewVersion({
+      candidate: {
+        validFrom: input.create.validFrom,
+        validTo: input.create.validTo,
+      },
+      existing: input.versions,
+    });
+    if (plan.problem !== null) {
+      throw new ConversionPlanRejectedError(plan.problem);
     }
-    return table.insert(clone(input.create));
+    if (plan.supersededId !== null) {
+      table.patch(plan.supersededId, {
+        validTo: input.create.validFrom,
+        ...input.closeAudit,
+      });
+    }
+    const conversion = table.insert(clone(input.create));
+    return { conversion, supersededConversionId: plan.supersededId };
   }
 }
 

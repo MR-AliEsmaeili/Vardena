@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
-import type { UnitConversion } from '../domain/unit-conversion.js';
+import type {
+  ConversionVersionProblem,
+  UnitConversion,
+} from '../domain/unit-conversion.js';
+import { planNewVersion } from '../domain/unit-conversion.js';
 import type { AuditColumns, OrderBy } from './master-data-rows.js';
 
 /**
@@ -15,9 +19,22 @@ import type { AuditColumns, OrderBy } from './master-data-rows.js';
  * Both are read through one repository so the service can treat "a conversion"
  * uniformly while the storage stays explicit and indexable.
  *
- * Version rows are never rewritten except to be **closed**: `closeVersion`
- * sets `valid_to` on the superseded version, which is exactly how historical
- * meaning is preserved (D-21/D-26). There is no `delete` here at all.
+ * Version rows are never rewritten except to be **closed**: supersession sets
+ * `valid_to` on the previous open-ended version, which is exactly how
+ * historical meaning is preserved (D-21/D-26). There is no `delete` here at
+ * all.
+ *
+ * **Concurrency.** A version write is read-plan-close-insert, and the plan
+ * MUST be computed against locked, fresh rows — not against a snapshot read
+ * outside the transaction. Two concurrent creates for one pair that each
+ * planned on a stale read could otherwise both insert open-ended versions
+ * (no shared row ever conflicted), leaving the pair with overlapping windows
+ * the planner then rejects forever. Every create therefore takes a
+ * pair-scoped `pg_advisory_xact_lock` FIRST, re-reads the versions, plans,
+ * closes and inserts — exactly the serialization the posting core gets from
+ * `inventory-locks.ts` (same documented concurrency-critical raw-SQL path,
+ * docs/modules.md §Inventory, AR-11). The lock is a single advisory key per
+ * unit pair, so there is no lock-ordering cycle with anything else.
  */
 
 type ConversionRow = {
@@ -68,6 +85,7 @@ interface ItemCreate extends GlobalCreate {
   itemId: string;
 }
 
+/** The only shape a version row is ever updated with: close its window. */
 interface CloseUpdate {
   validTo: Date;
   updatedAt: Date;
@@ -112,6 +130,36 @@ type Client = {
   unitConversion: GlobalDelegate;
   itemUnitConversion: ItemDelegate;
 };
+
+type RawQuery = <T>(
+  query: TemplateStringsArray,
+  ...values: unknown[]
+) => Promise<T[]>;
+
+type TxClient = Client & { $queryRaw: RawQuery };
+
+/**
+ * The version plan no longer holds against the rows re-read inside the
+ * transaction (a concurrent create changed the pair first). Plain, HTTP-free
+ * error — the application service maps it onto the stable 422 model, exactly
+ * like the posting errors in `inventory-posting-errors.ts`. The caller's
+ * whole write rolls back, so a rejected plan never half-applies.
+ */
+export class ConversionPlanRejectedError extends Error {
+  readonly problem: ConversionVersionProblem;
+
+  constructor(problem: ConversionVersionProblem) {
+    super(`Conversion version plan rejected: ${problem}.`);
+    this.name = 'ConversionPlanRejectedError';
+    this.problem = problem;
+  }
+}
+
+/** The version write plus the version it actually closed (for the event). */
+export interface PlannedVersionWrite {
+  conversion: UnitConversion;
+  supersededConversionId: string | null;
+}
 
 /** Which table a conversion version lives in. */
 export type ConversionScope = 'global' | 'item';
@@ -242,57 +290,130 @@ export class UnitConversionsRepository {
   // ---- writes -------------------------------------------------------------
 
   /**
-   * Insert a new GLOBAL version and, when it supersedes one, close the previous
-   * version in the SAME transaction. A pair is therefore never observable with
-   * two open-ended versions, and a failed close can never leave a version
-   * closed without its replacement.
+   * Insert a new GLOBAL version, closing the open-ended version it supersedes
+   * in the SAME transaction.
+   *
+   * The whole plan runs here, not in the service: the transaction first takes
+   * the pair's advisory lock, so concurrent creates for the same
+   * (organization, from, to) serialize; the planner then reads the committed
+   * rows, so its decision can never be based on a pre-lock snapshot. A pair
+   * is therefore never observable with two open-ended versions, a failed
+   * close can never leave a version closed without its replacement, and a
+   * supersession attempt that no longer fits throws
+   * `ConversionPlanRejectedError` and rolls the insert back entirely.
+   *
+   * `hashtextextended(value, seed)` is deterministic within one database, so
+   * every process computes the same advisory key for the same pair.
    */
   async createGlobalVersion(input: {
     create: GlobalCreate;
-    supersededId: string | null;
-    close: CloseUpdate;
-  }): Promise<UnitConversion> {
+    closeAudit: { updatedAt: Date; updatedBy: string | null };
+  }): Promise<PlannedVersionWrite> {
     const client = await this.prisma.getClient<
       Client & {
         $transaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>;
       }
     >();
     return client.$transaction(async (tx) => {
-      const scoped = tx as Client;
-      if (input.supersededId !== null) {
+      const scoped = tx as TxClient;
+      await scoped.$queryRaw`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(
+            ${`unit_conversions|${input.create.organizationId}|${input.create.fromUnitId}|${input.create.toUnitId}`},
+            0
+          )
+        )`;
+      const existingRows = await scoped.unitConversion.findMany({
+        where: {
+          organizationId: input.create.organizationId,
+          fromUnitId: input.create.fromUnitId,
+          toUnitId: input.create.toUnitId,
+        },
+        orderBy: [{ validFrom: 'asc' }],
+        skip: 0,
+        take: Number.MAX_SAFE_INTEGER,
+      });
+      const plan = planNewVersion({
+        candidate: {
+          validFrom: input.create.validFrom,
+          validTo: input.create.validTo,
+        },
+        existing: existingRows.map(toGlobalDomain),
+      });
+      if (plan.problem !== null) {
+        throw new ConversionPlanRejectedError(plan.problem);
+      }
+      if (plan.supersededId !== null) {
         await scoped.unitConversion.update({
-          where: { id: input.supersededId },
-          data: input.close,
+          where: { id: plan.supersededId },
+          data: {
+            validTo: input.create.validFrom,
+            updatedAt: input.closeAudit.updatedAt,
+            updatedBy: input.closeAudit.updatedBy,
+          },
         });
       }
-      return toGlobalDomain(
+      const conversion = toGlobalDomain(
         await scoped.unitConversion.create({ data: input.create }),
       );
+      return { conversion, supersededConversionId: plan.supersededId };
     });
   }
 
   /** Item-specific counterpart of `createGlobalVersion`. */
   async createItemVersion(input: {
     create: ItemCreate;
-    supersededId: string | null;
-    close: CloseUpdate;
-  }): Promise<UnitConversion> {
+    closeAudit: { updatedAt: Date; updatedBy: string | null };
+  }): Promise<PlannedVersionWrite> {
     const client = await this.prisma.getClient<
       Client & {
         $transaction: <T>(fn: (tx: unknown) => Promise<T>) => Promise<T>;
       }
     >();
+    const supersessionScope = `${input.create.itemId}`;
     return client.$transaction(async (tx) => {
-      const scoped = tx as Client;
-      if (input.supersededId !== null) {
+      const scoped = tx as TxClient;
+      await scoped.$queryRaw`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(
+            ${`item_unit_conversions|${supersessionScope}|${input.create.fromUnitId}|${input.create.toUnitId}`},
+            0
+          )
+        )`;
+      const existingRows = await scoped.itemUnitConversion.findMany({
+        where: {
+          itemId: input.create.itemId,
+          fromUnitId: input.create.fromUnitId,
+          toUnitId: input.create.toUnitId,
+        },
+        orderBy: [{ validFrom: 'asc' }],
+        skip: 0,
+        take: Number.MAX_SAFE_INTEGER,
+      });
+      const plan = planNewVersion({
+        candidate: {
+          validFrom: input.create.validFrom,
+          validTo: input.create.validTo,
+        },
+        existing: existingRows.map(toItemDomain),
+      });
+      if (plan.problem !== null) {
+        throw new ConversionPlanRejectedError(plan.problem);
+      }
+      if (plan.supersededId !== null) {
         await scoped.itemUnitConversion.update({
-          where: { id: input.supersededId },
-          data: input.close,
+          where: { id: plan.supersededId },
+          data: {
+            validTo: input.create.validFrom,
+            updatedAt: input.closeAudit.updatedAt,
+            updatedBy: input.closeAudit.updatedBy,
+          },
         });
       }
-      return toItemDomain(
+      const conversion = toItemDomain(
         await scoped.itemUnitConversion.create({ data: input.create }),
       );
+      return { conversion, supersededConversionId: plan.supersededId };
     });
   }
 }
