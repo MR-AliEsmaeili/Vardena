@@ -50,6 +50,19 @@
 > unchanged; this is not an authorization record and resolves no OQ, and does
 > not retroactively bless the reservation shape either.
 >
+> **Post-merge reconciliation (2026-10-03, `main` @ `ca981018`):** the
+> chronological paragraph above is superseded for current state. PR #112 is
+> **MERGED**, exact-main CI run `37100066679` is green, and C-50 is
+> **IMPLEMENTED — NOT ACCEPTED**. Subsequent explicit Owner decisions in the
+> C-50 brief §§20–21 now govern Material Request's own lifecycle, approval
+> authority and reservation behavior; OQ-66 is RESOLVED. They do **not** close
+> platform-wide OQ-13/OQ-26/OQ-54. The next dependency-ready step is a bounded
+> **C-54 quantity Kardex investigation**; C-51 quantity Receipt is the least
+> blocked next operational document but needs its own Owner decisions first.
+> Full report:
+> [`../tasks/post-c-50-dependency-reconciliation-and-next-slice-readiness.md`](../tasks/post-c-50-dependency-reconciliation-and-next-slice-readiness.md).
+> This addendum authorizes no implementation and records no acceptance.
+>
 > **Current-state addendum (2026-09-29):** the original inspection baseline and
 > inventory below are a dated planning snapshot. Current `main` is
 > `34dddfd60d6ce2f9d4599bd05b440556a80aa847`: Task 30 adds Account Nature/Type
