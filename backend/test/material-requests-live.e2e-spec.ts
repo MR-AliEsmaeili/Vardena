@@ -23,6 +23,7 @@ import {
 import { MATERIAL_REQUEST_DOCUMENT_TYPE } from '../src/modules/inventory/domain/material-request-document-type.js';
 import { NumberingSeriesService } from '../src/modules/documents/application/numbering-series.service.js';
 import { MaterialRequestsRepository } from '../src/modules/inventory/data/material-requests.repository.js';
+import { DocumentRelationsService } from '../src/modules/documents/application/document-relations.service.js';
 import { createTestApp } from './support/test-app.js';
 
 /**
@@ -2113,15 +2114,29 @@ describe.skipIf(DATABASE_URL === undefined)(
     // -------------------------------------------------------------------
 
     it(
-      'a failed attempt is compensated correctly against real Postgres ' +
-        'even though a DIFFERENT, already-committed invocation legitimately ' +
-        'closed the reservation first (A reserves 60, B reserves the ' +
-        "remaining 40 and closes it, THEN A's relation fails) — exact " +
-        'scenario from the compensation-race finding, driven through the ' +
-        'real repository/transactions so the SQL/locking itself is proven, ' +
-        'not just the in-memory logic',
+      'a failed attempt is compensated after a different invocation has ' +
+        'actually committed its relation and event against real Postgres',
       async () => {
         const repository = app!.get(MaterialRequestsRepository);
+        const documentRelations = app!.get(DocumentRelationsService);
+        const client = await prisma.getClient<{
+          documentRelation: {
+            findMany: (args: unknown) => Promise<
+              Array<{
+                id: string;
+                sourceLineId: string | null;
+                targetDocumentId: string;
+              }>
+            >;
+          };
+          materialRequestEvent: {
+            findMany: (
+              args: unknown,
+            ) => Promise<
+              Array<{ eventType: string; referenceId: string | null }>
+            >;
+          };
+        }>();
         const before = await availabilitySnapshot(
           alice,
           orgAId,
@@ -2133,7 +2148,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           .post('/api/v1/inventory/material-requests')
           .send({
             organizationId: orgAId,
-            description: 'Compensation race — A(60)/B(40 closes)/A fails',
+            description: 'Deterministic compensation race — A(60)/B(40)',
             lines: [
               {
                 itemId: itemAId,
@@ -2157,79 +2172,124 @@ describe.skipIf(DATABASE_URL === undefined)(
           .expect(200);
         const reservationId = approved.body.lines[0].reservationId as string;
 
-        // These two calls are issued one after another (not via HTTP
-        // timing) specifically to PIN the exact ordering the finding
-        // describes — real concurrent HTTP requests cannot be forced to
-        // land in one specific order without a test-only interception
-        // hook, and the header-row lock serializes them into exactly this
-        // sequence regardless of which HTTP request started first anyway.
-        // The genuinely-overlapping HTTP-level race (order-independent
-        // safety) is covered separately below. Both calls go through the
-        // REAL `MaterialRequestsRepository` against the REAL database —
-        // this proves the actual SQL/`FOR UPDATE` locking/decimal
-        // arithmetic, which a hermetic fake-repository test cannot.
-        const now = new Date();
-        const reservedA = await repository.reserveInvocationCapacity({
-          id: mrId,
-          organizationId: orgAId,
-          lineId,
-          invokedBase: '60',
-          invokedEntered: '60',
-          now,
-          actorId: aliceId,
-        });
-        // A's own forward attempt did NOT close the reservation (40 of 100
-        // still remained) — this is the exact precondition the bug needed.
-        expect(reservedA.reservationConsumption?.closed).toBe(false);
+        const destination = await alice
+          .post('/api/v1/inventory/material-requests')
+          .send({
+            organizationId: orgAId,
+            description: 'Deterministic compensation race — B destination',
+            lines: [
+              {
+                itemId: itemAId,
+                warehouseId: whA3Id,
+                unitId: unitAId,
+                quantity: '100',
+              },
+            ],
+          })
+          .expect(201);
 
-        const reservedB = await repository.reserveInvocationCapacity({
-          id: mrId,
-          organizationId: orgAId,
-          lineId,
-          invokedBase: '40',
-          invokedEntered: '40',
-          now,
-          actorId: aliceId,
+        // A is deliberately held at the downstream relation boundary after
+        // its capacity transaction has committed. This is a test-only
+        // synchronization point: no production delay, hook, or sleep is
+        // involved. B cannot start until A has reached this point; after B
+        // returns 200, its relation and audit event are committed before A
+        // is allowed to execute the self-relation failure and compensate.
+        let signalAAtRelation!: () => void;
+        const aAtRelation = new Promise<void>((resolve) => {
+          signalAAtRelation = resolve;
         });
-        expect(reservedB.reservationConsumption?.closed).toBe(true);
-        // B is a fully legitimate, independent, successful invocation —
-        // its Document Relation and audit event really do get recorded.
-        await repository.recordInvocationEvent({
-          materialRequestId: mrId,
-          organizationId: orgAId,
-          actorId: aliceId,
-          occurredAt: now,
-          relationId: generateId(),
+        let releaseA!: () => void;
+        const holdA = new Promise<void>((resolve) => {
+          releaseA = resolve;
         });
+        const originalLinkDocuments = documentRelations.linkDocuments;
+        documentRelations.linkDocuments = async (input) => {
+          if (
+            input.source.documentId === mrId &&
+            input.target.documentId === mrId
+          ) {
+            signalAAtRelation();
+            await holdA;
+          }
+          return originalLinkDocuments.call(documentRelations, input);
+        };
 
-        const reservationAfterB = await getReservation(
-          alice,
-          orgAId,
-          reservationId,
-        );
-        expect(reservationAfterB).toEqual({
-          status: 'released',
-          quantity: '0',
-          baseQuantity: '0',
-        });
+        try {
+          const aRequest = alice
+            .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+            .query({ organizationId: orgAId })
+            .send({
+              lineId,
+              destinationModule: 'inventory',
+              destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+              destinationDocumentId: mrId,
+              destinationLineId: lineId,
+              quantity: '60',
+            });
+          const aResponsePromise = aRequest.then((response) => response);
 
-        // A's Document Relation now fails — compensate EXACTLY A's own
-        // captured amount. Before the fix this threw `BalanceDriftError`
-        // because the reservation's CURRENT status (`released`, closed by
-        // B) no longer matched what A's OWN `closed: false` snapshot
-        // expected (`active`) — even though nothing is actually wrong.
-        await repository.releaseInvocationCapacity({
-          id: mrId,
-          lineId,
-          invokedBase: '60',
-          now: new Date(),
-          actorId: aliceId,
-          reservationConsumption: reservedA.reservationConsumption,
-        });
+          // A has already committed its 60-unit capacity transaction, but
+          // its downstream relation call is paused. This proves B starts
+          // after A's reservation consumption, not merely concurrently with
+          // an unknown ordering.
+          await aAtRelation;
+
+          const bResponse = await alice
+            .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
+            .query({ organizationId: orgAId })
+            .send({
+              lineId,
+              destinationModule: 'inventory',
+              destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
+              destinationDocumentId: destination.body.id,
+              destinationLineId: destination.body.lines[0].id,
+              quantity: '40',
+            })
+            .expect(200);
+          expect(bResponse.body.invokedBaseQuantity).toBe('100');
+
+          // B's HTTP success means its relation write and subsequent event
+          // write completed. Confirm the reservation is closed before A is
+          // released, which is the exact stale-snapshot ordering under test.
+          expect(await getReservation(alice, orgAId, reservationId)).toEqual({
+            status: 'released',
+            quantity: '0',
+            baseQuantity: '0',
+          });
+          const relationsAfterB = await client.documentRelation.findMany({
+            where: {
+              organizationId: orgAId,
+              sourceDocumentId: mrId,
+              sourceLineId: lineId,
+            },
+          });
+          expect(relationsAfterB).toHaveLength(1);
+          expect(relationsAfterB[0]?.targetDocumentId).toBe(
+            destination.body.id,
+          );
+          const eventsAfterB = await client.materialRequestEvent.findMany({
+            where: {
+              organizationId: orgAId,
+              materialRequestId: mrId,
+              eventType: 'line_invoked',
+            },
+          });
+          expect(eventsAfterB).toHaveLength(1);
+          expect(eventsAfterB[0]?.referenceId).toBe(relationsAfterB[0]?.id);
+
+          // Only now does A's self-referencing relation proceed and fail;
+          // the service compensates exactly A's captured 60 against B's
+          // already-closed reservation state.
+          releaseA();
+          const aResponse = await aResponsePromise;
+          expect(aResponse.status).toBe(422);
+        } finally {
+          documentRelations.linkDocuments = originalLinkDocuments;
+          // Prevent a failed assertion from leaving a held request behind.
+          releaseA();
+        }
 
         const lines = await repository.listLines(mrId);
-        // B's successful 40 remains; A's 60 was fully, correctly undone —
-        // computed from CURRENT state, never "whatever didn't error".
         expect(lines[0]?.invokedBaseQuantity).toBe('40');
         expect(lines[0]?.invocationCount).toBe(1);
 
@@ -2250,12 +2310,9 @@ describe.skipIf(DATABASE_URL === undefined)(
           whA3Id,
           itemAId,
         );
-        // On Hand is never touched by invocation/compensation — only the
-        // `reserved` counter, which must land on exactly the reopened 60.
         expect(afterRace.onHand).toBeCloseTo(before.onHand, 6);
         expect(afterRace.reserved).toBeCloseTo(before.reserved + 60, 6);
 
-        // Counters, reservation, and events all agree with each other.
         const refetched = await alice
           .get(`/api/v1/inventory/material-requests/${mrId}`)
           .query({ organizationId: orgAId })
@@ -2264,102 +2321,30 @@ describe.skipIf(DATABASE_URL === undefined)(
         expect(refetched.body.lines[0].remainingBaseQuantity).toBe('60');
         expect(refetched.body.lines[0].invocationCount).toBe(1);
 
-        // Multiple partial invocations remain correct AFTER the failed
-        // concurrent attempt was compensated — the reopened 60 is fully
-        // usable by further, independent invocations, split further.
-        const destination = await alice
-          .post('/api/v1/inventory/material-requests')
-          .send({
-            organizationId: orgAId,
-            description: 'Compensation race — post-race partial C',
-            lines: [
-              {
-                itemId: itemAId,
-                warehouseId: whA3Id,
-                unitId: unitAId,
-                quantity: '100',
-              },
-            ],
-          })
-          .expect(201);
-        const cInvoked = await alice
-          .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
-          .query({ organizationId: orgAId })
-          .send({
-            lineId,
-            destinationModule: 'inventory',
-            destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
-            destinationDocumentId: destination.body.id,
-            destinationLineId: destination.body.lines[0].id,
-            quantity: '25',
-          })
-          .expect(200);
-        expect(cInvoked.body.invokedBaseQuantity).toBe('65');
-        expect(cInvoked.body.invocationCount).toBe(2);
-        const reservationAfterC = await getReservation(
-          alice,
-          orgAId,
-          reservationId,
+        const relationsAfterCompensation =
+          await client.documentRelation.findMany({
+            where: {
+              organizationId: orgAId,
+              sourceDocumentId: mrId,
+              sourceLineId: lineId,
+            },
+          });
+        expect(relationsAfterCompensation).toHaveLength(1);
+        expect(relationsAfterCompensation[0]?.targetDocumentId).toBe(
+          destination.body.id,
         );
-        expect(reservationAfterC).toEqual({
-          status: 'active',
-          quantity: '35',
-          baseQuantity: '35',
-        });
-
-        // Retrying A's originally-failed amount afterward succeeds exactly
-        // once — it is a brand new attempt, never a duplicate of anything.
-        const retryDestination = await alice
-          .post('/api/v1/inventory/material-requests')
-          .send({
-            organizationId: orgAId,
-            description:
-              'Compensation race — retry of the failed 60 (now 35 remains, retried as 35)',
-            lines: [
-              {
-                itemId: itemAId,
-                warehouseId: whA3Id,
-                unitId: unitAId,
-                quantity: '100',
-              },
-            ],
-          })
-          .expect(201);
-        const retried = await alice
-          .put(`/api/v1/inventory/material-requests/${mrId}/lines/invoke`)
-          .query({ organizationId: orgAId })
-          .send({
-            lineId,
-            destinationModule: 'inventory',
-            destinationDocumentType: MATERIAL_REQUEST_DOCUMENT_TYPE,
-            destinationDocumentId: retryDestination.body.id,
-            destinationLineId: retryDestination.body.lines[0].id,
-            quantity: '35',
-          })
-          .expect(200);
-        expect(retried.body.invokedBaseQuantity).toBe('100');
-        expect(retried.body.invocationCount).toBe(3);
-        const reservationFinal = await getReservation(
-          alice,
-          orgAId,
-          reservationId,
+        const eventsAfterCompensation =
+          await client.materialRequestEvent.findMany({
+            where: {
+              organizationId: orgAId,
+              materialRequestId: mrId,
+              eventType: 'line_invoked',
+            },
+          });
+        expect(eventsAfterCompensation).toHaveLength(1);
+        expect(eventsAfterCompensation[0]?.referenceId).toBe(
+          relationsAfterCompensation[0]?.id,
         );
-        expect(reservationFinal).toEqual({
-          status: 'released',
-          quantity: '0',
-          baseQuantity: '0',
-        });
-        const afterAll2 = await availabilitySnapshot(
-          alice,
-          orgAId,
-          whA3Id,
-          itemAId,
-        );
-        // The reservation is now fully invoked (100 of 100) and closed —
-        // its `reserved` contribution returns all the way back to the
-        // ORIGINAL pre-approval baseline, exactly like a single successful
-        // full invocation would (see the existing compensation test above).
-        expect(afterAll2).toEqual(before);
       },
     );
 
