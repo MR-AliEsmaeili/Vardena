@@ -130,9 +130,18 @@ Candidate: `GET /api/v1/inventory/kardex` under Inventory, requiring:
 - bounded `page`, `pageSize`, with one fixed total order;
 - no alternate display unit in the first slice.
 
-A proposed response is `{ items, total, page, pageSize, scope, opening, closing, openingBasis }`, where each item has `movementId`, `movementDate`, `createdAt`, `movementType`, `signedBaseQuantity`, `baseUnitId`, `runningBaseQuantity`, `transferId`, `reversalOfMovementId`, `referenceType`, and `referenceId`. Decimal values remain strings. `closing` is the final calculated running quantity for the selected result, not current materialized balance unless separately labelled.
+A proposed response is `{ items, total, page, pageSize, scope, opening, closing, openingBasis }`, where each item has `movementId`, `movementDate`, `createdAt`, `movementType`, `signedBaseQuantity`, `baseUnitId`, `runningBaseQuantity`, `transferId`, `reversalOfMovementId`, `referenceType`, and `referenceId`. Decimal values remain strings.
 
-Validation: reject malformed IDs/dates/page bounds and invalid ranges; return the existing organization/item/warehouse not-found behavior and standard error envelope. Authorization: authenticate, require the existing Inventory movement/balance view permission, then call organization scope enforcement; never trust an arbitrary organization ID. Pagination must not reset the running quantity at a page boundary.
+The response fields have these precise meanings:
+
+- `opening` is the ledger-derived quantity immediately before the inclusive `dateFrom`, when `dateFrom` is supplied. If `dateFrom` is absent, the report starts from zero and includes all recorded movements up to the applicable `dateTo` (or all recorded movements when `dateTo` is also absent). It is not a business opening event or a value read backward from the current materialized balance.
+- Each row's `runningBaseQuantity` is the cumulative quantity at that movement, calculated from the complete deterministic sequence of preceding movements in the filtered ledger range, not only from rows returned on the current page. Pagination must not reset the running quantity at a page boundary.
+- `closing` is the calculated quantity after the final movement in the entire filtered date range, independent of the requested page. It must not mean the last row on the current page, and it is not the current materialized balance unless separately labelled.
+- `total` counts every movement row matching the scope and date/type/reference filters, not only the rows on the current page.
+
+`opening`, `closing`, `total`, and the page rows must all be read and calculated under the same selected consistency/snapshot contract. The report must state that contract and apply it uniformly; this investigation does not choose between a coherent database snapshot and a documented weaker read-committed contract. That remains an Owner decision gate described in Section 13.
+
+Validation: reject malformed IDs/dates/page bounds and invalid ranges; return the existing organization/item/warehouse not-found behavior and standard error envelope. Authorization: authenticate, require the existing Inventory movement/balance view permission, then call organization scope enforcement; never trust an arbitrary organization ID. The proposal remains quantity-only and base-unit-only; it does not add a business opening event, valuation, accounting integration, or implementation authorization.
 
 This is a proposal only: no controller, DTO, permission, OpenAPI declaration, frontend declaration, or generated file was added.
 
