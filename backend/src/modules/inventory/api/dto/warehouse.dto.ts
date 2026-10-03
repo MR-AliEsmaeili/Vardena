@@ -56,6 +56,15 @@ export class CreateWarehouseDto {
   @IsOptional()
   @IsBoolean()
   allowNegativeStock?: boolean;
+
+  @ApiPropertyOptional({
+    default: true,
+    description:
+      'Whether ACTIVE reservations reduce the read-time "available" figure for this warehouse (C-50 §3.7). Reservations never change on-hand stock regardless of this setting.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  reservationsReduceAvailable?: boolean;
 }
 
 export class UpdateWarehouseDto {
@@ -89,6 +98,14 @@ export class UpdateWarehouseDto {
   @IsOptional()
   @IsBoolean()
   allowNegativeStock?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether ACTIVE reservations reduce the read-time "available" figure for this warehouse (C-50 §3.7).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  reservationsReduceAvailable?: boolean;
 }
 
 export class ListWarehousesQueryDto extends PageQueryDto {
@@ -137,6 +154,12 @@ export class WarehouseResponseDto {
       'Default negative-stock policy for this warehouse; an item-level override takes precedence (ADR-0022).',
   })
   allowNegativeStock!: boolean;
+
+  @ApiProperty({
+    description:
+      'Whether ACTIVE reservations reduce the read-time "available" figure for this warehouse (C-50 §3.7). Reservations never change on-hand stock regardless of this setting.',
+  })
+  reservationsReduceAvailable!: boolean;
 
   @ApiProperty()
   isActive!: boolean;

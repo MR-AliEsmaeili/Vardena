@@ -24,6 +24,7 @@ type WarehouseRow = {
   code: string;
   name: string;
   allowNegativeStock: boolean;
+  reservationsReduceAvailable: boolean;
   isActive: boolean;
 } & AuditColumns;
 
@@ -47,6 +48,7 @@ interface WarehouseCreate {
   code: string;
   name: string;
   allowNegativeStock: boolean;
+  reservationsReduceAvailable: boolean;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -58,6 +60,7 @@ interface WarehouseUpdate {
   code?: string | undefined;
   name?: string | undefined;
   allowNegativeStock?: boolean | undefined;
+  reservationsReduceAvailable?: boolean | undefined;
   isActive?: boolean | undefined;
   updatedAt: Date;
   updatedBy: string | null;
@@ -171,6 +174,7 @@ function toDomain(row: WarehouseRow): Warehouse {
     code: row.code,
     name: row.name,
     allowNegativeStock: row.allowNegativeStock,
+    reservationsReduceAvailable: row.reservationsReduceAvailable,
     isActive: row.isActive,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

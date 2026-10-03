@@ -676,6 +676,30 @@ export class InventoryAvailabilityResponseDto {
       'Effective negative-stock policy for this key: the item override when set, else the warehouse default.',
   })
   allowNegativeStock!: boolean;
+
+  @ApiProperty({
+    description:
+      "This warehouse's setting: whether ACTIVE reservations reduce the reported `available` figure (C-50). `onHand` above is never affected by this setting either way.",
+  })
+  reservationsReduceAvailable!: boolean;
+}
+
+export class ItemAvailabilityAcrossWarehousesQueryDto {
+  @ApiProperty({ format: 'ulid', description: 'Owning organization.' })
+  @IsUlid()
+  organizationId!: string;
+
+  @ApiProperty({ format: 'ulid' })
+  @IsUlid()
+  itemId!: string;
+}
+
+export class ItemWarehouseAvailabilityResponseDto extends InventoryAvailabilityResponseDto {
+  @ApiProperty({ description: "The warehouse's code, for display." })
+  warehouseCode!: string;
+
+  @ApiProperty({ description: "The warehouse's name, for display." })
+  warehouseName!: string;
 }
 
 export class ReconcileInventoryBalancesDto {

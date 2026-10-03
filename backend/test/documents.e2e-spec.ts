@@ -291,12 +291,15 @@ describe('Document Foundation (e2e)', () => {
       .get('/api/v1/documents/types')
       .query({ organizationId: state.orgId })
       .expect(200);
-    // Three types are registered in code as of Task 10.4: the two Task 8
-    // placeholders plus the real `accounting_voucher` aggregate.
-    expect(res.body.total).toBe(3);
+    // Four types are registered in code: the two Task 8 placeholders, the
+    // real `accounting_voucher` aggregate (Task 10.4), and Material
+    // Request's own type (C-50, registered for numbering only — see
+    // `inventory/domain/material-request-document-type.ts`).
+    expect(res.body.total).toBe(4);
     expect(res.body.items.map((item: { code: string }) => item.code)).toEqual([
       'accounting_journal',
       'accounting_voucher',
+      'inventory_material_request',
       'inventory_receipt',
     ]);
     const receipt = res.body.items.find(

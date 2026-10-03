@@ -8,6 +8,7 @@
 | Baseline provenance | Merge commit of [PR #110](https://github.com/MR-AliEsmaeili/Vardena/pull/110); post-merge [CI run 37023371492](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37023371492) completed successfully |
 | Roadmap identity | **C-50 Material Request** — Full Inventory/Warehouse MVP candidate |
 | Scope | Investigation, decision preparation, and minimal roadmap pointers only; no production implementation |
+| **Implementation note (2026-10-02, later)** | **See §19.** Implementation work was subsequently opened as unmerged [PR #112](https://github.com/MR-AliEsmaeili/Vardena/pull/112) without a recorded Owner answer to the OPEN items below; this does not change the status row above, which still accurately describes what was decided when this brief was written. |
 
 > **No decision is made by this report.** Every Owner answer below is pending.
 > Recommendations are explicitly labelled. Existing Open Question wording and
@@ -879,3 +880,412 @@ Owner acceptance.
   passed.
 - `git diff --check`: passed; separate trailing-whitespace/final-newline validation
   for this initially untracked report also passed.
+
+## 19. Implementation status addendum (2026-10-02, follow-up session)
+
+> **This addendum records what subsequently happened on a working branch. Per
+> §1's own evidentiary rule, GitHub's merged `main` is the official project
+> memory; an open, unmerged pull request is not accepted history. Nothing here
+> retroactively authorizes anything, and none of the OPEN items in §§1–18 are
+> resolved by it.**
+
+1. **Implementation proceeded without the record of a dedicated Owner
+   admission answering this brief's OPEN items.** A Material Request vertical
+   slice (schema, migration, repository, domain types, service, controller,
+   DTOs, unit tests) was subsequently built as an Inventory-owned aggregate —
+   consistent with this brief's §1.3 bounded-ownership finding — and opened as
+   [PR #112](https://github.com/MR-AliEsmaeili/Vardena/pull/112) on branch
+   `arena/01a0fd87-vardena`. **This investigation found no artifact recording
+   that OQ-54, OQ-13/OQ-26, or the undecided stock-reservation/C-52 wiring
+   question (§1 items 5–6) were ever closed before that work began.** Anyone
+   relying on this document should treat the implementation as having
+   proceeded on an assumed-safe subset, not as evidence those questions are
+   answered.
+2. **The contract actually implemented is narrower than C-52 in one
+   dimension (valuation/posting) but is NOT the "Defer" option §11.4 offered
+   for stock reservation — correcting an inaccuracy in an earlier version of
+   this addendum.** The Material Request aggregate is **non-valued and
+   non-posting** (no costing or accounting effect) — the shape this brief
+   identified (§1 item 4) as avoiding the valuation/costing/durable-posting
+   gates shared with C-48/C-49/C-51/C-52. It does **not** create or drive a
+   Warehouse Issue, and its document type is registered with Documents for
+   numbering (and, see below, for Document Relations) only — C-52 itself
+   remains untouched. **However, the implementation DOES reserve stock**:
+   each line carries an optional `reservationRequested` flag (Owner-shaped
+   as "per line, never auto-split across warehouses" per the line's own
+   `itemId`/`warehouseId`); approving a submitted request atomically reserves
+   every flagged line's exact quantity in its own warehouse, and refuses the
+   **whole** approval (no partial reservation) if any flagged line lacks
+   available stock; a reservation is released only when the approving user
+   explicitly reverses that approval (and reversal is itself refused once
+   any line has been invoked). This is squarely the **"Require"** branch of
+   §11.4, naming most of the questions §11.1 asked (all-or-nothing across
+   lines: yes; which warehouse: the line's own, never chosen by the system;
+   current negative-availability policy: reused as-is; release: approver
+   reversal only, not edit/withdrawal/expiry) — **but no artifact in this
+   repository records an Owner choosing "Require" over "Defer", or
+   authorizing this specific shape.** This addendum is not that
+   authorization either; it only corrects the record to say what was built.
+   Separately, "invocation" (`PUT .../lines/invoke`) records — via an
+   ordinary Document Relation, the same mechanism every other
+   document-to-document reference in this codebase uses — that an approved
+   line was carried into another document; it does not itself touch stock,
+   does not require or imply a reservation, and does not create or validate
+   any C-52 Warehouse Issue (today the only invocation destination this
+   module can honestly verify is another Material Request — see
+   `material-requests.service.ts`'s own documented limitation). A
+   single-level approve/reject/reverse lifecycle reuses existing primitives
+   rather than inventing new ones; none of this is a claim that OQ-13/OQ-26
+   (who may approve, requester-approves-own-request) have been decided — the
+   implementation picked one reversible behavior and left it
+   change-compatible.
+3. **A later review pass on PR #112 found and fixed four implementation
+   defects** unrelated to the OQ/authorization question above (an
+   unintended cross-module permission dependency in mutation responses, a
+   missing destination-existence check before downstream invocation, an
+   availability/reservation inconsistency across endpoints, and an
+   invocation-accounting page-size cap) — see the PR's commit history for
+   detail. A follow-up session added dedicated live-PostgreSQL E2E coverage
+   (`backend/test/material-requests-live.e2e-spec.ts`) exercising, against a
+   real database, the exact reservation/invocation behavior described in
+   item 2 above: all-or-nothing approval atomicity (including the
+   insufficient-stock rollback case), organization isolation, invocation
+   destination validation, invocation capacity under real concurrent
+   requests, and approver-only/post-invocation reversal restrictions. **This
+   is verification that the shipped code behaves as item 2 describes — it is
+   not, and must not be read as, Owner authorization for that behavior.** As
+   of this addendum, PR #112's CI (lint, typecheck, format, backend unit
+   tests, build, migrations, migration rehearsal, and the live-Postgres E2E
+   suite; frontend quality gates) is **green** on the PR's latest commit at
+   the time of writing, but the PR is **not merged** and carries no Owner
+   sign-off on the open product questions above.
+4. **Outstanding before this can be treated as an accepted MVP deliverable:**
+   an explicit Owner decision on OQ-54 and OQ-13/OQ-26; and — now more
+   pointed than before this correction — an explicit Owner ratification (or
+   rejection) of the SPECIFIC stock-reservation shape already shipped in PR
+   #112 (item 2 above), since §11.4 required that choice to be made and
+   recorded BEFORE implementation, not after. If the Owner does not ratify
+   this shape, the reservation code path (not just the lifecycle/approval
+   questions) would need to be reworked or disabled, not merely documented
+   around. Until then, §§1–18 of this brief remain the accurate record of
+   what was and was not decided; this addendum only records that
+   unauthorized-pending-decision implementation work exists on an open PR,
+   and should not be read as closing any OPEN item above — including, now
+   explicitly, §11's reservation question, now also tracked as
+   **OQ-66** in `docs/open-questions.md`.
+5. **Frontend Material Request UI and OpenAPI/generated-client regeneration
+   remain BLOCKED**, for two independent reasons: (a) environment — the
+   Prisma CLI's schema-engine binary download (required by `prisma
+   generate`/`validate`, which the API-docs-to-OpenAPI generation workflow
+   depends on) could not reach `binaries.prisma.sh` from the sandbox used for
+   this work; (b) governance — `docs/frontend/standards.md` §2 requires API
+   response types to come ONLY from the generated OpenAPI contract, and the
+   environment gap in (a) means that contract cannot be regenerated for
+   Material Request, so no compliant typed frontend surface can be built
+   yet. Neither gap was worked around by hand-typing a contract or
+   fabricating a destination document.
+
+## 20. Owner decisions recorded (2026-10-02, second follow-up session) — reconciliation against §§7/8/11
+
+> This section records **only** what the Owner explicitly decided in this round.
+> It does not retroactively close §7 (OQ-54), §8 (OQ-13/OQ-26), or §11.4 in
+> general — those remain open product-policy questions outside this round's
+> four named decisions. Nothing here resolves OQ-54 or OQ-13/OQ-26 as a whole;
+> `docs/open-questions.md` is updated **only** for OQ-66, per the Owner's
+> explicit scoping of this round.
+
+### 20.1 Decision 1 — reservation shape (answers §11.4 "Require", names the terms §11.4 asked for)
+
+The Owner selected the **"Require"** branch of §11.4 and named every term that
+branch requires:
+
+- Reservation is **optional**, controlled per line by `reservationRequested` —
+  not an automatic consequence of approval.
+- If selected, approval **must** reserve the exact requested item, warehouse,
+  quantity, organization, and applicable unit conversion named on the line —
+  no system-chosen warehouse, no fallback, no splitting across warehouses.
+- If a flagged line's reservation cannot be fulfilled in full, **approval of
+  the entire request fails** — no partial reservation for that line, and (this
+  was already the only way the code could behave, since `approve` is one
+  database transaction) no reservation for any other line either.
+- Reservation must **never** change physical On Hand, and existing
+  availability/concurrency guarantees are preserved unchanged.
+- No automatic warehouse fallback or splitting is introduced.
+
+This matches the shape already implemented and described in §19 item 2 — the
+Owner has now **ratified** that shape rather than it remaining an
+unauthorized-pending-decision implementation. `docs/open-questions.md`
+OQ-66 is updated accordingly (see §20.4 below for what still remains open).
+
+### 20.2 Decision 2 — document lifecycle and editing (narrows, but does not fully answer, §7/OQ-54)
+
+The Owner named a **specific lifecycle**: Draft (requester edits) → Submitted
+(awaiting approval; approver may return for correction) → Returned for
+correction (requester edits, must resubmit) → Approved (content immutable) →
+{Rejected | Cancelled}, plus the separate Approved → Submitted reversal edge.
+Cancellation of an **approved** request is permitted only if **no part** of it
+has entered a downstream process (zero invocation, including partial); once
+any invocation exists, cancellation of the **entire** request is prohibited
+(there is no partial-cancel concept). Cancellation and approval-reversal are
+distinct, independently auditable operations.
+
+This is **not** a selection of OQ-54's canonical Option A/B/C — the Owner was
+not asked that question in this round, and this report does not infer one.
+What this decision *does* settle, narrowly, for Material Request only:
+
+- there is no physical deletion of anything past `draft` (consistent with
+  Option A's "transactional documents are never soft-deleted" framing, but
+  not an adoption of Option A's full canonical content, e.g. configuration
+  surface, cross-document policy, or any other document type);
+- a canceled request stays visible with an explicit `cancelled` status and
+  its own audit columns (`cancelledAt`/`cancelledBy`/`cancellationReason`),
+  answering §7.2's "canceled visibility" concern for Material Request only;
+- the previously-undefined "posted" boundary that Option B would have needed
+  is moot for Material Request — invocation (downstream consumption), not an
+  accounting posting event, is the boundary that blocks cancellation.
+
+OQ-54 itself remains **OPEN** in `docs/open-questions.md` — this round answers
+Material Request's own lifecycle rules, not the cross-module canonical
+options §7 asks the Owner to pick from for the platform at large.
+
+### 20.3 Decisions 3 and 4 — approval authority and return-for-correction (narrows, but does not fully answer, §8/OQ-13/OQ-26)
+
+The Owner decided, for Material Request specifically: any holder of
+`Material Request Approve` may approve or reject within their authorized
+scope (no separately assigned approver role), self-approval is explicitly
+**permitted** (no requester/approver separation), and a holder of
+`Material Request Return For Correction` may return a submitted request to
+its requester, who must then resubmit before approval — with an auditable
+history of both the return and the resubmission.
+
+This answers several of §8.2's "missing semantics" bullets **for Material
+Request only**: creator/requester self-approval prohibition (answered: there
+is none), reject/resubmission/withdrawal-equivalent behavior (answered: via
+return-for-correction, not a generic workflow withdrawal), and who is
+approver (answered: any permission holder, not a named role). It does **not**
+answer §8.2's remaining bullets for the platform at large (role/permission
+mapping policy across document types, worklist/notification delivery,
+multi-level approval, delegation, escalation) and does not select a canonical
+OQ-13/OQ-26 option set. Those rows remain **OPEN** in
+`docs/open-questions.md`; this section only records that Material Request's
+own implementation now has an Owner-authorized approval-authority rule,
+narrower in scope than the platform-wide question.
+
+### 20.4 What remains genuinely open after this round (not decided, not invented)
+
+Per this round's explicit instruction to record undetermined edge cases as
+open questions rather than inventing policy:
+
+1. **Reservation consumption on invocation (C-52 handoff).** None of the four
+   decisions above say what happens to an **active** reservation once its
+   line has been invoked into a downstream document. The current
+   implementation leaves it untouched — `invokeLine` never reads or writes
+   `MaterialRequestLine.reservationId` — and, combined with Decision 2's rule
+   that cancellation and reversal are both blocked once *any* invocation
+   exists, there is **no implemented path** that ever releases a reservation
+   on a line that has been invoked (partially or fully). This is recorded as
+   the open remainder of **OQ-66** (`docs/open-questions.md`), not resolved
+   here. A future C-52 (Warehouse Issue) task must decide whether invocation
+   itself should consume/convert the reservation, whether a different
+   explicit operation is needed, or whether this is accepted as a durable
+   "reserved until Issue posts" state — none of that is decided by this
+   round's four Owner decisions.
+2. **Reservation release mechanics on cancellation/reversal, verified in
+   this round:** cancelling an approved request (with zero invocation) and
+   reversing its approval both release every active reservation the request
+   holds, restoring `inventory_balances.reserved` under the same Material
+   Request row lock `approve` used to create it
+   (`MaterialRequestsRepository.releaseActiveReservationsForLines`, shared by
+   both operations). Neither operation ever touches `onHand`, and neither
+   can run once any line has been invoked (enforced inside the same
+   transaction, under the same lock, so this is race-free). This is
+   implemented and tested (unit: `material-requests.service.spec.ts`;
+   intended for live-Postgres confirmation in
+   `material-requests-live.e2e-spec.ts`) — it is not a new open question, it
+   is the verified answer to this round's item 4 for the cases the Owner's
+   decisions actually cover (zero invocation).
+
+## 21. Owner decision recorded (2026-10-02, third follow-up session) — reservation consumption on invocation (closes §20.4 item 1 / OQ-66)
+
+> This section resolves the ONE item §20.4 flagged as genuinely undetermined
+> after the second follow-up session: what happens to a line's ACTIVE
+> reservation once it is invoked into a downstream document. It does not
+> reopen or revisit any other item in §§1–20 — OQ-54 and OQ-13/OQ-26 remain
+> exactly as scoped there.
+
+### 21.1 The decision
+
+The Owner decided: **every successful invocation of a line that carries an
+ACTIVE reservation consumes the identical amount from that reservation.**
+Concretely, for a line with `baseQuantity = 100` and an active reservation of
+the same amount:
+
+- an invocation of 60 reduces the reservation to 40 (still `active`);
+- a further invocation of 25 reduces it to 15 (still `active`);
+- a further invocation of 15 reduces it to exactly 0 — at that point the
+  reservation is CLOSED (`status` → `released`), because an ACTIVE
+  reservation must never show a zero remaining quantity.
+
+Invocation itself remains exactly what it already was: partial, repeatable,
+with no fixed count limit, bounded only by `invokedBaseQuantity <=
+baseQuantity`; it never touches `on_hand`; and it never requires or implies a
+Warehouse Issue (C-52 remains a wholly separate, later task — this decision
+only defines what the EXISTING, module-local `invokeLine` traceability
+primitive does to the EXISTING, module-local reservation it itself created;
+it does not design or admit anything about receipts, postings, or physical
+movement). A line with no reservation invokes exactly as before — only its
+own counters move.
+
+### 21.2 How this differs from reversal/cancellation's release
+
+`reverseApproval` and `cancel` RELEASE an unconsumed claim back to available
+stock — the released row keeps showing the full amount that was given back,
+for audit. Invocation CONSUMES a claim — nothing is given back, the stock
+was carried into a downstream process, so the terminal row shows zero
+remaining rather than the pre-consumption amount. Both are decrements of
+`inventory_balances.reserved` and both leave `on_hand` untouched, but they
+are recorded as distinct `inventory_operations` kinds
+(`reservation_release` vs. the new `reservation_consume`) precisely because
+reconciliation needs to tell "returned to the pool" apart from "carried
+downstream" — one new closed-list operation value was added for this
+(`backend/src/modules/inventory/domain/inventory-operation.ts`), not a new
+parallel audit mechanism.
+
+### 21.3 Interaction with the already-decided cancellation/reversal block
+
+Unchanged: once ANY line has been invoked, even partially, both cancellation
+and approval reversal of the whole request remain blocked (Owner decision,
+§20.2/§20.4). What changes is only what the reservation LOOKS LIKE while
+that block is in effect: it now accurately shows the uninvoked remainder
+(e.g. 40, not 100) rather than an amount that silently diverged from reality.
+This was the concrete risk §20.4 flagged — a reservation showing a stale
+total while part of it had already been carried downstream — and it is now
+closed by construction: the reservation's own quantity is the single source
+of truth for "how much remains claimed," updated in the same transaction as
+every invocation that touches it.
+
+### 21.4 Implementation
+
+- `backend/src/modules/inventory/data/inventory-locks.ts` —
+  `lockReservationRow` now also returns the reservation's entered-unit
+  `quantity` (previously only `baseQuantity`), needed to keep the
+  entered/base pair exact during a partial consumption.
+- `backend/src/modules/inventory/data/inventory-core-rows.ts` — the
+  `ReservationDelegate.update` data type gained three new precise update
+  shapes (`ReservationPartialConsumeUpdate`, `ReservationConsumedCloseUpdate`,
+  `ReservationReopenUpdate`) alongside the existing `ReservationReleaseUpdate`
+  — each names exactly one reservation-lifecycle transition, matching this
+  module's existing preference for precise named update shapes over a single
+  loose partial-update type.
+- `backend/src/modules/inventory/domain/inventory-operation.ts` — added
+  `reservation_consume` to the closed-list `INVENTORY_OPERATIONS` vocabulary.
+- `backend/src/modules/inventory/data/material-requests.repository.ts` —
+  `reserveInvocationCapacity` now, in the SAME transaction as its existing
+  line-counter check-and-increment: locks the reservation row (when one
+  exists), verifies it is ACTIVE/positive/consistent/sufficient (failing
+  closed with `BalanceDriftError` on any stored-data inconsistency — never
+  silently repaired), decrements it (and `inventory_balances.reserved` by the
+  same amount, never `on_hand`), and closes it at exactly zero.
+  `releaseInvocationCapacity` (the existing compensation path for a failed
+  downstream Document Relation write) now also restores the reservation —
+  and reopens it if the failed attempt had closed it — to precisely its
+  pre-attempt state, using the exact amounts the forward step recorded
+  (never re-derived from the by-then-mutated stored state).
+- `backend/src/modules/inventory/application/material-requests.service.ts`
+  — `invokeLine` passes the entered-unit invoked quantity through verbatim
+  (never re-resolving unit conversions from current master data — the
+  line's already-recorded `conversionFactor` is authoritative) and
+  propagates the repository's reservation-consumption result into the
+  compensation call on a `linkDocuments` failure.
+- Tests: `material-requests.service.spec.ts` gained a
+  `FakeMaterialRequestsRepository` reservation model (quantity/baseQuantity/
+  status) and 9 new unit tests (partial consumption, multiple consumptions
+  down to closure, single full-amount consumption, exceeding remaining
+  capacity, no-reservation invocation, compensation restoring a partial
+  consumption, compensation reopening a closed reservation,
+  cancellation/reversal still blocked with the reservation correctly showing
+  only the uninvoked remainder, and a 100-invocation stress test proving a
+  RESERVED line has no fixed invocation-count limit either — only the total
+  quantity caps it). `material-requests-live.e2e-spec.ts` gained 4 new
+  real-Postgres scenarios covering the same ground end to end (including a
+  genuine — not mocked — downstream-relation failure via a self-referencing
+  invocation, and a real concurrent-invocation race against one
+  reservation).
+
+### 21.5 OQ-66 disposition
+
+`docs/open-questions.md` OQ-66 is now marked RESOLVED (moved to the
+"Resolved" table) — every sub-question §11.1 originally asked about the
+reservation's shape, lifecycle, and what releases/consumes it is now an
+explicit, implemented, tested Owner decision. What remains unscoped is not a
+reservation question at all: a future C-52 Warehouse Issue task would still
+need its own investigation for whatever is specific to posting a physical
+issue (costing, movement creation, document content) — but how an invoked
+Material Request line's reservation behaves is no longer one of those
+unknowns, regardless of what eventually invokes it.
+
+## 22. Final pre-merge audit (2026-10-03) — two real defects found and fixed
+
+A full source-level re-audit of the §21 implementation (never trusting green
+CI as proof of correctness) found the invocation/reservation-consumption
+logic itself (`reserveInvocationCapacity`/`releaseInvocationCapacity`)
+already correct against all 8 required invariants on re-inspection — but
+turned up two genuine, previously-unverified defects one level OUT from
+that transaction, both fixed in the same PR:
+
+1. **Lock-order inconsistency risk (real deadlock potential).**
+   `releaseActiveReservationsForLines` (shared by `cancel` and
+   `reverseApproval`) locked each reserved line's `inventory_balances` row
+   in the document's own stored `lineNumber` order — NOT the deterministic
+   `(warehouseId, itemId)` order `approve` already sorts its own
+   `reservationLines` by. Two different Material Requests, each with
+   multiple reserved lines touching the same two (warehouse, item) balance
+   rows but listed in opposite line order, could have their concurrent
+   `cancel`/`reverseApproval` calls lock those two rows in opposite order —
+   a genuine Postgres deadlock, not reproducible against the hermetic
+   fake-repository suite, only against real concurrent transactions. Fixed
+   by sorting `releaseActiveReservationsForLines`'s own working copy of the
+   line list by `(warehouseId, itemId)` before iterating — now every
+   mutation path that can lock more than one balance row in one transaction
+   (`approve`, `cancel`, `reverseApproval`) uses the exact same order,
+   closing the cycle. Covered by a new live-Postgres regression
+   (`material-requests-live.e2e-spec.ts`: "two concurrent cancellations of
+   different, multi-line reserved requests... cannot deadlock").
+2. **Generic reservation-release endpoint could bypass Material Request's
+   own governed lifecycle.** `POST /inventory/reservations/:id/release` (the
+   general-purpose D-07/ADR-0022 reservations API, gated only by the
+   generic `Inventory.Reservation.Release` permission) had no awareness that
+   a reservation might be owned by a Material Request line, and would
+   happily release one directly — decrementing `inventory_balances.reserved`
+   completely outside Material Request's own `cancel`/`reverseApproval`
+   paths, and without the "refused once any line has been invoked" check
+   those paths enforce. A caller holding only the generic release
+   permission (not any Material Request permission at all) could have used
+   this to silently unwind an approved, even partially invoked, request's
+   reservation. Fixed by adding one check in
+   `InventoryReservationsService.releaseReservation`: a reservation whose
+   `referenceType` is the new exported constant
+   `MATERIAL_REQUEST_LINE_RESERVATION_REFERENCE_TYPE` (`'material_request_line'`,
+   `domain/inventory-reservation.ts`) is refused with a clear business-rule
+   error directing the caller to the Material Request's own lifecycle
+   instead. `referenceType` is set once at creation and never mutated, so
+   this check is race-free even though it reads the row before the
+   transaction (no new locking abstraction needed). Covered by a new
+   live-Postgres regression in `material-requests-live.e2e-spec.ts`.
+
+Also closed two test-coverage gaps the audit's required test matrix named
+explicitly, with no production code change:
+
+- a line carrying an ACTIVE reservation had never been invoked through a
+  **non-1 unit conversion** (entered in a "Box" unit, consumed in the
+  item's base unit) — added to `material-requests.service.spec.ts`,
+  proving the reservation is decremented by the exact converted base
+  amount with no rounding drift across repeated invocations;
+- invocation being refused in every status OTHER than `approved` (draft,
+  submitted, returned, rejected, cancelled) had never been asserted
+  directly — added five tests to `material-requests.service.spec.ts`.
+
+No change was made to the reservation-consumption arithmetic itself, the
+Owner decision's worked example, or any permission/approval rule — this
+section only hardens what was already correct and closes the two bypass
+risks above, per the explicit audit scope (no C-50 redesign).

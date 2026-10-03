@@ -2,6 +2,7 @@ import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { PermissionRegistry } from '../../rbac/application/permission-registry.js';
 import { INVENTORY_PERMISSION_DEFINITIONS } from '../domain/inventory-permissions.js';
 import { INVENTORY_CORE_PERMISSION_DEFINITIONS } from '../domain/inventory-core-permissions.js';
+import { MATERIAL_REQUEST_PERMISSION_DEFINITIONS } from '../domain/material-request-permissions.js';
 
 /**
  * Registers the Inventory module's permission vocabulary in the RBAC registry
@@ -12,6 +13,10 @@ import { INVENTORY_CORE_PERMISSION_DEFINITIONS } from '../domain/inventory-core-
  * `rbac.permissions` mirror and evaluation. A malformed or duplicated code
  * fails module initialization instead of silently producing a permission
  * nobody can enforce.
+ *
+ * Also registers Material Request's permission vocabulary (C-50) — same
+ * module, same startup hook, no separate registration class: Material
+ * Request is Inventory-owned, not a new module.
  */
 @Injectable()
 export class InventoryPermissionRegistration implements OnModuleInit {
@@ -21,6 +26,7 @@ export class InventoryPermissionRegistration implements OnModuleInit {
     this.registry.register([
       ...INVENTORY_PERMISSION_DEFINITIONS,
       ...INVENTORY_CORE_PERMISSION_DEFINITIONS,
+      ...MATERIAL_REQUEST_PERMISSION_DEFINITIONS,
     ]);
   }
 }

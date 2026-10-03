@@ -19,6 +19,13 @@ export const INVENTORY_OPERATIONS = [
   'transfer_post',
   'reservation_create',
   'reservation_release',
+  /** A Material Request invocation consumed part (or all) of a line's
+   *  active reservation (C-50 §3.8/Owner decision). Unlike
+   *  `reservation_release`, the claim was CONSUMED (carried into a
+   *  downstream process), not returned to available stock — the
+   *  distinction matters for reconciliation even though both decrement
+   *  `inventory_balances.reserved`. */
+  'reservation_consume',
 ] as const;
 
 export type InventoryOperationKind = (typeof INVENTORY_OPERATIONS)[number];
@@ -50,6 +57,7 @@ export function resultKindFor(
       return 'transfer';
     case 'reservation_create':
     case 'reservation_release':
+    case 'reservation_consume':
       return 'reservation';
   }
 }

@@ -32,6 +32,8 @@ import {
   InventoryAvailabilityQueryDto,
   InventoryAvailabilityResponseDto,
   InventoryBalanceResponseDto,
+  ItemAvailabilityAcrossWarehousesQueryDto,
+  ItemWarehouseAvailabilityResponseDto,
   ListInventoryBalancesQueryDto,
   RebuildInventoryBalancesDto,
   RebuildReportDto,
@@ -95,6 +97,24 @@ export class InventoryBalancesController {
     @Query() query: InventoryAvailabilityQueryDto,
   ): Promise<InventoryAvailabilityResponseDto> {
     return this.balances.getAvailability(query);
+  }
+
+  @Get('availability-across-warehouses')
+  @UseGuards(AuthGuard, AuthorizationGuard)
+  @RequirePermission(BALANCE_PERMISSIONS.VIEW)
+  @ApiOperation({
+    summary:
+      "Stock visibility for one item across every active warehouse of the organization (C-50 §3.2) — lets a caller inspect availability before manually choosing a warehouse for a Material Request line. The system never picks or splits a warehouse on the caller's behalf.",
+  })
+  @ApiOkResponse({ type: [ItemWarehouseAvailabilityResponseDto] })
+  @ApiNotFoundResponse({ description: 'Organization or item does not exist.' })
+  async availabilityAcrossWarehouses(
+    @Query() query: ItemAvailabilityAcrossWarehousesQueryDto,
+  ): Promise<ItemWarehouseAvailabilityResponseDto[]> {
+    return this.balances.listItemAvailabilityAcrossWarehouses(
+      query.organizationId,
+      query.itemId,
+    );
   }
 
   @Post('reconcile')

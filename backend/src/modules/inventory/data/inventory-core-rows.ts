@@ -248,6 +248,57 @@ export interface ReservationReleaseUpdate {
   updatedBy: string | null;
 }
 
+/**
+ * Reduce an ACTIVE reservation's remaining quantity without changing its
+ * status (C-50 §3.8/Owner decision: a Material Request invocation consumes
+ * the corresponding amount from the line's active reservation). The caller
+ * has already verified the result stays strictly positive — a reservation
+ * that reaches exactly zero uses `ReservationConsumedCloseUpdate` instead,
+ * because an ACTIVE reservation must never show a zero remaining quantity.
+ */
+export interface ReservationPartialConsumeUpdate {
+  quantity: string;
+  baseQuantity: string;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+/**
+ * Close a reservation that invocation has just fully consumed: unlike
+ * `ReservationReleaseUpdate` (reversal/cancellation releasing an UNCONSUMED
+ * claim back to available stock), nothing is "released back" here — the
+ * claim was entirely used, so the terminal row shows zero remaining rather
+ * than the pre-consumption amount.
+ */
+export interface ReservationConsumedCloseUpdate {
+  status: 'released';
+  quantity: '0';
+  baseQuantity: '0';
+  releasedAt: Date;
+  releasedBy: string | null;
+  releaseOperationKey: string;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+/**
+ * Compensate a consumption whose downstream Document Relation write then
+ * failed: give back exactly what this invocation attempt took. When the
+ * attempt had closed the reservation (`ReservationConsumedCloseUpdate`),
+ * this also reopens it — the invocation never truly happened, so the
+ * reservation must return to exactly its pre-attempt state.
+ */
+export interface ReservationReopenUpdate {
+  status: 'active';
+  quantity: string;
+  baseQuantity: string;
+  releasedAt: null;
+  releasedBy: null;
+  releaseOperationKey: null;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
 export interface ReservationDelegate {
   findUnique(args: { where: { id: string } }): Promise<ReservationRow | null>;
   findMany(args: {
@@ -268,7 +319,11 @@ export interface ReservationDelegate {
   create(args: { data: ReservationCreate }): Promise<ReservationRow>;
   update(args: {
     where: { id: string };
-    data: ReservationReleaseUpdate;
+    data:
+      | ReservationReleaseUpdate
+      | ReservationPartialConsumeUpdate
+      | ReservationConsumedCloseUpdate
+      | ReservationReopenUpdate;
   }): Promise<ReservationRow>;
   /** Test-only cleanup for live-database suites (no API delete exists). */
   deleteMany(args: { where: ReservationWhere }): Promise<{ count: number }>;

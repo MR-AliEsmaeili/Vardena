@@ -60,6 +60,12 @@ model Organization {
   reservations InventoryReservation[]
   operations   InventoryOperation[]
 
+  // Back-relations for Material Request (C-50). Virtual side only — the real
+  // FK columns stay `inventory.material_request*.organization_id`.
+  materialRequests      MaterialRequest[]
+  materialRequestLines  MaterialRequestLine[]
+  materialRequestEvents MaterialRequestEvent[]
+
   // Back-relations for the Document Foundation (Task 8, ADR-0023). Virtual
   // side only — the real FK columns stay `documents.*.organization_id`.
   documentTypeConfigs  DocumentTypeConfig[]
@@ -157,6 +163,10 @@ model Branch {
   movements    InventoryMovement[]
   balances     InventoryBalance[]
   reservations InventoryReservation[]
+
+  // Back-relation for Material Request lines (C-50): branch is denormalized
+  // from the line's warehouse, same first-class-scope rule as above.
+  materialRequestLines MaterialRequestLine[]
 
   // Back-relation for the accounting documents of this branch (Task 10.4,
   // AC-D-17: branch lives on the voucher header, never on a line).

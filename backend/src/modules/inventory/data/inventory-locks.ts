@@ -192,6 +192,8 @@ export async function lockReservationRow(
   warehouseId: string;
   itemId: string;
   status: string;
+  /** Entered-unit remaining magnitude (the reservation's own `unitId`). */
+  quantity: string;
   baseQuantity: string;
 } | null> {
   const rows = await tx.$queryRaw<{
@@ -201,6 +203,7 @@ export async function lockReservationRow(
     warehouseId: string;
     itemId: string;
     status: string;
+    quantity: DecimalLike;
     baseQuantity: DecimalLike;
   }>`
     SELECT "id",
@@ -209,6 +212,7 @@ export async function lockReservationRow(
            "warehouse_id" AS "warehouseId",
            "item_id" AS "itemId",
            "status",
+           "quantity",
            "base_quantity" AS "baseQuantity"
       FROM "inventory"."inventory_reservations"
      WHERE "id" = ${reservationId}
@@ -222,6 +226,7 @@ export async function lockReservationRow(
     warehouseId: row.warehouseId,
     itemId: row.itemId,
     status: row.status,
+    quantity: decimalToString(row.quantity),
     baseQuantity: decimalToString(row.baseQuantity),
   };
 }

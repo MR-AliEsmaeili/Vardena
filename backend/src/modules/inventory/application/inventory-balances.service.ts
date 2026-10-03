@@ -14,7 +14,7 @@ import {
   type KeyRebuild,
 } from '../data/inventory-balances.repository.js';
 import {
-  availableQuantity,
+  resolveAvailableQuantity,
   toInventoryBalanceDto,
   type InventoryBalanceDto,
 } from '../domain/inventory-balance.js';
@@ -24,6 +24,7 @@ import { RECONCILIATION_PERMISSIONS } from '../domain/inventory-core-permissions
 import { resolveSort } from './master-data-support.js';
 import { ItemsService } from './items.service.js';
 import { WarehousesService } from './warehouses.service.js';
+import { WarehousesRepository } from '../data/warehouses.repository.js';
 
 const SORTABLE_FIELDS: Record<string, string> = {
   onHand: 'onHand',
@@ -54,9 +55,23 @@ export interface AvailabilityDto {
   itemId: string;
   onHand: string;
   reserved: string;
+  /**
+   * `onHand − reserved` when `reservationsReduceAvailable` is true for this
+   * warehouse (the default, and every consumer's existing reading); `onHand`
+   * unchanged when false (C-50 §3.7). Either way `onHand` is reported
+   * separately above and is never itself affected by this setting.
+   */
   available: string;
   /** Effective negative-stock policy for this key. */
   allowNegativeStock: boolean;
+  /** This warehouse's C-50 §3.7 setting, echoed for transparency. */
+  reservationsReduceAvailable: boolean;
+}
+
+/** One warehouse's stock picture for a single item (C-50 §3.2). */
+export interface ItemWarehouseAvailabilityDto extends AvailabilityDto {
+  warehouseCode: string;
+  warehouseName: string;
 }
 
 export interface ReconciliationScope {
@@ -99,6 +114,7 @@ export class InventoryBalancesService {
     private readonly organizations: OrganizationsService,
     private readonly items: ItemsService,
     private readonly warehouses: WarehousesService,
+    private readonly warehouseRows: WarehousesRepository,
     private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
   ) {}
@@ -122,8 +138,30 @@ export class InventoryBalancesService {
       skip,
       take,
     });
+    // `available` must honor each row's own warehouse's C-50 §3.7 setting —
+    // the same rule `getAvailability` already applies for a single key —
+    // so this list can never disagree with it for the same (warehouse,
+    // item). Rows on one page span a bounded number of distinct warehouses;
+    // resolve each one once (same N+1-by-warehouse shape already accepted in
+    // `listItemAvailabilityAcrossWarehouses`), never per balance row.
+    const settingByWarehouse = new Map<string, boolean>();
+    for (const item of items) {
+      if (settingByWarehouse.has(item.warehouseId)) continue;
+      const warehouse = await this.warehouseRows.findById(item.warehouseId);
+      // A balance row's warehouse must exist (FK-backed); default to the
+      // conservative/default setting only if that invariant is ever broken.
+      settingByWarehouse.set(
+        item.warehouseId,
+        warehouse?.reservationsReduceAvailable ?? true,
+      );
+    }
     return toPaginatedResult(
-      items.map(toInventoryBalanceDto),
+      items.map((item) =>
+        toInventoryBalanceDto(
+          item,
+          settingByWarehouse.get(item.warehouseId) ?? true,
+        ),
+      ),
       total,
       query.page,
       query.pageSize,
@@ -164,12 +202,80 @@ export class InventoryBalancesService {
       itemId: query.itemId,
       onHand,
       reserved,
-      available: availableQuantity({ onHand, reserved }),
+      available: resolveAvailableQuantity(
+        { onHand, reserved },
+        warehouse.reservationsReduceAvailable,
+      ),
       allowNegativeStock: resolveEffectivePolicy({
         itemAllow: item.allowNegativeStock,
         warehouseAllow: warehouse.allowNegativeStock,
       }),
+      reservationsReduceAvailable: warehouse.reservationsReduceAvailable,
     };
+  }
+
+  /**
+   * Stock visibility across every authorized warehouse for one item (C-50
+   * §3.2): "the user must be able to inspect stock across authorized
+   * warehouses when selecting a product". Scope is REPOSITORY-DEFINED (no
+   * per-warehouse ACL exists in this codebase): every ACTIVE warehouse in an
+   * organization the caller is authorized to view balances in, same
+   * granularity as every other Inventory read. A warehouse with no balance
+   * row yet reads as zero, same rule as `getAvailability`.
+   */
+  async listItemAvailabilityAcrossWarehouses(
+    organizationId: string,
+    itemId: string,
+  ): Promise<ItemWarehouseAvailabilityDto[]> {
+    await this.authorization.requireAllPermissions([BALANCE_PERMISSIONS.VIEW]);
+    await this.organizations.requireUsableOrganization(organizationId);
+    const item = await this.items.requireUsableItemInOrganization(
+      itemId,
+      organizationId,
+    );
+    // Repository-level composition (same convention `WarehousesService`
+    // itself uses for `InventoryBalancesRepository`/
+    // `InventoryMovementsRepository`): this read is gated by
+    // `BALANCE_PERMISSIONS.VIEW` alone, not an additional
+    // `WAREHOUSE_PERMISSIONS.VIEW` requirement — going through
+    // `WarehousesService.listWarehouses` would silently add that second
+    // permission to every caller of this stock-visibility read.
+    const { items: warehouses } = await this.warehouseRows.list({
+      where: { organizationId, isActive: true },
+      orderBy: [{ code: 'asc' }],
+      skip: 0,
+      take: 1000,
+    });
+    const results: ItemWarehouseAvailabilityDto[] = [];
+    for (const warehouse of warehouses) {
+      const stored = await this.balances.findByKey(
+        organizationId,
+        warehouse.id,
+        itemId,
+      );
+      const onHand = stored?.onHand ?? '0';
+      const reserved = stored?.reserved ?? '0';
+      results.push({
+        organizationId,
+        branchId: warehouse.branchId,
+        warehouseId: warehouse.id,
+        warehouseCode: warehouse.code,
+        warehouseName: warehouse.name,
+        itemId,
+        onHand,
+        reserved,
+        available: resolveAvailableQuantity(
+          { onHand, reserved },
+          warehouse.reservationsReduceAvailable,
+        ),
+        allowNegativeStock: resolveEffectivePolicy({
+          itemAllow: item.allowNegativeStock,
+          warehouseAllow: warehouse.allowNegativeStock,
+        }),
+        reservationsReduceAvailable: warehouse.reservationsReduceAvailable,
+      });
+    }
+    return results;
   }
 
   /**
