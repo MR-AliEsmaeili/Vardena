@@ -8,7 +8,7 @@
 | Baseline provenance | Merge commit of [PR #110](https://github.com/MR-AliEsmaeili/Vardena/pull/110); post-merge [CI run 37023371492](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37023371492) completed successfully |
 | Roadmap identity | **C-50 Material Request** — Full Inventory/Warehouse MVP candidate |
 | Scope | Investigation, decision preparation, and minimal roadmap pointers only; no production implementation |
-| **Implementation note (2026-10-02, later)** | **See §19.** Implementation work was subsequently opened as unmerged [PR #112](https://github.com/MR-AliEsmaeili/Vardena/pull/112) without a recorded Owner answer to the OPEN items below; this does not change the status row above, which still accurately describes what was decided when this brief was written. |
+| **Implementation note (current-state addendum)** | **See §§19–23.** Implementation was subsequently opened in [PR #112](https://github.com/MR-AliEsmaeili/Vardena/pull/112), narrowed by explicit Material Request-specific Owner decisions in §§20–21, and merged to `main` at `ca981018ddc027306da8f28805ded22c2fbd1d19` on 2026-10-03. The historical status row above remains the investigation-at-baseline verdict; §23 is the current merged-state record. |
 
 > **No decision is made by this report.** Every Owner answer below is pending.
 > Recommendations are explicitly labelled. Existing Open Question wording and
@@ -1289,3 +1289,34 @@ No change was made to the reservation-consumption arithmetic itself, the
 Owner decision's worked example, or any permission/approval rule — this
 section only hardens what was already correct and closes the two bypass
 risks above, per the explicit audit scope (no C-50 redesign).
+
+## 23. Post-merge current-state addendum (2026-10-03)
+
+PR [#112](https://github.com/MR-AliEsmaeili/Vardena/pull/112) is now
+**MERGED** to `main` at
+`ca981018ddc027306da8f28805ded22c2fbd1d19`. The exact merge commit's push CI
+run [`37100066679`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37100066679)
+completed successfully for backend and frontend, including Prisma validation /
+generation, migration deployment, migration rehearsal and E2E with live-DB
+suites. Sections 19–22 remain chronological evidence of the work before merge;
+their statements that the PR was unmerged are no longer current-state claims.
+
+Current governance status is **IMPLEMENTED AND MERGED — NOT ACCEPTED**. No C-50
+acceptance record exists, and merge/green CI is not Owner acceptance
+(`STATE.md` §6).
+
+Decision posture is unchanged by merge:
+
+- the Material Request-specific lifecycle and approval-authority decisions in
+  §§20.2–20.3 are implemented but do **not** resolve platform-wide OQ-54 or
+  OQ-13/OQ-26;
+- OQ-66 remains **RESOLVED** and must not be reopened: invocation consumes the
+  identical amount from the line's active reservation;
+- the slice remains non-valued and non-posting, so C-52 physical Issue,
+  valuation and Accounting integration remain separate work;
+- `frontend/src/api/generated/vardena-api.d.ts` still has no Material Request
+  operations or schemas, consistent with §19 item 5. No generated client is
+  repaired by this addendum.
+
+The post-merge dependency/readiness review is
+[`post-c-50-dependency-reconciliation-and-next-slice-readiness.md`](./post-c-50-dependency-reconciliation-and-next-slice-readiness.md).

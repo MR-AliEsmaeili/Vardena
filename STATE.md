@@ -1234,3 +1234,47 @@ removes nothing above. Full record:
   non-blocked C-47 work was documentation, completed here.
 - **Not accepted by this addendum:** it accepts nothing, authorizes nothing, and
   makes no claim of Owner acceptance for its own pull request.
+
+## 19. Post-C-50 Dependency Reconciliation & Next-Slice Readiness (2026-10-03)
+
+Documentation/governance addendum at current `main` /
+`ca981018ddc027306da8f28805ded22c2fbd1d19`, merge of PR #112. Full report:
+`docs/tasks/post-c-50-dependency-reconciliation-and-next-slice-readiness.md`.
+
+- **C-50 current state corrected:** PR #112 is **MERGED**. Exact-main push CI
+  run `37100066679` completed successfully for backend and frontend, including
+  backend Prisma validation/generation, migration deployment, migration
+  rehearsal and E2E/live-DB execution. C-50 is **IMPLEMENTED AND MERGED — NOT
+  ACCEPTED**; no acceptance record exists and merge/green CI is not acceptance.
+- **Implemented C-50 boundary:** Inventory owns Material Request header/line/
+  event persistence, a code-registered Documents type, numbering, bounded
+  lifecycle/API, 11 permissions, optional exact per-line reservation and
+  invocation traceability/consumption. It remains non-valued and non-posting:
+  no Receipt/Issue movement, valuation or Accounting effect is created.
+- **Decisions made versus still open:** Material Request's own lifecycle and
+  approval-authority/self-approval/return rules are decided and implemented
+  (`docs/tasks/c-50-material-request-investigation.md` §§20.2–20.3). They do
+  **not** resolve platform-wide OQ-54 or OQ-13/OQ-26, all of which remain OPEN.
+  OQ-66 remains **RESOLVED**; reservation consumption on invocation is decided,
+  implemented and must not be reopened.
+- **Remaining C-48…C-54 dependency split:** OQ-11/OQ-24 gate valued/rial
+  portions; OQ-39/OQ-42 gate Accounting integration, not quantity-only
+  behavior; OQ-23 plus OQ-54/OQ-13/OQ-26 gate opening and future operational
+  documents as applicable; OQ-49 gates only a generic builder. C-49 remains
+  deeply blocked. C-51 quantity Receipt is the least blocked next operational
+  document but requires its own Owner decisions. C-53 quantity reads are
+  partially implemented.
+- **Recommended next action:** a bounded **C-54 quantity Kardex investigation**
+  is **READY FOR INVESTIGATION**. No business-policy OQ blocks the quantity
+  half; the investigation must settle its ADR-0009/C-14 placement and exact
+  running-balance contract. Rial Kardex remains blocked by OQ-11/OQ-24. This is
+  a recommendation, not a task number or implementation authorization.
+- **Known current contract/doc gaps:** `docs/modules.md` does not yet catalogue
+  C-50, and the committed frontend generated API declaration has no Material
+  Request operations/schemas. This reconciliation changes neither production
+  code nor generated clients.
+- **Verification boundary:** current refs/GitHub merge/CI and static source,
+  schema, migration, test and documentation evidence were inspected. No local
+  heavy E2E, live-PostgreSQL, migration or migration-rehearsal suite was run.
+- **Status:** **READY FOR REVIEW — NOT ACCEPTED.** This addendum closes no OQ,
+  promotes no ADR, accepts no implementation and authorizes no production work.
