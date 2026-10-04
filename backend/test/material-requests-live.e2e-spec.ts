@@ -469,6 +469,15 @@ describe.skipIf(DATABASE_URL === undefined)(
           inventoryMovement: {
             deleteMany: (args: unknown) => Promise<unknown>;
           };
+          inventoryValuationState: {
+            deleteMany: (args: unknown) => Promise<unknown>;
+          };
+          inventoryValuationRun: {
+            deleteMany: (args: unknown) => Promise<unknown>;
+          };
+          itemValuationMethod: {
+            deleteMany: (args: unknown) => Promise<unknown>;
+          };
           warehouse: { deleteMany: (args: unknown) => Promise<unknown> };
           item: { deleteMany: (args: unknown) => Promise<unknown> };
           unit: { deleteMany: (args: unknown) => Promise<unknown> };
@@ -517,6 +526,17 @@ describe.skipIf(DATABASE_URL === undefined)(
           where: { organizationId: { in: orgIds } },
         });
         await client.inventoryMovement.deleteMany({
+          where: { organizationId: { in: orgIds } },
+        });
+        // Valuation rows reference warehouse and item with ON DELETE RESTRICT,
+        // so they must go before the references they point at (ADR-0039).
+        await client.inventoryValuationState.deleteMany({
+          where: { organizationId: { in: orgIds } },
+        });
+        await client.inventoryValuationRun.deleteMany({
+          where: { organizationId: { in: orgIds } },
+        });
+        await client.itemValuationMethod.deleteMany({
           where: { organizationId: { in: orgIds } },
         });
         await client.warehouse.deleteMany({
