@@ -1343,6 +1343,12 @@ record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   **Not runnable in the authoring sandbox and delegated to CI:**
   `prisma validate`/`generate` (engine download blocked), `prisma:deploy`,
   migration rehearsal and the live-PostgreSQL E2E suites.
+- **Pull request:** **#116** — `feat(inventory): establish valuation foundation
+  and cost-optional warehouse operations`, head `cf965aa`, branch
+  `arena/01a107dc-vardena`, **left OPEN for architectural review** (not
+  merged). The mandatory A–K implementation report and the OD-VAL-01…19
+  decision mapping are recorded in the PR description; the canonical decision
+  record is PDR-05.
 - **Status:** **READY FOR REVIEW — NOT ACCEPTED.** The PR is left **open** for
   architectural review per the work order. Merge and green CI are not Owner
   acceptance (§6). ADR-0039 is Accepted as an architecture record; it closes no
