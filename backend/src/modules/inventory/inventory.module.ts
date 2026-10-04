@@ -9,6 +9,7 @@ import { ItemsRepository } from './data/items.repository.js';
 import { UnitConversionsRepository } from './data/unit-conversions.repository.js';
 import { WarehousesRepository } from './data/warehouses.repository.js';
 import { InventoryMovementsRepository } from './data/inventory-movements.repository.js';
+import { InventoryKardexRepository } from './data/inventory-kardex.repository.js';
 import { InventoryReservationsRepository } from './data/inventory-reservations.repository.js';
 import { InventoryBalancesRepository } from './data/inventory-balances.repository.js';
 import { InventoryOperationsRepository } from './data/inventory-operations.repository.js';
@@ -19,6 +20,7 @@ import { ItemsService } from './application/items.service.js';
 import { UnitConversionsService } from './application/unit-conversions.service.js';
 import { WarehousesService } from './application/warehouses.service.js';
 import { InventoryMovementsService } from './application/inventory-movements.service.js';
+import { InventoryKardexService } from './application/inventory-kardex.service.js';
 import { InventoryTransfersService } from './application/inventory-transfers.service.js';
 import { InventoryReservationsService } from './application/inventory-reservations.service.js';
 import { InventoryBalancesService } from './application/inventory-balances.service.js';
@@ -31,6 +33,7 @@ import { ItemsController } from './api/items.controller.js';
 import { UnitConversionsController } from './api/unit-conversions.controller.js';
 import { WarehousesController } from './api/warehouses.controller.js';
 import { InventoryMovementsController } from './api/inventory-movements.controller.js';
+import { InventoryKardexController } from './api/inventory-kardex.controller.js';
 import { InventoryTransfersController } from './api/inventory-transfers.controller.js';
 import { InventoryReservationsController } from './api/inventory-reservations.controller.js';
 import { InventoryBalancesController } from './api/inventory-balances.controller.js';
@@ -82,6 +85,7 @@ import { MaterialRequestsController } from './api/material-requests.controller.j
     UnitConversionsController,
     WarehousesController,
     InventoryMovementsController,
+    InventoryKardexController,
     InventoryTransfersController,
     InventoryReservationsController,
     InventoryBalancesController,
@@ -94,6 +98,7 @@ import { MaterialRequestsController } from './api/material-requests.controller.j
     UnitConversionsRepository,
     WarehousesRepository,
     InventoryMovementsRepository,
+    InventoryKardexRepository,
     InventoryReservationsRepository,
     InventoryBalancesRepository,
     InventoryOperationsRepository,
@@ -104,6 +109,7 @@ import { MaterialRequestsController } from './api/material-requests.controller.j
     UnitConversionsService,
     WarehousesService,
     InventoryMovementsService,
+    InventoryKardexService,
     InventoryTransfersService,
     InventoryReservationsService,
     InventoryBalancesService,
