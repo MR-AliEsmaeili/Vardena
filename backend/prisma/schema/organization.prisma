@@ -60,6 +60,13 @@ model Organization {
   reservations InventoryReservation[]
   operations   InventoryOperation[]
 
+  // Back-relations for the Inventory valuation foundation (PDR-05,
+  // ADR-0039). Virtual side only — the real FK columns stay
+  // `inventory.*.organization_id`.
+  itemValuationMethods     ItemValuationMethod[]
+  inventoryValuationStates InventoryValuationState[]
+  inventoryValuationRuns   InventoryValuationRun[]
+
   // Back-relations for Material Request (C-50). Virtual side only — the real
   // FK columns stay `inventory.material_request*.organization_id`.
   materialRequests      MaterialRequest[]
@@ -163,6 +170,11 @@ model Branch {
   movements    InventoryMovement[]
   balances     InventoryBalance[]
   reservations InventoryReservation[]
+
+  // Back-relations for the Inventory valuation foundation (PDR-05): branch
+  // is snapshotted onto the valuation state/run exactly like on the ledger.
+  inventoryValuationStates InventoryValuationState[]
+  inventoryValuationRuns   InventoryValuationRun[]
 
   // Back-relation for Material Request lines (C-50): branch is denormalized
   // from the line's warehouse, same first-class-scope rule as above.

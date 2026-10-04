@@ -516,6 +516,97 @@ The following capabilities are recognized as missing backend contracts or unimpl
 3. **Trial Balance Total Summary Row (`CONTRACT GAP`):** `TrialBalanceResponseDto` returns account rows but no aggregate totals object. Frontend intentionally does not compute client-side totals.
 4. **Accounting Document View & Management UI (`SUPPORTED API / FUTURE UI`):** Backend provides full CRUD (`POST /accounting-documents`, `GET :id`, `finalize`, `reverse`), but frontend currently only contains the Dashboard recent documents table.
 5. **Cross-Module Drill-Down Linkage (`CONTRACT GAP`):** `sourceModule` and `sourceEntityId` exist in ledger movement DTOs, but target entity view routes are not yet standardized.
+6. **Inventory Operations & Valuation UI (`SUPPORTED API / FUTURE UI`, added 2026-10-04):** the backend ships movement posting, transfers, the quantity Kardex and the full valuation surface (`/api/v1/inventory/valuation/*`), but `frontend/src/features` contains **no** inventory feature at all — only the read-only dashboard stock widget. Target UX is specified in §18A; implementation is roadmap candidate C-57.
+
+---
+
+## 18A. Inventory: Warehouse Operations vs. Inventory Accounting (`SUPPORTED API / FUTURE UI`)
+
+**Added 2026-10-04.** The backend valuation foundation (ADR-0039, PDR-05 /
+OD-VAL-01…OD-VAL-19) is implemented; **no Inventory route exists in `frontend/src`
+yet**. This section is the target UX contract for the slice that builds it, not a
+description of shipped UI. Persian copy, vocabulary and the dialog catalogue live in
+`persian-ux-writing-standard.md` §3.4/§9 and `feedback-standard.md` §5.3/§5.4.
+
+### 18A.1 Two workspaces, one set of records (OD-VAL-08)
+
+The same `inventory_movements` rows are presented through two different lenses. There
+is no second ledger and no "accounting copy" of a warehouse document — a navigation
+split, not a data split.
+
+| | **عملیات انبار** (Warehouse Operations) | **حسابداری انبار** (Inventory Accounting) |
+| :--- | :--- | :--- |
+| Persona | Warehouse keeper — counts things | Accountant — values things |
+| Primary question | *What moved, how much, where?* | *What is it worth, and what is still unpriced?* |
+| Money fields | Optional on a receipt; **absent from the issue form** | First-class |
+| Required permissions | `Inventory.Movement.{View,Create}`, `Inventory.Balance.View` | `Inventory.Valuation.{View,Configure,AssignCost,Recalculate}` |
+| Default landing | Post a receipt / post an issue / stock on hand | Worklist of `pending_cost` and `stale` keys |
+| Never shows | A blocking "cost is required" error | A quantity the warehouse has not posted |
+
+A user holding only operations permissions sees the same movement rows with the
+monetary columns **blank** (the API blanks them server-side) — same layout, same row
+count, no hidden records, no different shape.
+
+### 18A.2 Journey A — receipt without a cost (the default case)
+
+1. `رسید انبار` form: item, warehouse, quantity, date. `قیمت تمام‌شده` is a clearly
+   optional field, never marked required and never validated into existence.
+2. Submit → movement posted; the key's `uncostedQuantity` grows and its status becomes
+   `در انتظار قیمت تمام‌شده`.
+3. Toast: `رسید انبار ثبت شد.` No warning, no error — this is a normal outcome.
+4. The row appears in the Inventory Accounting worklist. The value column shows `—`,
+   **never `۰`** (`persian-ux-writing-standard.md` §9.11).
+
+### 18A.3 Journey B — pricing it later (`Inventory.Valuation.AssignCost`)
+
+1. From the worklist, `ثبت قیمت تمام‌شده` on an unvalued inbound movement.
+2. The dialog states that the value is an addition and is not editable afterwards
+   (correction is by reversal), and requires the same explicit repricing choice.
+3. `409` (already priced) is presented as a business message with the reversal path,
+   never as a raw conflict.
+
+### 18A.4 Journey C — the backdated document (two dialogs, never one)
+
+The hard rule: **two separate confirmations**, in order, with no default on the second
+(OD-VAL-10/OD-VAL-11). Collapsing them into a single "Are you sure?" is an explicit
+anti-pattern — see `feedback-standard.md` §5.4 for the catalogue entries and copy.
+
+1. The form may call `GET /inventory/valuation/backdate-check` as the date leaves the
+   field, so the warning is known *before* submit. That endpoint is gated by
+   `Inventory.Movement.Create` and returns counts and dates only — a warehouse user who
+   may not see money can still see the consequence.
+2. **Dialog 1 — consequence:** how many later movements exist, how many of them are
+   valued, and the date of the latest one, in plain Persian.
+3. **Dialog 2 — choice:** `قیمت‌گذاری مجدد انجام شود` or `انجام نشود`, both spelling out
+   their effect, neither preselected.
+4. On `انجام نشود`, the success toast is followed by a **persistent** notice
+   `ارزش‌گذاری این کالا و انبار نامعتبر است.` with a `قیمت‌گذاری مجدد` action. The UI must
+   never hide a `stale` state behind a number that looks correct.
+
+### 18A.5 Journey D — bounded repricing (`Inventory.Valuation.Recalculate`)
+
+Repricing always names **one item in one warehouse**. There is intentionally no
+"recalculate everything" endpoint (OD-VAL-12), so the UI must not offer one, not even
+as a bulk selection. `inventory.recalculation_too_large` is presented as a bounded-scope
+message, never as a retryable failure.
+
+### 18A.6 Valuation method configuration (`Inventory.Valuation.Configure`)
+
+Scope is organization + item and versions are effective-dated: the form creates a new
+version with a `valid from` date and never edits an existing one (the same UX rule the
+unit-conversion surface already follows). The method `<Select>` offers **only**
+`میانگین موزون متحرک`; FIFO/standard are not rendered as disabled options or
+"coming soon" items, because offering an unimplemented method is itself the
+anti-pattern OD-VAL-18 forbids.
+
+### 18A.7 Classification
+
+| Capability | Classification |
+| :--- | :--- |
+| `/api/v1/inventory/valuation/*` (9 routes, 4 permissions) | `SUPPORTED` |
+| Warehouse Operations and Inventory Accounting routes, forms, worklist | `FUTURE UI` — candidate **C-57** in the roadmap register |
+| Jalali display of `movementDate` / `validFrom` | `FUTURE PRODUCT DECISION` (OQ-02) |
+| Returns, COGS posting, landed cost surfaces | Not a gap in the UI — **no backend contract exists and none is planned in this slice** (OQ-24 open, OD-VAL-19) |
 
 ---
 

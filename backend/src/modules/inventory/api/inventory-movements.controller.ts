@@ -99,7 +99,9 @@ export class InventoryMovementsController {
   })
   @ApiUnprocessableEntityResponse({
     description:
-      'Negative-stock policy violation, a non-stockable or disabled item/warehouse, an adjustment without a reason, or no unit conversion covering the movement date.',
+      'Negative-stock policy violation, a non-stockable or disabled item/warehouse, an adjustment without a reason, no unit conversion covering the movement date, ' +
+      'an unconfirmed backdated document (inventory.backdated_document), a missing repricing choice (inventory.repricing_choice_required), ' +
+      'or a configured valuation method that is not implemented.',
   })
   @ApiNotFoundResponse({
     description: 'Organization, warehouse, item or unit does not exist.',
@@ -120,6 +122,10 @@ export class InventoryMovementsController {
       reason: body.reason,
       referenceType: body.referenceType,
       referenceId: body.referenceId,
+      unitCost: body.unitCost,
+      totalCost: body.totalCost,
+      backdateConfirmed: body.backdateConfirmed,
+      repricing: body.repricing,
     });
   }
 

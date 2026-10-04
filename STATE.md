@@ -1278,3 +1278,73 @@ Documentation/governance addendum at current `main` /
   heavy E2E, live-PostgreSQL, migration or migration-rehearsal suite was run.
 - **Status:** **READY FOR REVIEW — NOT ACCEPTED.** This addendum closes no OQ,
   promotes no ADR, accepts no implementation and authorizes no production work.
+
+## 20. Inventory Valuation Foundation & Cost-Optional Warehouse Operations (2026-10-04)
+
+Backend implementation slice on branch `arena/01a107dc-vardena`, branched from
+`main` @ `1e3d407fd3f08650e0e70353f96b277e80ef03fd` (merge of PR #115, C-54
+quantity Kardex). Architecture record: **ADR-0039 (Accepted)**. Owner decision
+record: **PDR-05 / OD-VAL-01…OD-VAL-19**
+(`docs/decisions/product/PDR-05-inventory-valuation-and-cost-optional-operations.md`).
+
+- **Owner decisions recorded (19).** Perpetual inventory; Moving Weighted
+  Average as the **only** active MVP method; method configuration scoped to
+  **organization + item** and effective-dated; valuation **state** keyed at the
+  physical stock granularity **organization + warehouse + item**; **cost is NOT
+  required on a warehouse receipt** and is never entered on an issue; Warehouse
+  Operations and Inventory Accounting are two workspaces over the **same**
+  records; purchase price ≠ inventory cost; backdated documents allowed only
+  behind **two independent explicit confirmations**, with "do not reprice"
+  honestly persisting a **stale** state; recalculation deterministic,
+  transaction-safe and **bounded to one key per command**; valuation never
+  gates a quantity posting; opening balance stays calculated; entered money is
+  exact-or-reject; negative stock stays rejected; no fake method options;
+  returns costing neither built nor foreclosed.
+- **Implemented (backend only).** Migration
+  `20261006000000_inventory_valuation_foundation`: three new tables
+  (`item_valuation_methods`, `inventory_valuation_states`,
+  `inventory_valuation_runs`) plus five columns on the existing
+  `inventory_movements` (`total_cost` **signed**, `valuation_status`,
+  `valuation_source`, `valued_at`, `valuation_run_id`). **No `unit_cost`
+  column, no second ledger, no duplicated document, no accounting/journal field
+  on an inventory movement.** Pure domain engine
+  (`money.ts`, `valuation-method.ts`, `inventory-valuation.ts`,
+  `moving-weighted-average.ts`, `backdating.ts`), repositories, two application
+  services, one controller with **9 routes** under
+  `/api/v1/inventory/valuation/*`, **4 permissions**
+  (`Inventory.Valuation.{View,Configure,AssignCost,Recalculate}`,
+  taking Inventory's registered total to 47), two events carrying identifiers
+  and counts only, and server-side redaction of monetary fields for callers
+  without `Inventory.Valuation.View`.
+- **Invariants asserted by tests.** (1) `balance.onHand == valuedQuantity +
+  uncostedQuantity` always; (2) `SUM(movement.totalCost) == state.totalValue`
+  for every key that is not `stale`.
+- **Documentation reconciled, not duplicated.** OQ-24 updated **in place**
+  (stays **OPEN** — returns costing, COGS posting, landed cost and valuation
+  precision explicitly undecided); new **OQ-67** (transfer average divergence),
+  **OQ-68** (reversal at original vs current cost), **OQ-69** (per-movement
+  valuation history); D-06 annotated with an "as built" correction (**the
+  engine is Inventory-owned, not Accounting-owned**);
+  `inventory-domain-analysis.md` §2.1/§5, `docs/modules.md`, the three roadmap
+  documents (C-49/C-51/C-52/C-53/C-54 reconciled; new candidate **C-57** for
+  the UI) and the four Persian UX documents updated.
+- **Deliberately not implemented.** Inventory → Accounting posting/COGS
+  (OQ-39/OQ-42/OQ-25), returns costing (OD-VAL-19), landed cost, FIFO/LIFO/
+  specific identification, lot/serial-level valuation, Receipt/Issue
+  *documents* (OQ-54), and **any frontend** — the UX documents specify the
+  target flows and classify them as `SUPPORTED API / FUTURE UI` (candidate
+  C-57).
+- **Local validation.** `npm run format:check`, `npm run lint`,
+  `npm run typecheck`, `npm test` (**132 files / 1594 tests**, +63 over the
+  1531 baseline), hermetic `test:e2e` including the new
+  `test/inventory-valuation.e2e-spec.ts` (**31 tests**) and the unchanged
+  `inventory-core.e2e-spec.ts` (10), `npm run build`; frontend `lint`,
+  `typecheck`, `format:check`, `test`, `build` (untouched by this slice).
+  **Not runnable in the authoring sandbox and delegated to CI:**
+  `prisma validate`/`generate` (engine download blocked), `prisma:deploy`,
+  migration rehearsal and the live-PostgreSQL E2E suites.
+- **Status:** **READY FOR REVIEW — NOT ACCEPTED.** The PR is left **open** for
+  architectural review per the work order. Merge and green CI are not Owner
+  acceptance (§6). ADR-0039 is Accepted as an architecture record; it closes no
+  OQ beyond the partial OQ-24 answer recorded in PDR-05, and authorizes no
+  further Inventory production work.

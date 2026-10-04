@@ -46,6 +46,18 @@ The table below maps normalized backend error codes (`src/api/errors.ts`) to exa
 | **`NetworkError`**          | `0` / Timeout | «ارتباط با سرور برقرار نشد. اتصال شبکه را بررسی کنید.»    | `ApiErrorAlert` with Retry button                     | Check connection and click «تلاش دوباره» | Yes          |
 | **`RequestAborted`**        | N/A           | (Silent cancellation on fast navigation)                  | None (Suppressed)                                     | Automated: latest request wins           | No           |
 
+**Inventory valuation domain sub-codes** (added 2026-10-04 — `BusinessRuleViolation` envelope with a stable `code`; see `feedback-standard.md` §5.3/§6.2 for the full Persian copy):
+
+| Domain code | HTTP | Persian presentation | UI placement | Recovery | Retriable? |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **`inventory.backdated_document`** | `422` | Consequence dialog built from `details.affectedMovements`, `details.affectedValuedMovements`, `details.latestMovementDate` — never the raw message | Confirmation dialog, step 1 of 2 | User acknowledges, then step 2 | Yes (after confirmation) |
+| **`inventory.repricing_choice_required`** | `422` | Repricing choice dialog; **no option preselected** | Confirmation dialog, step 2 of 2 | Resubmit with `repricing=recalculate\|skip` | Yes (after explicit choice) |
+| **`inventory.recalculation_too_large`** | `422` | «تعداد گردش‌های این کالا در این انبار بیش از حد مجاز یک بار قیمت‌گذاری مجدد است.» | Dialog / section alert | Bounded scope; **no automatic retry** | No |
+| **`inventory.valuation_method_not_implemented`** | `422` | «این روش قیمت‌گذاری در این نسخه پشتیبانی نمی‌شود. تنها روش فعال، میانگین موزون متحرک است.» | Form alert | Choose the active method | No |
+| **`inventory.cost_assignment_requires_inbound`** | `422` | «ثبت مستقیم قیمت تمام‌شده فقط برای رسید انبار ممکن است.» | Form alert | Price the receipt instead | No |
+| **`Conflict` on cost assignment** | `409` | «برای این رسید قیمت تمام‌شده ثبت شده است و ویرایش نمی‌شود.» | Dialog alert with the reversal path | Reverse + repost | No |
+| **`costInputAmbiguous` / `costNotAcceptedForMovementType` / `costPrecisionExceeded`** | `422` | Field-level text (`ValidationIssue.field`) | Inline under the amount field | Correct the amount; **amounts are never rounded** | No |
+
 ---
 
 ## 3. UX Feedback Taxonomy Matrix
@@ -78,6 +90,14 @@ The table below maps normalized backend error codes (`src/api/errors.ts`) to exa
 | **Document Create (Future)**                                 | `Accounting.Document.Create`       | Compose button disabled with tooltip   | `AccountingDocumentsController.create`            | Disabled CTA with tooltip                    |
 | **Document Finalize (Future)**                               | `Accounting.Document.Finalize`     | Finalize button disabled with tooltip  | `AccountingDocumentsController.finalize`          | Disabled CTA with tooltip                    |
 | **Document Reverse (Future)**                                | `Accounting.Document.Reverse`      | Reverse button disabled with tooltip   | `AccountingDocumentsController.reverse`           | Disabled CTA with tooltip                    |
+| **Warehouse receipt/issue form (Future)**                    | `Inventory.Movement.Create`        | Route guarded; CTA hidden without it   | `InventoryMovementsController.post`               | Warning alert with required permission       |
+| **Cost field on the receipt form (Future)**                  | `Inventory.Valuation.AssignCost`   | Amount field **hidden** (not disabled) when absent; the receipt still posts | `InventoryMovementsController.post` (cost branch) | No error — posting without cost is valid     |
+| **Backdate preview (Future)**                                | `Inventory.Movement.Create`        | Preview call enabled for any poster    | `InventoryValuationController.backdateCheck`      | Counts/dates only — never monetary values    |
+| **Monetary columns on movement & state grids (Future)**      | `Inventory.Valuation.View`         | Columns rendered **blank**, rows never hidden | Server-side redaction in `toInventoryMovementDto` | Same grid, empty value cells, status still visible |
+| **Inventory Accounting worklist (Future)**                   | `Inventory.Valuation.View`         | Sidebar link hidden; route guarded     | `InventoryValuationController.listStates`         | Warning alert with required permission       |
+| **Assign cost action (Future)**                              | `Inventory.Valuation.AssignCost`   | Action hidden on unvalued rows         | `InventoryValuationController.assignCost`         | Hidden CTA (action is additive, not a gap)   |
+| **Recalculate action (Future)**                              | `Inventory.Valuation.Recalculate`  | Action disabled with tooltip           | `InventoryValuationController.recalculate`        | Disabled CTA with tooltip                    |
+| **Valuation method configuration (Future)**                  | `Inventory.Valuation.Configure`    | Settings section hidden                | `InventoryValuationController.configureMethod`    | Warning alert with required permission       |
 
 ---
 

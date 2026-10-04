@@ -26,6 +26,8 @@ import { InventoryMovementsRepository } from '../src/modules/inventory/data/inve
 import { InventoryReservationsRepository } from '../src/modules/inventory/data/inventory-reservations.repository.js';
 import { InventoryBalancesRepository } from '../src/modules/inventory/data/inventory-balances.repository.js';
 import { InventoryOperationsRepository } from '../src/modules/inventory/data/inventory-operations.repository.js';
+import { InventoryValuationRepository } from '../src/modules/inventory/data/inventory-valuation.repository.js';
+import { ItemValuationMethodsRepository } from '../src/modules/inventory/data/item-valuation-methods.repository.js';
 import { createInMemoryStores } from './support/in-memory-repositories.js';
 import { createMasterDataStores } from './support/master-data-repositories.js';
 import { createInventoryCoreStores } from './support/inventory-core-repositories.js';
@@ -123,7 +125,11 @@ describe('Inventory Core posting (e2e)', () => {
           .overrideProvider(InventoryBalancesRepository)
           .useValue(core.balances)
           .overrideProvider(InventoryOperationsRepository)
-          .useValue(core.operations),
+          .useValue(core.operations)
+          .overrideProvider(InventoryValuationRepository)
+          .useValue(core.valuation)
+          .overrideProvider(ItemValuationMethodsRepository)
+          .useValue(core.valuationMethods),
     });
     app = built.app;
     const users = app.get(UsersService);

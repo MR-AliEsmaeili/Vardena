@@ -28,7 +28,10 @@ import {
 } from '../domain/movement-type.js';
 import { subtractDecimalStrings } from '../domain/quantities.js';
 import { resolveEffectivePolicy } from '../domain/negative-stock-policy.js';
-import type { InventoryMovementDto } from '../domain/inventory-movement.js';
+import type {
+  InventoryMovement,
+  InventoryMovementDto,
+} from '../domain/inventory-movement.js';
 import { toInventoryMovementDto } from '../domain/inventory-movement.js';
 import type { InventoryOperation } from '../domain/inventory-operation.js';
 import { MOVEMENT_PERMISSIONS } from '../domain/inventory-core-permissions.js';
@@ -49,6 +52,13 @@ import {
 import { ItemsService } from './items.service.js';
 import { WarehousesService } from './warehouses.service.js';
 import { UnitsService } from './units.service.js';
+import { InventoryValuationService } from './inventory-valuation.service.js';
+import { resolveEnteredCost } from './inventory-cost-support.js';
+import {
+  isRepricingChoice,
+  type RepricingChoice,
+} from '../domain/backdating.js';
+import { VALUATION_PERMISSIONS } from '../domain/inventory-valuation-permissions.js';
 
 const SORTABLE_FIELDS: Record<string, string> = {
   movementDate: 'movementDate',
@@ -81,6 +91,17 @@ export interface PostMovementInput {
   reason?: string | null | undefined;
   referenceType?: string | null | undefined;
   referenceId?: string | null | undefined;
+  /**
+   * OPTIONAL cost, inbound only (PDR-05 OD-VAL-05). At most one of the two
+   * is accepted; neither is ever required, and both are refused on an issue
+   * — a warehouse receipt must be postable with no money in it at all.
+   */
+  unitCost?: string | null | undefined;
+  totalCost?: string | null | undefined;
+  /** Acknowledgement of the backdating warning (OD-VAL-10). */
+  backdateConfirmed?: boolean | undefined;
+  /** The SECOND explicit choice a backdated posting needs (OD-VAL-11). */
+  repricing?: string | null | undefined;
 }
 
 export interface ReverseMovementInput {
@@ -113,6 +134,7 @@ export class InventoryMovementsService {
     private readonly items: ItemsService,
     private readonly warehouses: WarehousesService,
     private readonly units: UnitsService,
+    private readonly valuation: InventoryValuationService,
     private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
@@ -142,8 +164,9 @@ export class InventoryMovementsService {
       skip,
       take,
     });
+    const includeCost = await this.valuation.canViewCost();
     return toPaginatedResult(
-      items.map(toInventoryMovementDto),
+      items.map((movement) => toInventoryMovementDto(movement, includeCost)),
       total,
       query.page,
       query.pageSize,
@@ -160,7 +183,7 @@ export class InventoryMovementsService {
     if (movement === null || movement.organizationId !== organizationId) {
       throw AppException.notFound('Movement', id);
     }
-    return toInventoryMovementDto(movement);
+    return toInventoryMovementDto(movement, await this.valuation.canViewCost());
   }
 
   async postMovement(input: PostMovementInput): Promise<InventoryMovementDto> {
@@ -214,6 +237,27 @@ export class InventoryMovementsService {
         ? resolved.baseQuantity
         : `-${resolved.baseQuantity}`;
 
+    // Cost is optional and inbound-only; `resolveEnteredCost` rejects a cost
+    // on an issue and never rounds an amount a human typed.
+    const enteredCost = resolveEnteredCost({
+      input: { unitCost: input.unitCost, totalCost: input.totalCost },
+      movementType,
+      quantity: resolved.quantity,
+    });
+    if (enteredCost !== null) {
+      // Entering a value is a different authority from recording a quantity:
+      // a warehouse user may post the receipt, only accounting may price it.
+      await this.authorization.requireAllPermissions([
+        VALUATION_PERMISSIONS.ASSIGN_COST,
+      ]);
+    }
+    const repricing = parseRepricing(input.repricing);
+    const valuationMethod = await this.valuation.resolveMethodForPosting({
+      organizationId: input.organizationId,
+      itemId: item.id,
+      asOf: movementDate,
+    });
+
     const requestHash = buildRequestHash('movement_post', {
       organizationId: input.organizationId,
       warehouseId: input.warehouseId,
@@ -229,6 +273,11 @@ export class InventoryMovementsService {
       reason,
       referenceType: reference.referenceType,
       referenceId: reference.referenceId,
+      // The cost IS part of the request's identity: the same key with a
+      // different amount is different intent and must be rejected, not
+      // replayed. The backdating answers are NOT: they are decisions about
+      // the same posting, so a retry replays instead of re-asking.
+      enteredCost,
     });
     const replay = await this.replayOrReject(
       input.organizationId,
@@ -237,6 +286,24 @@ export class InventoryMovementsService {
       'movement_post',
     );
     if (replay !== null) return replay;
+
+    // The backdating gate runs AFTER the replay decision on purpose: a retry
+    // of an already-committed backdated posting must replay quietly instead
+    // of demanding the confirmation a second time.
+    const latestMovementDate = await this.movements.maxMovementDate(
+      input.organizationId,
+      input.warehouseId,
+      input.itemId,
+    );
+    const backdating = await this.valuation.requireBackdateDecisions({
+      organizationId: input.organizationId,
+      warehouseId: input.warehouseId,
+      itemId: input.itemId,
+      movementDate,
+      latestMovementDate,
+      backdateConfirmed: input.backdateConfirmed === true,
+      repricing,
+    });
 
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
@@ -284,6 +351,12 @@ export class InventoryMovementsService {
           warehouseAllow: warehouse.allowNegativeStock,
         }),
         actorId,
+        valuation: {
+          method: valuationMethod.method,
+          knownValue: enteredCost,
+          knownValueSource: 'entered',
+          backdated: backdating.backdated,
+        },
       });
       await publishEvent(this.events, {
         type: INVENTORY_MOVEMENT_POSTED_EVENT,
@@ -312,7 +385,24 @@ export class InventoryMovementsService {
         },
         InventoryMovementsService.name,
       );
-      return toInventoryMovementDto(movement);
+      // The repricing the operator explicitly asked for runs as its own
+      // audited command AFTER the quantity fact is safely committed: a
+      // failed repricing must never lose the warehouse's movement, and the
+      // key honestly reports `stale` until the recalculation succeeds.
+      const current =
+        backdating.backdated && backdating.repricing === 'recalculate'
+          ? await this.repriceAfterBackdatedPost({
+              organizationId: movement.organizationId,
+              warehouseId: movement.warehouseId,
+              itemId: movement.itemId,
+              operationKey,
+              movementId: movement.id,
+            })
+          : movement;
+      return toInventoryMovementDto(
+        current,
+        await this.valuation.canViewCost(),
+      );
     } catch (error) {
       if (error instanceof InsufficientStockError) {
         throw AppException.businessRule(
@@ -391,6 +481,20 @@ export class InventoryMovementsService {
     );
 
     const reversalType = reversalTypeFor(original.baseQuantity);
+    // A reversal is valued from the ORIGINAL movement's value inside the
+    // posting transaction (the repository reads it from the locked row), so
+    // nothing monetary is passed in here. The method still has to be
+    // resolved: it decides how the key's state is maintained.
+    const valuationMethod = await this.valuation.resolveMethodForPosting({
+      organizationId: original.organizationId,
+      itemId: original.itemId,
+      asOf: movementDate,
+    });
+    const latestMovementDate = await this.movements.maxMovementDate(
+      original.organizationId,
+      original.warehouseId,
+      original.itemId,
+    );
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
     const movementId = generateId();
@@ -436,6 +540,13 @@ export class InventoryMovementsService {
           warehouseAllow: warehouse.allowNegativeStock,
         }),
         actorId,
+        valuation: {
+          method: valuationMethod.method,
+          knownValue: null,
+          backdated:
+            latestMovementDate !== null &&
+            movementDate.getTime() < latestMovementDate.getTime(),
+        },
       });
       await publishEvent(this.events, {
         type: INVENTORY_MOVEMENT_POSTED_EVENT,
@@ -462,7 +573,10 @@ export class InventoryMovementsService {
         },
         InventoryMovementsService.name,
       );
-      return toInventoryMovementDto(movement);
+      return toInventoryMovementDto(
+        movement,
+        await this.valuation.canViewCost(),
+      );
     } catch (error) {
       if (error instanceof AlreadyReversedError) {
         throw AppException.conflict('The movement has already been reversed.');
@@ -516,7 +630,40 @@ export class InventoryMovementsService {
         `Replay of operation "${existing.id}" points at a missing movement.`,
       );
     }
-    return toInventoryMovementDto(movement);
+    return toInventoryMovementDto(movement, await this.valuation.canViewCost());
+  }
+
+  /**
+   * Run the repricing the operator explicitly chose after a backdated
+   * posting, and return the movement as it looks afterwards.
+   *
+   * Deliberately NOT part of the posting transaction. A quantity fact that
+   * the warehouse observed must survive a failed valuation replay; if the
+   * recalculation fails, the movement stands and its key keeps reporting
+   * `stale`, which is exactly the state the explicit command exists to
+   * repair. The recalculation carries its own operation key (suffixed) so
+   * it is idempotent on its own terms.
+   */
+  private async repriceAfterBackdatedPost(params: {
+    organizationId: string;
+    warehouseId: string;
+    itemId: string;
+    operationKey: string;
+    movementId: string;
+  }): Promise<InventoryMovement> {
+    await this.valuation.recalculate({
+      organizationId: params.organizationId,
+      warehouseId: params.warehouseId,
+      itemId: params.itemId,
+      operationKey: `${params.operationKey}:reprice`.slice(0, 128),
+      trigger: 'backdated_document',
+      reason: 'Repricing requested with a backdated posting.',
+    });
+    const refreshed = await this.movements.findById(params.movementId);
+    if (refreshed === null) {
+      throw new Error('The posted movement disappeared after repricing.');
+    }
+    return refreshed;
   }
 }
 
@@ -606,4 +753,29 @@ function assertReplayable(
         'Retry with the original request, or use a new key.',
     );
   }
+}
+
+/**
+ * The repricing answer, or `null` when the client did not give one. An
+ * invalid value is rejected rather than defaulted: "I did not understand
+ * your choice" must never become "I chose for you" when the subject is
+ * whether to restate existing values.
+ */
+function parseRepricing(
+  value: string | null | undefined,
+): RepricingChoice | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = value.trim();
+  if (trimmed === '') return null;
+  if (!isRepricingChoice(trimmed)) {
+    throw AppException.validation([
+      {
+        field: 'repricing',
+        message:
+          'repricing must be "recalculate" or "skip". There is no default: valuation is never recalculated silently.',
+        code: 'invalidRepricingChoice',
+      },
+    ]);
+  }
+  return trimmed;
 }

@@ -1,0 +1,99 @@
+/**
+ * Backdating — detection, and the two explicit choices it forces
+ * (PDR-05 OD-VAL-10/OD-VAL-11, brief §17/§18).
+ *
+ * A backdated document is one whose BUSINESS date (`movementDate`) is before
+ * the latest movement already recorded on the same key. It is allowed — real
+ * warehouses receive paperwork late — but it is never silent, because it
+ * changes the meaning of numbers that were already shown to someone:
+ *
+ *   * a late RECEIPT with a cost changes the average that later issues were
+ *     valued at, so those issue values become wrong;
+ *   * a late ISSUE must be valued at the average AT ITS DATE, which the
+ *     current state cannot reconstruct.
+ *
+ * Two separate confirmations are therefore required, and they are different
+ * questions — the UI must not collapse them into one "Are you sure?":
+ *
+ *   1. **acknowledge** — "this document is dated in the past; here is what
+ *      that affects". Posting without `backdateConfirmed` is rejected.
+ *   2. **repricing** — "do you want the existing valuation of this item and
+ *      warehouse recalculated now, or left as it is?". There is no default:
+ *      an omitted choice is rejected, because defaulting either way would
+ *      make the system decide an accounting matter on the operator's behalf.
+ *
+ * `skip` is a first-class, honest answer: the key is marked STALE and keeps
+ * reporting a value it itself labels inconsistent. The system never quietly
+ * repairs it, and never quietly pretends it is fine.
+ *
+ * Equality is NOT backdating: a document dated exactly at the latest
+ * movement is a same-instant posting, which the canonical ledger order
+ * (`movement_date, created_at, id`) already resolves deterministically.
+ *
+ * Framework-free (AR-05).
+ */
+
+/** The operator's answer to the repricing question. No default exists. */
+export const REPRICING_CHOICES = ['recalculate', 'skip'] as const;
+export type RepricingChoice = (typeof REPRICING_CHOICES)[number];
+
+export function isRepricingChoice(value: string): value is RepricingChoice {
+  return (REPRICING_CHOICES as readonly string[]).includes(value);
+}
+
+/**
+ * What a backdated posting would affect on this key — the facts the UI needs
+ * to explain the consequence in business terms instead of asking a generic
+ * confirmation question.
+ */
+export interface BackdateAssessment {
+  backdated: boolean;
+  /** The proposed business date. */
+  movementDate: Date;
+  /** Latest movement already on the key; `null` when the key is empty. */
+  latestMovementDate: Date | null;
+  /** Movements on the key dated strictly after the proposed date. */
+  affectedMovements: number;
+  /** How many of those currently carry a value that could change. */
+  affectedValuedMovements: number;
+  /** Whether the key currently reports an inconsistent (stale) value. */
+  alreadyStale: boolean;
+}
+
+/** Strictly-before comparison; equal instants are not backdated. */
+export function isBackdated(params: {
+  movementDate: Date;
+  latestMovementDate: Date | null;
+}): boolean {
+  if (params.latestMovementDate === null) return false;
+  return params.movementDate.getTime() < params.latestMovementDate.getTime();
+}
+
+/**
+ * Why a backdated posting was refused, in machine-readable form. The Persian
+ * wording lives in the frontend (i18n rule, docs/frontend/standards.md §6);
+ * the backend returns the code plus the measured facts so the message can be
+ * written once, in the user's language, with real numbers in it.
+ */
+export const BACKDATE_CONFIRMATION_CODE = 'inventory.backdated_document';
+export const REPRICING_CHOICE_CODE = 'inventory.repricing_choice_required';
+
+export function backdateConfirmationMessage(
+  assessment: BackdateAssessment,
+): string {
+  const latest = assessment.latestMovementDate?.toISOString() ?? 'unknown';
+  return (
+    `The document date is earlier than the latest movement on this item and warehouse (${latest}). ` +
+    `${assessment.affectedMovements} later movement(s), ${assessment.affectedValuedMovements} of them valued, ` +
+    'may no longer be valued correctly. Confirm the backdated posting and choose explicitly whether to ' +
+    'recalculate the valuation of this item and warehouse.'
+  );
+}
+
+export function repricingChoiceMessage(): string {
+  return (
+    'A backdated posting requires an explicit repricing choice: "recalculate" to reprice this item and ' +
+    'warehouse now, or "skip" to keep the current values and mark them as inconsistent. ' +
+    'Valuation is never recalculated silently.'
+  );
+}

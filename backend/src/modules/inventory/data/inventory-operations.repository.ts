@@ -86,6 +86,17 @@ function toResult(
     throw new Error('Stored inventory operation has a malformed result.');
   }
   const record = value as Record<string, unknown>;
+  if (kind === 'valuation') {
+    const runId = record['runId'];
+    const movementId = record['movementId'];
+    if (
+      !(runId === null || typeof runId === 'string') ||
+      !(movementId === null || typeof movementId === 'string')
+    ) {
+      throw new Error('Stored inventory operation has a malformed result.');
+    }
+    return { kind, runId, movementId };
+  }
   if (kind === 'reservation') {
     if (typeof record['reservationId'] !== 'string') {
       throw new Error('Stored inventory operation has a malformed result.');

@@ -1,8 +1,10 @@
 # Inventory Domain Analysis
 
-Status: Proposed (design for review) · Updated: 2026-09-11
+Status: Proposed (design for review) · Updated: 2026-10-04 (§2.1/§5 reconciled with the
+implemented valuation foundation — ADR-0039, PDR-05/OD-VAL-01…19)
 Companion: [blueprint](./domain-blueprint.md) §5/§9 · [master data](./master-data-strategy.md) ·
-ADR-0017 (proposed) · ADR-0005/0016 · AR-13/16 · OQ-24, OQ-29, OQ-31
+ADR-0017 (proposed) · ADR-0022/ADR-0039 (accepted) · ADR-0005/0016 · AR-13/16 · OQ-24, OQ-29, OQ-31,
+OQ-67, OQ-68, OQ-69
 
 Inventory answers one question with certainty: **how much of what is where, and what
 did it cost**. This analysis decides where the truth lives, how balances stay fast,
@@ -79,7 +81,8 @@ flowchart LR
 | `lot_id?`, `serial_id?` | required when the item's capability requires it |
 | `movement_type` | closed enum: `opening`, `purchase_receipt`, `sales_issue`, `transfer_out`, `transfer_in`, `return_in`, `return_out`, `adjustment_gain`, `adjustment_loss`, `production_in`, `production_out`, `consumption`, … |
 | `quantity` | **signed** in the item's base unit (`+`in, `−`out); balances are `SUM`-consistent by construction |
-| `unit_cost?` , `total_cost?` | populated according to the valuation method (see §5); nullable where the method does not need it at movement time |
+| `total_cost?` | **AS BUILT (ADR-0039): `total_cost` only — there is NO stored `unit_cost`.** A per-unit figure is a rounded presentation of `total_cost / base_quantity` and would become a second, divergent truth; it is derived on read at scale 6. `total_cost` is SIGNED exactly like `base_quantity` (inbound `+`, outbound `−`), so inventory value is `SUM(total_cost)` just as on-hand is `SUM(base_quantity)`. NULL means "this fact carries no value yet" — a legitimate, operational state (OD-VAL-05), not an error |
+| `valuation_status`, `valuation_source`, `valued_at`, `valuation_run_id?` | **AS BUILT (ADR-0039):** finality of this row's value (`unvalued`/`provisional`/`valued`), where the value came from (`entered`/`average_cost`/`transfer`/`reversal`), when it was assigned, and which explicit repricing run last wrote it |
 | `document_type`, `document_id`, `document_line_id?` | logical link to the originating document |
 | `movement_date` | business date (drives period/opening filters) — distinct from `created_at` |
 | `correlation_id`, `created_by` | audit trail (AR-23) |
@@ -131,33 +134,57 @@ Inventory to do it through a public command (see blueprint §10).
 
 ---
 
-## 5. Valuation — the accounting interface (expert-gated)
+## 5. Valuation — the accounting interface (partially decided, PDR-05)
 
 Vardena must not hard-code a costing method; the model must be able to represent the
 common ones:
 
 | Method | What the model needs | Notes |
 |---|---|---|
-| Moving weighted average (perpetual) | Running quantity + value state per (item, warehouse); `unit_cost` written on inbound movements, computed on outbound | Most common for on-premise SMB ERPs; simple to reconcile |
-| FIFO | Cost layers per receipt; outbound consumes layers in order; layer consumption must be recorded to allow reversal | More tables (layers + consumption), but historically faithful |
-| Standard cost | Fixed standard cost + variance postings | Needs variance accounts (expert) |
+| Moving weighted average (perpetual) | Running quantity + value state per (item, warehouse) | **The only method implemented and executable in the MVP** (OD-VAL-02) |
+| FIFO | Cost layers per receipt; outbound consumes layers in order; layer consumption must be recorded to allow reversal | Not implemented; the vocabulary reserves the name, the engine refuses it (OD-VAL-18) |
+| Standard cost | Fixed standard cost + variance postings | Not implemented; needs variance accounts (expert) |
 
-**Recommendation:** design the ledger so that **inbound movements always record their
-cost** (`unit_cost`/`total_cost` where known) and outbound movements record the cost
-that the active method assigns; keep the *method-specific state* (moving-average
-state or cost layers) as a separate, rebuildable structure. Then switching the method
-is a configuration + rebuild exercise for future movements, and the historical
-ledger keeps whatever the method actually produced at the time.
+### 5.1 As built (ADR-0039 — implemented 2026-10-04)
 
-**Everything here is expert-gated (OQ-24):** the method, its rounding, the handling of
-returns and adjustments, and how inventory value maps to accounts (via Accounting's
-posting rules, AR-16 — never in Inventory).
+OQ-24 was partially answered by Owner decisions **OD-VAL-01…OD-VAL-19**
+([PDR-05](../../decisions/product/PDR-05-inventory-valuation-and-cost-optional-operations.md));
+the implemented shape is:
 
-**Out of scope in v1:** landed-cost allocation, manufacturing WIP, standard-cost
-variances, inventory revaluation runs. All are extension points that depend on the
-chosen method.
+| Concern | Decision as built |
+|---|---|
+| Method | Moving Weighted Average, perpetual, the only active one; `standard_cost`/`fifo` exist in the vocabulary and are rejected at configuration time with a typed 422 |
+| Method configuration | `inventory.item_valuation_methods` — **organization + item**, **effective-dated** with the same versioning mechanism as `unit_conversions` (insert + supersede, never edit in place). Resolution is by the movement's **business date**, so a backdated document uses the method that was in force then |
+| Valuation state | `inventory.inventory_valuation_states` — one row per **organization + warehouse + item**, the same key as the balance projection: `valued_quantity`, `total_value`, `uncosted_quantity`, `status`, `stale_since` |
+| Value on the ledger | `inventory_movements.total_cost` (signed) + `valuation_status`/`valuation_source`/`valued_at`/`valuation_run_id`. No second ledger, no inventory-accounting document (OD-VAL-08) |
+| Cost at posting time | **Optional, inbound only.** A receipt may carry `unitCost` *or* `totalCost` (never both) or nothing at all; an issue never takes an operator-entered cost (OD-VAL-05/07) |
+| Stock with no cost | Physically real and visibly uncosted: it lands in `uncosted_quantity` and sets the key to `pending_cost`. It is **not** valued at zero |
+| Late pricing | `POST /inventory/valuation/movements/{id}/cost` — an ADDITION to an `unvalued` inbound movement only; a movement that already carries a value is refused (409). Wrong values are corrected by reversal, like wrong quantities |
+| Outbound value | Derived by the method: uncosted stock is consumed first, then the valued pool at its average; emptying the pool flushes the residual so zero quantity always means zero value |
+| Transfers | Exactly value-neutral: out leg removes the source's share, in leg adds the identical amount (source `transfer`). Per-warehouse averages may legitimately diverge afterwards — **OQ-67** |
+| Reversals | Undo the value the **original** movement carried, read from the locked original row; degrade to `provisional` + `stale` when the pool no longer holds it — **OQ-68** |
+| Backdating | Allowed, never silent: `backdateConfirmed` **and** a separate explicit `repricing` choice (`recalculate`/`skip`, no default). `skip` honestly persists a `stale` state rather than pretending (OD-VAL-10/11) |
+| Recalculation | Deterministic replay of one key's history in the canonical ledger order (`movement_date, created_at, id`), bounded to one `(organization, warehouse, item)` key and `RECALCULATION_MOVEMENT_LIMIT` movements, audited in `inventory.inventory_valuation_runs` (OD-VAL-12) |
+| Relationship to quantity | Strictly separate: the valuation strategy has no branch that rejects a posting. It either values the movement or records why it could not (OD-VAL-13) |
 
----
+**Two invariants hold by construction and are asserted by the tests:**
+
+1. `balance.on_hand == valuation_state.valued_quantity + valuation_state.uncosted_quantity`, always.
+2. `SUM(movement.total_cost) == valuation_state.total_value` for every key that is not `stale`.
+
+The second one is what makes `stale` meaningful: it is the *only* state in which the
+stored value is knowingly allowed to disagree with the ledger, it is always the result
+of an explicit human choice, and it is sticky until an explicit recalculation clears it.
+
+### 5.2 Still expert-gated (OQ-24 stays OPEN)
+
+The method, the *state* and the *operational* relationship between quantity and cost
+are decided. These are not, and must not be inferred from the implementation:
+returns costing (**OD-VAL-19** defers it — the reversal rule is not the return rule),
+COGS/journal posting into Accounting (AR-16 — never in Inventory), landed-cost
+allocation, purchase-price variance, valuation money precision and currency
+(OQ-03/OQ-11 — `numeric(18,2)` is interim), lot/serial-level valuation,
+write-down/NRV, revaluation runs and manufacturing WIP.
 
 ## 6. Lot / serial / expiry tracking
 
@@ -211,6 +238,9 @@ All of these are plain SQL over typed columns — the design requirement from
 - **D-05** Movement vocabulary is a closed enum; signed base-unit quantities; every
   movement references its document and audit context.
 - **D-06** Valuation method is configuration consuming the ledger, not schema-shaping;
-  method and its accounting effects are expert-gated (OQ-24).
+  method and its accounting effects are expert-gated (OQ-24). *Partially answered
+  2026-10-04 by OD-VAL-02/03/04/14 and implemented by ADR-0039: the method stays
+  configuration (effective-dated, per organization + item) and only the **result** —
+  the signed `total_cost` a movement actually carried — lives on the ledger row.*
 - **D-07** Reservations are separate from movements and quantities; negative stock is
   a policy, defaulting to reject.
