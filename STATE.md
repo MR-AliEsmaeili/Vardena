@@ -1396,6 +1396,12 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
      correction/deletion, OQ-13/OQ-26 approval and Inventory → Accounting
      posting remain their blockers — valuation removed exactly one blocker from
      those rows and nothing else.
+- **CI after the corrections:** run **`37225470067`** (head `ecf10b0`) —
+  **backend ✅ and frontend ✅**, including `prisma:validate`,
+  `prisma:generate`, `prisma:deploy`, the migration rehearsal and the
+  live-PostgreSQL E2E suites. (Run `37224462262`, the docs-only commit
+  `c72e4a5`, also succeeded.) The migration itself was not modified in the
+  correction round and no new migration was added.
 - **Status:** **CHANGES REQUIRED (Owner, 2026-10-04) — corrections pushed, awaiting
   re-review.** The PR stays **open**; it is not merged and not accepted. Merge
   and green CI are not acceptance (§6). ADR-0039 remains **Proposed**, PDR-05
