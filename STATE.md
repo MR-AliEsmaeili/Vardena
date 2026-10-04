@@ -1344,11 +1344,21 @@ record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   `prisma validate`/`generate` (engine download blocked), `prisma:deploy`,
   migration rehearsal and the live-PostgreSQL E2E suites.
 - **Pull request:** **#116** — `feat(inventory): establish valuation foundation
-  and cost-optional warehouse operations`, head `cf965aa`, branch
+  and cost-optional warehouse operations`, head `7b4b825`, branch
   `arena/01a107dc-vardena`, **left OPEN for architectural review** (not
   merged). The mandatory A–K implementation report and the OD-VAL-01…19
   decision mapping are recorded in the PR description; the canonical decision
   record is PDR-05.
+- **CI:** run **`37224093994`** — **backend and frontend both success**,
+  including `prisma:validate`, `prisma:generate`, `prisma:deploy`, the
+  migration rehearsal and the **live-PostgreSQL E2E suites** that cannot run in
+  the authoring sandbox. The first run (`37223668345`) failed at the live-DB
+  step: three live suites tore down `movements → warehouses → items` and the
+  new `ON DELETE RESTRICT` valuation rows blocked the warehouse delete. Fixed
+  by extending the teardown of `item-master-live`, `material-requests-live` and
+  `warehouse-master-live` only — **no assertion was changed, relaxed or
+  removed**. This was a genuine integration finding the hermetic test doubles
+  could not surface.
 - **Status:** **READY FOR REVIEW — NOT ACCEPTED.** The PR is left **open** for
   architectural review per the work order. Merge and green CI are not Owner
   acceptance (§6). ADR-0039 is Accepted as an architecture record; it closes no
