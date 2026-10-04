@@ -1,6 +1,6 @@
 # C-54 — Quantity-only Inventory Kardex Investigation
 
-**Status: investigation only — no Kardex implementation authorized**  
+**Status: historical investigation — superseded by the Owner-authorized C-54 implementation order and `c-54-quantity-kardex-implementation.md`.**
 **Inspected `origin/main`:** `c22bb1975f0fb29ebd0eefe4b1b66198c9a99f1e`  
 **Working branch:** `arena/01a10348-vardena`
 
