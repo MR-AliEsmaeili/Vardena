@@ -39,7 +39,7 @@
 > No implementation or acceptance is authorized.
 >
 > **Valuation-foundation addendum (2026-10-04, branch `arena/01a107dc-vardena`,
-> open PR for review — ADR-0039 Accepted, PDR-05 / OD-VAL-01…OD-VAL-19).**
+> open PR for review — ADR-0039 Proposed, PDR-05 / OD-VAL-01…OD-VAL-19).**
 > The statement "the movement ledger has **no cost column of any kind**" is no
 > longer true: `inventory_movements` now carries a signed `total_cost` plus
 > `valuation_status`/`valuation_source`/`valued_at`/`valuation_run_id`, and three

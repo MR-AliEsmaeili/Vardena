@@ -67,6 +67,7 @@ import {
 } from '../../src/modules/inventory/data/inventory-posting-errors.js';
 import {
   isValuationMethod,
+  resolveValuationMethodAt,
   type ItemValuationMethodVersion,
   type ValuationMethod,
 } from '../../src/modules/inventory/domain/valuation-method.js';
@@ -82,12 +83,14 @@ import type { BackdateAssessment } from '../../src/modules/inventory/domain/back
 import {
   applyMovement,
   applyTransfer,
-  replay,
-  toReplayFact,
-  valuationChanged,
   type MovementValuation,
   type ValuationPosition,
 } from '../../src/modules/inventory/domain/moving-weighted-average.js';
+import {
+  replay,
+  toReplayFact,
+  valuationChanged,
+} from '../../src/modules/inventory/domain/valuation-replay.js';
 import type {
   BalanceKey,
   ItemValuationMethodCreate,
@@ -554,16 +557,27 @@ function applyReplayInMemory(
   if (rows.length > RECALCULATION_MOVEMENT_LIMIT) {
     throw new RecalculationTooLargeError(RECALCULATION_MOVEMENT_LIMIT);
   }
+  // Mirrors the production repository: one method lookup PER MOVEMENT at that
+  // movement's own business date (OD-VAL-14), never one method for the whole
+  // history.
+  const versions = tables.valuationMethods.findMany(
+    (version) =>
+      version.organizationId === input.key.organizationId &&
+      version.itemId === input.key.itemId,
+  );
   const result = replay(
     rows.map((row) =>
-      toReplayFact({
-        id: row.id,
-        movementType: row.movementType,
-        baseQuantity: row.baseQuantity,
-        totalCost: row.totalCost,
-        valuationStatus: row.valuationStatus,
-        valuationSource: row.valuationSource,
-      }),
+      toReplayFact(
+        {
+          id: row.id,
+          movementType: row.movementType,
+          baseQuantity: row.baseQuantity,
+          totalCost: row.totalCost,
+          valuationStatus: row.valuationStatus,
+          valuationSource: row.valuationSource,
+        },
+        resolveValuationMethodAt(versions, row.movementDate).method,
+      ),
     ),
   );
   const changes = rows.flatMap((row, index) => {

@@ -1283,8 +1283,10 @@ Documentation/governance addendum at current `main` /
 
 Backend implementation slice on branch `arena/01a107dc-vardena`, branched from
 `main` @ `1e3d407fd3f08650e0e70353f96b277e80ef03fd` (merge of PR #115, C-54
-quantity Kardex). Architecture record: **ADR-0039 (Accepted)**. Owner decision
-record: **PDR-05 / OD-VAL-01…OD-VAL-19**
+quantity Kardex). Architecture record: **ADR-0039 (Proposed)** — an
+implementation agent cannot promote its own ADR; acceptance is the Owner's
+decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
+(business decisions only — it accepts no implementation and promotes no ADR)
 (`docs/decisions/product/PDR-05-inventory-valuation-and-cost-optional-operations.md`).
 
 - **Owner decisions recorded (19).** Perpetual inventory; Moving Weighted
@@ -1319,6 +1321,10 @@ record: **PDR-05 / OD-VAL-01…OD-VAL-19**
 - **Invariants asserted by tests.** (1) `balance.onHand == valuedQuantity +
   uncostedQuantity` always; (2) `SUM(movement.totalCost) == state.totalValue`
   for every key that is not `stale`.
+- **Scope framing (corrected after review).** This is a **valuation
+  foundation**, not a finished Inventory Accounting capability: there is no
+  Receipt document, no Issue document, no Inventory → Accounting posting, no
+  returns costing and no UI. OQ-24 is **partially** answered and stays OPEN.
 - **Documentation reconciled, not duplicated.** OQ-24 updated **in place**
   (stays **OPEN** — returns costing, COGS posting, landed cost and valuation
   precision explicitly undecided); new **OQ-67** (transfer average divergence),
@@ -1334,13 +1340,14 @@ record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   *documents* (OQ-54), and **any frontend** — the UX documents specify the
   target flows and classify them as `SUPPORTED API / FUTURE UI` (candidate
   C-57).
-- **Local validation.** `npm run format:check`, `npm run lint`,
-  `npm run typecheck`, `npm test` (**132 files / 1594 tests**, +63 over the
-  1531 baseline), hermetic `test:e2e` including the new
-  `test/inventory-valuation.e2e-spec.ts` (**31 tests**) and the unchanged
-  `inventory-core.e2e-spec.ts` (10), `npm run build`; frontend `lint`,
-  `typecheck`, `format:check`, `test`, `build` (untouched by this slice).
-  **Not runnable in the authoring sandbox and delegated to CI:**
+- **Local validation (after the correction round).** `npm run format:check`,
+  `npm run lint` (1 pre-existing accounting warning, unchanged),
+  `npm run typecheck`, `npm test` (**133 files / 1602 tests**, +71 over the
+  1531 baseline), hermetic `test:e2e` (**26 files / 360 passed / 160 skipped**)
+  including `test/inventory-valuation.e2e-spec.ts` (**32 tests**) and the
+  unchanged `inventory-core.e2e-spec.ts` (10), `npm run build`; frontend
+  `lint`, `typecheck`, `format:check`, `test`, `build` (untouched by this
+  slice). **Not runnable in the authoring sandbox and delegated to CI:**
   `prisma validate`/`generate` (engine download blocked), `prisma:deploy`,
   migration rehearsal and the live-PostgreSQL E2E suites.
 - **Pull request:** **#116** — `feat(inventory): establish valuation foundation
@@ -1359,8 +1366,38 @@ record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   `warehouse-master-live` only — **no assertion was changed, relaxed or
   removed**. This was a genuine integration finding the hermetic test doubles
   could not surface.
-- **Status:** **READY FOR REVIEW — NOT ACCEPTED.** The PR is left **open** for
-  architectural review per the work order. Merge and green CI are not Owner
-  acceptance (§6). ADR-0039 is Accepted as an architecture record; it closes no
-  OQ beyond the partial OQ-24 answer recorded in PDR-05, and authorizes no
-  further Inventory production work.
+- **Owner review 1 (2026-10-04): CHANGES REQUIRED.** The official outcome on
+  the first submission (§6 vocabulary). Two classes of finding:
+  1. **Technical defect — historical method resolution.** A recalculation
+     resolved ONE valuation method (the one in force at a single instant) and
+     replayed the key's whole history under it, so a past period could be
+     restated under a method that only became effective later. That
+     contradicts the effective dating OD-VAL-14 exists to provide. **Fixed:**
+     the replay driver moved to `domain/valuation-replay.ts`, every
+     `ReplayFact` now carries the method resolved at **its own**
+     `movement_date` (`buildReplayFacts` reads the item's versions inside the
+     replay transaction and reuses `resolveValuationMethodAt`), and the driver
+     asks for a strategy once per fact through a closed `switch` — no registry,
+     no EAV, no second engine. A period configured with a method this build
+     cannot execute now fails closed with
+     `inventory.valuation_method_not_implemented`, naming the method and the
+     movement, instead of being silently valued as Moving Weighted Average.
+     Proven by `domain/valuation-replay.spec.ts` (14 unit tests, including the
+     1404/1405 resolution case) and one e2e case that is verified to FAIL
+     against the previous behaviour. The run/state `method` column is now
+     documented as *the method in force for the key when the run executed*,
+     not the per-movement methods applied — recorded against **OQ-69**.
+  2. **Governance overreach in the documentation.** ADR-0039 had been written
+     as `Accepted` and quoted that way in 7 documents; the roadmap read as if
+     the slice had moved C-51/C-52 forward. **Corrected:** ADR-0039 is
+     `Proposed` everywhere, PDR-05 is scoped to the Owner's business decisions
+     (it accepts nothing and promotes nothing), the roadmap states plainly that
+     **no Receipt or Issue document exists** and that OQ-54 lifecycle/
+     correction/deletion, OQ-13/OQ-26 approval and Inventory → Accounting
+     posting remain their blockers — valuation removed exactly one blocker from
+     those rows and nothing else.
+- **Status:** **CHANGES REQUIRED (Owner, 2026-10-04) — corrections pushed, awaiting
+  re-review.** The PR stays **open**; it is not merged and not accepted. Merge
+  and green CI are not acceptance (§6). ADR-0039 remains **Proposed**, PDR-05
+  closes no OQ beyond the partial OQ-24 answer it records, and nothing here
+  authorizes further Inventory production work.

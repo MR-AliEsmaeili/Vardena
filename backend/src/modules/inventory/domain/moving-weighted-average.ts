@@ -83,7 +83,6 @@
 
 import {
   addMoney,
-  compareMoney,
   divideToScale,
   multiplyMoney,
   negateMoney,
@@ -476,108 +475,5 @@ export function applyTransfer(params: {
     outValuation: settled('valued', negateMoney(movedValue), 'transfer'),
     inValuation: settled('valued', movedValue, 'transfer'),
     marksStale: false,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Replay (the deterministic recalculation)
-// ---------------------------------------------------------------------------
-
-/** One fact plus the identity needed to write the result back to its row. */
-export interface ReplayFact extends ValuationFact {
-  id: string;
-}
-
-export interface ReplayedMovement {
-  id: string;
-  valuation: MovementValuation;
-}
-
-export interface ReplayResult {
-  position: ValuationPosition;
-  movements: ReplayedMovement[];
-  /** True when any replayed row is still provisional — the key stays stale. */
-  provisional: boolean;
-}
-
-/**
- * Deterministic replay of a key's whole history.
- *
- * The caller passes the facts in the canonical ledger order
- * (`movement_date, created_at, id` — the same order C-54's Kardex uses, so
- * the recalculated numbers agree with what the Kardex shows). `backdated` is
- * meaningless during a replay (the facts are in order by definition) and is
- * cleared: valuing a late document as if it had arrived on time is precisely
- * what a recalculation is for.
- *
- * WHAT IS PRESERVED: every value a fact carries on its own authority — human
- * entered costs, transfer legs, reversals. WHAT IS RECOMPUTED: every
- * average-derived issue value. That split is why a replay is idempotent:
- * running it twice yields identical numbers.
- */
-export function replay(facts: readonly ReplayFact[]): ReplayResult {
-  let position = EMPTY_POSITION;
-  const movements: ReplayedMovement[] = [];
-  let provisional = false;
-  for (const fact of facts) {
-    const outcome = applyMovement(position, {
-      movementType: fact.movementType,
-      baseQuantity: fact.baseQuantity,
-      knownValue: fact.knownValue,
-      knownValueSource: fact.knownValueSource,
-      backdated: false,
-    });
-    position = outcome.position;
-    provisional ||= outcome.valuation.status === 'provisional';
-    movements.push({ id: fact.id, valuation: outcome.valuation });
-  }
-  return { position, movements, provisional };
-}
-
-/**
- * True when two valuations differ in any stored field — used to count what a
- * recalculation actually changed, so a run that changed nothing reports zero
- * instead of claiming work it did not do.
- */
-export function valuationChanged(
-  before: {
-    status: MovementValuationStatus;
-    totalCost: string | null;
-    source: ValuationSource | null;
-  },
-  after: MovementValuation,
-): boolean {
-  if (before.status !== after.status) return true;
-  if (before.source !== after.source) return true;
-  if (before.totalCost === null || after.totalCost === null) {
-    return before.totalCost !== after.totalCost;
-  }
-  return compareMoney(before.totalCost, after.totalCost) !== 0;
-}
-
-/**
- * The replay input for a stored movement row: preserve every value the fact
- * carries on its own authority, recompute only what the average produced.
- */
-export function toReplayFact(row: {
-  id: string;
-  movementType: MovementType;
-  baseQuantity: string;
-  totalCost: string | null;
-  valuationStatus: MovementValuationStatus;
-  valuationSource: ValuationSource | null;
-}): ReplayFact {
-  const preserved =
-    row.totalCost !== null &&
-    row.valuationSource !== null &&
-    row.valuationSource !== 'average_cost';
-  return {
-    id: row.id,
-    movementType: row.movementType,
-    baseQuantity: row.baseQuantity,
-    knownValue: preserved ? magnitude(row.totalCost ?? '0') : null,
-    knownValueSource: preserved
-      ? (row.valuationSource ?? 'entered')
-      : undefined,
   };
 }

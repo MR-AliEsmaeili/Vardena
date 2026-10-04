@@ -26,6 +26,7 @@ import {
   CostAlreadyAssignedError,
   RecalculationTooLargeError,
 } from '../data/inventory-posting-errors.js';
+import { UnsupportedValuationMethodError } from '../domain/valuation-replay.js';
 import type { BackdateAssessment } from '../domain/backdating.js';
 import {
   backdateConfirmationMessage,
@@ -685,6 +686,17 @@ export class InventoryValuationService {
           limit: error.limit,
         });
       }
+      if (error instanceof UnsupportedValuationMethodError) {
+        // History configured with a method this build cannot execute. The
+        // replay refuses rather than revaluing that period with the method in
+        // force today (OD-VAL-14/OD-VAL-18).
+        throw AppException.businessRule(error.message, {
+          code: 'inventory.valuation_method_not_implemented',
+          method: error.method,
+          movementId: error.movementId,
+          activeMethods: [DEFAULT_VALUATION_METHOD],
+        });
+      }
       if (isUniqueViolation(error)) {
         const raced = await this.replayValuation(
           input.organizationId,
@@ -757,9 +769,13 @@ export class InventoryValuationService {
       return { run: replayed.run, state: replayed.state };
     }
 
-    // The method is resolved at the key's LATEST business instant: a replay
-    // re-values the whole history, so it must use the method in force now,
-    // not the one in force at some movement in the middle of it.
+    // This resolution answers ONE question: which method the key is valued
+    // under from now on. It is recorded on the run and the state row. It is
+    // NOT applied to history — the replay resolves each movement's method at
+    // that movement's own business date (OD-VAL-14), so a period that ran
+    // under a different configured method is never silently restated under
+    // today's one. Resolving it here also keeps the command fail-closed when
+    // the CURRENT method is one this build cannot execute.
     const resolved = await this.resolveMethodForPosting({
       organizationId: input.organizationId,
       itemId: item.id,
@@ -817,6 +833,17 @@ export class InventoryValuationService {
         throw AppException.businessRule(error.message, {
           code: 'inventory.recalculation_too_large',
           limit: error.limit,
+        });
+      }
+      if (error instanceof UnsupportedValuationMethodError) {
+        // History configured with a method this build cannot execute. The
+        // replay refuses rather than revaluing that period with the method in
+        // force today (OD-VAL-14/OD-VAL-18).
+        throw AppException.businessRule(error.message, {
+          code: 'inventory.valuation_method_not_implemented',
+          method: error.method,
+          movementId: error.movementId,
+          activeMethods: [DEFAULT_VALUATION_METHOD],
         });
       }
       if (isUniqueViolation(error)) {

@@ -538,6 +538,7 @@ split, not a data split.
 | :--- | :--- | :--- |
 | Persona | Warehouse keeper — counts things | Accountant — values things |
 | Primary question | *What moved, how much, where?* | *What is it worth, and what is still unpriced?* |
+| Surfaces | `رسید انبار` (receipt), `صادره انبار` (issue), `انتقال بین انبارها` (transfer), quantity stock on hand, quantity Kardex — **all usable end to end without a single monetary field** | `قیمت تمام‌شده` per movement, `ارزش کل` per key, `وضعیت قیمت‌گذاری`, `موجودی بدون قیمت تمام‌شده`, `ارزش‌گذاری نامعتبر` (stale), `قیمت‌گذاری مجدد` (bounded repricing), method configuration |
 | Money fields | Optional on a receipt; **absent from the issue form** | First-class |
 | Required permissions | `Inventory.Movement.{View,Create}`, `Inventory.Balance.View` | `Inventory.Valuation.{View,Configure,AssignCost,Recalculate}` |
 | Default landing | Post a receipt / post an issue / stock on hand | Worklist of `pending_cost` and `stale` keys |

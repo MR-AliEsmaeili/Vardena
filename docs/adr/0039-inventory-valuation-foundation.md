@@ -1,6 +1,6 @@
 # ADR-0039: Inventory Valuation Foundation — Value on the Existing Ledger, Cost-Optional Operations, Explicit Bounded Repricing
 
-Status: Accepted (implemented by the "Inventory Valuation Foundation + Cost-Optional Warehouse Operations" slice, 2026-10-04)
+Status: Proposed (written with the "Inventory Valuation Foundation + Cost-Optional Warehouse Operations" slice, 2026-10-04; acceptance is the Owner's decision on the review of PR #116 — an implementation agent cannot promote its own ADR)
 Date: 2026-10-04
 
 ## Context
@@ -75,6 +75,23 @@ allowed to touch**.
    `reversal`) are preserved verbatim; only `average_cost` values are
    recomputed. That split is what makes a second run report
    `movementsRevalued: 0` instead of drifting.
+8a. **The replay resolves the method PER MOVEMENT, at that movement's own
+    business date (OD-VAL-14).** Every `ReplayFact` carries the method
+    resolved from the item's effective-dated versions at its `movement_date`,
+    and `domain/valuation-replay.ts` asks for a strategy once per fact. A run
+    never applies "the method in force today" to history — that would defeat
+    the point of effective dating. The `method` column on
+    `inventory_valuation_runs` and on `inventory_valuation_states` therefore
+    means *the method in force for the key at the moment the run executed*
+    (what the key is valued under going forward), **not** the method applied
+    to every replayed row; the per-movement history itself is not yet stored
+    (**OQ-69**). The dispatch is a closed `switch` over the same closed method
+    vocabulary the configuration endpoint validates — not a registry, not
+    configuration-driven handlers. A period configured with a method this
+    build cannot execute makes the replay **fail closed** with
+    `inventory.valuation_method_not_implemented` (naming the method and the
+    movement) instead of being silently restated under Moving Weighted
+    Average.
 9. **Recalculation is bounded by construction (OD-VAL-12).** One
    `(organization, warehouse, item)` key per command — the key is a required
    input, not a filter. The repository reads `RECALCULATION_MOVEMENT_LIMIT + 1`

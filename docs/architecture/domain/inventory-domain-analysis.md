@@ -3,7 +3,7 @@
 Status: Proposed (design for review) · Updated: 2026-10-04 (§2.1/§5 reconciled with the
 implemented valuation foundation — ADR-0039, PDR-05/OD-VAL-01…19)
 Companion: [blueprint](./domain-blueprint.md) §5/§9 · [master data](./master-data-strategy.md) ·
-ADR-0017 (proposed) · ADR-0022/ADR-0039 (accepted) · ADR-0005/0016 · AR-13/16 · OQ-24, OQ-29, OQ-31,
+ADR-0017 (proposed) · ADR-0022 (accepted) · ADR-0039 (proposed) · ADR-0005/0016 · AR-13/16 · OQ-24, OQ-29, OQ-31,
 OQ-67, OQ-68, OQ-69
 
 Inventory answers one question with certainty: **how much of what is where, and what
@@ -145,7 +145,7 @@ common ones:
 | FIFO | Cost layers per receipt; outbound consumes layers in order; layer consumption must be recorded to allow reversal | Not implemented; the vocabulary reserves the name, the engine refuses it (OD-VAL-18) |
 | Standard cost | Fixed standard cost + variance postings | Not implemented; needs variance accounts (expert) |
 
-### 5.1 As built (ADR-0039 — implemented 2026-10-04)
+### 5.1 As built (ADR-0039 **Proposed** — implemented 2026-10-04, PR #116 open, not accepted)
 
 OQ-24 was partially answered by Owner decisions **OD-VAL-01…OD-VAL-19**
 ([PDR-05](../../decisions/product/PDR-05-inventory-valuation-and-cost-optional-operations.md));
@@ -164,7 +164,7 @@ the implemented shape is:
 | Transfers | Exactly value-neutral: out leg removes the source's share, in leg adds the identical amount (source `transfer`). Per-warehouse averages may legitimately diverge afterwards — **OQ-67** |
 | Reversals | Undo the value the **original** movement carried, read from the locked original row; degrade to `provisional` + `stale` when the pool no longer holds it — **OQ-68** |
 | Backdating | Allowed, never silent: `backdateConfirmed` **and** a separate explicit `repricing` choice (`recalculate`/`skip`, no default). `skip` honestly persists a `stale` state rather than pretending (OD-VAL-10/11) |
-| Recalculation | Deterministic replay of one key's history in the canonical ledger order (`movement_date, created_at, id`), bounded to one `(organization, warehouse, item)` key and `RECALCULATION_MOVEMENT_LIMIT` movements, audited in `inventory.inventory_valuation_runs` (OD-VAL-12) |
+| Recalculation | Deterministic replay of one key's history in the canonical ledger order (`movement_date, created_at, id`), bounded to one `(organization, warehouse, item)` key and `RECALCULATION_MOVEMENT_LIMIT` movements, audited in `inventory.inventory_valuation_runs` (OD-VAL-12). **The method is resolved per movement, at that movement's own business date** (OD-VAL-14): a 1404 movement is replayed under the 1404 configuration even when a newer version exists. A period configured with a method the MVP does not implement makes the replay fail closed (`inventory.valuation_method_not_implemented`) rather than be restated under Moving Weighted Average. The `method` column on the run/state row records the method in force for the key at execution time, not the per-movement methods applied — see **OQ-69** |
 | Relationship to quantity | Strictly separate: the valuation strategy has no branch that rejects a posting. It either values the movement or records why it could not (OD-VAL-13) |
 
 **Two invariants hold by construction and are asserted by the tests:**

@@ -6,14 +6,17 @@
 - **Owner of the remaining questions:** Accountant + inventory expert (OQ-24 stays **OPEN**)
 - **Registry row:** [`docs/open-questions.md`](../../open-questions.md) — **OQ-24 remains OPEN** (partially resolved; see §4)
 - **Recording baseline:** `main` @ `1e3d407fd3f08650e0e70353f96b277e80ef03fd` (merge of PR #115)
-- **Related records:** ADR-0039 (this slice's architecture) · ADR-0022 (inventory core ledger, Accepted) · ADR-0017 (ledger as source of truth) · D-04/D-05/D-06/D-07/D-21/D-26 in [`domain-decisions.md`](../../architecture/domain/domain-decisions.md) · PDR-01 / OD-C47-01 (quantity exactness) · OQ-03 (money precision) · OQ-11 · OQ-54
+- **Related records:** ADR-0039 (this slice's architecture — **Proposed**; this product record neither promotes it nor accepts the implementation) · ADR-0022 (inventory core ledger, Accepted) · ADR-0017 (ledger as source of truth) · D-04/D-05/D-06/D-07/D-21/D-26 in [`domain-decisions.md`](../../architecture/domain/domain-decisions.md) · PDR-01 / OD-C47-01 (quantity exactness) · OQ-03 (money precision) · OQ-11 · OQ-54
 
-> Unlike PDR-01…PDR-04, the work order that carried these decisions **also
-> authorized the implementation of this slice**. This record is therefore the
-> decision source for the code in `backend/src/modules/inventory/**` that cites
-> `OD-VAL-xx`, and ADR-0039 is its architectural counterpart. Implementation and
-> a green pipeline still do **not** constitute acceptance (STATE.md §6:
-> MERGED ≠ ACCEPTED), and this record does not close OQ-24.
+> **What this record is and is not.** It transcribes the Owner's *business*
+> decisions (OD-VAL-01…OD-VAL-19) exactly as PDR-01…PDR-04 transcribe theirs —
+> nothing more. It is the decision source for the code in
+> `backend/src/modules/inventory/**` that cites `OD-VAL-xx`, but it **accepts
+> no implementation**, **promotes no ADR** (ADR-0039 stays **Proposed** until
+> the Owner decides on PR #116) and **closes no Open Question** — OQ-24 stays
+> OPEN. Implementation and a green pipeline are not acceptance (STATE.md §6:
+> MERGED ≠ ACCEPTED). The one official review outcome recorded so far for the
+> slice is the Owner's **CHANGES REQUIRED**.
 
 ## 1. Question decided
 
@@ -82,7 +85,7 @@ registry is created.
 | Decided element | Evidence |
 |---|---|
 | OD-VAL-01/02/18 | `backend/src/modules/inventory/domain/valuation-method.ts` (`VALUATION_METHODS` vs `ACTIVE_VALUATION_METHODS`, `inactiveMethodMessage`), 422 on configuring an inactive method |
-| OD-VAL-03/14 | `inventory.item_valuation_methods` (organization + item + `valid_from`), `data/item-valuation-methods.repository.ts`, `resolveValuationMethodAt` |
+| OD-VAL-03/14 | `inventory.item_valuation_methods` (organization + item + `valid_from`), `data/item-valuation-methods.repository.ts`, `resolveValuationMethodAt`. **A recalculation resolves the method per movement, at that movement's own `movement_date`** (`buildReplayFacts` in `data/inventory-valuation.repository.ts` → `domain/valuation-replay.ts`), so a past period is never restated under a method that became effective later; a period configured with a non-MVP method fails closed (`inventory.valuation_method_not_implemented`) |
 | OD-VAL-04 | `inventory.inventory_valuation_states` unique on `(organization_id, warehouse_id, item_id)` |
 | OD-VAL-05/07/16 | `application/inventory-cost-support.ts`, `domain/money.ts`, DTO `unitCost`/`totalCost` optional and inbound-only |
 | OD-VAL-06 | `POST /inventory/valuation/movements/{id}/cost` (`InventoryValuationRepository.assignCost`) |

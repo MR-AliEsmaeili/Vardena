@@ -65,6 +65,13 @@ describe('Inventory valuation (e2e)', () => {
   let root: ReturnType<typeof request.agent>;
   /** A warehouse persona: may post quantities, may not see money. */
   let operator: ReturnType<typeof request.agent>;
+  /**
+   * The in-memory inventory stores. Held so ONE test can seed a historical
+   * method version the configuration endpoint (correctly) refuses to create —
+   * a test-only configuration boundary, used to prove the replay resolves a
+   * method per movement date without implementing a second engine.
+   */
+  let core: ReturnType<typeof createInventoryCoreStores>;
 
   const state = {
     orgId: '',
@@ -75,6 +82,7 @@ describe('Inventory valuation (e2e)', () => {
     unitId: '',
     itemId: '',
     otherItemId: '',
+    datedItemId: '',
     uncostedReceiptId: '',
   };
 
@@ -93,7 +101,7 @@ describe('Inventory valuation (e2e)', () => {
   beforeAll(async () => {
     const stores = createInMemoryStores();
     const master = createMasterDataStores();
-    const core = createInventoryCoreStores();
+    core = createInventoryCoreStores();
     const built = await createTestApp({
       override: (builder) =>
         builder
@@ -261,6 +269,17 @@ describe('Inventory valuation (e2e)', () => {
       })
       .expect(201);
     state.otherItemId = otherItem.body.id as string;
+    const datedItem = await root
+      .post('/api/v1/inventory/items')
+      .send({
+        organizationId: state.orgId,
+        code: 'ITM-VAL-3',
+        name: 'Effective-dated Bolt',
+        itemKind: 'goods',
+        baseUnitId: state.unitId,
+      })
+      .expect(201);
+    state.datedItemId = datedItem.body.id as string;
   });
 
   afterAll(async () => {
@@ -663,6 +682,129 @@ describe('Inventory valuation (e2e)', () => {
         (run: { id: string }) => run.id === replayed.body.run.id,
       ),
     ).toBe(true);
+  });
+
+  it('replays each movement under the method effective AT ITS OWN DATE, not the one in force today', async () => {
+    const key = {
+      organizationId: state.orgId,
+      warehouseId: state.warehouseId,
+      itemId: state.datedItemId,
+    };
+    const receipt = (
+      operationKey: string,
+      movementDate: string,
+      totalCost: string,
+    ) =>
+      root
+        .post('/api/v1/inventory/movements')
+        .send({
+          ...key,
+          unitId: state.unitId,
+          operationKey,
+          movementType: 'inbound',
+          quantity: '10',
+          totalCost,
+          movementDate,
+          backdateConfirmed: true,
+          repricing: 'skip',
+        })
+        .expect(201);
+
+    // Two receipts in ascending date order: one in the earlier period, one in
+    // the later period.
+    const early = await receipt(
+      'val-dated-1',
+      '2026-01-10T00:00:00.000Z',
+      '1000.00',
+    );
+    const late = await receipt(
+      'val-dated-2',
+      '2026-02-10T00:00:00.000Z',
+      '1200.00',
+    );
+
+    // Both periods are Moving Weighted Average today, so the whole history is
+    // executable and the recalculation succeeds.
+    const ok = await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-dated-recalc-ok',
+        reason: 'Baseline before the historical method changes.',
+      })
+      .expect(201);
+    expect(ok.body.run.movementsExamined).toBe(2);
+    expect(ok.body.state.totalValue).toBe('2200');
+
+    // TEST-ONLY configuration boundary: the configuration endpoint refuses to
+    // store a method nobody implemented (proved by its own test), so the only
+    // way a FIFO period can exist today is to seed it. That is exactly the
+    // history a future release — or a data migration — can produce, and the
+    // replay must not paper over it.
+    core.tables.valuationMethods.insert({
+      id: 'seeded-fifo-window',
+      organizationId: state.orgId,
+      itemId: state.datedItemId,
+      method: 'fifo',
+      validFrom: new Date('2026-02-01T00:00:00.000Z'),
+      validTo: new Date('2026-03-01T00:00:00.000Z'),
+      note: 'Seeded by the test: a period configured with a method the MVP cannot execute.',
+      createdAt: new Date('2026-02-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-02-01T00:00:00.000Z'),
+    });
+
+    // The method in force TODAY is still the default Moving Weighted Average,
+    // so a run that resolved one method for the whole history would happily
+    // revalue the February movement with it. It must not: that movement's own
+    // date falls in the FIFO window.
+    const resolvedNow = await root
+      .get('/api/v1/inventory/valuation/methods/resolve')
+      .query({
+        organizationId: state.orgId,
+        itemId: state.datedItemId,
+        asOf: new Date().toISOString(),
+      })
+      .expect(200);
+    expect(resolvedNow.body.method).toBe('moving_weighted_average');
+
+    const refused = await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-dated-recalc-refused',
+        reason: 'Must refuse: February was configured with FIFO.',
+      })
+      .expect(422);
+    expect(refused.body.details.code).toBe(
+      'inventory.valuation_method_not_implemented',
+    );
+    expect(refused.body.details.method).toBe('fifo');
+    expect(refused.body.details.movementId).toBe(late.body.id);
+    // The honest refusal leaves the earlier, executable period untouched
+    // rather than half-rewritten.
+    const unchanged = await root
+      .get('/api/v1/inventory/valuation/states/current')
+      .query(key)
+      .expect(200);
+    expect(unchanged.body.totalValue).toBe('2200');
+    expect(early.body.id).not.toBe(late.body.id);
+
+    // Narrow the FIFO window to a period that holds no movement: every fact
+    // resolves to an executable method again and the replay runs.
+    core.tables.valuationMethods.patch('seeded-fifo-window', {
+      validFrom: new Date('2026-05-01T00:00:00.000Z'),
+      validTo: new Date('2026-06-01T00:00:00.000Z'),
+    });
+    const recovered = await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-dated-recalc-recovered',
+        reason: 'The unexecutable period no longer contains any movement.',
+      })
+      .expect(201);
+    expect(recovered.body.run.movementsExamined).toBe(2);
+    expect(recovered.body.state.totalValue).toBe('2200');
   });
 
   it('refuses a recalculation without a key (there is no "recalculate everything")', async () => {
