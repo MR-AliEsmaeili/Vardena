@@ -92,7 +92,7 @@ registry is created.
 | OD-VAL-08 | `total_cost` + status columns live ON `inventory.inventory_movements`; no new document or ledger table |
 | OD-VAL-09 | schema comment on `inventory_movements.total_cost`; no purchasing coupling exists |
 | OD-VAL-10/11 | `domain/backdating.ts`, `InventoryValuationService.requireBackdateDecisions`, `GET /inventory/valuation/backdate-check`, codes `inventory.backdated_document` / `inventory.repricing_choice_required` |
-| OD-VAL-12 | `RECALCULATION_MOVEMENT_LIMIT`, one-key `POST /inventory/valuation/recalculations`, `RecalculationTooLargeError` |
+| OD-VAL-12 | `RECALCULATION_MOVEMENT_LIMIT`, one-key `POST /inventory/valuation/recalculations`, `RecalculationTooLargeError`; the method-version read is bounded to the replay horizon (`methodHorizonOf` / `versionCoversHorizon`) and the posting path resolves one version with `LIMIT 1` (`findEffectiveVersionAt`) |
 | OD-VAL-13 | valuation runs inside the posting transaction but can only produce "unvalued"; the backdated repricing runs as a SECOND transaction after the quantity commit |
 | OD-VAL-15 | no opening-movement row exists anywhere; balances stay derived |
 | OD-VAL-17 | unchanged `violatesNegativePolicy` gate, re-asserted by `test/inventory-valuation.e2e-spec.ts` |

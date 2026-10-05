@@ -67,7 +67,10 @@ import {
 } from '../../src/modules/inventory/data/inventory-posting-errors.js';
 import {
   isValuationMethod,
+  methodHorizonOf,
   resolveValuationMethodAt,
+  versionCoversHorizon,
+  versionCoversInstant,
   type ItemValuationMethodVersion,
   type ValuationMethod,
 } from '../../src/modules/inventory/domain/valuation-method.js';
@@ -557,14 +560,27 @@ function applyReplayInMemory(
   if (rows.length > RECALCULATION_MOVEMENT_LIMIT) {
     throw new RecalculationTooLargeError(RECALCULATION_MOVEMENT_LIMIT);
   }
-  // Mirrors the production repository: one method lookup PER MOVEMENT at that
-  // movement's own business date (OD-VAL-14), never one method for the whole
-  // history.
-  const versions = tables.valuationMethods.findMany(
-    (version) =>
-      version.organizationId === input.key.organizationId &&
-      version.itemId === input.key.itemId,
-  );
+  // Mirrors the production repository exactly: the configuration read is
+  // bounded to the versions whose window intersects the replayed horizon
+  // (`versionCoversHorizon`), capped and detected rather than truncated, and
+  // the method is then resolved PER MOVEMENT at that movement's own business
+  // date (OD-VAL-14) — never one method for the whole history.
+  const horizon = methodHorizonOf(rows.map((row) => row.movementDate));
+  const versions =
+    horizon === null
+      ? []
+      : tables.valuationMethods.findMany(
+          (version) =>
+            version.organizationId === input.key.organizationId &&
+            version.itemId === input.key.itemId &&
+            versionCoversHorizon(version, horizon),
+        );
+  if (versions.length > RECALCULATION_MOVEMENT_LIMIT) {
+    throw new RecalculationTooLargeError(
+      RECALCULATION_MOVEMENT_LIMIT,
+      'valuation_method_versions',
+    );
+  }
   const result = replay(
     rows.map((row) =>
       toReplayFact(
@@ -1497,15 +1513,24 @@ export class InMemoryInventoryValuationRepository {
 export class InMemoryItemValuationMethodsRepository {
   constructor(private readonly tables: InventoryCoreTables) {}
 
-  async findVersions(
+  /**
+   * Mirrors the production query: the window predicate is evaluated by the
+   * store and only the winning row (latest `validFrom`) is returned.
+   */
+  async findEffectiveVersionAt(
     organizationId: string,
     itemId: string,
-  ): Promise<ItemValuationMethodVersion[]> {
-    return this.tables.valuationMethods
+    asOf: Date,
+  ): Promise<ItemValuationMethodVersion | null> {
+    const matching = this.tables.valuationMethods
       .findMany(
-        (row) => row.organizationId === organizationId && row.itemId === itemId,
+        (row) =>
+          row.organizationId === organizationId &&
+          row.itemId === itemId &&
+          versionCoversInstant(row, asOf),
       )
-      .sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
+      .sort((a, b) => b.validFrom.getTime() - a.validFrom.getTime());
+    return matching[0] ?? null;
   }
 
   async findById(id: string): Promise<ItemValuationMethodVersion | null> {
@@ -1533,10 +1558,15 @@ export class InMemoryItemValuationMethodsRepository {
     closeAudit: { updatedAt: Date; updatedBy: string | null };
   }): Promise<PlannedMethodWrite> {
     return atomic(this.tables, async () => {
-      const existing = await this.findVersions(
-        input.create.organizationId,
-        input.create.itemId,
-      );
+      // The complete series, exactly like the production write path: the
+      // planner tests the candidate against EVERY existing window.
+      const existing = this.tables.valuationMethods
+        .findMany(
+          (row) =>
+            row.organizationId === input.create.organizationId &&
+            row.itemId === input.create.itemId,
+        )
+        .sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
       // The REAL planner, so window rules are proven here, not re-stated.
       const plan = planNewVersion({
         candidate: {

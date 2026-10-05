@@ -1402,8 +1402,60 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   live-PostgreSQL E2E suites. (Run `37224462262`, the docs-only commit
   `c72e4a5`, also succeeded.) The migration itself was not modified in the
   correction round and no new migration was added.
-- **Status:** **CHANGES REQUIRED (Owner, 2026-10-04) — corrections pushed, awaiting
-  re-review.** The PR stays **open**; it is not merged and not accepted. Merge
-  and green CI are not acceptance (§6). ADR-0039 remains **Proposed**, PDR-05
-  closes no OQ beyond the partial OQ-24 answer it records, and nothing here
-  authorizes further Inventory production work.
+- **Owner review 2 (2026-10-05): CHANGES REQUIRED — one technical defect.**
+  The valuation-method configuration was read with
+  `take: Number.MAX_SAFE_INTEGER`, i.e. "fetch the item's entire configuration
+  history", on both the replay path and the single-instant posting path. It
+  produced correct answers but is an unbounded read inside a command whose
+  whole premise (OD-VAL-12) is that it is bounded. **Corrected without
+  changing a single resolved method:**
+  1. **Replay path** — the versions are now read for the replay **horizon**
+     (`validFrom <= lastMovementDate AND (validTo IS NULL OR validTo >
+     firstMovementDate)`), derived from the already-bounded movement read.
+     This is complete, not merely smaller: a version outside the horizon is in
+     force for no replayed movement (it starts after the last one — the
+     future-configuration case — or ended before the first). A key with no
+     movements now reads **zero** configuration rows. The read is capped at
+     `RECALCULATION_MOVEMENT_LIMIT + 1` and **refuses** (422, same
+     `inventory.recalculation_too_large` code) instead of truncating, because
+     at most one version can be consumed per replayed movement. This is an
+     operational read bound, not a new business limit: nothing restricts how
+     many versions an item may be configured with.
+  2. **Posting path** — `findEffectiveVersionAt` asks PostgreSQL for the one
+     version in force (`ORDER BY valid_from DESC LIMIT 1`) instead of the
+     whole history. Both paths now map their result through the single domain
+     function `resolveValuationMethodFrom`, so the list-based and single-row
+     resolutions cannot drift; the unused `findVersions` was removed.
+  3. **Configuration WRITE path keeps the unbounded read, deliberately and
+     with the reasoning in the code.** `planNewVersion` decides by testing the
+     candidate against **every** existing window; a truncated series would
+     miss an overlap and admit two versions covering one instant, making
+     historical resolution permanently ambiguous. It runs once per
+     configuration write, under the item-scoped advisory lock, over one
+     (organization, item) pair's admin-created history — the same shape as the
+     accepted C-47 `unit-conversions.repository.ts` write path.
+  **Historical resolution is unchanged** (`ReplayFact.method` is still the
+  method effective at each movement's own date), there is no fallback to a
+  current/latest/first method, unsupported methods still fail closed, and the
+  closed `switch` dispatch is untouched. Proven by **14 new unit tests** in
+  `domain/valuation-method.spec.ts` — including a 60-version five-year history
+  where every in-horizon date resolves identically against the filtered and
+  the complete series, a swept check over all 60 month boundaries, and
+  evidence that the bound follows the horizon (a two-month window reads 2
+  versions, a five-year window reads all 60) — and **one new e2e case**
+  (`inventory-valuation.e2e-spec.ts`) that drives a four-version history
+  through the real API, resolves each date to its own version, and shows the
+  same unsupported window being ignored when it sits outside the replayed
+  period and refusing the replay when it sits inside it. Both window edges
+  were mutation-tested: inverting either comparison fails the suite.
+- **Validation after round 2 of corrections (local, 2026-10-05):**
+  `format:check` ✅, `lint` ✅ (1 pre-existing warning in Accounting),
+  `typecheck` ✅, unit **133 files / 1616 tests** ✅, hermetic e2e **26 files /
+  361 passed / 160 skipped** ✅, `build` ✅. No migration, schema, API contract,
+  permission or frontend file changed in this round.
+- **Status:** **CHANGES REQUIRED (Owner, 2026-10-05) — second round of
+  corrections pushed, awaiting re-review.** The PR stays **open**; it is not
+  merged and not accepted. Merge and green CI are not acceptance (§6).
+  ADR-0039 remains **Proposed**, PDR-05 closes no OQ beyond the partial OQ-24
+  answer it records, OQ-24 stays **OPEN** with OQ-67/68/69 unresolved, and
+  nothing here authorizes further Inventory production work.

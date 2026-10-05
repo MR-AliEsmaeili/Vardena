@@ -6,8 +6,12 @@ import {
   inactiveMethodMessage,
   isActiveValuationMethod,
   isValuationMethod,
+  methodHorizonOf,
   resolveValuationMethodAt,
+  resolveValuationMethodFrom,
   toItemValuationMethodDto,
+  versionCoversHorizon,
+  versionCoversInstant,
   type ItemValuationMethodVersion,
 } from './valuation-method.js';
 import {
@@ -185,5 +189,242 @@ describe('backdating gate', () => {
   it('states that nothing is ever recalculated silently', () => {
     expect(repricingChoiceMessage()).toContain('never recalculated silently');
     expect(REPRICING_CHOICE_CODE).toBe('inventory.repricing_choice_required');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bounded configuration retrieval (the replay horizon)
+// ---------------------------------------------------------------------------
+
+/**
+ * The recalculation reads only the configuration versions whose window
+ * intersects the horizon of the movements it replays, instead of the item's
+ * entire configuration history. These cases exist to prove the bound is
+ * COMPLETE — a filtered read must answer every in-horizon date exactly as the
+ * full series would — and that the bound follows the data, not a magic
+ * number.
+ */
+describe('methodHorizonOf', () => {
+  it('is null when there are no movements (an empty key reads no configuration)', () => {
+    expect(methodHorizonOf([])).toBeNull();
+  });
+
+  it('spans the earliest and latest movement date regardless of input order', () => {
+    const horizon = methodHorizonOf([
+      new Date('2026-05-01T00:00:00.000Z'),
+      new Date('2025-02-01T00:00:00.000Z'),
+      new Date('2026-01-01T00:00:00.000Z'),
+    ]);
+
+    expect(horizon?.from.toISOString()).toBe('2025-02-01T00:00:00.000Z');
+    expect(horizon?.to.toISOString()).toBe('2026-05-01T00:00:00.000Z');
+  });
+
+  it('collapses to a single instant for one movement', () => {
+    const only = new Date('2026-03-21T00:00:00.000Z');
+    expect(methodHorizonOf([only])).toEqual({ from: only, to: only });
+  });
+});
+
+describe('versionCoversHorizon — what the bounded read may skip', () => {
+  const horizon = {
+    from: new Date('2026-01-10T00:00:00.000Z'),
+    to: new Date('2026-02-10T00:00:00.000Z'),
+  };
+
+  it('excludes a version that starts AFTER the last movement (future configuration)', () => {
+    const future = version({
+      validFrom: new Date('2026-02-11T00:00:00.000Z'),
+      validTo: null,
+    });
+    expect(versionCoversHorizon(future, horizon)).toBe(false);
+  });
+
+  it('excludes a version that ended before the first movement', () => {
+    const expired = version({
+      validFrom: new Date('2024-01-01T00:00:00.000Z'),
+      validTo: new Date('2026-01-10T00:00:00.000Z'),
+    });
+    expect(versionCoversHorizon(expired, horizon)).toBe(false);
+  });
+
+  it('keeps a version that starts exactly on the last movement date (half-open window)', () => {
+    const edge = version({ validFrom: horizon.to, validTo: null });
+    expect(versionCoversHorizon(edge, horizon)).toBe(true);
+    expect(versionCoversInstant(edge, horizon.to)).toBe(true);
+  });
+
+  it('keeps a version that covers only part of the horizon', () => {
+    const middle = version({
+      validFrom: new Date('2026-01-20T00:00:00.000Z'),
+      validTo: new Date('2026-01-25T00:00:00.000Z'),
+    });
+    expect(versionCoversHorizon(middle, horizon)).toBe(true);
+  });
+});
+
+describe('bounded retrieval is complete — large, realistic configuration history', () => {
+  /** 60 consecutive monthly versions: five years of policy changes. */
+  const series: ItemValuationMethodVersion[] = Array.from(
+    { length: 60 },
+    (_, index) => {
+      const from = new Date(Date.UTC(2021, index, 1));
+      const to = new Date(Date.UTC(2021, index + 1, 1));
+      return version({
+        id: `v${index + 1}`,
+        validFrom: from,
+        validTo: index === 59 ? null : to,
+      });
+    },
+  );
+
+  /** What the database read does: horizon predicate, nothing else. */
+  const readForHorizon = (dates: readonly Date[]) => {
+    const horizon = methodHorizonOf(dates);
+    return horizon === null
+      ? []
+      : series.filter((candidate) => versionCoversHorizon(candidate, horizon));
+  };
+
+  it('answers every movement date exactly as the complete series would', () => {
+    const movementDates = [
+      new Date(Date.UTC(2023, 2, 15)),
+      new Date(Date.UTC(2023, 6, 1)),
+      new Date(Date.UTC(2024, 0, 31)),
+      new Date(Date.UTC(2024, 5, 10)),
+    ];
+    const bounded = readForHorizon(movementDates);
+
+    for (const date of movementDates) {
+      expect(resolveValuationMethodAt(bounded, date)).toEqual(
+        resolveValuationMethodAt(series, date),
+      );
+    }
+    // Each date really does land on its OWN version — the test would pass
+    // vacuously if they all resolved to the same one.
+    expect(
+      movementDates.map(
+        (date) => resolveValuationMethodAt(bounded, date).configurationId,
+      ),
+    ).toEqual(['v27', 'v31', 'v37', 'v42']);
+  });
+
+  it('reads fewer versions than the item has, and the ones it skips cannot matter', () => {
+    const movementDates = [
+      new Date(Date.UTC(2023, 2, 15)),
+      new Date(Date.UTC(2023, 6, 1)),
+    ];
+    const bounded = readForHorizon(movementDates);
+
+    expect(bounded.length).toBeLessThan(series.length);
+    const skipped = series.filter((candidate) => !bounded.includes(candidate));
+    expect(skipped.length).toBeGreaterThan(0);
+    for (const candidate of skipped) {
+      for (const date of movementDates) {
+        expect(versionCoversInstant(candidate, date)).toBe(false);
+      }
+    }
+  });
+
+  it('scales with the horizon, not with a fixed number: a wider window reads more versions', () => {
+    const narrow = readForHorizon([
+      new Date(Date.UTC(2023, 2, 15)),
+      new Date(Date.UTC(2023, 3, 15)),
+    ]);
+    const wide = readForHorizon([
+      new Date(Date.UTC(2021, 0, 2)),
+      new Date(Date.UTC(2025, 11, 31)),
+    ]);
+
+    expect(narrow.length).toBe(2);
+    // The whole five-year history is required when the movements span it.
+    expect(wide.length).toBe(series.length);
+  });
+
+  it('holds for every month boundary in the series (swept, not sampled)', () => {
+    for (let index = 0; index < 60; index += 1) {
+      const first = new Date(Date.UTC(2021, index, 1));
+      const mid = new Date(Date.UTC(2021, index, 17, 13, 45));
+      const bounded = readForHorizon([first, mid]);
+      expect(resolveValuationMethodAt(bounded, first)).toEqual(
+        resolveValuationMethodAt(series, first),
+      );
+      expect(resolveValuationMethodAt(bounded, mid)).toEqual(
+        resolveValuationMethodAt(series, mid),
+      );
+    }
+  });
+
+  it('never lets a FUTURE version reach an earlier movement', () => {
+    const withFuture = [
+      ...series,
+      version({
+        id: 'future-fifo',
+        method: 'fifo',
+        validFrom: new Date(Date.UTC(2026, 0, 1)),
+        validTo: null,
+      }),
+    ];
+    const movementDates = [new Date(Date.UTC(2023, 2, 15))];
+    const horizon = methodHorizonOf(movementDates);
+    if (horizon === null) throw new Error('horizon');
+    const bounded = withFuture.filter((candidate) =>
+      versionCoversHorizon(candidate, horizon),
+    );
+
+    expect(bounded.some((candidate) => candidate.id === 'future-fifo')).toBe(
+      false,
+    );
+    expect(
+      resolveValuationMethodAt(bounded, movementDates[0] as Date).method,
+    ).toBe('moving_weighted_average');
+  });
+});
+
+describe('resolveValuationMethodFrom — the single-row lookup path', () => {
+  const series = [
+    version({
+      id: 'v1',
+      validFrom: new Date('2025-03-21T00:00:00.000Z'),
+      validTo: new Date('2026-03-21T00:00:00.000Z'),
+    }),
+    version({
+      id: 'v2',
+      method: 'fifo',
+      validFrom: new Date('2026-03-21T00:00:00.000Z'),
+      validTo: null,
+    }),
+  ];
+
+  /** What `findEffectiveVersionAt` asks the database for. */
+  const pickEffective = (asOf: Date) =>
+    series
+      .filter((candidate) => versionCoversInstant(candidate, asOf))
+      .sort((a, b) => b.validFrom.getTime() - a.validFrom.getTime())[0] ?? null;
+
+  it('agrees with the list-based resolution on every probed instant', () => {
+    for (const iso of [
+      '2024-01-01T00:00:00.000Z',
+      '2025-03-21T00:00:00.000Z',
+      '2025-12-31T23:59:59.000Z',
+      '2026-03-20T23:59:59.999Z',
+      '2026-03-21T00:00:00.000Z',
+      '2027-06-01T00:00:00.000Z',
+    ]) {
+      const asOf = new Date(iso);
+      expect(resolveValuationMethodFrom(pickEffective(asOf))).toEqual(
+        resolveValuationMethodAt(series, asOf),
+      );
+    }
+  });
+
+  it('reports the code-defined default when the lookup finds nothing', () => {
+    expect(resolveValuationMethodFrom(null)).toEqual({
+      method: DEFAULT_VALUATION_METHOD,
+      source: 'default',
+      configurationId: null,
+      validFrom: null,
+      validTo: null,
+    });
   });
 });

@@ -97,7 +97,14 @@ allowed to touch**.
    input, not a filter. The repository reads `RECALCULATION_MOVEMENT_LIMIT + 1`
    rows and refuses an oversize key (`RecalculationTooLargeError` → 422) rather
    than truncating it. Everything commits in one transaction: movement rows,
-   state, run record and idempotency row.
+   state, run record and idempotency row. **Every read the command makes is
+   bounded, including the configuration read**: the method versions are
+   fetched for the replay HORIZON (first..last movement date) only, which is
+   complete because a version outside it is in force for no replayed
+   movement; the single-instant posting path asks the database for the one
+   effective version (`ORDER BY valid_from DESC LIMIT 1`) instead of the
+   item's history. The one deliberate exception is the configuration WRITE
+   path, which must see every existing window to detect overlaps.
 10. **Backdating is gated by TWO independent confirmations (OD-VAL-10/11).**
     `backdateConfirmed` **and** an explicit `repricing` choice with no default:
     422 `inventory.backdated_document`, then 422

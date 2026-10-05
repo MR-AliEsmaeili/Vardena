@@ -83,6 +83,7 @@ describe('Inventory valuation (e2e)', () => {
     itemId: '',
     otherItemId: '',
     datedItemId: '',
+    seriesItemId: '',
     uncostedReceiptId: '',
   };
 
@@ -280,6 +281,17 @@ describe('Inventory valuation (e2e)', () => {
       })
       .expect(201);
     state.datedItemId = datedItem.body.id as string;
+    const seriesItem = await root
+      .post('/api/v1/inventory/items')
+      .send({
+        organizationId: state.orgId,
+        code: 'ITM-VAL-4',
+        name: 'Long Policy History Bolt',
+        itemKind: 'goods',
+        baseUnitId: state.unitId,
+      })
+      .expect(201);
+    state.seriesItemId = seriesItem.body.id as string;
   });
 
   afterAll(async () => {
@@ -805,6 +817,178 @@ describe('Inventory valuation (e2e)', () => {
       .expect(201);
     expect(recovered.body.run.movementsExamined).toBe(2);
     expect(recovered.body.state.totalValue).toBe('2200');
+  });
+
+  it('resolves and replays a long method history, reading only the versions the replayed period can use', async () => {
+    const key = {
+      organizationId: state.orgId,
+      warehouseId: state.warehouseId,
+      itemId: state.seriesItemId,
+    };
+
+    // A realistic policy history: four consecutive effective-dated versions,
+    // each superseding the previous open-ended one through the real API.
+    const months = [
+      '2026-01-01T00:00:00.000Z',
+      '2026-02-01T00:00:00.000Z',
+      '2026-03-01T00:00:00.000Z',
+      '2026-04-01T00:00:00.000Z',
+    ];
+    const versionIds: string[] = [];
+    for (const validFrom of months) {
+      const created = await root
+        .post('/api/v1/inventory/valuation/methods')
+        .send({
+          organizationId: state.orgId,
+          itemId: state.seriesItemId,
+          method: 'moving_weighted_average',
+          validFrom,
+          note: `Policy from ${validFrom}`,
+        })
+        .expect(201);
+      versionIds.push(created.body.id as string);
+    }
+    const listed = await root
+      .get('/api/v1/inventory/valuation/methods')
+      .query({
+        organizationId: state.orgId,
+        itemId: state.seriesItemId,
+        page: 1,
+        pageSize: 10,
+      })
+      .expect(200);
+    expect(listed.body.total).toBe(4);
+
+    // Each date resolves ITS OWN version — the bounded single-row lookup must
+    // not drift to the newest one.
+    const resolveAt = async (asOf: string) =>
+      (
+        await root
+          .get('/api/v1/inventory/valuation/methods/resolve')
+          .query({
+            organizationId: state.orgId,
+            itemId: state.seriesItemId,
+            asOf,
+          })
+          .expect(200)
+      ).body;
+    expect((await resolveAt('2026-01-15T00:00:00.000Z')).configurationId).toBe(
+      versionIds[0],
+    );
+    expect((await resolveAt('2026-02-15T00:00:00.000Z')).configurationId).toBe(
+      versionIds[1],
+    );
+    expect((await resolveAt('2026-03-15T00:00:00.000Z')).configurationId).toBe(
+      versionIds[2],
+    );
+    expect((await resolveAt('2026-09-15T00:00:00.000Z')).configurationId).toBe(
+      versionIds[3],
+    );
+    // Before the first version there is no configuration at all.
+    expect((await resolveAt('2025-06-01T00:00:00.000Z')).source).toBe(
+      'default',
+    );
+
+    // Two movements, both inside the FIRST TWO windows: the replay horizon is
+    // [2026-01-15, 2026-02-15], so versions three and four cannot apply to
+    // either of them.
+    for (const [index, movementDate] of [
+      '2026-01-15T00:00:00.000Z',
+      '2026-02-15T00:00:00.000Z',
+    ].entries()) {
+      await root
+        .post('/api/v1/inventory/movements')
+        .send({
+          ...key,
+          unitId: state.unitId,
+          operationKey: `val-series-${index}`,
+          movementType: 'inbound',
+          quantity: '4',
+          totalCost: '400.00',
+          movementDate,
+          backdateConfirmed: true,
+          repricing: 'skip',
+        })
+        .expect(201);
+    }
+
+    const replayed = await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-series-recalc',
+        reason: 'Replay across a multi-version policy history.',
+      })
+      .expect(201);
+    expect(replayed.body.run.movementsExamined).toBe(2);
+    expect(replayed.body.state.totalValue).toBe('800');
+    expect(replayed.body.state.valuedQuantity).toBe('8');
+
+    // A method nobody implemented, configured to take effect in the FUTURE
+    // (seeded: the configuration endpoint rightly refuses to create one, and
+    // superseding the open version is how a real future-dated policy change
+    // would look). It is outside the replay horizon, so it cannot reach
+    // these 2026-01/02 movements and the recalculation still runs.
+    //
+    // The window starts strictly after "now" so the key's CURRENT method is
+    // still the executable one — the separate, pre-existing rule that a key
+    // whose method in force today is unimplemented cannot be recalculated at
+    // all stays untouched and is not what this case probes.
+    const futureFrom = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    core.tables.valuationMethods.patch(versionIds[3] as string, {
+      validTo: futureFrom,
+    });
+    core.tables.valuationMethods.insert({
+      id: 'seeded-future-fifo',
+      organizationId: state.orgId,
+      itemId: state.seriesItemId,
+      method: 'fifo',
+      validFrom: futureFrom,
+      validTo: null,
+      note: 'Seeded: a future period the MVP cannot execute.',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    // Sanity: today still resolves to the executable policy.
+    expect((await resolveAt(new Date().toISOString())).method).toBe(
+      'moving_weighted_average',
+    );
+    const afterFuture = await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-series-recalc-future',
+        reason: 'A future unsupported policy must not touch 2026-01/02.',
+      })
+      .expect(201);
+    expect(afterFuture.body.run.movementsExamined).toBe(2);
+    expect(afterFuture.body.state.totalValue).toBe('800');
+    expect(afterFuture.body.run.movementsRevalued).toBe(0);
+
+    // Move that same unsupported window INTO the horizon — mid-February, so
+    // the second movement falls inside it and the series stays gapless and
+    // non-overlapping — and the replay must refuse. The only thing that
+    // changed is whether a replayed movement falls in the unsupported
+    // period.
+    core.tables.valuationMethods.patch(versionIds[1] as string, {
+      validTo: new Date('2026-02-10T00:00:00.000Z'),
+    });
+    core.tables.valuationMethods.patch('seeded-future-fifo', {
+      validFrom: new Date('2026-02-10T00:00:00.000Z'),
+      validTo: new Date('2026-03-01T00:00:00.000Z'),
+    });
+    const refused = await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-series-recalc-inside',
+        reason: 'Now a replayed movement falls in the unsupported window.',
+      })
+      .expect(422);
+    expect(refused.body.details.code).toBe(
+      'inventory.valuation_method_not_implemented',
+    );
+    expect(refused.body.details.method).toBe('fifo');
   });
 
   it('refuses a recalculation without a key (there is no "recalculate everything")', async () => {

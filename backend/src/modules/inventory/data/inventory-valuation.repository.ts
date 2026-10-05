@@ -26,11 +26,13 @@ import {
 } from '../domain/valuation-replay.js';
 import {
   isValuationMethod,
+  methodHorizonOf,
   resolveValuationMethodAt,
 } from '../domain/valuation-method.js';
 import type {
   ItemValuationMethodVersion,
   ValuationMethod,
+  ValuationMethodHorizon,
 } from '../domain/valuation-method.js';
 import {
   CostAlreadyAssignedError,
@@ -479,20 +481,56 @@ function toFact(row: MovementRow, method: ValuationMethod): ReplayFact {
 }
 
 /**
- * The item's effective-dated valuation-method versions, read INSIDE the
- * replay transaction so the resolution cannot race a concurrent
- * configuration change.
+ * The valuation-method versions the replay can actually consume: those whose
+ * window intersects the horizon of the movements being replayed.
+ *
+ * Read INSIDE the replay transaction, so the resolution cannot race a
+ * concurrent configuration change.
+ *
+ * **Why this is bounded and still complete.** The movements were already
+ * bounded by `readKeyMovements` (`RECALCULATION_MOVEMENT_LIMIT`), so the
+ * horizon `[first movement date, last movement date]` is a fact of the
+ * operation, not a guess. A version outside that horizon can never be
+ * resolved by any replayed movement — it either starts after the last
+ * movement (a FUTURE configuration, which must not touch history) or ended
+ * before the first one. See `versionCoversHorizon`, whose completeness is
+ * asserted directly in `domain/valuation-method.spec.ts`: resolving any date
+ * in the horizon against the filtered set gives the same answer as resolving
+ * it against the whole series.
+ *
+ * **Why there is also a ceiling.** At most one version can be in force per
+ * movement, so a replay of N movements can consume at most N versions; the
+ * ceiling is therefore the movement limit itself, not an invented number.
+ * It is read as `limit + 1` so the bound is DETECTED, never silently
+ * truncated — truncating would resolve some movement against a version that
+ * was simply not transferred. It is an operational read bound, not a
+ * business rule: nothing limits how many versions an item may be configured
+ * with, and configuration writes never consult it.
  */
 async function readMethodVersions(
   tx: CoreTxClient,
   key: BalanceKey,
+  horizon: ValuationMethodHorizon | null,
 ): Promise<ItemValuationMethodVersion[]> {
+  // No movements, nothing to resolve: an empty key reads no configuration.
+  if (horizon === null) return [];
   const rows = await tx.itemValuationMethod.findMany({
-    where: { organizationId: key.organizationId, itemId: key.itemId },
+    where: {
+      organizationId: key.organizationId,
+      itemId: key.itemId,
+      validFrom: { lte: horizon.to },
+      OR: [{ validTo: null }, { validTo: { gt: horizon.from } }],
+    },
     orderBy: [{ validFrom: 'asc' }],
     skip: 0,
-    take: Number.MAX_SAFE_INTEGER,
+    take: RECALCULATION_MOVEMENT_LIMIT + 1,
   });
+  if (rows.length > RECALCULATION_MOVEMENT_LIMIT) {
+    throw new RecalculationTooLargeError(
+      RECALCULATION_MOVEMENT_LIMIT,
+      'valuation_method_versions',
+    );
+  }
   return rows.map((row) => {
     if (!isValuationMethod(row.method)) {
       throw new Error(
@@ -553,7 +591,11 @@ async function applyReplay(
   },
 ): Promise<{ run: InventoryValuationRun; state: InventoryValuationState }> {
   const rows = await readKeyMovements(tx, input.key);
-  const versions = await readMethodVersions(tx, input.key);
+  const versions = await readMethodVersions(
+    tx,
+    input.key,
+    methodHorizonOf(rows.map((row) => row.movementDate)),
+  );
   // One strategy lookup PER MOVEMENT at that movement's business date — never
   // one method for the whole history (OD-VAL-14). A period configured with a
   // method this build cannot execute fails the replay closed rather than

@@ -104,12 +104,25 @@ export class CostAlreadyAssignedError extends Error {
  */
 export class RecalculationTooLargeError extends Error {
   readonly limit: number;
+  /**
+   * Which bounded read tripped. Both are the same business rule — "a
+   * recalculation reads a bounded number of rows and REFUSES rather than
+   * truncating" — so they share one stable API code; only the message
+   * differs, because an operator must be told which one to act on.
+   */
+  readonly subject: 'movements' | 'valuation_method_versions';
 
-  constructor(limit: number) {
+  constructor(
+    limit: number,
+    subject: 'movements' | 'valuation_method_versions' = 'movements',
+  ) {
     super(
-      `This item and warehouse have more than ${limit} movements, which exceeds the bounded recalculation limit.`,
+      subject === 'movements'
+        ? `This item and warehouse have more than ${limit} movements, which exceeds the bounded recalculation limit.`
+        : `This item has more than ${limit} valuation method configuration versions covering the period being replayed, which exceeds the bounded recalculation limit.`,
     );
     this.name = 'RecalculationTooLargeError';
     this.limit = limit;
+    this.subject = subject;
   }
 }

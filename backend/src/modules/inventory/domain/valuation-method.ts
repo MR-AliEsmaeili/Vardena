@@ -140,33 +140,32 @@ export interface ResolvedValuationMethod {
   validTo: Date | null;
 }
 
-/**
- * The method in force for one item at one instant.
- *
- * Resolution is purely historical: a document dated in the past resolves the
- * version that was valid then, never today's. When no version covers the
- * instant the code-defined MVP default applies, and the result says so
- * (`source: 'default'`) rather than pretending a configuration exists.
- */
-export function resolveValuationMethodAt(
-  versions: readonly ItemValuationMethodVersion[],
+/** Is this version in force at `asOf`? Half-open window `[validFrom, validTo)`. */
+export function versionCoversInstant(
+  version: ItemValuationMethodVersion,
   asOf: Date,
-): ResolvedValuationMethod {
+): boolean {
   const time = asOf.getTime();
-  const matching = versions.filter(
-    (version) =>
-      version.validFrom.getTime() <= time &&
-      (version.validTo === null || time < version.validTo.getTime()),
+  return (
+    version.validFrom.getTime() <= time &&
+    (version.validTo === null || time < version.validTo.getTime())
   );
-  const winner =
-    matching.length === 0
-      ? null
-      : matching.reduce((latest, version) =>
-          version.validFrom.getTime() > latest.validFrom.getTime()
-            ? version
-            : latest,
-        );
-  if (winner === null) {
+}
+
+/**
+ * Turn "the version in force" (or its absence) into the answer every caller
+ * consumes.
+ *
+ * Both read paths funnel through this one function so they cannot drift:
+ * the list-based `resolveValuationMethodAt` (used by the replay, which
+ * already holds the versions it needs in memory) and the single-row database
+ * lookup (used by the posting path, which asks PostgreSQL for exactly the one
+ * version in force). Same mapping, same default, same `source`.
+ */
+export function resolveValuationMethodFrom(
+  version: ItemValuationMethodVersion | null,
+): ResolvedValuationMethod {
+  if (version === null) {
     return {
       method: DEFAULT_VALUATION_METHOD,
       source: 'default',
@@ -176,10 +175,94 @@ export function resolveValuationMethodAt(
     };
   }
   return {
-    method: winner.method,
+    method: version.method,
     source: 'configured',
-    configurationId: winner.id,
-    validFrom: winner.validFrom,
-    validTo: winner.validTo,
+    configurationId: version.id,
+    validFrom: version.validFrom,
+    validTo: version.validTo,
   };
+}
+
+/**
+ * The method in force for one item at one instant.
+ *
+ * Resolution is purely historical: a document dated in the past resolves the
+ * version that was valid then, never today's. When no version covers the
+ * instant the code-defined MVP default applies, and the result says so
+ * (`source: 'default'`) rather than pretending a configuration exists.
+ *
+ * Overlaps are rejected on write, so at most one version should match; when
+ * several do, the latest `validFrom` wins — the same tie-break the
+ * `ORDER BY valid_from DESC LIMIT 1` lookup makes in SQL.
+ */
+export function resolveValuationMethodAt(
+  versions: readonly ItemValuationMethodVersion[],
+  asOf: Date,
+): ResolvedValuationMethod {
+  const matching = versions.filter((version) =>
+    versionCoversInstant(version, asOf),
+  );
+  const winner =
+    matching.length === 0
+      ? null
+      : matching.reduce((latest, version) =>
+          version.validFrom.getTime() > latest.validFrom.getTime()
+            ? version
+            : latest,
+        );
+  return resolveValuationMethodFrom(winner);
+}
+
+/**
+ * The closed business interval a replay has to resolve methods for: the
+ * earliest and latest movement date it will examine.
+ *
+ * `null` means "no movements", in which case no configuration row is needed
+ * at all — an empty key reads no configuration.
+ */
+export interface ValuationMethodHorizon {
+  from: Date;
+  to: Date;
+}
+
+export function methodHorizonOf(
+  movementDates: readonly Date[],
+): ValuationMethodHorizon | null {
+  if (movementDates.length === 0) return null;
+  let from = movementDates[0] as Date;
+  let to = from;
+  for (const date of movementDates) {
+    if (date.getTime() < from.getTime()) from = date;
+    if (date.getTime() > to.getTime()) to = date;
+  }
+  return { from, to };
+}
+
+/**
+ * Can this version be in force for ANY instant inside the horizon?
+ *
+ * This is the predicate the bounded database read expresses as
+ * `valid_from <= horizon.to AND (valid_to IS NULL OR valid_to > horizon.from)`,
+ * and it is why that read is COMPLETE rather than merely smaller:
+ *
+ * - `validFrom > horizon.to` → the version starts after every movement in the
+ *   window, so no movement can resolve to it (this is what keeps a FUTURE
+ *   configuration from touching historical movements);
+ * - `validTo <= horizon.from` → the version ended before the earliest
+ *   movement, so no movement can resolve to it.
+ *
+ * Every other version is read. Resolving a date inside the horizon against
+ * the filtered set therefore gives exactly the same answer as resolving it
+ * against the complete series — asserted directly in
+ * `valuation-method.spec.ts`.
+ */
+export function versionCoversHorizon(
+  version: ItemValuationMethodVersion,
+  horizon: ValuationMethodHorizon,
+): boolean {
+  return (
+    version.validFrom.getTime() <= horizon.to.getTime() &&
+    (version.validTo === null ||
+      version.validTo.getTime() > horizon.from.getTime())
+  );
 }

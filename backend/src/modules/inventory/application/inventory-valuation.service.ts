@@ -56,7 +56,7 @@ import {
   inactiveMethodMessage,
   isActiveValuationMethod,
   isValuationMethod,
-  resolveValuationMethodAt,
+  resolveValuationMethodFrom,
   toItemValuationMethodDto,
   VALUATION_METHODS,
 } from '../domain/valuation-method.js';
@@ -214,11 +214,15 @@ export class InventoryValuationService {
     itemId: string;
     asOf: Date;
   }): Promise<ResolvedValuationMethod> {
-    const versions = await this.methods.findVersions(
+    // One row, chosen by the database: the version whose window covers
+    // `asOf`. Reading the item's whole configuration history to pick one
+    // version was never necessary, and this runs on every costed posting.
+    const effective = await this.methods.findEffectiveVersionAt(
       params.organizationId,
       params.itemId,
+      params.asOf,
     );
-    const resolved = resolveValuationMethodAt(versions, params.asOf);
+    const resolved = resolveValuationMethodFrom(effective);
     if (!isActiveValuationMethod(resolved.method)) {
       throw AppException.businessRule(inactiveMethodMessage(resolved.method), {
         code: 'inventory.valuation_method_not_implemented',

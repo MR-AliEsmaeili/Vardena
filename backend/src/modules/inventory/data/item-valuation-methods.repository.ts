@@ -77,19 +77,35 @@ export class ItemValuationMethodsRepository {
 
   // ---- reads --------------------------------------------------------------
 
-  /** All versions for one item, oldest first (resolution + planning). */
-  async findVersions(
+  /**
+   * The ONE version in force for an item at an instant, or `null` when none
+   * is (the caller then applies the code-defined default).
+   *
+   * Bounded by construction: the window predicate is evaluated by PostgreSQL
+   * and only the winning row is transferred (`ORDER BY valid_from DESC
+   * LIMIT 1`). That ordering is the same tie-break `resolveValuationMethodAt`
+   * applies in memory, so the two read paths cannot disagree — and both map
+   * the result through the single domain function
+   * `resolveValuationMethodFrom`.
+   *
+   * This replaces a full-series read: resolving one date never needed the
+   * whole configuration history, and the posting path runs this query on
+   * every costed movement.
+   */
+  async findEffectiveVersionAt(
     organizationId: string,
     itemId: string,
-  ): Promise<ItemValuationMethodVersion[]> {
+    asOf: Date,
+  ): Promise<ItemValuationMethodVersion | null> {
     const { itemValuationMethod } = await this.client();
     const rows = await itemValuationMethod.findMany({
-      where: { organizationId, itemId },
-      orderBy: [{ validFrom: 'asc' }],
+      where: toWhere({ organizationId, itemId, activeAt: asOf }),
+      orderBy: [{ validFrom: 'desc' }],
       skip: 0,
-      take: Number.MAX_SAFE_INTEGER,
+      take: 1,
     });
-    return rows.map(toDomain);
+    const row = rows[0];
+    return row === undefined ? null : toDomain(row);
   }
 
   async findById(id: string): Promise<ItemValuationMethodVersion | null> {
@@ -143,6 +159,17 @@ export class ItemValuationMethodsRepository {
             0
           )
         )`;
+      // UNBOUNDED ON PURPOSE — and the only read in this module that is.
+      // `planNewVersion` decides by testing the candidate against EVERY
+      // existing window (`overlapping = existing.filter(windowsOverlap)`); a
+      // truncated series would make it miss an overlap and admit two
+      // versions covering the same instant, which would make historical
+      // resolution ambiguous forever. The set is one (organization, item)
+      // pair's configuration history — created only by explicit
+      // `POST /inventory/valuation/methods` calls, never by data volume or
+      // user traffic — and this read runs once per configuration write,
+      // under the item-scoped advisory lock taken above. Same shape as the
+      // accepted `unit-conversions.repository.ts` write path (C-47).
       const existingRows = await scoped.itemValuationMethod.findMany({
         where: {
           organizationId: input.create.organizationId,
