@@ -52,7 +52,8 @@ export class InventoryTransfersController {
   })
   @ApiUnprocessableEntityResponse({
     description:
-      'Source equals destination, negative-stock policy violation at the source, a non-stockable or disabled item/warehouse, or no unit conversion covering the movement date.',
+      'Source equals destination, negative-stock policy violation at the source, a non-stockable or disabled item/warehouse, no unit conversion covering the movement date, ' +
+      'or a backdated transfer whose valuation would depend on the unresolved transfer-average convention (inventory.backdated_transfer_valuation_unresolved).',
   })
   @ApiNotFoundResponse({
     description: 'Organization, warehouse, item or unit does not exist.',

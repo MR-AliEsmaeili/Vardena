@@ -66,6 +66,8 @@ describe('Inventory valuation (e2e)', () => {
   let root: ReturnType<typeof request.agent>;
   /** A warehouse persona: may post quantities, may not see money. */
   let operator: ReturnType<typeof request.agent>;
+  /** Can add a late cost, but may not run repricing. */
+  let costAssigner: ReturnType<typeof request.agent>;
   /**
    * The in-memory inventory stores. Held so ONE test can seed a historical
    * method version the configuration endpoint (correctly) refuses to create —
@@ -193,6 +195,17 @@ describe('Inventory valuation (e2e)', () => {
     });
     await userRoles.assignRoleToUser(operatorRole.id, operatorUser.id);
 
+    const costUser = await users.createUser({
+      username: 'valuation-cost-only',
+      password: 'valuation-cost-only-secret',
+    });
+    const costRole = await roles.createRole({
+      name: 'Cost Assigner Only',
+      description: 'Can assign a late cost but cannot reprice (test fixture)',
+      permissionCodes: [VALUATION_PERMISSIONS.ASSIGN_COST],
+    });
+    await userRoles.assignRoleToUser(costRole.id, costUser.id);
+
     root = request.agent(app.getHttpServer());
     await root
       .post('/api/v1/auth/login')
@@ -206,6 +219,14 @@ describe('Inventory valuation (e2e)', () => {
         password: 'valuation-operator-secret',
       })
       .expect(200);
+    costAssigner = request.agent(app.getHttpServer());
+    await costAssigner
+      .post('/api/v1/auth/login')
+      .send({
+        username: 'valuation-cost-only',
+        password: 'valuation-cost-only-secret',
+      })
+      .expect(200);
 
     const org = await root
       .post('/api/v1/organizations')
@@ -217,7 +238,7 @@ describe('Inventory valuation (e2e)', () => {
       .send({ code: 'VAL-OTHER', name: 'Other Valuation Co' })
       .expect(201);
     state.otherOrgId = otherOrg.body.id as string;
-    for (const user of [rootUser, operatorUser]) {
+    for (const user of [rootUser, operatorUser, costUser]) {
       master.raw.memberships.seed(user.id, state.orgId);
       master.raw.memberships.seed(user.id, state.otherOrgId);
     }
@@ -663,6 +684,79 @@ describe('Inventory valuation (e2e)', () => {
       })
       .expect(200);
     expect(runs.body.total).toBe(0);
+  });
+
+  it('requires the same two explicit choices for a backdated reversal', async () => {
+    const receipt = await post({
+      operationKey: 'val-reversal-receipt',
+      itemId: state.otherItemId,
+      movementType: 'inbound',
+      quantity: '10',
+      totalCost: '1000.00',
+      movementDate: '2026-01-01T00:00:00.000Z',
+    }).expect(201);
+    expect(receipt.body.valuationStatus).toBe('valued');
+
+    const issue = await post({
+      operationKey: 'val-reversal-issue',
+      itemId: state.otherItemId,
+      movementType: 'outbound',
+      quantity: '2',
+      movementDate: '2026-02-01T00:00:00.000Z',
+    }).expect(201);
+    expect(issue.body.valuationSource).toBe('average_cost');
+
+    await post({
+      operationKey: 'val-reversal-later-receipt',
+      itemId: state.otherItemId,
+      movementType: 'inbound',
+      quantity: '1',
+      totalCost: '150.00',
+      movementDate: '2026-03-01T00:00:00.000Z',
+    }).expect(201);
+
+    const unconfirmed = await root
+      .post(`/api/v1/inventory/movements/${issue.body.id}/reverse`)
+      .query({ organizationId: state.orgId })
+      .send({
+        operationKey: 'val-backdated-reversal-unconfirmed',
+        movementDate: '2026-02-15T00:00:00.000Z',
+      })
+      .expect(422);
+    expect(unconfirmed.body.details.code).toBe('inventory.backdated_document');
+
+    const noChoice = await root
+      .post(`/api/v1/inventory/movements/${issue.body.id}/reverse`)
+      .query({ organizationId: state.orgId })
+      .send({
+        operationKey: 'val-backdated-reversal-nochoice',
+        movementDate: '2026-02-15T00:00:00.000Z',
+        backdateConfirmed: true,
+      })
+      .expect(422);
+    expect(noChoice.body.details.code).toBe(
+      'inventory.repricing_choice_required',
+    );
+
+    const reversed = await root
+      .post(`/api/v1/inventory/movements/${issue.body.id}/reverse`)
+      .query({ organizationId: state.orgId })
+      .send({
+        operationKey: 'val-backdated-reversal-skip',
+        movementDate: '2026-02-15T00:00:00.000Z',
+        backdateConfirmed: true,
+        repricing: 'skip',
+      })
+      .expect(201);
+    expect(reversed.body.reversalOfMovementId).toBe(issue.body.id);
+    expect(reversed.body.valuationSource).toBe('reversal');
+
+    const valuation = await stateOf(
+      state.warehouseId,
+      state.otherItemId,
+    ).expect(200);
+    expect(valuation.body.status).toBe('stale');
+    expect(valuation.body.staleSince).not.toBeNull();
   });
 
   // ---- 4. explicit, bounded recalculation ----------------------------------
@@ -1480,7 +1574,55 @@ describe('Inventory valuation (e2e)', () => {
     expect(skipped.body.state.status).toBe('stale');
   });
 
+  it('requires Recalculate permission before a late-cost assignment may reprice', async () => {
+    const receipt = await post({
+      operationKey: 'val-assign-permission-receipt',
+      itemId: state.otherItemId,
+      movementType: 'inbound',
+      quantity: '1',
+    }).expect(201);
+
+    await costAssigner
+      .post(`/api/v1/inventory/valuation/movements/${receipt.body.id}/cost`)
+      .send({
+        organizationId: state.orgId,
+        operationKey: 'val-assign-permission-denied',
+        totalCost: '25.00',
+        repricing: 'recalculate',
+      })
+      .expect(403);
+
+    const unchanged = await root
+      .get(`/api/v1/inventory/movements/${receipt.body.id}`)
+      .query({ organizationId: state.orgId })
+      .expect(200);
+    expect(unchanged.body.valuationStatus).toBe('unvalued');
+    expect(unchanged.body.totalCost).toBeNull();
+  });
+
   // ---- 6. transfers and reversals keep the two ledgers in step --------------
+
+  it('detects a backdated transfer and refuses to invent a transfer repricing rule while OQ-67 is open', async () => {
+    const rejected = await root
+      .post('/api/v1/inventory/transfers')
+      .send({
+        organizationId: state.orgId,
+        operationKey: 'val-backdated-transfer-blocked',
+        sourceWarehouseId: state.warehouseId,
+        destinationWarehouseId: state.secondWarehouseId,
+        itemId: state.itemId,
+        quantity: '1',
+        unitId: state.unitId,
+        movementDate: '2020-01-01T00:00:00.000Z',
+      })
+      .expect(422);
+
+    expect(rejected.body.details.code).toBe(
+      'inventory.backdated_transfer_valuation_unresolved',
+    );
+    expect(rejected.body.details.source.backdated).toBe(true);
+    expect(rejected.body.details.source.affectedMovements).toBeGreaterThan(0);
+  });
 
   it('moves value with a transfer without inventing or destroying any', async () => {
     const before = await stateOf().expect(200);

@@ -242,12 +242,29 @@ export class ReverseInventoryMovementDto {
   @ApiPropertyOptional({
     format: 'date-time',
     description:
-      'Business date of the reversal movement; defaults to now and must not precede the original movement.',
+      'Business date of the reversal movement; defaults to now. If this date precedes later movements on the same item and warehouse, the reversal requires the same explicit backdating acknowledgement and repricing choice as a normal posting.',
   })
   @IsOptional()
   @Type(() => Date)
   @IsDate()
   movementDate?: Date;
+
+  @ApiPropertyOptional({
+    description:
+      'Acknowledges that the reversal is dated before the latest movement on this item and warehouse. A backdated reversal is rejected (422 inventory.backdated_document) until this is true.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  backdateConfirmed?: boolean;
+
+  @ApiPropertyOptional({
+    enum: REPRICING_CHOICES,
+    description:
+      'The second, separate decision a backdated reversal requires: "recalculate" reprices this item and warehouse immediately, "skip" keeps the existing values and marks them inconsistent (stale). There is no default — valuation is never recalculated silently.',
+  })
+  @IsOptional()
+  @IsIn(REPRICING_CHOICES as readonly string[])
+  repricing?: string;
 }
 
 export class InventoryMovementResponseDto {

@@ -459,6 +459,17 @@ export class InventoryValuationService {
 
   // ---- backdating ---------------------------------------------------------
 
+  /** Internal valuation-impact probe for application services that already
+   * enforce their own inventory permission and organization-scope checks. */
+  async assessBackdateImpact(params: {
+    organizationId: string;
+    warehouseId: string;
+    itemId: string;
+    movementDate: Date;
+  }): Promise<BackdateAssessment> {
+    return this.valuation.assessBackdate(params);
+  }
+
   /**
    * What a posting dated `movementDate` would disturb — the data behind the
    * warning the UI must show BEFORE the user commits (OD-VAL-10).
@@ -585,6 +596,14 @@ export class InventoryValuationService {
     // zeros is the SAME intent and must replay, not conflict.
     const totalCost = canonicalizeMoney(input.totalCost);
     const repricing = requireRepricingChoice(input.repricing);
+    if (repricing === 'recalculate') {
+      // Assigning a late cost and restating existing movement values are two
+      // separate authorities. `skip` needs only AssignCost; `recalculate`
+      // additionally needs Recalculate before any row can be changed.
+      await this.authorization.requireAllPermissions([
+        VALUATION_PERMISSIONS.RECALCULATE,
+      ]);
+    }
 
     const movement = await this.movements.findById(input.movementId);
     if (movement === null || movement.organizationId !== input.organizationId) {

@@ -182,6 +182,25 @@ describe('applyMovement — reversals (a value the fact carries itself)', () => 
     expect(after.marksStale).toBe(false);
   });
 
+  it('marks a backdated outbound reversal stale without changing its original-value convention', () => {
+    const after = post(
+      { valuedQuantity: '10', uncostedQuantity: '0', totalValue: '1000.00' },
+      {
+        movementType: 'reversal_out',
+        baseQuantity: '-4',
+        knownValue: '400.00',
+        knownValueSource: 'reversal',
+        backdated: true,
+      },
+    );
+
+    expect(after.valuation.status).toBe('valued');
+    expect(after.valuation.source).toBe('reversal');
+    expect(after.valuation.totalCost).toBe('-400');
+    expect(after.position.totalValue).toBe('600');
+    expect(after.marksStale).toBe(true);
+  });
+
   it('degrades to provisional when the pool no longer holds the original value', () => {
     const after = post(
       { valuedQuantity: '1', uncostedQuantity: '0', totalValue: '100.00' },

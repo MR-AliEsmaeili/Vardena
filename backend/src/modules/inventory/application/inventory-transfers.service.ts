@@ -24,6 +24,7 @@ import {
 } from '../domain/inventory-core.events.js';
 import { publishEvent } from './master-data-support.js';
 import { InventoryValuationService } from './inventory-valuation.service.js';
+import type { BackdateAssessment } from '../domain/backdating.js';
 import {
   buildRequestHash,
   canonicalClientDate,
@@ -163,6 +164,22 @@ export class InventoryTransfersService {
       requestHash,
     );
     if (replay !== null) return replay;
+
+    const [sourceBackdate, destinationBackdate] = await Promise.all([
+      this.valuation.assessBackdateImpact({
+        organizationId: input.organizationId,
+        warehouseId: input.sourceWarehouseId,
+        itemId: input.itemId,
+        movementDate,
+      }),
+      this.valuation.assessBackdateImpact({
+        organizationId: input.organizationId,
+        warehouseId: input.destinationWarehouseId,
+        itemId: input.itemId,
+        movementDate,
+      }),
+    ]);
+    assertTransferNotBackdated(sourceBackdate, destinationBackdate);
 
     // A transfer moves stock AND the value that stock carries, so the pair
     // is exactly value-neutral (PDR-05 rule 6). No cost is ever accepted on
@@ -360,6 +377,35 @@ export class InventoryTransfersService {
 }
 
 // ---- Internal helpers ----
+
+function assertTransferNotBackdated(
+  source: BackdateAssessment,
+  destination: BackdateAssessment,
+): void {
+  if (!source.backdated && !destination.backdated) return;
+  throw AppException.businessRule(
+    'Backdated inventory transfers can affect valuation in both warehouses. ' +
+      'Vardena does not silently value or reprice a backdated transfer while the transfer-average convention remains open; no stock was moved.',
+    {
+      code: 'inventory.backdated_transfer_valuation_unresolved',
+      source: backdateSummary(source),
+      destination: backdateSummary(destination),
+    },
+  );
+}
+
+function backdateSummary(
+  assessment: BackdateAssessment,
+): Record<string, unknown> {
+  return {
+    backdated: assessment.backdated,
+    movementDate: assessment.movementDate.toISOString(),
+    latestMovementDate: assessment.latestMovementDate?.toISOString() ?? null,
+    affectedMovements: assessment.affectedMovements,
+    affectedValuedMovements: assessment.affectedValuedMovements,
+    alreadyStale: assessment.alreadyStale,
+  };
+}
 
 function assertReplayable(
   existing: InventoryOperation,

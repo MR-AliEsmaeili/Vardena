@@ -380,7 +380,11 @@ export function applyMovement(
         totalValue: subtractMoney(position.totalValue, removedValue),
       },
       valuation: settled('valued', negateMoney(removedValue), source),
-      marksStale: false,
+      // A backdated outbound fact with its own value (today: reversal of an
+      // inbound) changes the average that later issues saw. The value itself
+      // is preserved by replay, but the affected later average-derived rows
+      // must not be reported as current until an explicit recalculation.
+      marksStale: backdated,
     };
   }
 
