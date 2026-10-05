@@ -1627,4 +1627,28 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   Proposed ADRs stay Proposed); no OQ closed beyond the explicit Owner
   decisions above; no implementation authorized; MERGED ≠ ACCEPTED unchanged;
   history preserved (superseded recommendations labeled historical).
+- **Correction round (2026-10-06, same PR #117, review findings):**
+  - **OQ-65:** an earlier wording in this re-baseline presented a plain
+    current-row unique index `(organization_id, barcode)` as the natural
+    shape of the decided never-reuse rule. **That was incorrect**: the Owner
+    invariant is defined over **assignment history** (a cleared, replaced,
+    deactivated or retired assignment does NOT release the barcode), and a
+    current-value uniqueness constraint alone cannot enforce it. OQ-65 now
+    records the business invariant with its explicit cases
+    (active/cleared/retired/replaced/historical assignment), states the
+    enforcement implication (history-aware persistent consumption/assignment
+    record or equivalent immutable reservation mechanism — **concrete design
+    deliberately NOT chosen**; future implementation task, gated on Q2), and
+    keeps **Q2 comparison/normalization semantics OPEN**. Registry row,
+    PDR-03 note, dependency-matrix rows and the C-55 candidate row corrected
+    to match. Nothing was implemented.
+  - **OQ-49:** the record still carried active-looking pre-decision prompts
+    ("Questions requiring product owner confirmation", "Exact decision
+    required", Stage-0 deadline). These are now explicitly marked
+    **historical/superseded** by the 2026-10-05 Owner decision (A + controlled
+    subset of B); the exclusion list is completed (adds unrestricted
+    calculated fields, arbitrary data-source joining, unrestricted
+    user-defined reporting logic) and the record states it is a governance
+    decision, not an implementation claim. The matrix OQ-49 row is updated.
+  - Production code changed in this round: **NONE**.
 - **Status:** READY FOR REVIEW — NOT ACCEPTED (Owner review required).

@@ -59,10 +59,17 @@ item that has been **deactivated** (`is_active = false`). Therefore:
 
 > **Update (2026-10-05):** the Owner answered this in the governance
 > re-baseline — **a barcode is never reusable within the organization**
-> (OD-65-01, Option A; full record in
-> [OQ-65](./OQ-65-barcode-lifecycle-and-reuse.md)). Comparison/normalization
-> semantics remain OPEN there. The paragraphs below stand as the historical
-> record of why the question was blocking.
+> (OD-65-01, the Option A *semantics*; full record in
+> [OQ-65](./OQ-65-barcode-lifecycle-and-reuse.md)). The invariant is defined
+> over **assignment history**: clearing, replacing, deactivating or retiring
+> an assignment does not release the barcode. **Caution on the historical
+> table below:** a plain current-row unique index `(organization_id, barcode)`
+> does **not** by itself enforce the decided invariant (a cleared/replaced
+> barcode leaves the row and would become takeable); enforcement needs a
+> history-aware mechanism whose concrete design is a future implementation
+> task (OQ-65 §Enforcement implication). Comparison/normalization semantics
+> remain OPEN there. The paragraphs below stand as the historical record of
+> why the question was blocking.
 
 This must **not** be inferred from the uniqueness rule. Both plausible
 implementations silently answer it, which is exactly why it is blocking:
