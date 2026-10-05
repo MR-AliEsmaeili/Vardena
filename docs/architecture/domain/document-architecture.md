@@ -1,8 +1,10 @@
 # Business Document Architecture
 
-Status: Proposed (design for review) · Updated: 2026-09-11
+Status: Proposed (design for review) · Updated: 2026-10-05 (OQ-54 Owner decision incorporated in §6/§6.1)
 Companion: [blueprint](./domain-blueprint.md) §6–§7 · [workflow](./workflow-architecture.md) ·
-ADR-0019 (proposed) · AR-03/04/12/13 · OQ-12, OQ-27
+ADR-0019 (proposed) · ADR-0040 (proposed) · AR-03/04/12/13 · OQ-12, OQ-27 ·
+OQ-54 (**Decided 2026-10-05** — edit until Accounting Post, then cancel/correct only;
+`../../decisions/product/OQ-54-finalized-document-deletion-editing.md`)
 
 Documents are where the business actually happens. This document decides how Vardena
 represents them: what is shared, what is specialized, how documents relate, and how
@@ -191,19 +193,83 @@ configuration that decides which edges are **automatic** (workflow doc §6).
 
 ---
 
-## 6. Cancellation, reversal and correction
+## 6. Editing, cancellation, reversal and correction
+
+> **Decided (Owner, 2026-10-05 — OQ-54 Option B, OD-54-01…11):** an operational
+> document remains **editable until Accounting Post**; after Accounting Post it
+> is immutable and only correction/reversal/counter-documents apply. The rows
+> below incorporate that decision; the full product record is
+> [`OQ-54`](../../decisions/product/OQ-54-finalized-document-deletion-editing.md),
+> the architecture record is ADR-0040 (**Proposed**).
 
 | Situation | Rule |
 |---|---|
 | Draft document no longer needed | **Cancel**: status → `cancelled`, kept in the system, excluded from open reports. No counter-document (nothing posted). |
-| Approved-but-unposted document | Cancel (with permission); if it reserved stock/credit, release the reservation in the same transaction. |
-| Posted document with wrong data | **Never edit.** Create a reversing document (`reverse` relation); post both. If a corrected document is needed, create a replacement that `reference`s the reversal and the original. |
+| Edit of any document **before Accounting Post** | **Allowed** per lifecycle rules (OD-54-01), subject to the §6.1 edit contract: side effects detected before commit, negative stock blocks, valuation impact requires explicit acknowledgement, no silent repricing. |
+| Finalized/approved-but-unposted document | Edit per §6.1, or cancel (with permission); if it reserved stock/credit, release the reservation in the same transaction. |
+| Posted document (Accounting Post done) | **Never edit, never delete** (OD-54-02). Create a reversing document (`reverse` relation); post both. If a corrected document is needed, create a replacement that `reference`s the reversal and the original. |
 | Partially fulfilled document | Cancel the remaining quantity only; the fulfilled part stays. The relation rows carry the fulfilled quantities so "remaining = 0" is provable. |
 | Correction of a *movement* | Opposite movement (`adjustment_gain`/`adjustment_loss` or `return_*`), never an update (AR-13). |
 | Correction of a *journal* | Reversing entry, never an update (AR-13). |
+| Physical deletion | **Never**, when business history exists (OD-54-07; database-strategy §7). Cancelled documents remain visible/auditable (OD-54-08); numbers are never reused (OD-54-09, ADR-0023). |
 | Correction window / legal immutability | Whether a finite window exists in which a document may be amended by reversal-and-reissue without extra approval, and what must be reported to authorities, is **expert-gated** (OQ-27). |
 
 **Rule of thumb:** the ledger never lies; it accumulates facts and counter-facts.
+
+### 6.1 Edit contract — side-effect transparency (OD-54-03…06, 10, 11 / ADR-0040)
+
+**Principle:** *no material side effect caused by a user editing an operational
+document may occur silently.* Material side effects include: inventory balance,
+Kardex, valuation / Moving Weighted Average, downstream documents, accounting
+readiness, and other operational calculations.
+
+**Pipeline (before Accounting Post):**
+
+```text
+Load → Validate → Detect side effects → Apply change
+     → Apply/reconcile operational effect
+     → Recalculate/reprice ONLY if explicitly selected (OD-VAL-11/12)
+     → Persist atomically
+```
+
+**After Accounting Post:** reject direct edit. No exceptions.
+
+**Classification (an explicit, testable contract output — never an implicit
+by-product of persistence):**
+
+1. **Safe change** — no material side effect: Edit → Validate → Commit, normal UX.
+2. **Valid change with side effect** (e.g. Receipt 100 → 90, stock stays
+   non-negative but subsequent valuation changes): the system detects the
+   effect, explains it in business language, states that
+   recalculation/repricing may be required, and requires an explicit choice —
+   *Continue + Recalculate/Reprice* · *Continue without Repricing* (change
+   proceeds if otherwise valid; stale valuation is explicitly represented; an
+   administrative/system alert is generated) · *Cancel*. Repricing is never
+   silent.
+3. **Invalid change** — resulting physical stock would become negative
+   (e.g. Receipt 100 → 90 with 95 already issued ⇒ −5): **hard block**
+   (OD-54-04, extending ADR-0022 §5 / OD-VAL-17 to edits). No commit, no
+   partial mutation; the business error names the affected item, warehouse and
+   the business date that causes the negative balance. A generic
+   "Operation failed" is not acceptable.
+
+**Valuation is not duplicated:** valuation impact and bounded repricing go
+through the existing Moving Weighted Average foundation (ADR-0039/PDR-05).
+
+**Alert requirement (documented, NOT implemented):** material consequences —
+valuation recalculation required, stale valuation, affected inventory history,
+blocked edit due to negative stock, failed accounting integration, failed
+backup, license entering Grace/Read-Only — must be emittable as domain events
+for a future administrative alert surface (OD-54-11). The alert center itself
+is a future, separately gated work item.
+
+**Acceptance tests the implementing tasks must ship** (none exist today): see
+the catalogue in the OQ-54 record (draft editable; pre-post finalized editable;
+posted not directly editable; posted requires correction/reversal;
+negative-stock edit rejected with DB unchanged; valuation-affecting edit warns;
+recalculate choosable; skip-recalculation choosable where allowed and creates a
+visible stale-state warning; cancelled stays visible; numbering never reused;
+no silent side effect).
 
 ---
 

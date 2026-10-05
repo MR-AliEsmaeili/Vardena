@@ -1,9 +1,45 @@
 # OQ-65: Item barcode lifecycle, reuse and comparison semantics
 
 - **Type:** OQ (product/inventory policy decision)
-- **Status:** **Open**
+- **Status:** **Open — reuse/lifecycle DECIDED 2026-10-05 (OD-65-01: a barcode is NEVER reusable within the organization — Option A).** Comparison/normalization semantics (question 2) remain OPEN.
 - **Owner:** Ali Esmaeili (with Inventory domain expert)
-- **Created:** 2026-10-02
+- **Created:** 2026-10-02 · **Reuse decided:** 2026-10-05 (governance re-baseline)
+
+## Owner decision (2026-10-05) — OD-65-01: no reuse, ever
+
+> **A barcode is never reusable within the organization.**
+
+Once a barcode has been assigned and subsequently retired/deactivated:
+
+```text
+Barcode → NEVER REUSED
+```
+
+The rule applies for the **entire lifetime of the organization**. This is
+**Option A** of the table below (plain uniqueness over all assigned barcodes in
+the organization, active or not), and it answers the dependent sub-questions
+accordingly:
+
+- **Q1 (reuse after deactivation):** No. A deactivated item's barcode is never
+  taken by another item in the same organization.
+- **Q3 (inactive-vs-inactive collisions):** Not permitted — no two items in the
+  organization ever share an assigned barcode.
+- **Q4 (re-activation):** No collision can exist, because the barcode was never
+  released; re-activation is unaffected.
+- **Q5 (clearing):** Clearing a barcode does **not** make it reusable — an
+  assigned barcode stays consumed for the organization's lifetime.
+
+**Still OPEN — Q2 (comparison semantics):** case sensitivity on the trimmed raw
+string vs normalization (case folding, leading zeros, Unicode/Persian digit
+folding) is **not decided** and must be answered before the uniqueness
+constraint is implemented.
+
+**Scope of this decision:** documentation/governance only. No barcode
+constraint, migration, API or test is implemented or authorized by this record
+(C-55 remains a separately gated candidate, now blocked only by Q2 and normal
+task gating). Future acceptance test: a retired barcode cannot be reused.
+Deciding record of the uniqueness rule for active items: PDR-03 (OD-C47-03) —
+unchanged.
 - **Priority:** High · **Blocks** the bounded barcode-uniqueness implementation (candidate C-55); does **not** block any other Inventory candidate
 - **Created by:** the barcode Owner decision [PDR-03](./PDR-03-item-barcode-policy.md) (OD-C47-03), which decided the uniqueness rule for **active** items and deliberately left the lifecycle detail unresolved
 - **Related:** OQ-33 (item model), OQ-36 / [PDR-04](./PDR-04-item-deletion-and-code-reuse.md) (master-data lifecycle, code reuse), `docs/architecture/domain/master-data-strategy.md` §7, [C-47 preflight](../../tasks/c-47-item-master-preflight-investigation.md) §4
@@ -68,7 +104,11 @@ answered**.
 | **B — Reuse allowed after deactivation** (partial unique index on active rows) | Only active items compete for a barcode | Matches the decided wording literally; allows re-labelling; a historical scan value may map to several items over time — any future scan lookup must disambiguate by date/state |
 | **C — Reuse allowed only after an explicit release action** | Deactivation does not free the barcode; a separate audited "release barcode" operation does | Most controlled, most expensive: new operation, permission, audit surface (no Audit module exists) |
 
-No option is recommended here; the question is recorded, not decided.
+*(Historical note: no option was recommended when this record was created.
+On 2026-10-05 the Owner decided **Option A — no reuse ever**; see the Owner
+decision section above. The operational consequence noted for A — re-labelling
+requires clearing/editing the retired item and the cleared barcode still never
+returns to the pool — is accepted by that decision.)*
 
 ## Dependencies
 

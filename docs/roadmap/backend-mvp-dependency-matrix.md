@@ -9,6 +9,22 @@
 | Parent | [backend-mvp-roadmap.md](./backend-mvp-roadmap.md) |
 | Production code changed | **NONE** |
 
+> **Governance re-baseline addendum (2026-10-05).** The Owner decided
+> platform-wide **OQ-54** (Option B — **edit until Accounting Post, then
+> cancel/correct only**, with mandatory side-effect transparency, the
+> negative-inventory hard block and never-silent repricing; OD-54-01…11, full
+> record `../decisions/product/OQ-54-finalized-document-deletion-editing.md`,
+> backend contract **ADR-0040 Proposed**) and **OQ-49** (standard reports +
+> controlled customization). Rows below that list OQ-54 as OPEN/blocking are
+> superseded on the *policy* dimension only: the lifecycle/edit posture is now
+> decided, while OQ-13/OQ-26 (approval coupling), OQ-23, OQ-12 gap policy,
+> per-document contracts and normal Owner task gating still apply. **OQ-65's
+> reuse question is also decided** (a barcode is never reusable within the
+> organization — OD-65-01; comparison semantics still block C-55). MVP
+> completion is re-based on the **Initial Usable Product / V1**
+> (`../decisions/product/PDR-06-initial-usable-product-v1.md`). This addendum
+> closes no other OQ, promotes no ADR and authorizes no implementation.
+>
 > **Current-state addendum (2026-10-02, baseline `main` @ `4cf481efa2de5ca9863d9d434c2ab707de23301a`, merge of PR #107).**
 > Four Owner decisions were recorded for the Inventory item master —
 > **OD-C47-01** (OQ-29 Option A: fixed four-decimal quantity precision, reject
@@ -173,7 +189,7 @@ Only OQs load-bearing for Backend MVP, inspected on `main`. **None is closed by 
 | OQ-42 | Posting modes (A direct / B review) | OPEN. **Verified 2026-10-02:** it shapes the accounting effect once OQ-39 is answered and is irrelevant to quantity-only flows | system posting activation; rial halves of C-49/C-51/C-52 | Yes (nothing system-posted today) | Only if Phase 4 admitted |
 | OQ-43 | Iranian statutory requirements | OPEN (architecture Proposed ADR-0036; every legal fact needs validation) | Electronic Books / Tax Accounting / legal layouts | No for capability admission; yes for legal implementation facts | **Yes — implementation gate** |
 | OQ-49 | Report Builder depth | OPEN (no depth committed) | generic builder | Yes (registry reports suffice) | **No — builder NOT required for MVP**; bounded reports only |
-| OQ-54 | Finalized document deletion/editing policy | OPEN (cancel-only recommended, **not decided**). C-50 has a narrow Material Request-only lifecycle decision; the platform row remains open | Sales plus future Inventory opening/Receipt/Issue state machines (C-48/C-49/C-51/C-52). It does not retroactively block the already-merged C-50-specific contract and C-50 does not answer the other types | Yes until each future type is admitted; investigation does not wait on it | **Yes before another operational Inventory document is implemented** |
+| OQ-54 | Finalized document deletion/editing policy | **RESOLVED 2026-10-05 (Owner — Option B, OD-54-01…11):** edit until Accounting Post, then cancel/correct only; side-effect transparency; negative-inventory hard block; never-silent repricing; cancelled visible; numbers never reused. Backend contract ADR-0040 (**Proposed**), `document-architecture.md` §6.1. C-50's narrow Material Request-only lifecycle decision stands unchanged | Sales plus future Inventory opening/Receipt/Issue state machines (C-48/C-49/C-51/C-52) now have the platform policy; each type still needs its own gated contract, and OQ-13/OQ-26 approval coupling remains open | Policy no longer blocks; per-type contracts and approval coupling still gate | **Policy decided — no longer the blocker; normal task gating applies** |
 | OQ-60 | MVP acceptance thresholds | OPEN (numbers are proposals) | the final gate's numeric criteria | Recommended no | **Yes for Phase 8** — the Owner should ratify or waive |
 | OQ-62 | Account pin compatibility (repair, authoritative pin) | OPEN (ODR-1 enforces on writes; existing divergent rows not repaired) | pin repair, migration preflight | Yes | No — write-time enforcement stands |
 | OQ-63 | LEGACY fallback shape | OPEN | legacy org migration correctness | Yes | No |

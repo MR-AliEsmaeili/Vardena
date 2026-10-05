@@ -57,6 +57,13 @@ item that has been **deactivated** (`is_active = false`). Therefore:
 > **OPEN:** may a barcode assigned to a deactivated item be reused by another
 > item in the same organization?
 
+> **Update (2026-10-05):** the Owner answered this in the governance
+> re-baseline — **a barcode is never reusable within the organization**
+> (OD-65-01, Option A; full record in
+> [OQ-65](./OQ-65-barcode-lifecycle-and-reuse.md)). Comparison/normalization
+> semantics remain OPEN there. The paragraphs below stand as the historical
+> record of why the question was blocking.
+
 This must **not** be inferred from the uniqueness rule. Both plausible
 implementations silently answer it, which is exactly why it is blocking:
 

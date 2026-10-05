@@ -364,6 +364,38 @@ only**, and records that a bounded C-47 implementation follow-up (barcode
 uniqueness, item deletion) is justified in principle but blocked by OQ-65 and the
 OQ-36 reuse question. No candidate in C-48…C-54 is ready for implementation.
 
+## 11B. Addendum — 2026-10-05: Product & architecture governance re-baseline
+
+The Owner recorded a product-decision batch on 2026-10-05 (canonical records:
+`docs/decisions/product/` — re-baseline note in its README; index record
+[PDR-06](decisions/product/PDR-06-initial-usable-product-v1.md)). Deltas
+against the dated statements above, which stand as history:
+
+- **OQ-54 is RESOLVED** (Option B — edit until Accounting Post, then
+  cancel/correct only; side-effect transparency; negative-inventory hard
+  block; OD-54-01…11). The §6.1-era row "OQ-54 … remains Open" is superseded.
+  Backend contract: **ADR-0040 (Proposed)** + `document-architecture.md`
+  §6/§6.1; frontend contract:
+  `frontend/ux/document-editing-and-system-alerts.md`. No implementation
+  exists or is authorized.
+- **OQ-49 is DECIDED** (standard reports + controlled customization; no
+  unrestricted designer). Still no Reporting module exists.
+- **OQ-65**: the reuse half is decided (barcode never reusable within the
+  organization — OD-65-01); comparison semantics stay OPEN and C-55 stays
+  blocked.
+- **OQ-45** (Grace → Read-Only shape), **OQ-46** (Business Export Excel ≠
+  technical full backup), **OQ-51** (taxpayer Stage 2 post-MVP), **OQ-53**
+  (restore is admin-only, runbook-driven) are partially decided; **OQ-52**
+  reconfirmed OPEN (no RPO/RTO numbers); **OQ-47** deferred ("do nothing for
+  now"); OQ-41 Detail Dimensions and OQ-59 Product Family deferrals recorded.
+- **MVP completion definition re-based** (PDR-06): "MVP complete" = the
+  end-to-end usable **Initial Usable Product / V1**, not "backend code
+  complete". OQ-60's numeric thresholds remain OPEN.
+- The registry's Resolved table now contains OQ-64, OQ-66 **and OQ-54**.
+
+This addendum changes no production code, promotes no ADR, accepts no merged
+work and authorizes no implementation. STATE.md §21 is the task record.
+
 ## 12. Final Conclusion
 
 The repository contains a materially broader current implementation than the pre-Task-30 roadmap snapshots: Task 30 added Account Nature/Type and a bounded Detail foundation, Task 32 added a real Dashboard, and PR #86—not PR #85—is the final merged Dashboard behavior. None of those facts closes the remaining OQs, promotes Proposed ADRs, admits Treasury/Purchasing to MVP, turns FaraPayam into architecture, supplies Base Chart content, or authorizes a new production task.

@@ -1,11 +1,38 @@
-# OQ-49: Report Builder MVP depth
+# OQ-49: Report Builder MVP depth — DECIDED (A + controlled subset of B)
 
 - **Type:** OQ (product scope decision)
-- **Status:** Open
+- **Status:** **Decided — Owner decision recorded 2026-10-05: MVP = A + a controlled subset of B** (see §Owner decision). The concrete MVP report catalogue content remains to be finalized separately; the §17.2 security constraints are binding.
 - **Owner:** Ali Esmaeili
-- **Created:** 2026-09-22
-- **Priority:** High · **Blocks final MVP scope level** (Stage 0 gate)
-- **Related docs:** PB-BASELINE §17, PD-19; reporting-strategy (ADR-0009); security constraints §17.2; MVP proposal (Report Builder entries, category D); roadmap Stage 0 gate, Stage 5
+- **Created:** 2026-09-22 · **Decided:** 2026-10-05 (governance re-baseline)
+- **Priority:** High · The MVP scope *level* is now fixed
+- **Related docs:** PB-BASELINE §17, PD-19; reporting-strategy (ADR-0009); security constraints §17.2; MVP proposal (Report Builder entries, category D); roadmap Stage 0 gate, Stage 5; frontend contract `docs/frontend/ux/document-editing-and-system-alerts.md` §3
+
+## Owner decision (2026-10-05) — MVP = A + controlled subset of B
+
+**A — Standard ERP reports.** The product provides the required standard
+reports for **Accounting, Inventory, Sales, Purchasing and Management**,
+according to the final MVP report catalogue (the catalogue content itself is
+derived from the existing MVP scope documents, not invented here).
+
+**Controlled B.** Users get controlled customization only:
+
+- filters;
+- date ranges;
+- selectable **permitted** columns;
+- sorting;
+- limited grouping (single-column, per reporting-strategy §4);
+- saved report configurations;
+- Excel export.
+
+**Explicitly NOT in MVP:** arbitrary SQL builder; unrestricted query designer;
+unrestricted formula engine; full BI designer; unrestricted drag-and-drop
+report designer. The §17.2 security constraints (no user SQL, permission-aware,
+approved semantic entities only, resource limits, audit, versioning) remain
+binding.
+
+No individual report implementation is marked complete by this decision — no
+Reporting module exists on `main` as of 2026-10-05; implementation remains
+separately gated.
 
 ## Context
 
@@ -57,11 +84,14 @@ non-negotiable):
 - Feeds: MVP proposal Report Builder rows; roadmap Stage 5 scope; OQ-60
   (acceptance thresholds measure the chosen level).
 
-## Recommended option
+## Recommended option (historical)
 
 **B for MVP, C as fast-follow, D post-MVP.** B satisfies the reference
 scenario's "create a custom report" honestly; C adds the wow-factor once B is
-proven; D stays directional. **Recommendation only — owner decides.**
+proven; D stays directional. *(Recorded 2026-09-22 as a recommendation. The
+2026-10-05 Owner decision is narrower: standard reports plus a controlled
+subset of B's customization — see §Owner decision above; C and D remain
+post-MVP at most.)*
 
 ## Questions requiring product owner confirmation
 

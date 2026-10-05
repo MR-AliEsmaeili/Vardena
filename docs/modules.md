@@ -784,7 +784,10 @@ states/current,backdate-check,movements/:id/cost,recalculations}`. Events:
   **Still not implemented:** COGS/journal posting into Accounting
   (OQ-39/OQ-42), returns costing (OD-VAL-19), landed cost, FIFO/LIFO/specific
   identification, lot/serial-level valuation, **Receipt/Issue documents**
-  (C-51/C-52, gated by OQ-54) and **any Inventory UI** (candidate C-57). This
+  (C-51/C-52 — the OQ-54 lifecycle policy was decided 2026-10-05 (edit until
+  Accounting Post, then cancel/correct only; ADR-0040 Proposed), so these now
+  wait on their own contracts and OQ-13/OQ-26, not on OQ-54) and **any
+  Inventory UI** (candidate C-57). This
   is a valuation *foundation*, not a finished Inventory Accounting capability.
   OQ-24 stays OPEN; ADR-0039 stays **Proposed** (PR #116 open, not accepted).
 - **API (implemented):** `/api/v1/inventory/{items,item-groups,units,unit-conversions,warehouses}`.

@@ -186,6 +186,20 @@ license filtering precisely so an unlicensed installation can still be
 licensed by its administrator. Session behaviour itself is `docs/security.md`
 §2.
 
+## Expiry policy (product decision — not implemented)
+
+**Owner decision (2026-10-05, OQ-45):** after license expiration / the
+applicable Grace period, user access policy enters **Grace**; after Grace,
+**Read-Only mode** applies according to the final license policy. Read-Only
+must not allow mutation — creating or editing operational documents,
+Accounting Post, inventory-changing operations, or prohibited administration
+changes; read-only visibility/report/export behavior should remain available
+according to the final implementation. **Grace duration and enforcement
+details remain OPEN (OQ-45) and no enforcement is implemented** — ADR-0030's
+enforcement-off posture is unchanged. License entering Grace/Read-Only must be
+surfaceable through the future administrative alert model (OQ-54 / OD-54-11).
+Frontend contract: `docs/frontend/ux/document-editing-and-system-alerts.md` §4.
+
 ## Deferred / not implemented
 
-CRM, billing, payments, remote validation, remote revocation, hardware fingerprinting, marketplace/subscriptions, and an activation UI are not implemented. Future `CrmLicenseProvider`-like infrastructure can replace the provider token without changing consumers.
+CRM, billing, payments, remote validation, remote revocation, hardware fingerprinting, marketplace/subscriptions, and an activation UI are not implemented. Expiry **enforcement** (Grace/Read-Only above) is also not implemented. Future `CrmLicenseProvider`-like infrastructure can replace the provider token without changing consumers.

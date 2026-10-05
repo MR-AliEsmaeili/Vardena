@@ -21,6 +21,20 @@
 > `BLOCKED BY ADR` · `BLOCKED BY OWNER ADMISSION` · `BLOCKED BY DEPENDENCY` ·
 > `PLANNED` · `POST-MVP` · `DEFERRED`.
 
+> **Governance re-baseline addendum (2026-10-05).** Platform-wide **OQ-54 is
+> RESOLVED** (Owner — Option B: edit until Accounting Post, then cancel/correct
+> only; side-effect transparency; negative-inventory hard block; OD-54-01…11;
+> backend contract ADR-0040 **Proposed**) and **OQ-49 is DECIDED** (standard
+> reports + controlled customization; no unrestricted designer). Rows below
+> citing OQ-54 as a blocking decision should be read as policy-unblocked; the
+> remaining gates (OQ-13/OQ-26 approval coupling, OQ-23, per-document
+> contracts, Owner admission) stand. **OQ-65's reuse question is decided** —
+> a barcode is never reusable within the organization (OD-65-01) — but **C-55
+> stays blocked** by the still-open comparison/normalization semantics.
+> Records: `../decisions/product/README.md` (re-baseline note, PDR-06). This
+> addendum creates no task, closes no other OQ and authorizes no
+> implementation.
+>
 > **Current-state addendum (2026-10-02, baseline `main` @ `4cf481e`, merge of PR
 > #107).** Rows **C-47 … C-54** were re-verified against code, and **C-55**/**C-56**
 > were added as bounded, blocked follow-ups of the Owner decisions recorded that

@@ -1,11 +1,34 @@
 # OQ-45: License expiry behavior — internet outage, grace, and post-termination mode
 
 - **Type:** OQ (product/business + operational policy)
-- **Status:** Open
+- **Status:** **Open — partially resolved.** Owner decision recorded 2026-10-05: **Grace → Read-Only** is the expiry shape (see §Owner decision). Grace duration, outage behavior detail, post-termination strictness and override authority remain OPEN.
 - **Owner:** Ali Esmaeili
-- **Created:** 2026-09-22
+- **Created:** 2026-09-22 · **Partially decided:** 2026-10-05 (governance re-baseline)
 - **Priority:** High · Blocks only the *enforcement* layer, not the license *foundation* (ADR-0030)
-- **Related docs:** PB-BASELINE §11.3, §12, §10.1; ADR-0030 (proposed foundation); PD-09, PD-12; MVP proposal category D; roadmap Stage 0/1, Stage 8
+- **Related docs:** PB-BASELINE §11.3, §12, §10.1; ADR-0030 (proposed foundation); PD-09, PD-12; MVP proposal category D; roadmap Stage 0/1, Stage 8; `docs/licensing-architecture.md`; frontend contract `docs/frontend/ux/document-editing-and-system-alerts.md` §4
+
+## Owner decision (2026-10-05) — Grace then Read-Only
+
+After license expiration / the applicable Grace period:
+
+- user access policy enters **Grace**;
+- after Grace, **Read-Only mode** is used according to the final license policy.
+
+**Read-Only must not allow mutation**, including: creating operational
+documents; editing operational documents; Accounting Post; inventory-changing
+operations; prohibited administration changes. Read-only visibility, reports
+and export behavior should remain available according to the final
+implementation (consistent with PD-10 data ownership and OQ-46).
+
+**Deliberately NOT decided (stays open — do not invent):** the Grace duration
+(14/30/60 days…), exact behavior during internet outages near/past expiry,
+whether post-termination behavior is stricter than expiry behavior, and the
+emergency-extension/override authority. Enforcement remains **unimplemented**
+(ADR-0030 keeps enforcement off); license entering Grace/Read-Only must be
+surfaceable through the future administrative alert model (OD-54-11).
+
+Future acceptance tests (none exist today): Grace behavior follows the ratified
+policy; Read-Only prevents every mutation listed above.
 
 ## Context
 
@@ -63,11 +86,12 @@ expiry is not a license. The owner explicitly left this undecided.
 - Stage 8 (commercial operations) makes this blocking; Stage 0/1 can proceed
   with ADR-0030 alone (foundation, enforcement-off).
 
-## Recommended option
+## Recommended option (historical — superseded in part by the Owner decision above)
 
 **B + D**: grace period → read-only (data and export remain available), plus
-operator-issued offline extension tokens for special cases. **This is a
-recommendation only — the owner must decide.**
+operator-issued offline extension tokens for special cases. *(Recorded
+2026-09-22 as a recommendation. On 2026-10-05 the Owner decided the B shape —
+Grace → Read-Only; the D extension-token idea remains an undecided option.)*
 
 ## Questions requiring product owner confirmation
 
