@@ -1,9 +1,19 @@
 # OQ-52: Backup RPO/RTO formal targets
 
 - **Type:** OQ (operational policy decision)
-- **Status:** Open
+- **Status:** **Open — confirmed OPEN by the Owner re-baseline of 2026-10-05.** Numeric RPO/RTO targets remain undecided; do not assume any number. What IS decided (2026-10-05): the backup capability itself is part of the target V1 product (PDR-06), responsibility and the export/backup distinction are recorded in `docs/operations/backup-and-restore.md`, and this OQ stays open until appropriate targets can be defined.
 - **Owner:** Ali Esmaeili (with IT/operations input)
-- **Created:** 2026-09-22
+- **Created:** 2026-09-22 · **Reconfirmed open:** 2026-10-05
+
+## Concepts (documented so the open question is unambiguous)
+
+- **RPO (Recovery Point Objective)** = the acceptable **data-loss window**:
+  how much recent data may be lost when restoring from the last good backup.
+- **RTO (Recovery Time Objective)** = the acceptable **service-restoration
+  window**: how long the system may be down until restored.
+
+Numeric targets for both remain OPEN; any published number requires an Owner
+decision (and, per the existing posture, drill validation).
 - **Priority:** High · **Blocks Stage 6 exit (pilot readiness)**
 - **Related docs:** PB-BASELINE §23, PD-28/PD-29; OQ-17 (existing: backup/retention/upgrade posture); OQ-53 (DR/restore, sibling); database-strategy §14; MVP proposal (Backup/Restore foundation); roadmap Stage 6 gate
 

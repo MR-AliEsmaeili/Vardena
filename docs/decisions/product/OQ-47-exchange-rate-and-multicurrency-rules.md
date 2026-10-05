@@ -1,9 +1,9 @@
 # OQ-47: Exchange-rate and multi-currency accounting rules
 
 - **Type:** OQ (accounting/product — accountant + owner)
-- **Status:** Open
+- **Status:** **Open — deferred by Owner decision 2026-10-05: "do nothing for now."** Multi-currency stays out of current implementation scope: no FX engine, no exchange-rate management, no FX revaluation, no multi-currency UI, no speculative database columns. The existing reserved seams (contract §13.6/§24.1) stay dormant and are not extended; future extensibility remains possible where the architecture naturally allows it. The rules questions below remain open and must not be answered by implementation.
 - **Owner:** Ali Esmaeili (with accountant as domain validator)
-- **Created:** 2026-09-22
+- **Created:** 2026-09-22 · **Deferral confirmed:** 2026-10-05 (governance re-baseline)
 - **Priority:** High for post-MVP accounting correctness · Zero MVP urgency (single-currency MVP)
 - **Related docs:** PB-BASELINE §21 (Currency), PD-25, PD-26; OQ-03 (currencies/precision, existing); OQ-48 (revaluation/FX P/L, sibling); `docs/accounting/domain-contract.md` §13.6/§24.1 (currency seam); MVP proposal category D; roadmap Stage 7+
 

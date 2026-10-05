@@ -1,11 +1,31 @@
 # OQ-46: Customer data export format and completeness
 
 - **Type:** OQ (product/business + operational policy)
-- **Status:** Open
+- **Status:** **Open — partially resolved.** Owner decision recorded 2026-10-05: **Business Export = Excel; Disaster/Technical Backup = full backup; the two are distinct** (see §Owner decision). Contract-end completeness boundary and who-runs-it policy remain OPEN.
 - **Owner:** Ali Esmaeili
-- **Created:** 2026-09-22
+- **Created:** 2026-09-22 · **Partially decided:** 2026-10-05 (governance re-baseline)
 - **Priority:** Medium · Not MVP-blocking (Excel export confirmed)
-- **Related docs:** PB-BASELINE §12 (Customer Data Ownership); PD-10; ADR-0009 §6 (Excel export), ADR-0011 (import); OQ-45 (expiry/lockout interplay); roadmap Stage 5/6
+- **Related docs:** PB-BASELINE §12 (Customer Data Ownership); PD-10; ADR-0009 §6 (Excel export), ADR-0011 (import); OQ-45 (expiry/lockout interplay); roadmap Stage 5/6; **`docs/operations/backup-and-restore.md`** (canonical policy text)
+
+## Owner decision (2026-10-05) — Business Export ≠ Disaster Recovery Backup
+
+```text
+Business Export ≠ Disaster Recovery Backup
+```
+
+- **Business Export = Excel.** Excel (XLSX) is the channel for
+  customer/business data portability.
+- **Disaster/Technical Backup = full backup.** The full technical backup is for
+  technical restoration/disaster recovery (admin-operated, see
+  `docs/operations/backup-and-restore.md`).
+- These must **never be conflated** in product, documentation, contracts or
+  tests: Excel export is not a recovery mechanism, and the technical backup is
+  not the data-portability answer. Future acceptance test: Business Export and
+  Technical Backup remain distinct concepts.
+
+**Still OPEN:** whether a database-complete export is contractually promised at
+contract end, its exact completeness line (business data? configuration?
+audit?), and who runs it. Nothing below is decided by the re-baseline.
 
 ## Context
 

@@ -254,10 +254,18 @@ through the module's data layer, never from `api/`.
 
 ## 14. Backups & Operations
 
+- **Policy (Owner, 2026-10-05):** Vardena provides a backup capability and an
+  operational Runbook; the customer/server administrator is responsible for
+  maintaining backups on the customer infrastructure; restore is performed by
+  the customer's authorized IT/server administrator per the Runbook — normal
+  ERP users never get an in-product Restore. **Business Export (Excel) ≠
+  Disaster/Technical Backup (full backup)** — never conflate them. Canonical
+  policy: `docs/operations/backup-and-restore.md` (OQ-46/OQ-52/OQ-53).
 - Logical backups (`pg_dump`) scheduled (compose sidecar or host cron —
   deployment detail), retention per deployment; point-in-time recovery via WAL
   archiving is recommended but deployment-specific.
-- **RPO/RTO targets are business/deployment decisions — OQ-17** (do not assume).
+- **RPO/RTO targets are business/deployment decisions — OQ-17/OQ-52** (do not
+  assume; numeric targets remain OPEN as of 2026-10-05).
 - Migration deploy order: `prisma migrate deploy` before app start; migrations
   must be backward-compatible with the *previous* app version during the deploy
   window (expand → migrate → contract pattern for risky changes, ADR if needed).

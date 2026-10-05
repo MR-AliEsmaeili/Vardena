@@ -1545,3 +1545,110 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   ADR-0039 remains **Proposed**, PDR-05 closes no OQ beyond the partial OQ-24
   answer it records, OQ-24 stays **OPEN** with OQ-67/68/69 unresolved, and
   nothing here authorizes further Inventory production work.
+
+## 21. Product & Architecture Governance Re-Baseline + OQ-54 Resolution (2026-10-05)
+
+- **Type:** documentation/governance only. **Production code changed: NONE.**
+  No migration, schema, API, permission, frontend component or test changed.
+  Branch `arena/01a10d2c-vardena`, baseline `main` @
+  `ff8a01a8c8bc767629f5ba0e2bbdbc51abeda251`.
+- **Purpose:** write the Owner-approved product, backend, frontend, inventory,
+  accounting, licensing, reporting, deployment, backup and MVP decisions into
+  their canonical repository locations so Git — not conversation history — is
+  the source of truth.
+- **Owner decisions recorded (canonical records, no duplication):**
+  - **OQ-54 RESOLVED (Option B, OD-54-01…11)** — a document remains editable
+    **until Accounting Post**; pre-post edits are validated against
+    operational side effects and **no material side effect may occur
+    silently**; negative physical inventory from an edit is a **hard block**
+    (business error naming item/warehouse/business date; no partial
+    mutation); valuation-impacting edits require explicit acknowledgement
+    (Continue+Reprice / Continue without Repricing / Cancel; never-silent
+    repricing; skipped repricing persists an honest stale state + admin
+    alert); after Accounting Post: no direct edit/delete — correction/
+    reversal/counter-document only; no physical deletion with business
+    history; cancelled documents stay visible/auditable; **numbering is never
+    reused** (ADR-0023 boundary preserved). Record:
+    `docs/decisions/product/OQ-54-finalized-document-deletion-editing.md`;
+    registry row moved to Resolved. The earlier Option A recommendation is
+    labeled historical, not erased.
+  - **ADR-0040 created (Proposed — NOT self-accepted):** operational document
+    edit boundary, explicit/testable side-effect detection, negative-inventory
+    invariant, alert/event requirement; lifecycle vocabulary preserved
+    (`draft`/`temporary`/`final` + posting boundary — no new states). Detailed
+    contract: `docs/architecture/domain/document-architecture.md` §6/§6.1.
+  - **Frontend UX contracts created** (documentation only):
+    `docs/frontend/ux/document-editing-and-system-alerts.md` — edit/warning
+    UX, negative-inventory block message, reprice/continue/cancel choice,
+    stale-valuation alert, future management-alert surface, Report Builder UX
+    scope, license Grace/Read-Only UX. No UI implemented.
+  - **OQ-49 DECIDED:** MVP = standard ERP reports + controlled customization
+    (filters, date ranges, permitted columns, sorting, limited grouping,
+    saved configurations, Excel export); no unrestricted designer/SQL/BI.
+  - **PDR-06 created — MVP completion re-based:** "MVP complete" = **Initial
+    Usable Product / V1** (end-to-end usable by a real customer incl.
+    frontend, licensing, installation, deployment, backup, export,
+    administration), NOT "backend code complete"; no calendar deadline;
+    existing MVP catalogue remains the checklist source. OQ-60 numeric
+    thresholds stay OPEN.
+  - **OQ-65 reuse DECIDED (OD-65-01):** a barcode is **never reusable within
+    the organization** (entire organization lifetime); comparison semantics
+    stay OPEN and still gate C-55. PDR-03 updated with a dated pointer.
+  - **OQ-45 shape decided:** expiry → Grace → Read-Only (read-only blocks all
+    mutation); durations/override OPEN; enforcement still not implemented.
+  - **OQ-46 distinction decided:** Business Export = Excel ≠ Disaster/
+    Technical Backup = full backup; completeness boundary OPEN.
+  - **Backup/restore policy recorded:** `docs/operations/backup-and-restore.md`
+    — Vardena provides backup capability + Runbook (verification, restore,
+    app/db startup, validation, post-restore checks — commands not invented);
+    customer admin owns operational backups; **normal ERP users never get
+    in-product Restore**; future destinations (local/Google Drive/S3/cloud)
+    documented, not implemented; Backup ≠ Restore ≠ Disaster Recovery.
+  - **OQ-52 stays OPEN** (RPO/RTO concepts documented; no numbers); **OQ-53
+    stays OPEN** for DR topologies/license re-activation/drills.
+  - **OQ-51 boundary decided:** taxpayer Stage 1 prep in scope; Stage 2 full
+    integration deferred until after the complete MVP; roadmap retained.
+  - **OQ-47 deferred by Owner ("do nothing for now")** — no FX work, seams
+    dormant; **OQ-41 Detail Dimensions deferred** (operational scope stays;
+    no EAV/JSONB/speculative dimension fields); **OQ-59 Product Family
+    deferral confirmed** (ERP core is the priority).
+- **Stale documentation corrected** (living documents only; dated historical
+  task reports untouched): `docs/open-questions.md` (header + rows + OQ-54 →
+  Resolved), `docs/decisions/product/README.md`, roadmap + dependency-matrix
+  addenda and the OQ-54 row, `mvp-scope-proposal-v1.md` (addendum, D-03/D-05),
+  `document-architecture.md` §6, `reporting-strategy.md`,
+  `database-strategy.md` §14, `licensing-architecture.md`, `README.md`.
+- **Acceptance tests documented (future work — none exist and none are
+  claimed):** lifecycle edit/post/correction tests, negative-stock rejection
+  with unchanged DB, valuation warning/choice/stale-alert tests, cancelled
+  visibility, numbering no-reuse, no-silent-side-effect, retired-barcode
+  no-reuse, Grace/Read-Only behavior, Business-Export-vs-Backup distinction.
+- **Governance safety:** no ADR self-accepted (ADR-0040 and all previously
+  Proposed ADRs stay Proposed); no OQ closed beyond the explicit Owner
+  decisions above; no implementation authorized; MERGED ≠ ACCEPTED unchanged;
+  history preserved (superseded recommendations labeled historical).
+- **Correction round (2026-10-06, same PR #117, review findings):**
+  - **OQ-65:** an earlier wording in this re-baseline presented a plain
+    current-row unique index `(organization_id, barcode)` as the natural
+    shape of the decided never-reuse rule. **That was incorrect**: the Owner
+    invariant is defined over **assignment history** (a cleared, replaced,
+    deactivated or retired assignment does NOT release the barcode), and a
+    current-value uniqueness constraint alone cannot enforce it. OQ-65 now
+    records the business invariant with its explicit cases
+    (active/cleared/retired/replaced/historical assignment), states the
+    enforcement implication (history-aware persistent consumption/assignment
+    record or equivalent immutable reservation mechanism — **concrete design
+    deliberately NOT chosen**; future implementation task, gated on Q2), and
+    keeps **Q2 comparison/normalization semantics OPEN**. Registry row,
+    PDR-03 note, dependency-matrix rows and the C-55 candidate row corrected
+    to match. Nothing was implemented.
+  - **OQ-49:** the record still carried active-looking pre-decision prompts
+    ("Questions requiring product owner confirmation", "Exact decision
+    required", Stage-0 deadline). These are now explicitly marked
+    **historical/superseded** by the 2026-10-05 Owner decision (A + controlled
+    subset of B); the exclusion list is completed (adds unrestricted
+    calculated fields, arbitrary data-source joining, unrestricted
+    user-defined reporting logic) and the record states it is a governance
+    decision, not an implementation claim. The matrix OQ-49 row is updated.
+  - Production code changed in this round: **NONE**.
+- **Status:** READY FOR REVIEW — NOT ACCEPTED (Owner review required).

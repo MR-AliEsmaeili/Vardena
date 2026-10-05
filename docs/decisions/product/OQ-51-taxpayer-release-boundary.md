@@ -1,9 +1,24 @@
 # OQ-51: Taxpayer System integration release boundary
 
 - **Type:** OQ (product/compliance decision)
-- **Status:** Open
+- **Status:** **Open — release boundary decided 2026-10-05** (see §Owner decision); slice composition, trigger, credentials/sandbox and fallback detail remain OPEN.
 - **Owner:** Ali Esmaeili (with tax expert + accountant as validators)
-- **Created:** 2026-09-22
+- **Created:** 2026-09-22 · **Boundary decided:** 2026-10-05 (governance re-baseline)
+
+## Owner decision (2026-10-05) — two-stage boundary
+
+- **Stage 1 — in scope now:** the current foundational preparation (internal
+  tax-invoice/document-model readiness, adapter/outbox separation per PB §19.2)
+  remains in scope.
+- **Stage 2 — deferred:** actual full integration/submission capability is
+  **deferred until after the complete MVP** (the Initial Usable Product / V1,
+  PDR-06). Stage 2 is **not** implemented now.
+- Taxpayer integration is **not removed** from the long-term product roadmap.
+
+**Still OPEN (do not invent):** the exact Stage 2 slice composition
+(submission/status/retry vs corrective/returns/reconciliation sequencing), the
+trigger (phase-in deadline vs demand vs sandbox availability), the compliance
+fallback, and credentials/sandbox ownership — the questions below stand.
 - **Priority:** High for Stage 4 planning · Not MVP-blocking (submission excluded from MVP)
 - **Related docs:** PB-BASELINE §18, §19, PD-20/PD-21; OQ-05 (existing taxpayer scope OQ), OQ-30 (tax model), OQ-43 (statutory), OQ-27 (corrections); integrations.md §4; MVP proposal category C/D; roadmap Stage 4 gate
 

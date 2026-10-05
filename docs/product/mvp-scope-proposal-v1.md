@@ -33,6 +33,33 @@ must not be removed when Purchasing is excluded. External Taxpayer System
 submission is a separate integration boundary; it is not synonymous with
 Electronic Books / Tax Accounting, and OQ-43 remains open.
 
+### Owner governance re-baseline — 2026-10-05
+
+The Owner recorded a decision batch (canonical records under
+`docs/decisions/product/`, index in
+[PDR-06](../decisions/product/PDR-06-initial-usable-product-v1.md)) that this
+proposal must be read against:
+
+1. **MVP completion definition (PDR-06, OD-V1-01…04):** "MVP complete" means
+   the **Initial Usable Product / V1** — a real customer can run the full
+   business flow end-to-end and Frontend, Licensing, Installation, Deployment,
+   Backup, Data export and Operational administration are **usable**. It is
+   **not** "backend code complete," and no calendar deadline is assigned. The
+   catalogue in this document remains the concrete checklist source; the V1
+   flow includes purchasing documents, so the post-*Backend-MVP* position of
+   Purchasing is backend-track sequencing, not exclusion from V1.
+2. **OQ-54 is DECIDED** (Option B — edit until Accounting Post, then
+   cancel/correct only; side-effect transparency; negative-inventory hard
+   block; no silent repricing). D-05 below is updated accordingly.
+3. **OQ-49 is DECIDED** (standard reports + controlled customization — no
+   unrestricted designer). D-03 below is updated accordingly.
+4. Taxpayer Stage 2, multi-currency, Detail Dimensions and Product Family
+   remain deferred; backup/export/restore policy is recorded in
+   `docs/operations/backup-and-restore.md`.
+
+This addendum ratifies no numbers (OQ-60 thresholds stay open), closes no
+other OQ, promotes no ADR and authorizes no implementation.
+
 ## 0. Scope test and classification
 
 A feature belongs in MVP **only** if it satisfies at least one of:
@@ -179,9 +206,9 @@ no method is invented.
 |---|---|---|---|
 | D-01 | Sales → Accounting entry (system posting) | **OQ-39** (durable delivery), **OQ-42** (posting mode) | Manual voucher is temporary implementation fallback; it is not the final MVP integration state |
 | D-02 | Detail dimensions on voucher lines | **OQ-41** (requiredness/binding) | Account-tree-only postings; dimension columns absent |
-| D-03 | Report Builder depth | **OQ-49** | Registry reports + saved filters/columns (level A) |
+| D-03 | Report Builder depth | **OQ-49 — DECIDED 2026-10-05:** standard reports + controlled customization (filters, date ranges, permitted columns, sorting, limited grouping, saved configurations, Excel export); no unrestricted designer | Decided scope; implementation still gated |
 | D-04 | Accounting / legal output layout | **OQ-25/OQ-43** | Required MVP capability; exact Iranian legal facts and formats require validation, not invention |
-| D-05 | Document cancel/edit posture for sales/inventory | **OQ-54** | Cancel-only (recommended default; *not* assumed decided — implementation waits for the answer or the owner's explicit interim choice) |
+| D-05 | Document cancel/edit posture for sales/inventory | **OQ-54 — DECIDED 2026-10-05 (Option B):** edit until Accounting Post, then cancel/correct only; side-effect transparency; negative-inventory hard block (OD-54-01…11, ADR-0040 Proposed) | Decided policy; state-machine implementation still gated (OQ-13/OQ-26 approval coupling open) |
 | D-06 | UI language/calendar | **OQ-02** | i18n dictionary + formatters built; display defaults follow the decision |
 | D-07 | Tax fields on sales documents | **OQ-30** | Snapshot fields reserved, no rates invented |
 | D-08 | Backup targets & restore self-service | **OQ-52/OQ-53** | Foundation behavior per database-strategy §14; targets displayed when ratified |

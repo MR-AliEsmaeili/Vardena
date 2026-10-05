@@ -1,9 +1,9 @@
 # OQ-59: One ERP + products vs product family / consolidation strategy
 
 - **Type:** OQ (strategic/product decision)
-- **Status:** Open — strategic; deliberate long-horizon
+- **Status:** **Open — deferral confirmed by Owner 2026-10-05.** Product Family remains **deferred**; the current priority is the **ERP core**. Item Master and inventory architecture must **not** be redesigned around Product Family. The future Product Family strategy remains an Owner decision; the strategic question below stays open.
 - **Owner:** Ali Esmaeili
-- **Created:** 2026-09-22
+- **Created:** 2026-09-22 · **Deferral confirmed:** 2026-10-05 (governance re-baseline)
 - **Priority:** Low urgency · High consequence if never asked
 - **Related docs:** PB-BASELINE §13 (platform/products), §20 (multi-company), §27 (ecosystem), §29 (CRM/ticketing), PD-22; OQ-01 (tenancy), OQ-22, OQ-31 (multi-company/consolidation deferred), OQ-61 (CRM/ticketing products); ADR-0001 §12 (extraction path); roadmap post-MVP
 

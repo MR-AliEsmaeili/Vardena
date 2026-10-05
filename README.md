@@ -94,6 +94,9 @@ production deployment.
 - [docs/repository-documentation-audit.md](docs/repository-documentation-audit.md) — historical documentation ↔ code consistency audit (2026-09-26), incl. the Treasury scope boundary
 - [STATE.md](STATE.md) — consolidated project state: repository/module inventory, task history, review status, risks
 - [docs/open-questions.md](docs/open-questions.md) — registered open questions
+- [docs/decisions/product/](docs/decisions/product/) — product/business decision records (OQ/PDR), incl. the 2026-10-05 governance re-baseline: OQ-54 document editing policy (edit until Accounting Post, then cancel/correct only), OQ-49 Report Builder scope, PDR-06 Initial Usable Product / V1 definition
+- [docs/operations/backup-and-restore.md](docs/operations/backup-and-restore.md) — backup/restore/export operational policy (Business Export ≠ Disaster Recovery Backup; restore is admin-only via Runbook)
+- [docs/frontend/ux/document-editing-and-system-alerts.md](docs/frontend/ux/document-editing-and-system-alerts.md) — frontend UX contracts for document editing warnings, system alerts, Report Builder scope and license Grace/Read-Only
 - [docs/adr/](docs/adr/) — architecture decision records
 - [.vardena/](.vardena/) — agent context, architecture rules, development rules
 - [backend/README.md](backend/README.md) — backend setup, workflows, conventions

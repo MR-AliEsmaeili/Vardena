@@ -1,11 +1,29 @@
 # OQ-60: MVP acceptance thresholds
 
 - **Type:** OQ (product decision — ratification of numbers)
-- **Status:** Open
+- **Status:** **Open — the MVP completion *definition* was decided 2026-10-05 (PDR-06); the numeric thresholds below remain OPEN.**
 - **Owner:** Ali Esmaeili
-- **Created:** 2026-09-22
-- **Priority:** High · **Blocks MVP exit definition** (Stage 0 gate)
-- **Related docs:** PB-BASELINE §30 (success criteria), PD-38; OQ-49 (Report Builder depth), OQ-52/OQ-53 (backup/DR numbers); MVP proposal (acceptance criteria columns); roadmap Stage 6 gate
+- **Created:** 2026-09-22 · **Definition decided:** 2026-10-05 (PDR-06)
+- **Priority:** High · **Blocks MVP exit measurement** (Stage 0 gate)
+- **Related docs:** **PDR-06 (Initial Usable Product / V1 — the decided completion definition)**; PB-BASELINE §30 (success criteria), PD-38; OQ-49 (Report Builder depth — **decided 2026-10-05**), OQ-52/OQ-53 (backup/DR numbers); MVP proposal (acceptance criteria columns); roadmap Stage 6 gate
+
+## Owner decision (2026-10-05) — what "MVP complete" means
+
+MVP completion is **not** "backend code is complete." The target is the
+**Vardena Initial Usable Product / V1**: a real customer can run the full
+business flow end-to-end (login → license → organization → users/permissions →
+fiscal year → accounting foundation → items/warehouses/parties →
+opening/initial inventory → receipt/issue/transfer → sales and purchasing
+documents → accounting effects → Accounting Post → reports → fiscal-year
+close/transfer → next year), with Frontend, Licensing, Installation,
+Deployment, Backup, Data export and Operational administration **usable**.
+No artificial calendar deadline. Full record: **PDR-06**; the acceptance
+checklist derives from the existing MVP catalogue — no new feature list is
+invented.
+
+**What remains OPEN here:** every numeric threshold and definition below
+(install time, usability timings, denial-path coverage, P0/P1 definitions,
+gates vs measures). They still require explicit Owner ratification.
 
 ## Context
 

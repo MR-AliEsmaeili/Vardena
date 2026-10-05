@@ -1,9 +1,32 @@
 # OQ-53: Disaster recovery, server replacement, and restore self-service
 
 - **Type:** OQ (operational policy decision)
-- **Status:** Open
+- **Status:** **Open — restore authority decided 2026-10-05** (see §Owner decision); disaster-recovery topologies, server-replacement runbook detail, license re-activation mechanics and drill cadence remain OPEN.
 - **Owner:** Ali Esmaeili (with IT/operations input)
-- **Created:** 2026-09-22
+- **Created:** 2026-09-22 · **Restore authority decided:** 2026-10-05 (governance re-baseline)
+
+## Owner decision (2026-10-05) — restore authority & runbook requirement
+
+- **Normal ERP users must never have an in-product Restore capability.**
+- Restore is performed by the **customer's authorized IT/server administrator**
+  according to the Vardena Runbook.
+- Vardena must provide a backup capability and an operational **Runbook**
+  covering: backup verification, restore procedure, application startup,
+  database startup, validation, post-restore checks. Detailed commands are not
+  invented until the deployment architecture finalizes them.
+- The customer/server administrator is responsible for maintaining backups on
+  the customer infrastructure; Vardena documentation includes safety
+  recommendations for that administrator.
+- The documentation distinguishes **Backup ≠ Restore ≠ Disaster Recovery**.
+- Canonical policy text: `docs/operations/backup-and-restore.md`.
+
+**Still OPEN (do not invent):** sanctioned recovery topologies beyond
+single-server restore, the server-replacement runbook's license re-activation
+mechanics, verification gates, and drill cadence — the questions below stand.
+This decision selects the Option C *shape* for day-to-day restores (documented
+runbook for the customer's authorized IT) and rejects Option B's in-product
+restore for normal users; Vardena-assisted recovery for disasters remains
+undecided.
 - **Priority:** High · **Blocks Stage 6 exit (pilot readiness)**
 - **Related docs:** PB-BASELINE §23, PD-28; OQ-52 (RPO/RTO numbers — sibling), OQ-17; database-strategy §14; security.md §6; roadmap Stage 6 gate
 
@@ -68,13 +91,16 @@ playbook*:
   restore), ADR-0030 (license foundation).
 - Stage 6 exit: at least one full timed restore drill on replacement hardware.
 
-## Recommended option
+## Recommended option (historical — superseded in part by the Owner decision above)
 
 **B + C combined, A as the fallback for complex cases**: guided in-product
 restore for standard cases (customer-admin, audited, with mandatory pre-restore
 backup), documented runbook for IT-capable customers, Vardena-assisted for
 disasters — with the license-state rule "restore is always permitted;
-enforcement re-applies after". **Recommendation only — owner decides.**
+enforcement re-applies after". *(Recorded 2026-09-22 as a recommendation. The
+2026-10-05 Owner decision rejects an in-product Restore for normal ERP users:
+restore is runbook-driven and performed by the customer's authorized IT/server
+administrator. The license-state rule stands.)*
 
 ## Questions requiring product owner confirmation
 

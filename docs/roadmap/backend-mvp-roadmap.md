@@ -63,6 +63,27 @@
 > [`../tasks/post-c-50-dependency-reconciliation-and-next-slice-readiness.md`](../tasks/post-c-50-dependency-reconciliation-and-next-slice-readiness.md).
 > This addendum authorizes no implementation and records no acceptance.
 >
+> **Governance re-baseline addendum (2026-10-05):** the Owner recorded a
+> product-decision batch (canonical records: `docs/decisions/product/`, index
+> [PDR-06](../decisions/product/PDR-06-initial-usable-product-v1.md)).
+> Relevant to this roadmap: **(1) OQ-54 is RESOLVED** — Option B, edit until
+> Accounting Post then cancel/correct only, with side-effect transparency and
+> the negative-inventory hard block (OD-54-01…11; backend contract ADR-0040
+> **Proposed**, `document-architecture.md` §6.1). Rows below naming OQ-54 as a
+> blocker should be read as unblocked on the *policy*; the remaining gates
+> (OQ-13/OQ-26 approval coupling, per-document contracts, Owner task
+> authorization) stand. **(2) OQ-49 is DECIDED** — standard reports +
+> controlled customization; no unrestricted designer. **(3) MVP completion is
+> re-based (PDR-06):** "MVP complete" means the end-to-end usable **Initial
+> Usable Product / V1** (frontend, licensing, installation, deployment,
+> backup, export and administration usable), **not** "backend code complete."
+> The Backend MVP Final Gate (§7) remains the backend track's milestone
+> *inside* V1, not the product completion definition. **(4)** Multi-currency
+> ("do nothing for now"), Detail Dimensions, Product Family and taxpayer
+> Stage 2 remain deferred; barcode reuse is decided (never reused — OQ-65).
+> This addendum closes no other OQ, promotes no ADR, accepts no merged work
+> and authorizes no implementation.
+>
 > **Current-state addendum (2026-09-29):** the original inspection baseline and
 > inventory below are a dated planning snapshot. Current `main` is
 > `34dddfd60d6ce2f9d4599bd05b440556a80aa847`: Task 30 adds Account Nature/Type

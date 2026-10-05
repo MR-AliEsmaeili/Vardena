@@ -1,10 +1,21 @@
 # Vardena — Reporting Strategy
 
-Status: Accepted (foundation) · Updated: 2026-09-10 · ADR-0009
+Status: Accepted (foundation) · Updated: 2026-10-05 (OQ-49 Owner decision noted) · ADR-0009
 
 Reporting is a **first-class ERP capability**: operational, financial, and
 inventory reports; dashboards; filters, grouping, sorting, pagination; Excel
 export; printable reports; and easy future extension.
+
+> **MVP scope (Owner decision, 2026-10-05 — OQ-49):** MVP = required
+> **standard ERP reports** (Accounting, Inventory, Sales, Purchasing,
+> Management per the final MVP report catalogue) plus **controlled
+> customization only** — filters, date ranges, selectable permitted columns,
+> sorting, limited (single-column) grouping, saved report configurations and
+> Excel export. **No arbitrary SQL builder, unrestricted query designer,
+> unrestricted formula engine, full BI designer or unrestricted drag-and-drop
+> report designer in MVP.** This matches the architecture below; no Reporting
+> module is implemented yet. Full record:
+> `docs/decisions/product/OQ-49-report-builder-mvp-depth.md`.
 
 ## 1. Core Design Decisions
 
