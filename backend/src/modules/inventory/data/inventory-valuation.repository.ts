@@ -25,14 +25,13 @@ import {
   valuationChanged,
 } from '../domain/valuation-replay.js';
 import {
+  distinctInstants,
   isValuationMethod,
-  methodHorizonOf,
   resolveValuationMethodAt,
 } from '../domain/valuation-method.js';
 import type {
   ItemValuationMethodVersion,
   ValuationMethod,
-  ValuationMethodHorizon,
 } from '../domain/valuation-method.js';
 import {
   CostAlreadyAssignedError,
@@ -481,54 +480,76 @@ function toFact(row: MovementRow, method: ValuationMethod): ReplayFact {
 }
 
 /**
- * The valuation-method versions the replay can actually consume: those whose
- * window intersects the horizon of the movements being replayed.
+ * The valuation-method versions the replay can actually consume: those in
+ * force at one or more of the DISTINCT movement dates being replayed.
  *
  * Read INSIDE the replay transaction, so the resolution cannot race a
  * concurrent configuration change.
  *
- * **Why this is bounded and still complete.** The movements were already
- * bounded by `readKeyMovements` (`RECALCULATION_MOVEMENT_LIMIT`), so the
- * horizon `[first movement date, last movement date]` is a fact of the
- * operation, not a guess. A version outside that horizon can never be
- * resolved by any replayed movement — it either starts after the last
- * movement (a FUTURE configuration, which must not touch history) or ended
- * before the first one. See `versionCoversHorizon`, whose completeness is
- * asserted directly in `domain/valuation-method.spec.ts`: resolving any date
- * in the horizon against the filtered set gives the same answer as resolving
- * it against the whole series.
+ * **Why it is bounded by the right quantity.** The question a replay asks is
+ * not "what does this item's configuration history look like?" but "which
+ * version is in force at each date I am replaying?". So the read asks
+ * exactly that, as one OR branch per distinct date:
  *
- * **Why there is also a ceiling.** At most one version can be in force per
- * movement, so a replay of N movements can consume at most N versions; the
- * ceiling is therefore the movement limit itself, not an invented number.
- * It is read as `limit + 1` so the bound is DETECTED, never silently
- * truncated — truncating would resolve some movement against a version that
- * was simply not transferred. It is an operational read bound, not a
- * business rule: nothing limits how many versions an item may be configured
- * with, and configuration writes never consult it.
+ * ```sql
+ * WHERE organization_id = $1 AND item_id = $2 AND (
+ *     (valid_from <= d1 AND (valid_to IS NULL OR valid_to > d1))
+ *  OR (valid_from <= d2 AND (valid_to IS NULL OR valid_to > d2)) ... )
+ * ```
+ *
+ * Every row that comes back is in force for at least one replayed movement,
+ * and windows cannot overlap (`planNewVersion` rejects that on write), so at
+ * most ONE row comes back per distinct date. The result is therefore bounded
+ * by the number of distinct movement dates — which the movement limit
+ * already bounds — and NOT by how densely the item has been reconfigured.
+ *
+ * An earlier version of this function filtered by the replay HORIZON
+ * (`first..last movement date`) and capped the result at the movement limit.
+ * That cap was wrong: the horizon returns every version *intersecting* the
+ * span, a count driven by configuration density, so two movements a year
+ * apart could drag in a year of monthly versions and a sparse replay could
+ * be refused for a limit that is about movements. Selecting per date removes
+ * the mismatch instead of raising the cap.
+ *
+ * **Completeness.** For any replayed date `d`, every version covering `d`
+ * satisfies `d`'s branch and is returned, so resolving `d` against this
+ * result is identical to resolving it against the item's whole history —
+ * including when the answer is "no version covers it", which keeps the
+ * code-defined default. Future configuration (starts after every replayed
+ * date) and expired configuration (ended before all of them) are excluded
+ * because they are in force for no replayed movement, not as special cases.
+ * Asserted in `domain/valuation-method.spec.ts`.
+ *
+ * **No truncation.** The read takes one row more than the number of distinct
+ * dates. Exceeding that means two versions are in force at the same instant,
+ * i.e. the overlap invariant the write path enforces has been violated in
+ * stored data; the replay then fails closed rather than resolving a movement
+ * against whichever of the two rows happened to be transferred.
  */
 async function readMethodVersions(
   tx: CoreTxClient,
   key: BalanceKey,
-  horizon: ValuationMethodHorizon | null,
+  movementDates: readonly Date[],
 ): Promise<ItemValuationMethodVersion[]> {
+  const instants = distinctInstants(movementDates);
   // No movements, nothing to resolve: an empty key reads no configuration.
-  if (horizon === null) return [];
+  if (instants.length === 0) return [];
   const rows = await tx.itemValuationMethod.findMany({
     where: {
       organizationId: key.organizationId,
       itemId: key.itemId,
-      validFrom: { lte: horizon.to },
-      OR: [{ validTo: null }, { validTo: { gt: horizon.from } }],
+      OR: instants.map((instant) => ({
+        validFrom: { lte: instant },
+        OR: [{ validTo: null }, { validTo: { gt: instant } }],
+      })),
     },
     orderBy: [{ validFrom: 'asc' }],
     skip: 0,
-    take: RECALCULATION_MOVEMENT_LIMIT + 1,
+    take: instants.length + 1,
   });
-  if (rows.length > RECALCULATION_MOVEMENT_LIMIT) {
-    throw new RecalculationTooLargeError(
-      RECALCULATION_MOVEMENT_LIMIT,
-      'valuation_method_versions',
+  if (rows.length > instants.length) {
+    throw new Error(
+      `Item "${key.itemId}" has overlapping valuation method versions: ${rows.length} versions are in force across ${instants.length} movement dates. Historical resolution would be ambiguous, so the replay was refused.`,
     );
   }
   return rows.map((row) => {
@@ -594,7 +615,7 @@ async function applyReplay(
   const versions = await readMethodVersions(
     tx,
     input.key,
-    methodHorizonOf(rows.map((row) => row.movementDate)),
+    rows.map((row) => row.movementDate),
   );
   // One strategy lookup PER MOVEMENT at that movement's business date — never
   // one method for the whole history (OD-VAL-14). A period configured with a

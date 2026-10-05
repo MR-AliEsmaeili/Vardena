@@ -66,10 +66,10 @@ import {
   ReservationNotActiveError,
 } from '../../src/modules/inventory/data/inventory-posting-errors.js';
 import {
+  distinctInstants,
   isValuationMethod,
-  methodHorizonOf,
   resolveValuationMethodAt,
-  versionCoversHorizon,
+  versionCoversAnyInstant,
   versionCoversInstant,
   type ItemValuationMethodVersion,
   type ValuationMethod,
@@ -560,25 +560,25 @@ function applyReplayInMemory(
   if (rows.length > RECALCULATION_MOVEMENT_LIMIT) {
     throw new RecalculationTooLargeError(RECALCULATION_MOVEMENT_LIMIT);
   }
-  // Mirrors the production repository exactly: the configuration read is
-  // bounded to the versions whose window intersects the replayed horizon
-  // (`versionCoversHorizon`), capped and detected rather than truncated, and
-  // the method is then resolved PER MOVEMENT at that movement's own business
-  // date (OD-VAL-14) — never one method for the whole history.
-  const horizon = methodHorizonOf(rows.map((row) => row.movementDate));
+  // Mirrors the production repository exactly: the configuration read selects
+  // the versions in force at the DISTINCT movement dates being replayed — so
+  // it is bounded by how many dates there are, never by how densely the item
+  // has been reconfigured — and the method is then resolved PER MOVEMENT at
+  // that movement's own business date (OD-VAL-14), never one method for the
+  // whole history.
+  const instants = distinctInstants(rows.map((row) => row.movementDate));
   const versions =
-    horizon === null
+    instants.length === 0
       ? []
       : tables.valuationMethods.findMany(
           (version) =>
             version.organizationId === input.key.organizationId &&
             version.itemId === input.key.itemId &&
-            versionCoversHorizon(version, horizon),
+            versionCoversAnyInstant(version, instants),
         );
-  if (versions.length > RECALCULATION_MOVEMENT_LIMIT) {
-    throw new RecalculationTooLargeError(
-      RECALCULATION_MOVEMENT_LIMIT,
-      'valuation_method_versions',
+  if (versions.length > instants.length) {
+    throw new Error(
+      `Item "${input.key.itemId}" has overlapping valuation method versions: ${versions.length} versions are in force across ${instants.length} movement dates. Historical resolution would be ambiguous, so the replay was refused.`,
     );
   }
   const result = replay(

@@ -1409,18 +1409,12 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   produced correct answers but is an unbounded read inside a command whose
   whole premise (OD-VAL-12) is that it is bounded. **Corrected without
   changing a single resolved method:**
-  1. **Replay path** — the versions are now read for the replay **horizon**
+  1. **Replay path** — the versions were read for the replay **horizon**
      (`validFrom <= lastMovementDate AND (validTo IS NULL OR validTo >
-     firstMovementDate)`), derived from the already-bounded movement read.
-     This is complete, not merely smaller: a version outside the horizon is in
-     force for no replayed movement (it starts after the last one — the
-     future-configuration case — or ended before the first). A key with no
-     movements now reads **zero** configuration rows. The read is capped at
-     `RECALCULATION_MOVEMENT_LIMIT + 1` and **refuses** (422, same
-     `inventory.recalculation_too_large` code) instead of truncating, because
-     at most one version can be consumed per replayed movement. This is an
-     operational read bound, not a new business limit: nothing restricts how
-     many versions an item may be configured with.
+     firstMovementDate)`), derived from the already-bounded movement read,
+     and capped at `RECALCULATION_MOVEMENT_LIMIT + 1`. **That cap was itself
+     wrong and was replaced in round 3 of the corrections (see below);** the
+     horizon filter is no longer what bounds the read.
   2. **Posting path** — `findEffectiveVersionAt` asks PostgreSQL for the one
      version in force (`ORDER BY valid_from DESC LIMIT 1`) instead of the
      whole history. Both paths now map their result through the single domain
@@ -1439,10 +1433,8 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   current/latest/first method, unsupported methods still fail closed, and the
   closed `switch` dispatch is untouched. Proven by **14 new unit tests** in
   `domain/valuation-method.spec.ts` — including a 60-version five-year history
-  where every in-horizon date resolves identically against the filtered and
-  the complete series, a swept check over all 60 month boundaries, and
-  evidence that the bound follows the horizon (a two-month window reads 2
-  versions, a five-year window reads all 60) — and **one new e2e case**
+  where every replayed date resolves identically against the filtered and
+  the complete series — and **one new e2e case**
   (`inventory-valuation.e2e-spec.ts`) that drives a four-version history
   through the real API, resolves each date to its own version, and shows the
   same unsupported window being ignored when it sits outside the replayed
@@ -1453,7 +1445,57 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   `typecheck` ✅, unit **133 files / 1616 tests** ✅, hermetic e2e **26 files /
   361 passed / 160 skipped** ✅, `build` ✅. No migration, schema, API contract,
   permission or frontend file changed in this round.
-- **Status:** **CHANGES REQUIRED (Owner, 2026-10-05) — second round of
+- **Owner review 3 (2026-10-05): CHANGES REQUIRED — one technical defect.**
+  The round-2 correction bounded the configuration read by the replay horizon
+  and then capped it at `RECALCULATION_MOVEMENT_LIMIT + 1`, justified as "at
+  most one version can be consumed per movement". The premise is true but
+  does not support the cap: the horizon query returns every version
+  *intersecting* the span, a count driven by **configuration density**, not
+  by movement count. Two movements eleven months apart therefore dragged in
+  every version configured during those eleven months, and an item with more
+  versions than the movement limit had its two-movement replay **refused**
+  with a limit that is about movements. A correctness defect, not a
+  performance one.
+  **Corrected by selecting on relevance instead of on span.** The replay now
+  reads the versions in force at the **distinct movement dates** it is
+  replaying — one window branch per date in a single set-based query
+  (`WHERE org = ? AND item = ? AND ((valid_from <= d1 AND (valid_to IS NULL
+  OR valid_to > d1)) OR …)`) — so every row returned governs at least one
+  replayed movement, and the result is bounded by the number of distinct
+  dates, which the movement limit already bounds. Distinct dates, not
+  movements: a hundred movements sharing five dates ask five questions. The
+  movement-count cap is gone; `RECALCULATION_MOVEMENT_LIMIT` limits movements
+  again and nothing else, and `RecalculationTooLargeError` is back to its
+  original single-purpose shape (the round-2 `subject` discriminator was
+  removed). A read returning more rows than there are distinct dates means
+  two versions are in force at one instant — the overlap invariant the write
+  path enforces has been violated in stored data — and the replay fails
+  closed rather than resolving against whichever row happened to arrive.
+  **Completeness is now trivial to see:** every version covering a replayed
+  date satisfies that date's branch, so resolution against the result equals
+  resolution against the item's whole history; future and expired
+  configuration are excluded because they govern no replayed movement, not as
+  special cases; an unsupported method in force at a replayed date is still
+  loaded and still fails the replay closed. Historical resolution, the
+  default-when-unconfigured rule, the half-open `[validFrom, validTo)`
+  boundary and every API contract are unchanged.
+  Evidence: the e2e regression test (two movements, `RECALCULATION_MOVEMENT_LIMIT
+  + 1` contiguous versions) was **verified to fail against the round-2
+  implementation** with 422 `inventory.recalculation_too_large` and to pass
+  after the fix; a second e2e replays two movements across twelve monthly
+  versions and proves determinism and future-version isolation; a third —
+  new, there was none before — proves the movement limit itself still refuses
+  a key with more movements than the limit. Unit coverage adds distinct-date
+  collapsing, density independence (600 versions, two movements, two rows
+  read), the hundred-movements/five-dates case, boundary selection at the
+  exact instant a window closes, and loaded-but-unsupported versus
+  excluded-future methods.
+- **Validation after round 3 of corrections (local, 2026-10-05):**
+  `format:check` ✅, `lint` ✅ (1 pre-existing warning in Accounting),
+  `typecheck` ✅, unit **133 files / 1618 tests** ✅, hermetic e2e **26 files /
+  364 passed / 160 skipped** ✅, `build` ✅. No migration, schema, API contract,
+  permission or frontend file changed in this round.
+- **Status:** **CHANGES REQUIRED (Owner, 2026-10-05) — third round of
   corrections pushed, awaiting re-review.** The PR stays **open**; it is not
   merged and not accepted. Merge and green CI are not acceptance (§6).
   ADR-0039 remains **Proposed**, PDR-05 closes no OQ beyond the partial OQ-24

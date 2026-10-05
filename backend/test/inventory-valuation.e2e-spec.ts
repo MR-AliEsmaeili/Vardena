@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
+import { RECALCULATION_MOVEMENT_LIMIT } from '../src/modules/inventory/data/inventory-valuation.repository.js';
 import { UsersRepository } from '../src/modules/users/data/users.repository.js';
 import { UsersService } from '../src/modules/users/application/users.service.js';
 import { SessionsRepository } from '../src/modules/identity/data/sessions.repository.js';
@@ -84,6 +85,9 @@ describe('Inventory valuation (e2e)', () => {
     otherItemId: '',
     datedItemId: '',
     seriesItemId: '',
+    denseItemId: '',
+    limitItemId: '',
+    denserThanLimitItemId: '',
     uncostedReceiptId: '',
   };
 
@@ -292,6 +296,39 @@ describe('Inventory valuation (e2e)', () => {
       })
       .expect(201);
     state.seriesItemId = seriesItem.body.id as string;
+    const denseItem = await root
+      .post('/api/v1/inventory/items')
+      .send({
+        organizationId: state.orgId,
+        code: 'ITM-VAL-5',
+        name: 'Sparse Movement Dense Policy Bolt',
+        itemKind: 'goods',
+        baseUnitId: state.unitId,
+      })
+      .expect(201);
+    state.denseItemId = denseItem.body.id as string;
+    const limitItem = await root
+      .post('/api/v1/inventory/items')
+      .send({
+        organizationId: state.orgId,
+        code: 'ITM-VAL-6',
+        name: 'Movement Limit Bolt',
+        itemKind: 'goods',
+        baseUnitId: state.unitId,
+      })
+      .expect(201);
+    state.limitItemId = limitItem.body.id as string;
+    const denserItem = await root
+      .post('/api/v1/inventory/items')
+      .send({
+        organizationId: state.orgId,
+        code: 'ITM-VAL-7',
+        name: 'Configuration Denser Than Limit Bolt',
+        itemKind: 'goods',
+        baseUnitId: state.unitId,
+      })
+      .expect(201);
+    state.denserThanLimitItemId = denserItem.body.id as string;
   });
 
   afterAll(async () => {
@@ -989,6 +1026,246 @@ describe('Inventory valuation (e2e)', () => {
       'inventory.valuation_method_not_implemented',
     );
     expect(refused.body.details.method).toBe('fifo');
+  });
+
+  it('replays two movements that span a year of monthly policy versions', async () => {
+    // The configuration-density case: 12 effective-dated versions, 2
+    // movements. The replay must read the versions in force ON THOSE TWO
+    // DATES and must not be refused for a limit that counts movements.
+    const key = {
+      organizationId: state.orgId,
+      warehouseId: state.warehouseId,
+      itemId: state.denseItemId,
+    };
+    const iso = (month: number, day: number) =>
+      new Date(Date.UTC(2025, month - 1, day)).toISOString();
+
+    for (let month = 1; month <= 12; month += 1) {
+      await root
+        .post('/api/v1/inventory/valuation/methods')
+        .send({
+          organizationId: state.orgId,
+          itemId: state.denseItemId,
+          method: 'moving_weighted_average',
+          validFrom: iso(month, 1),
+          note: `Policy for 2025-${String(month).padStart(2, '0')}`,
+        })
+        .expect(201);
+    }
+    const configured = await root
+      .get('/api/v1/inventory/valuation/methods')
+      .query({
+        organizationId: state.orgId,
+        itemId: state.denseItemId,
+        page: 1,
+        pageSize: 50,
+      })
+      .expect(200);
+    expect(configured.body.total).toBe(12);
+
+    // Only two movements, eleven months apart.
+    for (const [index, movementDate] of [iso(1, 1), iso(12, 29)].entries()) {
+      await root
+        .post('/api/v1/inventory/movements')
+        .send({
+          ...key,
+          unitId: state.unitId,
+          operationKey: `val-dense-${index}`,
+          movementType: 'inbound',
+          quantity: '5',
+          totalCost: '250.00',
+          movementDate,
+          backdateConfirmed: true,
+          repricing: 'skip',
+        })
+        .expect(201);
+    }
+
+    const replayed = await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-dense-recalc',
+        reason: 'Two movements across twelve monthly policy versions.',
+      })
+      .expect(201);
+    expect(replayed.body.run.movementsExamined).toBe(2);
+    expect(replayed.body.state.valuedQuantity).toBe('10');
+    expect(replayed.body.state.totalValue).toBe('500');
+
+    // Deterministic: replaying again changes nothing.
+    const again = await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-dense-recalc-2',
+        reason: 'Determinism check.',
+      })
+      .expect(201);
+    expect(again.body.run.movementsRevalued).toBe(0);
+    expect(again.body.state.totalValue).toBe('500');
+
+    // A version taking effect after both movements stays irrelevant to them.
+    await root
+      .post('/api/v1/inventory/valuation/methods')
+      .send({
+        organizationId: state.orgId,
+        itemId: state.denseItemId,
+        method: 'moving_weighted_average',
+        validFrom: new Date(
+          Date.now() + 365 * 24 * 60 * 60 * 1000,
+        ).toISOString(),
+        note: 'Future policy.',
+      })
+      .expect(201);
+    const afterFuture = await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-dense-recalc-3',
+        reason: 'A future policy must not disturb the 2025 replay.',
+      })
+      .expect(201);
+    expect(afterFuture.body.run.movementsRevalued).toBe(0);
+    expect(afterFuture.body.state.totalValue).toBe('500');
+  });
+
+  it('replays two movements even when the item has MORE configuration versions than the movement limit', async () => {
+    // The exact shape the movement-count ceiling got wrong: configuration
+    // density far above the movement limit, movement count far below it.
+    // The replay needs two versions — one per movement date — so the number
+    // of versions in between must not matter at all.
+    const key = {
+      organizationId: state.orgId,
+      warehouseId: state.warehouseId,
+      itemId: state.denserThanLimitItemId,
+    };
+    const yearStart = Date.UTC(2025, 0, 1);
+    const lastMovement = Date.UTC(2025, 11, 29);
+    const versionCount = RECALCULATION_MOVEMENT_LIMIT + 1;
+    // Every window opens on or before the LAST movement, so all of them are
+    // in force somewhere inside the replayed period. That is what makes this
+    // a regression test: the previous horizon read returned all
+    // `RECALCULATION_MOVEMENT_LIMIT + 1` of them and refused the replay,
+    // even though only two of them govern a movement.
+    const step = Math.floor((lastMovement - yearStart) / versionCount);
+    // Contiguous half-open windows: dense, but never overlapping. Seeded
+    // rather than inserted because the per-row uniqueness scan is O(n) and
+    // this fixture is deliberately large; the windows are distinct by
+    // construction, so the guard has nothing to catch.
+    for (let index = 0; index < versionCount; index += 1) {
+      const validFrom = new Date(yearStart + index * step);
+      core.tables.valuationMethods.seed({
+        id: `dense-${index}`,
+        organizationId: state.orgId,
+        itemId: state.denserThanLimitItemId,
+        method: 'moving_weighted_average',
+        validFrom,
+        validTo:
+          index === versionCount - 1
+            ? null
+            : new Date(yearStart + (index + 1) * step),
+        note: null,
+        createdAt: validFrom,
+        updatedAt: validFrom,
+      });
+    }
+
+    for (const [index, movementDate] of [
+      new Date(Date.UTC(2025, 0, 1)).toISOString(),
+      new Date(Date.UTC(2025, 11, 29)).toISOString(),
+    ].entries()) {
+      await root
+        .post('/api/v1/inventory/movements')
+        .send({
+          ...key,
+          unitId: state.unitId,
+          operationKey: `val-denser-${index}`,
+          movementType: 'inbound',
+          quantity: '3',
+          totalCost: '90.00',
+          movementDate,
+          backdateConfirmed: true,
+          repricing: 'skip',
+        })
+        .expect(201);
+    }
+
+    const replayed = await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-denser-recalc',
+        reason: 'Two movements, more policy versions than the movement limit.',
+      })
+      .expect(201);
+    expect(replayed.body.run.movementsExamined).toBe(2);
+    expect(replayed.body.state.valuedQuantity).toBe('6');
+    expect(replayed.body.state.totalValue).toBe('180');
+  });
+
+  it('still refuses a key with more movements than the recalculation limit', async () => {
+    // The movement limit must keep limiting MOVEMENTS. One real posting
+    // establishes the balance and state; the rest of the history is seeded
+    // directly because the point is the row count, not the HTTP path.
+    const key = {
+      organizationId: state.orgId,
+      warehouseId: state.warehouseId,
+      itemId: state.limitItemId,
+    };
+    await root
+      .post('/api/v1/inventory/movements')
+      .send({
+        ...key,
+        unitId: state.unitId,
+        operationKey: 'val-limit-seed',
+        movementType: 'inbound',
+        quantity: '1',
+        totalCost: '10.00',
+      })
+      .expect(201);
+
+    const base = new Date('2025-01-01T00:00:00.000Z').getTime();
+    for (let index = 0; index < RECALCULATION_MOVEMENT_LIMIT; index += 1) {
+      core.tables.movements.insert({
+        id: `seeded-limit-${index}`,
+        organizationId: state.orgId,
+        branchId: state.branchId,
+        warehouseId: state.warehouseId,
+        itemId: state.limitItemId,
+        movementType: 'inbound',
+        quantity: '1',
+        enteredUnitId: state.unitId,
+        baseQuantity: '1',
+        baseUnitId: state.unitId,
+        conversionFactor: '1',
+        movementDate: new Date(base + index * 1000),
+        transferId: null,
+        reversalOfMovementId: null,
+        referenceType: null,
+        referenceId: null,
+        reason: null,
+        operationKey: `seeded-limit-${index}`,
+        totalCost: null,
+        valuationStatus: 'unvalued',
+        valuationSource: null,
+        valuedAt: null,
+        valuationRunId: null,
+        createdAt: new Date(base + index * 1000),
+        updatedAt: new Date(base + index * 1000),
+      });
+    }
+
+    const refused = await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-limit-recalc',
+        reason: 'More movements than one command may replay.',
+      })
+      .expect(422);
+    expect(refused.body.details.code).toBe('inventory.recalculation_too_large');
+    expect(refused.body.details.limit).toBe(RECALCULATION_MOVEMENT_LIMIT);
   });
 
   it('refuses a recalculation without a key (there is no "recalculate everything")', async () => {

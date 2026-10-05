@@ -214,55 +214,50 @@ export function resolveValuationMethodAt(
 }
 
 /**
- * The closed business interval a replay has to resolve methods for: the
- * earliest and latest movement date it will examine.
+ * The distinct instants a replay has to resolve a method for, ascending.
  *
- * `null` means "no movements", in which case no configuration row is needed
- * at all — an empty key reads no configuration.
+ * Movements repeat business dates constantly (a hundred movements can share
+ * five dates), and the method in force depends ONLY on the instant — so the
+ * configuration question is asked once per distinct date, never once per
+ * movement. An empty list means "no movements": nothing to resolve, and no
+ * configuration row is needed at all.
  */
-export interface ValuationMethodHorizon {
-  from: Date;
-  to: Date;
-}
-
-export function methodHorizonOf(
-  movementDates: readonly Date[],
-): ValuationMethodHorizon | null {
-  if (movementDates.length === 0) return null;
-  let from = movementDates[0] as Date;
-  let to = from;
-  for (const date of movementDates) {
-    if (date.getTime() < from.getTime()) from = date;
-    if (date.getTime() > to.getTime()) to = date;
+export function distinctInstants(dates: readonly Date[]): Date[] {
+  const seen = new Set<number>();
+  const distinct: Date[] = [];
+  for (const date of dates) {
+    const time = date.getTime();
+    if (seen.has(time)) continue;
+    seen.add(time);
+    distinct.push(date);
   }
-  return { from, to };
+  return distinct.sort((a, b) => a.getTime() - b.getTime());
 }
 
 /**
- * Can this version be in force for ANY instant inside the horizon?
+ * Is this version in force at ANY of the instants a replay will resolve?
  *
- * This is the predicate the bounded database read expresses as
- * `valid_from <= horizon.to AND (valid_to IS NULL OR valid_to > horizon.from)`,
- * and it is why that read is COMPLETE rather than merely smaller:
+ * This is the predicate the bounded database read expresses, as one OR
+ * branch per distinct instant. It is what makes the read both COMPLETE and
+ * genuinely RELEVANT:
  *
- * - `validFrom > horizon.to` → the version starts after every movement in the
- *   window, so no movement can resolve to it (this is what keeps a FUTURE
- *   configuration from touching historical movements);
- * - `validTo <= horizon.from` → the version ended before the earliest
- *   movement, so no movement can resolve to it.
+ * - complete — every version covering a replayed instant satisfies that
+ *   instant's branch, so resolving against the result is identical to
+ *   resolving against the item's whole configuration history;
+ * - relevant — a version that is in force at none of the instants is in
+ *   force for no movement, so it cannot change any outcome. Future
+ *   configuration (starting after every replayed date) and expired
+ *   configuration (ended before all of them) are both excluded for the same
+ *   reason, not as special cases.
  *
- * Every other version is read. Resolving a date inside the horizon against
- * the filtered set therefore gives exactly the same answer as resolving it
- * against the complete series — asserted directly in
- * `valuation-method.spec.ts`.
+ * The consequence that matters: the number of rows returned is bounded by
+ * the number of DISTINCT MOVEMENT DATES, never by how densely the item's
+ * configuration history happens to be versioned. Two movements spanning a
+ * year of monthly policy changes read two versions, not twelve.
  */
-export function versionCoversHorizon(
+export function versionCoversAnyInstant(
   version: ItemValuationMethodVersion,
-  horizon: ValuationMethodHorizon,
+  instants: readonly Date[],
 ): boolean {
-  return (
-    version.validFrom.getTime() <= horizon.to.getTime() &&
-    (version.validTo === null ||
-      version.validTo.getTime() > horizon.from.getTime())
-  );
+  return instants.some((instant) => versionCoversInstant(version, instant));
 }

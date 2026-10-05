@@ -390,13 +390,23 @@ export type ItemValuationMethodRow = {
   note: string | null;
 } & AuditColumns;
 
-export interface ItemValuationMethodWhere {
+/**
+ * The window half of a configuration filter: `validFrom <= x` and/or
+ * `validTo IS NULL OR validTo > x`. Recursive, because selecting the
+ * versions in force on SEVERAL dates is one OR of per-date windows rather
+ * than one query per date.
+ */
+export interface ItemValuationMethodWindowWhere {
+  validFrom?: { lte: Date };
+  validTo?: null | { gt: Date };
+  OR?: ItemValuationMethodWindowWhere[];
+}
+
+export interface ItemValuationMethodWhere extends ItemValuationMethodWindowWhere {
   id?: string;
   organizationId?: string;
   itemId?: string;
   method?: string;
-  validFrom?: { lte: Date };
-  OR?: Array<{ validTo: null } | { validTo: { gt: Date } }>;
 }
 
 export interface ItemValuationMethodCreate {
