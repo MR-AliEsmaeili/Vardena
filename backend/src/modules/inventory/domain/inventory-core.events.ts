@@ -113,10 +113,59 @@ export type InventoryReservationReleasedEvent = CoreEvent<
   InventoryReservationPayload
 >;
 
+// ---- Valuation (PDR-05) --------------------------------------------------------
+
+export const INVENTORY_VALUATION_METHOD_CONFIGURED_EVENT =
+  'ItemValuationMethod.Configured' as const;
+
+export const INVENTORY_VALUATION_RECALCULATED_EVENT =
+  'InventoryValuation.Recalculated' as const;
+
+export interface ItemValuationMethodConfiguredPayload {
+  id: string;
+  organizationId: string;
+  itemId: string;
+  method: string;
+  /** The open-ended version this one closed, if any. */
+  supersededVersionId: string | null;
+}
+
+export type ItemValuationMethodConfiguredEvent = CoreEvent<
+  typeof INVENTORY_VALUATION_METHOD_CONFIGURED_EVENT,
+  'ItemValuationMethod',
+  ItemValuationMethodConfiguredPayload
+>;
+
+/**
+ * An explicit repricing ran. Identifiers and counts only — no amounts: an
+ * event is a routing fact, and inventory VALUE is permission-gated
+ * (`Inventory.Valuation.View`). A subscriber that needs the numbers reads
+ * them through the API with its own authority.
+ */
+export interface InventoryValuationRecalculatedPayload {
+  id: string;
+  organizationId: string;
+  branchId: string;
+  warehouseId: string;
+  itemId: string;
+  trigger: string;
+  movementsExamined: number;
+  movementsRevalued: number;
+  resultingStatus: string;
+}
+
+export type InventoryValuationRecalculatedEvent = CoreEvent<
+  typeof INVENTORY_VALUATION_RECALCULATED_EVENT,
+  'InventoryValuationRun',
+  InventoryValuationRecalculatedPayload
+>;
+
 /** Every event the inventory core publishes (used by tests). */
 export const INVENTORY_CORE_EVENT_TYPES = [
   INVENTORY_MOVEMENT_POSTED_EVENT,
   INVENTORY_TRANSFER_POSTED_EVENT,
   INVENTORY_RESERVATION_CREATED_EVENT,
   INVENTORY_RESERVATION_RELEASED_EVENT,
+  INVENTORY_VALUATION_METHOD_CONFIGURED_EVENT,
+  INVENTORY_VALUATION_RECALCULATED_EVENT,
 ] as const;

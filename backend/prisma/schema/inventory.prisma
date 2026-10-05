@@ -193,6 +193,12 @@ model Item {
   reservations InventoryReservation[]
   materialRequestLines MaterialRequestLine[]
 
+  // Valuation foundation (PDR-05): the valuation METHOD is configured per
+  // organization + item, the valuation STATE per warehouse + item.
+  valuationMethods ItemValuationMethod[]
+  valuationStates  InventoryValuationState[]
+  valuationRuns    InventoryValuationRun[]
+
   @@unique([organizationId, code], map: "uq_items_organization_id_code")
   @@index([organizationId, isActive], map: "idx_items_organization_id_is_active")
   @@index([organizationId, itemKind], map: "idx_items_organization_id_item_kind")
@@ -246,6 +252,10 @@ model Warehouse {
   balances     InventoryBalance[]
   reservations InventoryReservation[]
   materialRequestLines MaterialRequestLine[]
+
+  // Valuation state/runs are keyed by warehouse + item (PDR-05 OD-VAL-04).
+  valuationStates InventoryValuationState[]
+  valuationRuns   InventoryValuationRun[]
 
   @@unique([organizationId, code], map: "uq_warehouses_organization_id_code")
   @@index([organizationId, isActive], map: "idx_warehouses_organization_id_is_active")
@@ -324,6 +334,49 @@ model InventoryMovement {
   /// Echo of the idempotency key (uniqueness is enforced by
   /// `inventory_operations`; transfers share one key across two rows).
   operationKey   String   @map("operation_key") @db.VarChar(128)
+
+  // ---- Valuation (PDR-05, ADR-0039) ---------------------------------------
+  // The SAME ledger row carries quantity (warehouse operations) and value
+  // (inventory accounting). There is deliberately no second inventory ledger
+  // and no duplicate accounting receipt/issue row.
+  //
+  // `total_cost` is the SIGNED inventory VALUE effect of this movement
+  // (+ inbound, − outbound) in the organization's base currency, exactly
+  // mirroring how `base_quantity` carries the signed quantity effect: stock
+  // value is `SUM(total_cost)` by construction. It is NULLABLE because a
+  // warehouse receipt must be postable WITHOUT any monetary value (Owner
+  // decision OD-VAL-05) — cost is never required to record a quantity fact.
+  //
+  // There is deliberately NO stored `unit_cost`: it would be a second,
+  // ROUNDED truth for the same money. A per-unit figure is derived for
+  // presentation (`total_cost / base_quantity`) by the read layer.
+  //
+  // `total_cost` is NOT the purchase price (PDR-05 §7): it is the value
+  // assigned to inventory for valuation purposes, which Purchasing may later
+  // inform but never owns.
+  totalCost      Decimal? @map("total_cost") @db.Decimal(18, 2)
+  /// Closed, code-defined list (`domain/inventory-valuation.ts`):
+  /// `unvalued` | `provisional` | `valued`. It states FINALITY, not
+  /// completeness: `provisional` carries a real value that an explicit
+  /// recalculation will change (it was derived while the key was backdated
+  /// or partly uncosted). Staleness itself is a property of the KEY (see
+  /// `inventory_valuation_states.status`), never of an individual fact.
+  valuationStatus String  @default("unvalued") @map("valuation_status") @db.VarChar(16)
+  /// Closed, code-defined list: `entered` (supplied by a user holding the
+  /// accounting capability), `average_cost` (derived by the Moving Weighted
+  /// Average strategy), `transfer` (the value the paired leg moved) or
+  /// `reversal` (the value the reversed original carried). Everything except
+  /// `average_cost` is a value the fact carries on its OWN authority and is
+  /// preserved verbatim by a recalculation. NULL while
+  /// `valuation_status = 'unvalued'`.
+  valuationSource String? @map("valuation_source") @db.VarChar(24)
+  /// When the current value was assigned (technical instant, never a
+  /// business date).
+  valuedAt       DateTime? @map("valued_at") @db.Timestamptz(6)
+  /// The recalculation run that last assigned this value, when the value came
+  /// from a run rather than from the posting itself (auditability: a value
+  /// can always be traced to the command that produced it).
+  valuationRunId String?  @map("valuation_run_id")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy      String?  @map("created_by")
@@ -337,6 +390,7 @@ model InventoryMovement {
   baseUnit     Unit         @relation("MovementBaseUnit", fields: [baseUnitId], references: [id], onDelete: Restrict)
   reversalOf   InventoryMovement?  @relation("MovementReversal", fields: [reversalOfMovementId], references: [id], onDelete: Restrict)
   reversals    InventoryMovement[] @relation("MovementReversal")
+  valuationRun InventoryValuationRun? @relation(fields: [valuationRunId], references: [id], onDelete: Restrict)
 
   @@unique([reversalOfMovementId], map: "uq_movements_reversal_of_movement_id")
   @@index([organizationId, warehouseId, itemId, movementDate], map: "idx_movements_org_warehouse_item_date")
@@ -344,6 +398,10 @@ model InventoryMovement {
   @@index([organizationId, branchId, movementDate], map: "idx_movements_org_branch_date")
   @@index([transferId], map: "idx_movements_transfer_id")
   @@index([organizationId, operationKey], map: "idx_movements_org_operation_key")
+  // The Inventory Accounting worklist: "which facts on this key still carry
+  // no value?" — one index, no table scan.
+  @@index([organizationId, warehouseId, itemId, valuationStatus], map: "idx_movements_org_key_valuation_status")
+  @@index([valuationRunId], map: "idx_movements_valuation_run_id")
   @@map("inventory_movements")
   @@schema("inventory")
 }
@@ -478,6 +536,210 @@ model InventoryOperation {
 
   @@unique([organizationId, operationKey], map: "uq_operations_org_operation_key")
   @@map("inventory_operations")
+  @@schema("inventory")
+}
+
+// =============================================================================
+// Inventory valuation foundation (PDR-05, ADR-0039, D-06, OQ-24 partial)
+//
+// Three tables, one purpose: let Inventory Accounting put a VALUE on the very
+// movements Warehouse Operations already posted, without a second inventory
+// ledger and without forcing a warehouse operator to know any money.
+//
+//   `item_valuation_methods`     — WHICH method applies (organization + item,
+//                                  effective-dated, D-21);
+//   `inventory_valuation_states` — the Moving Weighted Average STATE of one
+//                                  stocking key (warehouse + item), a
+//                                  materialized, rebuildable projection of the
+//                                  quantity ledger + assigned costs;
+//   `inventory_valuation_runs`   — the audit record of every explicit
+//                                  recalculation (repricing) command.
+//
+// Deliberately NOT here: cost layers (FIFO/LIFO/specific identification are
+// not active MVP methods — PDR-05 §18), landed cost, purchase pricing,
+// accounting journal columns (Inventory owns valuation, Accounting owns
+// posting — PDR-05 §19), and any per-movement valuation history table.
+// =============================================================================
+
+/// Effective-dated valuation-method configuration, scoped to ORGANIZATION +
+/// ITEM (Owner decision OD-VAL-03).
+///
+/// The same versioning mechanism as `unit_conversions` (D-21/D-26): a change
+/// inserts a NEW row and closes the previous open-ended one at the new
+/// `valid_from`; an existing version is never reinterpreted, so historical
+/// valuation stays reproducible. There is deliberately no `is_active` flag
+/// and no in-place edit.
+///
+/// `method` is a closed, code-defined list (`domain/valuation-method.ts`)
+/// stored as text — the same convention as `item_kind`, `movement_type` and
+/// `status` everywhere else in this module. Only `moving_weighted_average`
+/// may be ACTIVATED in the MVP; the vocabulary names the known future
+/// strategies so the architecture does not have to be reshaped later, and
+/// the application rejects configuring any of them (AR-24 fail-closed).
+///
+/// A key with no row at a given instant resolves to the code-defined MVP
+/// default (`moving_weighted_average`) — no per-organization default row is
+/// invented, and no EAV/JSONB configuration table exists.
+model ItemValuationMethod {
+  id             String    @id
+  organizationId String    @map("organization_id")
+  itemId         String    @map("item_id")
+  method         String    @db.VarChar(32)
+  validFrom      DateTime  @map("valid_from") @db.Timestamptz(6)
+  validTo        DateTime? @map("valid_to") @db.Timestamptz(6)
+  /// Why this method applies from this date (audit metadata; free text, no
+  /// invented reason-code vocabulary).
+  note           String?   @db.VarChar(500)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?   @map("created_by")
+  updatedBy      String?   @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, itemId, validFrom], map: "uq_item_valuation_methods_item_valid_from")
+  @@index([organizationId, itemId], map: "idx_item_valuation_methods_org_item")
+  @@map("item_valuation_methods")
+  @@schema("inventory")
+}
+
+/// Moving Weighted Average state of ONE stocking key (Owner decision
+/// OD-VAL-04): organization + warehouse + item — the same key
+/// `inventory_balances` uses, because physical inventory is warehouse-specific
+/// and an item's average cost in one warehouse is not its average cost in
+/// another.
+///
+/// This is a materialized, rebuildable PROJECTION — exactly the shape
+/// ADR-0017/ADR-0022 already use for `inventory_balances`:
+///   * source: `inventory_movements` (quantity) + the costs assigned to them;
+///   * ownership: the Inventory valuation engine ONLY (no other module, and
+///     no human, writes these columns);
+///   * maintained in the SAME transaction as the movement that changes it,
+///     under this row's `FOR UPDATE` lock;
+///   * fully rebuildable by the recalculation command, which replays the
+///     key's ledger in the canonical C-54 order.
+///
+/// Consistency rule (asserted by tests and by the recalculation command):
+///   `inventory_balances.on_hand = valued_quantity + uncosted_quantity`
+/// for the same key. `valued_quantity` is the part of on-hand whose cost is
+/// known and included in `total_value`; `uncosted_quantity` is the SIGNED
+/// remainder the engine refused to guess a cost for (a receipt posted without
+/// cost, a transfer/reversal leg, or a backdated issue).
+///
+/// The average unit cost is NEVER stored: it is `total_value / valued_quantity`,
+/// derived for presentation only — storing it would be a second, rounded truth
+/// (same rule as `available = on_hand − reserved` in ADR-0022).
+model InventoryValuationState {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  branchId       String   @map("branch_id")
+  warehouseId    String   @map("warehouse_id")
+  itemId         String   @map("item_id")
+  /// Snapshot of the valuation method this state was built with, so a state
+  /// can never be read as if it had been produced by another strategy.
+  method         String   @db.VarChar(32)
+  /// Base-unit quantity whose cost is known and included in `total_value`.
+  valuedQuantity Decimal  @default(0) @map("valued_quantity") @db.Decimal(18, 4)
+  /// Base-unit quantity physically on hand that carries NO value yet,
+  /// because it was received without a cost (OD-VAL-05). Always positive or
+  /// zero. It is kept VISIBLE instead of being averaged into
+  /// `valued_quantity` at zero cost, so `valued_quantity +
+  /// uncosted_quantity` always equals the balance row's `on_hand`.
+  uncostedQuantity Decimal @default(0) @map("uncosted_quantity") @db.Decimal(18, 4)
+  /// Inventory value of `valued_quantity`, in the organization's base
+  /// currency (`numeric(18,2)`, docs/database-strategy.md §6).
+  totalValue     Decimal  @default(0) @map("total_value") @db.Decimal(18, 2)
+  /// Closed, code-defined list (`domain/inventory-valuation.ts`):
+  /// `valued` | `pending_cost` | `stale`. Materialized classifier derived
+  /// from (`uncosted_quantity`, `stale_since`) by ONE pure function, stored
+  /// so the accounting worklist is one indexed query.
+  status         String   @default("valued") @db.VarChar(16)
+  /// Instant from which this key's valuation may no longer reflect the
+  /// method — a document was registered BEFORE later activity, or a cost
+  /// arrived after the stock it belongs to was already issued (Owner
+  /// decisions OD-VAL-10/OD-VAL-11: nothing is ever silently repriced, the
+  /// key is honestly marked instead). STICKY: only an explicit
+  /// recalculation clears it, because the values it was computed from are
+  /// still the wrong ones until then.
+  staleSince     DateTime? @map("stale_since") @db.Timestamptz(6)
+  /// Technical instant of the last value assignment on this key.
+  lastValuedAt   DateTime? @map("last_valued_at") @db.Timestamptz(6)
+  /// The last recalculation run that rebuilt this state, when any.
+  lastRecalculationId String? @map("last_recalculation_id")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization      Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch            Branch                 @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse         Warehouse              @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  item              Item                   @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  lastRecalculation InventoryValuationRun? @relation(fields: [lastRecalculationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, warehouseId, itemId], map: "uq_valuation_states_org_warehouse_item")
+  @@index([organizationId, status], map: "idx_valuation_states_org_status")
+  @@index([organizationId, itemId], map: "idx_valuation_states_org_item")
+  @@index([lastRecalculationId], map: "idx_valuation_states_last_recalculation_id")
+  @@map("inventory_valuation_states")
+  @@schema("inventory")
+}
+
+/// One executed recalculation (repricing) command — the audit record of an
+/// EXPLICIT user decision (Owner decisions OD-VAL-11/OD-VAL-12).
+///
+/// Rows are insert-only. Scope is exactly ONE stocking key: there is no
+/// "recalculate everything" command, so an operator can always state what a
+/// run touched. `from_date` records the business date that motivated the run
+/// (typically a backdated document); it never narrows the replay, which
+/// always covers the key's whole ledger because a Moving Weighted Average
+/// cannot be resumed from the middle without an opening-state snapshot
+/// nobody has approved storing.
+model InventoryValuationRun {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  branchId       String   @map("branch_id")
+  warehouseId    String   @map("warehouse_id")
+  itemId         String   @map("item_id")
+  method         String   @db.VarChar(32)
+  /// Closed, code-defined list (`domain/inventory-valuation.ts`):
+  /// `user_requested` (the explicit repricing choice) or `maintenance`
+  /// (a rebuild run by an operator to repair drift).
+  trigger        String   @db.VarChar(24)
+  /// The business date the run was requested for; audit only.
+  fromDate       DateTime? @map("from_date") @db.Timestamptz(6)
+  /// How many ledger facts the replay examined, and how many ended with a
+  /// different value than before.
+  movementsExamined Int   @map("movements_examined")
+  movementsRevalued Int   @map("movements_revalued")
+  /// The state this run produced (snapshotted so a run is readable without
+  /// re-deriving it).
+  resultingValuedQuantity Decimal @map("resulting_valued_quantity") @db.Decimal(18, 4)
+  resultingUncostedQuantity Decimal @map("resulting_uncosted_quantity") @db.Decimal(18, 4)
+  resultingTotalValue     Decimal @map("resulting_total_value") @db.Decimal(18, 2)
+  resultingStatus         String  @map("resulting_status") @db.VarChar(16)
+  /// Echo of the idempotency key (uniqueness enforced by
+  /// `inventory_operations`).
+  operationKey   String   @map("operation_key") @db.VarChar(128)
+  reason         String?  @db.VarChar(500)
+  executedAt     DateTime @map("executed_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse    @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
+
+  movements InventoryMovement[]
+  states    InventoryValuationState[]
+
+  @@index([organizationId, warehouseId, itemId, executedAt], map: "idx_valuation_runs_org_key_executed_at")
+  @@index([organizationId, executedAt], map: "idx_valuation_runs_org_executed_at")
+  @@map("inventory_valuation_runs")
   @@schema("inventory")
 }
 

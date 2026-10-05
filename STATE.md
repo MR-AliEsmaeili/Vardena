@@ -1278,3 +1278,270 @@ Documentation/governance addendum at current `main` /
   heavy E2E, live-PostgreSQL, migration or migration-rehearsal suite was run.
 - **Status:** **READY FOR REVIEW — NOT ACCEPTED.** This addendum closes no OQ,
   promotes no ADR, accepts no implementation and authorizes no production work.
+
+## 20. Inventory Valuation Foundation & Cost-Optional Warehouse Operations (2026-10-04)
+
+Backend implementation slice on branch `arena/01a107dc-vardena`, branched from
+`main` @ `1e3d407fd3f08650e0e70353f96b277e80ef03fd` (merge of PR #115, C-54
+quantity Kardex). Architecture record: **ADR-0039 (Proposed)** — an
+implementation agent cannot promote its own ADR; acceptance is the Owner's
+decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
+(business decisions only — it accepts no implementation and promotes no ADR)
+(`docs/decisions/product/PDR-05-inventory-valuation-and-cost-optional-operations.md`).
+
+- **Owner decisions recorded (19).** Perpetual inventory; Moving Weighted
+  Average as the **only** active MVP method; method configuration scoped to
+  **organization + item** and effective-dated; valuation **state** keyed at the
+  physical stock granularity **organization + warehouse + item**; **cost is NOT
+  required on a warehouse receipt** and is never entered on an issue; Warehouse
+  Operations and Inventory Accounting are two workspaces over the **same**
+  records; purchase price ≠ inventory cost; backdated documents allowed only
+  behind **two independent explicit confirmations**, with "do not reprice"
+  honestly persisting a **stale** state; recalculation deterministic,
+  transaction-safe and **bounded to one key per command**; valuation never
+  gates a quantity posting; opening balance stays calculated; entered money is
+  exact-or-reject; negative stock stays rejected; no fake method options;
+  returns costing neither built nor foreclosed.
+- **Implemented (backend only).** Migration
+  `20261006000000_inventory_valuation_foundation`: three new tables
+  (`item_valuation_methods`, `inventory_valuation_states`,
+  `inventory_valuation_runs`) plus five columns on the existing
+  `inventory_movements` (`total_cost` **signed**, `valuation_status`,
+  `valuation_source`, `valued_at`, `valuation_run_id`). **No `unit_cost`
+  column, no second ledger, no duplicated document, no accounting/journal field
+  on an inventory movement.** Pure domain engine
+  (`money.ts`, `valuation-method.ts`, `inventory-valuation.ts`,
+  `moving-weighted-average.ts`, `backdating.ts`), repositories, two application
+  services, one controller with **9 routes** under
+  `/api/v1/inventory/valuation/*`, **4 permissions**
+  (`Inventory.Valuation.{View,Configure,AssignCost,Recalculate}`,
+  taking Inventory's registered total to 47), two events carrying identifiers
+  and counts only, and server-side redaction of monetary fields for callers
+  without `Inventory.Valuation.View`.
+- **Invariants asserted by tests.** (1) `balance.onHand == valuedQuantity +
+  uncostedQuantity` always; (2) `SUM(movement.totalCost) == state.totalValue`
+  for every key that is not `stale`.
+- **Scope framing (corrected after review).** This is a **valuation
+  foundation**, not a finished Inventory Accounting capability: there is no
+  Receipt document, no Issue document, no Inventory → Accounting posting, no
+  returns costing and no UI. OQ-24 is **partially** answered and stays OPEN.
+- **Documentation reconciled, not duplicated.** OQ-24 updated **in place**
+  (stays **OPEN** — returns costing, COGS posting, landed cost and valuation
+  precision explicitly undecided); new **OQ-67** (transfer average divergence),
+  **OQ-68** (reversal at original vs current cost), **OQ-69** (per-movement
+  valuation history); D-06 annotated with an "as built" correction (**the
+  engine is Inventory-owned, not Accounting-owned**);
+  `inventory-domain-analysis.md` §2.1/§5, `docs/modules.md`, the three roadmap
+  documents (C-49/C-51/C-52/C-53/C-54 reconciled; new candidate **C-57** for
+  the UI) and the four Persian UX documents updated.
+- **Deliberately not implemented.** Inventory → Accounting posting/COGS
+  (OQ-39/OQ-42/OQ-25), returns costing (OD-VAL-19), landed cost, FIFO/LIFO/
+  specific identification, lot/serial-level valuation, Receipt/Issue
+  *documents* (OQ-54), and **any frontend** — the UX documents specify the
+  target flows and classify them as `SUPPORTED API / FUTURE UI` (candidate
+  C-57).
+- **Local validation (after the correction round).** `npm run format:check`,
+  `npm run lint` (1 pre-existing accounting warning, unchanged),
+  `npm run typecheck`, `npm test` (**133 files / 1602 tests**, +71 over the
+  1531 baseline), hermetic `test:e2e` (**26 files / 360 passed / 160 skipped**)
+  including `test/inventory-valuation.e2e-spec.ts` (**32 tests**) and the
+  unchanged `inventory-core.e2e-spec.ts` (10), `npm run build`; frontend
+  `lint`, `typecheck`, `format:check`, `test`, `build` (untouched by this
+  slice). **Not runnable in the authoring sandbox and delegated to CI:**
+  `prisma validate`/`generate` (engine download blocked), `prisma:deploy`,
+  migration rehearsal and the live-PostgreSQL E2E suites.
+- **Pull request:** **#116** — `feat(inventory): establish valuation foundation
+  and cost-optional warehouse operations`, head `7b4b825`, branch
+  `arena/01a107dc-vardena`, **left OPEN for architectural review** (not
+  merged). The mandatory A–K implementation report and the OD-VAL-01…19
+  decision mapping are recorded in the PR description; the canonical decision
+  record is PDR-05.
+- **CI:** run **`37224093994`** — **backend and frontend both success**,
+  including `prisma:validate`, `prisma:generate`, `prisma:deploy`, the
+  migration rehearsal and the **live-PostgreSQL E2E suites** that cannot run in
+  the authoring sandbox. The first run (`37223668345`) failed at the live-DB
+  step: three live suites tore down `movements → warehouses → items` and the
+  new `ON DELETE RESTRICT` valuation rows blocked the warehouse delete. Fixed
+  by extending the teardown of `item-master-live`, `material-requests-live` and
+  `warehouse-master-live` only — **no assertion was changed, relaxed or
+  removed**. This was a genuine integration finding the hermetic test doubles
+  could not surface.
+- **Owner review 1 (2026-10-04): CHANGES REQUIRED.** The official outcome on
+  the first submission (§6 vocabulary). Two classes of finding:
+  1. **Technical defect — historical method resolution.** A recalculation
+     resolved ONE valuation method (the one in force at a single instant) and
+     replayed the key's whole history under it, so a past period could be
+     restated under a method that only became effective later. That
+     contradicts the effective dating OD-VAL-14 exists to provide. **Fixed:**
+     the replay driver moved to `domain/valuation-replay.ts`, every
+     `ReplayFact` now carries the method resolved at **its own**
+     `movement_date` (`buildReplayFacts` reads the item's versions inside the
+     replay transaction and reuses `resolveValuationMethodAt`), and the driver
+     asks for a strategy once per fact through a closed `switch` — no registry,
+     no EAV, no second engine. A period configured with a method this build
+     cannot execute now fails closed with
+     `inventory.valuation_method_not_implemented`, naming the method and the
+     movement, instead of being silently valued as Moving Weighted Average.
+     Proven by `domain/valuation-replay.spec.ts` (14 unit tests, including the
+     1404/1405 resolution case) and one e2e case that is verified to FAIL
+     against the previous behaviour. The run/state `method` column is now
+     documented as *the method in force for the key when the run executed*,
+     not the per-movement methods applied — recorded against **OQ-69**.
+  2. **Governance overreach in the documentation.** ADR-0039 had been written
+     as `Accepted` and quoted that way in 7 documents; the roadmap read as if
+     the slice had moved C-51/C-52 forward. **Corrected:** ADR-0039 is
+     `Proposed` everywhere, PDR-05 is scoped to the Owner's business decisions
+     (it accepts nothing and promotes nothing), the roadmap states plainly that
+     **no Receipt or Issue document exists** and that OQ-54 lifecycle/
+     correction/deletion, OQ-13/OQ-26 approval and Inventory → Accounting
+     posting remain their blockers — valuation removed exactly one blocker from
+     those rows and nothing else.
+- **CI after the corrections:** run **`37225470067`** (head `ecf10b0`) —
+  **backend ✅ and frontend ✅**, including `prisma:validate`,
+  `prisma:generate`, `prisma:deploy`, the migration rehearsal and the
+  live-PostgreSQL E2E suites. (Run `37224462262`, the docs-only commit
+  `c72e4a5`, also succeeded.) The migration itself was not modified in the
+  correction round and no new migration was added.
+- **Owner review 2 (2026-10-05): CHANGES REQUIRED — one technical defect.**
+  The valuation-method configuration was read with
+  `take: Number.MAX_SAFE_INTEGER`, i.e. "fetch the item's entire configuration
+  history", on both the replay path and the single-instant posting path. It
+  produced correct answers but is an unbounded read inside a command whose
+  whole premise (OD-VAL-12) is that it is bounded. **Corrected without
+  changing a single resolved method:**
+  1. **Replay path** — the versions were read for the replay **horizon**
+     (`validFrom <= lastMovementDate AND (validTo IS NULL OR validTo >
+     firstMovementDate)`), derived from the already-bounded movement read,
+     and capped at `RECALCULATION_MOVEMENT_LIMIT + 1`. **That cap was itself
+     wrong and was replaced in round 3 of the corrections (see below);** the
+     horizon filter is no longer what bounds the read.
+  2. **Posting path** — `findEffectiveVersionAt` asks PostgreSQL for the one
+     version in force (`ORDER BY valid_from DESC LIMIT 1`) instead of the
+     whole history. Both paths now map their result through the single domain
+     function `resolveValuationMethodFrom`, so the list-based and single-row
+     resolutions cannot drift; the unused `findVersions` was removed.
+  3. **Configuration WRITE path keeps the unbounded read, deliberately and
+     with the reasoning in the code.** `planNewVersion` decides by testing the
+     candidate against **every** existing window; a truncated series would
+     miss an overlap and admit two versions covering one instant, making
+     historical resolution permanently ambiguous. It runs once per
+     configuration write, under the item-scoped advisory lock, over one
+     (organization, item) pair's admin-created history — the same shape as the
+     accepted C-47 `unit-conversions.repository.ts` write path.
+  **Historical resolution is unchanged** (`ReplayFact.method` is still the
+  method effective at each movement's own date), there is no fallback to a
+  current/latest/first method, unsupported methods still fail closed, and the
+  closed `switch` dispatch is untouched. Proven by **14 new unit tests** in
+  `domain/valuation-method.spec.ts` — including a 60-version five-year history
+  where every replayed date resolves identically against the filtered and
+  the complete series — and **one new e2e case**
+  (`inventory-valuation.e2e-spec.ts`) that drives a four-version history
+  through the real API, resolves each date to its own version, and shows the
+  same unsupported window being ignored when it sits outside the replayed
+  period and refusing the replay when it sits inside it. Both window edges
+  were mutation-tested: inverting either comparison fails the suite.
+- **Validation after round 2 of corrections (local, 2026-10-05):**
+  `format:check` ✅, `lint` ✅ (1 pre-existing warning in Accounting),
+  `typecheck` ✅, unit **133 files / 1616 tests** ✅, hermetic e2e **26 files /
+  361 passed / 160 skipped** ✅, `build` ✅. No migration, schema, API contract,
+  permission or frontend file changed in this round.
+- **Owner review 3 (2026-10-05): CHANGES REQUIRED — one technical defect.**
+  The round-2 correction bounded the configuration read by the replay horizon
+  and then capped it at `RECALCULATION_MOVEMENT_LIMIT + 1`, justified as "at
+  most one version can be consumed per movement". The premise is true but
+  does not support the cap: the horizon query returns every version
+  *intersecting* the span, a count driven by **configuration density**, not
+  by movement count. Two movements eleven months apart therefore dragged in
+  every version configured during those eleven months, and an item with more
+  versions than the movement limit had its two-movement replay **refused**
+  with a limit that is about movements. A correctness defect, not a
+  performance one.
+  **Corrected by selecting on relevance instead of on span.** The replay now
+  reads the versions in force at the **distinct movement dates** it is
+  replaying — one window branch per date in a single set-based query
+  (`WHERE org = ? AND item = ? AND ((valid_from <= d1 AND (valid_to IS NULL
+  OR valid_to > d1)) OR …)`) — so every row returned governs at least one
+  replayed movement, and the result is bounded by the number of distinct
+  dates, which the movement limit already bounds. Distinct dates, not
+  movements: a hundred movements sharing five dates ask five questions. The
+  movement-count cap is gone; `RECALCULATION_MOVEMENT_LIMIT` limits movements
+  again and nothing else, and `RecalculationTooLargeError` is back to its
+  original single-purpose shape (the round-2 `subject` discriminator was
+  removed). A read returning more rows than there are distinct dates means
+  two versions are in force at one instant — the overlap invariant the write
+  path enforces has been violated in stored data — and the replay fails
+  closed rather than resolving against whichever row happened to arrive.
+  **Completeness is now trivial to see:** every version covering a replayed
+  date satisfies that date's branch, so resolution against the result equals
+  resolution against the item's whole history; future and expired
+  configuration are excluded because they govern no replayed movement, not as
+  special cases; an unsupported method in force at a replayed date is still
+  loaded and still fails the replay closed. Historical resolution, the
+  default-when-unconfigured rule, the half-open `[validFrom, validTo)`
+  boundary and every API contract are unchanged.
+  Evidence: the e2e regression test (two movements, `RECALCULATION_MOVEMENT_LIMIT
+  + 1` contiguous versions) was **verified to fail against the round-2
+  implementation** with 422 `inventory.recalculation_too_large` and to pass
+  after the fix; a second e2e replays two movements across twelve monthly
+  versions and proves determinism and future-version isolation; a third —
+  new, there was none before — proves the movement limit itself still refuses
+  a key with more movements than the limit. Unit coverage adds distinct-date
+  collapsing, density independence (600 versions, two movements, two rows
+  read), the hundred-movements/five-dates case, boundary selection at the
+  exact instant a window closes, and loaded-but-unsupported versus
+  excluded-future methods.
+- **Validation after round 3 of corrections (local, 2026-10-05):**
+  `format:check` ✅, `lint` ✅ (1 pre-existing warning in Accounting),
+  `typecheck` ✅, unit **133 files / 1618 tests** ✅, hermetic e2e **26 files /
+  364 passed / 160 skipped** ✅, `build` ✅. No migration, schema, API contract,
+  permission or frontend file changed in this round.
+- **Owner review 4 (2026-10-05): CHANGES REQUIRED — one technical defect.**
+  The round-3 correction detected overlapping configuration by comparing two
+  global counts (`rows.length > instants.length`). That is not an ambiguity
+  check: two versions in force on one movement date and none on another
+  returns exactly as many rows as there are dates, so the comparison passes
+  while a date resolves ambiguously — and the replay then silently used
+  whichever version sorted later. **Corrected:** ambiguity is evaluated **per
+  distinct movement date** (`findAmbiguousInstant`); any date with more than
+  one version in force fails the replay closed with
+  `AmbiguousValuationMethodError`, naming the item, the date and the
+  conflicting version ids. The same rule now applies to the single-instant
+  resolver, which read `LIMIT 1` and would otherwise have preferred the later
+  window; it reads one row more and refuses instead. The error is
+  deliberately **not** mapped to a business-rule response: the write path
+  forbids overlaps, so reaching it means stored data is invalid and an
+  engineer must look — the same treatment as the "unknown stored method"
+  guard beside it. Dates with **no** configured version are untouched and
+  still resolve to the code-defined default; an overlap outside the replayed
+  dates is ignored because no movement resolves there.
+  Evidence: the e2e case (two windows in force on the first movement date,
+  none on the second, so rows == dates) was **verified to return 201 against
+  the round-3 implementation** — it silently picked a version — and now
+  returns 500 with the valuation state provably unchanged; removing the
+  conflicting row makes the identical replay succeed. A companion e2e
+  re-asserts that the configuration endpoint still **refuses to create** an
+  overlapping version, so the read-side guard supplements the write-side
+  invariant rather than replacing it. Unit coverage adds the count-equals-
+  dates regression, earliest-ambiguous-date reporting, adjacent windows at a
+  shared boundary (not ambiguous), unconfigured dates (not ambiguous) and
+  overlaps outside the replayed dates (ignored).
+- **Validation after round 4 of corrections (local, 2026-10-05):**
+  `format:check` ✅, `lint` ✅ (1 pre-existing warning in Accounting),
+  `typecheck` ✅, unit **133 files / 1626 tests** ✅, hermetic e2e **26 files /
+  366 passed / 160 skipped** ✅, `build` ✅. No migration, schema, API contract,
+  permission or frontend file changed in this round.
+- **Correction to an earlier claim in this record.** The round-2 entry said the
+  live-PostgreSQL job verifies the new valuation query shapes. It does not:
+  **no live suite exercises the valuation endpoints.** What CI verifies is
+  schema validity, migration application and the build; valuation behaviour is
+  verified hermetically. Because `PrismaService.getClient<T>()` casts with
+  `as unknown as T`, the compiler does not check these query objects against
+  the generated Prisma types either. The recommended follow-up for this slice
+  is a live-PostgreSQL valuation suite; it is not part of this corrective
+  round.
+- **Status:** **CHANGES REQUIRED (Owner, 2026-10-05) — fourth round of
+  corrections pushed, awaiting re-review.** The PR stays **open**; it is not
+  merged and not accepted. Merge and green CI are not acceptance (§6).
+  ADR-0039 remains **Proposed**, PDR-05 closes no OQ beyond the partial OQ-24
+  answer it records, OQ-24 stays **OPEN** with OQ-67/68/69 unresolved, and
+  nothing here authorizes further Inventory production work.

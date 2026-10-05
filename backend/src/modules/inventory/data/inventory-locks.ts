@@ -1,11 +1,19 @@
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import type { InventoryBalance } from '../domain/inventory-balance.js';
+import { isValuationMethod } from '../domain/valuation-method.js';
+import type { ValuationMethod } from '../domain/valuation-method.js';
+import { VALUATION_STATE_STATUSES } from '../domain/inventory-valuation.js';
+import type {
+  InventoryValuationState,
+  ValuationStateStatus,
+} from '../domain/inventory-valuation.js';
 import type {
   BalanceCreate,
   BalanceKey,
   CoreTxClient,
   DecimalLike,
+  ValuationStateCreate,
 } from './inventory-core-rows.js';
 import { decimalToString } from './inventory-core-rows.js';
 
@@ -23,13 +31,22 @@ import { decimalToString } from './inventory-core-rows.js';
  *   in-flight posting either committed before the SUM and is included, or
  *   waits and increments after) — never a torn state.
  *
- * Lock ORDER is fixed wherever two rows are needed, and no deadlock cycle
- * exists: a balance row is never HELD while acquiring another lock (entity
- * locks come first — releases lock the reservation, reversals the original
- * movement, then the balance), and the one path locking two balances
- * (transfers) always ascends by warehouse id. So no transaction holding a
- * balance lock ever waits on a reservation/movement lock, and no two
- * transactions ever take two balance locks in opposite orders.
+ * Lock ORDER is fixed wherever several rows are needed, and no deadlock
+ * cycle exists. The global order is:
+ *
+ *     entity row (reservation / original movement)
+ *   → balance row(s)
+ *   → valuation state row(s)
+ *
+ * with the two-row paths (transfers) always ascending by warehouse id within
+ * each tier. So no transaction holding a later-tier lock ever waits on an
+ * earlier-tier one, and no two transactions ever take two rows of the same
+ * tier in opposite orders.
+ *
+ * Valuation last is deliberate: a posting must decide the QUANTITY question
+ * (is there enough stock?) against the locked balance before it touches
+ * value, and a recalculation — which never changes quantity — takes ONLY the
+ * valuation lock, so repricing one key can never block a receipt on another.
  *
  * Prisma cannot express `SELECT … FOR UPDATE`, hence the parameterized raw
  * statements below — the documented concurrency-critical path
@@ -235,18 +252,43 @@ export async function lockReservationRow(
  * Lock one movement row (reversal path: serializes concurrent reversals of
  * the same original so the "at most one reversal" rule resolves
  * deterministically instead of racing the unique index).
+ *
+ * The locked row also yields the original's valuation, because a reversal
+ * undoes the value the original actually carried (PDR-05 rule 7) and reading
+ * it from the LOCKED row is what keeps that exact: a concurrent
+ * recalculation of the same key cannot change the number between the read
+ * and the write.
  */
 export async function lockMovementRow(
   tx: CoreTxClient,
   movementId: string,
-): Promise<{ id: string } | null> {
-  const rows = await tx.$queryRaw<{ id: string }>`
-    SELECT "id"
+): Promise<{
+  id: string;
+  totalCost: string | null;
+  valuationStatus: string;
+  valuationSource: string | null;
+} | null> {
+  const rows = await tx.$queryRaw<{
+    id: string;
+    totalCost: DecimalLike | null;
+    valuationStatus: string;
+    valuationSource: string | null;
+  }>`
+    SELECT "id",
+           "total_cost" AS "totalCost",
+           "valuation_status" AS "valuationStatus",
+           "valuation_source" AS "valuationSource"
       FROM "inventory"."inventory_movements"
      WHERE "id" = ${movementId}
      FOR UPDATE`;
   const [row] = rows;
-  return row === undefined ? null : { id: row.id };
+  if (row === undefined) return null;
+  return {
+    id: row.id,
+    totalCost: row.totalCost === null ? null : decimalToString(row.totalCost),
+    valuationStatus: row.valuationStatus,
+    valuationSource: row.valuationSource,
+  };
 }
 
 function toBalance(row: LockedBalanceRow): InventoryBalance {
@@ -259,6 +301,157 @@ function toBalance(row: LockedBalanceRow): InventoryBalance {
     onHand: decimalToString(row.onHand),
     reserved: decimalToString(row.reservedQuantity),
     lastMovementAt: row.lastMovementAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+/** A locked valuation state row, mapped from its aliased columns. */
+interface LockedValuationStateRow {
+  id: string;
+  organizationId: string;
+  branchId: string;
+  warehouseId: string;
+  itemId: string;
+  method: string;
+  valuedQuantity: DecimalLike;
+  uncostedQuantity: DecimalLike;
+  totalValue: DecimalLike;
+  status: string;
+  staleSince: Date | null;
+  lastValuedAt: Date | null;
+  lastRecalculationId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Lock the valuation state row for a key, creating the zero row when the key
+ * has never been valued (PDR-05).
+ *
+ * Same create-race handling as `lockBalanceRow`: two concurrent first
+ * postings both miss the SELECT, the loser catches the unique violation and
+ * re-selects the winner's row. The zero row is created with the method the
+ * CALLER resolved for this posting, so a key's state always records which
+ * strategy produced its numbers instead of assuming the current default.
+ *
+ * `status` is written as `valued` on creation because an empty key has
+ * nothing uncosted and nothing stale; the first movement immediately
+ * overwrites it with the derived status.
+ */
+export async function lockValuationStateRow(
+  tx: CoreTxClient,
+  key: BalanceKey,
+  method: ValuationMethod,
+  actorId: string | null,
+): Promise<{ state: InventoryValuationState; created: boolean }> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const existing = await tx.$queryRaw<LockedValuationStateRow>`
+      SELECT "id",
+             "organization_id" AS "organizationId",
+             "branch_id" AS "branchId",
+             "warehouse_id" AS "warehouseId",
+             "item_id" AS "itemId",
+             "method",
+             "valued_quantity" AS "valuedQuantity",
+             "uncosted_quantity" AS "uncostedQuantity",
+             "total_value" AS "totalValue",
+             "status",
+             "stale_since" AS "staleSince",
+             "last_valued_at" AS "lastValuedAt",
+             "last_recalculation_id" AS "lastRecalculationId",
+             "created_at" AS "createdAt",
+             "updated_at" AS "updatedAt"
+        FROM "inventory"."inventory_valuation_states"
+       WHERE "organization_id" = ${key.organizationId}
+         AND "warehouse_id" = ${key.warehouseId}
+         AND "item_id" = ${key.itemId}
+       FOR UPDATE`;
+    const [row] = existing;
+    if (row !== undefined) {
+      return { state: toValuationState(row), created: false };
+    }
+
+    const now = new Date();
+    const create: ValuationStateCreate = {
+      id: generateId(),
+      organizationId: key.organizationId,
+      branchId: key.branchId,
+      warehouseId: key.warehouseId,
+      itemId: key.itemId,
+      method,
+      valuedQuantity: '0',
+      uncostedQuantity: '0',
+      totalValue: '0',
+      status: 'valued',
+      staleSince: null,
+      lastValuedAt: null,
+      lastRecalculationId: null,
+      createdAt: now,
+      updatedAt: now,
+      createdBy: actorId,
+    };
+    try {
+      const created = await tx.inventoryValuationState.create({ data: create });
+      return { state: toValuationState(created), created: true };
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      // Lost the creation race — loop around and lock the winner's row.
+    }
+  }
+  throw new Error(
+    'Could not lock the inventory valuation state row: too many concurrent writers for one key.',
+  );
+}
+
+/**
+ * The two transfer keys in the fixed valuation locking order (ascending
+ * warehouse id), so a transfer and its mirror image can never deadlock.
+ */
+export function orderValuationKeys<T extends { warehouseId: string }>(
+  first: T,
+  second: T,
+): [T, T] {
+  return first.warehouseId.localeCompare(second.warehouseId) <= 0
+    ? [first, second]
+    : [second, first];
+}
+
+function toMethod(id: string, value: string): ValuationMethod {
+  if (!isValuationMethod(value)) {
+    throw new Error(
+      `Stored valuation state "${id}" has an unknown method "${value}".`,
+    );
+  }
+  return value;
+}
+
+function toStatus(id: string, value: string): ValuationStateStatus {
+  if (!(VALUATION_STATE_STATUSES as readonly string[]).includes(value)) {
+    throw new Error(
+      `Stored valuation state "${id}" has an unknown status "${value}".`,
+    );
+  }
+  return value as ValuationStateStatus;
+}
+
+function toValuationState(
+  row: LockedValuationStateRow,
+): InventoryValuationState {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    branchId: row.branchId,
+    warehouseId: row.warehouseId,
+    itemId: row.itemId,
+    method: toMethod(row.id, row.method),
+    valuedQuantity: decimalToString(row.valuedQuantity),
+    uncostedQuantity: decimalToString(row.uncostedQuantity),
+    totalValue: decimalToString(row.totalValue),
+    status: toStatus(row.id, row.status),
+    staleSince: row.staleSince,
+    lastValuedAt: row.lastValuedAt,
+    lastRecalculationId: row.lastRecalculationId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

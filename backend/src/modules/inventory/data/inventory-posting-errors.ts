@@ -73,3 +73,43 @@ export class AlreadyReversedError extends Error {
     this.name = 'AlreadyReversedError';
   }
 }
+
+/**
+ * A cost was offered for a movement that already carries one (PDR-05).
+ *
+ * Assigning a cost is an ADDITION to a fact that had none, never a rewrite
+ * of a figure someone may already have reported on. Correcting a wrong cost
+ * follows the same route as correcting a wrong quantity: reverse the
+ * movement and post it again.
+ */
+export class CostAlreadyAssignedError extends Error {
+  readonly movementId: string;
+
+  constructor(movementId: string) {
+    super(
+      `Movement "${movementId}" already carries a cost. Reverse it and post the correction instead of overwriting the value.`,
+    );
+    this.name = 'CostAlreadyAssignedError';
+    this.movementId = movementId;
+  }
+}
+
+/**
+ * A recalculation would replay more movements than the bounded command
+ * allows (PDR-05 OD-VAL-12).
+ *
+ * Refusing is the point: an unbounded replay would hold the key's valuation
+ * lock for an unpredictable time, which is exactly the "recalculate
+ * everything" behaviour this design rules out.
+ */
+export class RecalculationTooLargeError extends Error {
+  readonly limit: number;
+
+  constructor(limit: number) {
+    super(
+      `This item and warehouse have more than ${limit} movements, which exceeds the bounded recalculation limit.`,
+    );
+    this.name = 'RecalculationTooLargeError';
+    this.limit = limit;
+  }
+}

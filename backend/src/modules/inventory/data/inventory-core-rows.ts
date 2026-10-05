@@ -45,6 +45,12 @@ export type MovementRow = {
   referenceId: string | null;
   reason: string | null;
   operationKey: string;
+  /** Valuation columns (PDR-05): the VALUE half of the same ledger row. */
+  totalCost: DecimalLike | null;
+  valuationStatus: string;
+  valuationSource: string | null;
+  valuedAt: Date | null;
+  valuationRunId: string | null;
 } & AuditColumns;
 
 export interface MovementWhere {
@@ -56,7 +62,9 @@ export interface MovementWhere {
   movementType?: string | { in: string[] };
   transferId?: string | null;
   reversalOfMovementId?: string | null;
-  movementDate?: { gte?: Date; lte?: Date };
+  movementDate?: { gt?: Date; gte?: Date; lte?: Date };
+  valuationStatus?: string | { in: string[] };
+  valuationRunId?: string | null;
 }
 
 export interface MovementCreate {
@@ -78,9 +86,43 @@ export interface MovementCreate {
   referenceId: string | null;
   reason: string | null;
   operationKey: string;
+  /**
+   * Valuation columns. Optional in the CREATE payload because the service
+   * builds the quantity fact first and the posting transaction attaches the
+   * value it computed under lock (`inventory-valuation-writes.ts`) — the
+   * database defaults (`total_cost NULL`, `valuation_status 'unvalued'`)
+   * describe exactly a fact that carries no value.
+   */
+  totalCost?: string | null;
+  valuationStatus?: string;
+  valuationSource?: string | null;
+  valuedAt?: Date | null;
+  valuationRunId?: string | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
+}
+
+/**
+ * The ONLY shape a movement row is ever updated with (PDR-05, ADR-0039).
+ *
+ * The quantity facts of a movement stay immutable (D-05/AR-13) — there is no
+ * update path for them anywhere in this module. The valuation columns are
+ * different in kind: they are a PROJECTION of the ledger that an explicit,
+ * audited recalculation may recompute, which is exactly the "never silent"
+ * contract (OD-VAL-11). Keeping the update shape this narrow is what makes
+ * that distinction enforceable by the type system rather than by discipline:
+ * no caller can reach `quantity`, `movement_date` or `movement_type` through
+ * it.
+ */
+export interface MovementValuationUpdate {
+  totalCost: string | null;
+  valuationStatus: string;
+  valuationSource: string | null;
+  valuedAt: Date | null;
+  valuationRunId: string | null;
+  updatedAt: Date;
+  updatedBy: string | null;
 }
 
 export interface MovementDelegate {
@@ -107,6 +149,11 @@ export interface MovementDelegate {
     where: MovementWhere;
   }): Promise<Array<{ warehouseId: string; itemId: string }>>;
   create(args: { data: MovementCreate }): Promise<MovementRow>;
+  /** Valuation-only rewrite; see `MovementValuationUpdate`. */
+  update(args: {
+    where: { id: string };
+    data: MovementValuationUpdate;
+  }): Promise<MovementRow>;
   /** Test-only cleanup for live-database suites (no API delete exists). */
   deleteMany(args: { where: MovementWhere }): Promise<{ count: number }>;
 }
@@ -330,6 +377,236 @@ export interface ReservationDelegate {
 }
 
 // ---------------------------------------------------------------------------
+// Valuation configuration, state and runs (PDR-05)
+// ---------------------------------------------------------------------------
+
+export type ItemValuationMethodRow = {
+  id: string;
+  organizationId: string;
+  itemId: string;
+  method: string;
+  validFrom: Date;
+  validTo: Date | null;
+  note: string | null;
+} & AuditColumns;
+
+/**
+ * The window half of a configuration filter: `validFrom <= x` and/or
+ * `validTo IS NULL OR validTo > x`. Recursive, because selecting the
+ * versions in force on SEVERAL dates is one OR of per-date windows rather
+ * than one query per date.
+ */
+export interface ItemValuationMethodWindowWhere {
+  validFrom?: { lte: Date };
+  validTo?: null | { gt: Date };
+  OR?: ItemValuationMethodWindowWhere[];
+}
+
+export interface ItemValuationMethodWhere extends ItemValuationMethodWindowWhere {
+  id?: string;
+  organizationId?: string;
+  itemId?: string;
+  method?: string;
+}
+
+export interface ItemValuationMethodCreate {
+  id: string;
+  organizationId: string;
+  itemId: string;
+  method: string;
+  validFrom: Date;
+  validTo: Date | null;
+  note: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+/** The only shape a configuration version is updated with: close its window. */
+export interface ItemValuationMethodCloseUpdate {
+  validTo: Date;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+export interface ItemValuationMethodDelegate {
+  findUnique(args: {
+    where: { id: string };
+  }): Promise<ItemValuationMethodRow | null>;
+  findMany(args: {
+    where: ItemValuationMethodWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<ItemValuationMethodRow[]>;
+  count(args: { where: ItemValuationMethodWhere }): Promise<number>;
+  create(args: {
+    data: ItemValuationMethodCreate;
+  }): Promise<ItemValuationMethodRow>;
+  update(args: {
+    where: { id: string };
+    data: ItemValuationMethodCloseUpdate;
+  }): Promise<ItemValuationMethodRow>;
+  /** Test-only cleanup for live-database suites (no API delete exists). */
+  deleteMany(args: {
+    where: ItemValuationMethodWhere;
+  }): Promise<{ count: number }>;
+}
+
+export type ValuationStateRow = {
+  id: string;
+  organizationId: string;
+  branchId: string;
+  warehouseId: string;
+  itemId: string;
+  method: string;
+  valuedQuantity: DecimalLike;
+  uncostedQuantity: DecimalLike;
+  totalValue: DecimalLike;
+  status: string;
+  staleSince: Date | null;
+  lastValuedAt: Date | null;
+  lastRecalculationId: string | null;
+} & AuditColumns;
+
+export interface ValuationStateWhere {
+  id?: string;
+  organizationId?: string;
+  branchId?: string;
+  warehouseId?: string;
+  itemId?: string;
+  status?: string;
+}
+
+export interface ValuationStateCreate {
+  id: string;
+  organizationId: string;
+  branchId: string;
+  warehouseId: string;
+  itemId: string;
+  method: string;
+  valuedQuantity: string;
+  uncostedQuantity: string;
+  totalValue: string;
+  status: string;
+  staleSince: Date | null;
+  lastValuedAt: Date | null;
+  lastRecalculationId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+/**
+ * Absolute rewrite of a LOCKED valuation state row. Unlike the balance
+ * counters (incremental `on_hand = on_hand + $1`), the valuation counters are
+ * always written as the complete result the pure strategy computed from the
+ * row it just read under lock — there is no partial-delta path, so a state
+ * row can never drift from the position the engine actually produced.
+ */
+export interface ValuationStateUpdate {
+  method: string;
+  valuedQuantity: string;
+  uncostedQuantity: string;
+  totalValue: string;
+  status: string;
+  staleSince: Date | null;
+  lastValuedAt: Date | null;
+  lastRecalculationId: string | null;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+export interface ValuationStateDelegate {
+  findUnique(args: {
+    where: { id: string };
+  }): Promise<ValuationStateRow | null>;
+  findFirst(args: {
+    where: ValuationStateWhere;
+  }): Promise<ValuationStateRow | null>;
+  findMany(args: {
+    where: ValuationStateWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<ValuationStateRow[]>;
+  count(args: { where: ValuationStateWhere }): Promise<number>;
+  create(args: { data: ValuationStateCreate }): Promise<ValuationStateRow>;
+  update(args: {
+    where: { id: string };
+    data: ValuationStateUpdate;
+  }): Promise<ValuationStateRow>;
+  /** Test-only cleanup for live-database suites (no API delete exists). */
+  deleteMany(args: { where: ValuationStateWhere }): Promise<{ count: number }>;
+}
+
+export type ValuationRunRow = {
+  id: string;
+  organizationId: string;
+  branchId: string;
+  warehouseId: string;
+  itemId: string;
+  method: string;
+  trigger: string;
+  fromDate: Date | null;
+  movementsExamined: number;
+  movementsRevalued: number;
+  resultingValuedQuantity: DecimalLike;
+  resultingUncostedQuantity: DecimalLike;
+  resultingTotalValue: DecimalLike;
+  resultingStatus: string;
+  operationKey: string;
+  reason: string | null;
+  executedAt: Date;
+} & AuditColumns;
+
+export interface ValuationRunWhere {
+  id?: string;
+  organizationId?: string;
+  branchId?: string;
+  warehouseId?: string;
+  itemId?: string;
+  trigger?: string;
+}
+
+export interface ValuationRunCreate {
+  id: string;
+  organizationId: string;
+  branchId: string;
+  warehouseId: string;
+  itemId: string;
+  method: string;
+  trigger: string;
+  fromDate: Date | null;
+  movementsExamined: number;
+  movementsRevalued: number;
+  resultingValuedQuantity: string;
+  resultingUncostedQuantity: string;
+  resultingTotalValue: string;
+  resultingStatus: string;
+  operationKey: string;
+  reason: string | null;
+  executedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface ValuationRunDelegate {
+  findUnique(args: { where: { id: string } }): Promise<ValuationRunRow | null>;
+  findMany(args: {
+    where: ValuationRunWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<ValuationRunRow[]>;
+  count(args: { where: ValuationRunWhere }): Promise<number>;
+  create(args: { data: ValuationRunCreate }): Promise<ValuationRunRow>;
+  /** Test-only cleanup for live-database suites (no API delete exists). */
+  deleteMany(args: { where: ValuationRunWhere }): Promise<{ count: number }>;
+}
+
+// ---------------------------------------------------------------------------
 // Operations (idempotency ledger)
 // ---------------------------------------------------------------------------
 
@@ -370,12 +647,15 @@ export interface OperationDelegate {
 // Transaction client
 // ---------------------------------------------------------------------------
 
-/** The four delegates every posting transaction works with. */
+/** The delegates every posting transaction works with. */
 export interface CoreClient {
   inventoryMovement: MovementDelegate;
   inventoryBalance: BalanceDelegate;
   inventoryReservation: ReservationDelegate;
   inventoryOperation: OperationDelegate;
+  itemValuationMethod: ItemValuationMethodDelegate;
+  inventoryValuationState: ValuationStateDelegate;
+  inventoryValuationRun: ValuationRunDelegate;
 }
 
 /**
@@ -393,6 +673,15 @@ export type RawQuery = <T>(
 
 export interface CoreTxClient extends CoreClient {
   $queryRaw: RawQuery;
+  /**
+   * Statements whose result is not a row set — `pg_advisory_xact_lock`
+   * returns `void`, which `$queryRaw` cannot deserialize (CI live-suite
+   * finding, see `unit-conversions.repository.ts`).
+   */
+  $executeRaw: (
+    query: TemplateStringsArray,
+    ...values: unknown[]
+  ) => Promise<number>;
 }
 
 export interface CoreTransactionalClient extends CoreClient {

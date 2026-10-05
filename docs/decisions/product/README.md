@@ -51,6 +51,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 | [PDR-02](./PDR-02-item-taxonomy-and-capabilities.md) | Item taxonomy and capability governance (OQ-33 Option D) | PDR | Decided — governance rule only (2026-10-02) | OQ-33 stays Open (taxonomy confirmation withheld) |
 | [PDR-03](./PDR-03-item-barcode-policy.md) | Item barcode policy (Option A) | PDR | Decided (2026-10-02) | Lifecycle detail split out as OQ-65 |
 | [PDR-04](./PDR-04-item-deletion-and-code-reuse.md) | Item deletion eligibility (OQ-36 Option C) | PDR | Decided in part (2026-10-02) | OQ-36 stays Open (code reuse unanswered) |
+| [PDR-05](./PDR-05-inventory-valuation-and-cost-optional-operations.md) | Inventory valuation foundation and cost-optional warehouse operations (OQ-24 — partial) | PDR | Decided (2026-10-04) | OQ-24 stays Open (returns, COGS posting, landed cost, valuation precision unanswered) |
 
 > **Numbering note (2026-10-02).** `OQ-62`, `OQ-63` and `OQ-64` are accounting /
 > migration questions that live only in the central registry

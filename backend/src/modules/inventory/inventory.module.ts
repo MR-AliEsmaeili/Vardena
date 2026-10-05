@@ -13,6 +13,8 @@ import { InventoryKardexRepository } from './data/inventory-kardex.repository.js
 import { InventoryReservationsRepository } from './data/inventory-reservations.repository.js';
 import { InventoryBalancesRepository } from './data/inventory-balances.repository.js';
 import { InventoryOperationsRepository } from './data/inventory-operations.repository.js';
+import { InventoryValuationRepository } from './data/inventory-valuation.repository.js';
+import { ItemValuationMethodsRepository } from './data/item-valuation-methods.repository.js';
 import { MaterialRequestsRepository } from './data/material-requests.repository.js';
 import { UnitsService } from './application/units.service.js';
 import { ItemGroupsService } from './application/item-groups.service.js';
@@ -24,6 +26,7 @@ import { InventoryKardexService } from './application/inventory-kardex.service.j
 import { InventoryTransfersService } from './application/inventory-transfers.service.js';
 import { InventoryReservationsService } from './application/inventory-reservations.service.js';
 import { InventoryBalancesService } from './application/inventory-balances.service.js';
+import { InventoryValuationService } from './application/inventory-valuation.service.js';
 import { InventoryPermissionRegistration } from './application/inventory-permission-registration.js';
 import { MaterialRequestDocumentTypeRegistration } from './application/material-request-document-type-registration.js';
 import { MaterialRequestsService } from './application/material-requests.service.js';
@@ -37,6 +40,7 @@ import { InventoryKardexController } from './api/inventory-kardex.controller.js'
 import { InventoryTransfersController } from './api/inventory-transfers.controller.js';
 import { InventoryReservationsController } from './api/inventory-reservations.controller.js';
 import { InventoryBalancesController } from './api/inventory-balances.controller.js';
+import { InventoryValuationController } from './api/inventory-valuation.controller.js';
 import { MaterialRequestsController } from './api/material-requests.controller.js';
 
 /**
@@ -48,8 +52,13 @@ import { MaterialRequestsController } from './api/material-requests.controller.j
  * (master-data-strategy.md §3/§4, D-25/D-26). Task 7 adds the **core**
  * transactional half: the immutable movement ledger, the materialized
  * balance projection, reservations, atomic transfers, and ledger
- * reconciliation (ADR-0022). Documents, valuation and lot/serial/expiry
- * tracking stay out of scope (they arrive with later tasks).
+ * reconciliation (ADR-0022). PDR-05/ADR-0039 add the VALUE half of that same
+ * ledger: effective-dated valuation-method configuration, the Moving
+ * Weighted Average state per item and warehouse, cost-optional postings, and
+ * the explicit bounded recalculation. Documents and lot/serial/expiry
+ * tracking stay out of scope (they arrive with later tasks), and so does
+ * posting inventory value into Accounting — Inventory owns valuation,
+ * Accounting owns journals.
  *
  * Public surface (AR-07) — the application services are exported so future
  * document modules resolve items, units, warehouses and balances through them
@@ -89,6 +98,7 @@ import { MaterialRequestsController } from './api/material-requests.controller.j
     InventoryTransfersController,
     InventoryReservationsController,
     InventoryBalancesController,
+    InventoryValuationController,
     MaterialRequestsController,
   ],
   providers: [
@@ -102,6 +112,8 @@ import { MaterialRequestsController } from './api/material-requests.controller.j
     InventoryReservationsRepository,
     InventoryBalancesRepository,
     InventoryOperationsRepository,
+    InventoryValuationRepository,
+    ItemValuationMethodsRepository,
     MaterialRequestsRepository,
     UnitsService,
     ItemGroupsService,
@@ -113,6 +125,7 @@ import { MaterialRequestsController } from './api/material-requests.controller.j
     InventoryTransfersService,
     InventoryReservationsService,
     InventoryBalancesService,
+    InventoryValuationService,
     MaterialRequestsService,
     InventoryPermissionRegistration,
     MaterialRequestDocumentTypeRegistration,
@@ -127,6 +140,7 @@ import { MaterialRequestsController } from './api/material-requests.controller.j
     InventoryTransfersService,
     InventoryReservationsService,
     InventoryBalancesService,
+    InventoryValuationService,
   ],
 })
 export class InventoryModule {}

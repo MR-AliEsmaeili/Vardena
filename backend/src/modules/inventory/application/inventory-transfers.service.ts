@@ -23,6 +23,7 @@ import {
   INVENTORY_TRANSFER_POSTED_EVENT,
 } from '../domain/inventory-core.events.js';
 import { publishEvent } from './master-data-support.js';
+import { InventoryValuationService } from './inventory-valuation.service.js';
 import {
   buildRequestHash,
   canonicalClientDate,
@@ -80,6 +81,7 @@ export class InventoryTransfersService {
     private readonly items: ItemsService,
     private readonly warehouses: WarehousesService,
     private readonly units: UnitsService,
+    private readonly valuation: InventoryValuationService,
     private readonly authorization: AuthorizationService,
     private readonly logger: JsonLogger,
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
@@ -162,6 +164,15 @@ export class InventoryTransfersService {
     );
     if (replay !== null) return replay;
 
+    // A transfer moves stock AND the value that stock carries, so the pair
+    // is exactly value-neutral (PDR-05 rule 6). No cost is ever accepted on
+    // a transfer: the value is whatever the source key already held.
+    const valuationMethod = await this.valuation.resolveMethodForPosting({
+      organizationId: input.organizationId,
+      itemId: item.id,
+      asOf: movementDate,
+    });
+
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
     const transferId = generateId();
@@ -231,6 +242,7 @@ export class InventoryTransfersService {
           warehouseAllow: source.allowNegativeStock,
         }),
         actorId,
+        valuationMethod: valuationMethod.method,
       });
       await publishEvent(this.events, {
         type: INVENTORY_MOVEMENT_POSTED_EVENT,
@@ -290,10 +302,11 @@ export class InventoryTransfersService {
         },
         InventoryTransfersService.name,
       );
+      const includeCost = await this.valuation.canViewCost();
       return {
         transferId,
-        outLeg: toInventoryMovementDto(outLeg),
-        inLeg: toInventoryMovementDto(inLeg),
+        outLeg: toInventoryMovementDto(outLeg, includeCost),
+        inLeg: toInventoryMovementDto(inLeg, includeCost),
       };
     } catch (error) {
       if (error instanceof InsufficientStockError) {
@@ -337,10 +350,11 @@ export class InventoryTransfersService {
         `Replay of operation "${existing.id}" points at missing legs.`,
       );
     }
+    const includeCost = await this.valuation.canViewCost();
     return {
       transferId: outLeg.transferId,
-      outLeg: toInventoryMovementDto(outLeg),
-      inLeg: toInventoryMovementDto(inLeg),
+      outLeg: toInventoryMovementDto(outLeg, includeCost),
+      inLeg: toInventoryMovementDto(inLeg, includeCost),
     };
   }
 }

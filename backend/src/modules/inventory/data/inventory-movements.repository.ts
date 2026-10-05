@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import { isMovementType } from '../domain/movement-type.js';
+import type { MovementType } from '../domain/movement-type.js';
 import {
   addDecimalStrings,
   subtractDecimalStrings,
@@ -25,7 +26,18 @@ import {
   adjustBalanceCounters,
   lockBalanceRow,
   lockMovementRow,
+  lockValuationStateRow,
 } from './inventory-locks.js';
+import { valueMovement, valueTransfer } from './inventory-valuation-writes.js';
+import type { ValuationMethod } from '../domain/valuation-method.js';
+import {
+  MOVEMENT_VALUATION_STATUSES,
+  VALUATION_SOURCES,
+} from '../domain/inventory-valuation.js';
+import type {
+  MovementValuationStatus,
+  ValuationSource,
+} from '../domain/inventory-valuation.js';
 import { decimalToString } from './inventory-core-rows.js';
 import { insertOperationRow } from './inventory-operations.repository.js';
 import type { OrderBy } from './master-data-rows.js';
@@ -39,13 +51,23 @@ import type { OrderBy } from './master-data-rows.js';
  *   1. lock the balance row(s) (`SELECT … FOR UPDATE`, creating the zero row
  *      for a new key),
  *   2. evaluate the negative-stock policy against the LOCKED row,
- *   3. insert the movement row(s),
- *   4. apply the exact counter deltas in SQL,
- *   5. insert the idempotency row.
+ *   3. lock the valuation state row(s) and run the pure valuation strategy
+ *      on them (PDR-05) — last lock tier, see `inventory-locks.ts`,
+ *   4. insert the movement row(s), already carrying their value,
+ *   5. apply the exact counter deltas in SQL,
+ *   6. insert the idempotency row.
  *
  * The policy check inside the transaction (never before it) is what makes
  * concurrent postings race-safe: two writers for one key serialize on the
  * lock, and the loser evaluates against the winner's committed counters.
+ *
+ * Step 3 is in the SAME transaction for one reason: quantity and value must
+ * never be observable in disagreement. A movement row and the state it moved
+ * commit together or not at all, so `onHand == valued + uncosted` holds for
+ * every reader, at every instant — and a valuation failure rolls the
+ * quantity back rather than leaving a fact nobody can explain. Valuation
+ * still never GATES the posting: the strategy always produces an outcome
+ * (possibly "unvalued"), it never rejects a quantity fact (OD-VAL-05).
  *
  * There is deliberately no `update` and no `delete` here at all (AR-13):
  * corrections are counter-movements written by `postReversal`.
@@ -62,12 +84,37 @@ export interface MovementListFilter {
   dateTo?: Date | undefined;
 }
 
+/**
+ * How a posting should be valued. The service resolves the method and the
+ * backdating verdict BEFORE the transaction (both are fail-fast checks the
+ * user must be able to see first); the position itself is only ever read
+ * under lock, inside it.
+ */
+export interface MovementValuationPlan {
+  method: ValuationMethod;
+  /**
+   * The value this fact carries on its own authority — a cost entered on a
+   * receipt — or `null` when it carries none. Never required (OD-VAL-05).
+   */
+  knownValue: string | null;
+  knownValueSource?: ValuationSource | undefined;
+  /** `movementDate` is strictly before the key's latest movement. */
+  backdated: boolean;
+}
+
 export interface PostMovementInput {
   movement: MovementCreate;
   operation: OperationCreate;
   /** Effective policy for (item override ?? warehouse). */
   allowNegative: boolean;
   actorId: string | null;
+  /**
+   * Required, not optional: every posting path must DECIDE how the fact is
+   * valued, even if the decision is "it carries no value". An optional plan
+   * would let a new caller silently skip the state update and break
+   * `onHand == valuedQuantity + uncostedQuantity`.
+   */
+  valuation: MovementValuationPlan;
 }
 
 export interface PostTransferInput {
@@ -78,6 +125,8 @@ export interface PostTransferInput {
   /** Effective policy evaluated on the SOURCE key (the in-leg only adds). */
   sourceAllowNegative: boolean;
   actorId: string | null;
+  /** The method both keys are valued with (required; see above). */
+  valuationMethod: ValuationMethod;
 }
 
 export interface PostReversalInput extends PostMovementInput {
@@ -211,8 +260,29 @@ export class InventoryMovementsRepository {
         input.movement.baseQuantity,
         input.allowNegative,
       );
+      const { state } = await lockValuationStateRow(
+        tx,
+        movementKey(input.movement),
+        input.valuation.method,
+        input.actorId,
+      );
+      const columns = await valueMovement(tx, {
+        state,
+        method: input.valuation.method,
+        movementType: movementTypeOf(input.movement),
+        baseQuantity: input.movement.baseQuantity,
+        knownValue: input.valuation.knownValue,
+        ...(input.valuation.knownValueSource === undefined
+          ? {}
+          : { knownValueSource: input.valuation.knownValueSource }),
+        backdated: input.valuation.backdated,
+        at: input.movement.updatedAt,
+        actorId: input.actorId,
+      });
       const movement = toDomain(
-        await tx.inventoryMovement.create({ data: input.movement }),
+        await tx.inventoryMovement.create({
+          data: { ...input.movement, ...columns },
+        }),
       );
       await adjustBalanceCounters(tx, {
         balanceId: balance.id,
@@ -261,11 +331,43 @@ export class InventoryMovementsRepository {
         input.sourceAllowNegative,
       );
 
+      // Valuation states lock after BOTH balances, in the same ascending
+      // warehouse order, so a transfer and its mirror image cannot deadlock.
+      const [firstKey, secondKey] = [first.key, second.key];
+      const firstLock = await lockValuationStateRow(
+        tx,
+        firstKey,
+        input.valuationMethod,
+        input.actorId,
+      );
+      const secondLock = await lockValuationStateRow(
+        tx,
+        secondKey,
+        input.valuationMethod,
+        input.actorId,
+      );
+      const sourceState =
+        first.role === 'out' ? firstLock.state : secondLock.state;
+      const destinationState =
+        first.role === 'out' ? secondLock.state : firstLock.state;
+      const legColumns = await valueTransfer(tx, {
+        sourceState,
+        destinationState,
+        method: input.valuationMethod,
+        quantity: magnitudeOf(input.outLeg.baseQuantity),
+        at: input.outLeg.updatedAt,
+        actorId: input.actorId,
+      });
+
       const outLeg = toDomain(
-        await tx.inventoryMovement.create({ data: input.outLeg }),
+        await tx.inventoryMovement.create({
+          data: { ...input.outLeg, ...legColumns.out },
+        }),
       );
       const inLeg = toDomain(
-        await tx.inventoryMovement.create({ data: input.inLeg }),
+        await tx.inventoryMovement.create({
+          data: { ...input.inLeg, ...legColumns.in },
+        }),
       );
       const outBalance = first.role === 'out' ? firstBalance : secondBalance;
       const inBalance = first.role === 'out' ? secondBalance : firstBalance;
@@ -332,8 +434,34 @@ export class InventoryMovementsRepository {
         input.movement.baseQuantity,
         input.allowNegative,
       );
+      // A reversal undoes the value the ORIGINAL actually carried, read from
+      // the row this transaction already holds locked (PDR-05 rule 7) — not
+      // the current average, and not a number the caller supplied.
+      const { state } = await lockValuationStateRow(
+        tx,
+        movementKey(input.movement),
+        input.valuation.method,
+        input.actorId,
+      );
+      const reversedValue =
+        original.totalCost === null || original.valuationStatus === 'unvalued'
+          ? null
+          : magnitudeOf(original.totalCost);
+      const columns = await valueMovement(tx, {
+        state,
+        method: input.valuation.method,
+        movementType: movementTypeOf(input.movement),
+        baseQuantity: input.movement.baseQuantity,
+        knownValue: reversedValue,
+        knownValueSource: 'reversal',
+        backdated: input.valuation.backdated,
+        at: input.movement.updatedAt,
+        actorId: input.actorId,
+      });
       const movement = toDomain(
-        await tx.inventoryMovement.create({ data: input.movement }),
+        await tx.inventoryMovement.create({
+          data: { ...input.movement, ...columns },
+        }),
       );
       await adjustBalanceCounters(tx, {
         balanceId: balance.id,
@@ -375,6 +503,22 @@ function orderedKeys(
   return out.key.warehouseId.localeCompare(into.key.warehouseId) <= 0
     ? [out, into]
     : [into, out];
+}
+
+/** The movement type of a create payload, validated once at the boundary. */
+function movementTypeOf(movement: MovementCreate): MovementType {
+  if (!isMovementType(movement.movementType)) {
+    throw new Error(
+      `Cannot post a movement with unknown type "${movement.movementType}".`,
+    );
+  }
+  return movement.movementType;
+}
+
+/** `|value|` for a signed decimal string. */
+function magnitudeOf(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.startsWith('-') ? trimmed.slice(1) : trimmed;
 }
 
 /** Policy evaluation against the locked row — exact decimal arithmetic. */
@@ -442,7 +586,37 @@ function toDomain(row: MovementRow): InventoryMovement {
     referenceId: row.referenceId,
     reason: row.reason,
     operationKey: row.operationKey,
+    totalCost: row.totalCost === null ? null : decimalToString(row.totalCost),
+    valuationStatus: toMovementValuationStatus(row.id, row.valuationStatus),
+    valuationSource: toValuationSource(row.id, row.valuationSource),
+    valuedAt: row.valuedAt,
+    valuationRunId: row.valuationRunId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+function toMovementValuationStatus(
+  id: string,
+  value: string,
+): MovementValuationStatus {
+  if (!(MOVEMENT_VALUATION_STATUSES as readonly string[]).includes(value)) {
+    throw new Error(
+      `Stored movement "${id}" has an unknown valuation status "${value}".`,
+    );
+  }
+  return value as MovementValuationStatus;
+}
+
+function toValuationSource(
+  id: string,
+  value: string | null,
+): ValuationSource | null {
+  if (value === null) return null;
+  if (!(VALUATION_SOURCES as readonly string[]).includes(value)) {
+    throw new Error(
+      `Stored movement "${id}" has an unknown valuation source "${value}".`,
+    );
+  }
+  return value as ValuationSource;
 }

@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsDate,
   IsIn,
   IsOptional,
@@ -15,6 +16,11 @@ import {
   SINGLE_POST_TYPES,
 } from '../../domain/movement-type.js';
 import { RESERVATION_STATUSES } from '../../domain/inventory-reservation.js';
+import {
+  MOVEMENT_VALUATION_STATUSES,
+  VALUATION_SOURCES,
+} from '../../domain/inventory-valuation.js';
+import { REPRICING_CHOICES } from '../../domain/backdating.js';
 import {
   MAX_OPERATION_KEY_LENGTH,
   MAX_REASON_LENGTH,
@@ -183,6 +189,43 @@ export class PostInventoryMovementDto {
   @IsString()
   @MaxLength(MAX_REFERENCE_ID_LENGTH)
   referenceId?: string;
+
+  @ApiPropertyOptional({
+    example: '12500.00',
+    description:
+      'OPTIONAL cost per ENTERED unit, as an exact decimal string with at most 2 decimals. Never required: a warehouse receipt posts without any cost and the stock is tracked as uncosted until a value is assigned. Mutually exclusive with totalCost, rejected on issues, and requires Inventory.Valuation.AssignCost.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  unitCost?: string;
+
+  @ApiPropertyOptional({
+    example: '250000.00',
+    description:
+      'OPTIONAL total cost of the whole posting, as an exact decimal string with at most 2 decimals. Same rules as unitCost; provide one or the other, never both.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  totalCost?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Acknowledges that the document is dated before the latest movement on this item and warehouse. A backdated posting is rejected (422 inventory.backdated_document) until this is true.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  backdateConfirmed?: boolean;
+
+  @ApiPropertyOptional({
+    enum: REPRICING_CHOICES,
+    description:
+      'The second, separate decision a backdated posting requires: "recalculate" reprices this item and warehouse immediately, "skip" keeps the existing values and marks them inconsistent (stale). There is no default — valuation is never recalculated silently.',
+  })
+  @IsOptional()
+  @IsIn(REPRICING_CHOICES as readonly string[])
+  repricing?: string;
 }
 
 export class ReverseInventoryMovementDto {
@@ -281,6 +324,39 @@ export class InventoryMovementResponseDto {
     description: 'Idempotency key this movement was posted with.',
   })
   operationKey!: string;
+
+  @ApiProperty({
+    nullable: true,
+    example: '-250000.00',
+    description:
+      'SIGNED value effect of this movement (+ inbound, - outbound), mirroring baseQuantity. Null when the movement carries no value yet, and null for callers without Inventory.Valuation.View.',
+  })
+  totalCost!: string | null;
+
+  @ApiProperty({
+    enum: MOVEMENT_VALUATION_STATUSES,
+    description:
+      'Finality of the value: "unvalued" (no value), "provisional" (a value an explicit recalculation will change), "valued" (final).',
+  })
+  valuationStatus!: string;
+
+  @ApiProperty({
+    enum: VALUATION_SOURCES,
+    nullable: true,
+    description:
+      'Where the value came from. Everything except average_cost is preserved verbatim by a recalculation.',
+  })
+  valuationSource!: string | null;
+
+  @ApiProperty({ format: 'date-time', nullable: true })
+  valuedAt!: string | null;
+
+  @ApiProperty({
+    format: 'ulid',
+    nullable: true,
+    description: 'The recalculation run that last wrote these fields, if any.',
+  })
+  valuationRunId!: string | null;
 
   @ApiProperty({ format: 'date-time' })
   createdAt!: string;

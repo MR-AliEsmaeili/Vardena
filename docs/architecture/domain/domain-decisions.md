@@ -1,6 +1,7 @@
 # Domain Decision Register
 
-Status: Proposed (design for review) · Updated: 2026-09-11
+Status: Proposed (design for review) · Updated: 2026-10-04 (D-06 reconciled with the
+implemented valuation foundation — ADR-0039, PDR-05)
 
 One row per consequential domain decision. Each entry states the problem, the options
 considered, pros/cons, the recommendation, the reason, the consequences, and whether
@@ -114,6 +115,30 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 - **Docs:** [inventory](./inventory-domain-analysis.md) §5, OQ-24, ADR-0017
   (proposed), D-19.
 - **Expert?** accounting/inventory.
+- **As built (2026-10-04, ADR-0039 / PDR-05 OD-VAL-01…19) — the decision holds, with
+  one correction of ownership:**
+  - **Upheld.** The method is *not* baked into the movement table and is *not*
+    inferred per movement: it is effective-dated configuration per **organization +
+    item** (`inventory.item_valuation_methods`), resolved at the movement's business
+    date. What lands on the ledger row is only the **result** — the signed
+    `total_cost` that fact actually carried, plus the provenance needed to replay it
+    (`valuation_source`, `valuation_status`, `valuation_run_id`). Method-specific
+    state (`inventory.inventory_valuation_states`) is derived and rebuildable by a
+    deterministic, bounded replay.
+  - **Upheld.** Quantity correctness is independent of valuation correctness
+    (OD-VAL-13): the valuation strategy has no branch that can reject a posting, and
+    a key whose value is knowingly wrong is marked `stale` rather than silently
+    repaired.
+  - **Corrected.** The engine is **Inventory-owned, not Accounting-owned**. Inventory
+    owns valuation (what stock is worth); Accounting owns posting (which accounts it
+    hits). No accounting/journal field exists on an inventory movement, and no
+    Inventory→Accounting posting is implemented (still OQ-39/OQ-42). This is a
+    deliberate departure from the wording above, recorded here rather than left as a
+    silent divergence.
+  - **Narrowed.** Only Moving Weighted Average is executable; FIFO/standard remain
+    vocabulary that the configuration endpoint refuses (OD-VAL-02/OD-VAL-18). OQ-24
+    stays OPEN for returns costing, COGS posting, landed cost and valuation
+    precision.
 
 ## D-07 — Reservations are separate; negative stock is a fail-closed policy
 
@@ -446,7 +471,7 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 | D-03 | Accounting meaning vs operational facts | AR-16 reaffirmed | accounting |
 | D-04 | Inventory source of truth | Ledger + materialized balance | inventory/accounting |
 | D-05 | Movement representation | Signed, typed, immutable | inventory |
-| D-06 | Valuation method | Ledger-consuming strategy; no schema lock-in | accounting/inventory |
+| D-06 | Valuation method | Ledger-consuming strategy; no schema lock-in. **As built 2026-10-04 (ADR-0039):** upheld, but the engine is Inventory-owned, not Accounting-owned | accounting/inventory |
 | D-07 | Reservations & negative stock | Separate reservations; reject negatives by default | inventory/accounting |
 | D-08 | Document foundation | Typed tables + shared mechanics | — |
 | D-09 | Document relations | Closed kinds, line-level links, logical refs | implementation |

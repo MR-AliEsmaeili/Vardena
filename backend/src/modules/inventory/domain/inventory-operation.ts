@@ -26,6 +26,14 @@ export const INVENTORY_OPERATIONS = [
    *  distinction matters for reconciliation even though both decrement
    *  `inventory_balances.reserved`. */
   'reservation_consume',
+  /** A cost was assigned to a movement that was posted without one
+   *  (PDR-05 OD-VAL-06). Idempotent like every other command: a retried
+   *  key replays the stored result instead of pricing twice. */
+  'valuation_cost_assignment',
+  /** An explicit, bounded repricing of one item and warehouse
+   *  (PDR-05 OD-VAL-11/12). Recorded here as well as in
+   *  `inventory_valuation_runs` so a retry cannot run the replay twice. */
+  'valuation_recalculation',
 ] as const;
 
 export type InventoryOperationKind = (typeof INVENTORY_OPERATIONS)[number];
@@ -43,7 +51,10 @@ export function isInventoryOperationKind(
 export type InventoryOperationResult =
   | { kind: 'movement'; movementIds: string[] }
   | { kind: 'transfer'; movementIds: [string, string] }
-  | { kind: 'reservation'; reservationId: string };
+  | { kind: 'reservation'; reservationId: string }
+  /** The run row records what the replay did; `runId` is null when the
+   *  operator explicitly chose NOT to reprice (OD-VAL-11). */
+  | { kind: 'valuation'; runId: string | null; movementId: string | null };
 
 /** The operation kinds that produce each result shape. */
 export function resultKindFor(
@@ -59,6 +70,9 @@ export function resultKindFor(
     case 'reservation_release':
     case 'reservation_consume':
       return 'reservation';
+    case 'valuation_cost_assignment':
+    case 'valuation_recalculation':
+      return 'valuation';
   }
 }
 
