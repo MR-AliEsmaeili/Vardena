@@ -16,6 +16,12 @@ import { FinancialAreasPage } from '@/features/accounting/master-data/financial-
 import { FiscalYearsPage } from '@/features/accounting/master-data/fiscal-years-page';
 import { TrialBalancePage } from '@/features/accounting/trial-balance/trial-balance-page';
 import { LoginPage } from '@/features/auth/login-page';
+import { InventoryHomePage } from '@/features/inventory/inventory-home-page';
+import { KardexPage } from '@/features/inventory/kardex-page';
+import { MovementFormPage } from '@/features/inventory/movement-form-page';
+import { MovementsPage } from '@/features/inventory/movements-page';
+import { ValuationStatesPage } from '@/features/inventory/valuation-states-page';
+import { TransferFormPage } from '@/features/inventory/transfer-form-page';
 import { BranchDetailPage } from '@/features/organization/admin/branches/branch-detail-page';
 import {
   BranchCreatePage,
@@ -365,6 +371,70 @@ export function AppRoutes() {
               }
             >
               <Route path="parties/new" element={<PartyCreatePage />} />
+            </Route>
+          </Route>
+
+          {/*
+            Inventory — warehouse operations & valuation (the vertical slice
+            over `backend/src/modules/inventory`).
+
+            Route gates mirror the EXACT permissions the gated endpoints
+            enforce (UX only, AR-21; the backend re-authorizes every call):
+
+            - the posting forms sit behind their CREATE code only, because
+              `POST /inventory/movements|transfers` enforces exactly that —
+              a Create-only principal must not be blocked by a View gate;
+            - the ledger/Kardex reads sit behind `Inventory.Movement.View`
+              (the permission both controllers enforce);
+            - the valuation worklist sits behind `Inventory.Valuation.View`.
+
+            Licensing needs no separate gate: an installation without the
+            `inventory` module entitlement gets every `Inventory.*` code
+            filtered from the effective permission set server-side, so these
+            routes stay blocked exactly like the navigation entries.
+          */}
+          <Route path="inventory">
+            <Route index element={<InventoryHomePage />} />
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.movementView]}
+                />
+              }
+            >
+              <Route path="movements" element={<MovementsPage />} />
+              <Route path="kardex" element={<KardexPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.movementCreate]}
+                />
+              }
+            >
+              <Route path="movements/new" element={<MovementFormPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.transferCreate]}
+                />
+              }
+            >
+              <Route path="transfers/new" element={<TransferFormPage />} />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.valuationView]}
+                />
+              }
+            >
+              <Route path="valuation" element={<ValuationStatesPage />} />
             </Route>
           </Route>
 

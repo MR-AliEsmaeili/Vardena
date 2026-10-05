@@ -418,9 +418,20 @@ export class InventoryMovementsService {
       );
     } catch (error) {
       if (error instanceof InsufficientStockError) {
+        // Stable business subcode so the ERP UI can render its own Persian
+        // insufficient-stock copy with the measured quantities instead of
+        // parsing this English contract message (FE-UX-02 §1.2/§2.1: the
+        // decision channel is the code, never the message text).
         throw AppException.businessRule(
           `Insufficient stock in warehouse "${warehouse.code}": ` +
             `on hand ${error.onHand}, requested ${error.requested}.`,
+          {
+            code: 'inventory.insufficient_stock',
+            warehouseId: warehouse.id,
+            itemId: input.itemId,
+            onHand: error.onHand,
+            requested: error.requested,
+          },
         );
       }
       if (isUniqueViolation(error)) {
@@ -626,9 +637,17 @@ export class InventoryMovementsService {
         throw AppException.conflict('The movement has already been reversed.');
       }
       if (error instanceof InsufficientStockError) {
+        // Same stable subcode as the posting path, with the reversal context.
         throw AppException.businessRule(
           `Reversing this movement would drive warehouse "${warehouse.code}" ` +
             `below zero: on hand ${error.onHand}, reversal needs ${error.requested}.`,
+          {
+            code: 'inventory.insufficient_stock',
+            warehouseId: warehouse.id,
+            itemId: original.itemId,
+            onHand: error.onHand,
+            requested: error.requested,
+          },
         );
       }
       if (isUniqueViolation(error)) {

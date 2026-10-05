@@ -1653,3 +1653,62 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
     decision, not an implementation claim. The matrix OQ-49 row is updated.
   - Production code changed in this round: **NONE**.
 - **Status:** READY FOR REVIEW — NOT ACCEPTED (Owner review required).
+
+## 22. FE-VAL — Inventory Warehouse Operations UI, frontend (2026-10-05)
+
+Frontend implementation slice on branch `arena/678f7774-vardena`, branched from
+`main` @ `7f8d36f0511365323f0951c7b11f259d3e2c6d05` (merge of PR #118). This is
+the UI half of slice #20's backend: no backend behavior, permission, migration
+or API contract changed (only enrichment of `inventory.insufficient_stock`
+error `details` with measured `onHand`/`requested` decimal strings, and the
+e2e spec asserting it).
+
+- **Implemented (frontend only).** Six surfaces under `/app/inventory`:
+  landing page, movements ledger (URL-owned filters/paging/sorting, default
+  `pageSize` 50 / `movementDate:desc`), receipt/issue posting form
+  (`?type=`), warehouse-to-warehouse transfer form, quantity-only Kardex
+  (snapshot paging: page-1 token replayed unchanged), and the valuation-state
+  worklist with the bounded recalculate command. New API layer
+  (`api/inventory.api.ts` over the regenerated OpenAPI types), inventory
+  query keys, i18n section, permission codes, labels, error mapping and
+  mutations with targeted invalidation (`movements`/`balances`/`kardex`/
+  `valuation-states` of the active organization only).
+- **Contract rules kept.** Cost input exists ONLY on a receipt and only with
+  `Inventory.Valuation.AssignCost`; a receipt still posts without it; an
+  issue NEVER offers cost. The frontend computes no valuation numbers — every
+  figure is a backend string; missing cost renders `«—»`, never `۰`. Backdate
+  posting is the two-step explicit flow (counts/dates only; no default; the
+  resubmission carries `backdateConfirmed:true` + chosen `repricing`); the
+  POST-side 422 refusals re-open the same dialogs (check→post race). After
+  «انجام نشود» a persistent stale notice with an explicit (permission-gated)
+  recalculate action remains. Transfers have no cost and no backdate
+  confirmation: `inventory.backdated_transfer_valuation_unresolved` renders
+  its canonical refusal copy (OQ-67 stays OPEN). One `operationKey` per form
+  intent, reused across dialog round-trips/retries, minted anew after success.
+- **Licensing/permissions.** UX gates mirror the exact backend codes
+  (`RequirePermission` on routes, `PermissionGate` in navigation); module
+  licensing needs no new frontend code — an unlicensed `inventory` module
+  arrives as a permission set with every `Inventory.*` code filtered
+  server-side, so navigation and surfaces disappear by themselves.
+- **Tests added (frontend).** 28 Vitest cases across five files: receipt
+  without cost, cost permission gating, issue without cost input,
+  insufficient-stock canonical copy with measured quantities, two-step
+  backdate with no-default choice + resubmission payload + POST-race re-open,
+  skip→stale-notice→(permission-denied) recalculate, unvalued≠zero (`—`),
+  stale visibility, money-column gating, CTA gating, license-filtered home
+  surfaces, targeted query invalidation, transfer refusals (equal warehouses,
+  backdated transfer) and Kardex snapshot replay. Suite total: 333 passing
+  (47 files). `tsc --noEmit`, oxlint, prettier clean. Backend: unchanged,
+  in-memory e2e suites (`inventory-core`, `inventory-valuation`) green at
+  implementation time (slice #20/#21 records).
+- **Docs reconciled.** `feedback-standard.md` §5.3/§6.2/§11.7 and
+  `persian-ux-writing-standard.md` appendix note now record the implemented
+  copy (type-specific success toasts, provisional label
+  `ارزش‌گذاری نامعتبر (موقت)`, new movement-type labels, insufficient-stock
+  numbers, backdated-transfer refusal) and keep late-cost assignment,
+  reversal, reservations and reconciliation explicitly UI-less.
+- **Out of scope (deliberately).** No adjustments form, no late-cost
+  assignment UI, no reservations/reconciliation UI, no valuation-method
+  configuration UI, no GL/COGS posting, no Persian (Jalali) date display
+  beyond the existing ISO input conventions. OQ-67/68/69 remain OPEN.
+- **Status:** READY FOR REVIEW — NOT ACCEPTED (Owner review required).

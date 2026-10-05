@@ -442,6 +442,10 @@ describe('Inventory valuation (e2e)', () => {
     }).expect(422);
 
     expect(String(rejected.body.message)).toMatch(/stock|negative/i);
+    // Stable business subcode the ERP UI maps to its own Persian copy.
+    expect(rejected.body.details.code).toBe('inventory.insufficient_stock');
+    expect(rejected.body.details.onHand).toBeDefined();
+    expect(rejected.body.details.requested).toBeDefined();
   });
 
   it('accepts a cost ON a receipt when the caller may price stock', async () => {

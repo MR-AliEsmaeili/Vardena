@@ -5,6 +5,8 @@
  * place codes may be defined (AR-22, `docs/security.md` §3):
  * - `backend/src/modules/accounting/domain/accounting-permissions.ts`
  * - `backend/src/modules/organization/domain/organization-permissions.ts`
+ * - `backend/src/modules/inventory/domain/inventory-permissions.ts`
+ *   and `inventory-core-permissions.ts` / `inventory-valuation-permissions.ts`
  *
  * No wildcard, no superuser, no invented code: an entry that no backend
  * endpoint enforces must not exist here either. These checks are UX only —
@@ -84,6 +86,24 @@ export const PERMISSIONS = {
   },
   inventory: {
     balanceView: 'Inventory.Balance.View',
+
+    // Master-data reads the warehouse operations UI needs for its pickers
+    // (`backend/src/modules/inventory/domain/inventory-permissions.ts`).
+    itemView: 'Inventory.Item.View',
+    warehouseView: 'Inventory.Warehouse.View',
+    unitView: 'Inventory.Unit.View',
+
+    // Movement ledger (post/read) and transfers
+    // (`inventory-core-permissions.ts`).
+    movementView: 'Inventory.Movement.View',
+    movementCreate: 'Inventory.Movement.Create',
+    movementReverse: 'Inventory.Movement.Reverse',
+    transferCreate: 'Inventory.Transfer.Create',
+
+    // Valuation workspace (`inventory-valuation-permissions.ts`).
+    valuationView: 'Inventory.Valuation.View',
+    valuationAssignCost: 'Inventory.Valuation.AssignCost',
+    valuationRecalculate: 'Inventory.Valuation.Recalculate',
   },
   workflow: {
     instanceView: 'Workflow.Instance.View',

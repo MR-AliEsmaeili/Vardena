@@ -43,6 +43,12 @@ export interface ConfirmDialogProps {
   loading?: boolean;
   /** Loading label for the primary action, e.g. «در حال نهایی‌سازی…». */
   loadingLabel?: string;
+  /**
+   * Force the primary action disabled even while idle — for dialogs whose
+   * confirm is only meaningful after an explicit in-dialog choice (e.g. the
+   * backdating repricing step: no answer may ever be defaulted).
+   */
+  confirmDisabled?: boolean;
   /** Operation failure rendered INSIDE the dialog (it stays open). */
   error?: ReactNode;
   /** Renders the primary action in the danger palette. */
@@ -61,6 +67,7 @@ export function ConfirmDialog({
   onCancel,
   loading = false,
   loadingLabel,
+  confirmDisabled = false,
   error,
   danger = false,
   children,
@@ -167,7 +174,7 @@ export function ConfirmDialog({
               variant={danger ? 'danger' : 'default'}
               className={cn(danger && 'focus-visible:outline-rose-600')}
               onClick={onConfirm}
-              disabled={loading}
+              disabled={loading || confirmDisabled}
             >
               {loading ? (loadingLabel ?? confirmLabel) : confirmLabel}
             </Button>

@@ -13,6 +13,7 @@ import {
   Scale,
   ScrollText,
   Users,
+  Warehouse,
   type LucideIcon,
 } from 'lucide-react';
 import { t } from '@/lib/i18n';
@@ -160,6 +161,36 @@ export const navigationSections: readonly NavigationSection[] = [
         label: t.orgAdmin.parties,
         icon: Handshake,
         permissions: [PERMISSIONS.organization.partyView],
+      },
+    ],
+  },
+  {
+    id: 'inventory',
+    label: t.nav.inventory,
+    items: [
+      {
+        to: '/app/inventory',
+        label: t.inventory.title,
+        icon: Warehouse,
+        end: true,
+      },
+      {
+        to: '/app/inventory/movements',
+        label: t.nav.inventoryMovements,
+        icon: Receipt,
+        permissions: [PERMISSIONS.inventory.movementView],
+      },
+      {
+        to: '/app/inventory/kardex',
+        label: t.nav.inventoryKardex,
+        icon: ScrollText,
+        permissions: [PERMISSIONS.inventory.movementView],
+      },
+      {
+        to: '/app/inventory/valuation',
+        label: t.nav.inventoryValuation,
+        icon: Scale,
+        permissions: [PERMISSIONS.inventory.valuationView],
       },
     ],
   },

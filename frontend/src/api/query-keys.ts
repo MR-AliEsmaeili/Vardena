@@ -226,6 +226,61 @@ export const queryKeys = {
   inventory: {
     balances: (organizationId: string, filters: Record<string, unknown>) =>
       ['inventory', organizationId, 'balances', filters] as const,
+
+    /** Every balances LIST of one organization (mutation invalidation scope). */
+    balancesPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'balances'] as const,
+
+    movements: (organizationId: string, filters: Record<string, unknown>) =>
+      ['inventory', organizationId, 'movements', 'list', filters] as const,
+
+    /** Every movements LIST of one organization (mutation invalidation scope). */
+    movementsPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'movements'] as const,
+
+    kardex: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+      /** The backend's opaque ledger snapshot — part of the page identity. */
+      snapshot?: string,
+    ) =>
+      [
+        'inventory',
+        organizationId,
+        'kardex',
+        filters,
+        ...(snapshot !== undefined ? [snapshot] : []),
+      ] as const,
+
+    kardexPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'kardex'] as const,
+
+    valuationStates: (
+      organizationId: string,
+      filters: Record<string, unknown>,
+    ) =>
+      [
+        'inventory',
+        organizationId,
+        'valuation-states',
+        'list',
+        filters,
+      ] as const,
+
+    valuationStatesPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'valuation-states'] as const,
+
+    // Reference reads (active warehouses / stockable items / units). Kept as
+    // ONE key per entity per organization — they are small, slow-moving
+    // master-data lists, not filtered workspaces.
+    warehouses: (organizationId: string) =>
+      ['inventory', organizationId, 'warehouses'] as const,
+
+    items: (organizationId: string) =>
+      ['inventory', organizationId, 'items'] as const,
+
+    units: (organizationId: string) =>
+      ['inventory', organizationId, 'units'] as const,
   },
 
   workflow: {

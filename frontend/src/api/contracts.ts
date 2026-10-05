@@ -443,3 +443,134 @@ export interface AccountStatement extends Omit<
   scope: AccountStatementScope;
   movements: Paginated<AccountStatementEntry>;
 }
+
+// ---------------------------------------------------------------------------
+// Inventory — warehouse operations & valuation (this slice's backend
+// contracts: `backend/src/modules/inventory/api/*`, ADR-0022 / ADR-0039)
+//
+// Same derivation rules as everywhere above: the generated OpenAPI schema is
+// the only source, narrowed with `NullableString` solely where the backend's
+// `@ApiProperty({ nullable: true })` without an explicit `type` emits
+// `Record<string, never> | null` (refinement 2). Money and quantities stay
+// exact decimal STRINGS — the UI never parses them into a float.
+// ---------------------------------------------------------------------------
+
+/** One movement row (`InventoryMovementResponseDto`). */
+export type InventoryMovement = NullableString<
+  Schemas['InventoryMovementResponseDto'],
+  | 'transferId'
+  | 'reversalOfMovementId'
+  | 'referenceType'
+  | 'referenceId'
+  | 'reason'
+  | 'totalCost'
+  | 'valuationSource'
+  | 'valuedAt'
+  | 'valuationRunId'
+>;
+
+export type InventoryMovementListQuery =
+  operations['InventoryMovementsController_list_v1']['parameters']['query'];
+
+/** `POST /inventory/movements` body (`PostInventoryMovementDto`). */
+export type PostInventoryMovementInput = Schemas['PostInventoryMovementDto'];
+
+/** `POST /inventory/movements/:id/reverse` body. */
+export type ReverseInventoryMovementInput =
+  Schemas['ReverseInventoryMovementDto'];
+
+/** `POST /inventory/transfers` body (`PostInventoryTransferDto`). */
+export type PostInventoryTransferInput = Schemas['PostInventoryTransferDto'];
+
+/** `POST /inventory/transfers` result: the two legs share one transferId. */
+export type InventoryTransferResult = Schemas['InventoryTransferResponseDto'];
+
+/** Quantity-only Kardex (`InventoryKardexResponseDto` and members). */
+export type InventoryKardexRow = NullableString<
+  Schemas['InventoryKardexRowDto'],
+  'transferId' | 'reversalOfMovementId' | 'referenceType' | 'referenceId'
+>;
+
+export type InventoryKardexResponse = Omit<
+  Schemas['InventoryKardexResponseDto'],
+  'scope' | 'items'
+> & {
+  items: InventoryKardexRow[];
+  scope: Omit<Schemas['InventoryKardexScopeDto'], 'dateFrom' | 'dateTo'> & {
+    dateFrom: string | null;
+    dateTo: string | null;
+  };
+};
+
+export type InventoryKardexQuery =
+  operations['InventoryKardexController_read_v1']['parameters']['query'];
+
+/** Per-key value projection (`InventoryValuationStateResponseDto`). */
+export type InventoryValuationState = NullableString<
+  Schemas['InventoryValuationStateResponseDto'],
+  'averageUnitCost' | 'staleSince' | 'lastValuedAt' | 'lastRecalculationId'
+>;
+
+/** Movement type union (all eight ledger kinds). */
+export type MovementType =
+  Schemas['InventoryMovementResponseDto']['movementType'];
+
+/** Single-post channel kinds (receipt/issue/adjustments only). */
+export type SinglePostMovementType =
+  Schemas['PostInventoryMovementDto']['movementType'];
+
+/** Movement-level valuation finality (visible even without money permission). */
+export type MovementValuationStatus =
+  Schemas['InventoryMovementResponseDto']['valuationStatus'];
+
+/** Key-level valuation state status (`valued` / `pending_cost` / `stale`). */
+export type ValuationStateStatus =
+  Schemas['InventoryValuationStateResponseDto']['status'];
+
+export type InventoryValuationStateListQuery =
+  operations['InventoryValuationController_listStates_v1']['parameters']['query'];
+
+/** `GET /inventory/valuation/backdate-check` — counts and dates, no amounts. */
+export type InventoryBackdateCheck = NullableString<
+  Schemas['BackdateCheckResponseDto'],
+  'latestMovementDate' | 'code'
+>;
+
+export type InventoryBackdateCheckQuery =
+  operations['InventoryValuationController_checkBackdate_v1']['parameters']['query'];
+
+/** `POST /inventory/valuation/recalculations` (one item in one warehouse). */
+export type RecalculateValuationInput = Schemas['RecalculateValuationDto'];
+
+export type RecalculationRun = NullableString<
+  Schemas['InventoryValuationRunResponseDto'],
+  'fromDate' | 'reason'
+>;
+
+export type RecalculationResult = {
+  run: RecalculationRun;
+  state: InventoryValuationState;
+};
+
+// Reference reads the warehouse pickers need (master data).
+
+export type InventoryWarehouse = Schemas['WarehouseResponseDto'];
+
+export type InventoryWarehouseListQuery =
+  operations['WarehousesController_list_v1']['parameters']['query'];
+
+export type InventoryItem = NullableString<
+  Schemas['ItemResponseDto'],
+  'description' | 'itemGroupId' | 'allowNegativeStock' | 'barcode'
+>;
+
+export type InventoryItemListQuery =
+  operations['ItemsController_list_v1']['parameters']['query'];
+
+export type InventoryUnit = NullableString<
+  Schemas['UnitResponseDto'],
+  'symbol'
+>;
+
+export type InventoryUnitListQuery =
+  operations['UnitsController_list_v1']['parameters']['query'];
