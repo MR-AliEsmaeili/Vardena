@@ -1495,6 +1495,15 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   `typecheck` ✅, unit **133 files / 1618 tests** ✅, hermetic e2e **26 files /
   364 passed / 160 skipped** ✅, `build` ✅. No migration, schema, API contract,
   permission or frontend file changed in this round.
+- **Correction to an earlier claim in this record.** The round-2 entry said the
+  live-PostgreSQL job verifies the new valuation query shapes. It does not:
+  **no live suite exercises the valuation endpoints.** What CI verifies is
+  schema validity, migration application and the build; valuation behaviour is
+  verified hermetically. Because `PrismaService.getClient<T>()` casts with
+  `as unknown as T`, the compiler does not check these query objects against
+  the generated Prisma types either. The recommended follow-up for this slice
+  is a live-PostgreSQL valuation suite; it is not part of this corrective
+  round.
 - **Status:** **CHANGES REQUIRED (Owner, 2026-10-05) — third round of
   corrections pushed, awaiting re-review.** The PR stays **open**; it is not
   merged and not accepted. Merge and green CI are not acceptance (§6).
