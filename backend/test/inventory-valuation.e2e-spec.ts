@@ -88,6 +88,7 @@ describe('Inventory valuation (e2e)', () => {
     denseItemId: '',
     limitItemId: '',
     denserThanLimitItemId: '',
+    overlapItemId: '',
     uncostedReceiptId: '',
   };
 
@@ -329,6 +330,17 @@ describe('Inventory valuation (e2e)', () => {
       })
       .expect(201);
     state.denserThanLimitItemId = denserItem.body.id as string;
+    const overlapItem = await root
+      .post('/api/v1/inventory/items')
+      .send({
+        organizationId: state.orgId,
+        code: 'ITM-VAL-8',
+        name: 'Overlapping Configuration Bolt',
+        itemKind: 'goods',
+        baseUnitId: state.unitId,
+      })
+      .expect(201);
+    state.overlapItemId = overlapItem.body.id as string;
   });
 
   afterAll(async () => {
@@ -1266,6 +1278,125 @@ describe('Inventory valuation (e2e)', () => {
       .expect(422);
     expect(refused.body.details.code).toBe('inventory.recalculation_too_large');
     expect(refused.body.details.limit).toBe(RECALCULATION_MOVEMENT_LIMIT);
+  });
+
+  it('refuses to replay a date covered by two configuration versions, and changes nothing', async () => {
+    // Stored data has gone invalid: two windows are in force on the first
+    // movement date, and NO version covers the second. The row count then
+    // equals the date count, which is exactly the shape a global count
+    // comparison cannot see. Seeded directly because the configuration
+    // endpoint refuses to create an overlap (asserted in the next test).
+    const key = {
+      organizationId: state.orgId,
+      warehouseId: state.warehouseId,
+      itemId: state.overlapItemId,
+    };
+    const firstDate = new Date(Date.UTC(2025, 2, 15));
+    const secondDate = new Date(Date.UTC(2025, 10, 20));
+
+    for (const [index, movementDate] of [firstDate, secondDate].entries()) {
+      await root
+        .post('/api/v1/inventory/movements')
+        .send({
+          ...key,
+          unitId: state.unitId,
+          operationKey: `val-overlap-${index}`,
+          movementType: 'inbound',
+          quantity: '2',
+          totalCost: '40.00',
+          movementDate: movementDate.toISOString(),
+          backdateConfirmed: true,
+          repricing: 'skip',
+        })
+        .expect(201);
+    }
+    const before = await root
+      .get('/api/v1/inventory/valuation/states')
+      .query({ ...key, page: 1, pageSize: 10 })
+      .expect(200);
+    const valueBefore = before.body.items[0]?.totalValue;
+
+    core.tables.valuationMethods.seed({
+      id: 'overlap-a',
+      organizationId: state.orgId,
+      itemId: state.overlapItemId,
+      method: 'moving_weighted_average',
+      validFrom: new Date(Date.UTC(2025, 0, 1)),
+      validTo: new Date(Date.UTC(2025, 6, 1)),
+      note: 'Seeded: first of two conflicting windows.',
+      createdAt: new Date(Date.UTC(2025, 0, 1)),
+      updatedAt: new Date(Date.UTC(2025, 0, 1)),
+    });
+    core.tables.valuationMethods.seed({
+      id: 'overlap-b',
+      organizationId: state.orgId,
+      itemId: state.overlapItemId,
+      method: 'moving_weighted_average',
+      validFrom: new Date(Date.UTC(2025, 1, 1)),
+      validTo: new Date(Date.UTC(2025, 5, 1)),
+      note: 'Seeded: second of two conflicting windows.',
+      createdAt: new Date(Date.UTC(2025, 1, 1)),
+      updatedAt: new Date(Date.UTC(2025, 1, 1)),
+    });
+
+    // Both versions are in force on the first date; neither covers the
+    // second. Two rows, two dates — the count check would have passed.
+    await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-overlap-recalc',
+        reason: 'Ambiguous history must not be resolved by guessing.',
+      })
+      .expect(500);
+
+    // Fail closed means nothing moved: no silent choice between the two.
+    const after = await root
+      .get('/api/v1/inventory/valuation/states')
+      .query({ ...key, page: 1, pageSize: 10 })
+      .expect(200);
+    expect(after.body.items[0]?.totalValue).toBe(valueBefore);
+
+    // The same ambiguity is refused by the single-instant resolver too,
+    // rather than silently preferring the later window.
+    await root
+      .get('/api/v1/inventory/valuation/methods/resolve')
+      .query({
+        organizationId: state.orgId,
+        itemId: state.overlapItemId,
+        asOf: firstDate.toISOString(),
+      })
+      .expect(500);
+
+    // Remove the conflict and the very same replay succeeds — proving the
+    // refusal was about the overlap and nothing else.
+    core.tables.valuationMethods.delete('overlap-b');
+    const recovered = await root
+      .post('/api/v1/inventory/valuation/recalculations')
+      .send({
+        ...key,
+        operationKey: 'val-overlap-recalc-2',
+        reason: 'Conflict removed.',
+      })
+      .expect(201);
+    expect(recovered.body.run.movementsExamined).toBe(2);
+    expect(recovered.body.state.totalValue).toBe('80');
+  });
+
+  it('still refuses to CREATE an overlapping configuration version', async () => {
+    // The read-side guard above is a defence against invalid stored data; it
+    // does not replace the write-side invariant, which must still hold.
+    await root
+      .post('/api/v1/inventory/valuation/methods')
+      .send({
+        organizationId: state.orgId,
+        itemId: state.overlapItemId,
+        method: 'moving_weighted_average',
+        validFrom: new Date(Date.UTC(2025, 3, 1)).toISOString(),
+        validTo: new Date(Date.UTC(2025, 4, 1)).toISOString(),
+        note: 'Inside the window seeded above.',
+      })
+      .expect(422);
   });
 
   it('refuses a recalculation without a key (there is no "recalculate everything")', async () => {

@@ -261,3 +261,44 @@ export function versionCoversAnyInstant(
 ): boolean {
   return instants.some((instant) => versionCoversInstant(version, instant));
 }
+
+/** One replayed instant with more than one configuration version in force. */
+export interface AmbiguousValuationInstant {
+  instant: Date;
+  versionIds: string[];
+}
+
+/**
+ * The first instant (ascending) at which MORE THAN ONE version is in force,
+ * or `null` when every instant resolves unambiguously.
+ *
+ * This is the ambiguity detector, and it is deliberately per instant. A
+ * global comparison such as "did we get back more rows than we asked dates
+ * for?" is not equivalent: two versions in force on one date and none on
+ * another produces as many rows as there are dates, so a count check passes
+ * while a date is genuinely ambiguous. Counting per instant cannot miss that.
+ *
+ * Overlapping windows are rejected on write, so this condition means stored
+ * data has become invalid — a bad migration, a manual edit, a bug, or rows
+ * created before the invariant existed. The caller fails the replay closed
+ * instead of resolving the date against whichever version sorted first.
+ */
+export function findAmbiguousInstant(
+  versions: readonly ItemValuationMethodVersion[],
+  instants: readonly Date[],
+): AmbiguousValuationInstant | null {
+  for (const instant of [...instants].sort(
+    (a, b) => a.getTime() - b.getTime(),
+  )) {
+    const inForce = versions.filter((candidate) =>
+      versionCoversInstant(candidate, instant),
+    );
+    if (inForce.length > 1) {
+      return {
+        instant,
+        versionIds: inForce.map((candidate) => candidate.id).sort(),
+      };
+    }
+  }
+  return null;
+}

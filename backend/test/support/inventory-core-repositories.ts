@@ -67,6 +67,7 @@ import {
 } from '../../src/modules/inventory/data/inventory-posting-errors.js';
 import {
   distinctInstants,
+  findAmbiguousInstant,
   isValuationMethod,
   resolveValuationMethodAt,
   versionCoversAnyInstant,
@@ -90,6 +91,7 @@ import {
   type ValuationPosition,
 } from '../../src/modules/inventory/domain/moving-weighted-average.js';
 import {
+  AmbiguousValuationMethodError,
   replay,
   toReplayFact,
   valuationChanged,
@@ -576,9 +578,14 @@ function applyReplayInMemory(
             version.itemId === input.key.itemId &&
             versionCoversAnyInstant(version, instants),
         );
-  if (versions.length > instants.length) {
-    throw new Error(
-      `Item "${input.key.itemId}" has overlapping valuation method versions: ${versions.length} versions are in force across ${instants.length} movement dates. Historical resolution would be ambiguous, so the replay was refused.`,
+  // Ambiguity is checked PER DATE, exactly like production: a global row
+  // count cannot see two versions on one date and none on another.
+  const ambiguous = findAmbiguousInstant(versions, instants);
+  if (ambiguous !== null) {
+    throw new AmbiguousValuationMethodError(
+      input.key.itemId,
+      ambiguous.instant,
+      ambiguous.versionIds,
     );
   }
   const result = replay(
@@ -1530,6 +1537,13 @@ export class InMemoryItemValuationMethodsRepository {
           versionCoversInstant(row, asOf),
       )
       .sort((a, b) => b.validFrom.getTime() - a.validFrom.getTime());
+    if (matching.length > 1) {
+      throw new AmbiguousValuationMethodError(
+        itemId,
+        asOf,
+        matching.map((row) => row.id).sort(),
+      );
+    }
     return matching[0] ?? null;
   }
 

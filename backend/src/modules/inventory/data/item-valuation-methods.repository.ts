@@ -4,6 +4,7 @@ import type { ConversionVersionProblem } from '../domain/unit-conversion.js';
 import { planNewVersion } from '../domain/unit-conversion.js';
 import type { ItemValuationMethodVersion } from '../domain/valuation-method.js';
 import { isValuationMethod } from '../domain/valuation-method.js';
+import { AmbiguousValuationMethodError } from '../domain/valuation-replay.js';
 import type {
   CoreClient,
   ItemValuationMethodCreate,
@@ -81,12 +82,11 @@ export class ItemValuationMethodsRepository {
    * The ONE version in force for an item at an instant, or `null` when none
    * is (the caller then applies the code-defined default).
    *
-   * Bounded by construction: the window predicate is evaluated by PostgreSQL
-   * and only the winning row is transferred (`ORDER BY valid_from DESC
-   * LIMIT 1`). That ordering is the same tie-break `resolveValuationMethodAt`
-   * applies in memory, so the two read paths cannot disagree — and both map
-   * the result through the single domain function
-   * `resolveValuationMethodFrom`.
+   * Bounded by construction: the window predicate is evaluated by
+   * PostgreSQL and only the version in force is transferred. Both read paths
+   * map their result through the single domain function
+   * `resolveValuationMethodFrom`, so they cannot disagree, and both refuse
+   * to resolve an instant covered by more than one version.
    *
    * This replaces a full-series read: resolving one date never needed the
    * whole configuration history, and the posting path runs this query on
@@ -98,12 +98,24 @@ export class ItemValuationMethodsRepository {
     asOf: Date,
   ): Promise<ItemValuationMethodVersion | null> {
     const { itemValuationMethod } = await this.client();
+    // Two rows, not one: asking for a single row would silently pick a
+    // winner if stored data ever held two versions in force at the same
+    // instant. Reading one more makes that visible, so this path fails
+    // closed exactly like the replay does instead of preferring whichever
+    // version sorted first.
     const rows = await itemValuationMethod.findMany({
       where: toWhere({ organizationId, itemId, activeAt: asOf }),
       orderBy: [{ validFrom: 'desc' }],
       skip: 0,
-      take: 1,
+      take: 2,
     });
+    if (rows.length > 1) {
+      throw new AmbiguousValuationMethodError(
+        itemId,
+        asOf,
+        rows.map((row) => row.id).sort(),
+      );
+    }
     const row = rows[0];
     return row === undefined ? null : toDomain(row);
   }

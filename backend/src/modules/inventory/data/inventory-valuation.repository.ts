@@ -20,12 +20,14 @@ import { isMovementType } from '../domain/movement-type.js';
 import type { MovementType } from '../domain/movement-type.js';
 import type { ReplayFact } from '../domain/valuation-replay.js';
 import {
+  AmbiguousValuationMethodError,
   replay,
   toReplayFact,
   valuationChanged,
 } from '../domain/valuation-replay.js';
 import {
   distinctInstants,
+  findAmbiguousInstant,
   isValuationMethod,
   resolveValuationMethodAt,
 } from '../domain/valuation-method.js';
@@ -520,11 +522,18 @@ function toFact(row: MovementRow, method: ValuationMethod): ReplayFact {
  * because they are in force for no replayed movement, not as special cases.
  * Asserted in `domain/valuation-method.spec.ts`.
  *
- * **No truncation.** The read takes one row more than the number of distinct
- * dates. Exceeding that means two versions are in force at the same instant,
- * i.e. the overlap invariant the write path enforces has been violated in
- * stored data; the replay then fails closed rather than resolving a movement
- * against whichever of the two rows happened to be transferred.
+ * **Ambiguity is checked per date, not by counting rows.** Every instant is
+ * examined on its own: if two versions are in force at one movement date the
+ * replay fails closed (`AmbiguousValuationMethodError`). A global "more rows
+ * than dates?" comparison would be unsound — two versions on one date and
+ * none on another returns exactly as many rows as there are dates — which is
+ * why the count check that used to live here is gone.
+ *
+ * The read still transfers at most one row more than there are dates, and
+ * that cannot hide an overlap: the query only returns rows that cover some
+ * date, so if every fetched date looked unambiguous while an overlap existed
+ * beyond the cut-off, the rows before it would have to cover the remaining
+ * dates more than once — which the same per-date check would have caught.
  */
 async function readMethodVersions(
   tx: CoreTxClient,
@@ -547,12 +556,7 @@ async function readMethodVersions(
     skip: 0,
     take: instants.length + 1,
   });
-  if (rows.length > instants.length) {
-    throw new Error(
-      `Item "${key.itemId}" has overlapping valuation method versions: ${rows.length} versions are in force across ${instants.length} movement dates. Historical resolution would be ambiguous, so the replay was refused.`,
-    );
-  }
-  return rows.map((row) => {
+  const versions = rows.map((row) => {
     if (!isValuationMethod(row.method)) {
       throw new Error(
         `Stored valuation method version "${row.id}" has an unknown method "${row.method}".`,
@@ -570,6 +574,15 @@ async function readMethodVersions(
       updatedAt: row.updatedAt,
     };
   });
+  const ambiguous = findAmbiguousInstant(versions, instants);
+  if (ambiguous !== null) {
+    throw new AmbiguousValuationMethodError(
+      key.itemId,
+      ambiguous.instant,
+      ambiguous.versionIds,
+    );
+  }
+  return versions;
 }
 
 /**

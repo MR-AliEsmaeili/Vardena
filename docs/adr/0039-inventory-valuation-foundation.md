@@ -104,10 +104,12 @@ allowed to touch**.
    the result is bounded by how many dates there are, never by how densely
    the item has been reconfigured. A replay of two movements reads two
    versions whether the item has three configuration versions or thirty
-   thousand. The single-instant posting path asks for the one effective
-   version (`ORDER BY valid_from DESC LIMIT 1`). The one deliberate
-   exception is the configuration WRITE path, which must see every existing
-   window to detect overlaps.
+   thousand. Both read paths refuse to resolve an instant
+   covered by more than one version — checked per date, never by comparing
+   row counts — so invalid stored configuration fails the replay closed
+   instead of being resolved by picking a winner. The one deliberate
+   exception to bounding is the configuration WRITE path, which must see
+   every existing window to detect overlaps before they are stored.
 10. **Backdating is gated by TWO independent confirmations (OD-VAL-10/11).**
     `backdateConfirmed` **and** an explicit `repricing` choice with no default:
     422 `inventory.backdated_document`, then 422

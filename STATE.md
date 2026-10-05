@@ -1495,6 +1495,41 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   `typecheck` ✅, unit **133 files / 1618 tests** ✅, hermetic e2e **26 files /
   364 passed / 160 skipped** ✅, `build` ✅. No migration, schema, API contract,
   permission or frontend file changed in this round.
+- **Owner review 4 (2026-10-05): CHANGES REQUIRED — one technical defect.**
+  The round-3 correction detected overlapping configuration by comparing two
+  global counts (`rows.length > instants.length`). That is not an ambiguity
+  check: two versions in force on one movement date and none on another
+  returns exactly as many rows as there are dates, so the comparison passes
+  while a date resolves ambiguously — and the replay then silently used
+  whichever version sorted later. **Corrected:** ambiguity is evaluated **per
+  distinct movement date** (`findAmbiguousInstant`); any date with more than
+  one version in force fails the replay closed with
+  `AmbiguousValuationMethodError`, naming the item, the date and the
+  conflicting version ids. The same rule now applies to the single-instant
+  resolver, which read `LIMIT 1` and would otherwise have preferred the later
+  window; it reads one row more and refuses instead. The error is
+  deliberately **not** mapped to a business-rule response: the write path
+  forbids overlaps, so reaching it means stored data is invalid and an
+  engineer must look — the same treatment as the "unknown stored method"
+  guard beside it. Dates with **no** configured version are untouched and
+  still resolve to the code-defined default; an overlap outside the replayed
+  dates is ignored because no movement resolves there.
+  Evidence: the e2e case (two windows in force on the first movement date,
+  none on the second, so rows == dates) was **verified to return 201 against
+  the round-3 implementation** — it silently picked a version — and now
+  returns 500 with the valuation state provably unchanged; removing the
+  conflicting row makes the identical replay succeed. A companion e2e
+  re-asserts that the configuration endpoint still **refuses to create** an
+  overlapping version, so the read-side guard supplements the write-side
+  invariant rather than replacing it. Unit coverage adds the count-equals-
+  dates regression, earliest-ambiguous-date reporting, adjacent windows at a
+  shared boundary (not ambiguous), unconfigured dates (not ambiguous) and
+  overlaps outside the replayed dates (ignored).
+- **Validation after round 4 of corrections (local, 2026-10-05):**
+  `format:check` ✅, `lint` ✅ (1 pre-existing warning in Accounting),
+  `typecheck` ✅, unit **133 files / 1626 tests** ✅, hermetic e2e **26 files /
+  366 passed / 160 skipped** ✅, `build` ✅. No migration, schema, API contract,
+  permission or frontend file changed in this round.
 - **Correction to an earlier claim in this record.** The round-2 entry said the
   live-PostgreSQL job verifies the new valuation query shapes. It does not:
   **no live suite exercises the valuation endpoints.** What CI verifies is
@@ -1504,7 +1539,7 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   the generated Prisma types either. The recommended follow-up for this slice
   is a live-PostgreSQL valuation suite; it is not part of this corrective
   round.
-- **Status:** **CHANGES REQUIRED (Owner, 2026-10-05) — third round of
+- **Status:** **CHANGES REQUIRED (Owner, 2026-10-05) — fourth round of
   corrections pushed, awaiting re-review.** The PR stays **open**; it is not
   merged and not accepted. Merge and green CI are not acceptance (§6).
   ADR-0039 remains **Proposed**, PDR-05 closes no OQ beyond the partial OQ-24

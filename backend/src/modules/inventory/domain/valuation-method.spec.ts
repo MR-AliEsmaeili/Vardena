@@ -7,6 +7,7 @@ import {
   isActiveValuationMethod,
   isValuationMethod,
   distinctInstants,
+  findAmbiguousInstant,
   resolveValuationMethodAt,
   resolveValuationMethodFrom,
   toItemValuationMethodDto,
@@ -520,5 +521,140 @@ describe('resolveValuationMethodFrom — the single-row lookup path', () => {
       validFrom: null,
       validTo: null,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-date ambiguity (overlapping configuration in stored data)
+// ---------------------------------------------------------------------------
+
+describe('findAmbiguousInstant', () => {
+  const d1 = utc(2025, 3, 15);
+  const d2 = utc(2025, 9, 20);
+
+  it('passes when every movement date has exactly one version in force', () => {
+    const series = [
+      version({
+        id: 'a',
+        validFrom: utc(2025, 1, 1),
+        validTo: utc(2025, 7, 1),
+      }),
+      version({ id: 'b', validFrom: utc(2025, 7, 1), validTo: null }),
+    ];
+    expect(findAmbiguousInstant(series, [d1, d2])).toBeNull();
+    expect(resolveValuationMethodAt(series, d1).configurationId).toBe('a');
+    expect(resolveValuationMethodAt(series, d2).configurationId).toBe('b');
+  });
+
+  it('flags a date covered by two versions, naming the date and both versions', () => {
+    const series = [
+      version({
+        id: 'a',
+        validFrom: utc(2025, 1, 1),
+        validTo: utc(2025, 7, 1),
+      }),
+      version({
+        id: 'b',
+        validFrom: utc(2025, 2, 1),
+        validTo: utc(2025, 6, 1),
+      }),
+      version({ id: 'c', validFrom: utc(2025, 7, 1), validTo: null }),
+    ];
+    expect(findAmbiguousInstant(series, [d1, d2])).toEqual({
+      instant: d1,
+      versionIds: ['a', 'b'],
+    });
+  });
+
+  /**
+   * THE REGRESSION CASE. Two versions are in force on the first date and
+   * none on the second, so the read returns exactly as many rows as there
+   * are dates. The count comparison this detector replaced
+   * (`rows.length > instants.length`) sees 2 and 2 and waves it through,
+   * while the first date resolves ambiguously.
+   */
+  it('flags an overlap even when the row count equals the date count', () => {
+    const series = [
+      version({
+        id: 'a',
+        validFrom: utc(2025, 1, 1),
+        validTo: utc(2025, 7, 1),
+      }),
+      version({
+        id: 'b',
+        validFrom: utc(2025, 2, 1),
+        validTo: utc(2025, 6, 1),
+      }),
+    ];
+    const instants = [d1, d2];
+    const inForceSomewhere = series.filter((candidate) =>
+      versionCoversAnyInstant(candidate, instants),
+    );
+
+    // Precondition: the discarded global check could not have caught this.
+    expect(inForceSomewhere).toHaveLength(2);
+    expect(instants).toHaveLength(2);
+    expect(inForceSomewhere.length > instants.length).toBe(false);
+
+    expect(findAmbiguousInstant(inForceSomewhere, instants)).toEqual({
+      instant: d1,
+      versionIds: ['a', 'b'],
+    });
+  });
+
+  it('reports the earliest ambiguous date when several are ambiguous', () => {
+    const series = [
+      version({ id: 'a', validFrom: utc(2025, 1, 1), validTo: null }),
+      version({ id: 'b', validFrom: utc(2025, 1, 1), validTo: null }),
+    ];
+    expect(findAmbiguousInstant(series, [d2, d1])?.instant).toEqual(d1);
+  });
+
+  it('does not treat adjacent windows as ambiguous (half-open boundary)', () => {
+    const boundary = utc(2025, 7, 1);
+    const series = [
+      version({ id: 'a', validFrom: utc(2025, 1, 1), validTo: boundary }),
+      version({ id: 'b', validFrom: boundary, validTo: null }),
+    ];
+    expect(findAmbiguousInstant(series, [boundary])).toBeNull();
+    expect(resolveValuationMethodAt(series, boundary).configurationId).toBe(
+      'b',
+    );
+  });
+
+  it('does not treat an unconfigured date as ambiguous', () => {
+    const series = [
+      version({ id: 'a', validFrom: utc(2025, 6, 1), validTo: null }),
+    ];
+    expect(findAmbiguousInstant(series, [utc(2025, 1, 1)])).toBeNull();
+    expect(resolveValuationMethodAt(series, utc(2025, 1, 1)).source).toBe(
+      'default',
+    );
+  });
+
+  it('ignores an overlap that exists only outside the replayed dates', () => {
+    const series = [
+      version({
+        id: 'a',
+        validFrom: utc(2024, 1, 1),
+        validTo: utc(2024, 7, 1),
+      }),
+      version({
+        id: 'b',
+        validFrom: utc(2024, 2, 1),
+        validTo: utc(2024, 6, 1),
+      }),
+      version({ id: 'c', validFrom: utc(2025, 1, 1), validTo: null }),
+    ];
+    // 2024 is corrupt, but no movement is dated there.
+    expect(findAmbiguousInstant(series, [d1, d2])).toBeNull();
+  });
+
+  it('is unaffected by repeated movement dates', () => {
+    const series = [
+      version({ id: 'a', validFrom: utc(2025, 1, 1), validTo: null }),
+    ];
+    const repeated = [d1, d1, d1, d2, d2];
+    expect(findAmbiguousInstant(series, distinctInstants(repeated))).toBeNull();
   });
 });

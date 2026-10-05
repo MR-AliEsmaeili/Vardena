@@ -67,6 +67,35 @@ export type ValuationStrategy = (
  * WHICH configured method made the replay impossible, instead of a generic
  * failure.
  */
+/**
+ * More than one valuation method version is in force at one movement date.
+ *
+ * Unmapped by the API on purpose: unlike the errors beside it, this is not
+ * something a user did — the write path forbids overlapping windows, so
+ * reaching this means stored configuration has become invalid and an
+ * engineer must look. It therefore surfaces as a server fault, exactly like
+ * the "unknown stored method" guard in the same read path, rather than as a
+ * business-rule response that would read as if the operator had made a
+ * mistake. The message names the item, the date and the conflicting
+ * versions; no database internals are exposed.
+ */
+export class AmbiguousValuationMethodError extends Error {
+  readonly itemId: string;
+  readonly instant: Date;
+  readonly versionIds: readonly string[];
+
+  constructor(itemId: string, instant: Date, versionIds: readonly string[]) {
+    super(
+      `Item "${itemId}" has ${versionIds.length} valuation method versions in force at ${instant.toISOString()} ` +
+        `(${versionIds.join(', ')}). Historical resolution for that date is ambiguous, so the replay was refused.`,
+    );
+    this.name = 'AmbiguousValuationMethodError';
+    this.itemId = itemId;
+    this.instant = instant;
+    this.versionIds = versionIds;
+  }
+}
+
 export class UnsupportedValuationMethodError extends Error {
   readonly method: string;
   readonly movementId: string | null;
