@@ -1701,6 +1701,13 @@ e2e spec asserting it).
   (47 files). `tsc --noEmit`, oxlint, prettier clean. Backend: unchanged,
   in-memory e2e suites (`inventory-core`, `inventory-valuation`) green at
   implementation time (slice #20/#21 records).
+- **CI (PR #119):** green on head `8e217ad` — run
+  **37376098223** (backend 4m42s incl. live-DB e2e suites ✓, frontend
+  2m25s ✓). Four earlier attempts (runs 37366549949, 37368220600,
+  37372111150, 37374484055) were cancelled by a GitHub hosted-runner
+  acquisition outage ("job was not acquired by Runner") with no code
+  executed; the same code passed on every attempt that did get a runner
+  (frontend ✓ on 37368220600, backend ✓ on 37374484055).
 - **Docs reconciled.** `feedback-standard.md` §5.3/§6.2/§11.7 and
   `persian-ux-writing-standard.md` appendix note now record the implemented
   copy (type-specific success toasts, provisional label
