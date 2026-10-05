@@ -49,7 +49,7 @@
 decision records the policy; it does not close the gap and does not permit
 closing it in this task.
 
-## 4. Unresolved lifecycle detail — kept OPEN (OQ-65)
+## 4. Lifecycle detail — reuse RESOLVED 2026-10-05 (OD-65-01); comparison semantics kept OPEN (OQ-65)
 
 The decided wording constrains **two active items**. It says nothing about an
 item that has been **deactivated** (`is_active = false`). Therefore:
@@ -93,16 +93,47 @@ Registered as a candidate only (see
 [`docs/roadmap/future-task-candidates.md`](../../roadmap/future-task-candidates.md)
 row **C-55**): organization-scoped barcode uniqueness enforcement with
 database-authoritative constraint, concurrency proof, conflict mapping and
-regression coverage. It is **BLOCKED BY OQ-65** until the deactivation/reuse
-semantics and the comparison semantics are decided, because any index shape
-chosen first would decide them silently.
+regression coverage. It remains **BLOCKED BY OQ-65 Q2**
+(comparison/normalization semantics): the deactivation/reuse semantics were
+decided 2026-10-05 (OD-65-01 — never reuse, lifetime-scoped over assignment
+history), which also means the eventual enforcement must be history-aware — a
+current-row index shape alone cannot satisfy it, and any shape chosen before
+Q2 would decide the comparison semantics silently.
 
 ## 6. Follow-up questions for the Owner
 
-1. May a barcode of a **deactivated** item be reused by another item in the same
-   organization? (Blocking — see §4.)
-2. Is barcode uniqueness compared **case-sensitively** and on the trimmed raw
-   string, consistent with item-code comparison today?
-3. May two **inactive** items hold the same barcode?
-4. Is a later multi-barcode (alias/packaging) capability expected, so the
-   uniqueness implementation should stay additively extensible?
+> **Status update (2026-10-06):** questions 1 and 3 are **RESOLVED /
+> SUPERSEDED** by Owner Decision **OD-65-01** (canonical record:
+> [OQ-65](./OQ-65-barcode-lifecycle-and-reuse.md)). They are retained below
+> only as the historical record of what was asked.
+
+### Resolved — barcode reuse (OD-65-01, 2026-10-05)
+
+A barcode assigned within an organization is **permanently consumed** and can
+never be reused by another item in that organization — even after the original
+item is deactivated or retired, or the barcode is cleared or replaced. The
+invariant is **lifetime-scoped over assignment history**, not over the current
+`Item.barcode` value: `Item.barcode = NULL` does **not** mean the barcode is
+available for reuse. The enforcement mechanism remains future work (OQ-65
+§Enforcement implication).
+
+1. *(RESOLVED / SUPERSEDED — OD-65-01)* May a barcode of a **deactivated** item
+   be reused by another item in the same organization? → **No, never.**
+2. *(RESOLVED / SUPERSEDED — OD-65-01)* May two **inactive** items hold the
+   same barcode? → **No** — no two items in the organization ever share an
+   assigned barcode. *(Originally question 3.)*
+
+### Still OPEN — for the Owner, tracked canonically in OQ-65
+
+1. **Comparison/normalization semantics** (OQ-65 Q2): is barcode uniqueness
+   compared **case-sensitively** and on the trimmed raw string, consistent with
+   item-code comparison today, or does it require normalization (case folding,
+   whitespace/punctuation handling, leading zeros, Unicode/Persian digits,
+   canonical representation)? **Not decided here** — OQ-65 is the canonical
+   open record, and it still blocks C-55. *(Originally question 2.)*
+2. **Multi-barcode capability** (future/open scope): is a later multi-barcode
+   (alias/packaging) capability expected, so the eventual enforcement design
+   should stay additively extensible? No Owner decision exists; the current
+   policy remains single `Item.barcode`, and any future capability must not
+   contradict the OD-65-01 lifetime-consumption invariant. *(Originally
+   question 4.)*
