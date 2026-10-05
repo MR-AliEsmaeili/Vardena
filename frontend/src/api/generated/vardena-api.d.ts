@@ -3671,9 +3671,13 @@ export interface components {
             operationKey: string;
             /**
              * Format: date-time
-             * @description Business date of the reversal movement; defaults to now and must not precede the original movement.
+             * @description Business date of the reversal movement; defaults to now. If this date precedes later movements on the same item and warehouse, the reversal requires the same explicit backdating acknowledgement and repricing choice as a normal posting.
              */
             movementDate?: string;
+            /** @description Acknowledges that the reversal is dated before the latest movement on this item and warehouse. A backdated reversal is rejected (422 inventory.backdated_document) until this is true. */
+            backdateConfirmed?: boolean;
+            /** @description The second, separate decision a backdated reversal requires: "recalculate" reprices this item and warehouse immediately, "skip" keeps the existing values and marks them inconsistent (stale). There is no default — valuation is never recalculated silently. */
+            repricing?: "recalculate" | "skip";
         };
         PostInventoryTransferDto: {
             /**

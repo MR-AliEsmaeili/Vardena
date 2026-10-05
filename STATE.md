@@ -1332,8 +1332,9 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   valuation history); D-06 annotated with an "as built" correction (**the
   engine is Inventory-owned, not Accounting-owned**);
   `inventory-domain-analysis.md` §2.1/§5, `docs/modules.md`, the three roadmap
-  documents (C-49/C-51/C-52/C-53/C-54 reconciled; new candidate **C-57** for
-  the UI) and the four Persian UX documents updated.
+  documents (C-49/C-51/C-52/C-53/C-54 reconciled; C-57 backend operational
+  hardening added 2026-10-05 while Inventory UI remains future work) and the
+  four Persian UX documents updated.
 - **Deliberately not implemented.** Inventory → Accounting posting/COGS
   (OQ-39/OQ-42/OQ-25), returns costing (OD-VAL-19), landed cost, FIFO/LIFO/
   specific identification, lot/serial-level valuation, Receipt/Issue

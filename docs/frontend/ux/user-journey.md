@@ -522,11 +522,13 @@ The following capabilities are recognized as missing backend contracts or unimpl
 
 ## 18A. Inventory: Warehouse Operations vs. Inventory Accounting (`SUPPORTED API / FUTURE UI`)
 
-**Added 2026-10-04.** The backend valuation foundation (ADR-0039, PDR-05 /
-OD-VAL-01…OD-VAL-19) is implemented; **no Inventory route exists in `frontend/src`
-yet**. This section is the target UX contract for the slice that builds it, not a
-description of shipped UI. Persian copy, vocabulary and the dialog catalogue live in
-`persian-ux-writing-standard.md` §3.4/§9 and `feedback-standard.md` §5.3/§5.4.
+**Added 2026-10-04; backend hardening updated 2026-10-05.** The backend valuation foundation (ADR-0039, PDR-05 /
+OD-VAL-01…OD-VAL-19) is implemented and C-57 added operational hardening for
+backdated reversals, repricing permissions and backdated-transfer detection;
+**no Inventory route exists in `frontend/src` yet**. This section is the target UX
+contract for the slice that builds it, not a description of shipped UI. Persian
+copy, vocabulary and the dialog catalogue live in `persian-ux-writing-standard.md`
+§3.4/§9 and `feedback-standard.md` §5.3/§5.4.
 
 ### 18A.1 Two workspaces, one set of records (OD-VAL-08)
 

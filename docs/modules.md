@@ -781,15 +781,22 @@ states/current,backdate-check,movements/:id/cost,recalculations}`. Events:
   (identifiers and counts only — never amounts). Permissions (4):
   `Inventory.Valuation.{View,Configure,AssignCost,Recalculate}`; without
   `View` the same payload is returned with the monetary fields blanked.
-  **Still not implemented:** COGS/journal posting into Accounting
+  **C-57 operational hardening (2026-10-05):** backdated reversals now use the
+  same two-step backdating + repricing gate as normal movements; choosing
+  `recalculate` requires `Inventory.Valuation.Recalculate` before the side
+  effect is committed; late-cost assignment likewise requires Recalculate when
+  it asks to reprice; and backdated transfers are detected and refused with
+  `inventory.backdated_transfer_valuation_unresolved` while OQ-67 remains
+  OPEN. **Still not implemented:** COGS/journal posting into Accounting
   (OQ-39/OQ-42), returns costing (OD-VAL-19), landed cost, FIFO/LIFO/specific
   identification, lot/serial-level valuation, **Receipt/Issue documents**
   (C-51/C-52 — the OQ-54 lifecycle policy was decided 2026-10-05 (edit until
   Accounting Post, then cancel/correct only; ADR-0040 Proposed), so these now
   wait on their own contracts and OQ-13/OQ-26, not on OQ-54) and **any
-  Inventory UI** (candidate C-57). This
-  is a valuation *foundation*, not a finished Inventory Accounting capability.
-  OQ-24 stays OPEN; ADR-0039 stays **Proposed** (PR #116 open, not accepted).
+  Inventory UI** (candidate C-57 UI remains unbuilt). This
+  is an operational valuation slice, not a finished Inventory Accounting
+  capability. OQ-24 stays OPEN; ADR-0039 stays **Proposed** (PR #116 merged but
+  not Owner-accepted).
 - **API (implemented):** `/api/v1/inventory/{items,item-groups,units,unit-conversions,warehouses}`.
   Unit conversions are the exception: **no PATCH and no enable/disable**, because
   effective-dated configuration is never edited in place — a change is a new version

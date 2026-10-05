@@ -152,6 +152,24 @@ allowed to touch**.
     excludes `repricing` and `backdateConfirmed` (decisions about the same
     posting — a retry replays rather than re-asks).
 
+### C-57 operational hardening addendum (implemented 2026-10-05)
+
+- A caller who chooses `repricing = recalculate` must hold
+  `Inventory.Valuation.Recalculate` before the operational side effect is
+  committed. This now applies both to backdated movement posting and to late
+  cost assignment; `skip` remains an explicit non-repricing choice.
+- Reversals now run the same backdated valuation gate as normal movement
+  posting. A backdated reversal requires `backdateConfirmed` and an explicit
+  `repricing` choice, never a generic confirmation. Reversal dates before the
+  original movement are refused.
+- The Moving Weighted Average strategy marks a backdated outbound reversal as
+  stale while preserving the existing implemented convention that reversals
+  undo the original movement's own value (OQ-68 remains open).
+- Backdated transfers are detected and rejected with
+  `inventory.backdated_transfer_valuation_unresolved` while OQ-67 remains
+  open. This is a fail-closed boundary: C-57 does not invent a paired transfer
+  repricing convention or silently report a stale transfer valuation as current.
+
 ## Consequences
 
 - A warehouse can run without accounting: receipts and issues post with no

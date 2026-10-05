@@ -107,6 +107,10 @@ export interface PostMovementInput {
 export interface ReverseMovementInput {
   operationKey: string;
   movementDate?: Date | undefined;
+  /** Acknowledgement of the backdating warning (OD-VAL-10). */
+  backdateConfirmed?: boolean | undefined;
+  /** The SECOND explicit choice a backdated reversal needs (OD-VAL-11). */
+  repricing?: string | null | undefined;
 }
 
 /**
@@ -304,6 +308,15 @@ export class InventoryMovementsService {
       backdateConfirmed: input.backdateConfirmed === true,
       repricing,
     });
+    if (backdating.repricing === 'recalculate') {
+      // Choosing repricing is an accounting authority, not a warehouse side
+      // effect. Check it BEFORE committing the quantity fact; otherwise a
+      // caller who lacks Recalculate could create stock and then fail on the
+      // second transaction.
+      await this.authorization.requireAllPermissions([
+        VALUATION_PERMISSIONS.RECALCULATE,
+      ]);
+    }
 
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
@@ -452,10 +465,19 @@ export class InventoryMovementsService {
     }
 
     const movementDate = input.movementDate ?? new Date();
+    if (movementDate.getTime() < original.movementDate.getTime()) {
+      throw AppException.businessRule(
+        'A reversal cannot be dated before the movement it reverses. Use a date on or after the original movement date.',
+        { code: 'inventory.reversal_date_before_original' },
+      );
+    }
+    const repricing = parseRepricing(input.repricing);
     const requestHash = buildRequestHash('movement_reversal', {
       movementId: original.id,
       // Same determinism rule as posting: hash the client date intent, never
-      // the server's defaulted clock (a dateless retry must replay).
+      // the server's defaulted clock (a dateless retry must replay). The
+      // backdating answers are excluded for the same reason as plain postings:
+      // they are decisions about this reversal, not a different reversal.
       movementDate: canonicalClientDate(input.movementDate),
     });
     const replay = await this.replayOrReject(
@@ -495,6 +517,20 @@ export class InventoryMovementsService {
       original.warehouseId,
       original.itemId,
     );
+    const backdating = await this.valuation.requireBackdateDecisions({
+      organizationId: original.organizationId,
+      warehouseId: original.warehouseId,
+      itemId: original.itemId,
+      movementDate,
+      latestMovementDate,
+      backdateConfirmed: input.backdateConfirmed === true,
+      repricing,
+    });
+    if (backdating.repricing === 'recalculate') {
+      await this.authorization.requireAllPermissions([
+        VALUATION_PERMISSIONS.RECALCULATE,
+      ]);
+    }
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
     const movementId = generateId();
@@ -543,9 +579,7 @@ export class InventoryMovementsService {
         valuation: {
           method: valuationMethod.method,
           knownValue: null,
-          backdated:
-            latestMovementDate !== null &&
-            movementDate.getTime() < latestMovementDate.getTime(),
+          backdated: backdating.backdated,
         },
       });
       await publishEvent(this.events, {
@@ -573,8 +607,18 @@ export class InventoryMovementsService {
         },
         InventoryMovementsService.name,
       );
+      const current =
+        backdating.backdated && backdating.repricing === 'recalculate'
+          ? await this.repriceAfterBackdatedPost({
+              organizationId: movement.organizationId,
+              warehouseId: movement.warehouseId,
+              itemId: movement.itemId,
+              operationKey,
+              movementId: movement.id,
+            })
+          : movement;
       return toInventoryMovementDto(
-        movement,
+        current,
         await this.valuation.canViewCost(),
       );
     } catch (error) {
@@ -657,7 +701,7 @@ export class InventoryMovementsService {
       itemId: params.itemId,
       operationKey: `${params.operationKey}:reprice`.slice(0, 128),
       trigger: 'backdated_document',
-      reason: 'Repricing requested with a backdated posting.',
+      reason: 'Repricing requested with a backdated inventory operation.',
     });
     const refreshed = await this.movements.findById(params.movementId);
     if (refreshed === null) {

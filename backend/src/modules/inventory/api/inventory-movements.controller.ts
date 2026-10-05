@@ -143,7 +143,7 @@ export class InventoryMovementsController {
   })
   @ApiUnprocessableEntityResponse({
     description:
-      'The reversal date precedes the original movement, or the reversal would violate the negative-stock policy.',
+      'The reversal date precedes the original movement, a backdated reversal lacks the required confirmation or repricing choice, a configured valuation method is not implemented, or the reversal would violate the negative-stock policy.',
   })
   @ApiNotFoundResponse({ description: 'Movement does not exist.' })
   @ApiBadRequestResponse({ description: 'Validation failed.' })
@@ -155,6 +155,8 @@ export class InventoryMovementsController {
     return this.movements.reverseMovement(scope.organizationId, id, {
       operationKey: body.operationKey,
       movementDate: body.movementDate,
+      backdateConfirmed: body.backdateConfirmed,
+      repricing: body.repricing,
     });
   }
 }
