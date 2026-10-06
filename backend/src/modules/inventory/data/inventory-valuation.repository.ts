@@ -18,7 +18,10 @@ import {
 } from '../domain/inventory-valuation.js';
 import { isMovementType } from '../domain/movement-type.js';
 import type { MovementType } from '../domain/movement-type.js';
-import { foldPreservedPosition } from '../domain/valuation-compensation.js';
+import {
+  foldPreservedPosition,
+  toCompensationFacts,
+} from '../domain/valuation-compensation.js';
 import type { ReplayFact } from '../domain/valuation-replay.js';
 import {
   AmbiguousValuationMethodError,
@@ -491,23 +494,27 @@ export class InventoryValuationRepository {
       });
     }
 
-    // Fold the SURVIVING facts (the rows above are now unvalued in memory
-    // too) — the pre-run position, honestly, without repricing anything.
+    // Fold the SURVIVING facts into the pre-run position, honestly, without
+    // repricing anything. `rows` is the PRE-update snapshot by design (it was
+    // read before the updates above), so the fold input MUST be derived
+    // through `toCompensationFacts` with the ORIGINAL run id: that is what
+    // turns the rows this transaction just un-valued into the `null`-value
+    // facts they are from now on. Folding the raw snapshot instead would keep
+    // counting the erased values and produce the post-run position — the
+    // stale-snapshot defect this guards against (C-59 correction sprint,
+    // axis 1).
     const position = foldPreservedPosition(
-      rows.map((row) => ({
-        movementType: toMovementType(row.id, row.movementType),
-        baseQuantity: decimalToString(row.baseQuantity),
-        totalCost:
-          row.valuationRunId === input.compensatingRunId
-            ? null
-            : row.totalCost === null
-              ? null
-              : decimalToString(row.totalCost),
-        valuationSource:
-          row.valuationRunId === input.compensatingRunId
-            ? null
-            : toSource(row.id, row.valuationSource),
-      })),
+      toCompensationFacts(
+        rows.map((row) => ({
+          movementType: toMovementType(row.id, row.movementType),
+          baseQuantity: decimalToString(row.baseQuantity),
+          totalCost:
+            row.totalCost === null ? null : decimalToString(row.totalCost),
+          valuationSource: toSource(row.id, row.valuationSource),
+          valuationRunId: row.valuationRunId,
+        })),
+        input.originalRunId,
+      ),
     );
 
     const create: ValuationRunCreate = {

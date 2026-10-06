@@ -728,7 +728,10 @@ export class InventoryBusinessDocumentsService {
     };
     // Re-resolve every reference and conversion at finalize time: master
     // data may have been disabled, or a conversion version may have changed,
-    // since the draft was typed.
+    // since the draft was typed. The stored basis movement id travels with
+    // the line (C-59D OD-RET-01): without it a finalized return would post
+    // basis-less — unvalued instead of mirrored from its receipt, and the
+    // over-return bound gone (the correction sprint's axis-3 finding).
     const resolved = await this.resolveLines({
       organizationId,
       kind: current.kind,
@@ -738,6 +741,7 @@ export class InventoryBusinessDocumentsService {
         itemId: line.itemId,
         quantity: line.quantity,
         unitId: line.unitId,
+        basisMovementId: line.basisMovementId,
       })),
       existingIds: current.lines.map((line) => line.id),
     });

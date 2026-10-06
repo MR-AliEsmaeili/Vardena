@@ -54,7 +54,9 @@ import {
   subtractDecimalStrings,
 } from './quantities.js';
 
-/** One movement as the compensation fold sees it: quantity + current value. */
+/**
+ * One movement as the compensation fold sees it: quantity + current value.
+ */
 export interface CompensationFact {
   movementType: MovementType;
   /** SIGNED base-unit effect (+in / −out), straight off the ledger row. */
@@ -63,6 +65,54 @@ export interface CompensationFact {
   totalCost: string | null;
   /** The movement's current valuation source, when it carries a value. */
   valuationSource: ValuationSource | null;
+}
+
+/**
+ * One movement row as the reverse reads it from the database — INCLUDING the
+ * stale half of the reverse itself: `reverseRunWithin` reads the key's rows,
+ * un-values the ones the original run valued, and then folds FROM THE
+ * ALREADY-READ SNAPSHOT (the read happened before the update, by design —
+ * re-reading would be a second query for data this transaction just wrote).
+ *
+ * `toCompensationFacts` is the bridge that makes that snapshot honest: a row
+ * whose `valuationRunId` is the run being reversed is the post-update
+ * `unvalued` fact it BECOMES in this transaction — its value is passed to the
+ * fold as `null`, never as the value the update just erased. Everything else
+ * (survivors, previously-reversed rows, never-valued rows) passes through
+ * verbatim.
+ */
+export interface CompensationSnapshotRow {
+  movementType: MovementType;
+  baseQuantity: string;
+  totalCost: string | null;
+  valuationSource: ValuationSource | null;
+  /**
+   * The per-key run that last valued this row, straight off the snapshot.
+   * Rows the run being reversed valued carry that run's id — regardless of
+   * what the database update in flight is writing onto them.
+   */
+  valuationRunId: string | null;
+}
+
+/**
+ * Build the fold's facts from the pre-update snapshot, treating every row the
+ * reversed run valued as the unvalued fact it becomes in the same
+ * transaction. Pure — the single place the reverse's fold input is derived,
+ * so it is unit-testable without a database.
+ */
+export function toCompensationFacts(
+  rows: readonly CompensationSnapshotRow[],
+  reversedRunId: string,
+): CompensationFact[] {
+  return rows.map((row) => {
+    const reversedByThisRun = row.valuationRunId === reversedRunId;
+    return {
+      movementType: row.movementType,
+      baseQuantity: row.baseQuantity,
+      totalCost: reversedByThisRun ? null : row.totalCost,
+      valuationSource: reversedByThisRun ? null : row.valuationSource,
+    };
+  });
 }
 
 function magnitude(value: string): string {

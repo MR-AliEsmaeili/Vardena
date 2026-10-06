@@ -712,6 +712,14 @@ export interface PricingRunWhere {
   organizationId?: string;
   warehouseId?: string | null;
   kind?: string;
+  /**
+   * C-59 correction sprint (failed-key progression): the from-date lookup
+   * filters on the completion counters — `keysFailed: 0` selects only fully
+   * completed runs.
+   */
+  keysFailed?: number;
+  /** `null` selects runs that have NOT been reversed. */
+  reversedByRunId?: string | null;
 }
 
 export interface PricingRunDelegate {

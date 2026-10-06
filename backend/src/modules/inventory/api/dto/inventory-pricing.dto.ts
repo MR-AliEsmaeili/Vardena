@@ -218,7 +218,7 @@ export class PricingRunResponseDto {
     format: 'date-time',
     nullable: true,
     description:
-      'The run\u2019s automatic range start (exclusive): immediately after the previous completed run for the same scope, or null when this scope\u2019s first run.',
+      'The run\u2019s automatic range start (exclusive): immediately after the previous COMPLETED run for the same scope (every key priced, not reversed since), or null when no run of this scope has fully completed yet. A run with failed keys does not advance the boundary — the next run re-covers its window so the failed key is retried, never skipped.',
   })
   fromDate!: string | null;
 

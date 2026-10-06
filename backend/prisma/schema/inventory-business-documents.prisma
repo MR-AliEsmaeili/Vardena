@@ -151,8 +151,12 @@ model InventoryPricingRun {
   /// code-defined vocabulary — typed enough to query, never an EAV surface.
   documentKinds  String[] @map("document_kinds")
   /// Half-open range lower bound (EXCLUSIVE); NULL = from the beginning of
-  /// history. AUTOMATIC (OD-PDP-01): immediately after the last completed
-  /// run for the same scope — the operator never chooses it.
+  /// history. AUTOMATIC (OD-PDP-01): immediately after the last COMPLETED
+  /// run for the same scope — the operator never chooses it. "Completed"
+  /// means every key priced (`keys_failed = 0`) and not reversed since: a
+  /// partially-failed or reversed run does not advance the boundary, so the
+  /// next run re-covers its window (failed keys are retried, never
+  /// silently skipped past).
   fromDate       DateTime? @map("from_date") @db.Timestamptz(6)
   /// Range upper bound (INCLUSIVE); the operator's choice (OD-PDP-01).
   toDate         DateTime @map("to_date") @db.Timestamptz(6)

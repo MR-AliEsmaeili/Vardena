@@ -1764,4 +1764,44 @@ e2e spec asserting it).
   permissions 4→6).
 - **Status:** READY FOR REVIEW — implementation complete, CI green,
   dedicated new-behavior tests still owed (named above). NOT ACCEPTED
-  (Owner review required).
+  (Owner review required). The dedicated-tests debt was closed the same
+  day by the correction sprint — see §24.
+
+## 24. C-59 Correction Sprint — Audit, Fixes, Dedicated Tests & Live Concurrency Evidence (2026-10-07)
+
+- **Scope delivered (backend, branch `arena/99c8b15c-vardena`):** the owner's
+  five-axis correction sprint on PR #126. Three real defects found by auditing
+  the code and fixed: (1) Reverse Pricing folded the pre-update snapshot raw,
+  producing the post-run position instead of the pre-run fold — fixed by the
+  pure `toCompensationFacts` bridge in `domain/valuation-compensation.ts`;
+  (2) a run with failed keys (or a reversed run) advanced the scope's
+  from-date, permanently skipping the failed movements — fixed by the
+  completed-run definition in `findLastRunForScope`
+  (`keysFailed = 0 AND reversedByRunId IS NULL`; re-cover is safe because
+  whole-key replay is idempotent); (3) `finalizeDocument` dropped
+  `basisMovementId` when re-resolving lines, so drafted basis-linked returns
+  posted basis-less — fixed to carry the basis like `updateDocument` already
+  did. Audited-and-proven-correct (no fix, per instruction): transfer-leg
+  replay preservation, all reverse guards, both commands' idempotency,
+  quantity invariance, lock ordering.
+- **Domain clarification (recorded in the report, not a new policy):** the
+  completed-run definition operationalizes OD-PDP-01's existing "last
+  completed run" wording. Details in
+  `docs/tasks/c-59-correction-sprint-report.md` §5.
+- **Dedicated tests (three levels):** +40 unit tests
+  (`valuation-compensation.spec.ts` 9, `inventory-pricing.service.spec.ts`
+  18, thirteen returns tests in the business-documents spec) and a new
+  16-test live suite `test/inventory-pricing-live.e2e-spec.ts` covering both
+  axes end-to-end on real PostgreSQL, the four concurrency scenarios
+  (pricing↔pricing, pricing↔reverse, post↔reverse, reverse↔reverse — one
+  domain outcome each, no duplicate/torn artifacts, no deadlock), accounting
+  eligibility/immutability, and the full receipt → issue → returns →
+  transfer → pricing → accounting-post pipeline.
+- **Verified locally:** `tsc --noEmit` clean, oxlint 0 errors (1
+  pre-existing warning on main), prettier clean, unit suite **138 files /
+  1742 tests PASS** (was 136/1702), hermetic e2e 369 passed. Live suites
+  opt-in via `VARDENA_TEST_DATABASE_URL` — CI is authoritative for the
+  live-Postgres axis (no Postgres/Docker in the sandbox).
+- **CI:** see the PR checks for this sprint's head commit; the prior head
+  `30ca7b2` was green (runs 37537658703 / 37538284793).
+- **Status:** see the sprint report's single verdict.

@@ -24,6 +24,7 @@ import type { InventoryBusinessDocumentsRepository } from '../data/inventory-bus
 import type { UnitConversionsRepository } from '../data/unit-conversions.repository.js';
 import { InsufficientStockError } from '../data/inventory-posting-errors.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
+import { negateMoney } from '../domain/money.js';
 import {
   addDecimalStrings,
   compareDecimalStrings,
@@ -152,6 +153,7 @@ interface MovementRow {
   operationKey: string;
   totalCost: string | null;
   valuationStatus: string;
+  valuationSource: string | null;
 }
 
 class FakeWorld {
@@ -164,6 +166,15 @@ class FakeWorld {
   operations = new Set<string>();
   /** Set by a test to make the NEXT ledger write explode (rollback proof). */
   failNextPosting: string | null = null;
+  /**
+   * The fake valuation state the posting fake reads to value a basis-less
+   * sales return at the CURRENT average (rule 9) — mirrors the real
+   * `valueMovement`/`applyMovement` composition.
+   */
+  valuationView: () => {
+    valuedQuantity: string;
+    totalValue: string;
+  } | null = () => null;
 
   snapshot() {
     return {
@@ -280,7 +291,12 @@ function fakeDocumentsRepository(
       warehouseId: row.warehouseId,
       sourceWarehouseId: row.sourceWarehouseId,
       destinationWarehouseId: row.destinationWarehouseId,
-      cost: row.kind === 'receipt' ? row.receiptCost : null,
+      // The domain exposes the entered amount on receipts AND sales
+      // returns (a Manual Price, OD-RET-06); other kinds stay null.
+      cost:
+        row.kind === 'receipt' || row.kind === 'sales_return'
+          ? row.receiptCost
+          : null,
     };
     return base as never;
   };
@@ -321,8 +337,37 @@ function fakeDocumentsRepository(
   return {
     async withTransaction(work: (tx: never) => Promise<unknown>) {
       const snapshot = world.snapshot();
+      // The tx handle supports the raw basis-movement lock
+      // (`lockMovementRow`) the return posting path takes for real — so
+      // the locked read is observable, not mocked away.
+      const tx = {
+        async $queryRaw(
+          strings: TemplateStringsArray,
+          ...values: unknown[]
+        ): Promise<unknown[]> {
+          const sql = strings.join('?');
+          if (!sql.includes('inventory_movements')) {
+            throw new Error(
+              `TEST DOUBLE: unexpected raw SQL: ${sql.slice(0, 60)}`,
+            );
+          }
+          const movementId = values[0] as string;
+          const row = world.movements.get(movementId);
+          return row === undefined
+            ? []
+            : [
+                {
+                  id: row.id,
+                  totalCost: row.totalCost,
+                  valuationStatus: row.valuationStatus,
+                  valuationSource: row.valuationSource,
+                  baseQuantity: row.baseQuantity,
+                },
+              ];
+        },
+      };
       try {
-        return await work({ tx: true } as never);
+        return await work(tx as never);
       } catch (error) {
         world.restore(snapshot);
         throw error;
@@ -505,6 +550,7 @@ function fakeMovementsRepository(
     movement: Record<string, unknown>,
     allowNegative: boolean,
     totalCost: string | null,
+    valuationSource: string | null = null,
   ): MovementRow => {
     world.maybeFail('posting');
     const row: MovementRow = {
@@ -529,6 +575,7 @@ function fakeMovementsRepository(
       operationKey: movement['operationKey'] as string,
       totalCost,
       valuationStatus: totalCost === null ? 'unvalued' : 'valued',
+      valuationSource,
     };
     world.applyDelta(
       row.warehouseId,
@@ -570,11 +617,49 @@ function fakeMovementsRepository(
         organizationId: string;
         operationKey: string;
       };
-      const valuation = input['valuation'] as { knownValue: string | null };
+      const valuation = input['valuation'] as {
+        knownValue: string | null;
+        knownValueSource?: string;
+        forceUnvalued?: boolean;
+      };
+      if (valuation.forceUnvalued === true && valuation.knownValue !== null) {
+        throw new Error(
+          'TEST DOUBLE: forceUnvalued with a known value is contradictory.',
+        );
+      }
+      const movementInput = input['movement'] as Record<string, unknown>;
+      let knownValue = valuation.knownValue;
+      let knownValueSource = valuation.knownValueSource ?? null;
+      if (
+        knownValue === null &&
+        movementInput['movementType'] === 'sales_return'
+      ) {
+        // Rule 9: a basis-less sales return re-enters at the CURRENT
+        // average (share of the pool's value), never at a sales price.
+        const view = world.valuationView();
+        if (view !== null && view.valuedQuantity !== '0') {
+          const share = Math.round(
+            (Number(view.totalValue) / Number(view.valuedQuantity)) *
+              Number(movementInput['baseQuantity'] as string) *
+              100,
+          );
+          knownValue = (share / 100).toFixed(2).replace(/\.?0+$/, '');
+          knownValueSource = 'average_cost';
+        }
+      }
+      if (
+        knownValue !== null &&
+        (movementInput['baseQuantity'] as string).startsWith('-')
+      ) {
+        // The strategy stores outbound values NEGATIVE (a signed mirror of
+        // baseQuantity), whatever sign the caller's knownValue carried.
+        knownValue = negateMoney(knownValue);
+      }
       const movement = insert(
-        input['movement'] as Record<string, unknown>,
+        movementInput,
         input['allowNegative'] === true,
-        valuation.knownValue,
+        knownValue,
+        knownValueSource,
       );
       world.useKey(operation.organizationId, operation.operationKey);
       return { movement, balance: {} };
@@ -629,6 +714,8 @@ interface ValuationOptions {
   backdated?: boolean;
   /** Make the in-transaction repricing refuse, to prove the rollback. */
   repricingFails?: boolean;
+  /** Simulate a key with no valued stock (sales-return cold start). */
+  noValuedStock?: boolean;
 }
 
 function fakeValuation(
@@ -638,6 +725,16 @@ function fakeValuation(
   return {
     async canViewCost() {
       return options.canViewCost ?? true;
+    },
+    async findValuationState() {
+      if (options.noValuedStock === true) {
+        return { valuedQuantity: '0', uncostedQuantity: '0', totalValue: '0' };
+      }
+      return {
+        valuedQuantity: '100',
+        uncostedQuantity: '0',
+        totalValue: '1000',
+      };
     },
     async resolveMethodForPosting() {
       return { method: 'moving_weighted_average', source: 'default' };
@@ -680,6 +777,7 @@ interface BuildOptions {
   canViewCost?: boolean;
   backdated?: boolean;
   repricingFails?: boolean;
+  noValuedStock?: boolean;
 }
 
 async function buildFixture(options: BuildOptions = {}) {
@@ -776,6 +874,10 @@ async function buildFixture(options: BuildOptions = {}) {
   );
 
   const world = new FakeWorld();
+  world.valuationView = () =>
+    options.noValuedStock === true
+      ? { valuedQuantity: '0', totalValue: '0' }
+      : { valuedQuantity: '100', totalValue: '1000' };
   const recalculations: string[] = [];
   const allocations = new Map<string, string>();
   let serial = 0;
@@ -854,6 +956,37 @@ async function buildFixture(options: BuildOptions = {}) {
       name: 'Second',
     })
   ).id;
+  const otherOrgUnitId = (
+    await units.createUnit({
+      organizationId: otherOrganizationId,
+      code: 'EA-OTHER',
+      name: 'Other Each',
+    })
+  ).id;
+  const otherOrgItemId = (
+    await items.createItem({
+      organizationId: otherOrganizationId,
+      code: 'ITM-OTHER',
+      name: 'Other Org Widget',
+      itemKind: 'goods',
+      baseUnitId: otherOrgUnitId,
+    })
+  ).id;
+  const otherOrgBranchId = (
+    await branches.createBranch({
+      organizationId: otherOrganizationId,
+      code: 'B-OTHER',
+      name: 'Other Branch',
+    })
+  ).id;
+  const otherOrgWarehouseId = (
+    await warehouses.createWarehouse({
+      organizationId: otherOrganizationId,
+      branchId: otherOrgBranchId,
+      code: 'WH-OTHER',
+      name: 'Other Org Main',
+    })
+  ).id;
 
   return {
     service,
@@ -872,6 +1005,9 @@ async function buildFixture(options: BuildOptions = {}) {
     otherItemId,
     warehouseId,
     otherWarehouseId,
+    otherOrgWarehouseId,
+    otherOrgItemId,
+    otherOrgUnitId,
   };
 }
 
@@ -1844,5 +1980,589 @@ describe('C-58 runtime — cancellation / correction (OQ-54)', () => {
     expect(fixture.world.onHand(fixture.otherWarehouseId, fixture.itemId)).toBe(
       '0',
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C-59D returns — dedicated coverage (OD-RET-01…07)
+// ---------------------------------------------------------------------------
+
+async function finalizedReceiptMovement(
+  fixture: Fixture,
+  overrides: { quantity?: string; cost?: string } = {},
+): Promise<{ documentId: string; movementId: string }> {
+  const receipt = await asActor(() =>
+    createReceipt(fixture, {
+      quantity: overrides.quantity ?? '10',
+      ...(overrides.cost === undefined ? {} : { cost: overrides.cost }),
+    }),
+  );
+  await asActor(() =>
+    fixture.service.finalizeDocument(receipt.id, fixture.organizationId, {}),
+  );
+  const document = await asActor(() =>
+    fixture.service.getDocument(receipt.id, fixture.organizationId),
+  );
+  return { documentId: receipt.id, movementId: document.lines[0]!.movementId! };
+}
+
+async function finalizedIssueMovement(
+  fixture: Fixture,
+  quantity: string,
+): Promise<string> {
+  const issue = await asActor(() =>
+    fixture.service.createDraft({
+      organizationId: fixture.organizationId,
+      kind: 'issue',
+      warehouseId: fixture.warehouseId,
+      lines: [{ itemId: fixture.itemId, quantity, unitId: fixture.unitId }],
+    }),
+  );
+  await asActor(() =>
+    fixture.service.finalizeDocument(issue.id, fixture.organizationId, {}),
+  );
+  const document = await asActor(() =>
+    fixture.service.getDocument(issue.id, fixture.organizationId),
+  );
+  return document.lines[0]!.movementId!;
+}
+
+describe('C-59D purchase returns (OD-RET-01…05)', () => {
+  let fixture: Fixture;
+  beforeEach(async () => {
+    fixture = await buildFixture();
+  });
+
+  it('mirrors the basis receipt\u2019s own value exactly on a full-quantity return (never the average)', async () => {
+    const { movementId } = await finalizedReceiptMovement(fixture, {
+      quantity: '10',
+      cost: '150',
+    });
+    const stockBefore = fixture.world.onHand(
+      fixture.warehouseId,
+      fixture.itemId,
+    );
+
+    const purchaseReturn = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'purchase_return',
+        warehouseId: fixture.warehouseId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            quantity: '10',
+            unitId: fixture.unitId,
+            basisMovementId: movementId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.finalizeDocument(
+        purchaseReturn.id,
+        fixture.organizationId,
+        {},
+      ),
+    );
+
+    const movement = fixture.world.movements.get(
+      (
+        await asActor(() =>
+          fixture.service.getDocument(
+            purchaseReturn.id,
+            fixture.organizationId,
+          ),
+        )
+      ).lines[0]!.movementId!,
+    )!;
+    expect(movement.movementType).toBe('purchase_return');
+    expect(movement.baseQuantity).toBe('-10');
+    expect(movement.totalCost).toBe('-150');
+    expect(movement.valuationStatus).toBe('valued');
+    expect(movement.valuationSource).toBe('return_basis');
+    // Stock decreased by exactly the returned quantity.
+    expect(fixture.world.onHand(fixture.warehouseId, fixture.itemId)).toBe(
+      addDecimalStrings(stockBefore, '-10'),
+    );
+    // The basis receipt is untouched.
+    expect(fixture.world.movements.get(movementId)!.totalCost).toBe('150');
+  });
+
+  it('carries the exact pro-rated share on a partial return (one division, one rounding)', async () => {
+    const { movementId } = await finalizedReceiptMovement(fixture, {
+      quantity: '4',
+      cost: '100',
+    });
+    const purchaseReturn = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'purchase_return',
+        warehouseId: fixture.warehouseId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            quantity: '3',
+            unitId: fixture.unitId,
+            basisMovementId: movementId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.finalizeDocument(
+        purchaseReturn.id,
+        fixture.organizationId,
+        {},
+      ),
+    );
+    const movement = fixture.world.movements.get(
+      (
+        await asActor(() =>
+          fixture.service.getDocument(
+            purchaseReturn.id,
+            fixture.organizationId,
+          ),
+        )
+      ).lines[0]!.movementId!,
+    )!;
+    // 100 × 3 / 4 = 75 exactly — the mirrored share, not the average.
+    expect(movement.totalCost).toBe('-75');
+    expect(movement.valuationSource).toBe('return_basis');
+  });
+
+  it('honours an unvalued basis as NO value — never zero, never the average (OD-RET-04)', async () => {
+    const { movementId } = await finalizedReceiptMovement(fixture, {
+      quantity: '10',
+    });
+    const purchaseReturn = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'purchase_return',
+        warehouseId: fixture.warehouseId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            quantity: '5',
+            unitId: fixture.unitId,
+            basisMovementId: movementId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.finalizeDocument(
+        purchaseReturn.id,
+        fixture.organizationId,
+        {},
+      ),
+    );
+    const movement = fixture.world.movements.get(
+      (
+        await asActor(() =>
+          fixture.service.getDocument(
+            purchaseReturn.id,
+            fixture.organizationId,
+          ),
+        )
+      ).lines[0]!.movementId!,
+    )!;
+    expect(movement.totalCost).toBeNull();
+    expect(movement.valuationStatus).toBe('unvalued');
+    expect(movement.baseQuantity).toBe('-5');
+  });
+
+  it('refuses an over-return against the committed basis (over_return)', async () => {
+    const { movementId } = await finalizedReceiptMovement(fixture, {
+      quantity: '10',
+      cost: '150',
+    });
+    const over = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'purchase_return',
+        warehouseId: fixture.warehouseId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            quantity: '11',
+            unitId: fixture.unitId,
+            basisMovementId: movementId,
+          },
+        ],
+      }),
+    );
+    await expect(
+      asActor(() =>
+        fixture.service.finalizeDocument(over.id, fixture.organizationId, {}),
+      ),
+    ).rejects.toMatchObject({
+      details: { code: 'inventory.return.over_return' },
+    });
+    expect(fixture.world.onHand(fixture.warehouseId, fixture.itemId)).toBe(
+      '10',
+    );
+
+    // Two PARTIAL returns that together exceed the basis are refused too.
+    const first = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'purchase_return',
+        warehouseId: fixture.warehouseId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            quantity: '6',
+            unitId: fixture.unitId,
+            basisMovementId: movementId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.finalizeDocument(first.id, fixture.organizationId, {}),
+    );
+    const second = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'purchase_return',
+        warehouseId: fixture.warehouseId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            quantity: '6',
+            unitId: fixture.unitId,
+            basisMovementId: movementId,
+          },
+        ],
+      }),
+    );
+    await expect(
+      asActor(() =>
+        fixture.service.finalizeDocument(second.id, fixture.organizationId, {}),
+      ),
+    ).rejects.toMatchObject({
+      details: { code: 'inventory.return.over_return' },
+    });
+    // Only the first 6 left the warehouse.
+    expect(fixture.world.onHand(fixture.warehouseId, fixture.itemId)).toBe('4');
+  });
+
+  it('refuses a basis that is not the same item\u2019s originating RECEIPT movement', async () => {
+    const { movementId } = await finalizedReceiptMovement(fixture, {
+      quantity: '10',
+      cost: '150',
+    });
+    const issueMovementId = await finalizedIssueMovement(fixture, '2');
+    // Based on an ISSUE movement: wrong direction.
+    await expect(
+      asActor(() =>
+        fixture.service.createDraft({
+          organizationId: fixture.organizationId,
+          kind: 'purchase_return',
+          warehouseId: fixture.warehouseId,
+          lines: [
+            {
+              itemId: fixture.itemId,
+              quantity: '1',
+              unitId: fixture.unitId,
+              basisMovementId: issueMovementId,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      details: [{ code: 'basisMovementTypeMismatch' }],
+    });
+    // Based on ANOTHER item's receipt: not evidence about this line.
+    await expect(
+      asActor(() =>
+        fixture.service.createDraft({
+          organizationId: fixture.organizationId,
+          kind: 'purchase_return',
+          warehouseId: fixture.warehouseId,
+          lines: [
+            {
+              itemId: fixture.otherItemId,
+              quantity: '1',
+              unitId: fixture.unitId,
+              basisMovementId: movementId,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      details: [{ code: 'basisItemMismatch' }],
+    });
+  });
+
+  it('refuses a basis movement of another organization (no disclosure, no cross-org evidence)', async () => {
+    // A receipt in the OTHER organization.
+    const otherReceipt = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.otherOrganizationId,
+        kind: 'receipt',
+        warehouseId: fixture.otherOrgWarehouseId,
+        lines: [
+          {
+            itemId: fixture.otherOrgItemId,
+            quantity: '5',
+            unitId: fixture.otherOrgUnitId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.finalizeDocument(
+        otherReceipt.id,
+        fixture.otherOrganizationId,
+        {},
+      ),
+    );
+    const otherDocument = await asActor(() =>
+      fixture.service.getDocument(otherReceipt.id, fixture.otherOrganizationId),
+    );
+    const otherMovementId = otherDocument.lines[0]!.movementId!;
+
+    await expect(
+      asActor(() =>
+        fixture.service.createDraft({
+          organizationId: fixture.organizationId,
+          kind: 'purchase_return',
+          warehouseId: fixture.warehouseId,
+          lines: [
+            {
+              itemId: fixture.itemId,
+              quantity: '1',
+              unitId: fixture.unitId,
+              basisMovementId: otherMovementId,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      details: [{ code: 'basisMovementNotFound' }],
+    });
+  });
+
+  it('refuses a commercial amount on a purchase return — the exit value is never an invoice price', async () => {
+    await expect(
+      asActor(() =>
+        fixture.service.createDraft({
+          organizationId: fixture.organizationId,
+          kind: 'purchase_return',
+          warehouseId: fixture.warehouseId,
+          cost: '99',
+          lines: [
+            { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      details: [{ field: 'cost', code: 'costNotAcceptedForDocumentKind' }],
+    });
+  });
+});
+
+describe('C-59D sales returns (OD-RET-06/07)', () => {
+  let fixture: Fixture;
+  beforeEach(async () => {
+    fixture = await buildFixture();
+  });
+
+  it('books a basis-linked return at the EXPLICIT amount (a Manual Price), not at the sales price or the average', async () => {
+    await finalizedReceiptMovement(fixture, {
+      quantity: '100',
+      cost: '1000',
+    });
+    const issueMovementId = await finalizedIssueMovement(fixture, '40');
+    const stockBefore = fixture.world.onHand(
+      fixture.warehouseId,
+      fixture.itemId,
+    );
+
+    const salesReturn = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'sales_return',
+        warehouseId: fixture.warehouseId,
+        cost: '120',
+        lines: [
+          {
+            itemId: fixture.itemId,
+            quantity: '10',
+            unitId: fixture.unitId,
+            basisMovementId: issueMovementId,
+          },
+        ],
+      }),
+    );
+    await asActor(() =>
+      fixture.service.finalizeDocument(
+        salesReturn.id,
+        fixture.organizationId,
+        {},
+      ),
+    );
+
+    const movement = fixture.world.movements.get(
+      (
+        await asActor(() =>
+          fixture.service.getDocument(salesReturn.id, fixture.organizationId),
+        )
+      ).lines[0]!.movementId!,
+    )!;
+    expect(movement.movementType).toBe('sales_return');
+    expect(movement.baseQuantity).toBe('10');
+    expect(movement.totalCost).toBe('120');
+    expect(movement.valuationStatus).toBe('valued');
+    expect(movement.valuationSource).toBe('entered');
+    expect(fixture.world.onHand(fixture.warehouseId, fixture.itemId)).toBe(
+      addDecimalStrings(stockBefore, '10'),
+    );
+  });
+
+  it('refuses an explicit amount on a line without a basis (sales_return_amount_requires_basis)', async () => {
+    // The draft itself is refused (the ledger-boundary re-assert in
+    // postDocumentEffect is the defense-in-depth backstop).
+    await expect(
+      asActor(() =>
+        fixture.service.createDraft({
+          organizationId: fixture.organizationId,
+          kind: 'sales_return',
+          warehouseId: fixture.warehouseId,
+          cost: '50',
+          lines: [
+            { itemId: fixture.itemId, quantity: '2', unitId: fixture.unitId },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'inventory.document.sales_return_amount_requires_basis',
+    });
+    expect(fixture.world.movements.size).toBe(0);
+  });
+
+  it('without an amount, posts unvalued and reprices the key at the CURRENT average', async () => {
+    await finalizedReceiptMovement(fixture, {
+      quantity: '100',
+      cost: '1000',
+    });
+    const issueMovementId = await finalizedIssueMovement(fixture, '40');
+
+    const salesReturn = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'sales_return',
+        warehouseId: fixture.warehouseId,
+        lines: [
+          {
+            itemId: fixture.itemId,
+            quantity: '10',
+            unitId: fixture.unitId,
+            basisMovementId: issueMovementId,
+          },
+        ],
+      }),
+    );
+    fixture.recalculations.length = 0;
+    await asActor(() =>
+      fixture.service.finalizeDocument(
+        salesReturn.id,
+        fixture.organizationId,
+        {},
+      ),
+    );
+
+    const movement = fixture.world.movements.get(
+      (
+        await asActor(() =>
+          fixture.service.getDocument(salesReturn.id, fixture.organizationId),
+        )
+      ).lines[0]!.movementId!,
+    )!;
+    // No manual amount: the return re-enters at the CURRENT average — the
+    // pool is 100 units at 1000, so 10 units carry 100 of inventory cost —
+    // never at the sales price and never at zero (rule 9 / OD-RET-05).
+    expect(movement.totalCost).toBe('100');
+    expect(movement.valuationStatus).toBe('valued');
+    expect(movement.valuationSource).toBe('average_cost');
+    expect(movement.baseQuantity).toBe('10');
+  });
+
+  it('refuses a basis-less amount-free sales return on a key with no valued stock (cold start, OD-RET-07)', async () => {
+    const cold = await buildFixture({ noValuedStock: true });
+    const draft = await asActor(() =>
+      cold.service.createDraft({
+        organizationId: cold.organizationId,
+        kind: 'sales_return',
+        warehouseId: cold.warehouseId,
+        lines: [{ itemId: cold.itemId, quantity: '1', unitId: cold.unitId }],
+      }),
+    );
+    await expect(
+      asActor(() =>
+        cold.service.finalizeDocument(draft.id, cold.organizationId, {}),
+      ),
+    ).rejects.toMatchObject({
+      details: { code: 'inventory.document.sales_return_cold_start' },
+    });
+    expect(cold.world.movements.size).toBe(0);
+    expect(cold.world.onHand(cold.warehouseId, cold.itemId)).toBe('0');
+  });
+
+  it('requires the basis to be the originating ISSUE movement', async () => {
+    const { movementId } = await finalizedReceiptMovement(fixture, {
+      quantity: '10',
+      cost: '150',
+    });
+    await expect(
+      asActor(() =>
+        fixture.service.createDraft({
+          organizationId: fixture.organizationId,
+          kind: 'sales_return',
+          warehouseId: fixture.warehouseId,
+          lines: [
+            {
+              itemId: fixture.itemId,
+              quantity: '1',
+              unitId: fixture.unitId,
+              basisMovementId: movementId,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      details: [{ code: 'basisMovementTypeMismatch' }],
+    });
+  });
+
+  it('keeps organizations isolated: the other organization\u2019s basis is invisible', async () => {
+    await finalizedReceiptMovement(fixture, {
+      quantity: '100',
+      cost: '1000',
+    });
+    const issueMovementId = await finalizedIssueMovement(fixture, '40');
+    // ORG-B's draft names ORG-A's issue movement as its basis: invisible,
+    // refused at the boundary with no disclosure.
+    await expect(
+      asActor(() =>
+        fixture.service.createDraft({
+          organizationId: fixture.otherOrganizationId,
+          kind: 'sales_return',
+          warehouseId: fixture.otherOrgWarehouseId,
+          lines: [
+            {
+              itemId: fixture.otherOrgItemId,
+              quantity: '1',
+              unitId: fixture.otherOrgUnitId,
+              basisMovementId: issueMovementId,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      details: [{ code: 'basisMovementNotFound' }],
+    });
   });
 });

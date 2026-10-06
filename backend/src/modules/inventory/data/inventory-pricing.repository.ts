@@ -126,6 +126,19 @@ export class InventoryPricingRepository {
    * `to_date` the next run's automatic from-date follows. Scope identity is
    * (organization, warehouse — including the all-warehouses NULL —, exact
    * kind set); different kind sets are different scopes.
+   *
+   * WHAT "COMPLETED" MEANS (C-59 correction sprint, failed-key progression):
+   * a run advances the scope's from-date ONLY when it priced EVERY key it
+   * examined (`keysFailed = 0`) AND has not been reversed since. A run with
+   * failed keys is not a completed run — if it advanced the from-date, the
+   * failed key's in-window movements would fall out of every future scope
+   * and stay unpriced forever, silently. A reversed run likewise does not
+   * advance it: its keys were set back to unvalued/stale and REQUIRE
+   * repricing by a later run that re-covers the range. The next run
+   * therefore re-covers from the last fully-completed boundary; keys that
+   * already priced re-price idempotently (the whole-key replay is
+   * deterministic), and the failed key is retried as soon as its blocker is
+   * resolved. Nothing is ever skipped past.
    */
   async findLastRunForScope(params: {
     organizationId: string;
@@ -133,15 +146,20 @@ export class InventoryPricingRepository {
     documentKinds: readonly string[];
   }): Promise<{ id: string; toDate: Date } | null> {
     const { inventoryPricingRun } = await this.client();
-    // Bounded recent-window scan: the latest runs for the warehouse, then
-    // the most recent one whose EXACT kind set matches — kind sets are part
-    // of the scope identity (OD-PDP-01), so a run over different kinds does
-    // not advance this scope's from-date.
+    // Bounded recent-window scan: the latest COMPLETED runs for the
+    // warehouse, then the most recent one whose EXACT kind set matches —
+    // kind sets are part of the scope identity (OD-PDP-01), so a run over
+    // different kinds does not advance this scope's from-date either. The
+    // window is over-covering by design: if it is exhausted, the fallback
+    // is from the beginning of history, which can only re-price, never
+    // skip.
     const rows = await inventoryPricingRun.findMany({
       where: {
         organizationId: params.organizationId,
         warehouseId: params.warehouseId,
         kind: 'pricing_operation',
+        keysFailed: 0,
+        reversedByRunId: null,
       },
       orderBy: [{ executedAt: 'desc' }],
       skip: 0,

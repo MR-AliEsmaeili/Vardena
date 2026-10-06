@@ -211,7 +211,11 @@ export class InventoryPricingService {
     if (replayed !== null) return replayed;
 
     // OD-PDP-01: the from-date is automatic — immediately after the last
-    // completed run for the EXACT same scope, never chosen.
+    // COMPLETED run for the EXACT same scope, never chosen. "Completed"
+    // means every key priced and not reversed since (see
+    // `findLastRunForScope`): a run with failed keys does not advance the
+    // boundary, so the next run re-covers its window and retries the failed
+    // key instead of silently skipping past its movements.
     const lastRun = await this.pricing.findLastRunForScope({
       organizationId: input.organizationId,
       warehouseId,
