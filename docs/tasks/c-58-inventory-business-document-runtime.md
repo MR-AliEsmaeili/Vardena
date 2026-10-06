@@ -1,7 +1,7 @@
 # C-58 — Inventory business document runtime (Receipt / Issue / Transfer)
 
-Status: **IMPLEMENTED on branch `arena/db3075eb-vardena` — not Owner-accepted**
-Date: 2026-10-06
+Status: **MERGED into `main` by PR #122 at `d0dc286` (2026-10-06) — CI-green, NOT reviewed, NOT Owner-accepted**
+Date: 2026-10-06 · Post-merge verification 2026-10-06: see `docs/decisions/product/C-58-inventory-business-documents.md` § "Post-merge verification" for the three findings (one fixed, two assigned to C-59)
 
 ## 1. Scope
 
@@ -35,8 +35,10 @@ runtime, purchasing/sales, taxpayer integration.
 | OQ-54 / ADR-0040 | **DECIDED edit boundary**, implemented as Load → Validate → Detect side effects → Apply → Reconcile → Optional explicit repricing → Atomic persist. ADR-0040 stays **Proposed**; C-58 does not promote it. |
 | OD-54-05 / OD-VAL-11 | **DECIDED**. A material edit requires `acknowledgeSideEffects` AND an explicit `repricing`; there is no default and `skip` persists an honestly stale valuation. |
 | OD-VAL-10 | **DECIDED**. Backdated finalize requires `backdateConfirmed` plus a repricing answer. |
-| OQ-67 | **OPEN**. Backdated transfers still fail closed; normal (non-backdated) transfers are fully operational. |
-| OQ-68 / OQ-69 | **OPEN**. Reversal keeps the original movement's own value; no per-movement valuation-history table added. |
+| OQ-67 | **RESOLVED 2026-10-06** by PDR-08 / OD-TRF-01…09 — source-side valuation; the implemented non-backdated behaviour matches. Backdated transfers still fail closed, now as a named **implementation gap** (OD-TRF-09, C-59C), no longer an undecided question. |
+| OQ-68 | **RESOLVED 2026-10-06** by PDR-08 / OD-REV-01…08 — the original movement's own value is confirmed as the convention; the implemented behaviour matches. |
+| OQ-69 | **OPEN**. No per-movement valuation-history table added; PDR-07 / OD-VH-01 fixes the architecture (Ledger Authority + Immutable Valuation History) but not the sufficiency question. |
+| PDR-07 / OD-PRC-11 | **DECIDED 2026-10-06, NOT IMPLEMENTED.** `accountingPostDocument` records the boundary without an accounting-eligibility check. Known gap, assigned to C-59F. |
 
 ## 3. Implemented behavior
 

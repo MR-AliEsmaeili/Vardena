@@ -673,8 +673,16 @@ export class InventoryBusinessDocumentsService {
     const current = await this.mustFind(id, organizationId);
     const operationKey = finalizeKey(current.id);
 
-    // Idempotent replay: the committed finalize already carries this key.
-    if (current.status !== 'draft' && current.operationKey === operationKey) {
+    // Idempotent replay: the committed finalize already carries this key AND
+    // its ledger effect still stands. A CANCELLED document also carries the
+    // key — cancellation keeps it for audit — but its effect was reversed, so
+    // re-finalizing it is an illegal transition, never a replay. Gating on
+    // `hasLedgerEffect` keeps the retry safe without turning
+    // `cancelled → operational` into a silent success.
+    if (
+      hasLedgerEffect(current.status) &&
+      current.operationKey === operationKey
+    ) {
       return this.toDto(current);
     }
     rethrowDomain(() => assertTransition(current.status, 'operational'));

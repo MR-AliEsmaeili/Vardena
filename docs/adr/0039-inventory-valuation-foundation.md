@@ -3,6 +3,18 @@
 Status: Proposed (written with the "Inventory Valuation Foundation + Cost-Optional Warehouse Operations" slice, 2026-10-04; acceptance is the Owner's decision on the review of PR #116 — an implementation agent cannot promote its own ADR)
 Date: 2026-10-04
 
+> **Product decisions recorded AFTER this ADR (2026-10-06).** This ADR stays
+> **Proposed** and is not promoted by them. [PDR-07](../decisions/product/PDR-07-inventory-pricing-sources-and-periodic-pricing-operation.md)
+> adds the pricing-source model (Manual / Derived / Pricing Operation), the
+> periodic scope-bounded Pricing Operation, the prohibition on using "unpriced"
+> as a general inventory block, the Accounting eligibility gate, and
+> valuation-state as an axis separate from document lifecycle.
+> [PDR-08](../decisions/product/PDR-08-transfer-return-reversal-and-reverse-pricing-valuation.md)
+> resolves **OQ-67** (source-side transfer valuation) and **OQ-68** (reversal at
+> the original movement's own value) — both of which **confirm** the behaviour
+> this ADR's implementation already has — and decides Return costing and
+> Reverse Pricing constraints, which it does not.
+
 ## Context
 
 ADR-0017 makes the append-only movement ledger the source of stock truth and

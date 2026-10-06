@@ -1639,6 +1639,27 @@ describe('C-58 runtime — cancellation / correction (OQ-54)', () => {
     expect(reloaded.status).toBe('cancelled');
   });
 
+  it('refuses to finalize a CANCELLED document instead of replaying it', async () => {
+    const created = await asActor(() => createReceipt(fixture));
+    await asActor(() =>
+      fixture.service.finalizeDocument(created.id, fixture.organizationId, {}),
+    );
+    await asActor(() =>
+      fixture.service.cancelDocument(created.id, fixture.organizationId, {}),
+    );
+    await expect(
+      asActor(() =>
+        fixture.service.finalizeDocument(
+          created.id,
+          fixture.organizationId,
+          {},
+        ),
+      ),
+    ).rejects.toMatchObject({
+      details: { code: 'inventory.document.illegal_transition' },
+    });
+  });
+
   it('allocates a NEW number to the next document after a cancellation', async () => {
     const first = await asActor(() => createReceipt(fixture));
     await asActor(() =>
