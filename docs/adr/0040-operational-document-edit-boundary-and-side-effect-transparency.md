@@ -48,6 +48,13 @@ otherwise each state machine would re-invent them (AR-07/AR-08).
 7. **No physical deletion; cancelled documents stay visible; numbers are never
    reused** (ADR-0023 allocation boundary preserved).
 
+> **Related product decisions (2026-10-06).** [PDR-07](../decisions/product/PDR-07-inventory-pricing-sources-and-periodic-pricing-operation.md)
+> OD-PRC-11 makes **Accounting eligibility** — not Inventory operations — the
+> gate for an unpriced document, and OD-PRC-12 keeps valuation state on a
+> separate axis from the lifecycle states this ADR lists in §1. OD-PRC-10
+> explicitly forbids using "unpriced" as a general block on later inventory
+> operations. This ADR stays **Proposed**; those records do not promote it.
+
 ## Consequences
 
 - Edit paths are heavier than create paths (reconciliation, bounded replay,

@@ -6,6 +6,7 @@
 - **Owner of the remaining questions:** Accountant + inventory expert (OQ-24 stays **OPEN**)
 - **Registry row:** [`docs/open-questions.md`](../../open-questions.md) — **OQ-24 remains OPEN** (partially resolved; see §4)
 - **Recording baseline:** `main` @ `1e3d407fd3f08650e0e70353f96b277e80ef03fd` (merge of PR #115)
+- **Extended by:** [PDR-07](./PDR-07-inventory-pricing-sources-and-periodic-pricing-operation.md) (pricing sources, periodic Pricing Operation, Accounting eligibility gate) and [PDR-08](./PDR-08-transfer-return-reversal-and-reverse-pricing-valuation.md) (Transfer / Return / Reversal / Reverse Pricing) — both 2026-10-06; neither rewrites this record
 - **Related records:** ADR-0039 (this slice's architecture — **Proposed**; this product record neither promotes it nor accepts the implementation) · ADR-0022 (inventory core ledger, Accepted) · ADR-0017 (ledger as source of truth) · D-04/D-05/D-06/D-07/D-21/D-26 in [`domain-decisions.md`](../../architecture/domain/domain-decisions.md) · PDR-01 / OD-C47-01 (quantity exactness) · OQ-03 (money precision) · OQ-11 · OQ-54
 
 > **What this record is and is not.** It transcribes the Owner's *business*
@@ -60,13 +61,13 @@ Per the Owner's instruction, nothing beyond the register above is closed. Still 
 
 | Sub-question | Status after OD-VAL-01…19 |
 |---|---|
-| Return costing (at what value does returned stock re-enter?) | **OPEN** — OD-VAL-19 explicitly defers it; the reversal rule (undo the original's own value) must **not** be read as the return rule |
+| Return costing (at what value does returned stock re-enter?) | **DECIDED 2026-10-06 for the costing rule** — [PDR-08](./PDR-08-transfer-return-reversal-and-reverse-pricing-valuation.md) §3 / OD-RET-01…07, registry row **OQ-70**. Basis-linked purchase return = the ORIGINAL receipt's own cost; non-basis-linked purchase return and every sales return = the key's current Moving Weighted Average at the return date; the sales price is never an inventory cost; a settlement difference is a variance, never absorbed into the average. OD-VAL-19's warning is **confirmed by evidence**: Return and Reversal use different conventions. **Still OPEN:** the variance account mapping (Accounting — OQ-39/OQ-42) |
 | COGS / journal posting of inventory value into Accounting | **OPEN** — out of scope by the work order; Inventory owns valuation, Accounting owns posting (ADR-0005, OQ-39/OQ-42) |
 | Landed cost, freight, duties, purchase-price variance | **OPEN** — not modelled anywhere |
 | Money precision and currency for valuation beyond `numeric(18,2)` | **OPEN** — owned by OQ-03/OQ-11; this record only decides exact-or-reject at the entry boundary |
-| Whether a per-warehouse average may diverge from a sibling warehouse's average after a transfer, and whether that is acceptable to the accountant | **OPEN** — new **OQ-67** |
-| Whether a reversal must always undo the original's own value, or the current average | **OPEN** — new **OQ-68**; the implementation uses the original's own value and says so |
-| Per-movement valuation history (who changed which value, when, to what) beyond the run record | **OPEN** — new **OQ-69** |
+| Whether a per-warehouse average may diverge from a sibling warehouse's average after a transfer, and whether that is acceptable to the accountant | **RESOLVED 2026-10-06** — [PDR-08](./PDR-08-transfer-return-reversal-and-reverse-pricing-valuation.md) §2 / OD-TRF-01…09. Source-side valuation; divergence is intended; any organization-level average is a reporting roll-up only. **OQ-67 moved to Resolved** |
+| Whether a reversal must always undo the original's own value, or the current average | **RESOLVED 2026-10-06** — [PDR-08](./PDR-08-transfer-return-reversal-and-reverse-pricing-valuation.md) §4 / OD-REV-01…08. The original's own value is confirmed as the convention. **OQ-68 moved to Resolved** |
+| Per-movement valuation history (who changed which value, when, to what) beyond the run record | **OPEN** — **OQ-69**. [PDR-07](./PDR-07-inventory-pricing-sources-and-periodic-pricing-operation.md) / OD-VH-01 fixes the *architecture* (Ledger Authority + Immutable Valuation History); whether the current run record is *sufficient* for audit stays unanswered |
 | Standard costing, revaluation, write-down/NRV, inventory ageing | **OPEN** — not requested, not implemented |
 | Whether `Inventory.Valuation.View` is the right split for every persona (e.g. a branch manager) | **OPEN** — the permission exists; its assignment policy is an administrative decision |
 | Lot/serial/expiry-level valuation | **OPEN** — tracked items are refused by the posting path today (ADR-0022) |

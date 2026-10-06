@@ -54,6 +54,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 | [PDR-05](./PDR-05-inventory-valuation-and-cost-optional-operations.md) | Inventory valuation foundation and cost-optional warehouse operations (OQ-24 — partial) | PDR | Decided (2026-10-04) | OQ-24 stays Open (returns, COGS posting, landed cost, valuation precision unanswered) |
 | [PDR-06](./PDR-06-initial-usable-product-v1.md) | Vardena Initial Usable Product / V1 — MVP completion definition + 2026-10-05 re-baseline index | PDR | Decided (2026-10-05) | OQ-60 stays Open (numeric thresholds unratified) |
 | [PDR-07](./PDR-07-inventory-pricing-sources-and-periodic-pricing-operation.md) | Inventory pricing sources, the periodic Pricing Operation, and the Accounting eligibility gate (OD-PRC-01…12, OD-VH-01, OD-DOC-01/02) | PDR | Decided (2026-10-06) | OQ-24 stays Open; opens OQ-70 / OQ-71 |
+| [PDR-08](./PDR-08-transfer-return-reversal-and-reverse-pricing-valuation.md) | Transfer / Purchase Return / Sales Return / Reversal / Reverse Pricing valuation (OD-TRF-01…09, OD-RET-01…07, OD-REV-01…08, OD-RVP-01…08, OD-PDP-01…05) | PDR | Decided (2026-10-06) | **Resolves OQ-67 and OQ-68**; OQ-70 / OQ-71 stay Open for their Accounting-side counterpart |
 
 > **Numbering note (2026-10-02).** `OQ-62`, `OQ-63` and `OQ-64` are accounting /
 > migration questions that live only in the central registry
