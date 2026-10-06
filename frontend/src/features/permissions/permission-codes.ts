@@ -100,6 +100,19 @@ export const PERMISSIONS = {
     movementReverse: 'Inventory.Movement.Reverse',
     transferCreate: 'Inventory.Transfer.Create',
 
+    // Business documents — receipt / issue / transfer (C-58,
+    // `inventory-document-permissions.ts`). These authorize the DOCUMENT
+    // operation only: finalize and cancel additionally require the ledger
+    // authority above, exactly as the backend enforces it.
+    documentView: 'Inventory.Document.View',
+    documentCreate: 'Inventory.Document.Create',
+    documentEdit: 'Inventory.Document.Edit',
+    documentDelete: 'Inventory.Document.Delete',
+    documentFinalize: 'Inventory.Document.Finalize',
+    documentAccountingPost: 'Inventory.Document.AccountingPost',
+    documentSeal: 'Inventory.Document.Seal',
+    documentCancel: 'Inventory.Document.Cancel',
+
     // Valuation workspace (`inventory-valuation-permissions.ts`).
     valuationView: 'Inventory.Valuation.View',
     valuationAssignCost: 'Inventory.Valuation.AssignCost',
