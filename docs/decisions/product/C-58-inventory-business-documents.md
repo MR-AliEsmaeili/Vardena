@@ -14,4 +14,10 @@ Receipt cost is optional and is an Inventory valuation assignment, never purchas
 
 Pre-post edits follow the OQ-54/ADR-0040 pipeline (load, validate, detect side effects, apply, reconcile, optional explicit repricing, atomic persist) with a hard negative-stock block. An edit that changes an already-posted effect is refused until the operator supplies both an explicit acknowledgement and an explicit repricing choice — there is no default, and «skip» persists an honestly stale valuation state. After Accounting Post, direct edit/delete is forbidden; correction is a separate explicit document and is not part of C-58. ADR-0040 remains **Proposed**.
 
+## Transaction boundaries
+
+The inventory effect of a command — movement legs, balance deltas, valuation-state writes, an explicitly requested repricing and the document's own state change — is **one transaction**. A failure anywhere in it rolls all of it back; the document is either fully posted and repriced, or untouched.
+
+Document **numbering is a separate transactional boundary** and is not covered by that rollback. `NumberingService` stays the single numbering authority and owns its own transaction, so the number is allocated before the inventory transaction and survives a failed finalize. The guarantee is the allocation key, which is the document id: the same document always replays the same number, a different finalized document always receives a different number, and a number is never silently reused. A failed finalize leaves a draft with no number and an allocation reserved for it; a crash in between leaves an unused allocation (a gap), never a duplicate.
+
 Inventory remains license- and permission-protected by the existing backend mechanisms. C-58 does not implement GL, COGS, tax, fiscal closing, or full Inventory-to-Accounting posting.

@@ -49,14 +49,44 @@ runtime, purchasing/sales, taxpayer integration.
 or `cancelled`. The transition table is domain code, unit-tested for every
 legal and illegal pair.
 
-### 3.2 One caller-owned transaction per command
+### 3.2 Transaction boundaries per command
 
-Finalize allocates the number, posts the movement legs and writes the document
-state inside a single transaction owned by the service; any failure (negative
-stock, numbering conflict, authorization) rolls the whole command back, leaving
-no partial movements, no consumed number and no changed document state. The
-same holds for a material edit (reverse + repost + reconcile) and for
-cancellation.
+**Inventory work is one caller-owned transaction.** Finalize posts every
+movement leg, every balance delta, every valuation-state write, any explicitly
+requested repricing and the document's own state change inside a single
+transaction owned by the service; any failure (negative stock, authorization,
+a refused valuation replay) rolls all of it back, leaving no partial movement,
+no valuation run and no changed document state. The same holds for a material
+edit (reverse + repost + reconcile + optional repricing) and for cancellation.
+
+**Explicit repricing is inside that transaction.** `repricing: "recalculate"`
+is executed through `InventoryValuationService.recalculateWithin` — the same
+valuation service, the same single-key replay, run on the transaction the
+command already owns. Quantities and values therefore commit together, and a
+replay that refuses (for example `inventory.recalculation_too_large`) rolls
+the whole command back instead of leaving a posted document whose valuation
+silently did not run. `repricing: "skip"` is the only way to keep the posting
+and leave the valuation behind, and it persists `valuationStale = true` and
+emits the stale event.
+
+**Numbering is a separate transactional boundary — by design.** The number is
+allocated by `NumberingService` *before* the inventory transaction, in the
+Numbering authority's own non-composable transaction, and it does **not** roll
+back with the inventory work. There is exactly one numbering authority and no
+second allocator; what the design guarantees instead is the allocation-key
+invariant:
+
+- the allocation key is the document id, so the **same document always
+  replays the same number** (a retried finalize consumes no second number);
+- a **different finalized document always gets a different number**;
+- a number is **never silently reused** — a failed finalize leaves the
+  document a draft with `number = null` and the allocation reserved for that
+  document id, and a cancelled document keeps its number forever.
+
+A crash between the allocation and the commit therefore leaves an *orphaned*
+allocation (a gap), never a duplicate number. This is the same accepted gap
+every other Documents/Numbering consumer has, and it is covered by a live
+regression test.
 
 ### 3.3 Costing
 
@@ -75,7 +105,8 @@ answers **404**, never 403, so existence is not disclosed. Permissions
 are enforced in the backend; finalize additionally requires the movement/transfer
 create authority and cancel requires `Inventory.Movement.Reverse`. Numbers come
 from the existing Documents/Numbering infrastructure at finalize and are never
-reused — a cancelled document keeps its number.
+reused — a cancelled document keeps its number. See §3.2 for the numbering
+transaction boundary and its invariants.
 
 ## 4. REST surface
 
@@ -122,8 +153,12 @@ API types were **regenerated** from the running OpenAPI document
 - Application: authorization, organization isolation, idempotent replay,
   rollback on failure, edit classification and repricing gating.
 - Live PostgreSQL E2E (`backend/test/**/inventory-business-documents-live.e2e-spec.ts`):
-  atomicity, concurrency and isolation. These skip without a database and are
-  verified in GitHub CI.
+  atomicity, concurrency and isolation, including (a) a forced failure of the
+  in-transaction repricing, asserting that the document, its movements and the
+  valuation state are all rolled back, and (b) a failed finalize followed by a
+  successful retry, asserting that the retry reuses the SAME allocated number
+  and that a second document never receives it. These skip without a database
+  and are verified in GitHub CI.
 - Frontend integration (`inventory-documents.test.tsx`): list vocabulary,
   URL-owned filtering, capability-driven actions, mandatory cancellation reason,
   and the two-answer material-edit flow.

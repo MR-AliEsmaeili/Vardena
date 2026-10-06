@@ -79,7 +79,11 @@ import { assertTransferNotBackdated } from './inventory-transfers.service.js';
 import { ItemsService } from './items.service.js';
 import { UnitsService } from './units.service.js';
 import { WarehousesService } from './warehouses.service.js';
-import { InventoryValuationService } from './inventory-valuation.service.js';
+import {
+  InventoryValuationService,
+  type PreparedRecalculation,
+} from './inventory-valuation.service.js';
+import type { InventoryValuationRunDto } from '../domain/inventory-valuation.js';
 
 const SORTABLE_FIELDS: Record<string, string> = {
   businessDate: 'businessDate',
@@ -188,17 +192,34 @@ interface ResolvedLine {
  *   no generic status mutation endpoint.
  *
  * Transactional contract, per command:
- *   - **finalize**: number allocation (before the transaction, same accepted
- *     gap as every other Documents consumer — a crash orphans an allocation,
- *     never duplicates a number), then ONE transaction containing every
- *     movement (both legs for a transfer), every balance delta, every
- *     valuation-state write, every idempotency row, and the document's own
- *     state change. Any failure rolls back all of it: the document stays a
- *     draft, no movement exists, no balance moved.
- *   - **edit**: load → validate → classify side effects → apply → reconcile
- *     (reverse the exact facts the document posted and re-post the new ones)
- *     → optional EXPLICIT repricing → atomic persist. A rejected edit (e.g.
- *     negative stock) leaves the previous valid state completely intact.
+ *   - **numbering is its own transactional boundary.** `NumberingService`
+ *     owns a non-composable transaction, so the allocation is NOT part of
+ *     the inventory transaction and does NOT roll back with it. What holds
+ *     instead is the allocation-key invariant: the key is the document id,
+ *     so the same document always replays the SAME number, a different
+ *     finalized document always gets a different number, and a number is
+ *     never silently reused. A failed finalize therefore leaves the
+ *     document a draft with `number = null` and an allocation reserved for
+ *     it; the retry consumes that same allocation instead of burning a
+ *     second one.
+ *   - **finalize**: allocate the number (above), then ONE transaction
+ *     containing every movement (both legs for a transfer), every balance
+ *     delta, every valuation-state write, any EXPLICITLY requested
+ *     repricing, every idempotency row, and the document's own state
+ *     change. Any failure rolls back all of that inventory work: the
+ *     document stays a draft, no movement exists, no balance moved, no
+ *     valuation run is recorded.
+ *   - **edit**: load → validate → classify side effects → then ONE
+ *     transaction that reverses the exact facts the document posted,
+ *     re-posts the new ones, writes the header and runs the EXPLICITLY
+ *     requested repricing. A rejected edit — negative stock, or a failed
+ *     valuation replay — leaves the previous valid state completely intact.
+ *   - **repricing**: `repricing: "recalculate"` is executed inside the
+ *     command's transaction through
+ *     `InventoryValuationService.recalculateWithin` (same service, same
+ *     replay, caller-owned transaction), so quantities and values commit
+ *     together. `repricing: "skip"` writes `valuationStale = true` and
+ *     emits the stale event — never a silent default (OD-54-06/11).
  *   - **cancel**: reverses the document's own ledger facts in one
  *     transaction and marks the document `cancelled`; the number is kept and
  *     never reused, and the document stays visible (OD-54-07/08/09).
@@ -515,11 +536,25 @@ export class InventoryBusinessDocumentsService {
       });
     }
 
-    // 4/5/7. APPLY + RECONCILE + PERSIST — one transaction.
+    // 4/5/6/7. APPLY + RECONCILE + REPRICE + PERSIST — one transaction.
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
     const editId = generateId();
     const movementIds: string[] = [];
+    // The explicit repricing is PLANNED here — permissions, master data,
+    // idempotency envelope and method resolution, no writes — so that the
+    // transaction below contains the valuation replay itself and nothing
+    // that could have been decided outside it.
+    const repricingPlans =
+      assessment.classification === 'material' && repricing === 'recalculate'
+        ? await this.planDocumentRepricing(
+            current.id,
+            organizationId,
+            resolved,
+            { keyPrefix: `invdoc:${current.id}:e:${editId}` },
+          )
+        : [];
+    let valuationRuns: InventoryValuationRunDto[] = [];
     // Rewriting the line rows is a line-set change, not a side effect of
     // every edit: a header-only edit must leave the rows — and therefore
     // their movement links — exactly as they are.
@@ -570,21 +605,20 @@ export class InventoryBusinessDocumentsService {
           });
           movementIds.push(...reposted);
         }
+        // 6. The repricing the operator explicitly asked for, replayed on
+        // the facts this very transaction just wrote. A failure here rolls
+        // the reversal, the re-post and the header change back with it:
+        // the command is either fully applied and repriced, or not applied
+        // at all.
+        valuationRuns = await this.repriceWithin(tx, repricingPlans);
       });
     } catch (error) {
       throw this.translatePostingError(error, header);
     }
 
-    // 6. OPTIONAL, EXPLICIT repricing — after the quantity facts are safely
-    // committed, exactly like `InventoryMovementsService` does it.
-    if (
-      assessment.classification === 'material' &&
-      repricing === 'recalculate'
-    ) {
-      await this.repriceDocumentKeys(current.id, organizationId, resolved, {
-        keyPrefix: `invdoc:${current.id}:e:${editId}`,
-      });
-    }
+    // Announced only after the commit: no subscriber may see a valuation
+    // run that was rolled back.
+    await this.announceRepricing(valuationRuns);
 
     const updated = await this.mustFind(id, organizationId);
     await this.publishDocumentEvent(
@@ -618,8 +652,14 @@ export class InventoryBusinessDocumentsService {
 
   /**
    * Post the document's operational effect: stock moves, balances advance,
-   * valuation state updates, the number is allocated and the document
-   * becomes `operational` — all or nothing.
+   * valuation state updates (including an explicitly requested repricing)
+   * and the document becomes `operational` — all of that in ONE
+   * transaction, all or nothing.
+   *
+   * The NUMBER is the documented exception: it is allocated first, in the
+   * Numbering authority's own transaction, and does not roll back with the
+   * inventory work. Because the allocation key is the document id, a retry
+   * replays the same number rather than consuming a new one.
    */
   async finalizeDocument(
     id: string,
@@ -704,9 +744,22 @@ export class InventoryBusinessDocumentsService {
       referenceDocumentId: current.id,
     });
 
+    // Planned before the transaction, executed inside it (see
+    // `planDocumentRepricing`).
+    const repricingPlans =
+      backdating.backdated && repricing === 'recalculate'
+        ? await this.planDocumentRepricing(
+            current.id,
+            organizationId,
+            resolved,
+            { keyPrefix: operationKey },
+          )
+        : [];
+
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
     let movementIds: string[] = [];
+    let valuationRuns: InventoryValuationRunDto[] = [];
     try {
       await this.documents.withTransaction(async (tx) => {
         movementIds = await this.postDocumentEffect(tx, {
@@ -730,16 +783,16 @@ export class InventoryBusinessDocumentsService {
           updatedAt: now,
           updatedBy: actorId,
         });
+        // Explicit repricing runs on the movements written above, in the
+        // SAME transaction: a failed replay rolls the posting back and the
+        // document stays a draft.
+        valuationRuns = await this.repriceWithin(tx, repricingPlans);
       });
     } catch (error) {
       throw this.translatePostingError(error, header);
     }
 
-    if (backdating.backdated && repricing === 'recalculate') {
-      await this.repriceDocumentKeys(current.id, organizationId, resolved, {
-        keyPrefix: operationKey,
-      });
-    }
+    await this.announceRepricing(valuationRuns);
 
     const finalized = await this.mustFind(id, organizationId);
     await this.publishDocumentEvent(
@@ -1441,23 +1494,27 @@ export class InventoryBusinessDocumentsService {
   }
 
   /**
-   * The repricing the operator EXPLICITLY asked for, run after the quantity
-   * facts are committed — the same deliberate ordering
-   * `InventoryMovementsService.repriceAfterBackdatedPost` documents: a
-   * failed valuation replay must never lose a warehouse fact.
+   * Plan the repricing the operator EXPLICITLY asked for — permissions,
+   * master data, idempotency envelope and method resolution — WITHOUT
+   * writing anything. Runs before the command's transaction is opened so
+   * that only the replay itself happens inside it.
+   *
+   * One plan per distinct (warehouse, item) key: the same key touched by
+   * several lines is replayed once, exactly as before.
    */
-  private async repriceDocumentKeys(
+  private async planDocumentRepricing(
     documentId: string,
     organizationId: string,
     lines: readonly ResolvedLine[],
     audit: { keyPrefix: string },
-  ): Promise<void> {
+  ): Promise<PreparedRecalculation[]> {
+    const plans: PreparedRecalculation[] = [];
     const seen = new Set<string>();
     for (const line of lines) {
       const key = `${line.warehouseId}:${line.itemId}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      await this.valuation.recalculate({
+      const plan = await this.valuation.prepareRecalculation({
         organizationId,
         warehouseId: line.warehouseId,
         itemId: line.itemId,
@@ -1465,6 +1522,40 @@ export class InventoryBusinessDocumentsService {
         trigger: 'backdated_document',
         reason: `Repricing explicitly requested for inventory document ${documentId}.`,
       });
+      // `null` means this exact key was already recalculated under this
+      // operation key (idempotent replay) — nothing left to execute.
+      if (plan !== null) plans.push(plan);
+    }
+    return plans;
+  }
+
+  /**
+   * Execute the planned repricing INSIDE the command's own transaction,
+   * after the quantity facts it must reprice have been written there.
+   *
+   * This is what makes `repricing: "recalculate"` truthful: the movements,
+   * the document row and the valuation replay commit together, and a failed
+   * replay rolls the whole command back instead of leaving a posted
+   * document whose valuation silently did not run. The returned runs are
+   * announced by the caller AFTER the commit.
+   */
+  private async repriceWithin(
+    tx: DocTxClient,
+    plans: readonly PreparedRecalculation[],
+  ): Promise<InventoryValuationRunDto[]> {
+    const runs: InventoryValuationRunDto[] = [];
+    for (const plan of plans) {
+      runs.push(await this.valuation.recalculateWithin(tx, plan));
+    }
+    return runs;
+  }
+
+  /** Publish the valuation runs of a committed command. */
+  private async announceRepricing(
+    runs: readonly InventoryValuationRunDto[],
+  ): Promise<void> {
+    for (const run of runs) {
+      await this.valuation.announceRecalculated(run);
     }
   }
 

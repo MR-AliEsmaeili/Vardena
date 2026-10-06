@@ -15,7 +15,11 @@ import {
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
-import { InventoryValuationRepository } from '../data/inventory-valuation.repository.js';
+import {
+  InventoryValuationRepository,
+  type RecalculationInput,
+} from '../data/inventory-valuation.repository.js';
+import type { CoreTxClient } from '../data/inventory-core-rows.js';
 import {
   ItemValuationMethodsRepository,
   ValuationMethodPlanRejectedError,
@@ -101,6 +105,25 @@ import { WarehousesService } from './warehouses.service.js';
  *    returning a different shape, and the four valuation permissions are
  *    distinct from the movement ones.
  */
+/** The caller-facing shape of a single-key recalculation command. */
+export interface RecalculateCommand {
+  organizationId: string;
+  warehouseId: string;
+  itemId: string;
+  operationKey: string;
+  trigger?: string | undefined;
+  fromDate?: Date | undefined;
+  reason?: string | null | undefined;
+}
+
+/**
+ * A recalculation that has passed every non-writing check and is ready to
+ * be executed inside a transaction the caller owns.
+ */
+export interface PreparedRecalculation {
+  input: RecalculationInput;
+}
+
 @Injectable()
 export class InventoryValuationService {
   constructor(
@@ -687,7 +710,7 @@ export class InventoryValuationService {
         InventoryValuationService.name,
       );
       if (result.run !== null) {
-        await this.publishRecalculated(result.run);
+        await this.announceRecalculated(result.run);
       }
       const refreshed = await this.movements.findById(movement.id);
       return {
@@ -743,18 +766,110 @@ export class InventoryValuationService {
    * endpoint, parameter or flag anywhere that recalculates more than one key
    * (OD-VAL-12).
    */
-  async recalculate(input: {
-    organizationId: string;
-    warehouseId: string;
-    itemId: string;
-    operationKey: string;
-    trigger?: string | undefined;
-    fromDate?: Date | undefined;
-    reason?: string | null | undefined;
-  }): Promise<{
+  async recalculate(input: RecalculateCommand): Promise<{
     run: InventoryValuationRunDto;
     state: InventoryValuationStateDto;
   }> {
+    const plan = await this.planRecalculation(input);
+    if (plan.kind === 'replayed') {
+      return { run: plan.run, state: plan.state };
+    }
+    try {
+      const result = await this.valuation.recalculateKey(plan.input);
+      await this.announceRecalculated(result.run);
+      this.logger.log(
+        'Inventory valuation recalculated',
+        {
+          runId: result.run.id,
+          organizationId: result.run.organizationId,
+          warehouseId: result.run.warehouseId,
+          itemId: result.run.itemId,
+          movementsExamined: result.run.movementsExamined,
+          movementsRevalued: result.run.movementsRevalued,
+        },
+        InventoryValuationService.name,
+      );
+      return {
+        run: toInventoryValuationRunDto(result.run),
+        state: toInventoryValuationStateDto(result.state),
+      };
+    } catch (error) {
+      const translated = this.translateRecalculationError(error);
+      if (translated !== null) throw translated;
+      if (isUniqueViolation(error)) {
+        const raced = await this.replayValuation(
+          input.organizationId,
+          plan.input.operation.operationKey,
+          plan.input.operation.requestHash,
+          'valuation_recalculation',
+        );
+        if (raced !== null && raced.run !== null) {
+          return { run: raced.run, state: raced.state };
+        }
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * The same recalculation, executed inside a transaction the CALLER owns.
+   *
+   * Same permissions, same resolution, same idempotency envelope and the
+   * same single `recalculateKeyWithin` replay — the only difference is who
+   * owns the `BEGIN … COMMIT`. A command that changes quantities AND must
+   * reprice the affected keys (C-58 finalize/edit with an explicit
+   * `repricing: "recalculate"`) can therefore make both halves one atomic
+   * unit instead of two independently-committing ones.
+   *
+   * Everything that can be decided without writing — permissions, master
+   * data, the idempotency replay, the method resolution — is decided BEFORE
+   * the caller's transaction is entered (this method is meant to be invoked
+   * from inside it only for the write). A failure inside propagates, which
+   * rolls the caller's transaction back: there is no half-repriced commit
+   * and no quantity fact left behind by a valuation that did not run.
+   *
+   * Returns `null` when the operation key was already executed (idempotent
+   * replay): nothing was written and nothing has to be announced.
+   */
+  async prepareRecalculation(
+    input: RecalculateCommand,
+  ): Promise<PreparedRecalculation | null> {
+    const plan = await this.planRecalculation(input);
+    return plan.kind === 'replayed' ? null : { input: plan.input };
+  }
+
+  /**
+   * Execute a plan built by {@link prepareRecalculation} inside the caller's
+   * transaction. The returned run is NOT announced yet — the caller
+   * publishes it with {@link announceRecalculated} after its own commit, so
+   * no subscriber ever sees a valuation run that was rolled back.
+   */
+  async recalculateWithin(
+    tx: CoreTxClient,
+    prepared: PreparedRecalculation,
+  ): Promise<InventoryValuationRunDto> {
+    try {
+      const result = await this.valuation.recalculateKeyWithin(
+        tx,
+        prepared.input,
+      );
+      return toInventoryValuationRunDto(result.run);
+    } catch (error) {
+      const translated = this.translateRecalculationError(error);
+      if (translated !== null) throw translated;
+      throw error;
+    }
+  }
+
+  /** Shared preamble: everything decided before anything is written. */
+  private async planRecalculation(input: RecalculateCommand): Promise<
+    | {
+        kind: 'replayed';
+        run: InventoryValuationRunDto;
+        state: InventoryValuationStateDto;
+      }
+    | { kind: 'pending'; input: RecalculationInput }
+  > {
     await this.authorization.requireAllPermissions([
       VALUATION_PERMISSIONS.RECALCULATE,
     ]);
@@ -789,7 +904,11 @@ export class InventoryValuationService {
       if (replayed.run === null) {
         throw new Error('Stored recalculation operation has no run id.');
       }
-      return { run: replayed.run, state: replayed.state };
+      return {
+        kind: 'replayed',
+        run: replayed.run,
+        state: replayed.state,
+      };
     }
 
     // This resolution answers ONE question: which method the key is valued
@@ -806,9 +925,10 @@ export class InventoryValuationService {
     });
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
-    try {
-      const runId = generateId();
-      const result = await this.valuation.recalculateKey({
+    const runId = generateId();
+    return {
+      kind: 'pending',
+      input: {
         runId,
         key: {
           organizationId: input.organizationId,
@@ -833,55 +953,33 @@ export class InventoryValuationService {
         },
         actorId,
         at: now,
+      },
+    };
+  }
+
+  /**
+   * The two replay refusals that are business answers rather than faults.
+   * Returns `null` when the error is something else entirely.
+   */
+  private translateRecalculationError(error: unknown): AppException | null {
+    if (error instanceof RecalculationTooLargeError) {
+      return AppException.businessRule(error.message, {
+        code: 'inventory.recalculation_too_large',
+        limit: error.limit,
       });
-      await this.publishRecalculated(result.run);
-      this.logger.log(
-        'Inventory valuation recalculated',
-        {
-          runId: result.run.id,
-          organizationId: result.run.organizationId,
-          warehouseId: result.run.warehouseId,
-          itemId: result.run.itemId,
-          movementsExamined: result.run.movementsExamined,
-          movementsRevalued: result.run.movementsRevalued,
-        },
-        InventoryValuationService.name,
-      );
-      return {
-        run: toInventoryValuationRunDto(result.run),
-        state: toInventoryValuationStateDto(result.state),
-      };
-    } catch (error) {
-      if (error instanceof RecalculationTooLargeError) {
-        throw AppException.businessRule(error.message, {
-          code: 'inventory.recalculation_too_large',
-          limit: error.limit,
-        });
-      }
-      if (error instanceof UnsupportedValuationMethodError) {
-        // History configured with a method this build cannot execute. The
-        // replay refuses rather than revaluing that period with the method in
-        // force today (OD-VAL-14/OD-VAL-18).
-        throw AppException.businessRule(error.message, {
-          code: 'inventory.valuation_method_not_implemented',
-          method: error.method,
-          movementId: error.movementId,
-          activeMethods: [DEFAULT_VALUATION_METHOD],
-        });
-      }
-      if (isUniqueViolation(error)) {
-        const raced = await this.replayValuation(
-          input.organizationId,
-          operationKey,
-          requestHash,
-          'valuation_recalculation',
-        );
-        if (raced !== null && raced.run !== null) {
-          return { run: raced.run, state: raced.state };
-        }
-      }
-      throw error;
     }
+    if (error instanceof UnsupportedValuationMethodError) {
+      // History configured with a method this build cannot execute. The
+      // replay refuses rather than revaluing that period with the method in
+      // force today (OD-VAL-14/OD-VAL-18).
+      return AppException.businessRule(error.message, {
+        code: 'inventory.valuation_method_not_implemented',
+        method: error.method,
+        movementId: error.movementId,
+        activeMethods: [DEFAULT_VALUATION_METHOD],
+      });
+    }
+    return null;
   }
 
   /**
@@ -907,7 +1005,13 @@ export class InventoryValuationService {
 
   // ---- internals ----------------------------------------------------------
 
-  private async publishRecalculated(run: {
+  /**
+   * Announce a completed recalculation. Public because a caller that runs
+   * the replay inside ITS OWN transaction ({@link recalculateWithin}) must
+   * publish only after that transaction has committed — a subscriber must
+   * never be told about a run that was rolled back.
+   */
+  async announceRecalculated(run: {
     id: string;
     organizationId: string;
     branchId: string;

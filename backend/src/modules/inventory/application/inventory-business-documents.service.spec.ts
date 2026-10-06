@@ -23,6 +23,7 @@ import type { InventoryMovementsRepository } from '../data/inventory-movements.r
 import type { InventoryBusinessDocumentsRepository } from '../data/inventory-business-documents.repository.js';
 import type { UnitConversionsRepository } from '../data/unit-conversions.repository.js';
 import { InsufficientStockError } from '../data/inventory-posting-errors.js';
+import { AppException } from '../../../kernel/errors/app-exception.js';
 import {
   addDecimalStrings,
   compareDecimalStrings,
@@ -561,6 +562,8 @@ function fakeMovementsRepository(
 interface ValuationOptions {
   canViewCost?: boolean;
   backdated?: boolean;
+  /** Make the in-transaction repricing refuse, to prove the rollback. */
+  repricingFails?: boolean;
 }
 
 function fakeValuation(
@@ -587,9 +590,23 @@ function fakeValuation(
     async requireBackdateDecisions() {
       return { backdated: options.backdated === true, repricing: null };
     },
-    async recalculate(input: { warehouseId: string; itemId: string }) {
-      recalculations.push(`${input.warehouseId}:${input.itemId}`);
-      return { run: {}, state: {} };
+    // The transaction-aware seam: the plan is built BEFORE the command's
+    // transaction and executed INSIDE it, so `recalculations` only records
+    // keys whose replay actually ran.
+    async prepareRecalculation(input: { warehouseId: string; itemId: string }) {
+      return { key: `${input.warehouseId}:${input.itemId}` };
+    },
+    async recalculateWithin(_tx: unknown, prepared: { key: string }) {
+      if (options.repricingFails === true) {
+        throw AppException.businessRule('Valuation replay refused.', {
+          code: 'inventory.recalculation_too_large',
+        });
+      }
+      recalculations.push(prepared.key);
+      return { id: 'run', warehouseId: prepared.key };
+    },
+    async announceRecalculated() {
+      return undefined;
     },
   } as unknown as InventoryValuationService;
 }
@@ -597,6 +614,7 @@ function fakeValuation(
 interface BuildOptions {
   canViewCost?: boolean;
   backdated?: boolean;
+  repricingFails?: boolean;
 }
 
 async function buildFixture(options: BuildOptions = {}) {
@@ -1379,6 +1397,40 @@ describe('C-58 runtime — edit pipeline (OQ-54 / ADR-0040)', () => {
       `${fixture.warehouseId}:${fixture.itemId}`,
     );
     expect(edited.valuationStale).toBe(false);
+  });
+
+  it('ROLLS THE WHOLE EDIT BACK when the in-transaction repricing refuses', async () => {
+    // The repricing the operator explicitly asked for runs inside the
+    // command's own transaction, so a refused valuation replay may not
+    // leave a re-posted quantity behind.
+    const failing = await buildFixture({ repricingFails: true });
+    const created = await asActor(() => createReceipt(failing));
+    await asActor(() =>
+      failing.service.finalizeDocument(created.id, failing.organizationId, {}),
+    );
+    await expect(
+      asActor(() =>
+        failing.service.updateDocument(created.id, failing.organizationId, {
+          acknowledgeSideEffects: true,
+          repricing: 'recalculate',
+          lines: [
+            { itemId: failing.itemId, quantity: '80', unitId: failing.unitId },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      details: { code: 'inventory.recalculation_too_large' },
+    });
+    expect(failing.recalculations).toEqual([]);
+    // The quantity fact the failed command tried to write is gone.
+    expect(failing.world.onHand(failing.warehouseId, failing.itemId)).toBe(
+      '100',
+    );
+    const unchanged = await asActor(() =>
+      failing.service.getDocument(created.id, failing.organizationId),
+    );
+    expect(unchanged.lines[0]?.quantity).toBe('100');
+    expect(unchanged.valuationStale).toBe(false);
   });
 
   it('BLOCKS an edit that would make stock negative and leaves everything untouched', async () => {

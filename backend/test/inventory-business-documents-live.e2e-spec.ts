@@ -26,7 +26,35 @@ import {
   INVENTORY_RECEIPT_DOCUMENT_TYPE,
   INVENTORY_TRANSFER_DOCUMENT_TYPE,
 } from '../src/modules/inventory/domain/inventory-document-types.js';
+import { InventoryValuationRepository } from '../src/modules/inventory/data/inventory-valuation.repository.js';
+import type { RecalculationInput } from '../src/modules/inventory/data/inventory-valuation.repository.js';
+import type { CoreTxClient } from '../src/modules/inventory/data/inventory-core-rows.js';
+import { RecalculationTooLargeError } from '../src/modules/inventory/data/inventory-posting-errors.js';
 import { createTestApp } from './support/test-app.js';
+
+/**
+ * Fault injection at EXACTLY one seam: the in-transaction valuation replay.
+ *
+ * Everything else — the service, the real repository arithmetic, the real
+ * transaction — stays untouched; the only thing this double can do is make
+ * `recalculateKeyWithin` refuse, which is how a real refusal
+ * (`RecalculationTooLargeError`, an unsupported historical method) reaches
+ * the caller. It is armed for one test and disarmed immediately after, so no
+ * other test in this file is weakened by its presence.
+ */
+class FaultInjectingValuationRepository extends InventoryValuationRepository {
+  static failWithin = false;
+
+  override async recalculateKeyWithin(
+    tx: CoreTxClient,
+    input: RecalculationInput,
+  ) {
+    if (FaultInjectingValuationRepository.failWithin) {
+      throw new RecalculationTooLargeError(1);
+    }
+    return super.recalculateKeyWithin(tx, input);
+  }
+}
 
 /**
  * Inventory Business Documents (C-58) against REAL PostgreSQL.
@@ -182,15 +210,23 @@ describe.skipIf(DATABASE_URL === undefined)(
       const baseConfig = loadAppConfig();
       const built = await createTestApp({
         override: (builder) =>
-          builder.overrideProvider(APP_CONFIG).useValue({
-            ...baseConfig,
-            databaseUrl: DATABASE_URL,
-            // This suite issues many non-login API calls in quick
-            // succession (lifecycle walks plus two concurrency rounds),
-            // beyond the general per-IP budget that `rate-limit.e2e-spec.ts`
-            // covers on its own. The login limit is left untouched.
-            rateLimit: { ...baseConfig.rateLimit, max: 5000 },
-          }),
+          builder
+            .overrideProvider(InventoryValuationRepository)
+            .useFactory({
+              factory: (prismaService: PrismaService) =>
+                new FaultInjectingValuationRepository(prismaService),
+              inject: [PrismaService],
+            })
+            .overrideProvider(APP_CONFIG)
+            .useValue({
+              ...baseConfig,
+              databaseUrl: DATABASE_URL,
+              // This suite issues many non-login API calls in quick
+              // succession (lifecycle walks plus two concurrency rounds),
+              // beyond the general per-IP budget that `rate-limit.e2e-spec.ts`
+              // covers on its own. The login limit is left untouched.
+              rateLimit: { ...baseConfig.rateLimit, max: 5000 },
+            }),
       });
       app = built.app;
       prisma = built.module.get(PrismaService);
@@ -754,6 +790,147 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(await onHand(whMainId, itemAId)).toBe(before + 40);
       // original + reversal + re-post, all referencing this document.
       expect(await movementCount(id)).toBe(3);
+    });
+
+    it('ROLLS BACK the whole edit when the explicitly requested repricing fails', async () => {
+      // `repricing: "recalculate"` runs INSIDE the command's transaction.
+      // A refused valuation replay must therefore take the reversal, the
+      // re-post and the header change down with it — a posted quantity
+      // whose valuation never ran would be exactly the dishonest state the
+      // explicit-repricing contract exists to prevent.
+      const before = await onHand(whMainId, itemAId);
+      const receipt = await createDocument({
+        kind: 'receipt',
+        warehouseId: whMainId,
+        lines: [{ itemId: itemAId, quantity: '30', unitId: unitAId }],
+      });
+      const id = receipt['id'] as string;
+      await finalize(id);
+      expect(await onHand(whMainId, itemAId)).toBe(before + 30);
+      const movementsAfterFinalize = await movementCount(id);
+
+      FaultInjectingValuationRepository.failWithin = true;
+      let refused: Record<string, unknown>;
+      try {
+        const response = await operator
+          .patch(`${base}/${id}`)
+          .query({ organizationId: orgAId })
+          .send({
+            acknowledgeSideEffects: true,
+            repricing: 'recalculate',
+            lines: [{ itemId: itemAId, quantity: '25', unitId: unitAId }],
+          })
+          .expect(422);
+        refused = response.body as Record<string, unknown>;
+      } finally {
+        FaultInjectingValuationRepository.failWithin = false;
+      }
+      // The failure is surfaced, never swallowed.
+      expect(JSON.stringify(refused)).toContain(
+        'inventory.recalculation_too_large',
+      );
+
+      // Nothing of the edit survived: no reversal, no re-post, no header
+      // change, and no half-written valuation state.
+      expect(await onHand(whMainId, itemAId)).toBe(before + 30);
+      expect(await movementCount(id)).toBe(movementsAfterFinalize);
+      const reloaded = await operator
+        .get(`${base}/${id}`)
+        .query({ organizationId: orgAId })
+        .expect(200);
+      expect(reloaded.body.status).toBe('operational');
+      expect(reloaded.body.valuationStale).toBe(false);
+      expect(
+        (reloaded.body.lines as Array<Record<string, unknown>>)[0]?.[
+          'quantity'
+        ],
+      ).toBe('30');
+
+      // And the same edit succeeds once the valuation replay is healthy,
+      // proving the refusal was the only thing standing in its way.
+      const repriced = await operator
+        .patch(`${base}/${id}`)
+        .query({ organizationId: orgAId })
+        .send({
+          acknowledgeSideEffects: true,
+          repricing: 'recalculate',
+          lines: [{ itemId: itemAId, quantity: '25', unitId: unitAId }],
+        })
+        .expect(200);
+      expect(repriced.body.valuationStale).toBe(false);
+      expect(await onHand(whMainId, itemAId)).toBe(before + 25);
+    });
+
+    it('keeps the number allocation outside the inventory transaction, and never reuses it', async () => {
+      // Numbering is its OWN transactional boundary (Documents module). A
+      // failed finalize does not roll the allocation back; what protects
+      // the series is the allocation key, which is the document id.
+      const client = await prisma.getClient<{
+        numberingAllocation: {
+          findFirst: (args: unknown) => Promise<Record<string, unknown> | null>;
+        };
+      }>();
+      const allocationOf = (documentId: string) =>
+        client.numberingAllocation.findFirst({
+          where: { allocationKey: documentId, organizationId: orgAId },
+        });
+
+      const available = await onHand(whSecondId, itemAId);
+      const draft = await createDocument({
+        kind: 'issue',
+        warehouseId: whSecondId,
+        lines: [
+          {
+            itemId: itemAId,
+            quantity: String(available + 7),
+            unitId: unitAId,
+          },
+        ],
+      });
+      const id = draft['id'] as string;
+
+      const refused = await finalize(id, 422);
+      expect(JSON.stringify(refused)).toContain('inventory.insufficient_stock');
+      // Inventory side: untouched.
+      expect(await movementCount(id)).toBe(0);
+      expect(await onHand(whSecondId, itemAId)).toBe(available);
+      const stillDraft = await operator
+        .get(`${base}/${id}`)
+        .query({ organizationId: orgAId })
+        .expect(200);
+      expect(stillDraft.body.status).toBe('draft');
+      // The document carries no number...
+      expect(stillDraft.body.number).toBeNull();
+      // ...but the allocation it reserved survived the rollback.
+      const reserved = await allocationOf(id);
+      expect(reserved).not.toBeNull();
+      const reservedNumber = reserved!['number'] as string;
+
+      // Retry once the stock exists: the SAME number, not a second one.
+      await receiveStock(whSecondId, itemAId, '50');
+      // The replenishing receipt is now the latest movement on this key, so
+      // the retry is a backdated posting and must answer both questions —
+      // which also exercises the in-transaction repricing on a finalize.
+      const retried = await operator
+        .post(`${base}/${id}/finalize`)
+        .query({ organizationId: orgAId })
+        .send({ backdateConfirmed: true, repricing: 'recalculate' })
+        .expect(200);
+      const finalized = retried.body as Record<string, unknown>;
+      expect(finalized['status']).toBe('operational');
+      expect(finalized['valuationStale']).toBe(false);
+      expect(finalized['number']).toBe(reservedNumber);
+      const afterRetry = await allocationOf(id);
+      expect(afterRetry!['id']).toBe(reserved!['id']);
+
+      // A different document never receives that number.
+      const other = await createDocument({
+        kind: 'issue',
+        warehouseId: whSecondId,
+        lines: [{ itemId: itemAId, quantity: '1', unitId: unitAId }],
+      });
+      const otherFinalized = await finalize(other['id'] as string);
+      expect(otherFinalized['number']).not.toBe(reservedNumber);
     });
 
     it('cancels an operational document by reversing it, keeps its number, and never reuses it', async () => {
