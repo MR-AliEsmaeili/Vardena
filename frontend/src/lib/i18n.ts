@@ -341,6 +341,10 @@ export const fa = {
     accountStatements: 'گردش حساب',
     generalLedger: 'دفتر کل',
     trialBalance: 'تراز آزمایشی',
+    inventory: 'انبار',
+    inventoryMovements: 'گردش‌های انبار',
+    inventoryKardex: 'کاردکس',
+    inventoryValuation: 'ارزش‌گذاری موجودی',
     openMenu: 'باز کردن منو',
     closeMenu: 'بستن منو',
     mainMenu: 'منوی اصلی',
@@ -675,6 +679,216 @@ export const fa = {
         'تفصیلی انتخاب‌شده به گروه تفصیلی این حساب تعلق ندارد.',
     },
   },
+  // ---------------------------------------------------------------------------
+  // Inventory — warehouse operations & valuation.
+  //
+  // Canonical terminology and copy come from the accepted UX/writing
+  // contracts, not ad-hoc wording:
+  // - `docs/frontend/ux/persian-ux-writing-standard.md` §3.4 (رسید انبار،
+  //   صادره انبار، انتقال بین انبار، قیمت تمام‌شده، قیمت‌گذاری مجدد،
+  //   در انتظار قیمت تمام‌شده، ارزش‌گذاری نامعتبر، بدون قیمت تمام‌شده…)
+  // - `docs/frontend/ux/feedback-standard.md` §5.3/§5.4 (the two-step
+  //   backdating dialogs) and §6.2/§11.7 (business-error copy).
+  // ---------------------------------------------------------------------------
+  inventory: {
+    title: 'عملیات انبار',
+    subtitle:
+      'ثبت رسید و صادره انبار، انتقال بین انبار و مشاهده گردش‌ها و موجودی.',
+    valuationTitle: 'ارزش‌گذاری موجودی',
+    valuationSubtitle:
+      'وضعیت ارزش موجودی هر کالا در هر انبار؛ کارفهرست حسابداری انبار.',
+    movementsTitle: 'گردش‌های انبار',
+    movementsSubtitle: 'تاریخچۀ گردش‌های ثبت‌شده انبار سازمان.',
+    kardexTitle: 'کاردکس',
+    kardexSubtitle: 'گردش کمیت و موجودی جاری یک کالا در یک انبار.',
+
+    // Surfaces on the landing page
+    newReceipt: 'ثبت رسید انبار',
+    newReceiptDescription:
+      'ثبت ورود کالا به انبار؛ قیمت تمام‌شده اختیاری است و می‌تواند بعداً ثبت شود.',
+    newIssue: 'ثبت صادره انبار',
+    newIssueDescription:
+      'ثبت خروج کالا از انبار؛ ارزش خروج را روش قیمت‌گذاری موجودی تعیین می‌کند.',
+    newTransfer: 'انتقال بین انبار',
+    newTransferDescription:
+      'انتقال هم‌زمان کالا بین دو انبار با دو گردش وابسته.',
+    movementsDescription: 'تاریخچۀ گردش‌های ثبت‌شده انبار سازمان.',
+    kardexDescription: 'گردش کمیت و موجودی جاری یک کالا در یک انبار.',
+    valuationDescription:
+      'وضعیت ارزش هر کالا در هر انبار و کارفهرست قیمت‌گذاری مجدد.',
+
+    // Form fields
+    item: 'کالا',
+    warehouse: 'انبار',
+    unit: 'واحد',
+    quantity: 'مقدار',
+    movementDate: 'تاریخ گردش',
+    movementDateHint: 'اگر خالی بماند، امروز در نظر گرفته می‌شود.',
+    reason: 'توضیح',
+    reasonOptionalHint: 'اختیاری.',
+    totalCost: 'قیمت کل رسید',
+    totalCostHint:
+      'اختیاری — ثبت رسید بدون قیمت تمام‌شده مجاز است و بعداً قابل ثبت است.',
+    sourceWarehouse: 'انبار مبدأ',
+    destinationWarehouse: 'انبار مقصد',
+    baseUnit: 'واحد مبنا',
+    currentStock: 'موجودی فعلی این کالا در این انبار',
+
+    // Form actions / validation
+    submitReceipt: 'ثبت رسید',
+    submitIssue: 'ثبت صادره',
+    submitting: 'در حال ثبت…',
+    submitTransfer: 'ثبت انتقال',
+    itemRequired: 'انتخاب کالا الزامی است.',
+    warehouseRequired: 'انتخاب انبار الزامی است.',
+    sourceWarehouseRequired: 'انتخاب انبار مبدأ الزامی است.',
+    destinationWarehouseRequired: 'انتخاب انبار مقصد الزامی است.',
+    destinationMustDiffer: 'انبار مقصد باید با انبار مبدأ متفاوت باشد.',
+    quantityRequired: 'مقدار الزامی است.',
+    quantityPositive: 'مقدار باید عددی مثبت باشد (حداکثر ۴ رقم اعشار).',
+    unitRequired: 'انتخاب واحد الزامی است.',
+    totalCostInvalid:
+      'قیمت کل باید عددی با حداکثر ۲ رقم اعشار باشد؛ مبلغ گرد نمی‌شود.',
+    referencesUnavailable:
+      'برای ثبت گردش، ابتدا باید کالا و انبار فعال برای این سازمان تعریف شده باشد.',
+    referencesLoadingFailed: 'دریافت اطلاعات پایه انبار انجام نشد.',
+
+    // Success feedback
+    receiptCreated: 'رسید انبار ثبت شد.',
+    issueCreated: 'صادره انبار ثبت شد.',
+    transferCreated: 'انتقال انبار ثبت شد.',
+    recalculationDone: 'قیمت‌گذاری مجدد انجام شد.',
+    recalculationDoneCount: 'گردش به‌روزرسانی شد.',
+
+    // Movement types (persian-ux-writing-standard §3.4 vocabulary)
+    movementTypes: {
+      inbound: 'رسید انبار',
+      outbound: 'صادره انبار',
+      transfer_in: 'انتقال به انبار',
+      transfer_out: 'انتقال از انبار',
+      adjustment_in: 'تعدیل افزایش موجودی',
+      adjustment_out: 'تعدیل کاهش موجودی',
+      reversal_in: 'معکوس رسید',
+      reversal_out: 'معکوس صادره',
+    },
+
+    // Per-movement valuation finality — the backend's own vocabulary
+    // (inventory-valuation.ts): unvalued / provisional / valued.
+    valuationStatuses: {
+      unvalued: 'بدون قیمت تمام‌شده',
+      provisional: 'ارزش‌گذاری نامعتبر (موقت)',
+      valued: 'قیمت‌گذاری‌شده',
+    },
+
+    // Key-level valuation state (states endpoint)
+    valuationStateStatuses: {
+      valued: 'قیمت‌گذاری‌شده',
+      pending_cost: 'در انتظار قیمت تمام‌شده',
+      stale: 'ارزش‌گذاری نامعتبر',
+    },
+
+    // Movements table
+    movementsEmptyFirstUse: 'هنوز گردش انباری ثبت نشده است.',
+    movementsEmptyFiltered: 'برای فیلترهای انتخاب‌شده نتیجه‌ای یافت نشد.',
+    movementsLoadFailed: 'دریافت گردش‌های انبار انجام نشد. دوباره تلاش کنید.',
+    movementTypeFilter: 'نوع گردش',
+    allMovementTypes: 'همه انواع',
+    dateFrom: 'از تاریخ',
+    dateTo: 'تا تاریخ',
+    columnDate: 'تاریخ گردش',
+    columnType: 'نوع',
+    columnItem: 'کالا',
+    columnWarehouse: 'انبار',
+    columnQuantity: 'مقدار',
+    columnBaseQuantity: 'مقدار مبنا',
+    columnValuationStatus: 'وضعیت ارزش‌گذاری',
+    columnTotalCost: 'ارزش گردش',
+    noValue: '—',
+
+    // Kardex
+    kardexPickTitle: 'انتخاب کالا و انبار',
+    kardexMissingScope: 'برای مشاهده کاردکس، کالا و انبار را انتخاب کنید.',
+    kardexEmpty: 'برای این کالا و انبار گردشی ثبت نشده است.',
+    kardexLoadFailed: 'دریافت کاردکس انجام نشد. دوباره تلاش کنید.',
+    kardexShow: 'نمایش کاردکس',
+    kardexColumnDate: 'تاریخ گردش',
+    kardexColumnType: 'نوع گردش',
+    kardexColumnQuantity: 'گردش',
+    kardexColumnBalance: 'موجودی',
+    kardexOpening: 'موجودی ابتدای بازه',
+    kardexClosing: 'موجودی پایان بازه',
+
+    // Valuation worklist
+    valuationEmpty: 'هنوز وضعیت ارزش‌گذاری‌ای برای موجودی ثبت نشده است.',
+    valuationEmptyFiltered: 'برای فیلتر انتخاب‌شده نتیجه‌ای یافت نشد.',
+    valuationLoadFailed: 'دریافت وضعیت ارزش‌گذاری انجام نشد. دوباره تلاش کنید.',
+    valuationStatusFilter: 'وضعیت ارزش‌گذاری',
+    allValuationStatuses: 'همه وضعیت‌ها',
+    columnValuedQuantity: 'موجودی قیمت‌گذاری‌شده',
+    columnUncostedQuantity: 'موجودی بدون قیمت تمام‌شده',
+    columnTotalValue: 'ارزش قیمت‌گذاری‌شده',
+    columnAverageUnitCost: 'میانگین قیمت تمام‌شده',
+    staleSince: 'نامعتبر از',
+    noAverageCost: '—',
+
+    // Backdating — the two-step explicit flow (feedback-standard §5.3/§5.4)
+    backdateStep1Title: 'سند با تاریخ گذشته',
+    backdateStep1Body:
+      'تاریخ این سند پیش از آخرین گردش ثبت‌شده برای این کالا در این انبار است. {affectedMovements} گردش بعدی ({affectedValuedMovements} گردش قیمت‌گذاری‌شده) ممکن است دیگر با قیمت تمام‌شده درست محاسبه نشده باشند. ثبت این سند مجاز است، اما تا زمانی که قیمت‌گذاری مجدد انجام نشود، ارزش این کالا در این انبار نامعتبر می‌ماند.',
+    backdateStep1Continue: 'ادامه و انتخاب نحوه قیمت‌گذاری',
+    backdateStep2Title: 'قیمت‌گذاری مجدد این کالا و انبار',
+    backdateStep2Body:
+      'یکی از دو گزینه را انتخاب کنید. هیچ‌کدام پیش‌فرض نیست و سیستم به‌تنهایی تصمیم نمی‌گیرد.',
+    backdateStep2Recalculate:
+      'قیمت‌گذاری مجدد انجام شود — ارزش این کالا در این انبار دوباره از ابتدای گردش‌ها محاسبه می‌شود؛ ارقام گزارش‌های قبلی این کالا و انبار تغییر می‌کند.',
+    backdateStep2Skip:
+      'انجام نشود — سند ثبت می‌شود و ارزش فعلی دست‌نخورده می‌ماند، اما با برچسب «ارزش‌گذاری نامعتبر» نمایش داده می‌شود تا بعداً اصلاح شود.',
+    backdateStep2Submit: 'ثبت سند',
+
+    // Honest stale notice after «انجام نشود» (feedback-standard §5.4)
+    staleNoticeTitle: 'ارزش‌گذاری این کالا و انبار نامعتبر است.',
+    staleNoticeBody:
+      'شما انتخاب کردید قیمت‌گذاری مجدد انجام نشود؛ ارزش ثبت‌شده همین کالا و انبار تا قیمت‌گذاری مجدد، «نامعتبر» باقی می‌ماند و در کارفهرست ارزش‌گذاری نمایش داده می‌شود.',
+    staleNoticeRecalculate: 'قیمت‌گذاری مجدد',
+
+    // Recalculation confirm dialog (feedback-standard §5.3)
+    recalculateTitle: 'قیمت‌گذاری مجدد',
+    recalculateBody:
+      'ارزش این کالا در این انبار از ابتدای گردش‌ها دوباره محاسبه می‌شود. ارقام ارزش در گزارش‌های این کالا و انبار تغییر می‌کند؛ مقدار موجودی تغییر نمی‌کند.',
+    recalculateSubmit: 'قیمت‌گذاری مجدد',
+    recalculateSubmitting: 'در حال قیمت‌گذاری مجدد…',
+    recalculateFailed: 'قیمت‌گذاری مجدد انجام نشد.',
+
+    // Business-error copy, mapped by stable code (feedback-standard §6.2)
+    errors: {
+      insufficientStock:
+        'امکان ثبت عملیات انبار وجود ندارد؛ زیرا موجودی قابل استفاده کافی نیست. مقدار را کاهش دهید یا موجودی رزروشده را بررسی کنید.',
+      insufficientStockNumbers:
+        'موجودی فعلی: {onHand} — مقدار درخواستی: {requested}.',
+      backdatedTransferUnresolved:
+        'انتقال بین انبار با تاریخ پیش از آخرین گردش این کالا در انبار پذیرفته نمی‌شود؛ روش ارزش‌گذاری چنین انتقالی هنوز مشخص نیست. تاریخ گردش را اصلاح کنید.',
+      recalculationTooLarge:
+        'تعداد گردش‌های این کالا در این انبار بیش از حد مجاز یک بار قیمت‌گذاری مجدد است. با پشتیبانی تماس بگیرید تا در بازه‌های کوچک‌تر انجام شود.',
+      valuationMethodNotImplemented:
+        'این روش قیمت‌گذاری در این نسخه پشتیبانی نمی‌شود. تنها روش فعال، میانگین موزون متحرک است.',
+      costAssignmentRequiresInbound:
+        'ثبت مستقیم قیمت تمام‌شده فقط برای رسید انبار ممکن است؛ ارزش صادره از روش قیمت‌گذاری محاسبه می‌شود.',
+      operationKeyConflict:
+        'این درخواست قبلاً با اطلاعات دیگری ثبت شده است. اطلاعات را تازه‌سازی کنید و عملیات را بررسی کنید.',
+      recalculatePermission:
+        'این عملیات نیاز به مجوز «قیمت‌گذاری مجدد» ارزش موجودی دارد.',
+      recalculateFailed: 'قیمت‌گذاری مجدد انجام نشد.',
+      postFailed: 'ثبت عملیات انبار انجام نشد. دوباره تلاش کنید.',
+      // Server validation issue codes on the cost fields
+      costInputAmbiguous: 'فقط یکی از «قیمت واحد» یا «قیمت کل» را وارد کنید.',
+      costNotAcceptedForMovementType:
+        'برای این نوع گردش، قیمت تمام‌شده پذیرفته نمی‌شود.',
+      costPrecisionExceeded:
+        'مبلغ واردشده بیش از دو رقم اعشار دارد؛ مبلغ گرد نمی‌شود و باید دقیق وارد شود.',
+      generic:
+        'سامانه این عملیات انبار را نپذیرفت. مقدارهای واردشده را بازبینی کنید.',
+    },
+  },
   masterData: {
     title: 'اطلاعات پایه حسابداری',
     description:
@@ -813,6 +1027,8 @@ export const fa = {
     referencesLoading: 'در حال دریافت اطلاعات پایه…',
     missingScope: 'برای نمایش گزارش، حوزه مالی و سال مالی را انتخاب کنید.',
     missingStatementScope: 'برای نمایش گزارش، حساب و سال مالی را انتخاب کنید.',
+    allWarehouses: 'همه انبارها',
+    allItems: 'همه کالاها',
   },
   table: {
     loading: 'در حال دریافت داده‌ها…',

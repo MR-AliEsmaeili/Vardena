@@ -327,9 +327,18 @@ export class InventoryTransfersService {
       };
     } catch (error) {
       if (error instanceof InsufficientStockError) {
+        // Stable business subcode for the UI (see the movements service twin):
+        // the source warehouse is the one that ran out.
         throw AppException.businessRule(
           `Insufficient stock in warehouse "${source.code}": ` +
             `on hand ${error.onHand}, requested ${error.requested}.`,
+          {
+            code: 'inventory.insufficient_stock',
+            warehouseId: source.id,
+            itemId: input.itemId,
+            onHand: error.onHand,
+            requested: error.requested,
+          },
         );
       }
       if (isUniqueViolation(error)) {

@@ -1143,6 +1143,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/kardex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read a quantity-only Kardex for one item and warehouse. */
+        get: operations["InventoryKardexController_read_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/transfers": {
         parameters: {
             query?: never;
@@ -1246,6 +1263,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/balances/availability-across-warehouses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stock visibility for one item across every active warehouse of the organization (C-50 §3.2) — lets a caller inspect availability before manually choosing a warehouse for a Material Request line. The system never picks or splits a warehouse on the caller's behalf. */
+        get: operations["InventoryBalancesController_availabilityAcrossWarehouses_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/balances/reconcile": {
         parameters: {
             query?: never;
@@ -1274,6 +1308,309 @@ export interface paths {
         put?: never;
         /** Rebuild stored balances from the ledger and open reservations. Maintenance operation: every correction is returned in the report. */
         post: operations["InventoryBalancesController_rebuild_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/valuation/methods": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the effective-dated valuation-method versions configured for items. */
+        get: operations["InventoryValuationController_listMethods_v1"];
+        put?: never;
+        /** Configure the valuation method of an item from an instant. The previous open-ended version is closed, never edited. */
+        post: operations["InventoryValuationController_configureMethod_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/valuation/methods/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Resolve which valuation method governs one item at one instant, and whether it came from configuration or the default. */
+        get: operations["InventoryValuationController_resolveMethod_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/valuation/states": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List valuation states. Filter by status to get the Inventory Accounting worklist: stock waiting for a cost, or values waiting for a recalculation. */
+        get: operations["InventoryValuationController_listStates_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/valuation/states/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get the valuation state of one item in one warehouse. */
+        get: operations["InventoryValuationController_getState_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/valuation/backdate-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview what posting with this business date would disturb, so the UI can explain the consequence BEFORE the operator commits.
+         * @description Gated by Inventory.Movement.Create, not by a valuation permission: the person about to post must see the consequence even if they may not see money. The response carries counts and dates only — no amounts.
+         */
+        get: operations["InventoryValuationController_checkBackdate_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/valuation/movements/{id}/cost": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign a cost to an inbound movement that was posted without one, then either reprice the key or leave it marked inconsistent.
+         * @description Only an addition: a movement that already carries a value is refused with 409 — correcting a wrong cost goes through a reversal, exactly like a wrong quantity.
+         */
+        post: operations["InventoryValuationController_assignCost_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/valuation/recalculations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List recalculation runs: what was repriced, when, why, and how many rows actually changed. */
+        get: operations["InventoryValuationController_listRuns_v1"];
+        put?: never;
+        /**
+         * Reprice ONE item in ONE warehouse by replaying its movements in the canonical ledger order.
+         * @description Bounded by construction: the key is required, the replay runs in a single transaction, and a key with more movements than the limit is refused rather than run. Human-entered costs, transfer legs and reversals keep their values; only average-derived issue values are recomputed, so the command is idempotent.
+         */
+        post: operations["InventoryValuationController_recalculate_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/material-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Material Requests of one organization. */
+        get: operations["MaterialRequestsController_list_v1"];
+        put?: never;
+        /** Create a draft Material Request with its lines. Each line picks its own warehouse; the system never auto-splits a line across warehouses. */
+        post: operations["MaterialRequestsController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/material-requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one Material Request with its lines. */
+        get: operations["MaterialRequestsController_get_v1"];
+        put?: never;
+        post?: never;
+        /** Delete a draft Material Request. Only drafts can be deleted. */
+        delete: operations["MaterialRequestsController_remove_v1"];
+        options?: never;
+        head?: never;
+        /** Edit a Material Request while it is a draft or has been returned for correction; providing `lines` replaces the whole line set. */
+        patch: operations["MaterialRequestsController_update_v1"];
+        trace?: never;
+    };
+    "/api/v1/inventory/material-requests/{id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The append-only lifecycle narrative for one Material Request (created, submitted — also used for a post-return resubmission, returned_for_correction, approved, rejected, approval_reversed, cancelled, line_invoked). */
+        get: operations["MaterialRequestsController_listEvents_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/material-requests/{id}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Submit a draft Material Request for approval, allocating its number — or RESUBMIT one returned for correction, replaying the SAME allocated number. */
+        post: operations["MaterialRequestsController_submit_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/material-requests/{id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve a submitted Material Request. Reserves stock, atomically with the approval, for every line that requested a reservation; insufficient availability on ANY flagged line refuses the WHOLE approval. */
+        post: operations["MaterialRequestsController_approve_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/material-requests/{id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reject a submitted Material Request with a reason. */
+        post: operations["MaterialRequestsController_reject_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/material-requests/{id}/return-for-correction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Return a submitted Material Request to its requester for correction, with a required reason. The requester must edit and resubmit it (POST .../submit again) before it can be approved, rejected, or returned again. */
+        post: operations["MaterialRequestsController_returnForCorrection_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/material-requests/{id}/reverse-approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reverse the approval of a Material Request, releasing any reservations it created. Necessary but not sufficient: only the ORIGINAL approver may use this, and it is refused once any line has been invoked. */
+        post: operations["MaterialRequestsController_reverseApproval_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/material-requests/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel an APPROVED Material Request outright, releasing any reservations it holds. A DISTINCT, terminal operation from reverse-approval (never returns to submitted); refused once any line has been invoked, even partially. No original-approver restriction. */
+        post: operations["MaterialRequestsController_cancel_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/material-requests/{id}/lines/invoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Record that an approved line has been carried into a subsequent process (e.g. a warehouse issue or a Purchase Request) via a Document Relation. Partial/multiple invocations of the same line are allowed, capped at the quantity still remaining on it. */
+        put: operations["MaterialRequestsController_invokeLine_v1"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3535,6 +3872,8 @@ export interface components {
             name: string;
             /** @description Default negative-stock policy for this warehouse; an item-level override takes precedence (ADR-0022). */
             allowNegativeStock: boolean;
+            /** @description Whether ACTIVE reservations reduce the read-time "available" figure for this warehouse (C-50 §3.7). Reservations never change on-hand stock regardless of this setting. */
+            reservationsReduceAvailable: boolean;
             isActive: boolean;
             /** Format: date-time */
             createdAt: string;
@@ -3561,6 +3900,11 @@ export interface components {
              * @default false
              */
             allowNegativeStock: boolean;
+            /**
+             * @description Whether ACTIVE reservations reduce the read-time "available" figure for this warehouse (C-50 §3.7). Reservations never change on-hand stock regardless of this setting.
+             * @default true
+             */
+            reservationsReduceAvailable: boolean;
         };
         UpdateWarehouseDto: {
             /**
@@ -3572,6 +3916,8 @@ export interface components {
             name?: string;
             /** @description Default negative-stock policy for this warehouse (ADR-0022). An item-level override takes precedence. */
             allowNegativeStock?: boolean;
+            /** @description Whether ACTIVE reservations reduce the read-time "available" figure for this warehouse (C-50 §3.7). */
+            reservationsReduceAvailable?: boolean;
         };
         InventoryMovementResponseDto: {
             /** Format: ulid */
@@ -3622,6 +3968,28 @@ export interface components {
             reason: Record<string, never> | null;
             /** @description Idempotency key this movement was posted with. */
             operationKey: string;
+            /**
+             * @description SIGNED value effect of this movement (+ inbound, - outbound), mirroring baseQuantity. Null when the movement carries no value yet, and null for callers without Inventory.Valuation.View.
+             * @example -250000.00
+             */
+            totalCost: Record<string, never> | null;
+            /**
+             * @description Finality of the value: "unvalued" (no value), "provisional" (a value an explicit recalculation will change), "valued" (final).
+             * @enum {string}
+             */
+            valuationStatus: "unvalued" | "provisional" | "valued";
+            /**
+             * @description Where the value came from. Everything except average_cost is preserved verbatim by a recalculation.
+             * @enum {string|null}
+             */
+            valuationSource: "entered" | "average_cost" | "transfer" | "reversal" | null;
+            /** Format: date-time */
+            valuedAt: Record<string, never> | null;
+            /**
+             * Format: ulid
+             * @description The recalculation run that last wrote these fields, if any.
+             */
+            valuationRunId: Record<string, never> | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
@@ -3665,6 +4033,23 @@ export interface components {
             referenceType?: string;
             /** @description Opaque source-document id. Must be set together with referenceType. */
             referenceId?: string;
+            /**
+             * @description OPTIONAL cost per ENTERED unit, as an exact decimal string with at most 2 decimals. Never required: a warehouse receipt posts without any cost and the stock is tracked as uncosted until a value is assigned. Mutually exclusive with totalCost, rejected on issues, and requires Inventory.Valuation.AssignCost.
+             * @example 12500.00
+             */
+            unitCost?: string;
+            /**
+             * @description OPTIONAL total cost of the whole posting, as an exact decimal string with at most 2 decimals. Same rules as unitCost; provide one or the other, never both.
+             * @example 250000.00
+             */
+            totalCost?: string;
+            /** @description Acknowledges that the document is dated before the latest movement on this item and warehouse. A backdated posting is rejected (422 inventory.backdated_document) until this is true. */
+            backdateConfirmed?: boolean;
+            /**
+             * @description The second, separate decision a backdated posting requires: "recalculate" reprices this item and warehouse immediately, "skip" keeps the existing values and marks them inconsistent (stale). There is no default — valuation is never recalculated silently.
+             * @enum {string}
+             */
+            repricing?: "recalculate" | "skip";
         };
         ReverseInventoryMovementDto: {
             /** @description Idempotency key for this reversal. A key that already reversed this movement replays the original reversal row. */
@@ -3676,8 +4061,64 @@ export interface components {
             movementDate?: string;
             /** @description Acknowledges that the reversal is dated before the latest movement on this item and warehouse. A backdated reversal is rejected (422 inventory.backdated_document) until this is true. */
             backdateConfirmed?: boolean;
-            /** @description The second, separate decision a backdated reversal requires: "recalculate" reprices this item and warehouse immediately, "skip" keeps the existing values and marks them inconsistent (stale). There is no default — valuation is never recalculated silently. */
+            /**
+             * @description The second, separate decision a backdated reversal requires: "recalculate" reprices this item and warehouse immediately, "skip" keeps the existing values and marks them inconsistent (stale). There is no default — valuation is never recalculated silently.
+             * @enum {string}
+             */
             repricing?: "recalculate" | "skip";
+        };
+        InventoryKardexRowDto: {
+            /** Format: ulid */
+            movementId: string;
+            /** Format: date-time */
+            movementDate: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** @enum {string} */
+            movementType: "inbound" | "outbound" | "transfer_in" | "transfer_out" | "adjustment_in" | "adjustment_out" | "reversal_in" | "reversal_out";
+            /** @example -20.0000 */
+            signedQuantity: string;
+            /** Format: ulid */
+            displayUnitId: string;
+            /** @example 80.0000 */
+            runningQuantity: string;
+            /** Format: ulid */
+            transferId: Record<string, never> | null;
+            /** Format: ulid */
+            reversalOfMovementId: Record<string, never> | null;
+            referenceType: Record<string, never> | null;
+            referenceId: Record<string, never> | null;
+        };
+        InventoryKardexScopeDto: {
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            itemId: string;
+            /** Format: ulid */
+            warehouseId: string;
+            /** Format: date-time */
+            dateFrom: Record<string, never> | null;
+            /** Format: date-time */
+            dateTo: Record<string, never> | null;
+            /** Format: ulid */
+            baseUnitId: string;
+            /** Format: ulid */
+            displayUnitId: string;
+        };
+        InventoryKardexResponseDto: {
+            items: components["schemas"]["InventoryKardexRowDto"][];
+            total: number;
+            page: number;
+            pageSize: number;
+            scope: components["schemas"]["InventoryKardexScopeDto"];
+            /** @example 100.0000 */
+            opening: string;
+            /** @example 130.0000 */
+            closing: string;
+            /** @enum {string} */
+            openingBasis: "ledger_movements_before_date_from" | "zero_before_all_recorded_movements";
+            /** @description Pass unchanged for every subsequent page. */
+            snapshot: string;
         };
         PostInventoryTransferDto: {
             /**
@@ -3860,6 +4301,41 @@ export interface components {
             available: string;
             /** @description Effective negative-stock policy for this key: the item override when set, else the warehouse default. */
             allowNegativeStock: boolean;
+            /** @description This warehouse's setting: whether ACTIVE reservations reduce the reported `available` figure (C-50). `onHand` above is never affected by this setting either way. */
+            reservationsReduceAvailable: boolean;
+        };
+        ItemWarehouseAvailabilityResponseDto: {
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            branchId: string;
+            /** Format: ulid */
+            warehouseId: string;
+            /** Format: ulid */
+            itemId: string;
+            /**
+             * @description Decimal string.
+             * @example 100
+             */
+            onHand: string;
+            /**
+             * @description Decimal string.
+             * @example 5
+             */
+            reserved: string;
+            /**
+             * @description Derived: onHand − reserved. A key with no stored row reads as zero — absence of facts is absence of stock, not an error.
+             * @example 95
+             */
+            available: string;
+            /** @description Effective negative-stock policy for this key: the item override when set, else the warehouse default. */
+            allowNegativeStock: boolean;
+            /** @description This warehouse's setting: whether ACTIVE reservations reduce the reported `available` figure (C-50). `onHand` above is never affected by this setting either way. */
+            reservationsReduceAvailable: boolean;
+            /** @description The warehouse's code, for display. */
+            warehouseCode: string;
+            /** @description The warehouse's name, for display. */
+            warehouseName: string;
         };
         ReconcileInventoryBalancesDto: {
             /**
@@ -3963,6 +4439,471 @@ export interface components {
             checked: number;
             rebuilt: number;
             corrections: components["schemas"]["RebuildCorrectionDto"][];
+        };
+        ItemValuationMethodResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            itemId: string;
+            /** @enum {string} */
+            method: "moving_weighted_average" | "fifo" | "lifo" | "specific_identification";
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validTo: Record<string, never> | null;
+            note: Record<string, never> | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ResolvedValuationMethodResponseDto: {
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            itemId: string;
+            /** Format: date-time */
+            asOf: string;
+            /** @enum {string} */
+            method: "moving_weighted_average" | "fifo" | "lifo" | "specific_identification";
+            /**
+             * @description "default" means no configuration row covers this instant and the code-defined MVP default applies — not that a row exists saying so.
+             * @enum {string}
+             */
+            source: "configured" | "default";
+            /** Format: ulid */
+            configurationId: Record<string, never> | null;
+            /** Format: date-time */
+            validFrom: Record<string, never> | null;
+            /** Format: date-time */
+            validTo: Record<string, never> | null;
+            /** @description Whether this method is actually implemented in this MVP. */
+            active: boolean;
+        };
+        ConfigureValuationMethodDto: {
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            itemId: string;
+            /**
+             * @description Known methods. Only moving_weighted_average is implemented; configuring any other is rejected with 422 rather than silently accepted.
+             * @enum {string}
+             */
+            method: "moving_weighted_average" | "fifo" | "lifo" | "specific_identification";
+            /**
+             * Format: date-time
+             * @description Start of the validity window; defaults to now. The previous open-ended version is closed at this instant (effective dating, D-21).
+             */
+            validFrom?: string;
+            /**
+             * Format: date-time
+             * @description Optional end of the window; must be after validFrom.
+             */
+            validTo?: string;
+            note?: string;
+        };
+        InventoryValuationStateResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            branchId: string;
+            /** Format: ulid */
+            warehouseId: string;
+            /** Format: ulid */
+            itemId: string;
+            /** @enum {string} */
+            method: "moving_weighted_average" | "fifo" | "lifo" | "specific_identification";
+            /**
+             * @description Base-unit quantity that carries a value. Decimal string.
+             * @example 120.0000
+             */
+            valuedQuantity: string;
+            /**
+             * @description Base-unit quantity with no cost yet. Decimal string. The whole point of cost-optional operations: this number is visible instead of being averaged away.
+             * @example 30.0000
+             */
+            uncostedQuantity: string;
+            /**
+             * @description Value of valuedQuantity. Decimal string.
+             * @example 1500000.00
+             */
+            totalValue: string;
+            /**
+             * @description valuedQuantity + uncostedQuantity. Always equals the stock balance on-hand for this key.
+             * @example 150.0000
+             */
+            totalQuantity: string;
+            /**
+             * @description Derived totalValue / valuedQuantity, rounded for display only. Null when nothing is valued; never stored.
+             * @example 12500.000000
+             */
+            averageUnitCost: Record<string, never> | null;
+            /**
+             * @description "valued" = complete and consistent; "pending_cost" = some stock still has no cost; "stale" = the stored value is inconsistent and needs an explicit recalculation.
+             * @enum {string}
+             */
+            status: "valued" | "pending_cost" | "stale";
+            /** Format: date-time */
+            staleSince: Record<string, never> | null;
+            /** Format: date-time */
+            lastValuedAt: Record<string, never> | null;
+            /** Format: ulid */
+            lastRecalculationId: Record<string, never> | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        BackdateCheckResponseDto: {
+            /** @description True when movementDate is strictly before the latest movement on this key. Equal instants are NOT backdating. */
+            backdated: boolean;
+            /** Format: date-time */
+            movementDate: string;
+            /** Format: date-time */
+            latestMovementDate: Record<string, never> | null;
+            /** @description Movements dated strictly after movementDate. */
+            affectedMovements: number;
+            /** @description How many of those currently carry a value that a recalculation could change. */
+            affectedValuedMovements: number;
+            /** @description Whether this key already reports an inconsistent value. */
+            alreadyStale: boolean;
+            /** @description The posting will be rejected until backdateConfirmed is sent as true. */
+            confirmationRequired: boolean;
+            /** @description The posting will be rejected until an explicit repricing choice is sent. */
+            repricingChoiceRequired: boolean;
+            /** @description Stable machine-readable code the UI keys its Persian warning off (inventory.backdated_document), or null when the posting is not backdated. */
+            code: Record<string, never> | null;
+        };
+        AssignMovementCostDto: {
+            /** Format: ulid */
+            organizationId: string;
+            /** @description Idempotency key. Retrying with the same key and amount replays the stored result instead of pricing twice. */
+            operationKey: string;
+            /**
+             * @description Total value of the movement, as an exact decimal string with at most 2 decimals. Never rounded: an amount that does not fit exactly is rejected.
+             * @example 250000.00
+             */
+            totalCost: string;
+            /**
+             * @description Required: "recalculate" reprices this item and warehouse now, "skip" records the cost and marks the key inconsistent (stale) for a later, explicit recalculation.
+             * @enum {string}
+             */
+            repricing: "recalculate" | "skip";
+            reason?: string;
+        };
+        InventoryValuationRunResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            branchId: string;
+            /** Format: ulid */
+            warehouseId: string;
+            /** Format: ulid */
+            itemId: string;
+            /** @enum {string} */
+            method: "moving_weighted_average" | "fifo" | "lifo" | "specific_identification";
+            /** @enum {string} */
+            trigger: "backdated_document" | "cost_assignment" | "manual";
+            /** Format: date-time */
+            fromDate: Record<string, never> | null;
+            /** @description How many movements the replay read. */
+            movementsExamined: number;
+            /** @description How many movement rows actually changed. Zero is a valid, honest outcome. */
+            movementsRevalued: number;
+            /** @example 120.0000 */
+            resultingValuedQuantity: string;
+            /** @example 0.0000 */
+            resultingUncostedQuantity: string;
+            /** @example 1500000.00 */
+            resultingTotalValue: string;
+            /** @enum {string} */
+            resultingStatus: "valued" | "pending_cost" | "stale";
+            operationKey: string;
+            reason: Record<string, never> | null;
+            /** Format: date-time */
+            executedAt: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        ValuationCommandResponseDto: {
+            /** @description The movement the command touched, re-read after the write (null for a key-level recalculation). */
+            movement: {
+                [key: string]: unknown;
+            } | null;
+            state: components["schemas"]["InventoryValuationStateResponseDto"];
+            /** @description The recalculation that ran, or null when the operator chose "skip" — in which case the key is now stale on purpose. */
+            run: components["schemas"]["InventoryValuationRunResponseDto"] | null;
+        };
+        RecalculateValuationDto: {
+            /** Format: ulid */
+            organizationId: string;
+            /** @description Idempotency key; a retry replays the original run. */
+            operationKey: string;
+            /**
+             * Format: ulid
+             * @description Required: a recalculation always targets exactly ONE warehouse and item. There is no "recalculate everything".
+             */
+            warehouseId: string;
+            /** Format: ulid */
+            itemId: string;
+            /**
+             * @description Why the recalculation was requested; defaults to "manual".
+             * @enum {string}
+             */
+            trigger?: "backdated_document" | "cost_assignment" | "manual";
+            /**
+             * Format: date-time
+             * @description Recorded on the run for audit. The replay always covers the whole key: a partial replay cannot produce a deterministic average.
+             */
+            fromDate?: string;
+            reason?: string;
+        };
+        RecalculationResponseDto: {
+            run: components["schemas"]["InventoryValuationRunResponseDto"];
+            state: components["schemas"]["InventoryValuationStateResponseDto"];
+        };
+        MaterialRequestResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** @description Allocated at submission. */
+            number: Record<string, never> | null;
+            /** @enum {string} */
+            status: "draft" | "submitted" | "returned" | "approved" | "rejected" | "cancelled";
+            description: Record<string, never> | null;
+            /** Format: ulid */
+            requestedBy: string;
+            /** Format: date-time */
+            submittedAt: Record<string, never> | null;
+            /** Format: ulid */
+            submittedBy: Record<string, never> | null;
+            /**
+             * Format: date-time
+             * @description Set by the MOST RECENT return for correction, if any.
+             */
+            returnedAt: Record<string, never> | null;
+            /** Format: ulid */
+            returnedBy: Record<string, never> | null;
+            returnReason: Record<string, never> | null;
+            /** Format: date-time */
+            approvedAt: Record<string, never> | null;
+            /** Format: ulid */
+            approvedBy: Record<string, never> | null;
+            /** Format: date-time */
+            rejectedAt: Record<string, never> | null;
+            /** Format: ulid */
+            rejectedBy: Record<string, never> | null;
+            rejectionReason: Record<string, never> | null;
+            /** Format: date-time */
+            approvalReversedAt: Record<string, never> | null;
+            /** Format: ulid */
+            approvalReversedBy: Record<string, never> | null;
+            approvalReversalReason: Record<string, never> | null;
+            /**
+             * Format: date-time
+             * @description Set once, terminally, by Cancel — distinct from approval reversal.
+             */
+            cancelledAt: Record<string, never> | null;
+            /** Format: ulid */
+            cancelledBy: Record<string, never> | null;
+            cancellationReason: Record<string, never> | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        MaterialRequestLineResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            materialRequestId: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            branchId: string;
+            lineNumber: number;
+            /** Format: ulid */
+            itemId: string;
+            /** Format: ulid */
+            warehouseId: string;
+            /** @description Decimal string, entered magnitude. */
+            quantity: string;
+            /** Format: ulid */
+            unitId: string;
+            /** @description Decimal string, base-unit equivalent. */
+            baseQuantity: string;
+            /** Format: ulid */
+            baseUnitId: string;
+            /** @description Decimal string. */
+            conversionFactor: string;
+            reservationRequested: boolean;
+            /**
+             * Format: ulid
+             * @description Set only once approval successfully reserved this line.
+             */
+            reservationId: Record<string, never> | null;
+            /** @description Derived from document relations, never stored. */
+            invokedBaseQuantity: string;
+            /** @description baseQuantity − invokedBaseQuantity. */
+            remainingBaseQuantity: string;
+            invocationCount: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        MaterialRequestDetailResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** @description Allocated at submission. */
+            number: Record<string, never> | null;
+            /** @enum {string} */
+            status: "draft" | "submitted" | "returned" | "approved" | "rejected" | "cancelled";
+            description: Record<string, never> | null;
+            /** Format: ulid */
+            requestedBy: string;
+            /** Format: date-time */
+            submittedAt: Record<string, never> | null;
+            /** Format: ulid */
+            submittedBy: Record<string, never> | null;
+            /**
+             * Format: date-time
+             * @description Set by the MOST RECENT return for correction, if any.
+             */
+            returnedAt: Record<string, never> | null;
+            /** Format: ulid */
+            returnedBy: Record<string, never> | null;
+            returnReason: Record<string, never> | null;
+            /** Format: date-time */
+            approvedAt: Record<string, never> | null;
+            /** Format: ulid */
+            approvedBy: Record<string, never> | null;
+            /** Format: date-time */
+            rejectedAt: Record<string, never> | null;
+            /** Format: ulid */
+            rejectedBy: Record<string, never> | null;
+            rejectionReason: Record<string, never> | null;
+            /** Format: date-time */
+            approvalReversedAt: Record<string, never> | null;
+            /** Format: ulid */
+            approvalReversedBy: Record<string, never> | null;
+            approvalReversalReason: Record<string, never> | null;
+            /**
+             * Format: date-time
+             * @description Set once, terminally, by Cancel — distinct from approval reversal.
+             */
+            cancelledAt: Record<string, never> | null;
+            /** Format: ulid */
+            cancelledBy: Record<string, never> | null;
+            cancellationReason: Record<string, never> | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            lines: components["schemas"]["MaterialRequestLineResponseDto"][];
+        };
+        MaterialRequestEventResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            materialRequestId: string;
+            /** Format: ulid */
+            organizationId: string;
+            eventType: string;
+            fromStatus: Record<string, never> | null;
+            toStatus: Record<string, never> | null;
+            /** Format: ulid */
+            actorId: Record<string, never> | null;
+            reason: Record<string, never> | null;
+            /** @description Opaque pointer (a line id, reservation id, or document-relation id depending on eventType). Never a foreign key. */
+            referenceId: Record<string, never> | null;
+            /** Format: date-time */
+            occurredAt: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        MaterialRequestLineInputDto: {
+            /** Format: ulid */
+            itemId: string;
+            /**
+             * Format: ulid
+             * @description The line's OWN warehouse (Owner decision: the system never splits a line across warehouses — a 60/40 split is two lines the caller creates).
+             */
+            warehouseId: string;
+            /**
+             * @description Positive decimal magnitude in `unitId`, as a string.
+             * @example 10
+             */
+            quantity: string;
+            /** Format: ulid */
+            unitId: string;
+            /**
+             * @description Optional per line (Owner decision): when true, approval reserves this exact item/warehouse/quantity if available, or the whole approval is refused — never a partial reservation for this line.
+             * @default false
+             */
+            reservationRequested: boolean;
+        };
+        CreateMaterialRequestDto: {
+            /**
+             * Format: ulid
+             * @description Owning organization.
+             */
+            organizationId: string;
+            description?: Record<string, never>;
+            lines: components["schemas"]["MaterialRequestLineInputDto"][];
+        };
+        UpdateMaterialRequestDto: {
+            description?: Record<string, never> | null;
+            /** @description Omit to leave the line set unchanged; provide to REPLACE it wholesale. Only valid while the request is still a draft. */
+            lines?: components["schemas"]["MaterialRequestLineInputDto"][];
+        };
+        RejectMaterialRequestDto: {
+            /** @description Required — rejection must carry a reason. */
+            reason: string;
+        };
+        ReturnMaterialRequestForCorrectionDto: {
+            /** @description Required — the requester needs a reason to know what to correct. */
+            reason: string;
+        };
+        ReverseMaterialRequestApprovalDto: {
+            reason?: string;
+        };
+        CancelMaterialRequestDto: {
+            reason?: string;
+        };
+        InvokeMaterialRequestLineDto: {
+            /** Format: ulid */
+            lineId: string;
+            /**
+             * @description The destination process module (not hardcoded to one type).
+             * @example inventory
+             */
+            destinationModule: string;
+            /**
+             * @description Must be a Documents type the destination module registered — checked before the invocation is recorded.
+             * @example inventory_movement
+             */
+            destinationDocumentType: string;
+            /** Format: ulid */
+            destinationDocumentId: string;
+            /** Format: ulid */
+            destinationLineId?: string;
+            /**
+             * @description Entered in the line's OWN unit, converted with the line's own recorded conversion factor. Capped at the quantity still remaining on the line; multiple/partial invocations are allowed.
+             * @example 10
+             */
+            quantity: string;
         };
         DocumentTypeResponseDto: {
             /** @example inventory_receipt */
@@ -9946,7 +10887,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Negative-stock policy violation, a non-stockable or disabled item/warehouse, an adjustment without a reason, or no unit conversion covering the movement date. */
+            /** @description Negative-stock policy violation, a non-stockable or disabled item/warehouse, an adjustment without a reason, no unit conversion covering the movement date, an unconfirmed backdated document (inventory.backdated_document), a missing repricing choice (inventory.repricing_choice_required), or a configured valuation method that is not implemented. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -10061,7 +11002,70 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The reversal date precedes the original movement, or the reversal would violate the negative-stock policy. */
+            /** @description The reversal date precedes the original movement, a backdated reversal lacks the required confirmation or repricing choice, a configured valuation method is not implemented, or the reversal would violate the negative-stock policy. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryKardexController_read_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                organizationId: string;
+                itemId: string;
+                warehouseId: string;
+                /** @description Inclusive. */
+                dateFrom?: string;
+                /** @description Inclusive. */
+                dateTo?: string;
+                /** @description Unit used for presentation. Omit for the item base unit. */
+                displayUnitId?: string;
+                /** @description Opaque PostgreSQL ledger snapshot returned by page 1. Required for pages after page 1. */
+                snapshot?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryKardexResponseDto"];
+                };
+            };
+            /** @description Invalid range or missing page snapshot. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing Inventory.Movement.View. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Display conversion is missing or not exactly representable. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -10126,7 +11130,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Source equals destination, negative-stock policy violation at the source, a non-stockable or disabled item/warehouse, or no unit conversion covering the movement date. */
+            /** @description Source equals destination, negative-stock policy violation at the source, a non-stockable or disabled item/warehouse, no unit conversion covering the movement date, or a backdated transfer whose valuation would depend on the unresolved transfer-average convention (inventory.backdated_transfer_valuation_unresolved). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -10446,6 +11450,50 @@ export interface operations {
             };
         };
     };
+    InventoryBalancesController_availabilityAcrossWarehouses_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+                itemId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemWarehouseAvailabilityResponseDto"][];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Organization or item does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     InventoryBalancesController_reconcile_v1: {
         parameters: {
             query?: never;
@@ -10541,6 +11589,1169 @@ export interface operations {
             };
             /** @description Organization, warehouse or item does not exist. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryValuationController_listMethods_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                organizationId: string;
+                itemId?: string;
+                /** @description Only the version in force at this instant. */
+                activeAt?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryValuationController_configureMethod_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfigureValuationMethodDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemValuationMethodResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A version with the same start date already exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The method is known but not implemented, or the window overlaps an existing version. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryValuationController_resolveMethod_v1: {
+        parameters: {
+            query: {
+                organizationId: string;
+                itemId: string;
+                /** @description The instant to resolve at; defaults to now. A past instant resolves the version that was in force then, not today. */
+                asOf?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolvedValuationMethodResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Organization or item does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The configured method is not implemented (inventory.valuation_method_not_implemented). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryValuationController_listStates_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                organizationId: string;
+                branchId?: string;
+                warehouseId?: string;
+                itemId?: string;
+                /** @description Filter the Inventory Accounting worklist: "pending_cost" = stock waiting for a cost, "stale" = values an explicit recalculation must repair. */
+                status?: "valued" | "pending_cost" | "stale";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryValuationController_getState_v1: {
+        parameters: {
+            query: {
+                organizationId: string;
+                warehouseId: string;
+                itemId: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryValuationStateResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No valuation state exists yet for this item and warehouse (nothing has ever moved there). */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryValuationController_checkBackdate_v1: {
+        parameters: {
+            query: {
+                organizationId: string;
+                warehouseId: string;
+                itemId: string;
+                /** @description The business date the operator intends to post with. */
+                movementDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackdateCheckResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Organization, warehouse or item does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryValuationController_assignCost_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignMovementCostDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValuationCommandResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Movement does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The movement already carries a cost, or the operationKey was used with different intent. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The movement is an issue (its value comes from the method), or the key exceeds the bounded recalculation limit. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryValuationController_listRuns_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                organizationId: string;
+                warehouseId?: string;
+                itemId?: string;
+                trigger?: "backdated_document" | "cost_assignment" | "manual";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryValuationController_recalculate_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecalculateValuationDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecalculationResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Organization, warehouse or item does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The operationKey was already used with different intent. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The key exceeds the bounded recalculation limit (inventory.recalculation_too_large), or its configured method is not implemented. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                /** @description Owning organization. */
+                organizationId: string;
+                status?: "draft" | "submitted" | "returned" | "approved" | "rejected" | "cancelled";
+                /** @description Filter by requester. */
+                requestedBy?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMaterialRequestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestDetailResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Organization, item, warehouse or unit does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A non-stockable/lot-or-serial-tracked item, a disabled item/warehouse/unit, or no unit conversion covering now. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_get_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestDetailResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Material Request does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_remove_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Material Request does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is not a draft. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_update_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMaterialRequestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestDetailResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Material Request does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is neither a draft nor returned for correction. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_listEvents_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestEventResponseDto"][];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Material Request does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_submit_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestDetailResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Material Request does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is neither a draft nor returned for correction, or no numbering series is configured for it. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_approve_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestDetailResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Material Request does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is not submitted, or a flagged line has insufficient available stock. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_reject_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RejectMaterialRequestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestDetailResponseDto"];
+                };
+            };
+            /** @description A rejection reason is required. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Material Request does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is not submitted. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_returnForCorrection_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReturnMaterialRequestForCorrectionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestDetailResponseDto"];
+                };
+            };
+            /** @description A return reason is required. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Material Request does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is not submitted. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_reverseApproval_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReverseMaterialRequestApprovalDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestDetailResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing the permission, or the caller is not the original approver. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Material Request does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is not approved, or at least one line has already been invoked. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_cancel_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelMaterialRequestDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestDetailResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Material Request does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is not approved, or at least one line has already been invoked. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    MaterialRequestsController_invokeLine_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvokeMaterialRequestLineDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialRequestLineResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Material Request, line, or destination document type does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request is not approved, or the invoked quantity exceeds the remaining quantity on the line. */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
