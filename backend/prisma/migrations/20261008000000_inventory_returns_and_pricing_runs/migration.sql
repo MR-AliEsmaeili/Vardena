@@ -72,8 +72,12 @@ CREATE INDEX "idx_pricing_runs_org_scope_executed_at"
   ON "inventory"."inventory_pricing_runs" ("organization_id", "warehouse_id", "kind", "executed_at");
 CREATE INDEX "idx_pricing_runs_org_executed_at"
   ON "inventory"."inventory_pricing_runs" ("organization_id", "executed_at");
-CREATE INDEX "idx_pricing_runs_reverses_run_id"
-  ON "inventory"."inventory_pricing_runs" ("reverses_run_id");
+-- OD-RVP-05 + the at-most-once rule: each run is reversed by at most ONE
+-- compensating run. The service guard decides; this constraint is the
+-- backstop (Postgres allows multiple NULLs, unreversed runs are unaffected).
+ALTER TABLE "inventory"."inventory_pricing_runs"
+  ADD CONSTRAINT "uq_inventory_pricing_runs_reverses_run"
+  UNIQUE ("reverses_run_id");
 
 -- 3. The per-key outcome rows ------------------------------------------------
 

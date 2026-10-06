@@ -160,7 +160,10 @@ model InventoryPricingRun {
   /// `pricing_operation` | `reverse_pricing`.
   kind           String   @db.VarChar(24)
   /// Compensating runs only: the run this run reverses (OD-RVP-01/05).
-  reversesRunId  String?  @map("reverses_run_id")
+  /// UNIQUE = a run is reversed AT MOST ONCE, enforced by the database the
+  /// same way the one-reversal-per-movement rule is (the guard decides, the
+  /// index is the backstop).
+  reversesRunId  String?  @unique(map: "uq_inventory_pricing_runs_reverses_run") @map("reverses_run_id")
   /// Set once this run has been reversed — the run is retained forever.
   reversedByRunId String? @map("reversed_by_run_id")
   reversedAt     DateTime? @map("reversed_at") @db.Timestamptz(6)
