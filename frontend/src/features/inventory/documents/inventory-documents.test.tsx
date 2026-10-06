@@ -132,6 +132,7 @@ function documentFixture(
     id: 'doc-1',
     organizationId: 'org-1',
     kind: 'receipt',
+    valuationState: 'unpriced',
     number: null,
     businessDate: '2026-05-10T00:00:00.000Z',
     warehouseId: 'wh-1',

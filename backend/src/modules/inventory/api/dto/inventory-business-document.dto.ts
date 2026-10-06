@@ -17,6 +17,7 @@ import { REPRICING_CHOICES } from '../../domain/backdating.js';
 import {
   INVENTORY_DOCUMENT_KINDS,
   INVENTORY_DOCUMENT_STATUSES,
+  INVENTORY_DOCUMENT_VALUATION_STATES,
   MAX_DOCUMENT_CANCELLATION_REASON_LENGTH,
   MAX_DOCUMENT_DESCRIPTION_LENGTH,
   MAX_DOCUMENT_REFERENCE_LENGTH,
@@ -275,6 +276,13 @@ export class InventoryDocumentResponseDto {
   @ApiProperty({ format: 'ulid' }) id!: string;
   @ApiProperty({ format: 'ulid' }) organizationId!: string;
   @ApiProperty({ enum: INVENTORY_DOCUMENT_KINDS }) kind!: string;
+  @ApiProperty({
+    enum: INVENTORY_DOCUMENT_VALUATION_STATES,
+    nullable: true,
+    description:
+      'OD-PRC-12 valuation completeness, independent from lifecycle. C-59A supplies it for Receipt; null for document kinds owned by later slices.',
+  })
+  valuationState!: string | null;
   @ApiProperty({
     type: String,
     nullable: true,

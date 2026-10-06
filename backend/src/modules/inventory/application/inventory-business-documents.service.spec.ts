@@ -894,13 +894,25 @@ describe('C-58 runtime — create and read', () => {
     });
   });
 
-  it('keeps a receipt cost optional', async () => {
+  it('keeps a receipt cost optional and exposes valuation separately from lifecycle', async () => {
     const withoutCost = await asActor(() => createReceipt(fixture));
     expect(withoutCost.cost).toBeNull();
+    expect(withoutCost.status).toBe('draft');
+    expect(withoutCost.valuationState).toBe('unpriced');
+
     const withCost = await asActor(() =>
       createReceipt(fixture, { cost: '250.00' }),
     );
     expect(withCost.cost).toBe('250.00');
+    expect(withCost.status).toBe('draft');
+    expect(withCost.valuationState).toBe('priced');
+  });
+
+  it('rejects a quantity that cannot be represented at four decimal places', async () => {
+    await expect(
+      asActor(() => createReceipt(fixture, { quantity: '1.00001' })),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(fixture.world.movements.size).toBe(0);
   });
 
   it("answers 404 for another organization's document (no disclosure)", async () => {
@@ -975,6 +987,7 @@ describe('C-58 runtime — finalize (Receipt)', () => {
       fixture.service.finalizeDocument(created.id, fixture.organizationId, {}),
     );
     expect(finalized.status).toBe('operational');
+    expect(finalized.valuationState).toBe('unpriced');
     expect(finalized.number).toBe('DOC-0001');
     expect(finalized.lines[0]!.movementId).not.toBeNull();
     expect(fixture.world.onHand(fixture.warehouseId, fixture.itemId)).toBe(
@@ -995,6 +1008,8 @@ describe('C-58 runtime — finalize (Receipt)', () => {
     const finalized = await asActor(() =>
       fixture.service.finalizeDocument(created.id, fixture.organizationId, {}),
     );
+    expect(finalized.status).toBe('operational');
+    expect(finalized.valuationState).toBe('priced');
     const movement = fixture.world.movements.get(
       finalized.lines[0]!.movementId!,
     )!;

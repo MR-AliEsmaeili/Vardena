@@ -5038,6 +5038,11 @@ export interface components {
             organizationId: string;
             /** @enum {string} */
             kind: "receipt" | "issue" | "transfer";
+            /**
+             * @description OD-PRC-12 valuation completeness, independent from lifecycle. C-59A supplies it for Receipt; null for document kinds owned by later slices.
+             * @enum {string|null}
+             */
+            valuationState: "unpriced" | "partially_priced" | "priced" | null;
             /** @description Allocated at finalize; null while draft. Never reused. */
             number: string | null;
             /** Format: date-time */
