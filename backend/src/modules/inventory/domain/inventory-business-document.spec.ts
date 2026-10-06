@@ -7,7 +7,9 @@ import {
   assertTransition,
   canTransition,
   classifyDocumentEdit,
+  deriveDocumentValuationState,
   hasLedgerEffect,
+  isAccountingEligible,
   INVENTORY_DOCUMENT_STATUSES,
   InventoryDocumentRuleError,
   isInventoryDocumentKind,
@@ -423,5 +425,48 @@ describe('C-58 guards and DTO', () => {
     expect(draft.canEdit).toBe(true);
     expect(draft.canFinalize).toBe(true);
     expect(draft.canAccountingPost).toBe(false);
+  });
+});
+
+describe('C-59 document valuation and accounting eligibility', () => {
+  it('derives completeness from all movement facts', () => {
+    expect(deriveDocumentValuationState([])).toBe('unpriced');
+    expect(deriveDocumentValuationState(['unvalued', 'unvalued'])).toBe(
+      'unpriced',
+    );
+    expect(deriveDocumentValuationState(['valued', 'unvalued'])).toBe(
+      'partially_priced',
+    );
+    expect(deriveDocumentValuationState(['provisional'])).toBe(
+      'partially_priced',
+    );
+    expect(deriveDocumentValuationState(['valued', 'valued'])).toBe('priced');
+  });
+
+  it('keeps permission-independent eligibility strict', () => {
+    expect(
+      isAccountingEligible(
+        { status: 'operational', valuationStale: false },
+        'priced',
+      ),
+    ).toBe(true);
+    expect(
+      isAccountingEligible(
+        { status: 'operational', valuationStale: false },
+        'partially_priced',
+      ),
+    ).toBe(false);
+    expect(
+      isAccountingEligible(
+        { status: 'operational', valuationStale: true },
+        'priced',
+      ),
+    ).toBe(false);
+    expect(
+      isAccountingEligible(
+        { status: 'draft', valuationStale: false },
+        'priced',
+      ),
+    ).toBe(false);
   });
 });

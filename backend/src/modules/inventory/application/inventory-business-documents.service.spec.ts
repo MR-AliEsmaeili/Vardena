@@ -485,6 +485,12 @@ function fakeMovementsRepository(
     async findById(id: string) {
       return world.movements.get(id) ?? null;
     },
+    async findIds(ids: string[]) {
+      return ids.flatMap((id) => {
+        const movement = world.movements.get(id);
+        return movement === undefined ? [] : [movement];
+      });
+    },
     async maxMovementDate(
       organizationId: string,
       warehouseId: string,
@@ -1495,7 +1501,9 @@ describe('C-58 runtime — edit pipeline (OQ-54 / ADR-0040)', () => {
   });
 
   it('refuses to edit an accounting-posted document', async () => {
-    const created = await asActor(() => createReceipt(fixture));
+    const created = await asActor(() =>
+      createReceipt(fixture, { cost: '100.00' }),
+    );
     await asActor(() =>
       fixture.service.finalizeDocument(created.id, fixture.organizationId, {}),
     );
@@ -1525,7 +1533,9 @@ describe('C-58 runtime — lifecycle commands', () => {
   });
 
   it('walks draft → operational → accounting posted → immutable', async () => {
-    const created = await asActor(() => createReceipt(fixture));
+    const created = await asActor(() =>
+      createReceipt(fixture, { cost: '100.00' }),
+    );
     expect(created.status).toBe('draft');
     const operational = await asActor(() =>
       fixture.service.finalizeDocument(created.id, fixture.organizationId, {}),
@@ -1561,7 +1571,9 @@ describe('C-58 runtime — lifecycle commands', () => {
   });
 
   it('refuses every command on an immutable document', async () => {
-    const created = await asActor(() => createReceipt(fixture));
+    const created = await asActor(() =>
+      createReceipt(fixture, { cost: '100.00' }),
+    );
     await asActor(() =>
       fixture.service.finalizeDocument(created.id, fixture.organizationId, {}),
     );
@@ -1691,7 +1703,9 @@ describe('C-58 runtime — cancellation / correction (OQ-54)', () => {
   });
 
   it('refuses to cancel an accounting-posted document and names the correction boundary', async () => {
-    const created = await asActor(() => createReceipt(fixture));
+    const created = await asActor(() =>
+      createReceipt(fixture, { cost: '100.00' }),
+    );
     await asActor(() =>
       fixture.service.finalizeDocument(created.id, fixture.organizationId, {}),
     );

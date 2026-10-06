@@ -5042,7 +5042,9 @@ export interface components {
              * @description OD-PRC-12 valuation completeness, independent from lifecycle. C-59A supplies it for Receipt; null for document kinds owned by later slices.
              * @enum {string|null}
              */
-            valuationState: "unpriced" | "partially_priced" | "priced" | null;
+            valuationState: "unpriced" | "partially_priced" | "priced";
+            /** @description True only when lifecycle and authoritative movement valuation permit crossing the Accounting boundary. Permission is separate. */
+            accountingEligible: boolean;
             /** @description Allocated at finalize; null while draft. Never reused. */
             number: string | null;
             /** Format: date-time */
