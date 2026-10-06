@@ -1754,5 +1754,14 @@ e2e spec asserting it).
   valuation/pricing documentation pass, the coupled backdated-transfer
   replay (DEFERRED, still fail-closed), and the
   `backdateConfirmed`/`acknowledgeSideEffects` split (recorded debt).
-- **Status:** implementation complete, tests partial — PR open; CI pending
-  at the time of this record. NOT ACCEPTED (Owner review required).
+- **CI:** GREEN on PR #126 head `eaa8c2a` — run 37537658703 (backend 3m44s
+  incl. `migrate deploy` of the new migration, the migration rehearsal and
+  the live-DB e2e suites; frontend 2m23s). Two in-flight fixes: the
+  one-to-one reversal self-relation needed its unique constraint
+  (`uq_inventory_pricing_runs_reverses_run` — the at-most-once-reversed
+  invariant, now DB-enforced), and two closed-vocabulary e2e assertions
+  were updated for the registry growth (document types 6→8, valuation
+  permissions 4→6).
+- **Status:** READY FOR REVIEW — implementation complete, CI green,
+  dedicated new-behavior tests still owed (named above). NOT ACCEPTED
+  (Owner review required).

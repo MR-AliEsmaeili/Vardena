@@ -1,10 +1,11 @@
 # C-59D/C-59E/C-59E+ — Returns, Periodic Pricing, Reverse Pricing & Concurrency Hardening — execution report
 
-Status: **IMPLEMENTATION COMPLETE, TESTS PARTIAL** — code and API for
-C-59D/E/E+ and the concurrency hardening are implemented and locally verified
-(typecheck/lint/format + the full 1702-test unit suite); the dedicated new
-unit/integration specs and live-DB concurrency tests are NOT written yet (§7
-names them). CI verification happens on the PR.
+Status: **IMPLEMENTATION COMPLETE, TESTS PARTIAL, CI GREEN** — code and API
+for C-59D/E/E+ and the concurrency hardening are implemented, locally
+verified (typecheck/lint/format + the full 1702-test unit suite) and
+CI-verified on PR #126 (live-DB e2e + migration rehearsal included); the
+dedicated new unit/integration specs and live-DB concurrency tests are NOT
+written yet (§7 names them).
 Date started: 2026-10-06
 Baseline: `main` @ `082768d733454258d168871a951449e0b8b2b479` (merge of PR #125)
 
@@ -294,8 +295,12 @@ Implemented in this slice (all names are real files on the branch):
   136/1700; the two vocabulary specs were updated for the new closed-list
   members, no tests deleted).
 - `npx prisma validate` — could NOT run in this sandbox (no network to fetch
-  the schema-engine binary); CI's validate/generate/migrate-deploy steps are
-  the authoritative check for the schema + migration.
+  the schema-engine binary). The schema was instead validated locally by
+  driving the exact wasm schema engine the Prisma CLI bundles (a ~80-line
+  harness over `node_modules/prisma/build/prisma_schema_build_bg.wasm`),
+  which is how the PR's first CI failure (the one-to-one reversal
+  self-relation missing its unique constraint) was reproduced and fixed
+  offline; CI's validate/generate/migrate-deploy confirm it.
 - `git diff --check` — clean.
 
 ## 7. Final verification — implemented vs planned, honestly
@@ -324,5 +329,11 @@ specs.
 5. **`backdateConfirmed` vs `acknowledgeSideEffects` split** — recorded
    debt, unchanged (§4.8).
 
-**CI status:** pending on the PR (this workspace cannot run the
-Postgres-backed e2e and migration-rehearsal jobs).
+**CI status: GREEN** on PR head `eaa8c2a`
+([run 37537658703](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37537658703)):
+backend 3m44s (validate, generate, lint, typecheck, format, unit, build,
+`migrate deploy` of the new migration on a fresh Postgres, migration
+rehearsal, live-DB e2e) and frontend 2m23s. Two in-flight fixes were needed:
+the prisma-validate unique-constraint error above, and the two
+closed-vocabulary e2e assertions (document types 6→8, valuation permissions
+4→6) — both are registry-growth updates, not weakened checks.
