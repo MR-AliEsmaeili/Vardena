@@ -16,8 +16,8 @@ describe('C-58 inventory business documents', () => {
     expect(() => assertEditable({ ...receipt, status: 'accounting_posted' })).toThrow(/immutable/);
   });
   it('rejects same-warehouse transfers and bad lines', () => {
-    const transfer: InventoryTransfer = { kind: 'transfer', ...receipt, sourceWarehouseId: 'w', destinationWarehouseId: 'w' };
+    const transfer: InventoryTransfer = { ...receipt, kind: 'transfer', sourceWarehouseId: 'w', destinationWarehouseId: 'w' };
     expect(() => validateDocument(transfer)).toThrow(/differ/);
-    expect(() => validateDocument({ ...receipt, lines: [{ ...receipt.lines[0], quantity: '0' }] })).toThrow(/positive/);
+    expect(() => validateDocument({ ...receipt, lines: [{ itemId: 'i', unitId: 'u', conversionFactor: '1', quantity: '0' }] })).toThrow(/positive/);
   });
 });
