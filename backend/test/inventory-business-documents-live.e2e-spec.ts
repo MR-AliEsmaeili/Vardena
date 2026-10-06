@@ -20,6 +20,7 @@ import {
   MOVEMENT_PERMISSIONS,
   TRANSFER_PERMISSIONS,
 } from '../src/modules/inventory/domain/inventory-core-permissions.js';
+import { VALUATION_PERMISSIONS } from '../src/modules/inventory/domain/inventory-valuation-permissions.js';
 import {
   INVENTORY_ISSUE_DOCUMENT_TYPE,
   INVENTORY_RECEIPT_DOCUMENT_TYPE,
@@ -156,6 +157,14 @@ describe.skipIf(DATABASE_URL === undefined)(
       return (await movementRows()).count({
         where: { referenceId: documentId },
       });
+    }
+
+    /** Exact textual value of a decimal column at its declared scale. */
+    function decimalAtScale(value: unknown, scale: number): string {
+      const decimal = value as { toFixed?: (digits: number) => string };
+      return typeof decimal?.toFixed === 'function'
+        ? decimal.toFixed(scale)
+        : String(value);
     }
 
     async function onHand(
@@ -303,6 +312,11 @@ describe.skipIf(DATABASE_URL === undefined)(
           MOVEMENT_PERMISSIONS.VIEW,
           TRANSFER_PERMISSIONS.CREATE,
           BALANCE_PERMISSIONS.VIEW,
+          // A receipt cost is an Inventory VALUATION assignment, so the
+          // operator needs the valuation authority too — a document
+          // permission alone never buys the right to price stock.
+          VALUATION_PERMISSIONS.ASSIGN_COST,
+          VALUATION_PERMISSIONS.RECALCULATE,
         ],
       });
       operatorRoleId = operatorRole.id;
@@ -471,7 +485,10 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).findMany({ where: { referenceId: draft['id'] } });
       expect(rows[0]!['movementType']).toBe('inbound');
       expect(String(rows[0]!['baseQuantity'])).toBe('100');
-      expect(String(rows[0]!['totalCost'])).toBe('1250.00');
+      // Prisma returns a Decimal; its default rendering drops the trailing
+      // zeros of the fixed numeric(18,2) column, so the assertion pins the
+      // exact value at the column's own scale instead of a float.
+      expect(decimalAtScale(rows[0]!['totalCost'], 2)).toBe('1250.00');
     });
 
     it('posts an issue whose value is derived, never entered', async () => {

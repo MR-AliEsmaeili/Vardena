@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   DOMAIN_EVENT_BUS,
@@ -1571,7 +1572,12 @@ function boundedKey(value: string): string {
  * different document can never be mistaken for the same intent.
  */
 function documentRequestHash(documentId: string, operationKey: string): string {
-  return `inventory_document:${documentId}:${operationKey}`;
+  // `inventory_operations.request_hash` is a fixed CHAR(64) sha256 hex, like
+  // every other idempotency hash in this module — the readable identity is
+  // hashed, never stored raw (a raw identity overflows the column).
+  return createHash('sha256')
+    .update(`inventory_document:${documentId}:${operationKey}`)
+    .digest('hex');
 }
 
 function isBefore(candidate: Date, reference: Date): boolean {

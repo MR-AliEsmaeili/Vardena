@@ -69,7 +69,9 @@ model InventoryBusinessDocument {
   destinationWarehouse Warehouse? @relation("InventoryDocumentDestinationWarehouse", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
   lines InventoryBusinessDocumentLine[]
 
-  @@unique([organizationId, number], map: "uq_inventory_business_documents_org_number")
+  /// One monotonic numeric series PER DOCUMENT TYPE (Documents Foundation),
+  /// so a receipt and an issue may both be `0001`; uniqueness is per kind.
+  @@unique([organizationId, kind, number], map: "uq_inventory_business_documents_org_kind_number")
   @@index([organizationId, kind, status], map: "idx_inventory_business_documents_org_kind_status")
   @@index([organizationId, businessDate], map: "idx_inventory_business_documents_org_business_date")
   @@map("inventory_business_documents")

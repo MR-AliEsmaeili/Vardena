@@ -62,10 +62,15 @@ CREATE TABLE "inventory"."inventory_business_documents" (
     FOREIGN KEY ("destination_warehouse_id") REFERENCES "inventory"."warehouses" ("id") ON DELETE RESTRICT ON UPDATE CASCADE
 );
 
--- NULL numbers do not clash: any number of drafts coexist, and an allocated
--- number is unique within the organization forever (never reused).
-CREATE UNIQUE INDEX "uq_inventory_business_documents_org_number"
-  ON "inventory"."inventory_business_documents" ("organization_id", "number");
+-- Numbers come from the Documents Foundation, which keeps ONE monotonic
+-- numeric-only series PER DOCUMENT TYPE (`numbering.ts`: no prefixes, no
+-- letters). A receipt and an issue therefore both legitimately reach `0001`,
+-- so uniqueness is per (organization, kind) — the series itself guarantees a
+-- serial is never reused inside its own type. NULL numbers do not clash: any
+-- number of drafts coexist until finalize allocates one.
+CREATE UNIQUE INDEX "uq_inventory_business_documents_org_kind_number"
+  ON "inventory"."inventory_business_documents"
+  ("organization_id", "kind", "number");
 CREATE INDEX "idx_inventory_business_documents_org_kind_status"
   ON "inventory"."inventory_business_documents" ("organization_id", "kind", "status");
 CREATE INDEX "idx_inventory_business_documents_org_business_date"
