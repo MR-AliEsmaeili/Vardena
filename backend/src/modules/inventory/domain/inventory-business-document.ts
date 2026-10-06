@@ -43,6 +43,20 @@ export const INVENTORY_DOCUMENT_STATUSES = [
 export type InventoryDocumentStatus =
   (typeof INVENTORY_DOCUMENT_STATUSES)[number];
 
+/**
+ * OD-PRC-12 valuation axis. C-59A can determine this conclusively for a
+ * receipt: the currently supported receipt is single-line and its optional
+ * manual cost is the complete value source. Other document kinds remain null
+ * until their own C-59 slices compose movement-level valuation facts.
+ */
+export const INVENTORY_DOCUMENT_VALUATION_STATES = [
+  'unpriced',
+  'partially_priced',
+  'priced',
+] as const;
+export type InventoryDocumentValuationState =
+  (typeof INVENTORY_DOCUMENT_VALUATION_STATES)[number];
+
 export function isInventoryDocumentStatus(
   value: string,
 ): value is InventoryDocumentStatus {
@@ -495,6 +509,11 @@ export interface InventoryDocumentDto {
   id: string;
   organizationId: string;
   kind: InventoryDocumentKind;
+  /**
+   * Receipt valuation completeness (OD-PRC-12), separate from lifecycle.
+   * Null for Issue/Transfer until their dedicated C-59 slices own the rule.
+   */
+  valuationState: InventoryDocumentValuationState | null;
   number: string | null;
   businessDate: string;
   warehouseId: string | null;
@@ -546,6 +565,15 @@ export function toInventoryDocumentDto(
     id: document.id,
     organizationId: document.organizationId,
     kind: document.kind,
+    // A receipt with manual cost is priced immediately; a missing cost never
+    // blocks Draft → Operational. This is derived from the authoritative
+    // receipt value source, not persisted as a second valuation ledger.
+    valuationState:
+      document.kind === 'receipt'
+        ? document.cost === null
+          ? 'unpriced'
+          : 'priced'
+        : null,
     number: document.number,
     businessDate: document.businessDate.toISOString(),
     warehouseId: document.warehouseId,

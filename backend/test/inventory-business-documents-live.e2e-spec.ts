@@ -507,11 +507,13 @@ describe.skipIf(DATABASE_URL === undefined)(
         lines: [{ itemId: itemAId, quantity: '100', unitId: unitAId }],
       });
       expect(draft['status']).toBe('draft');
+      expect(draft['valuationState']).toBe('priced');
       expect(draft['number']).toBeNull();
       expect(await movementCount(draft['id'] as string)).toBe(0);
 
       const finalized = await finalize(draft['id'] as string);
       expect(finalized['status']).toBe('operational');
+      expect(finalized['valuationState']).toBe('priced');
       expect(finalized['number']).toMatch(/\d{4}$/);
       expect(await movementCount(draft['id'] as string)).toBe(1);
       expect(await onHand(whMainId, itemAId)).toBe(before + 100);
@@ -525,6 +527,48 @@ describe.skipIf(DATABASE_URL === undefined)(
       // zeros of the fixed numeric(18,2) column, so the assertion pins the
       // exact value at the column's own scale instead of a float.
       expect(decimalAtScale(rows[0]!['totalCost'], 2)).toBe('1250.00');
+
+      // Kardex reads the same authoritative movement ledger; the document
+      // layer has not created a parallel visibility path.
+      const kardex = await operator
+        .get('/api/v1/inventory/kardex')
+        .query({
+          organizationId: orgAId,
+          warehouseId: whMainId,
+          itemId: itemAId,
+          page: 1,
+          pageSize: 100,
+        })
+        .expect(200);
+      expect(
+        (kardex.body.items as Array<Record<string, unknown>>).some(
+          (row) =>
+            row['movementId'] === rows[0]!['id'] &&
+            row['referenceId'] === draft['id'],
+        ),
+      ).toBe(true);
+    });
+
+    it('operationalizes an unpriced receipt without inventing a pricing operation', async () => {
+      const before = await onHand(whSecondId, itemBId);
+      const draft = await createDocument({
+        kind: 'receipt',
+        warehouseId: whSecondId,
+        lines: [{ itemId: itemBId, quantity: '11', unitId: unitAId }],
+      });
+      expect(draft['valuationState']).toBe('unpriced');
+
+      const finalized = await finalize(draft['id'] as string);
+      expect(finalized['status']).toBe('operational');
+      expect(finalized['valuationState']).toBe('unpriced');
+      expect(await movementCount(draft['id'] as string)).toBe(1);
+      expect(await onHand(whSecondId, itemBId)).toBe(before + 11);
+
+      const rows = await (
+        await movementRows()
+      ).findMany({ where: { referenceId: draft['id'] } });
+      expect(rows[0]!['valuationStatus']).toBe('unvalued');
+      expect(rows[0]!['totalCost']).toBeNull();
     });
 
     it('posts an issue whose value is derived, never entered', async () => {
