@@ -819,7 +819,7 @@ export const fa = {
     kardexClosing: 'موجودی پایان بازه',
 
     // Valuation worklist
-    valuationEmpty: 'هنوز وضعیت ارزش‌گذاریای برای موجودی ثبت نشده است.',
+    valuationEmpty: 'هنوز وضعیت ارزش‌گذاری‌ای برای موجودی ثبت نشده است.',
     valuationEmptyFiltered: 'برای فیلتر انتخاب‌شده نتیجه‌ای یافت نشد.',
     valuationLoadFailed: 'دریافت وضعیت ارزش‌گذاری انجام نشد. دوباره تلاش کنید.',
     valuationStatusFilter: 'وضعیت ارزش‌گذاری',
