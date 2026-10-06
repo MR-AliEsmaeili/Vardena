@@ -1617,6 +1617,111 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/business-documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Inventory business documents of one organization (receipt, issue, transfer). */
+        get: operations["InventoryBusinessDocumentsController_list_v1"];
+        put?: never;
+        /** Create a DRAFT Inventory business document. A draft has no stock effect and consumes no document number. */
+        post: operations["InventoryBusinessDocumentsController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/business-documents/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one Inventory business document with lines. */
+        get: operations["InventoryBusinessDocumentsController_get_v1"];
+        put?: never;
+        post?: never;
+        /** Delete a DRAFT document. A document with business history is cancelled, never deleted (OD-54-07). */
+        delete: operations["InventoryBusinessDocumentsController_remove_v1"];
+        options?: never;
+        head?: never;
+        /** Edit a document before Accounting Post. Editing an OPERATIONAL document reconciles its ledger effect atomically and requires an explicit side-effect acknowledgement plus a repricing choice. */
+        patch: operations["InventoryBusinessDocumentsController_update_v1"];
+        trace?: never;
+    };
+    "/api/v1/inventory/business-documents/{id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize: allocate the document number and post the operational movement effect (both transfer legs for a transfer) atomically. Self-finalization is allowed — C-58 introduces no approval workflow. */
+        post: operations["InventoryBusinessDocumentsController_finalize_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/business-documents/{id}/accounting-post": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cross the Accounting Post boundary (OD-54-01/02): after this the document cannot be edited, deleted or cancelled. This command records the boundary on the Inventory document; it creates no journal entry (Inventory→GL posting is outside C-58). */
+        post: operations["InventoryBusinessDocumentsController_accountingPost_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/business-documents/{id}/seal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Seal an accounting-posted document as permanently immutable. Terminal: no transition out of `immutable` exists. */
+        post: operations["InventoryBusinessDocumentsController_seal_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/business-documents/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel before Accounting Post. An operational document has its own movements reversed atomically; the number is kept and never reused, and the document stays visible (OD-54-07/08/09). */
+        post: operations["InventoryBusinessDocumentsController_cancel_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/documents/types": {
         parameters: {
             query?: never;
@@ -4904,6 +5009,151 @@ export interface components {
              * @example 10
              */
             quantity: string;
+        };
+        InventoryDocumentLineResponseDto: {
+            /** Format: ulid */
+            id: string;
+            lineNumber: number;
+            /** Format: ulid */
+            itemId: string;
+            /** @example 10 */
+            quantity: string;
+            /** Format: ulid */
+            unitId: string;
+            /** @example 120 */
+            baseQuantity: string;
+            /** Format: ulid */
+            baseUnitId: string;
+            /** @example 12 */
+            conversionFactor: string;
+            /** @description The receipt/issue movement this line currently owns. */
+            movementId: string | null;
+            outMovementId: string | null;
+            inMovementId: string | null;
+        };
+        InventoryDocumentResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** @enum {string} */
+            kind: "receipt" | "issue" | "transfer";
+            /** @description Allocated at finalize; null while draft. Never reused. */
+            number: string | null;
+            /** Format: date-time */
+            businessDate: string;
+            warehouseId: string | null;
+            sourceWarehouseId: string | null;
+            destinationWarehouseId: string | null;
+            /** @description Receipt only, and only for a caller holding `Inventory.Valuation.View`. Absent (not null) otherwise. */
+            cost?: string | null;
+            /** @enum {string} */
+            status: "draft" | "operational" | "accounting_posted" | "immutable" | "cancelled";
+            description: string | null;
+            reference: string | null;
+            operationKey: string | null;
+            /** @description OD-54-06: true when the operator explicitly continued without repricing. */
+            valuationStale: boolean;
+            canEdit: boolean;
+            canFinalize: boolean;
+            canAccountingPost: boolean;
+            canSeal: boolean;
+            canCancel: boolean;
+            canDelete: boolean;
+            finalizedAt: string | null;
+            finalizedBy: string | null;
+            accountingPostedAt: string | null;
+            accountingPostedBy: string | null;
+            sealedAt: string | null;
+            sealedBy: string | null;
+            cancelledAt: string | null;
+            cancelledBy: string | null;
+            cancellationReason: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            lines: components["schemas"]["InventoryDocumentLineResponseDto"][];
+        };
+        InventoryDocumentLineInputDto: {
+            /** Format: ulid */
+            itemId: string;
+            /**
+             * @description Positive decimal magnitude in `unitId`, as an exact string.
+             * @example 10
+             */
+            quantity: string;
+            /** Format: ulid */
+            unitId: string;
+        };
+        CreateInventoryDocumentDto: {
+            /**
+             * Format: ulid
+             * @description Owning organization.
+             */
+            organizationId: string;
+            /** @enum {string} */
+            kind: "receipt" | "issue" | "transfer";
+            /**
+             * Format: date-time
+             * @description Business date. Defaults to now when omitted.
+             */
+            businessDate?: string;
+            /**
+             * Format: ulid
+             * @description Receipt/Issue warehouse. Required for those kinds.
+             */
+            warehouseId?: string;
+            /**
+             * Format: ulid
+             * @description Transfer source.
+             */
+            sourceWarehouseId?: string;
+            /**
+             * Format: ulid
+             * @description Transfer destination.
+             */
+            destinationWarehouseId?: string;
+            /**
+             * @description RECEIPT ONLY and always optional: an Inventory valuation assignment, never a purchase price. Requires `Inventory.Valuation.AssignCost`. Rejected on an issue or a transfer.
+             * @example 1250.00
+             */
+            cost?: string;
+            description?: string;
+            reference?: string;
+            lines: components["schemas"]["InventoryDocumentLineInputDto"][];
+        };
+        UpdateInventoryDocumentDto: {
+            /** Format: date-time */
+            businessDate?: string;
+            /** Format: ulid */
+            warehouseId?: string;
+            /** Format: ulid */
+            sourceWarehouseId?: string;
+            /** Format: ulid */
+            destinationWarehouseId?: string;
+            /** @description Receipt only. Send an empty string to clear the assigned cost. */
+            cost?: string;
+            description?: string;
+            reference?: string;
+            /** @description Omit to keep the current lines; provide to REPLACE them. */
+            lines?: components["schemas"]["InventoryDocumentLineInputDto"][];
+            /** @description OD-54-05: required when the edit changes an already-posted inventory effect. Without it the edit is refused with `inventory.document.side_effect_acknowledgement_required`. */
+            acknowledgeSideEffects?: boolean;
+            /**
+             * @description OD-VAL-11: required alongside the acknowledgement for a material edit. There is no default — `skip` persists an honestly stale valuation state.
+             * @enum {string}
+             */
+            repricing?: "recalculate" | "skip";
+        };
+        FinalizeInventoryDocumentDto: {
+            /** @description OD-VAL-10 acknowledgement, required when the business date is before the key's latest movement. */
+            backdateConfirmed?: boolean;
+            /** @enum {string} */
+            repricing?: "recalculate" | "skip";
+        };
+        CancelInventoryDocumentDto: {
+            reason?: string;
         };
         DocumentTypeResponseDto: {
             /** @example inventory_receipt */
@@ -12751,6 +13001,477 @@ export interface operations {
                 content?: never;
             };
             /** @description The request is not approved, or the invoked quantity exceeds the remaining quantity on the line. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryBusinessDocumentsController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                /** @description Owning organization. */
+                organizationId: string;
+                kind?: "receipt" | "issue" | "transfer";
+                status?: "draft" | "operational" | "accounting_posted" | "immutable" | "cancelled";
+                warehouseId?: string;
+                dateFrom?: string;
+                dateTo?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryBusinessDocumentsController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInventoryDocumentDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryDocumentResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Organization, warehouse, item or unit does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A disabled or non-stockable reference, a same-warehouse transfer, a cost on an issue/transfer, or no unit conversion covering the business date. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryBusinessDocumentsController_get_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryDocumentResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryBusinessDocumentsController_remove_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is not a draft. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryBusinessDocumentsController_update_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateInventoryDocumentDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryDocumentResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Accounting-posted/cancelled document, missing side-effect acknowledgement or repricing choice, backdating refusal, or insufficient stock (nothing was changed). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryBusinessDocumentsController_finalize_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FinalizeInventoryDocumentDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryDocumentResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The idempotency key is held by a different request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Illegal transition, insufficient stock, missing backdating decision, a backdated transfer (OQ-67 fail-closed), or no numbering series configured. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryBusinessDocumentsController_accountingPost_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryDocumentResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is not operational. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryBusinessDocumentsController_seal_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryDocumentResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is not accounting posted. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryBusinessDocumentsController_cancel_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CancelInventoryDocumentDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryDocumentResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is accounting posted (an explicit accounting correction is required — OQ-27), already cancelled, or the reversal would drive stock negative. */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -16,6 +16,7 @@ import { InventoryOperationsRepository } from './data/inventory-operations.repos
 import { InventoryValuationRepository } from './data/inventory-valuation.repository.js';
 import { ItemValuationMethodsRepository } from './data/item-valuation-methods.repository.js';
 import { MaterialRequestsRepository } from './data/material-requests.repository.js';
+import { InventoryBusinessDocumentsRepository } from './data/inventory-business-documents.repository.js';
 import { UnitsService } from './application/units.service.js';
 import { ItemGroupsService } from './application/item-groups.service.js';
 import { ItemsService } from './application/items.service.js';
@@ -30,6 +31,8 @@ import { InventoryValuationService } from './application/inventory-valuation.ser
 import { InventoryPermissionRegistration } from './application/inventory-permission-registration.js';
 import { MaterialRequestDocumentTypeRegistration } from './application/material-request-document-type-registration.js';
 import { MaterialRequestsService } from './application/material-requests.service.js';
+import { InventoryBusinessDocumentsService } from './application/inventory-business-documents.service.js';
+import { InventoryDocumentTypeRegistration } from './application/inventory-document-type-registration.js';
 import { UnitsController } from './api/units.controller.js';
 import { ItemGroupsController } from './api/item-groups.controller.js';
 import { ItemsController } from './api/items.controller.js';
@@ -42,6 +45,7 @@ import { InventoryReservationsController } from './api/inventory-reservations.co
 import { InventoryBalancesController } from './api/inventory-balances.controller.js';
 import { InventoryValuationController } from './api/inventory-valuation.controller.js';
 import { MaterialRequestsController } from './api/material-requests.controller.js';
+import { InventoryBusinessDocumentsController } from './api/inventory-business-documents.controller.js';
 
 /**
  * Inventory module (docs/modules.md §Inventory, ADR-0017, ADR-0020, ADR-0021,
@@ -100,6 +104,7 @@ import { MaterialRequestsController } from './api/material-requests.controller.j
     InventoryBalancesController,
     InventoryValuationController,
     MaterialRequestsController,
+    InventoryBusinessDocumentsController,
   ],
   providers: [
     UnitsRepository,
@@ -115,6 +120,7 @@ import { MaterialRequestsController } from './api/material-requests.controller.j
     InventoryValuationRepository,
     ItemValuationMethodsRepository,
     MaterialRequestsRepository,
+    InventoryBusinessDocumentsRepository,
     UnitsService,
     ItemGroupsService,
     ItemsService,
@@ -127,8 +133,10 @@ import { MaterialRequestsController } from './api/material-requests.controller.j
     InventoryBalancesService,
     InventoryValuationService,
     MaterialRequestsService,
+    InventoryBusinessDocumentsService,
     InventoryPermissionRegistration,
     MaterialRequestDocumentTypeRegistration,
+    InventoryDocumentTypeRegistration,
   ],
   exports: [
     UnitsService,
@@ -141,6 +149,7 @@ import { MaterialRequestsController } from './api/material-requests.controller.j
     InventoryReservationsService,
     InventoryBalancesService,
     InventoryValuationService,
+    InventoryBusinessDocumentsService,
   ],
 })
 export class InventoryModule {}

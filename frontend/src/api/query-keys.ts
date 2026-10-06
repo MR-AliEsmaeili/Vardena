@@ -270,6 +270,17 @@ export const queryKeys = {
     valuationStatesPrefix: (organizationId: string) =>
       ['inventory', organizationId, 'valuation-states'] as const,
 
+    /** Business-document workspace (filtered list). */
+    documents: (organizationId: string, filters: Record<string, unknown>) =>
+      ['inventory', organizationId, 'documents', 'list', filters] as const,
+
+    /** Every business-document read of one organization (invalidation scope). */
+    documentsPrefix: (organizationId: string) =>
+      ['inventory', organizationId, 'documents'] as const,
+
+    document: (organizationId: string, documentId: string) =>
+      ['inventory', organizationId, 'documents', 'detail', documentId] as const,
+
     // Reference reads (active warehouses / stockable items / units). Kept as
     // ONE key per entity per organization — they are small, slow-moving
     // master-data lists, not filtered workspaces.

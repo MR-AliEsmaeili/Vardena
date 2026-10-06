@@ -1,9 +1,14 @@
-import { apiGet, apiPost, cleanParams } from './client';
+import { apiDelete, apiGet, apiPatch, apiPost, cleanParams } from './client';
 import type {
+  CancelInventoryDocumentInput,
+  CreateInventoryDocumentInput,
+  FinalizeInventoryDocumentInput,
   InventoryBackdateCheck,
   InventoryBackdateCheckQuery,
   InventoryItemListQuery,
   InventoryItem,
+  InventoryDocument,
+  InventoryDocumentListQuery,
   InventoryKardexQuery,
   InventoryKardexResponse,
   InventoryMovement,
@@ -20,6 +25,7 @@ import type {
   PostInventoryTransferInput,
   RecalculateValuationInput,
   RecalculationResult,
+  UpdateInventoryDocumentInput,
 } from './contracts';
 
 /**
@@ -200,4 +206,114 @@ export function recalculateInventoryValuation(
     '/inventory/valuation/recalculations',
     body,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Business documents (C-58) — Receipt / Issue / Transfer
+//
+// Explicit COMMANDS, mirroring `InventoryBusinessDocumentsController`: there
+// is no generic "set status" call, because finalize (posts the ledger),
+// accounting-post (crosses the immutability boundary), seal (terminal) and
+// cancel (reverses) are materially different operations. Every single-
+// resource route carries the organization scope as a query parameter, and a
+// document of another organization answers 404 — never 403.
+// ---------------------------------------------------------------------------
+
+const DOCUMENTS_PATH = '/inventory/business-documents';
+
+/** Documents list (`GET /inventory/business-documents`). */
+export function listInventoryDocuments(
+  query: InventoryDocumentListQuery,
+  signal?: AbortSignal,
+): Promise<Paginated<InventoryDocument>> {
+  return apiGet<Paginated<InventoryDocument>>(DOCUMENTS_PATH, {
+    params: cleanParams({ ...query }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/** One document with its lines (`GET …/:id`). */
+export function readInventoryDocument(
+  id: string,
+  organizationId: string,
+  signal?: AbortSignal,
+): Promise<InventoryDocument> {
+  return apiGet<InventoryDocument>(`${DOCUMENTS_PATH}/${id}`, {
+    params: cleanParams({ organizationId }),
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/** Create a DRAFT (`POST …`): no stock effect, no document number. */
+export function createInventoryDocument(
+  body: CreateInventoryDocumentInput,
+): Promise<InventoryDocument> {
+  return apiPost<InventoryDocument>(DOCUMENTS_PATH, body);
+}
+
+/** Edit before Accounting Post (`PATCH …/:id`). */
+export function updateInventoryDocument(
+  id: string,
+  organizationId: string,
+  body: UpdateInventoryDocumentInput,
+): Promise<InventoryDocument> {
+  return apiPatch<InventoryDocument>(`${DOCUMENTS_PATH}/${id}`, body, {
+    params: cleanParams({ organizationId }),
+  });
+}
+
+/** Delete a DRAFT (`DELETE …/:id`). A posted document is cancelled instead. */
+export function deleteInventoryDocument(
+  id: string,
+  organizationId: string,
+): Promise<void> {
+  return apiDelete<void>(`${DOCUMENTS_PATH}/${id}`, {
+    params: cleanParams({ organizationId }),
+  });
+}
+
+/** Finalize: allocate the number and post the ledger effect (`POST …/:id/finalize`). */
+export function finalizeInventoryDocument(
+  id: string,
+  organizationId: string,
+  body: FinalizeInventoryDocumentInput = {},
+): Promise<InventoryDocument> {
+  return apiPost<InventoryDocument>(`${DOCUMENTS_PATH}/${id}/finalize`, body, {
+    params: cleanParams({ organizationId }),
+  });
+}
+
+/** Cross the Accounting Post boundary (`POST …/:id/accounting-post`). */
+export function accountingPostInventoryDocument(
+  id: string,
+  organizationId: string,
+): Promise<InventoryDocument> {
+  return apiPost<InventoryDocument>(
+    `${DOCUMENTS_PATH}/${id}/accounting-post`,
+    {},
+    { params: cleanParams({ organizationId }) },
+  );
+}
+
+/** Seal permanently (`POST …/:id/seal`). Terminal. */
+export function sealInventoryDocument(
+  id: string,
+  organizationId: string,
+): Promise<InventoryDocument> {
+  return apiPost<InventoryDocument>(
+    `${DOCUMENTS_PATH}/${id}/seal`,
+    {},
+    { params: cleanParams({ organizationId }) },
+  );
+}
+
+/** Cancel before Accounting Post (`POST …/:id/cancel`): reverses the effect. */
+export function cancelInventoryDocument(
+  id: string,
+  organizationId: string,
+  body: CancelInventoryDocumentInput = {},
+): Promise<InventoryDocument> {
+  return apiPost<InventoryDocument>(`${DOCUMENTS_PATH}/${id}/cancel`, body, {
+    params: cleanParams({ organizationId }),
+  });
 }

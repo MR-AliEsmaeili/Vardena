@@ -73,6 +73,11 @@ model Organization {
   materialRequestLines  MaterialRequestLine[]
   materialRequestEvents MaterialRequestEvent[]
 
+  // Back-relations for Inventory Business Documents (C-58). Virtual side
+  // only — the real FK columns stay `inventory.inventory_business_document*`.
+  inventoryBusinessDocuments      InventoryBusinessDocument[]
+  inventoryBusinessDocumentLines  InventoryBusinessDocumentLine[]
+
   // Back-relations for the Document Foundation (Task 8, ADR-0023). Virtual
   // side only — the real FK columns stay `documents.*.organization_id`.
   documentTypeConfigs  DocumentTypeConfig[]

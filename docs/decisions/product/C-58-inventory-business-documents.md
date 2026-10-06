@@ -6,10 +6,18 @@ Receipt, Issue and Transfer do **not** require mandatory approval in C-58/MVP. A
 
 ## Lifecycle and boundary
 
-The domain foundation defines `Draft → Operational → Accounting Posted → Immutable`. Drafts have no movement effects in the intended contract. The current implementation contains the typed aggregate rules and persistence foundation; runtime document CRUD, movement composition, accounting-post command integration, and frontend document screens remain to be wired before this contract can be described as operational.
+The domain defines `Draft → Operational → Accounting Posted → Immutable`, plus cancellation from Draft or Operational. Drafts have no movement effects and no document number. Every other transition — including `Draft → Accounting Posted` and anything out of `Immutable` or `Cancelled` — is refused with `inventory.document.illegal_transition`.
 
-Receipt cost is optional and is an Inventory valuation assignment, never purchase price. Issue has no manual cost; valuation derives it. Transfer is intended to use two atomic authoritative movement legs and preserve the fail-closed backdated behavior (OQ-67).
+This contract is now **operational**: document CRUD, movement composition, finalize/accounting-post/seal/cancel commands, the REST surface under `/inventory/business-documents`, and the Persian document screens are implemented and tested (see `docs/tasks/c-58-inventory-business-document-runtime.md` for the implemented slice, its evidence and its limitations).
 
-The intended pre-post edit behavior is atomic reconciliation with a hard negative-stock block. After Accounting Post, direct edit/delete is forbidden. These behaviors require the pending application-service and integration-test implementation.
+Receipt cost is optional and is an Inventory valuation assignment, never purchase price; it is accepted only on a single-line receipt, because apportioning one amount across several lines is refused rather than invented. Issue has no manual cost; valuation derives it. Transfer uses two atomic authoritative movement legs through the existing transfer engine and preserves the fail-closed backdated behavior (OQ-67).
+
+Pre-post edits follow the OQ-54/ADR-0040 pipeline (load, validate, detect side effects, apply, reconcile, optional explicit repricing, atomic persist) with a hard negative-stock block. An edit that changes an already-posted effect is refused until the operator supplies both an explicit acknowledgement and an explicit repricing choice — there is no default, and «skip» persists an honestly stale valuation state. After Accounting Post, direct edit/delete is forbidden; correction is a separate explicit document and is not part of C-58. ADR-0040 remains **Proposed**.
+
+## Transaction boundaries
+
+The inventory effect of a command — movement legs, balance deltas, valuation-state writes, an explicitly requested repricing and the document's own state change — is **one transaction**. A failure anywhere in it rolls all of it back; the document is either fully posted and repriced, or untouched.
+
+Document **numbering is a separate transactional boundary** and is not covered by that rollback. `NumberingService` stays the single numbering authority and owns its own transaction, so the number is allocated before the inventory transaction and survives a failed finalize. The guarantee is the allocation key, which is the document id: the same document always replays the same number, a different finalized document always receives a different number, and a number is never silently reused. A failed finalize leaves a draft with no number and an allocation reserved for it; a crash in between leaves an unused allocation (a gap), never a duplicate.
 
 Inventory remains license- and permission-protected by the existing backend mechanisms. C-58 does not implement GL, COGS, tax, fiscal closing, or full Inventory-to-Accounting posting.

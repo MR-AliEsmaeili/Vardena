@@ -153,19 +153,15 @@ describe('Document Foundation (e2e)', () => {
     roles = app.get(RolesService);
     userRoles = app.get(UserRolesService);
 
-    // The owning modules register their types at startup. Task 8 owns none, so
-    // the registry is empty; the fixture stands in for a future Inventory/
-    // Accounting registration.
+    // The owning modules register their types at startup. `inventory_receipt`
+    // is now really owned by the Inventory module (C-58), so this suite
+    // consumes that registration — re-registering a code is a fail-fast
+    // programmer error. Accounting owns no document type yet, so that one
+    // still stands in for a future registration.
+    expect(
+      app.get(DocumentTypeRegistry).get('inventory_receipt'),
+    ).toBeDefined();
     app.get(DocumentTypeRegistry).register([
-      {
-        code: 'inventory_receipt',
-        module: 'inventory',
-        name: 'Inventory receipt',
-        description: 'Goods received into stock.',
-        draftCapable: true,
-        entryStates: ['temporary'],
-        deletablePhases: ['draft', 'temporary'],
-      },
       {
         code: 'accounting_journal',
         module: 'accounting',
@@ -291,16 +287,19 @@ describe('Document Foundation (e2e)', () => {
       .get('/api/v1/documents/types')
       .query({ organizationId: state.orgId })
       .expect(200);
-    // Four types are registered in code: the two Task 8 placeholders, the
-    // real `accounting_voucher` aggregate (Task 10.4), and Material
-    // Request's own type (C-50, registered for numbering only — see
-    // `inventory/domain/material-request-document-type.ts`).
-    expect(res.body.total).toBe(4);
+    // Six types are registered in code: the `accounting_journal`
+    // placeholder, the real `accounting_voucher` aggregate (Task 10.4),
+    // Material Request's own type (C-50) and the three Inventory Business
+    // Document types (C-58) — all four Inventory ones registered for
+    // numbering only.
+    expect(res.body.total).toBe(6);
     expect(res.body.items.map((item: { code: string }) => item.code)).toEqual([
       'accounting_journal',
       'accounting_voucher',
+      'inventory_issue',
       'inventory_material_request',
       'inventory_receipt',
+      'inventory_transfer',
     ]);
     const receipt = res.body.items.find(
       (item: { code: string }) => item.code === 'inventory_receipt',

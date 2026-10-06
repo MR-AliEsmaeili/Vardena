@@ -530,6 +530,51 @@ export type ValuationStateStatus =
 export type InventoryValuationStateListQuery =
   operations['InventoryValuationController_listStates_v1']['parameters']['query'];
 
+// ---------------------------------------------------------------------------
+// Inventory business documents (C-58) — Receipt / Issue / Transfer
+//
+// Every type below is DERIVED from the generated contract
+// (`InventoryBusinessDocumentsController`): the lifecycle status union, the
+// kind union and the `canX` capability flags come from the backend DTO, so a
+// UI that renders an action the backend does not expose cannot compile.
+// ---------------------------------------------------------------------------
+
+/** One Inventory business document with its lines. */
+export type InventoryDocument = Schemas['InventoryDocumentResponseDto'];
+
+/** One document line (entered + base quantities, and the facts it owns). */
+export type InventoryDocumentLine = Schemas['InventoryDocumentLineResponseDto'];
+
+/** `receipt` | `issue` | `transfer`. */
+export type InventoryDocumentKind = InventoryDocument['kind'];
+
+/** `draft` | `operational` | `accounting_posted` | `immutable` | `cancelled`. */
+export type InventoryDocumentStatus = InventoryDocument['status'];
+
+export type InventoryDocumentListQuery =
+  operations['InventoryBusinessDocumentsController_list_v1']['parameters']['query'];
+
+/** `POST /inventory/business-documents` body. */
+export type CreateInventoryDocumentInput =
+  Schemas['CreateInventoryDocumentDto'];
+
+/** `PATCH /inventory/business-documents/:id` body (OQ-54 edit pipeline). */
+export type UpdateInventoryDocumentInput =
+  Schemas['UpdateInventoryDocumentDto'];
+
+/** `POST …/:id/finalize` body (backdating answers). */
+export type FinalizeInventoryDocumentInput =
+  Schemas['FinalizeInventoryDocumentDto'];
+
+/** `POST …/:id/cancel` body. */
+export type CancelInventoryDocumentInput =
+  Schemas['CancelInventoryDocumentDto'];
+
+/** Explicit repricing choice — never defaulted (OD-VAL-11). */
+export type InventoryRepricingChoice = NonNullable<
+  UpdateInventoryDocumentInput['repricing']
+>;
+
 /** `GET /inventory/valuation/backdate-check` — counts and dates, no amounts. */
 export type InventoryBackdateCheck = NullableString<
   Schemas['BackdateCheckResponseDto'],

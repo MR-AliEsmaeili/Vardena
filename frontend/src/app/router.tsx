@@ -16,6 +16,9 @@ import { FinancialAreasPage } from '@/features/accounting/master-data/financial-
 import { FiscalYearsPage } from '@/features/accounting/master-data/fiscal-years-page';
 import { TrialBalancePage } from '@/features/accounting/trial-balance/trial-balance-page';
 import { LoginPage } from '@/features/auth/login-page';
+import { InventoryDocumentDetailPage } from '@/features/inventory/documents/inventory-document-detail-page';
+import { InventoryDocumentFormPage } from '@/features/inventory/documents/inventory-document-form-page';
+import { InventoryDocumentsPage } from '@/features/inventory/documents/inventory-documents-page';
 import { InventoryHomePage } from '@/features/inventory/inventory-home-page';
 import { KardexPage } from '@/features/inventory/kardex-page';
 import { MovementFormPage } from '@/features/inventory/movement-form-page';
@@ -425,6 +428,53 @@ export function AppRoutes() {
               }
             >
               <Route path="transfers/new" element={<TransferFormPage />} />
+            </Route>
+
+            {/*
+              Business documents (C-58). The list/detail gate is the document
+              VIEW code; the create/edit routes sit behind their own codes,
+              because a principal allowed to draft a document is not thereby
+              allowed to finalize it — the lifecycle commands are authorized
+              individually, server-side, on every call.
+            */}
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.documentView]}
+                />
+              }
+            >
+              <Route path="documents" element={<InventoryDocumentsPage />} />
+              <Route
+                path="documents/:documentId"
+                element={<InventoryDocumentDetailPage />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.documentCreate]}
+                />
+              }
+            >
+              <Route
+                path="documents/new"
+                element={<InventoryDocumentFormPage />}
+              />
+            </Route>
+
+            <Route
+              element={
+                <RequirePermission
+                  permissions={[PERMISSIONS.inventory.documentEdit]}
+                />
+              }
+            >
+              <Route
+                path="documents/:documentId/edit"
+                element={<InventoryDocumentFormPage />}
+              />
             </Route>
 
             <Route

@@ -342,6 +342,7 @@ export const fa = {
     generalLedger: 'دفتر کل',
     trialBalance: 'تراز آزمایشی',
     inventory: 'انبار',
+    inventoryDocuments: 'اسناد انبار',
     inventoryMovements: 'گردش‌های انبار',
     inventoryKardex: 'کاردکس',
     inventoryValuation: 'ارزش‌گذاری موجودی',
@@ -690,6 +691,185 @@ export const fa = {
   // - `docs/frontend/ux/feedback-standard.md` §5.3/§5.4 (the two-step
   //   backdating dialogs) and §6.2/§11.7 (business-error copy).
   // ---------------------------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Inventory business documents (C-58): رسید انبار / حواله انبار / انتقال
+  // انبار. Vocabulary follows docs/architecture/domain/glossary and the
+  // backend's own lifecycle names; no status or action is invented here.
+  // ---------------------------------------------------------------------------
+  inventoryDocuments: {
+    title: 'اسناد انبار',
+    subtitle:
+      'رسید، حواله و انتقال انبار؛ از پیش‌نویس تا نهایی‌سازی، ثبت حسابداری و ابطال.',
+    listTitle: 'اسناد انبار',
+    newDocument: 'سند انبار جدید',
+    newReceipt: 'رسید انبار جدید',
+    newIssue: 'حواله انبار جدید',
+    newTransfer: 'انتقال انبار جدید',
+    backToList: 'بازگشت به اسناد انبار',
+    detailTitle: 'سند انبار',
+    notFoundTitle: 'سند انبار پیدا نشد',
+    notFoundBody:
+      'این سند در سازمان جاری وجود ندارد یا حذف شده است. فهرست اسناد را بررسی کنید.',
+    loadFailed: 'دریافت اسناد انبار انجام نشد. دوباره تلاش کنید.',
+    detailLoadFailed: 'دریافت سند انبار انجام نشد. دوباره تلاش کنید.',
+    emptyFirstUse: 'هنوز سند انباری ثبت نشده است. نخستین سند را بسازید.',
+    emptyFiltered: 'برای فیلترهای انتخاب‌شده سندی یافت نشد.',
+
+    kinds: {
+      receipt: 'رسید انبار',
+      issue: 'حواله انبار',
+      transfer: 'انتقال انبار',
+    },
+    statuses: {
+      draft: 'پیش‌نویس',
+      operational: 'عملیاتی',
+      accounting_posted: 'ثبت‌شده در حسابداری',
+      immutable: 'قطعی و غیرقابل‌تغییر',
+      cancelled: 'ابطال‌شده',
+    },
+
+    // Columns
+    columnNumber: 'شماره سند',
+    columnKind: 'نوع سند',
+    columnDate: 'تاریخ سند',
+    columnStatus: 'وضعیت',
+    columnWarehouse: 'انبار',
+    columnLines: 'تعداد ردیف',
+    columnUpdatedAt: 'آخرین تغییر',
+
+    // Filters
+    kindFilter: 'نوع سند',
+    allKinds: 'همه انواع',
+    statusFilter: 'وضعیت',
+    allStatuses: 'همه وضعیت‌ها',
+    allWarehouses: 'همه انبارها',
+
+    // Form
+    createTitle: 'ثبت سند انبار',
+    createDescription:
+      'سند به‌صورت پیش‌نویس ذخیره می‌شود؛ تا زمان نهایی‌سازی هیچ اثری بر موجودی ندارد و شماره نمی‌گیرد.',
+    editTitle: 'ویرایش سند انبار',
+    editDescription:
+      'ویرایش سند عملیاتی، اثر انباری ثبت‌شده را به‌صورت اتمیک اصلاح می‌کند؛ هیچ تغییری بی‌اطلاع شما اعمال نمی‌شود.',
+    kindField: 'نوع سند',
+    businessDate: 'تاریخ سند',
+    warehouse: 'انبار',
+    sourceWarehouse: 'انبار مبدأ',
+    destinationWarehouse: 'انبار مقصد',
+    cost: 'بهای تمام‌شده (اختیاری)',
+    costHint:
+      'فقط برای رسید و فقط یک ردیف؛ این مبلغ تخصیص ارزش انبار است، نه قیمت خرید.',
+    costMultiLineDisabled:
+      'تخصیص بها فقط برای رسید تک‌ردیفی پشتیبانی می‌شود؛ برای چند ردیف، سند را تفکیک کنید.',
+    issueNoCost:
+      'بهای حواله از روش ارزش‌گذاری موجودی محاسبه می‌شود و دستی وارد نمی‌شود.',
+    transferNoCost: 'انتقال بین انبارها از نظر ارزش خنثی است.',
+    description: 'شرح',
+    reference: 'مرجع',
+    lines: 'ردیف‌های سند',
+    addLine: 'افزودن ردیف',
+    removeLine: 'حذف ردیف',
+    lineItem: 'کالا',
+    lineQuantity: 'مقدار',
+    lineUnit: 'واحد',
+    lineNumber: 'ردیف',
+    lineBaseQuantity: 'مقدار پایه',
+    selectPlaceholder: 'انتخاب کنید',
+    save: 'ذخیره پیش‌نویس',
+    saving: 'در حال ذخیره…',
+    saveChanges: 'ثبت تغییرات',
+    created: 'سند انبار به‌صورت پیش‌نویس ذخیره شد.',
+    updated: 'تغییرات سند انبار ثبت شد.',
+
+    // Validation (client-side mirror of the backend rules)
+    itemRequired: 'کالا را انتخاب کنید.',
+    unitRequired: 'واحد را انتخاب کنید.',
+    quantityRequired: 'مقدار را وارد کنید.',
+    quantityPositive: 'مقدار باید عددی بزرگ‌تر از صفر باشد.',
+    warehouseRequired: 'انبار را انتخاب کنید.',
+    sourceWarehouseRequired: 'انبار مبدأ را انتخاب کنید.',
+    destinationWarehouseRequired: 'انبار مقصد را انتخاب کنید.',
+    sameWarehouse: 'انبار مبدأ و مقصد باید متفاوت باشند.',
+    costInvalid: 'بهای تمام‌شده باید عددی بزرگ‌تر از صفر باشد.',
+    linesRequired: 'سند باید دست‌کم یک ردیف داشته باشد.',
+
+    // Lifecycle actions
+    finalize: 'نهایی‌سازی',
+    finalizing: 'در حال نهایی‌سازی…',
+    finalizeTitle: 'نهایی‌سازی سند انبار',
+    finalizeDescription:
+      'با نهایی‌سازی، شماره سند صادر می‌شود و اثر انباری آن ثبت می‌گردد. این عملیات موجودی انبار را تغییر می‌دهد.',
+    finalized: 'سند انبار نهایی شد و اثر انباری آن ثبت گردید.',
+    accountingPost: 'ثبت حسابداری',
+    accountingPosting: 'در حال ثبت حسابداری…',
+    accountingPostTitle: 'ثبت حسابداری سند',
+    accountingPostDescription:
+      'پس از ثبت حسابداری، سند دیگر مستقیم ویرایش، حذف یا ابطال نمی‌شود و اصلاح آن فقط با سند اصلاحی ممکن است.',
+    accountingPosted: 'سند در مرز حسابداری ثبت شد.',
+    seal: 'قطعی‌سازی',
+    sealing: 'در حال قطعی‌سازی…',
+    sealTitle: 'قطعی‌سازی سند',
+    sealDescription:
+      'سند قطعی، پایان مسیر است: پس از آن هیچ عملیاتی روی این سند پذیرفته نمی‌شود.',
+    sealed: 'سند قطعی شد.',
+    cancel: 'ابطال سند',
+    cancelling: 'در حال ابطال…',
+    cancelTitle: 'ابطال سند انبار',
+    cancelDescription:
+      'اثر انباری این سند با گردش معکوس برگردانده می‌شود. سند و شماره‌اش باقی می‌مانند و شماره دوباره استفاده نمی‌شود.',
+    cancelReason: 'دلیل ابطال',
+    cancelled: 'سند ابطال شد و اثر انباری آن برگشت خورد.',
+    deleteDraft: 'حذف پیش‌نویس',
+    deleting: 'در حال حذف…',
+    deleteTitle: 'حذف پیش‌نویس سند',
+    deleteDescription:
+      'این پیش‌نویس حذف می‌شود. سندی که اثر انباری داشته باشد حذف نمی‌شود و فقط ابطال می‌گردد.',
+    deleted: 'پیش‌نویس سند حذف شد.',
+    edit: 'ویرایش',
+
+    // Edit side effects (OQ-54 / ADR-0040)
+    sideEffectTitle: 'این ویرایش اثر انباری ثبت‌شده را تغییر می‌دهد',
+    sideEffectDescription:
+      'گردش‌های قبلی این سند برگشت می‌خورند و گردش‌های جدید ثبت می‌شوند. این تغییر را تأیید می‌کنید؟',
+    sideEffectAcknowledge: 'تغییر اثر انباری را تأیید می‌کنم.',
+    repricingTitle: 'تکلیف ارزش‌گذاری',
+    repricingDescription:
+      'ارزش‌گذاری این کالا در این انبار تحت تأثیر قرار می‌گیرد. تکلیف آن را مشخص کنید؛ هیچ پیش‌فرضی اعمال نمی‌شود.',
+    repricingRecalculate: 'قیمت‌گذاری مجدد انجام شود',
+    repricingSkip: 'انجام نشود (ارزش‌گذاری نامعتبر می‌ماند)',
+    valuationStaleTitle: 'ارزش‌گذاری این سند نامعتبر است',
+    valuationStaleBody:
+      'شما قیمت‌گذاری مجدد را انجام ندادید؛ ارزش موجودی این کالا تا انجام قیمت‌گذاری مجدد به‌روز نیست.',
+
+    // Backdating (OD-VAL-10/11 + OQ-67)
+    backdateConfirm: 'تاریخ سند از آخرین گردش این کالا قدیمی‌تر است.',
+
+    // Document facts
+    numberNotAllocated: 'هنوز شماره نگرفته است',
+    finalizedAt: 'زمان نهایی‌سازی',
+    accountingPostedAt: 'زمان ثبت حسابداری',
+    sealedAt: 'زمان قطعی‌سازی',
+    cancelledAt: 'زمان ابطال',
+    cancellationReason: 'دلیل ابطال',
+    movementLink: 'گردش انبار',
+    noMovementYet: 'هنوز گردشی ثبت نشده است',
+    outMovement: 'گردش خروج',
+    inMovement: 'گردش ورود',
+    permissionNote:
+      'کنترل دسترسی در این صفحه فقط جنبه نمایشی دارد؛ مرجع نهایی، مجوزهای سرور است.',
+
+    errors: {
+      illegalTransition:
+        'این تغییر وضعیت مجاز نیست. صفحه را تازه‌سازی کنید تا وضعیت واقعی سند را ببینید.',
+      accountingPostedImmutable:
+        'سند پس از ثبت حسابداری تغییر نمی‌کند؛ اصلاح آن فقط با سند اصلاحی ممکن است.',
+      cancelledImmutable: 'سند ابطال‌شده بخشی از سابقه است و تغییر نمی‌کند.',
+      alreadyCancelled: 'این سند پیش‌تر ابطال شده است.',
+      deleteForbidden:
+        'فقط پیش‌نویس حذف می‌شود؛ سندی که اثر انباری دارد باید ابطال شود.',
+    },
+  },
+
   inventory: {
     title: 'عملیات انبار',
     subtitle:

@@ -1,5 +1,6 @@
 import {
   Building2,
+  FileStack,
   BookOpenCheck,
   CalendarDays,
   Contact,
@@ -173,6 +174,12 @@ export const navigationSections: readonly NavigationSection[] = [
         label: t.inventory.title,
         icon: Warehouse,
         end: true,
+      },
+      {
+        to: '/app/inventory/documents',
+        label: t.nav.inventoryDocuments,
+        icon: FileStack,
+        permissions: [PERMISSIONS.inventory.documentView],
       },
       {
         to: '/app/inventory/movements',

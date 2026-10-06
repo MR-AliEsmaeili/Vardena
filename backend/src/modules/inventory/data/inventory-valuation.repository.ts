@@ -327,28 +327,48 @@ export class InventoryValuationRepository {
     input: RecalculationInput,
   ): Promise<RecalculationOutput> {
     const client = await this.transacting();
-    return client.$transaction(async (tx) => {
-      const { state } = await lockValuationStateRow(
-        tx,
-        input.key,
-        input.method,
-        input.actorId,
-      );
-      const applied = await applyReplay(tx, {
-        state,
-        runId: input.runId,
-        key: input.key,
-        method: input.method,
-        trigger: input.trigger,
-        fromDate: input.fromDate,
-        reason: input.reason,
-        operationKey: input.operation.operationKey,
-        at: input.at,
-        actorId: input.actorId,
-      });
-      await insertOperationRow(tx, input.operation);
-      return { run: applied.run, state: applied.state };
+    return client.$transaction((tx) => this.recalculateKeyWithin(tx, input));
+  }
+
+  /**
+   * The same replay, executed inside a transaction the CALLER owns.
+   *
+   * This is the composable half of `recalculateKey`: identical arithmetic
+   * (one `applyReplay`, one state row, one run record, one idempotency row),
+   * but joined to an outer `BEGIN … COMMIT` so a command that both moves
+   * stock and reprices the affected keys commits — or rolls back — as one
+   * unit (C-58 finalize/edit with explicit `repricing: "recalculate"`).
+   *
+   * A failure here therefore aborts the caller's transaction too, which is
+   * the point: no warehouse fact may survive a valuation replay that did not
+   * happen. Callers that must keep the quantity fact regardless of the
+   * valuation outcome keep using `recalculateKey`, which owns its own
+   * transaction.
+   */
+  async recalculateKeyWithin(
+    tx: CoreTxClient,
+    input: RecalculationInput,
+  ): Promise<RecalculationOutput> {
+    const { state } = await lockValuationStateRow(
+      tx,
+      input.key,
+      input.method,
+      input.actorId,
+    );
+    const applied = await applyReplay(tx, {
+      state,
+      runId: input.runId,
+      key: input.key,
+      method: input.method,
+      trigger: input.trigger,
+      fromDate: input.fromDate,
+      reason: input.reason,
+      operationKey: input.operation.operationKey,
+      at: input.at,
+      actorId: input.actorId,
     });
+    await insertOperationRow(tx, input.operation);
+    return { run: applied.run, state: applied.state };
   }
 
   /**

@@ -387,7 +387,13 @@ export class InventoryTransfersService {
 
 // ---- Internal helpers ----
 
-function assertTransferNotBackdated(
+/**
+ * OQ-67 fail-closed gate, shared with the C-58 Transfer document finalize
+ * (`inventory-business-documents.service.ts`): the transfer-average
+ * convention for a backdated transfer is unresolved, so no stock is moved
+ * rather than valued by a rule nobody approved.
+ */
+export function assertTransferNotBackdated(
   source: BackdateAssessment,
   destination: BackdateAssessment,
 ): void {

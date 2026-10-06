@@ -44,18 +44,13 @@ describe.skipIf(DATABASE_URL === undefined)(
       app = built.app;
       prisma = built.module.get(PrismaService);
 
-      // Task 8 owns no business type; register the fixture like a future
-      // owning module would at startup.
-      built.module.get(DocumentTypeRegistry).register([
-        {
-          code: 'inventory_receipt',
-          module: 'inventory',
-          name: 'Inventory receipt',
-          draftCapable: true,
-          entryStates: ['temporary'],
-          deletablePhases: ['draft', 'temporary'],
-        },
-      ]);
+      // `inventory_receipt` is now owned and registered at startup by the
+      // Inventory module (C-58, `inventory-document-type-registration.ts`),
+      // so this suite consumes the REAL registration instead of injecting a
+      // fixture — registering it twice is a fail-fast programmer error.
+      expect(
+        built.module.get(DocumentTypeRegistry).get('inventory_receipt'),
+      ).toBeDefined();
 
       const organizations = app.get(OrganizationsService);
       const numberingSeries = app.get(NumberingSeriesService);
