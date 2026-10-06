@@ -543,7 +543,6 @@ This dated addendum is the current post-Task-30 reference; the dated task-histor
 - **MVP boundary:** Treasury, Purchasing, Purchasing→Accounting and Purchasing Reports remain outside MVP/post-v1; no implementation is authorized by this addendum.
 - **Current implementation gate:** `docs/tasks/task-31/next-implementation-gate.md` is authoritative after Task 30. The next production direction is **BLOCKED — OWNER DECISION REQUIRED**; a roadmap candidate, green CI, or this addendum is not authorization.
 
-
 ## 10.6 Current Repository State — 2026-09-29 Reconciliation
 
 This is the current-state addendum. It supersedes §10.5 only as a snapshot; it does not rewrite Task 31 or any other historical record. Exact audited baseline: `main` / `34dddfd60d6ce2f9d4599bd05b440556a80aa847` (merge of PR #88). Full evidence, Documentation Truth Matrix, OQ/ADR reconciliation and drift log: [`docs/current-state-reconciliation.md`](docs/current-state-reconciliation.md).
@@ -796,7 +795,7 @@ rewriting §13.1's history.
 
 - **Current PR #96 HEAD:** `487d363c3bfe397f7480e992dbf6027c9108cbb9`
   (confirmed via `git rev-parse HEAD` and `gh pr view 96 --json
-  headRefOid`).
+headRefOid`).
 - **Current PR #96 base:** `841b68545b6be36aeb65f523474b4261973875b8`
   (`main`'s current tip — unchanged since §13.1; PR #96 was not re-rebased
   for this correction, only a new commit was added on top).
@@ -874,7 +873,7 @@ historical project state above. Full audit evidence, decisions and verification:
   it in this slice.
 - **Deferred, recorded, not built:** organization **membership** administration
   (deferred by design), a second organization-creation path (`POST
-  /organizations` is owned by the PR #96 first-login bootstrap), bulk import,
+/organizations` is owned by the PR #96 first-login bootstrap), bulk import,
   Excel export, advanced search builder, custom columns, saved filters,
   audit-history UI, attachments, notes, org-chart visualization, drag/drop
   hierarchy, bulk enable/disable, and every party field the DTOs do not declare
@@ -906,7 +905,7 @@ historical project state above.
 - **Scope:** insert the licensing stage into the authenticated frontend
   bootstrap, between the session and the existing organization stage, so the
   fixed order is `login → session → license → organization → organization
-  context → workspace`. No new product surface, no license administration.
+context → workspace`. No new product surface, no license administration.
 - **Backend changes: none.** `git diff --stat -- backend/ prisma/` on the
   implementation commit is empty. `GET /api/v1/license/current` was consumed
   exactly as `LicenseStateController.current()` already returns it — not
@@ -988,12 +987,12 @@ changes and verification: `docs/tasks/task-33/`.
   slice (list/get/create/update/enable/disable) against the current
   repository contract and close genuine gaps only. Reconnaissance found the
   production implementation (`backend/src/modules/inventory/{domain,
-  application,data,api}/warehouse*.ts`) **already complete and correct**:
+application,data,api}/warehouse*.ts`) **already complete and correct**:
   organization scope via `OrganizationsService.assertOrganizationInScope` /
   `requireUsableOrganization`, branch validation via
   `BranchesService.requireUsableBranchInOrganization` (no cross-module Prisma
   access), organization-scoped code uniqueness (`uq_warehouses_organization_
-  id_code`, pre-check + unique-violation fallback), the two ADR-0022 lifecycle
+id_code`, pre-check + unique-violation fallback), the two ADR-0022 lifecycle
   freeze guards (branch cannot change once `inventory_movements` exist for the
   warehouse; a warehouse cannot be disabled while `inventory_balances` still
   shows stock), explicit per-operation permissions
@@ -1024,8 +1023,8 @@ changes and verification: `docs/tasks/task-33/`.
     `requireUsableWarehouseInOrganization` (`allowInactive`), and
     list pagination/branch filter/active filter/search/sort allowlist.
   - Extended `backend/src/modules/organization/application/master-data-
-    authorization.spec.ts` with a new `WarehousesService authorization &
-    cross-organization IDOR` block (3 cases) driven through the REAL
+authorization.spec.ts` with a new `WarehousesService authorization &
+cross-organization IDOR` block (3 cases) driven through the REAL
     `AuthorizationService` + real RBAC repositories: anonymous 401, a
     distinct permission required per Warehouse operation (View+Create does
     not imply Edit/Enable/Disable), and a member of both organizations still
@@ -1038,7 +1037,7 @@ changes and verification: `docs/tasks/task-33/`.
   - New `backend/test/warehouse-master-live.e2e-spec.ts`
     (`describe.skipIf` on `VARDENA_TEST_DATABASE_URL`, the same opt-in
     pattern as `workflow-live.e2e-spec.ts` / `licensing-persistence-live.
-    e2e-spec.ts`): 5 cases against **real PostgreSQL** — organization-scoped
+e2e-spec.ts`): 5 cases against **real PostgreSQL** — organization-scoped
     code uniqueness surviving 8 concurrent `createWarehouse` calls for the
     identical `(organizationId, code)` (exactly one winner, the database
     unique index is authoritative, not the application pre-check), the same
@@ -1057,8 +1056,8 @@ changes and verification: `docs/tasks/task-33/`.
   OPEN, none resolved implicitly.
 - **Local fast verification (executed):** `npm run typecheck` clean,
   `npm run lint` 0 errors (1 pre-existing unrelated warning), `npm run
-  format:check` clean, `npm run build` OK, focused specs (`warehouses.
-  service.spec.ts` 24/24, `master-data-authorization.spec.ts` 25/25,
+format:check` clean, `npm run build` OK, focused specs (`warehouses.
+service.spec.ts` 24/24, `master-data-authorization.spec.ts` 25/25,
   `master-data.e2e-spec.ts` 41/41) all pass, and the full hermetic unit suite
   (`npm test`) **120 files / 1391 tests passed** (no pre-existing test
   modified or weakened). The new live-database spec was confirmed to be
@@ -1072,6 +1071,7 @@ changes and verification: `docs/tasks/task-33/`.
   does not accept, re-accept, or alter the status of §13 (the other "Task
   33"), C-01..C-45, or any other candidate in the Future Task Candidate
   Register beyond updating C-46's own row.
+
 ## 17. C-47 — Inventory Item Master Readiness, Regression Hardening & Decision Preparation (2026-10-02)
 
 This addendum records a focused backend hardening task without rewriting or
@@ -1211,7 +1211,7 @@ removes nothing above. Full record:
   **NOT ACCEPTED** and **BLOCKED BY OQ**, with its blocking set narrowed from
   "OQ-29 + OQ-33" to "OQ-33 confirmation + OQ-65 + OQ-36 reuse".
 - **Dependency review C-47…C-54 (verified against code, not identifiers):**
-  OQ-11 is an *Accounting* question (opening balance **import** + inventory
+  OQ-11 is an _Accounting_ question (opening balance **import** + inventory
   **costing method**) and does not describe quantity-opening mechanics; OQ-24
   gates every valued/rial flow and its negative-stock half has an implemented
   fail-closed default that is not a decided policy; OQ-39/OQ-42 gate the
@@ -1319,7 +1319,7 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   and counts only, and server-side redaction of monetary fields for callers
   without `Inventory.Valuation.View`.
 - **Invariants asserted by tests.** (1) `balance.onHand == valuedQuantity +
-  uncostedQuantity` always; (2) `SUM(movement.totalCost) == state.totalValue`
+uncostedQuantity` always; (2) `SUM(movement.totalCost) == state.totalValue`
   for every key that is not `stale`.
 - **Scope framing (corrected after review).** This is a **valuation
   foundation**, not a finished Inventory Accounting capability: there is no
@@ -1338,7 +1338,7 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
 - **Deliberately not implemented.** Inventory → Accounting posting/COGS
   (OQ-39/OQ-42/OQ-25), returns costing (OD-VAL-19), landed cost, FIFO/LIFO/
   specific identification, lot/serial-level valuation, Receipt/Issue
-  *documents* (OQ-54), and **any frontend** — the UX documents specify the
+  _documents_ (OQ-54), and **any frontend** — the UX documents specify the
   target flows and classify them as `SUPPORTED API / FUTURE UI` (candidate
   C-57).
 - **Local validation (after the correction round).** `npm run format:check`,
@@ -1352,7 +1352,7 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   `prisma validate`/`generate` (engine download blocked), `prisma:deploy`,
   migration rehearsal and the live-PostgreSQL E2E suites.
 - **Pull request:** **#116** — `feat(inventory): establish valuation foundation
-  and cost-optional warehouse operations`, head `7b4b825`, branch
+and cost-optional warehouse operations`, head `7b4b825`, branch
   `arena/01a107dc-vardena`, **left OPEN for architectural review** (not
   merged). The mandatory A–K implementation report and the OD-VAL-01…19
   decision mapping are recorded in the PR description; the canonical decision
@@ -1386,7 +1386,7 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
      Proven by `domain/valuation-replay.spec.ts` (14 unit tests, including the
      1404/1405 resolution case) and one e2e case that is verified to FAIL
      against the previous behaviour. The run/state `method` column is now
-     documented as *the method in force for the key when the run executed*,
+     documented as _the method in force for the key when the run executed_,
      not the per-movement methods applied — recorded against **OQ-69**.
   2. **Governance overreach in the documentation.** ADR-0039 had been written
      as `Accepted` and quoted that way in 7 documents; the roadmap read as if
@@ -1412,7 +1412,7 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   changing a single resolved method:**
   1. **Replay path** — the versions were read for the replay **horizon**
      (`validFrom <= lastMovementDate AND (validTo IS NULL OR validTo >
-     firstMovementDate)`), derived from the already-bounded movement read,
+firstMovementDate)`), derived from the already-bounded movement read,
      and capped at `RECALCULATION_MOVEMENT_LIMIT + 1`. **That cap was itself
      wrong and was replaced in round 3 of the corrections (see below);** the
      horizon filter is no longer what bounds the read.
@@ -1429,18 +1429,18 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
      configuration write, under the item-scoped advisory lock, over one
      (organization, item) pair's admin-created history — the same shape as the
      accepted C-47 `unit-conversions.repository.ts` write path.
-  **Historical resolution is unchanged** (`ReplayFact.method` is still the
-  method effective at each movement's own date), there is no fallback to a
-  current/latest/first method, unsupported methods still fail closed, and the
-  closed `switch` dispatch is untouched. Proven by **14 new unit tests** in
-  `domain/valuation-method.spec.ts` — including a 60-version five-year history
-  where every replayed date resolves identically against the filtered and
-  the complete series — and **one new e2e case**
-  (`inventory-valuation.e2e-spec.ts`) that drives a four-version history
-  through the real API, resolves each date to its own version, and shows the
-  same unsupported window being ignored when it sits outside the replayed
-  period and refusing the replay when it sits inside it. Both window edges
-  were mutation-tested: inverting either comparison fails the suite.
+     **Historical resolution is unchanged** (`ReplayFact.method` is still the
+     method effective at each movement's own date), there is no fallback to a
+     current/latest/first method, unsupported methods still fail closed, and the
+     closed `switch` dispatch is untouched. Proven by **14 new unit tests** in
+     `domain/valuation-method.spec.ts` — including a 60-version five-year history
+     where every replayed date resolves identically against the filtered and
+     the complete series — and **one new e2e case**
+     (`inventory-valuation.e2e-spec.ts`) that drives a four-version history
+     through the real API, resolves each date to its own version, and shows the
+     same unsupported window being ignored when it sits outside the replayed
+     period and refusing the replay when it sits inside it. Both window edges
+     were mutation-tested: inverting either comparison fails the suite.
 - **Validation after round 2 of corrections (local, 2026-10-05):**
   `format:check` ✅, `lint` ✅ (1 pre-existing warning in Accounting),
   `typecheck` ✅, unit **133 files / 1616 tests** ✅, hermetic e2e **26 files /
@@ -1451,7 +1451,7 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   and then capped it at `RECALCULATION_MOVEMENT_LIMIT + 1`, justified as "at
   most one version can be consumed per movement". The premise is true but
   does not support the cap: the horizon query returns every version
-  *intersecting* the span, a count driven by **configuration density**, not
+  _intersecting_ the span, a count driven by **configuration density**, not
   by movement count. Two movements eleven months apart therefore dragged in
   every version configured during those eleven months, and an item with more
   versions than the movement limit had its two-movement replay **refused**
@@ -1461,7 +1461,7 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   reads the versions in force at the **distinct movement dates** it is
   replaying — one window branch per date in a single set-based query
   (`WHERE org = ? AND item = ? AND ((valid_from <= d1 AND (valid_to IS NULL
-  OR valid_to > d1)) OR …)`) — so every row returned governs at least one
+OR valid_to > d1)) OR …)`) — so every row returned governs at least one
   replayed movement, and the result is bounded by the number of distinct
   dates, which the movement limit already bounds. Distinct dates, not
   movements: a hundred movements sharing five dates ask five questions. The
@@ -1481,16 +1481,16 @@ decision on PR #116. Owner decision record: **PDR-05 / OD-VAL-01…OD-VAL-19**
   default-when-unconfigured rule, the half-open `[validFrom, validTo)`
   boundary and every API contract are unchanged.
   Evidence: the e2e regression test (two movements, `RECALCULATION_MOVEMENT_LIMIT
-  + 1` contiguous versions) was **verified to fail against the round-2
-  implementation** with 422 `inventory.recalculation_too_large` and to pass
-  after the fix; a second e2e replays two movements across twelve monthly
-  versions and proves determinism and future-version isolation; a third —
-  new, there was none before — proves the movement limit itself still refuses
-  a key with more movements than the limit. Unit coverage adds distinct-date
-  collapsing, density independence (600 versions, two movements, two rows
-  read), the hundred-movements/five-dates case, boundary selection at the
-  exact instant a window closes, and loaded-but-unsupported versus
-  excluded-future methods.
+  - 1`contiguous versions) was **verified to fail against the round-2
+implementation** with 422`inventory.recalculation_too_large` and to pass
+    after the fix; a second e2e replays two movements across twelve monthly
+    versions and proves determinism and future-version isolation; a third —
+    new, there was none before — proves the movement limit itself still refuses
+    a key with more movements than the limit. Unit coverage adds distinct-date
+    collapsing, density independence (600 versions, two movements, two rows
+    read), the hundred-movements/five-dates case, boundary selection at the
+    exact instant a window closes, and loaded-but-unsupported versus
+    excluded-future methods.
 - **Validation after round 3 of corrections (local, 2026-10-05):**
   `format:check` ✅, `lint` ✅ (1 pre-existing warning in Accounting),
   `typecheck` ✅, unit **133 files / 1618 tests** ✅, hermetic e2e **26 files /
@@ -1722,3 +1722,37 @@ e2e spec asserting it).
   configuration UI, no GL/COGS posting, no Persian (Jalali) date display
   beyond the existing ISO input conventions. OQ-67/68/69 remain OPEN.
 - **Status:** READY FOR REVIEW — NOT ACCEPTED (Owner review required).
+
+## 23. C-59D/C-59E/C-59E+ — Returns, Periodic Pricing, Reverse Pricing & Concurrency Hardening (2026-10-07)
+
+- **Scope delivered (backend, branch `arena/99c8b15c-vardena`):** Purchase
+  Return and Sales Return documents with the full basis/manual-amount
+  valuation rules (PDR-08 OD-RET-01…07); the Periodic Pricing Operation
+  batch (OD-PRC-05…07, OD-PDP-01…05) with per-key outcome reporting; Reverse
+  Pricing (OD-RVP-01…08) as a run-scoped compensating run; the OD-REV-07
+  no-reversal-after-Accounting-Post guard; and the Accounting Post ↔ pricing
+  concurrency hardening (one transaction: document row lock → key
+  valuation-state locks in the fixed order → eligibility re-derived under the
+  locks → write). Additive migration
+  `20261008000000_inventory_returns_and_pricing_runs`; new permissions
+  `Inventory.Valuation.RunPricing` / `Inventory.Valuation.ReversePricing`;
+  new endpoints under `/v1/inventory/pricing`.
+- **Domain decisions:** recorded in
+  `docs/tasks/c-59-returns-pricing-execution-report.md` §4.1–4.8 (basis
+  pro-rata = one division + one sanctioned rounding; unvalued basis exits
+  valueless with `return_basis` recorded, never the average and never zero;
+  sales return re-enters at the current average, amount only with a basis;
+  pricing runs are audit records, per-key arithmetic stays the existing
+  whole-key replay; reversal compensations fold preserved values and leave
+  the key stale; runs are never deleted, only marked reversed).
+- **Verified locally:** `npm ci`, `tsc --noEmit`, oxlint (0 errors; 1
+  pre-existing warning on main), prettier, and the full unit suite
+  **136 files / 1702 tests PASS**. `prisma validate` could not run in the
+  sandbox (no network for the schema engine) — CI is authoritative.
+- **NOT done in this slice (named):** dedicated unit/integration specs for
+  the new behavior, live-DB concurrency tests, the narrative
+  valuation/pricing documentation pass, the coupled backdated-transfer
+  replay (DEFERRED, still fail-closed), and the
+  `backdateConfirmed`/`acknowledgeSideEffects` split (recorded debt).
+- **Status:** implementation complete, tests partial — PR open; CI pending
+  at the time of this record. NOT ACCEPTED (Owner review required).

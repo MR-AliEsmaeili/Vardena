@@ -42,6 +42,7 @@ import {
 } from '../domain/backdating.js';
 import type {
   InventoryValuationRunDto,
+  InventoryValuationState,
   InventoryValuationStateDto,
 } from '../domain/inventory-valuation.js';
 import {
@@ -409,6 +410,20 @@ export class InventoryValuationService {
       query.page,
       query.pageSize,
     );
+  }
+
+  /**
+   * Internal, ungated state read for a sibling service's correctness guard
+   * (C-59D OD-RET-07: the sales-return cold-start refusal). Not an API: the
+   * public `getState` enforces `Valuation.View` and 404s on a missing state,
+   * both wrong for a guard that must see `null` and decide, not expose.
+   */
+  async findValuationState(params: {
+    organizationId: string;
+    warehouseId: string;
+    itemId: string;
+  }): Promise<InventoryValuationState | null> {
+    return this.valuation.findState(params);
   }
 
   async getState(params: {

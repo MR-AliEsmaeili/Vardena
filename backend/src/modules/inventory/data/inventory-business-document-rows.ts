@@ -48,7 +48,7 @@ export type InventoryDocumentRow = {
 } & AuditColumns;
 
 export interface InventoryDocumentWhere {
-  id?: string;
+  id?: string | { in: string[] };
   organizationId?: string;
   kind?: string | { in: string[] };
   status?: string | { in: string[] };
@@ -132,6 +132,8 @@ export type InventoryDocumentLineRow = {
   baseQuantity: DecimalLike;
   baseUnitId: string;
   conversionFactor: DecimalLike;
+  /** C-59D return basis link (OD-RET-01); NULL on non-return lines. */
+  basisMovementId: string | null;
   movementId: string | null;
   outMovementId: string | null;
   inMovementId: string | null;
@@ -141,6 +143,8 @@ export interface InventoryDocumentLineWhere {
   id?: string;
   documentId?: string | { in: string[] };
   organizationId?: string;
+  /** C-59D: every line linked to one basis movement (over-return guard). */
+  basisMovementId?: string;
 }
 
 export interface InventoryDocumentLineCreate {
@@ -154,6 +158,8 @@ export interface InventoryDocumentLineCreate {
   baseQuantity: string;
   baseUnitId: string;
   conversionFactor: string;
+  /** C-59D return basis link (OD-RET-01); NULL on non-return lines. */
+  basisMovementId: string | null;
   movementId: string | null;
   outMovementId: string | null;
   inMovementId: string | null;

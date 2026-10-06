@@ -18,6 +18,7 @@ import {
 } from '../domain/inventory-valuation.js';
 import { isMovementType } from '../domain/movement-type.js';
 import type { MovementType } from '../domain/movement-type.js';
+import { foldPreservedPosition } from '../domain/valuation-compensation.js';
 import type { ReplayFact } from '../domain/valuation-replay.js';
 import {
   AmbiguousValuationMethodError,
@@ -313,6 +314,32 @@ export class InventoryValuationRepository {
     };
   }
 
+  /**
+   * Runs on ONE key executed strictly after an instant — the OD-RVP-02
+   * latest-run guard: a run with any newer run on its key may not be
+   * reversed, because reversing out of order corrupts the replay chain.
+   */
+  async listRunsForKeyAfter(params: {
+    organizationId: string;
+    warehouseId: string;
+    itemId: string;
+    executedAfter: Date;
+  }): Promise<InventoryValuationRun[]> {
+    const { inventoryValuationRun } = await this.client();
+    const rows = await inventoryValuationRun.findMany({
+      where: {
+        organizationId: params.organizationId,
+        warehouseId: params.warehouseId,
+        itemId: params.itemId,
+        executedAt: { gt: params.executedAfter },
+      },
+      orderBy: [{ executedAt: 'asc' }],
+      skip: 0,
+      take: 20,
+    });
+    return rows.map(toRunDomain);
+  }
+
   // ---- commands -----------------------------------------------------------
 
   /**
@@ -369,6 +396,163 @@ export class InventoryValuationRepository {
     });
     await insertOperationRow(tx, input.operation);
     return { run: applied.run, state: applied.state };
+  }
+
+  /**
+   * The batch flavor of {@link recalculateKeyWithin} (C-59E Periodic
+   * Pricing): identical arithmetic — lock, whole-key replay, state write —
+   * but the idempotency unit is the BATCH, so the caller inserts ONE
+   * operation row for the whole run and this method writes none. The caller
+   * (the pricing service) pre-locks every key's state row in ascending order
+   * before calling this per key, so the re-entrant single-key lock inside
+   * never waits and the module's single multi-key lock discipline is upheld.
+   */
+  async recalculateKeyWithinBatch(
+    tx: CoreTxClient,
+    input: Omit<RecalculationInput, 'operation'> & { operationKey: string },
+  ): Promise<RecalculationOutput> {
+    const { state } = await lockValuationStateRow(
+      tx,
+      input.key,
+      input.method,
+      input.actorId,
+    );
+    const applied = await applyReplay(tx, {
+      state,
+      runId: input.runId,
+      key: input.key,
+      method: input.method,
+      trigger: input.trigger,
+      fromDate: input.fromDate,
+      reason: input.reason,
+      operationKey: input.operationKey,
+      at: input.at,
+      actorId: input.actorId,
+    });
+    return { run: applied.run, state: applied.state };
+  }
+
+  /**
+   * The REVERSE of one per-key run, executed inside a transaction the CALLER
+   * owns (C-59E+, OD-RVP-04…06). Four steps, one transaction, one key:
+   *
+   *   1. lock the key's valuation-state row (the last lock tier),
+   *   2. set every movement the run valued back to `unvalued`
+   *      (OD-RVP-06 — never a quantity column),
+   *   3. fold the surviving facts into the pre-run POSITION with the pure
+   *      preserve-fold (`valuation-compensation.ts`) — nothing is repriced,
+   *   4. record the compensating `inventory_valuation_runs` row and mark the
+   *      state STALE ("requiring repricing"), pointing
+   *      `last_recalculation_id` at the compensating run.
+   *
+   * The caller (the pricing service) owns the OD-RVP-02/03/07 guards: this
+   * method performs the write once the decision to reverse has been made.
+   */
+  async reverseRunWithin(
+    tx: CoreTxClient,
+    input: {
+      key: BalanceKey;
+      method: ValuationMethod;
+      /** The per-key run being reversed. */
+      originalRunId: string;
+      /** Pre-generated compensating run id. */
+      compensatingRunId: string;
+      reason: string | null;
+      at: Date;
+      actorId: string | null;
+    },
+  ): Promise<{
+    run: InventoryValuationRun;
+    state: InventoryValuationState;
+    movementsUnvalued: number;
+  }> {
+    const { state } = await lockValuationStateRow(
+      tx,
+      input.key,
+      input.method,
+      input.actorId,
+    );
+    const rows = await readKeyMovements(tx, input.key);
+    const reversed = rows.filter(
+      (row) => row.valuationRunId === input.originalRunId,
+    );
+    for (const row of reversed) {
+      await tx.inventoryMovement.update({
+        where: { id: row.id },
+        data: {
+          totalCost: null,
+          valuationStatus: 'unvalued',
+          valuationSource: null,
+          valuedAt: null,
+          valuationRunId: input.compensatingRunId,
+          updatedAt: input.at,
+          updatedBy: input.actorId,
+        },
+      });
+    }
+
+    // Fold the SURVIVING facts (the rows above are now unvalued in memory
+    // too) — the pre-run position, honestly, without repricing anything.
+    const position = foldPreservedPosition(
+      rows.map((row) => ({
+        movementType: toMovementType(row.id, row.movementType),
+        baseQuantity: decimalToString(row.baseQuantity),
+        totalCost:
+          row.valuationRunId === input.compensatingRunId
+            ? null
+            : row.totalCost === null
+              ? null
+              : decimalToString(row.totalCost),
+        valuationSource:
+          row.valuationRunId === input.compensatingRunId
+            ? null
+            : toSource(row.id, row.valuationSource),
+      })),
+    );
+
+    const create: ValuationRunCreate = {
+      id: input.compensatingRunId,
+      organizationId: input.key.organizationId,
+      branchId: input.key.branchId,
+      warehouseId: input.key.warehouseId,
+      itemId: input.key.itemId,
+      method: input.method,
+      trigger: 'reverse_pricing',
+      fromDate: null,
+      movementsExamined: rows.length,
+      movementsRevalued: reversed.length,
+      resultingValuedQuantity: position.valuedQuantity,
+      resultingUncostedQuantity: position.uncostedQuantity,
+      resultingTotalValue: position.totalValue,
+      // OD-RVP-06: the key explicitly requires repricing after a reverse.
+      resultingStatus: 'stale',
+      operationKey: `reverse:${input.originalRunId}`,
+      reason: input.reason,
+      executedAt: input.at,
+      createdAt: input.at,
+      updatedAt: input.at,
+      createdBy: input.actorId,
+    };
+    const run = toRunDomain(
+      await tx.inventoryValuationRun.create({ data: create }),
+    );
+
+    await writeValuationState(tx, {
+      state,
+      position,
+      method: input.method,
+      marksStale: true,
+      at: input.at,
+      actorId: input.actorId,
+      recalculationId: input.compensatingRunId,
+      clearStale: false,
+    });
+
+    return {
+      run,
+      state: await reloadState(tx, state),
+      movementsUnvalued: reversed.length,
+    };
   }
 
   /**

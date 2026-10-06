@@ -106,7 +106,15 @@ export function resolveEnteredCost(params: {
 }
 
 function isInbound(movementType: MovementType): boolean {
-  return movementType === 'inbound' || movementType === 'adjustment_in';
+  // `sales_return` is inbound AND may carry an explicit amount — but only
+  // through its business document, which enforces the basis requirement
+  // (C-59D OD-RET-06: amount + basis or no amount at all). The direct
+  // movement endpoint never accepts the type (SINGLE_POST_TYPES).
+  return (
+    movementType === 'inbound' ||
+    movementType === 'adjustment_in' ||
+    movementType === 'sales_return'
+  );
 }
 
 function normalizeOptional(value: string | null | undefined): string | null {

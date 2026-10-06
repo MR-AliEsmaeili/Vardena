@@ -74,12 +74,18 @@ export type MovementValuationStatus =
  * value the fact carries on its own authority and is PRESERVED verbatim by
  * every recalculation; `average_cost` is derived by the Moving Weighted
  * Average strategy and is what a replay recomputes.
+ *
+ * `return_basis` (C-59D, OD-RET-02) is a Derived Price (OD-PRC-03): the
+ * original receipt's own recorded cost, pro-rated to the returned quantity.
+ * Like every non-`average_cost` source it is never overwritten by a Pricing
+ * Operation (OD-PRC-04).
  */
 export const VALUATION_SOURCES = [
   'entered',
   'average_cost',
   'transfer',
   'reversal',
+  'return_basis',
 ] as const;
 export type ValuationSource = (typeof VALUATION_SOURCES)[number];
 
@@ -226,6 +232,12 @@ export const VALUATION_RUN_TRIGGERS = [
   'backdated_document',
   'cost_assignment',
   'manual',
+  /** C-59E: the per-key replay executed inside a Periodic Pricing Operation
+   *  batch (OD-PRC-05, OD-PDP-01…05). */
+  'pricing_operation',
+  /** C-59E+: the per-key compensating replay written by Reverse Pricing
+   *  (OD-RVP-05/06). */
+  'reverse_pricing',
 ] as const;
 export type ValuationRunTrigger = (typeof VALUATION_RUN_TRIGGERS)[number];
 
@@ -297,5 +309,187 @@ export function toInventoryValuationRunDto(
     executedAt: run.executedAt.toISOString(),
     createdAt: run.createdAt.toISOString(),
     updatedAt: run.updatedAt.toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Pricing runs (C-59E — the Periodic Pricing Operation and its reverse)
+// ---------------------------------------------------------------------------
+
+/**
+ * What a Pricing Run IS (OD-PRC-05, OD-PDP-01): a user-initiated,
+ * scope-bounded, reportable BATCH over many stocking keys — deliberately not
+ * another per-key run row. The per-key arithmetic is and stays the existing
+ * `inventory_valuation_runs` replay; this header records WHO scoped WHAT,
+ * WHEN, with which outcome per key, and (for a compensating run) which run it
+ * reverses. It is an audit/reporting record, never a second ledger: nothing
+ * reads it to decide current truth (OD-VH-01, OD-DOC-01).
+ */
+export const PRICING_RUN_KINDS = [
+  /** A Periodic Pricing Operation batch (OD-PDP-01…05). */
+  'pricing_operation',
+  /** The compensating batch written by Reverse Pricing (OD-RVP-05). */
+  'reverse_pricing',
+] as const;
+export type PricingRunKind = (typeof PRICING_RUN_KINDS)[number];
+
+export function isPricingRunKind(value: string): value is PricingRunKind {
+  return (PRICING_RUN_KINDS as readonly string[]).includes(value);
+}
+
+/** Per-key outcome of one pricing run (OD-PRC-07: the run must report). */
+export const PRICING_KEY_OUTCOMES = [
+  /** The key replayed successfully under this run. */
+  'priced',
+  /** The key failed with the named `reason`; nothing changed on it. */
+  'failed',
+  /** The key's original run was successfully reversed (compensating runs). */
+  'reversed',
+] as const;
+export type PricingKeyOutcome = (typeof PRICING_KEY_OUTCOMES)[number];
+
+export function isPricingKeyOutcome(value: string): value is PricingKeyOutcome {
+  return (PRICING_KEY_OUTCOMES as readonly string[]).includes(value);
+}
+
+export interface InventoryPricingRunKeyOutcome {
+  id: string;
+  pricingRunId: string;
+  organizationId: string;
+  warehouseId: string;
+  itemId: string;
+  outcome: PricingKeyOutcome;
+  /** Stable, named reason codes — never free text for the failure cases. */
+  reason: string | null;
+  /** Movements that made the key fail (OD-PRC-07: name the offenders). */
+  failedMovementIds: readonly string[];
+  /** The per-key `inventory_valuation_runs` row this outcome produced. */
+  valuationRunId: string | null;
+  movementsExamined: number;
+  movementsRevalued: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface InventoryPricingRun {
+  id: string;
+  organizationId: string;
+  /** NULL = all warehouses (OD-PRC-06). */
+  warehouseId: string | null;
+  /** Sorted, de-duplicated inventory document kinds in scope. */
+  documentKinds: readonly string[];
+  /** Half-open range lower bound (exclusive); NULL = from the beginning of
+   *  history. AUTOMATIC: immediately after the last completed run for the
+   *  same scope (OD-PDP-01) — the operator never chooses it. */
+  fromDate: Date | null;
+  /** Range upper bound (inclusive); the operator's choice (OD-PDP-01). */
+  toDate: Date;
+  kind: PricingRunKind;
+  /** Set on a compensating run: the run it reverses (OD-RVP-01/05). */
+  reversesRunId: string | null;
+  /** Set once this run has been reversed (OD-RVP-05: retained, never erased). */
+  reversedByRunId: string | null;
+  reversedAt: Date | null;
+  keysExamined: number;
+  keysPriced: number;
+  keysFailed: number;
+  movementsExamined: number;
+  movementsRevalued: number;
+  reason: string | null;
+  operationKey: string;
+  executedBy: string | null;
+  executedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  keyOutcomes: readonly InventoryPricingRunKeyOutcome[];
+}
+
+export interface InventoryPricingRunKeyOutcomeDto {
+  id: string;
+  pricingRunId: string;
+  organizationId: string;
+  warehouseId: string;
+  itemId: string;
+  outcome: PricingKeyOutcome;
+  reason: string | null;
+  failedMovementIds: string[];
+  valuationRunId: string | null;
+  movementsExamined: number;
+  movementsRevalued: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InventoryPricingRunDto {
+  id: string;
+  organizationId: string;
+  warehouseId: string | null;
+  documentKinds: string[];
+  fromDate: string | null;
+  toDate: string;
+  kind: PricingRunKind;
+  reversesRunId: string | null;
+  reversedByRunId: string | null;
+  reversedAt: string | null;
+  keysExamined: number;
+  keysPriced: number;
+  keysFailed: number;
+  movementsExamined: number;
+  movementsRevalued: number;
+  reason: string | null;
+  operationKey: string;
+  executedBy: string | null;
+  executedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  keyOutcomes: InventoryPricingRunKeyOutcomeDto[];
+}
+
+export function toInventoryPricingRunKeyOutcomeDto(
+  outcome: InventoryPricingRunKeyOutcome,
+): InventoryPricingRunKeyOutcomeDto {
+  return {
+    id: outcome.id,
+    pricingRunId: outcome.pricingRunId,
+    organizationId: outcome.organizationId,
+    warehouseId: outcome.warehouseId,
+    itemId: outcome.itemId,
+    outcome: outcome.outcome,
+    reason: outcome.reason,
+    failedMovementIds: [...outcome.failedMovementIds],
+    valuationRunId: outcome.valuationRunId,
+    movementsExamined: outcome.movementsExamined,
+    movementsRevalued: outcome.movementsRevalued,
+    createdAt: outcome.createdAt.toISOString(),
+    updatedAt: outcome.updatedAt.toISOString(),
+  };
+}
+
+export function toInventoryPricingRunDto(
+  run: InventoryPricingRun,
+): InventoryPricingRunDto {
+  return {
+    id: run.id,
+    organizationId: run.organizationId,
+    warehouseId: run.warehouseId,
+    documentKinds: [...run.documentKinds],
+    fromDate: run.fromDate?.toISOString() ?? null,
+    toDate: run.toDate.toISOString(),
+    kind: run.kind,
+    reversesRunId: run.reversesRunId,
+    reversedByRunId: run.reversedByRunId,
+    reversedAt: run.reversedAt?.toISOString() ?? null,
+    keysExamined: run.keysExamined,
+    keysPriced: run.keysPriced,
+    keysFailed: run.keysFailed,
+    movementsExamined: run.movementsExamined,
+    movementsRevalued: run.movementsRevalued,
+    reason: run.reason,
+    operationKey: run.operationKey,
+    executedBy: run.executedBy,
+    executedAt: run.executedAt.toISOString(),
+    createdAt: run.createdAt.toISOString(),
+    updatedAt: run.updatedAt.toISOString(),
+    keyOutcomes: run.keyOutcomes.map(toInventoryPricingRunKeyOutcomeDto),
   };
 }

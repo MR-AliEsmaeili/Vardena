@@ -47,7 +47,11 @@ import type {
   ValuationOutcome,
   ValuationPosition,
 } from './moving-weighted-average.js';
-import { EMPTY_POSITION, applyMovement } from './moving-weighted-average.js';
+import {
+  EMPTY_POSITION,
+  applyMovement,
+  outboundConsumesValuedStock,
+} from './moving-weighted-average.js';
 import { compareMoney } from './money.js';
 import type { ValuationMethod } from './valuation-method.js';
 
@@ -107,6 +111,31 @@ export class UnsupportedValuationMethodError extends Error {
     );
     this.name = 'UnsupportedValuationMethodError';
     this.method = method;
+    this.movementId = movementId;
+  }
+}
+
+/**
+ * A single-key replay would VALUE a transfer leg that was posted `unvalued`
+ * (the source key held no valued stock when the transfer moved it). Valuing
+ * the source leg alone leaks the moved value out of the organization: the
+ * paired destination leg lives on another key and is never revalued by this
+ * replay. The coupled two-key replay that would resolve both legs together
+ * is the C-59C gap (OD-TRF-08/09), so until it exists the replay REFUSES
+ * with this named error instead of silently breaking organization-level value
+ * conservation (OD-TRF-01: the pair is exactly value-neutral).
+ */
+export class UnvaluedTransferReplayError extends Error {
+  readonly movementId: string;
+
+  constructor(movementId: string) {
+    super(
+      `Movement "${movementId}" is an unvalued transfer leg; repricing it on this ` +
+        'warehouse alone would strand the moved value on the other side of the transfer. ' +
+        'Assign a cost to the transferred stock (or price the key before the transfer date) ' +
+        'so both legs carry their value. Coupled two-key transfer repricing is not implemented yet.',
+    );
+    this.name = 'UnvaluedTransferReplayError';
     this.movementId = movementId;
   }
 }
@@ -172,6 +201,20 @@ export function replay(facts: readonly ReplayFact[]): ReplayResult {
   const movements: ReplayedMovement[] = [];
   let provisional = false;
   for (const fact of facts) {
+    // Transfer-leg guard (C-59 hardening): a transfer leg that was posted
+    // `unvalued` (the source held no valued stock) must stay unvalued in a
+    // single-key replay. Valuing it here would move value out of this key's
+    // pool while the paired leg on the other key receives nothing — an
+    // organization-level value leak. The coupled two-key replay that could
+    // resolve both legs together is the C-59C gap (OD-TRF-08/09), so the
+    // replay fails closed with a named error instead.
+    if (
+      fact.movementType === 'transfer_out' &&
+      fact.knownValue === null &&
+      outboundConsumesValuedStock(position, magnitudeOf(fact.baseQuantity))
+    ) {
+      throw new UnvaluedTransferReplayError(fact.id);
+    }
     const strategy = valuationStrategyFor(fact.method, fact.id);
     const outcome = strategy(position, {
       movementType: fact.movementType,
@@ -185,6 +228,12 @@ export function replay(facts: readonly ReplayFact[]): ReplayResult {
     movements.push({ id: fact.id, valuation: outcome.valuation });
   }
   return { position, movements, provisional };
+}
+
+/** `|baseQuantity|` — the magnitude the strategy consumes. */
+function magnitudeOf(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.startsWith('-') ? trimmed.slice(1) : trimmed;
 }
 
 /**
@@ -242,6 +291,15 @@ export function toReplayFact(
     row.totalCost !== null &&
     row.valuationSource !== null &&
     row.valuationSource !== 'average_cost';
+  // The unvalued basis-linked purchase return (OD-RET-02/04): no value on
+  // the row, but `return_basis` says WHY — the receipt it returns against
+  // was never priced. A replay must reproduce that exactly: the exit stays
+  // valueless and never derives from the average (a value here would be a
+  // silent variance into the pool).
+  const forcedUnvalued =
+    row.movementType === 'purchase_return' &&
+    row.totalCost === null &&
+    row.valuationSource === 'return_basis';
   return {
     id: row.id,
     method,
@@ -251,5 +309,6 @@ export function toReplayFact(
     knownValueSource: preserved
       ? (row.valuationSource ?? 'entered')
       : undefined,
+    ...(forcedUnvalued ? { forceUnvalued: true } : {}),
   };
 }

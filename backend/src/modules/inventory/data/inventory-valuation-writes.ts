@@ -146,6 +146,8 @@ export async function valueMovement(
     knownValue: string | null;
     knownValueSource?: ValuationSource | undefined;
     backdated: boolean;
+    /** OD-RET-02/04: the unvalued basis-linked purchase return. */
+    forceUnvalued?: boolean | undefined;
     at: Date;
     actorId: string | null;
   },
@@ -158,6 +160,7 @@ export async function valueMovement(
       ? {}
       : { knownValueSource: input.knownValueSource }),
     backdated: input.backdated,
+    ...(input.forceUnvalued === true ? { forceUnvalued: true } : {}),
   });
   await writeValuationState(tx, {
     state: input.state,

@@ -79,6 +79,19 @@
  *    the locked balance row before this module is reached (D-07); the
  *    strategy never values stock that is not there. It still fails closed on
  *    an inconsistent position rather than producing a negative quantity.
+ *
+ * 9. **A sales return re-enters at the CURRENT average — never at the sales
+ *    price** (C-59D, OD-RET-05/06). An inbound `sales_return` with no value
+ *    of its own is valued at `total_value × quantity ÷ valued_quantity` (one
+ *    division, one sanctioned rounding), so by construction the average is
+ *    unchanged: the goods come back at what they cost, not at what they were
+ *    sold for. A manual amount supplied with a basis on the original issue is
+ *    an ordinary Manual Price (rule 1). The rule NEVER invents an average:
+ *    with no valued pool the return is unvalued (`insufficient_valued_quantity`),
+ *    and the document layer refuses the operation up front (OD-RET-07 cold
+ *    start). It is PROVISIONAL when the fact is backdated or uncosted stock
+ *    sits on the key — a later repricing changes what "current" means, and a
+ *    later cost assignment can move the average the return was valued at.
  */
 
 import {
@@ -143,6 +156,16 @@ export interface ValuationFact {
   knownValueSource?: ValuationSource | undefined;
   /** True when this fact is dated before the key's latest movement. */
   backdated?: boolean | undefined;
+  /**
+   * C-59D (OD-RET-02/04): a basis-linked purchase return whose receipt
+   * basis carries NO value. The goods still leave (quantities always
+   * move), but the exit carries no value and NEVER derives one from the
+   * average — the return exits at "the price they were purchased", and
+   * that price was never assigned. Deterministic in replay: the movement
+   * row records `valuation_source = 'return_basis'` with a NULL value, so
+   * a recalculation rebuilds the same fact (see `toReplayFact`).
+   */
+  forceUnvalued?: boolean | undefined;
 }
 
 /** What one movement is worth, as written onto its ledger row. */
@@ -171,11 +194,20 @@ export interface ValuationOutcome {
 // Small shared helpers
 // ---------------------------------------------------------------------------
 
-function unvalued(reason: UnvaluedReason): MovementValuation {
+function unvalued(
+  reason: UnvaluedReason,
+  /**
+   * Set ONLY by the basis-linked unvalued purchase return (OD-RET-02/04):
+   * the row records `return_basis` so a replay can tell "no value because
+   * the basis had none" (stays unvalued, `forceUnvalued`) from "no basis,
+   * derive from the average" (`source: null`).
+   */
+  source: ValuationSource | null = null,
+): MovementValuation {
   return {
     status: 'unvalued',
     totalCost: null,
-    source: null,
+    source,
     unvaluedReason: reason,
   };
 }
@@ -287,6 +319,20 @@ function consume(position: ValuationPosition, quantity: string): Consumption {
   };
 }
 
+/**
+ * Would an outbound fact with NO value of its own take value out of the
+ * valued pool at this position? Exposed for the replay driver's transfer-leg
+ * guard (`valuation-replay.ts`): an unvalued `transfer_out` leg that would
+ * consume valued stock must be REFUSED rather than silently valued on one
+ * side of the pair only.
+ */
+export function outboundConsumesValuedStock(
+  position: ValuationPosition,
+  quantity: string,
+): boolean {
+  return !isZero(consume(position, quantity).valuedPart);
+}
+
 // ---------------------------------------------------------------------------
 // Single-key movements
 // ---------------------------------------------------------------------------
@@ -310,6 +356,45 @@ export function applyMovement(
   // --- inbound direction ---------------------------------------------------
   if (increasesStock(fact.baseQuantity)) {
     if (fact.knownValue === null) {
+      // Rule 9: a sales return without its own amount re-enters at the
+      // CURRENT average — inventory cost, never the sales price, and never
+      // an invented one (OD-RET-05/06/07).
+      if (fact.movementType === 'sales_return') {
+        if (isZero(position.valuedQuantity)) {
+          // No valued pool to derive a cost from. The document layer refuses
+          // this before posting (OD-RET-07); the strategy still degrades
+          // honestly rather than inventing an average or valuing at zero.
+          return {
+            position: {
+              ...position,
+              uncostedQuantity: addDecimalStrings(
+                position.uncostedQuantity,
+                quantity,
+              ),
+            },
+            valuation: unvalued('insufficient_valued_quantity'),
+            marksStale: false,
+          };
+        }
+        const value = shareOfValue(position, quantity);
+        const provisional = backdated || !isZero(position.uncostedQuantity);
+        return {
+          position: {
+            valuedQuantity: addDecimalStrings(
+              position.valuedQuantity,
+              quantity,
+            ),
+            uncostedQuantity: position.uncostedQuantity,
+            totalValue: addMoney(position.totalValue, value),
+          },
+          valuation: settled(
+            provisional ? 'provisional' : 'valued',
+            value,
+            'average_cost',
+          ),
+          marksStale: provisional,
+        };
+      }
       // Rule 2: a receipt with no cost is normal, not an error.
       return {
         position: {
@@ -335,6 +420,21 @@ export function applyMovement(
       },
       valuation: settled('valued', value, source),
       marksStale: backdated,
+    };
+  }
+
+  // --- outbound direction forced to carry no value (OD-RET-02/04) -----------
+  if (fact.forceUnvalued === true) {
+    // Consume exactly like any other outbound (quantities are the source of
+    // truth), but record no value and derive none. If the pool's valued
+    // quantity is consumed while its value stays, the key is honestly
+    // inconsistent and flagged — the same degradation rule 7 uses, never a
+    // silent average and never zero.
+    const consumed = consume(position, quantity);
+    return {
+      position: consumed.position,
+      valuation: unvalued('no_cost_supplied', 'return_basis'),
+      marksStale: !isZero(consumed.valuedPart),
     };
   }
 

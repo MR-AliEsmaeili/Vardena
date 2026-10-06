@@ -267,17 +267,24 @@ export async function lockMovementRow(
   totalCost: string | null;
   valuationStatus: string;
   valuationSource: string | null;
+  /**
+   * C-59D: the basis quantity a return is bounded by (the over-return
+   * guard). Signed like the stored row; a basis receipt is positive.
+   */
+  baseQuantity: string;
 } | null> {
   const rows = await tx.$queryRaw<{
     id: string;
     totalCost: DecimalLike | null;
     valuationStatus: string;
     valuationSource: string | null;
+    baseQuantity: DecimalLike;
   }>`
     SELECT "id",
            "total_cost" AS "totalCost",
            "valuation_status" AS "valuationStatus",
-           "valuation_source" AS "valuationSource"
+           "valuation_source" AS "valuationSource",
+           "base_quantity" AS "baseQuantity"
       FROM "inventory"."inventory_movements"
      WHERE "id" = ${movementId}
      FOR UPDATE`;
@@ -288,6 +295,7 @@ export async function lockMovementRow(
     totalCost: row.totalCost === null ? null : decimalToString(row.totalCost),
     valuationStatus: row.valuationStatus,
     valuationSource: row.valuationSource,
+    baseQuantity: decimalToString(row.baseQuantity),
   };
 }
 
@@ -455,4 +463,41 @@ function toValuationState(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+/**
+ * Lock SEVERAL valuation-state rows in the module's fixed multi-key order:
+ * ascending `(warehouse_id, item_id)`. This is the N-key extension of the
+ * transfer tier rule ("ascending warehouse id within each tier") and it is
+ * the ONE order every multi-key writer must use — the C-59E Pricing batch,
+ * Reverse Pricing, and the hardened Accounting Post all lock through here,
+ * so any two of them serialize instead of deadlocking.
+ *
+ * `method` is only used to create a zero row for a key that has none yet
+ * (same contract as {@link lockValuationStateRow}); callers that know the
+ * keys exist pass the resolved method anyway — no behavior difference.
+ */
+export async function lockValuationStateRowsInOrder(
+  tx: CoreTxClient,
+  entries: readonly { key: BalanceKey; method: ValuationMethod }[],
+  actorId: string | null,
+): Promise<InventoryValuationState[]> {
+  const ordered = [...entries].sort((left, right) => {
+    const byWarehouse = left.key.warehouseId.localeCompare(
+      right.key.warehouseId,
+    );
+    if (byWarehouse !== 0) return byWarehouse;
+    return left.key.itemId.localeCompare(right.key.itemId);
+  });
+  const states: InventoryValuationState[] = [];
+  for (const entry of ordered) {
+    const { state } = await lockValuationStateRow(
+      tx,
+      entry.key,
+      entry.method,
+      actorId,
+    );
+    states.push(state);
+  }
+  return states;
 }

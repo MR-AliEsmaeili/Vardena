@@ -121,6 +121,7 @@ interface LineRow {
   baseQuantity: string;
   baseUnitId: string;
   conversionFactor: string;
+  basisMovementId: string | null;
   movementId: string | null;
   outMovementId: string | null;
   inMovementId: string | null;
@@ -154,6 +155,8 @@ interface MovementRow {
 }
 
 class FakeWorld {
+  /** Recorded `lockValuationStateRows` entry counts (the fake lock contract). */
+  lockCalls: number[] = [];
   documents = new Map<string, DocRow>();
   lines = new Map<string, LineRow>();
   movements = new Map<string, MovementRow>();
@@ -250,6 +253,7 @@ function fakeDocumentsRepository(
         baseQuantity: line.baseQuantity,
         baseUnitId: line.baseUnitId,
         conversionFactor: line.conversionFactor,
+        basisMovementId: line.basisMovementId,
         movementId: line.movementId,
         outMovementId: line.outMovementId,
         inMovementId: line.inMovementId,
@@ -302,6 +306,7 @@ function fakeDocumentsRepository(
         baseQuantity: line['baseQuantity'] as string,
         baseUnitId: line['baseUnitId'] as string,
         conversionFactor: line['conversionFactor'] as string,
+        basisMovementId: (line['basisMovementId'] as string | null) ?? null,
         movementId: null,
         outMovementId: null,
         inMovementId: null,
@@ -435,6 +440,60 @@ function fakeDocumentsRepository(
         if (line.documentId === id) world.lines.delete(lineId);
       }
       world.documents.delete(id);
+    },
+    async listHeadersByIds(organizationId: string, ids: readonly string[]) {
+      return [...world.documents.values()]
+        .filter(
+          (row) =>
+            row.organizationId === organizationId && ids.includes(row.id),
+        )
+        .map((row) => ({
+          id: row.id,
+          kind: row.kind,
+          status: row.status as never,
+          warehouseId: row.warehouseId,
+          sourceWarehouseId: row.sourceWarehouseId,
+          destinationWarehouseId: row.destinationWarehouseId,
+        }));
+    },
+    async listBasisLinkedLines(
+      _tx: never,
+      organizationId: string,
+      basisMovementId: string,
+    ) {
+      return [...world.lines.values()]
+        .filter(
+          (line) =>
+            line.organizationId === organizationId &&
+            line.basisMovementId === basisMovementId,
+        )
+        .map((line) => ({
+          documentId: line.documentId,
+          documentStatus:
+            world.documents.get(line.documentId)?.status ?? 'missing',
+          lineNumber: line.lineNumber,
+          itemId: line.itemId,
+          baseQuantity: line.baseQuantity,
+        }));
+    },
+    async lockDocumentRow(_tx: never, organizationId: string, id: string) {
+      const row = world.documents.get(id);
+      if (row === undefined || row.organizationId !== organizationId) {
+        return null;
+      }
+      return row as never;
+    },
+    /**
+     * The fake honors the multi-key lock CONTRACT (a recorded no-op): the
+     * row-level FOR UPDATE behavior it stands for needs the real database
+     * and is exercised by the live e2e suite.
+     */
+    async lockValuationStateRows(
+      _tx: never,
+      entries: readonly unknown[],
+      _actorId: string | null,
+    ) {
+      world.lockCalls.push(entries.length);
     },
   } as unknown as InventoryBusinessDocumentsRepository;
 }

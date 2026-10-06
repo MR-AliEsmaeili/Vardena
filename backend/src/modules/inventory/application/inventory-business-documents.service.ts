@@ -28,9 +28,10 @@ import type {
 } from '../data/inventory-business-document-rows.js';
 import { InsufficientStockError } from '../data/inventory-posting-errors.js';
 import { resolveEffectivePolicy } from '../domain/negative-stock-policy.js';
-import { reversalTypeFor } from '../domain/movement-type.js';
+import { movementSign, reversalTypeFor } from '../domain/movement-type.js';
 import { subtractDecimalStrings } from '../domain/quantities.js';
 import {
+  INVENTORY_DOCUMENT_REFERENCE_TYPE,
   assertCancellable,
   assertDeletable,
   assertEditable,
@@ -75,6 +76,12 @@ import {
 import { publishEvent, resolveSort } from './master-data-support.js';
 import { resolveEnteredCost } from './inventory-cost-support.js';
 import { resolveEnteredToBase } from './inventory-posting-support.js';
+import { purchaseReturnValueFromBasis } from '../domain/return-valuation.js';
+import {
+  addDecimalStrings,
+  compareDecimalStrings,
+} from '../domain/quantities.js';
+import { lockMovementRow } from '../data/inventory-locks.js';
 import { assertPostableItem } from './inventory-movements.service.js';
 import { assertTransferNotBackdated } from './inventory-transfers.service.js';
 import { ItemsService } from './items.service.js';
@@ -93,8 +100,9 @@ const SORTABLE_FIELDS: Record<string, string> = {
   status: 'status',
 };
 
-/** `inventory_movements.reference_type` for a C-58 document effect. */
-export const INVENTORY_DOCUMENT_REFERENCE_TYPE = 'inventory_business_document';
+// Domain-owned since C-59D (the movements service reads it too); re-exported
+// here so existing import sites keep working.
+export { INVENTORY_DOCUMENT_REFERENCE_TYPE } from '../domain/inventory-business-document.js';
 
 /** `operation_key` columns are VARCHAR(128). */
 const MAX_OPERATION_KEY = 128;
@@ -104,6 +112,12 @@ export interface DocumentLineInput {
   /** Entered magnitude, decimal string, in `unitId`. */
   quantity: string;
   unitId: string;
+  /**
+   * RETURN KINDS ONLY (C-59D OD-RET-01): the ledger fact of the originating
+   * receipt (purchase return) or issue (sales return). Ignored (refused) for
+   * the other kinds.
+   */
+  basisMovementId?: string | null | undefined;
 }
 
 export interface CreateDocumentInput {
@@ -172,6 +186,8 @@ interface ResolvedLine {
   branchId: string;
   warehouseId: string;
   allowNegative: boolean;
+  /** RETURN KINDS ONLY; validated against the ledger, `null` otherwise. */
+  basisMovementId: string | null;
 }
 
 /**
@@ -451,6 +467,7 @@ export class InventoryBusinessDocumentsService {
         itemId: line.itemId,
         quantity: line.quantity,
         unitId: line.unitId,
+        basisMovementId: line.basisMovementId,
       }));
     const resolved = await this.resolveLines({
       organizationId,
@@ -863,28 +880,145 @@ export class InventoryBusinessDocumentsService {
       return this.toDto(current);
     }
     rethrowDomain(() => assertTransition(current.status, 'accounting_posted'));
-    const dto = await this.toDto(current);
-    if (!dto.accountingEligible) {
-      throw AppException.businessRule(
-        'The inventory document is not accounting eligible. It must be operational, fully priced, and have no stale valuation.',
-        {
-          code: 'inventory.document.accounting_ineligible',
-          documentId: current.id,
-          status: current.status,
-          valuationState: dto.valuationState,
-          valuationStale: current.valuationStale,
-        },
+
+    // C-59 CONCURRENCY HARDENING. The eligibility check and the lifecycle
+    // write used to live in two transactions, so a Pricing Run (or a
+    // Reverse Pricing, or a backdated repricing) could commit between the
+    // check and the write and an accounting-posted document could carry a
+    // value Accounting never approved. Now ONE transaction:
+    //
+    //   1. lock the document header row (serializes edits/cancels/posts),
+    //   2. lock the valuation-state rows of EVERY key the document's
+    //      movements touch, in the module's fixed ascending order — the
+    //      same tier a Pricing Run / Reverse Pricing locks through,
+    //   3. re-derive the valuation state from the movements (a fresh read
+    //      AFTER the locks: any valuation writer that had committed is
+    //      visible, any in-flight one is still blocked on the same locks),
+    //   4. refuse or write the boundary — same transaction, no gap.
+    const now = new Date();
+    const actorId = getPrincipal()?.userId ?? null;
+    let alreadyCrossed = false;
+    await this.documents.withTransaction(async (tx) => {
+      const locked = await this.documents.lockDocumentRow(
+        tx,
+        organizationId,
+        id,
       );
-    }
-    return this.applyLifecycleOnly(id, organizationId, {
-      permission: INVENTORY_DOCUMENT_PERMISSIONS.ACCOUNTING_POST,
-      target: 'accounting_posted',
-      event: INVENTORY_DOCUMENT_ACCOUNTING_POSTED_EVENT,
-      stamp: (now, actorId) => ({
+      if (locked === null) {
+        throw AppException.notFound('Inventory business document', id);
+      }
+      if (!isInventoryDocumentStatus(locked.status)) {
+        throw new Error(
+          `Stored inventory document "${id}" has an unknown status "${locked.status}".`,
+        );
+      }
+      const lockedStatus: InventoryDocumentStatus = locked.status;
+      if (
+        lockedStatus === 'accounting_posted' ||
+        lockedStatus === 'immutable'
+      ) {
+        alreadyCrossed = true;
+        return;
+      }
+      rethrowDomain(() => assertTransition(lockedStatus, 'accounting_posted'));
+
+      const document = await this.mustFind(id, organizationId);
+      const movementIds = document.lines.flatMap((line) =>
+        [line.movementId, line.outMovementId, line.inMovementId].filter(
+          (movementId): movementId is string => movementId !== null,
+        ),
+      );
+      if (movementIds.length === 0) {
+        throw AppException.businessRule(
+          'The inventory document is not accounting eligible. It must be operational, fully priced, and have no stale valuation.',
+          {
+            code: 'inventory.document.accounting_ineligible',
+            documentId: document.id,
+            status: document.status,
+            valuationState: 'unpriced',
+            valuationStale: document.valuationStale,
+          },
+        );
+      }
+      // First read: derive the keys this document's valuation depends on.
+      const forKeys = await this.movements.findIds(movementIds);
+      const keys = [
+        ...new Map(
+          forKeys
+            .filter((movement) => movement.organizationId === organizationId)
+            .map((movement) => [
+              `${movement.warehouseId}:${movement.itemId}`,
+              {
+                organizationId: movement.organizationId,
+                branchId: movement.branchId,
+                warehouseId: movement.warehouseId,
+                itemId: movement.itemId,
+              },
+            ]),
+        ).values(),
+      ];
+      // The lock tier every multi-key valuation writer shares, taken in ONE
+      // call so the fixed ascending order holds across the whole set. The
+      // method is only used if a key has no state row yet (impossible for a
+      // priced document, but the locker's contract requires one).
+      const lockEntries = await Promise.all(
+        keys.map(async (key) => ({
+          key,
+          method: (
+            await this.valuation.resolveMethodForPosting({
+              organizationId: key.organizationId,
+              itemId: key.itemId,
+              asOf: now,
+            })
+          ).method,
+        })),
+      );
+      await this.documents.lockValuationStateRows(tx, lockEntries, actorId);
+      // Second read: the truth the boundary is decided on, taken AFTER the
+      // locks (see the block comment above for why that is exact).
+      const dto = await this.toDtoWithCostAccess(
+        document,
+        await this.valuation.canViewCost(),
+      );
+      if (!dto.accountingEligible) {
+        throw AppException.businessRule(
+          'The inventory document is not accounting eligible. It must be operational, fully priced, and have no stale valuation.',
+          {
+            code: 'inventory.document.accounting_ineligible',
+            documentId: document.id,
+            status: document.status,
+            valuationState: dto.valuationState,
+            valuationStale: document.valuationStale,
+          },
+        );
+      }
+      await this.documents.updateHeader(tx, id, {
+        status: 'accounting_posted',
         accountingPostedAt: now,
         accountingPostedBy: actorId,
-      }),
+        updatedAt: now,
+        updatedBy: actorId,
+      });
     });
+
+    const updated = await this.mustFind(id, organizationId);
+    if (!alreadyCrossed) {
+      await this.publishDocumentEvent(
+        INVENTORY_DOCUMENT_ACCOUNTING_POSTED_EVENT,
+        updated,
+        [],
+      );
+      this.logger.log(
+        'Inventory business document accounting-posted',
+        {
+          documentId: updated.id,
+          organizationId,
+          number: updated.number,
+        },
+        InventoryBusinessDocumentsService.name,
+      );
+    }
+    return this.toDto(updated);
   }
 
   /** Terminal seal: after this the document accepts nothing at all. */
@@ -1047,14 +1181,23 @@ export class InventoryBusinessDocumentsService {
     reference: string | null;
   } {
     const cost = emptyToNull(input.cost);
-    if (kind !== 'receipt' && cost !== null) {
+    // C-59D: a sales return MAY carry an explicit amount — but only as a
+    // Manual Price with a basis on the original issue (OD-RET-06; the basis
+    // requirement itself is enforced by `validateDocument`, which sees the
+    // lines). A purchase return NEVER carries a commercial amount: its exit
+    // value is the basis receipt's own cost or the current average, and an
+    // invoice price would silently leak commercial value into inventory
+    // (OD-RET-04).
+    if (kind !== 'receipt' && kind !== 'sales_return' && cost !== null) {
       // The issue's manual-cost refusal, stated at the boundary rather than
       // silently dropped (PDR-05 rule 5).
       throw AppException.validation([
         {
           field: 'cost',
           message:
-            'Only a receipt may carry a cost. Issue cost is derived by Inventory valuation, and a transfer is value-neutral.',
+            kind === 'purchase_return'
+              ? 'A purchase return never carries a commercial amount. Its value is the original receipt cost (with a basis) or the current inventory cost (without one).'
+              : 'Only a receipt (or a basis-linked sales return) may carry a cost. Issue cost is derived by Inventory valuation, and a transfer is value-neutral.',
           code: 'costNotAcceptedForDocumentKind',
         },
       ]);
@@ -1162,6 +1305,12 @@ export class InventoryBusinessDocumentsService {
         quantity: line.quantity,
         asOf: params.businessDate,
       });
+      const basisMovementId = await this.resolveBasis({
+        organizationId: params.organizationId,
+        kind: params.kind,
+        itemId: item.id,
+        line,
+      });
       resolved.push({
         id: params.existingIds?.[lineNumber - 1] ?? generateId(),
         lineNumber,
@@ -1177,9 +1326,79 @@ export class InventoryBusinessDocumentsService {
           itemAllow: item.allowNegativeStock,
           warehouseAllow: warehouse.allowNegativeStock,
         }),
+        basisMovementId,
       });
     }
     return resolved;
+  }
+
+  /**
+   * Validate and normalize one line's return basis (C-59D OD-RET-01/02/06).
+   *
+   * A basis is only meaningful on a return: a purchase return bases itself
+   * on the originating RECEIPT movement (an `inbound`), a sales return on
+   * the originating ISSUE movement (an `outbound`). Both must be the SAME
+   * organization's and the SAME item's fact — a basis on a different item is
+   * not evidence of anything about this line's value. The basis movement's
+   * VALUE is deliberately NOT read here: it is re-read under that row's
+   * lock at finalize time (see `postDocumentEffect`), where the over-return
+   * guard and the pro-rata share are computed from the committed truth.
+   *
+   * Returns `null` for a basis-less line and for every non-return kind.
+   */
+  private async resolveBasis(params: {
+    organizationId: string;
+    kind: InventoryDocumentKind;
+    itemId: string;
+    line: DocumentLineInput;
+  }): Promise<string | null> {
+    const raw = params.line.basisMovementId?.trim() ?? '';
+    if (raw === '') return null;
+    if (params.kind !== 'purchase_return' && params.kind !== 'sales_return') {
+      throw AppException.validation([
+        {
+          field: 'basisMovementId',
+          message:
+            'Only a purchase return or a sales return may be based on an originating movement.',
+          code: 'basisNotAcceptedForDocumentKind',
+        },
+      ]);
+    }
+    const basis = await this.movements.findById(raw);
+    if (basis === null || basis.organizationId !== params.organizationId) {
+      throw AppException.validation([
+        {
+          field: 'basisMovementId',
+          message: `The basis movement "${raw}" does not exist in this organization.`,
+          code: 'basisMovementNotFound',
+        },
+      ]);
+    }
+    if (basis.itemId !== params.itemId) {
+      throw AppException.validation([
+        {
+          field: 'basisMovementId',
+          message:
+            'The basis movement belongs to a different item. A return basis must be the same item\u2019s originating movement.',
+          code: 'basisItemMismatch',
+        },
+      ]);
+    }
+    const requiredType =
+      params.kind === 'purchase_return' ? 'inbound' : 'outbound';
+    if (basis.movementType !== requiredType) {
+      throw AppException.validation([
+        {
+          field: 'basisMovementId',
+          message:
+            params.kind === 'purchase_return'
+              ? 'A purchase return must be based on the originating RECEIPT movement (an inbound).'
+              : 'A sales return must be based on the originating ISSUE movement (an outbound).',
+          code: 'basisMovementTypeMismatch',
+        },
+      ]);
+    }
+    return basis.id;
   }
 
   /**
@@ -1195,6 +1414,8 @@ export class InventoryBusinessDocumentsService {
       warehouseId: string | null;
       sourceWarehouseId: string | null;
       destinationWarehouseId: string | null;
+      /** The receipt's cost / the basis-linked sales return's amount. */
+      cost: string | null;
     };
     businessDate: Date;
     lines: ResolvedLine[];
@@ -1247,6 +1468,35 @@ export class InventoryBusinessDocumentsService {
         VALUATION_PERMISSIONS.RECALCULATE,
       ]);
     }
+    // C-59D OD-RET-07 (the sales-return half): a sales return with NO
+    // manual amount is valued at the key's CURRENT average. With no valued
+    // stock there is no average to use, and Vardena never invents one and
+    // never books the goods at zero — the document layer refuses up front.
+    // The pre-check is UX: the real backstop is the valuation strategy,
+    // which degrades to `unvalued(insufficient_valued_quantity)` if the
+    // pool empties between here and the locked write.
+    if (params.kind === 'sales_return' && params.header.cost === null) {
+      for (const line of params.lines) {
+        const state = await this.valuation.findValuationState({
+          organizationId: params.organizationId,
+          warehouseId: line.warehouseId,
+          itemId: line.itemId,
+        });
+        if (
+          state === null ||
+          compareDecimalStrings(state.valuedQuantity, '0') <= 0
+        ) {
+          throw AppException.businessRule(
+            'This item has no valued stock in the warehouse, so a sales return cannot be valued at the current inventory cost. Receive and price stock first, or supply an explicit amount based on the original issue.',
+            {
+              code: 'inventory.document.sales_return_cold_start',
+              warehouseId: line.warehouseId,
+              itemId: line.itemId,
+            },
+          );
+        }
+      }
+    }
     return { backdated };
   }
 
@@ -1287,14 +1537,80 @@ export class InventoryBusinessDocumentsService {
     if (cost !== null && params.lines.length > 1) {
       // Apportioning ONE amount across several lines needs an approved
       // rounding/allocation rule; Vardena never invents one (same
-      // fail-closed stance as OQ-29 fractional conversions).
+      // fail-closed stance as OQ-29 fractional conversions). Applies to a
+      // receipt's cost AND a sales return's manual amount alike.
       throw AppException.businessRule(
-        'A receipt cost can only be assigned to a single-line receipt. Splitting one amount across several lines requires an apportionment rule Vardena does not define.',
+        'An entered cost can only be assigned to a single-line document. Splitting one amount across several lines requires an apportionment rule Vardena does not define.',
         {
           code: 'inventory.document.cost_apportionment_unsupported',
           lines: params.lines.length,
         },
       );
+    }
+
+    // C-59D: lock every DISTINCT basis movement row this document returns
+    // against, in ascending id order (one deterministic multi-row order),
+    // BEFORE any balance or valuation state lock is taken. The lock is what
+    // makes the over-return guard and the pro-rated basis value read
+    // committed truth: a concurrent return against the same receipt cannot
+    // interleave between this document's guard and its post. It is the same
+    // lock discipline the reversal path already established (the original
+    // movement row first, then the key rows).
+    const basisIds = [
+      ...new Set(
+        params.lines
+          .map((line) => line.basisMovementId)
+          .filter((id): id is string => id !== null),
+      ),
+    ].sort((left, right) => left.localeCompare(right));
+    const basisRows = new Map<
+      string,
+      { totalCost: string | null; baseQuantity: string }
+    >();
+    for (const basisId of basisIds) {
+      const locked = await lockMovementRow(tx, basisId);
+      if (locked === null) {
+        throw AppException.businessRule(
+          `The return basis movement "${basisId}" no longer exists. The document cannot be posted against it.`,
+          { code: 'inventory.return.basis_missing', basisMovementId: basisId },
+        );
+      }
+      basisRows.set(basisId, {
+        totalCost: locked.totalCost,
+        baseQuantity: locked.baseQuantity,
+      });
+    }
+
+    // The aggregate over-return guard (OD-RET-03): each line's return is
+    // bounded by its basis, but so is the SUM of every committed return
+    // against the same basis. Committed = a document whose ledger effect
+    // stands (operational or beyond, this document excluded — its own lines
+    // are counted from `params.lines` directly).
+    const basisCommitted = new Map<string, string>();
+    for (const basisId of basisIds) {
+      const linked = await this.documents.listBasisLinkedLines(
+        tx,
+        params.organizationId,
+        basisId,
+      );
+      let committed = '0';
+      for (const line of linked) {
+        if (line.documentId === params.documentId) continue;
+        if (
+          line.documentStatus !== 'operational' &&
+          line.documentStatus !== 'accounting_posted' &&
+          line.documentStatus !== 'immutable'
+        ) {
+          continue;
+        }
+        committed = addDecimalStrings(committed, line.baseQuantity);
+      }
+      for (const line of params.lines) {
+        if (line.basisMovementId === basisId) {
+          committed = addDecimalStrings(committed, line.baseQuantity);
+        }
+      }
+      basisCommitted.set(basisId, committed);
     }
 
     for (const line of params.lines) {
@@ -1377,15 +1693,87 @@ export class InventoryBusinessDocumentsService {
         continue;
       }
 
-      const movementType = params.kind === 'receipt' ? 'inbound' : 'outbound';
+      const movementType = movementTypeForKind(params.kind);
       const enteredCost =
-        params.kind === 'receipt'
+        params.kind === 'receipt' || params.kind === 'sales_return'
           ? resolveEnteredCost({
               input: { totalCost: cost },
               movementType,
               quantity: line.quantity,
             })
           : null;
+      // C-59D: the return's own value decision, made per line from the
+      // LOCKED basis row (see the basis lock block above).
+      const basis =
+        line.basisMovementId === null
+          ? null
+          : (basisRows.get(line.basisMovementId) ?? null);
+      if (line.basisMovementId !== null && basis === null) {
+        throw AppException.businessRule(
+          `The return basis movement "${line.basisMovementId}" is not part of this document\u2019s basis set.`,
+          {
+            code: 'inventory.return.basis_missing',
+            basisMovementId: line.basisMovementId,
+          },
+        );
+      }
+      if (params.kind === 'sales_return' && enteredCost !== null) {
+        // OD-RET-06: an explicit sales-return amount is a Manual Price and
+        // is ONLY valid on a basis-linked line. `validateDocument` guards
+        // the draft; this re-asserts the invariant at the ledger boundary.
+        if (line.basisMovementId === null) {
+          throw AppException.businessRule(
+            'A sales return may only carry an explicit amount on a line based on the original issue. Without a basis the return is valued at the current inventory cost.',
+            {
+              code: 'inventory.document.sales_return_amount_requires_basis',
+              lineNumber: line.lineNumber,
+            },
+          );
+        }
+      }
+      let knownValue: string | null = enteredCost;
+      let knownValueSource: 'entered' | 'return_basis' | undefined =
+        enteredCost === null ? undefined : 'entered';
+      let forceUnvalued = false;
+      if (params.kind === 'purchase_return' && basis !== null) {
+        // OD-RET-02/03/04: a basis-linked purchase return leaves at the
+        // ORIGINAL receipt's own cost, pro-rated exactly, never at the
+        // current average and never at a commercial price. The committed
+        // over-return guard runs against the same locked row.
+        const basisBase = magnitude(basis.baseQuantity);
+        const committed = basisCommitted.get(line.basisMovementId as string);
+        if (
+          committed !== undefined &&
+          compareDecimalStrings(committed, basisBase) > 0
+        ) {
+          throw AppException.businessRule(
+            `This purchase return would return more than the receipt it is based on: committed ${committed} of ${basisBase}.`,
+            {
+              code: 'inventory.return.over_return',
+              basisMovementId: line.basisMovementId,
+              committed,
+              basisQuantity: basisBase,
+            },
+          );
+        }
+        if (basis.totalCost === null) {
+          // The receipt was posted without a cost: the exit carries no value
+          // and derives none — never zero, never the average (OD-RET-04).
+          forceUnvalued = true;
+          knownValue = null;
+          knownValueSource = 'return_basis';
+        } else {
+          knownValue = purchaseReturnValueFromBasis({
+            basis: {
+              id: line.basisMovementId as string,
+              baseQuantity: basisBase,
+              totalCost: basis.totalCost,
+            },
+            returnedBaseQuantity: line.baseQuantity,
+          });
+          knownValueSource = 'return_basis';
+        }
+      }
       const movementId = generateId();
       await this.movements.postMovement(
         {
@@ -1399,9 +1787,9 @@ export class InventoryBusinessDocumentsService {
             quantity: line.quantity,
             unitId: line.unitId,
             baseQuantity:
-              movementType === 'inbound'
-                ? line.baseQuantity
-                : `-${line.baseQuantity}`,
+              movementSign(movementType) < 0
+                ? `-${line.baseQuantity}`
+                : line.baseQuantity,
             baseUnitId: line.baseUnitId,
             conversionFactor: line.conversionFactor,
             movementDate: params.businessDate,
@@ -1429,10 +1817,9 @@ export class InventoryBusinessDocumentsService {
           actorId: params.actorId,
           valuation: {
             method: method.method,
-            knownValue: enteredCost,
-            ...(enteredCost === null
-              ? {}
-              : { knownValueSource: 'entered' as const }),
+            knownValue,
+            ...(knownValueSource === undefined ? {} : { knownValueSource }),
+            ...(forceUnvalued ? { forceUnvalued: true } : {}),
             // Backdating was decided before the transaction; the ledger only
             // needs to know whether this fact lands in the past.
             backdated: isBefore(params.businessDate, params.at),
@@ -1743,6 +2130,28 @@ function isBefore(candidate: Date, reference: Date): boolean {
   return candidate.getTime() < reference.getTime();
 }
 
+/** The ledger type a document kind posts (C-59D: the return types). */
+function movementTypeForKind(kind: InventoryDocumentKind) {
+  switch (kind) {
+    case 'receipt':
+      return 'inbound' as const;
+    case 'issue':
+      return 'outbound' as const;
+    case 'purchase_return':
+      return 'purchase_return' as const;
+    case 'sales_return':
+      return 'sales_return' as const;
+    case 'transfer':
+      return 'transfer_out' as const;
+  }
+}
+
+/** `|value|` — a basis receipt's quantity, stored signed, is positive. */
+function magnitude(value: string): string {
+  const trimmed = value.trim();
+  return trimmed.startsWith('-') ? trimmed.slice(1) : trimmed;
+}
+
 function toLineCreate(line: ResolvedLine): DocumentLineCreate {
   return {
     id: line.id,
@@ -1753,6 +2162,7 @@ function toLineCreate(line: ResolvedLine): DocumentLineCreate {
     baseQuantity: line.baseQuantity,
     baseUnitId: line.baseUnitId,
     conversionFactor: line.conversionFactor,
+    basisMovementId: line.basisMovementId,
   };
 }
 

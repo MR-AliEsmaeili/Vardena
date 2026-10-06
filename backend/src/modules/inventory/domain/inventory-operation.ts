@@ -34,6 +34,15 @@ export const INVENTORY_OPERATIONS = [
    *  (PDR-05 OD-VAL-11/12). Recorded here as well as in
    *  `inventory_valuation_runs` so a retry cannot run the replay twice. */
   'valuation_recalculation',
+  /** C-59E: a Periodic Pricing Operation batch (OD-PDP-01…05). ONE operation
+   *  row for the WHOLE batch — the batch, not the per-key replay, is the
+   *  idempotency unit — with the `inventory_pricing_runs` id in the result
+   *  so a retry replays the stored run report. */
+  'pricing_run',
+  /** C-59E+: Reverse Pricing (OD-RVP-01…08). One operation row for the
+   *  whole compensating batch; the retained original run row carries the
+   *  `reversed_by` linkage (OD-RVP-05). */
+  'reverse_pricing',
 ] as const;
 
 export type InventoryOperationKind = (typeof INVENTORY_OPERATIONS)[number];
@@ -54,7 +63,9 @@ export type InventoryOperationResult =
   | { kind: 'reservation'; reservationId: string }
   /** The run row records what the replay did; `runId` is null when the
    *  operator explicitly chose NOT to reprice (OD-VAL-11). */
-  | { kind: 'valuation'; runId: string | null; movementId: string | null };
+  | { kind: 'valuation'; runId: string | null; movementId: string | null }
+  /** C-59E: the pricing-run header the batch wrote (either kind). */
+  | { kind: 'pricing'; pricingRunId: string };
 
 /** The operation kinds that produce each result shape. */
 export function resultKindFor(
@@ -73,6 +84,9 @@ export function resultKindFor(
     case 'valuation_cost_assignment':
     case 'valuation_recalculation':
       return 'valuation';
+    case 'pricing_run':
+    case 'reverse_pricing':
+      return 'pricing';
   }
 }
 
