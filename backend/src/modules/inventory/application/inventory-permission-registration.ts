@@ -4,6 +4,7 @@ import { INVENTORY_PERMISSION_DEFINITIONS } from '../domain/inventory-permission
 import { INVENTORY_CORE_PERMISSION_DEFINITIONS } from '../domain/inventory-core-permissions.js';
 import { MATERIAL_REQUEST_PERMISSION_DEFINITIONS } from '../domain/material-request-permissions.js';
 import { INVENTORY_VALUATION_PERMISSION_DEFINITIONS } from '../domain/inventory-valuation-permissions.js';
+import { INVENTORY_DOCUMENT_PERMISSION_DEFINITIONS } from '../domain/inventory-document-permissions.js';
 
 /**
  * Registers the Inventory module's permission vocabulary in the RBAC registry
@@ -15,8 +16,9 @@ import { INVENTORY_VALUATION_PERMISSION_DEFINITIONS } from '../domain/inventory-
  * fails module initialization instead of silently producing a permission
  * nobody can enforce.
  *
- * Also registers Material Request's permission vocabulary (C-50) and the
- * valuation vocabulary (PDR-05) — same module, same startup hook, no
+ * Also registers Material Request's permission vocabulary (C-50), the
+ * valuation vocabulary (PDR-05) and the Inventory Business Document
+ * vocabulary (C-58) — same module, same startup hook, no
  * separate registration class: both are Inventory-owned, not new modules.
  */
 @Injectable()
@@ -29,6 +31,7 @@ export class InventoryPermissionRegistration implements OnModuleInit {
       ...INVENTORY_CORE_PERMISSION_DEFINITIONS,
       ...MATERIAL_REQUEST_PERMISSION_DEFINITIONS,
       ...INVENTORY_VALUATION_PERMISSION_DEFINITIONS,
+      ...INVENTORY_DOCUMENT_PERMISSION_DEFINITIONS,
     ]);
   }
 }

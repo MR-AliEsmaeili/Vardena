@@ -57,6 +57,11 @@ model Unit {
   enteredMaterialRequestLines MaterialRequestLine[] @relation("MaterialRequestLineEnteredUnit")
   baseMaterialRequestLines    MaterialRequestLine[] @relation("MaterialRequestLineBaseUnit")
 
+  // Back-relations for Inventory Business Documents (C-58). Virtual side
+  // only — the real FK columns stay `inventory.inventory_business_document_lines.*`.
+  enteredInventoryDocumentLines InventoryBusinessDocumentLine[] @relation("InventoryDocumentLineEnteredUnit")
+  baseInventoryDocumentLines    InventoryBusinessDocumentLine[] @relation("InventoryDocumentLineBaseUnit")
+
   @@unique([organizationId, code], map: "uq_units_organization_id_code")
   @@index([organizationId, isActive], map: "idx_units_organization_id_is_active")
   @@map("units")
@@ -192,6 +197,7 @@ model Item {
   balances     InventoryBalance[]
   reservations InventoryReservation[]
   materialRequestLines MaterialRequestLine[]
+  inventoryDocumentLines InventoryBusinessDocumentLine[]
 
   // Valuation foundation (PDR-05): the valuation METHOD is configured per
   // organization + item, the valuation STATE per warehouse + item.
@@ -252,6 +258,11 @@ model Warehouse {
   balances     InventoryBalance[]
   reservations InventoryReservation[]
   materialRequestLines MaterialRequestLine[]
+
+  // Back-relations for Inventory Business Documents (C-58).
+  inventoryDocuments            InventoryBusinessDocument[] @relation("InventoryDocumentWarehouse")
+  inventoryDocumentsAsSource    InventoryBusinessDocument[] @relation("InventoryDocumentSourceWarehouse")
+  inventoryDocumentsAsDestination InventoryBusinessDocument[] @relation("InventoryDocumentDestinationWarehouse")
 
   // Valuation state/runs are keyed by warehouse + item (PDR-05 OD-VAL-04).
   valuationStates InventoryValuationState[]
