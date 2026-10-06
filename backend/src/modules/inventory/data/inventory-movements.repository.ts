@@ -17,6 +17,7 @@ import type {
   BalanceKey,
   CoreClient,
   CoreTransactionalClient,
+  CoreTxClient,
   MovementCreate,
   MovementRow,
   MovementWhere,
@@ -247,57 +248,60 @@ export class InventoryMovementsRepository {
    */
   async postMovement(
     input: PostMovementInput,
+    tx?: CoreTxClient,
   ): Promise<{ movement: InventoryMovement; balance: InventoryBalance }> {
-    const client = await this.transacting();
-    return client.$transaction(async (tx) => {
-      const { balance } = await lockBalanceRow(
-        tx,
-        movementKey(input.movement),
-        input.actorId,
+    if (tx === undefined) {
+      return this.withTransaction((transaction) =>
+        this.postMovement(input, transaction),
       );
-      assertSufficient(
-        balance.onHand,
-        input.movement.baseQuantity,
-        input.allowNegative,
-      );
-      const { state } = await lockValuationStateRow(
-        tx,
-        movementKey(input.movement),
-        input.valuation.method,
-        input.actorId,
-      );
-      const columns = await valueMovement(tx, {
-        state,
-        method: input.valuation.method,
-        movementType: movementTypeOf(input.movement),
-        baseQuantity: input.movement.baseQuantity,
-        knownValue: input.valuation.knownValue,
-        ...(input.valuation.knownValueSource === undefined
-          ? {}
-          : { knownValueSource: input.valuation.knownValueSource }),
-        backdated: input.valuation.backdated,
-        at: input.movement.updatedAt,
-        actorId: input.actorId,
-      });
-      const movement = toDomain(
-        await tx.inventoryMovement.create({
-          data: { ...input.movement, ...columns },
-        }),
-      );
-      await adjustBalanceCounters(tx, {
-        balanceId: balance.id,
-        onHandDelta: input.movement.baseQuantity,
-        reservedDelta: '0',
-        lastMovementAt: maxDate(
-          balance.lastMovementAt,
-          input.movement.movementDate,
-        ),
-        updatedAt: input.movement.updatedAt,
-        updatedBy: input.actorId,
-      });
-      await insertOperationRow(tx, input.operation);
-      return { movement, balance };
+    }
+    const { balance } = await lockBalanceRow(
+      tx,
+      movementKey(input.movement),
+      input.actorId,
+    );
+    assertSufficient(
+      balance.onHand,
+      input.movement.baseQuantity,
+      input.allowNegative,
+    );
+    const { state } = await lockValuationStateRow(
+      tx,
+      movementKey(input.movement),
+      input.valuation.method,
+      input.actorId,
+    );
+    const columns = await valueMovement(tx, {
+      state,
+      method: input.valuation.method,
+      movementType: movementTypeOf(input.movement),
+      baseQuantity: input.movement.baseQuantity,
+      knownValue: input.valuation.knownValue,
+      ...(input.valuation.knownValueSource === undefined
+        ? {}
+        : { knownValueSource: input.valuation.knownValueSource }),
+      backdated: input.valuation.backdated,
+      at: input.movement.updatedAt,
+      actorId: input.actorId,
     });
+    const movement = toDomain(
+      await tx.inventoryMovement.create({
+        data: { ...input.movement, ...columns },
+      }),
+    );
+    await adjustBalanceCounters(tx, {
+      balanceId: balance.id,
+      onHandDelta: input.movement.baseQuantity,
+      reservedDelta: '0',
+      lastMovementAt: maxDate(
+        balance.lastMovementAt,
+        input.movement.movementDate,
+      ),
+      updatedAt: input.movement.updatedAt,
+      updatedBy: input.actorId,
+    });
+    await insertOperationRow(tx, input.operation);
+    return { movement, balance };
   }
 
   /**
@@ -307,95 +311,98 @@ export class InventoryMovementsRepository {
    */
   async postTransfer(
     input: PostTransferInput,
+    tx?: CoreTxClient,
   ): Promise<{ outLeg: InventoryMovement; inLeg: InventoryMovement }> {
-    const client = await this.transacting();
-    return client.$transaction(async (tx) => {
-      const [first, second] = orderedKeys(input.outLeg, input.inLeg);
-      const { balance: firstBalance } = await lockBalanceRow(
-        tx,
-        first.key,
-        input.actorId,
+    if (tx === undefined) {
+      return this.withTransaction((transaction) =>
+        this.postTransfer(input, transaction),
       );
-      const { balance: secondBalance } = await lockBalanceRow(
-        tx,
-        second.key,
-        input.actorId,
-      );
-      const sourceBalance = first.role === 'out' ? firstBalance : secondBalance;
+    }
+    const [first, second] = orderedKeys(input.outLeg, input.inLeg);
+    const { balance: firstBalance } = await lockBalanceRow(
+      tx,
+      first.key,
+      input.actorId,
+    );
+    const { balance: secondBalance } = await lockBalanceRow(
+      tx,
+      second.key,
+      input.actorId,
+    );
+    const sourceBalance = first.role === 'out' ? firstBalance : secondBalance;
 
-      // The source leg removes stock: the policy bites here. The destination
-      // leg only adds and cannot violate a negative-stock policy.
-      assertSufficient(
-        sourceBalance.onHand,
-        input.outLeg.baseQuantity,
-        input.sourceAllowNegative,
-      );
+    // The source leg removes stock: the policy bites here. The destination
+    // leg only adds and cannot violate a negative-stock policy.
+    assertSufficient(
+      sourceBalance.onHand,
+      input.outLeg.baseQuantity,
+      input.sourceAllowNegative,
+    );
 
-      // Valuation states lock after BOTH balances, in the same ascending
-      // warehouse order, so a transfer and its mirror image cannot deadlock.
-      const [firstKey, secondKey] = [first.key, second.key];
-      const firstLock = await lockValuationStateRow(
-        tx,
-        firstKey,
-        input.valuationMethod,
-        input.actorId,
-      );
-      const secondLock = await lockValuationStateRow(
-        tx,
-        secondKey,
-        input.valuationMethod,
-        input.actorId,
-      );
-      const sourceState =
-        first.role === 'out' ? firstLock.state : secondLock.state;
-      const destinationState =
-        first.role === 'out' ? secondLock.state : firstLock.state;
-      const legColumns = await valueTransfer(tx, {
-        sourceState,
-        destinationState,
-        method: input.valuationMethod,
-        quantity: magnitudeOf(input.outLeg.baseQuantity),
-        at: input.outLeg.updatedAt,
-        actorId: input.actorId,
-      });
-
-      const outLeg = toDomain(
-        await tx.inventoryMovement.create({
-          data: { ...input.outLeg, ...legColumns.out },
-        }),
-      );
-      const inLeg = toDomain(
-        await tx.inventoryMovement.create({
-          data: { ...input.inLeg, ...legColumns.in },
-        }),
-      );
-      const outBalance = first.role === 'out' ? firstBalance : secondBalance;
-      const inBalance = first.role === 'out' ? secondBalance : firstBalance;
-      await adjustBalanceCounters(tx, {
-        balanceId: outBalance.id,
-        onHandDelta: input.outLeg.baseQuantity,
-        reservedDelta: '0',
-        lastMovementAt: maxDate(
-          outBalance.lastMovementAt,
-          input.outLeg.movementDate,
-        ),
-        updatedAt: input.outLeg.updatedAt,
-        updatedBy: input.actorId,
-      });
-      await adjustBalanceCounters(tx, {
-        balanceId: inBalance.id,
-        onHandDelta: input.inLeg.baseQuantity,
-        reservedDelta: '0',
-        lastMovementAt: maxDate(
-          inBalance.lastMovementAt,
-          input.inLeg.movementDate,
-        ),
-        updatedAt: input.inLeg.updatedAt,
-        updatedBy: input.actorId,
-      });
-      await insertOperationRow(tx, input.operation);
-      return { outLeg, inLeg };
+    // Valuation states lock after BOTH balances, in the same ascending
+    // warehouse order, so a transfer and its mirror image cannot deadlock.
+    const [firstKey, secondKey] = [first.key, second.key];
+    const firstLock = await lockValuationStateRow(
+      tx,
+      firstKey,
+      input.valuationMethod,
+      input.actorId,
+    );
+    const secondLock = await lockValuationStateRow(
+      tx,
+      secondKey,
+      input.valuationMethod,
+      input.actorId,
+    );
+    const sourceState =
+      first.role === 'out' ? firstLock.state : secondLock.state;
+    const destinationState =
+      first.role === 'out' ? secondLock.state : firstLock.state;
+    const legColumns = await valueTransfer(tx, {
+      sourceState,
+      destinationState,
+      method: input.valuationMethod,
+      quantity: magnitudeOf(input.outLeg.baseQuantity),
+      at: input.outLeg.updatedAt,
+      actorId: input.actorId,
     });
+
+    const outLeg = toDomain(
+      await tx.inventoryMovement.create({
+        data: { ...input.outLeg, ...legColumns.out },
+      }),
+    );
+    const inLeg = toDomain(
+      await tx.inventoryMovement.create({
+        data: { ...input.inLeg, ...legColumns.in },
+      }),
+    );
+    const outBalance = first.role === 'out' ? firstBalance : secondBalance;
+    const inBalance = first.role === 'out' ? secondBalance : firstBalance;
+    await adjustBalanceCounters(tx, {
+      balanceId: outBalance.id,
+      onHandDelta: input.outLeg.baseQuantity,
+      reservedDelta: '0',
+      lastMovementAt: maxDate(
+        outBalance.lastMovementAt,
+        input.outLeg.movementDate,
+      ),
+      updatedAt: input.outLeg.updatedAt,
+      updatedBy: input.actorId,
+    });
+    await adjustBalanceCounters(tx, {
+      balanceId: inBalance.id,
+      onHandDelta: input.inLeg.baseQuantity,
+      reservedDelta: '0',
+      lastMovementAt: maxDate(
+        inBalance.lastMovementAt,
+        input.inLeg.movementDate,
+      ),
+      updatedAt: input.inLeg.updatedAt,
+      updatedBy: input.actorId,
+    });
+    await insertOperationRow(tx, input.operation);
+    return { outLeg, inLeg };
   }
 
   /**
@@ -410,73 +417,82 @@ export class InventoryMovementsRepository {
    */
   async postReversal(
     input: PostReversalInput,
+    tx?: CoreTxClient,
   ): Promise<{ movement: InventoryMovement }> {
-    const client = await this.transacting();
-    return client.$transaction(async (tx) => {
-      const original = await lockMovementRow(tx, input.originalMovementId);
-      if (original === null) {
-        throw new Error(
-          `Original movement "${input.originalMovementId}" does not exist.`,
-        );
-      }
-      const prior = await tx.inventoryMovement.findFirst({
-        where: { reversalOfMovementId: input.originalMovementId },
-      });
-      if (prior !== null) throw new AlreadyReversedError();
-
-      const { balance } = await lockBalanceRow(
-        tx,
-        movementKey(input.movement),
-        input.actorId,
+    if (tx === undefined) {
+      return this.withTransaction((transaction) =>
+        this.postReversal(input, transaction),
       );
-      assertSufficient(
-        balance.onHand,
-        input.movement.baseQuantity,
-        input.allowNegative,
+    }
+    const original = await lockMovementRow(tx, input.originalMovementId);
+    if (original === null) {
+      throw new Error(
+        `Original movement "${input.originalMovementId}" does not exist.`,
       );
-      // A reversal undoes the value the ORIGINAL actually carried, read from
-      // the row this transaction already holds locked (PDR-05 rule 7) — not
-      // the current average, and not a number the caller supplied.
-      const { state } = await lockValuationStateRow(
-        tx,
-        movementKey(input.movement),
-        input.valuation.method,
-        input.actorId,
-      );
-      const reversedValue =
-        original.totalCost === null || original.valuationStatus === 'unvalued'
-          ? null
-          : magnitudeOf(original.totalCost);
-      const columns = await valueMovement(tx, {
-        state,
-        method: input.valuation.method,
-        movementType: movementTypeOf(input.movement),
-        baseQuantity: input.movement.baseQuantity,
-        knownValue: reversedValue,
-        knownValueSource: 'reversal',
-        backdated: input.valuation.backdated,
-        at: input.movement.updatedAt,
-        actorId: input.actorId,
-      });
-      const movement = toDomain(
-        await tx.inventoryMovement.create({
-          data: { ...input.movement, ...columns },
-        }),
-      );
-      await adjustBalanceCounters(tx, {
-        balanceId: balance.id,
-        onHandDelta: input.movement.baseQuantity,
-        reservedDelta: '0',
-        lastMovementAt: maxDate(
-          balance.lastMovementAt,
-          input.movement.movementDate,
-        ),
-        updatedAt: input.movement.updatedAt,
-        updatedBy: input.actorId,
-      });
-      await insertOperationRow(tx, input.operation);
-      return { movement };
+    }
+    const prior = await tx.inventoryMovement.findFirst({
+      where: { reversalOfMovementId: input.originalMovementId },
     });
+    if (prior !== null) throw new AlreadyReversedError();
+
+    const { balance } = await lockBalanceRow(
+      tx,
+      movementKey(input.movement),
+      input.actorId,
+    );
+    assertSufficient(
+      balance.onHand,
+      input.movement.baseQuantity,
+      input.allowNegative,
+    );
+    // A reversal undoes the value the ORIGINAL actually carried, read from
+    // the row this transaction already holds locked (PDR-05 rule 7) — not
+    // the current average, and not a number the caller supplied.
+    const { state } = await lockValuationStateRow(
+      tx,
+      movementKey(input.movement),
+      input.valuation.method,
+      input.actorId,
+    );
+    const reversedValue =
+      original.totalCost === null || original.valuationStatus === 'unvalued'
+        ? null
+        : magnitudeOf(original.totalCost);
+    const columns = await valueMovement(tx, {
+      state,
+      method: input.valuation.method,
+      movementType: movementTypeOf(input.movement),
+      baseQuantity: input.movement.baseQuantity,
+      knownValue: reversedValue,
+      knownValueSource: 'reversal',
+      backdated: input.valuation.backdated,
+      at: input.movement.updatedAt,
+      actorId: input.actorId,
+    });
+    const movement = toDomain(
+      await tx.inventoryMovement.create({
+        data: { ...input.movement, ...columns },
+      }),
+    );
+    await adjustBalanceCounters(tx, {
+      balanceId: balance.id,
+      onHandDelta: input.movement.baseQuantity,
+      reservedDelta: '0',
+      lastMovementAt: maxDate(
+        balance.lastMovementAt,
+        input.movement.movementDate,
+      ),
+      updatedAt: input.movement.updatedAt,
+      updatedBy: input.actorId,
+    });
+    await insertOperationRow(tx, input.operation);
+    return { movement };
+  }
+
+  /** C-58 composition seam: one caller owns document + ledger atomicity. */
+  async withTransaction<T>(work: (tx: CoreTxClient) => Promise<T>): Promise<T> {
+    const client = await this.transacting();
+    return client.$transaction(work);
   }
 }
 
