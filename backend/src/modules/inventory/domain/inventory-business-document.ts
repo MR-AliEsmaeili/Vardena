@@ -57,6 +57,35 @@ export const INVENTORY_DOCUMENT_VALUATION_STATES = [
 export type InventoryDocumentValuationState =
   (typeof INVENTORY_DOCUMENT_VALUATION_STATES)[number];
 
+/**
+ * Derive document completeness from the ledger facts owned by its lines.
+ * `provisional` is intentionally not complete: Accounting may only consume
+ * final, monetary facts. An empty fact set is unpriced (Draft/cancelled).
+ */
+export function deriveDocumentValuationState(
+  statuses: readonly ('unvalued' | 'provisional' | 'valued')[],
+): InventoryDocumentValuationState {
+  if (statuses.every((status) => status === 'unvalued')) {
+    return 'unpriced';
+  }
+  if (statuses.every((status) => status === 'valued')) return 'priced';
+  return 'partially_priced';
+}
+
+export function isAccountingEligible(
+  document: {
+    status: InventoryDocumentStatus;
+    valuationStale: boolean;
+  },
+  valuationState: InventoryDocumentValuationState,
+): boolean {
+  return (
+    document.status === 'operational' &&
+    valuationState === 'priced' &&
+    !document.valuationStale
+  );
+}
+
 export function isInventoryDocumentStatus(
   value: string,
 ): value is InventoryDocumentStatus {
@@ -509,11 +538,10 @@ export interface InventoryDocumentDto {
   id: string;
   organizationId: string;
   kind: InventoryDocumentKind;
-  /**
-   * Receipt valuation completeness (OD-PRC-12), separate from lifecycle.
-   * Null for Issue/Transfer until their dedicated C-59 slices own the rule.
-   */
-  valuationState: InventoryDocumentValuationState | null;
+  /** OD-PRC-12 valuation completeness, separate from lifecycle. */
+  valuationState: InventoryDocumentValuationState;
+  /** Domain eligibility; permissions are enforced independently by commands. */
+  accountingEligible: boolean;
   number: string | null;
   businessDate: string;
   warehouseId: string | null;
@@ -559,21 +587,23 @@ export interface InventoryDocumentDto {
 export function toInventoryDocumentDto(
   document: InventoryBusinessDocument,
   includeCost: boolean,
+  movementValuationState?: InventoryDocumentValuationState,
 ): InventoryDocumentDto {
   const status = document.status;
+  // Operational history is always derived from its authoritative movement
+  // facts. Draft receipts retain C-59A's valid manual-source preview.
+  const valuationState =
+    movementValuationState ??
+    (document.kind === 'receipt' && document.cost !== null
+      ? 'priced'
+      : 'unpriced');
+  const accountingEligible = isAccountingEligible(document, valuationState);
   return {
     id: document.id,
     organizationId: document.organizationId,
     kind: document.kind,
-    // A receipt with manual cost is priced immediately; a missing cost never
-    // blocks Draft → Operational. This is derived from the authoritative
-    // receipt value source, not persisted as a second valuation ledger.
-    valuationState:
-      document.kind === 'receipt'
-        ? document.cost === null
-          ? 'unpriced'
-          : 'priced'
-        : null,
+    valuationState,
+    accountingEligible,
     number: document.number,
     businessDate: document.businessDate.toISOString(),
     warehouseId: document.warehouseId,
@@ -589,7 +619,8 @@ export function toInventoryDocumentDto(
     valuationStale: document.valuationStale,
     canEdit: status === 'draft' || status === 'operational',
     canFinalize: canTransition(status, 'operational'),
-    canAccountingPost: canTransition(status, 'accounting_posted'),
+    canAccountingPost:
+      canTransition(status, 'accounting_posted') && accountingEligible,
     canSeal: canTransition(status, 'immutable'),
     canCancel: canTransition(status, 'cancelled'),
     canDelete: status === 'draft',

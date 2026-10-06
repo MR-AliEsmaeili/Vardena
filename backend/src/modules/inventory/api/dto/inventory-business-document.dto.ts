@@ -282,7 +282,12 @@ export class InventoryDocumentResponseDto {
     description:
       'OD-PRC-12 valuation completeness, independent from lifecycle. C-59A supplies it for Receipt; null for document kinds owned by later slices.',
   })
-  valuationState!: string | null;
+  valuationState!: string;
+  @ApiProperty({
+    description:
+      'True only when lifecycle and authoritative movement valuation permit crossing the Accounting boundary. Permission is separate.',
+  })
+  accountingEligible!: boolean;
   @ApiProperty({
     type: String,
     nullable: true,

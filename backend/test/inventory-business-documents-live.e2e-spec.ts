@@ -1029,6 +1029,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       const receipt = await createDocument({
         kind: 'receipt',
         warehouseId: whMainId,
+        cost: '50.00',
         lines: [{ itemId: itemAId, quantity: '5', unitId: unitAId }],
       });
       const id = receipt['id'] as string;

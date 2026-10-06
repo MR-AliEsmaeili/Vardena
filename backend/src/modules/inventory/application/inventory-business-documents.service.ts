@@ -36,6 +36,7 @@ import {
   assertEditable,
   assertTransition,
   classifyDocumentEdit,
+  deriveDocumentValuationState,
   hasLedgerEffect,
   InventoryDocumentRuleError,
   isInventoryDocumentKind,
@@ -282,7 +283,11 @@ export class InventoryBusinessDocumentsService {
     });
     const includeCost = await this.valuation.canViewCost();
     return toPaginatedResult(
-      items.map((document) => toInventoryDocumentDto(document, includeCost)),
+      await Promise.all(
+        items.map((document) =>
+          this.toDtoWithCostAccess(document, includeCost),
+        ),
+      ),
       total,
       query.page,
       query.pageSize,
@@ -844,6 +849,33 @@ export class InventoryBusinessDocumentsService {
     id: string,
     organizationId: string,
   ): Promise<InventoryDocumentDto> {
+    await this.authorization.requireAllPermissions([
+      INVENTORY_DOCUMENT_PERMISSIONS.ACCOUNTING_POST,
+    ]);
+    await this.organizations.assertOrganizationInScope(organizationId);
+    const current = await this.mustFind(id, organizationId);
+    // A retry of the already-crossed boundary is a harmless replay, never a
+    // second Accounting effect (there is currently no GL document to create).
+    if (
+      current.status === 'accounting_posted' ||
+      current.status === 'immutable'
+    ) {
+      return this.toDto(current);
+    }
+    rethrowDomain(() => assertTransition(current.status, 'accounting_posted'));
+    const dto = await this.toDto(current);
+    if (!dto.accountingEligible) {
+      throw AppException.businessRule(
+        'The inventory document is not accounting eligible. It must be operational, fully priced, and have no stale valuation.',
+        {
+          code: 'inventory.document.accounting_ineligible',
+          documentId: current.id,
+          status: current.status,
+          valuationState: dto.valuationState,
+          valuationStale: current.valuationStale,
+        },
+      );
+    }
     return this.applyLifecycleOnly(id, organizationId, {
       permission: INVENTORY_DOCUMENT_PERMISSIONS.ACCOUNTING_POST,
       target: 'accounting_posted',
@@ -965,7 +997,35 @@ export class InventoryBusinessDocumentsService {
   private async toDto(
     document: InventoryBusinessDocument,
   ): Promise<InventoryDocumentDto> {
-    return toInventoryDocumentDto(document, await this.valuation.canViewCost());
+    return this.toDtoWithCostAccess(
+      document,
+      await this.valuation.canViewCost(),
+    );
+  }
+
+  private async toDtoWithCostAccess(
+    document: InventoryBusinessDocument,
+    includeCost: boolean,
+  ): Promise<InventoryDocumentDto> {
+    const movementIds = document.lines.flatMap((line) =>
+      [line.movementId, line.outMovementId, line.inMovementId].filter(
+        (id): id is string => id !== null,
+      ),
+    );
+    if (movementIds.length === 0) {
+      return toInventoryDocumentDto(document, includeCost);
+    }
+    const movements = await this.movements.findIds(movementIds);
+    // Missing/cross-organization facts are never interpreted as priced.
+    const complete =
+      movements.length === movementIds.length &&
+      movements.every(
+        (movement) => movement.organizationId === document.organizationId,
+      );
+    const valuationState = deriveDocumentValuationState(
+      complete ? movements.map((movement) => movement.valuationStatus) : [],
+    );
+    return toInventoryDocumentDto(document, includeCost, valuationState);
   }
 
   private normalizeHeader(
