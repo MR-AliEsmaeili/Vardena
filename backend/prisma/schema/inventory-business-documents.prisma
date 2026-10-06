@@ -1,0 +1,34 @@
+// C-58: typed Inventory-owned business documents. The movement ledger remains authoritative.
+model InventoryBusinessDocument {
+  id String @id
+  organizationId String @map("organization_id")
+  kind String @db.VarChar(16)
+  number String @db.VarChar(64)
+  businessDate DateTime @map("business_date") @db.Timestamptz(6)
+  warehouseId String? @map("warehouse_id")
+  sourceWarehouseId String? @map("source_warehouse_id")
+  destinationWarehouseId String? @map("destination_warehouse_id")
+  receiptCost Decimal? @map("receipt_cost") @db.Decimal(18,2)
+  status String @db.VarChar(24)
+  description String?
+  reference String?
+  operationKey String? @map("operation_key") @db.VarChar(128)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String? @map("created_by")
+  updatedBy String? @map("updated_by")
+  @@unique([organizationId, number], map: "uq_inventory_business_documents_org_number")
+  @@index([organizationId, kind, status], map: "idx_inventory_business_documents_org_kind_status")
+  @@schema("inventory")
+}
+model InventoryBusinessDocumentLine {
+  id String @id
+  documentId String @map("document_id")
+  organizationId String @map("organization_id")
+  itemId String @map("item_id")
+  quantity Decimal @db.Decimal(18,4)
+  unitId String @map("unit_id")
+  conversionFactor Decimal @map("conversion_factor") @db.Decimal(18,6)
+  @@index([documentId], map: "idx_inventory_business_document_lines_document")
+  @@schema("inventory")
+}
