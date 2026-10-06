@@ -1649,7 +1649,11 @@ describe('C-58 runtime — cancellation / correction (OQ-54)', () => {
     );
     await expect(
       asActor(() =>
-        fixture.service.finalizeDocument(created.id, fixture.organizationId, {}),
+        fixture.service.finalizeDocument(
+          created.id,
+          fixture.organizationId,
+          {},
+        ),
       ),
     ).rejects.toMatchObject({
       details: { code: 'inventory.document.illegal_transition' },
