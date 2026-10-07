@@ -127,6 +127,8 @@ interface PricingRunRow {
   executedAt: Date;
   createdAt: Date;
   updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
 }
 
 interface KeyOutcomeRow {
@@ -143,6 +145,8 @@ interface KeyOutcomeRow {
   movementsRevalued: number;
   createdAt: Date;
   updatedAt: Date;
+  createdBy: string | null;
+  updatedBy: string | null;
 }
 
 interface OperationRow {
@@ -447,8 +451,9 @@ function fakePricingRepository(
       documentKinds: readonly string[];
     }) {
       // Mirrors the repository: only COMPLETED runs (kind
-      // pricing_operation, keysFailed = 0, not reversed) are candidates —
-      // a failed or reversed run never advances the boundary.
+      // pricing_operation, keysFailed = 0, keysExamined > 0, not reversed)
+      // are candidates — a failed, empty or reversed run never advances
+      // the boundary.
       const rows = [...world.pricingRuns.values()]
         .filter(
           (row) =>
@@ -456,6 +461,7 @@ function fakePricingRepository(
             row.warehouseId === params.warehouseId &&
             row.kind === 'pricing_operation' &&
             row.keysFailed === 0 &&
+            row.keysExamined > 0 &&
             row.reversedByRunId === null,
         )
         .sort(
@@ -496,13 +502,14 @@ function fakePricingRepository(
     async markRunReversed(
       _tx: unknown,
       runId: string,
-      audit: { byRunId: string; at: Date },
+      audit: { byRunId: string; at: Date; by: string | null },
     ) {
       const row = world.pricingRuns.get(runId);
       if (row === undefined) return;
       row.reversedByRunId = audit.byRunId;
       row.reversedAt = audit.at;
       row.updatedAt = audit.at;
+      row.updatedBy = audit.by;
     },
     async lockRunRow(_tx: unknown, organizationId: string, runId: string) {
       const current = world.pricingRuns.get(runId);
@@ -1310,14 +1317,52 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     });
   });
 
+  it('does not advance the from-date behind an empty run (concurrent-reverse stranding guard)', async () => {
+    const fixture = await buildFixture();
+    // No movements in scope: the run completes but examines nothing.
+    const empty = await asActor(() =>
+      fixture.service.runPricing(
+        runInput(fixture, { toDate: new Date('2026-01-31T00:00:00.000Z') }),
+      ),
+    );
+    expect(empty.keysExamined).toBe(0);
+    expect(empty.keysFailed).toBe(0);
+    // The boundary did NOT move: the next run still starts from the
+    // beginning of history. Under pricing↔reverse concurrency a run whose
+    // window a concurrent reverse emptied must not strand the stale key it
+    // would have re-priced behind an advanced boundary.
+    const next = await asActor(() =>
+      fixture.service.runPricing(
+        runInput(fixture, { toDate: new Date('2026-02-28T00:00:00.000Z') }),
+      ),
+    );
+    expect(next.fromDate).toBeNull();
+  });
+
   it('auto-advances the from-date after a completed run and refuses a range that does not extend it', async () => {
     const fixture = await buildFixture();
+    // The boundary only advances behind a run that DID work: seed a key so
+    // the first run actually examines and prices it (an empty run advances
+    // nothing — the concurrent-reverse stranding guard).
+    seedMovement(fixture, {
+      movementType: 'inbound',
+      baseQuantity: '100',
+      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      totalCost: '1000',
+      valuationStatus: 'valued',
+    });
+    seedMovement(fixture, {
+      movementType: 'outbound',
+      baseQuantity: '-40',
+      movementDate: new Date('2026-01-10T00:00:00.000Z'),
+    });
     const first = await asActor(() =>
       fixture.service.runPricing(
         runInput(fixture, { toDate: new Date('2026-01-31T00:00:00.000Z') }),
       ),
     );
     expect(first.fromDate).toBeNull();
+    expect(first.keysExamined).toBe(1);
 
     const second = await asActor(() =>
       fixture.service.runPricing(

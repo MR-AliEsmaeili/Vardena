@@ -451,6 +451,7 @@ export class InventoryPricingService {
           executedAt: now,
           createdAt: now,
           updatedAt: now,
+          createdBy: actorId,
         });
         for (const outcome of outcomes) {
           await this.pricing.insertKeyOutcome(tx, {
@@ -459,6 +460,7 @@ export class InventoryPricingService {
             ...outcome,
             createdAt: now,
             updatedAt: now,
+            createdBy: actorId,
           });
         }
         // ONE idempotency row for the WHOLE batch, LAST (a lost key race
@@ -768,6 +770,7 @@ export class InventoryPricingService {
         executedAt: now,
         createdAt: now,
         updatedAt: now,
+        createdBy: actorId,
       });
       for (const outcome of outcomes) {
         await this.pricing.insertKeyOutcome(tx, {
@@ -776,12 +779,14 @@ export class InventoryPricingService {
           ...outcome,
           createdAt: now,
           updatedAt: now,
+          createdBy: actorId,
         });
       }
       // OD-RVP-05: the original is MARKED, never deleted.
       await this.pricing.markRunReversed(tx, original.id, {
         byRunId: compensatingRunId,
         at: now,
+        by: actorId,
       });
       await insertOperationRow(tx, {
         id: generateId(),

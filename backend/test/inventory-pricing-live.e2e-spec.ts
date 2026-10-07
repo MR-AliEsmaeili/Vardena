@@ -903,8 +903,23 @@ describe.skipIf(DATABASE_URL === undefined)(
 
     it('refuses to reverse a run that is no longer the latest valuation (reverse_not_latest_run)', async () => {
       const { run } = await pricedIssuesScenario(privateWarehouses[6]!);
-      // A newer run on the same key...
-      await runPricing(privateWarehouses[6]!, new Date(Date.now() + 120_000));
+      // A newer valuation on the same key, through the front door: an issue
+      // whose business date falls INSIDE the next run's window (after the
+      // first run's toDate — the automatic boundary makes now-dated
+      // movements unreachable until then), priced by a second run whose
+      // whole-key replay re-derives the key.
+      const laterIssue = await createDocument({
+        kind: 'issue',
+        warehouseId: privateWarehouses[6]!,
+        businessDate: new Date(Date.now() + 90_000).toISOString(),
+        lines: [{ itemId: itemAId, quantity: '5', unitId: unitAId }],
+      });
+      await finalize(laterIssue['id'] as string);
+      const second = await runPricing(
+        privateWarehouses[6]!,
+        new Date(Date.now() + 120_000),
+      );
+      expect(second['keysExamined']).toBe(1);
       const refused = await reversePricing(run['id'] as string, 422);
       expect(refused['details']).toMatchObject({
         code: 'inventory.pricing.reverse_not_latest_run',
@@ -1098,11 +1113,39 @@ describe.skipIf(DATABASE_URL === undefined)(
         expect(original?.['reversedByRunId']).toBeNull();
       }
 
-      // Either way the key ends at the SAME priced position.
-      const state = await stateRow(privateWarehouses[11]!, itemAId);
-      expect(dec(state.valuedQuantity, 4)).toBe('50.0000');
-      expect(dec(state.totalValue, 2)).toBe('500.00');
-      expect(state.status).toBe('valued');
+      // Two legitimate interleavings, one invariant each:
+      // - The pricing run started AFTER the reverse committed: its
+      //   automatic from-date is null (the reversed run no longer counts),
+      //   it re-covered the whole window and re-priced the key.
+      // - The pricing run started FIRST: the reverse had not committed at
+      //   its boundary read, its window (the previous run's toDate → its
+      //   own toDate) legitimately contained no movement, and it completed
+      //   EMPTY. The key then sits at the pre-run fold, honestly STALE —
+      //   and because an empty run advances nothing, the NEXT run must
+      //   re-cover and re-price it (OD-RVP-06). No stranded state.
+      if (pricingResult.body['keysExamined'] === 1) {
+        const state = await stateRow(privateWarehouses[11]!, itemAId);
+        expect(dec(state.valuedQuantity, 4)).toBe('50.0000');
+        expect(dec(state.totalValue, 2)).toBe('500.00');
+        expect(state.status).toBe('valued');
+      } else {
+        expect(pricingResult.body['keysExamined']).toBe(0);
+        expect(reverseResult.status).toBe(201);
+        const stale = await stateRow(privateWarehouses[11]!, itemAId);
+        expect(dec(stale.valuedQuantity, 4)).toBe('50.0000');
+        expect(dec(stale.totalValue, 2)).toBe('1000.00');
+        expect(stale.status).toBe('stale');
+        const recovery = await runPricing(
+          privateWarehouses[11]!,
+          new Date(Date.now() + 60_000),
+        );
+        expect(recovery['fromDate']).toBeNull();
+        expect(recovery['keysPriced']).toBe(1);
+        const recovered = await stateRow(privateWarehouses[11]!, itemAId);
+        expect(dec(recovered.valuedQuantity, 4)).toBe('50.0000');
+        expect(dec(recovered.totalValue, 2)).toBe('500.00');
+        expect(recovered.status).toBe('valued');
+      }
       expect(await onHand(privateWarehouses[11]!, itemAId)).toBe(50);
     });
 
@@ -1201,23 +1244,41 @@ describe.skipIf(DATABASE_URL === undefined)(
         valuationState: 'unpriced',
       });
 
-      // Stale: a cost assigned with 'skip' marks the key inconsistent.
-      const movement = (
-        await movementsOfDocument(unpriced['id'] as string)
-      )[0]!;
-      await assignCost(movement.id, '70', 'skip');
-      const documentAfter = await operator
-        .get(`${documentsBase}/${unpriced['id'] as string}`)
+      // Stale: an edit whose valuation side effect is explicitly skipped is
+      // recorded honestly — the document stays priced but is FLAGGED, and
+      // the accounting boundary refuses it (OD-54-06 + OD-PRC-11). (A
+      // key-level `assignCost(..., 'skip')` marks the KEY inconsistent but
+      // is not a document-level gate: the established eligibility contract
+      // is operational AND fully-priced movements AND not
+      // header-valuationStale.)
+      const staleReceipt = await receiveStock(
+        itemBId,
+        '6',
+        privateWarehouses[14]!,
+        '60',
+      );
+      const patched = await operator
+        .patch(`${documentsBase}/${staleReceipt['id'] as string}`)
         .query({ organizationId: orgAId })
+        .send({
+          cost: '60',
+          acknowledgeSideEffects: true,
+          repricing: 'skip',
+          lines: [{ itemId: itemBId, quantity: '5', unitId: unitAId }],
+        })
         .expect(200);
-      expect(documentAfter.body['valuationState']).toBe('stale');
+      expect(patched.body['valuationStale']).toBe(true);
       const refusedStale = await operator
-        .post(`${documentsBase}/${unpriced['id'] as string}/accounting-post`)
+        .post(
+          `${documentsBase}/${staleReceipt['id'] as string}/accounting-post`,
+        )
         .query({ organizationId: orgAId })
         .send({})
         .expect(422);
       expect(refusedStale.body['details']).toMatchObject({
         code: 'inventory.document.accounting_ineligible',
+        valuationState: 'priced',
+        valuationStale: true,
       });
 
       // Fully priced: the boundary crosses, and then the document is
@@ -1249,7 +1310,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         .send({ description: 'edited after post' });
       expect([409, 422]).toContain(editRefused.status);
       expect(editRefused.body['details']).toMatchObject({
-        code: 'inventory.document.illegal_transition',
+        code: 'inventory.document.accounting_posted_is_immutable',
       });
     });
 

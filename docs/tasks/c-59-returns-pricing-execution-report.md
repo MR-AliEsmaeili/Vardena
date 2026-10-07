@@ -1,11 +1,14 @@
 # C-59D/C-59E/C-59E+ — Returns, Periodic Pricing, Reverse Pricing & Concurrency Hardening — execution report
 
-Status: **IMPLEMENTATION COMPLETE, TESTS PARTIAL, CI GREEN** — code and API
-for C-59D/E/E+ and the concurrency hardening are implemented, locally
-verified (typecheck/lint/format + the full 1702-test unit suite) and
-CI-verified on PR #126 (live-DB e2e + migration rehearsal included); the
-dedicated new unit/integration specs and live-DB concurrency tests are NOT
-written yet (§7 names them).
+Status: **IMPLEMENTATION COMPLETE, CI GREEN; the dedicated-tests debt named
+below was closed on 2026-10-07 by the correction sprint** — code and API for
+C-59D/E/E+ and the concurrency hardening are implemented, locally verified
+(typecheck/lint/format + the full unit suite) and CI-verified on PR #126
+(live-DB e2e + migration rehearsal included). At the time this slice landed
+the dedicated new unit/integration specs and live-DB concurrency tests were
+NOT written yet (§7 names them); they were added, together with the fixes
+their live-PostgreSQL execution exposed, by
+[`c-59-correction-sprint-report.md`](./c-59-correction-sprint-report.md).
 Date started: 2026-10-06
 Baseline: `main` @ `082768d733454258d168871a951449e0b8b2b479` (merge of PR #125)
 
@@ -316,12 +319,17 @@ specs.
    valuation flows through the documents service, pricing-run scope/order/
    failure isolation, reverse-pricing guards, quantity invariance). The
    existing suite covers the touched code paths only as regression (edit
-   classification, lifecycle, fake-world posting). This is the largest gap
-   and the first follow-up.
+   classification, lifecycle, fake-world posting). This was the largest gap
+   at slice time — **closed on 2026-10-07 by the correction sprint** (see
+   [`c-59-correction-sprint-report.md`](./c-59-correction-sprint-report.md)):
+   +41 dedicated unit tests and a 16-test live-PostgreSQL suite.
 2. **Live-DB / Postgres concurrency tests** for the Accounting Post ↔
    Reverse Pricing serialization and the pricing batch (the real `FOR UPDATE`
    behavior is exercised structurally only; the unit fake records the lock
-   contract as a no-op).
+   contract as a no-op). **Closed on 2026-10-07 by the correction sprint**
+   (see [`c-59-correction-sprint-report.md`](./c-59-correction-sprint-report.md)):
+   all four concurrency scenarios (pricing↔pricing, pricing↔reverse,
+   post↔reverse, reverse↔reverse) run against real PostgreSQL.
 3. **The valuation/pricing documentation pass** beyond this report (the
    narrative docs for the accounting-eligibility and pricing surfaces).
 4. **Coupled backdated-transfer replay** (C-59C) — DEFERRED, unchanged,

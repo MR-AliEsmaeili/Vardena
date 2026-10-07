@@ -1797,11 +1797,35 @@ e2e spec asserting it).
   domain outcome each, no duplicate/torn artifacts, no deadlock), accounting
   eligibility/immutability, and the full receipt → issue → returns →
   transfer → pricing → accounting-post pipeline.
-- **Verified locally:** `tsc --noEmit` clean, oxlint 0 errors (1
-  pre-existing warning on main), prettier clean, unit suite **138 files /
-  1742 tests PASS** (was 136/1702), hermetic e2e 369 passed. Live suites
-  opt-in via `VARDENA_TEST_DATABASE_URL` — CI is authoritative for the
-  live-Postgres axis (no Postgres/Docker in the sandbox).
-- **CI:** see the PR checks for this sprint's head commit; the prior head
-  `30ca7b2` was green (runs 37537658703 / 37538284793).
+- **Final correction round (same day, owner's follow-up order):** CI on the
+  first correction head (`0a23956`) was red — every Reverse Pricing call 500. Root causes, found by reproducing the live suite locally (embedded
+  PostgreSQL 18.4, clean database, real generated client) and each fixed:
+  (1) the PR-local migration created `inventory_pricing_runs` and
+  `inventory_pricing_run_key_outcomes` WITHOUT the `created_by`/`updated_by`
+  audit columns every sibling inventory table carries and the repository's
+  row types and `lockRunRow` raw SELECT expect — corrected IN PLACE
+  (branch-local migration, repo precedent `5cd4763`), with the models
+  gaining `createdBy`/`updatedBy` and the write paths stamping them like
+  every sibling; (2) `reverseRunWithin` stamped movements with the
+  compensating run id BEFORE creating the compensating valuation-run row —
+  FK violation inside the transaction, fixed by statement order (same
+  transaction, fold unchanged); (3) an EMPTY pricing run (the
+  pricing↔reverse interleaving where the reverse empties the concurrent
+  run's window) advanced the from-date past a STALE key's movements,
+  making the repricing OD-RVP-06 demands unreachable — the completed-run
+  definition now also requires `keysExamined > 0`; (4) the HTTP line DTO
+  lacked `basisMovementId`, making the whole returns feature unreachable
+  over HTTP — field added (the pipeline test had caught it as a 400).
+  Three live-test expectations were corrected against the established
+  contracts, reasons recorded in the sprint report §1a.5.
+- **Verified locally (final):** `tsc --noEmit` clean, oxlint 0 errors (1
+  pre-existing warning on main), prettier clean, `prisma validate` +
+  `prisma generate` pass, unit suite **138 files / 1743 tests PASS**, and
+  the FULL e2e config against a real PostgreSQL (all 28 migrations from
+  zero, audit columns verified in information_schema): **48 files / 562
+  tests PASS**, including the new 16-test pricing live suite (three
+  consecutive green runs) and every other live suite.
+- **CI:** see the PR checks for the final correction head; the prior heads
+  `30ca7b2` (runs 37537658703 / 37538284793) and `0a23956` (red — the
+  migration defect above) frame the loop.
 - **Status:** see the sprint report's single verdict.

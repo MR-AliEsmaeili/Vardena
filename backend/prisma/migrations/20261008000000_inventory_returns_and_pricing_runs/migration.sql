@@ -58,6 +58,8 @@ CREATE TABLE "inventory"."inventory_pricing_runs" (
   "executed_at" timestamptz(6) NOT NULL,
   "created_at" timestamptz(6) NOT NULL DEFAULT now(),
   "updated_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "created_by" text,
+  "updated_by" text,
   CONSTRAINT "fk_inventory_pricing_runs_organization"
     FOREIGN KEY ("organization_id") REFERENCES "organization"."organizations" ("id") ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT "fk_inventory_pricing_runs_warehouse"
@@ -95,6 +97,8 @@ CREATE TABLE "inventory"."inventory_pricing_run_key_outcomes" (
   "movements_revalued" integer NOT NULL DEFAULT 0,
   "created_at" timestamptz(6) NOT NULL DEFAULT now(),
   "updated_at" timestamptz(6) NOT NULL DEFAULT now(),
+  "created_by" text,
+  "updated_by" text,
   CONSTRAINT "fk_inventory_pricing_run_key_outcomes_pricing_run"
     FOREIGN KEY ("pricing_run_id") REFERENCES "inventory"."inventory_pricing_runs" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT "fk_inventory_pricing_run_key_outcomes_organization"

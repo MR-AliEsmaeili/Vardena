@@ -479,26 +479,12 @@ export class InventoryValuationRepository {
     const reversed = rows.filter(
       (row) => row.valuationRunId === input.originalRunId,
     );
-    for (const row of reversed) {
-      await tx.inventoryMovement.update({
-        where: { id: row.id },
-        data: {
-          totalCost: null,
-          valuationStatus: 'unvalued',
-          valuationSource: null,
-          valuedAt: null,
-          valuationRunId: input.compensatingRunId,
-          updatedAt: input.at,
-          updatedBy: input.actorId,
-        },
-      });
-    }
 
     // Fold the SURVIVING facts into the pre-run position, honestly, without
-    // repricing anything. `rows` is the PRE-update snapshot by design (it was
-    // read before the updates above), so the fold input MUST be derived
-    // through `toCompensationFacts` with the ORIGINAL run id: that is what
-    // turns the rows this transaction just un-valued into the `null`-value
+    // repricing anything. `rows` is the PRE-update snapshot by design (the
+    // movements are un-valued only further below), so the fold input MUST be
+    // derived through `toCompensationFacts` with the ORIGINAL run id: that is
+    // what turns the rows this transaction un-values into the `null`-value
     // facts they are from now on. Folding the raw snapshot instead would keep
     // counting the erased values and produce the post-run position — the
     // stale-snapshot defect this guards against (C-59 correction sprint,
@@ -540,9 +526,31 @@ export class InventoryValuationRepository {
       updatedAt: input.at,
       createdBy: input.actorId,
     };
+    // The compensating per-key run row is created BEFORE the movements are
+    // stamped with its id: `inventory_movements.valuation_run_id` carries a
+    // real FK into `inventory_valuation_runs` (`fk_inventory_movements_valuation_run`),
+    // so writing the stamp first would violate the constraint inside this
+    // same transaction. Same transaction, same committed state — only the
+    // statement order inside it changed (C-59 correction sprint: the reverse
+    // path had never run against a real database before the live suite).
     const run = toRunDomain(
       await tx.inventoryValuationRun.create({ data: create }),
     );
+
+    for (const row of reversed) {
+      await tx.inventoryMovement.update({
+        where: { id: row.id },
+        data: {
+          totalCost: null,
+          valuationStatus: 'unvalued',
+          valuationSource: null,
+          valuedAt: null,
+          valuationRunId: input.compensatingRunId,
+          updatedAt: input.at,
+          updatedBy: input.actorId,
+        },
+      });
+    }
 
     await writeValuationState(tx, {
       state,

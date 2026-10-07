@@ -1,9 +1,14 @@
 # C-59 Correction Sprint — Audit, Fixes, Dedicated Tests & Live Concurrency Evidence
 
-- **Date:** 2026-10-07 · **Branch:** `arena/99c8b15c-vardena` · **PR:** #126
+- **Date:** 2026-10-07 (round 1: audit + fixes + tests; round 2: the
+  migration/schema correction and the live-PostgreSQL execution it unblocked)
+  · **Branch:** `arena/99c8b15c-vardena` · **PR:** #126
 - **Work order:** the owner's correction-sprint prompt (five axes: reverse-fold
   correctness, failed-key retry semantics, dedicated feature tests, live-DB
-  concurrency tests, e2e regression + docs + CI).
+  concurrency tests, e2e regression + docs + CI), then the owner's final
+  correction order (fix the `created_by` migration/schema mismatch first,
+  verify the database from a clean state, rerun the live suite, fix every
+  remaining genuine failure until CI is green).
 - **Method:** audit the real code first, trust no prior report; fix only what
   the code proves broken; prove every fix with a dedicated test at the level
   that can actually see it (pure domain / hermetic service / live PostgreSQL).
@@ -108,7 +113,125 @@ through real HTTP with real basis locks.
   (run header → valuation states ascending; replay order source-before-
   destination — asserted on the recorded lock order).
 
-## 2. Dedicated tests (axis 3) — three levels
+## 1a. Round 2 — the migration correction and what live PostgreSQL then exposed
+
+CI on round 1's head (`0a23956`) was red: every Reverse Pricing call returned
+`500`. The owner's order named the first root cause; reproducing the whole
+live suite locally (embedded PostgreSQL 18.4, all 28 migrations applied from
+zero, real generated Prisma client) then exposed two more genuine defects the
+first red run had masked. All were cascade failures of the reverse path —
+not eleven independent bugs.
+
+### 1a.1 Migration/schema defect — the missing audit columns (FIXED)
+
+`20261008000000_inventory_returns_and_pricing_runs` created
+`inventory.inventory_pricing_runs` and
+`inventory.inventory_pricing_run_key_outcomes` **without** the `created_by` /
+`updated_by` audit columns — the two new tables were the only audit-bearing
+inventory tables without them (`inventory_valuation_runs`,
+`inventory_valuation_states`, `inventory_movements`,
+`inventory_business_documents` all carry nullable `created_by TEXT` /
+`updated_by TEXT`, no FK). The Prisma models lacked the fields too, while the
+repository's row types (`PricingRunRow`/`PricingRunKeyOutcomeRow`, both
+`& AuditColumns`) and `lockRunRow`'s raw `SELECT` list expected them. The
+reverse path died on its first statement: `lockRunRow` selects `created_by`
+→ `column "created_by" does not exist` → 500 on every reverse. The pricing
+path never touches those columns, which is why pricing tests passed.
+
+Why nothing caught it: the hand-written delegate interfaces (the fake/stub
+client's contract) can't see the real client's columns, `prisma validate`
+checks the schema against itself (not against the migrations), and the
+hermetic fakes have no schema at all. Only a real database can see this
+class — the live suite is the guard.
+
+**Fix (in place — the migration is branch-local and unmerged; in-place
+correction follows the repository's own precedent, commit `5cd4763` fixed
+this same migration in place during the slice; CI databases are ephemeral
+per run, so no environment holds the old checksum):**
+
+- migration: `"created_by" text, "updated_by" text` added to both tables;
+- models: `createdBy String? @map("created_by")` / `updatedBy String?
+@map("updated_by")` on `InventoryPricingRun` and
+  `InventoryPricingRunKeyOutcome`, exactly the sibling style;
+- the audit contract completed the way every sibling write path already
+  works: `PricingRunCreate`/`PricingRunKeyOutcomeCreate` carry
+  `createdBy` (the actor, wired from both command paths) and
+  `markRunReversed` stamps `updatedBy`.
+
+Fresh-database verification: all 28 migrations applied from zero on a clean
+PostgreSQL; `information_schema` confirms `created_by`/`updated_by` exist,
+nullable `text`, on both tables; `prisma validate` and `prisma generate`
+pass; runtime access proven by the passing reverses (`lockRunRow` selects
+the columns). An "already-migrated" upgrade path does not exist to test:
+the migration has never been merged and every database that ever ran it was
+destroyed with its CI job.
+
+### 1a.2 FK-order defect — the compensating run row was created too late (FIXED)
+
+`reverseRunWithin` un-valued the movements (stamping
+`valuation_run_id = compensatingRunId`) BEFORE inserting the compensating
+`inventory_valuation_runs` row — violating
+`fk_inventory_movements_valuation_run` inside the same transaction. Every
+reverse against a real database failed on the first movement update; the
+hermetic fakes enforce no foreign keys, and before the live suite existed no
+real database ever ran a reverse. **Fix:** statement order inside the same
+transaction — snapshot → pure fold → create the compensating run row → stamp
+the movements (FK satisfied) → write the state. No new transaction boundary,
+no change to the fold (it still reads the pre-update snapshot through
+`toCompensationFacts`).
+
+### 1a.3 Concurrency hole — an empty run stranded a stale key behind the boundary (FIXED)
+
+Under pricing↔reverse concurrency there is an interleaving where the pricing
+run reads its automatic from-date BEFORE the reverse commits: its window
+then legitimately contains no movement and it completes EMPTY — while the
+reverse leaves the key STALE and demanding repricing (OD-RVP-06). The empty
+run used to count as "completed" and advanced the boundary past the stale
+key's movements, making the required repricing unreachable — a state that
+demands work the system can no longer perform. **Fix:** the completed-run
+definition gains its last clause — a run advances the scope's from-date only
+when it priced every key it examined (`keysFailed = 0`), **examined at least
+one key** (`keysExamined > 0`), and has not been reversed. Over-cover-safe
+by the same argument as the bounded history window; pinned by a dedicated
+hermetic test (the empty run does not advance) and by the live
+pricing↔reverse test, which now models both legitimate interleavings and
+PROVES the stale key is recovered by the next run.
+
+### 1a.4 API-surface gap — returns were unreachable over HTTP (FIXED)
+
+`InventoryDocumentLineInputDto` carried only `itemId`/`quantity`/`unitId` —
+no `basisMovementId`. The service layer fully supports basis-linked lines
+(the entire C-59D returns contract, including the round-1 finalize fix), but
+no HTTP caller could send one: a purchase return without a basis is refused
+by the domain (`inventory.return.basis_missing`), so the purchase-return
+kind was entirely unusable through the API. The live pipeline test found it
+as a `400`. **Fix:** the optional, ULID-validated `basisMovementId` field on
+the line DTO (shared by create and update), described as returns-only; the
+service's existing validation (`basisNotAcceptedForDocumentKind` etc.)
+enforces the rest.
+
+### 1a.5 Test corrections (each with its reason — tests were wrong, not the domain)
+
+- **reverse_not_latest_run:** the "newer run" was an empty no-op — the
+  automatic from-date starts after the previous run's `toDate`, so now-dated
+  movements are out of every subsequent window and the second run examined
+  nothing. Rebuilt through the front door: a future-`businessDate` issue
+  inside the second run's window, which prices the key and creates the
+  newer per-key valuation the guard exists for.
+- **pricing↔reverse:** "either order ends at the priced position" was too
+  strong — the empty-run interleaving legitimately ends STALE at the pre-run
+  fold. The test now accepts exactly the two consistent outcomes and, for
+  the stale one, proves recovery (the next run's from-date is null and it
+  re-prices).
+- **accounting eligibility:** the "stale document" case was constructed via
+  a key-level `assignCost(..., 'skip')` — but the established eligibility
+  contract is document-level (operational AND fully-priced movements AND
+  NOT header `valuationStale`); a key-level inconsistency is not a document
+  gate. Rebuilt via the established path: an edit whose repricing is
+  explicitly skipped flags the document and the boundary refuses it. The
+  edit-after-post code is `inventory.document.accounting_posted_is_immutable`
+  (the specific domain code), not the generic `illegal_transition`.
+- **pipeline:** unchanged — its 400 WAS the DTO gap above.
 
 | Level            | File                                                                  | Coverage                                                                                                                                                                                                                                                                                                                                                                                                             |
 | ---------------- | --------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -175,13 +298,19 @@ tested.
 ## 6. Gates
 
 - `tsc --noEmit` clean · oxlint 0 errors (1 pre-existing warning on main) ·
-  prettier clean on all touched files.
-- Unit suite: **138 files / 1742 tests PASS** (was 136/1702; +40 dedicated
-  tests: 9 domain, 18 pricing service, 13 returns).
-- Hermetic e2e: 369 passed; live suites (incl. the new 16-test pricing live
-  suite) opt-in via `VARDENA_TEST_DATABASE_URL`, skipped locally, run in CI.
-- CI: the authoritative live-Postgres execution (backend job runs
-  `migrate deploy`, the migration rehearsal and the live e2e suites).
+  prettier clean on all touched files · `prisma validate` + `prisma generate`
+  pass (real client, client engine).
+- Unit suite: **138 files / 1743 tests PASS** (was 136/1702; +41 dedicated
+  tests: 9 domain, 19 pricing service, 13 returns).
+- **Live PostgreSQL (local, embedded 18.4, round 2):** all 28 migrations
+  applied from a clean database (audit columns verified in
+  `information_schema`), system-admin bootstrap, then the FULL e2e config
+  against the real database: **48 files / 562 tests PASS** — the new 16-test
+  pricing live suite (three consecutive green runs), the existing
+  business-documents live suite, kardex, licensing and RBAC live suites.
+- CI: same suite set, authoritative (backend job runs `migrate deploy`,
+  the migration rehearsal and the live e2e suites on a fresh service
+  container).
 
 ## 7. Remaining risks (named, none blocking review)
 

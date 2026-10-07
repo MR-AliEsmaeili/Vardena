@@ -187,6 +187,8 @@ model InventoryPricingRun {
   executedAt     DateTime @map("executed_at") @db.Timestamptz(6)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   warehouse    Warehouse?   @relation("InventoryPricingRunWarehouse", fields: [warehouseId], references: [id], onDelete: Restrict)
@@ -229,6 +231,8 @@ model InventoryPricingRunKeyOutcome {
   movementsRevalued Int    @default(0) @map("movements_revalued")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy       String?  @map("created_by")
+  updatedBy       String?  @map("updated_by")
 
   pricingRun    InventoryPricingRun @relation(fields: [pricingRunId], references: [id], onDelete: Cascade)
   organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)

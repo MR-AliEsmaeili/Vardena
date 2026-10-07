@@ -129,16 +129,23 @@ export class InventoryPricingRepository {
    *
    * WHAT "COMPLETED" MEANS (C-59 correction sprint, failed-key progression):
    * a run advances the scope's from-date ONLY when it priced EVERY key it
-   * examined (`keysFailed = 0`) AND has not been reversed since. A run with
+   * examined (`keysFailed = 0`), examined at least one key
+   * (`keysExamined > 0`), AND has not been reversed since. A run with
    * failed keys is not a completed run — if it advanced the from-date, the
    * failed key's in-window movements would fall out of every future scope
    * and stay unpriced forever, silently. A reversed run likewise does not
    * advance it: its keys were set back to unvalued/stale and REQUIRE
-   * repricing by a later run that re-covers the range. The next run
-   * therefore re-covers from the last fully-completed boundary; keys that
-   * already priced re-price idempotently (the whole-key replay is
-   * deterministic), and the failed key is retried as soon as its blocker is
-   * resolved. Nothing is ever skipped past.
+   * repricing by a later run that re-covers the range. And an EMPTY run (no
+   * movements in its window, nothing examined) advances nothing either —
+   * this matters exactly under concurrency: a Reverse Pricing can commit
+   * between a concurrent run's boundary read and its key discovery, leaving
+   * that run legitimately empty while the key it would have re-priced sits
+   * STALE; if the empty run advanced the boundary past the stale key's
+   * movements, the required repricing would become unreachable. The next
+   * run therefore re-covers from the last boundary that actually did work;
+   * keys that already priced re-price idempotently (the whole-key replay is
+   * deterministic), and the failed/stale key is retried as soon as its
+   * blocker is resolved. Nothing is ever skipped past.
    */
   async findLastRunForScope(params: {
     organizationId: string;
@@ -159,6 +166,7 @@ export class InventoryPricingRepository {
         warehouseId: params.warehouseId,
         kind: 'pricing_operation',
         keysFailed: 0,
+        keysExamined: { gt: 0 },
         reversedByRunId: null,
       },
       orderBy: [{ executedAt: 'desc' }],
@@ -196,7 +204,7 @@ export class InventoryPricingRepository {
   async markRunReversed(
     tx: CoreTxClient,
     runId: string,
-    audit: { byRunId: string; at: Date },
+    audit: { byRunId: string; at: Date; by: string | null },
   ): Promise<void> {
     await tx.inventoryPricingRun.update({
       where: { id: runId },
@@ -204,6 +212,7 @@ export class InventoryPricingRepository {
         reversedByRunId: audit.byRunId,
         reversedAt: audit.at,
         updatedAt: audit.at,
+        updatedBy: audit.by,
       },
     });
   }

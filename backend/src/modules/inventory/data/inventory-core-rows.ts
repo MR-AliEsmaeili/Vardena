@@ -694,6 +694,7 @@ export interface PricingRunCreate {
   executedAt: Date;
   createdAt: Date;
   updatedAt: Date;
+  createdBy: string | null;
 }
 
 export interface PricingRunUpdate {
@@ -705,6 +706,7 @@ export interface PricingRunUpdate {
   reversedByRunId?: string | null;
   reversedAt?: Date | null;
   updatedAt: Date;
+  updatedBy?: string | null;
 }
 
 export interface PricingRunWhere {
@@ -718,6 +720,12 @@ export interface PricingRunWhere {
    * completed runs.
    */
   keysFailed?: number;
+  /**
+   * C-59 correction sprint (concurrent empty run): `keysExamined: { gt: 0 }`
+   * selects runs that actually did work in their window — an empty run (no
+   * movements in range) advances nothing.
+   */
+  keysExamined?: { gt: number };
   /** `null` selects runs that have NOT been reversed. */
   reversedByRunId?: string | null;
 }
@@ -767,6 +775,7 @@ export interface PricingRunKeyOutcomeCreate {
   movementsRevalued: number;
   createdAt: Date;
   updatedAt: Date;
+  createdBy: string | null;
 }
 
 export interface PricingRunKeyOutcomeWhere {
