@@ -468,7 +468,7 @@ changed by this acceptance synchronization.
 
 ## 9. Open Questions
 
-The existing canonical product/domain registry is `docs/open-questions.md` (OQ-01…OQ-63 in the open table; OQ-64 in Resolved). The following are relevant unresolved questions; other registry entries remain unchanged. BOOT identifiers below are new documentation observations, not renumbered product OQs.
+The existing canonical product/domain registry is `docs/open-questions.md` (OQ-01…OQ-72 as of 2026-10-07; each row records its own status — several rows are marked RESOLVED in place). The following are relevant unresolved questions; other registry entries remain unchanged. BOOT identifiers below are new documentation observations, not renumbered product OQs.
 
 | ID                    | Question / why it matters                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Evidence / related area                                                                                                                                      | Decision needed                                                                                              | Status                                                                                                                                                                                                                                                                   |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -481,6 +481,7 @@ The existing canonical product/domain registry is `docs/open-questions.md` (OQ-0
 | OQ-23 / OQ-27         | Period close/reopen authority and correction windows; existing open-scope/reopen mechanisms do not settle full policy                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | `docs/open-questions.md`, contract §7/§15, ADR-0032                                                                                                          | Owner/accounting expert                                                                                      | OPEN                                                                                                                                                                                                                                                                     |
 | OQ-25 / OQ-41 / OQ-43 | Chart/report-layout policy, dimensions and Iranian statutory/legal requirements. **Task 20 (2026-09-26):** OD-20-1…OD-20-6 resolve the Task 20 mechanism ambiguities (Base Chart artifact/adoption, consumer-first role sequencing, effective-dated role mapping, producer-bound code history, D-1 leaf-only posting, line-level dimensions). **Rows remain OPEN** for Base Chart content, role catalog/mandatory set, per-level defaults, code reuse/history details, dimension count/defaults/binding/governance and every legal fact. **Task 28 follow-up (2026-09-27):** OD-27-02 is **DECIDED for the OQ-25 MVP-scope sub-question only** — the MVP requires the Base Chart mechanism but not a concrete Base Chart content set; no content may be introduced by implementation inference without a separately approved content artifact. | `docs/accounting/task-index.md` §4, `docs/tasks/task-20/*`, contract §19 + §31/§32, `docs/accounting/owner-decision-baseline.md` §12                         | Accountant + tax/legal expert + owner; future implementation tasks require explicit scopes/content approvals | OPEN in registry; Task 20 decision resolution closes no OQ status and promotes no ADR; **the OD-27-02 follow-up likewise closes no OQ — OQ-25/OQ-41/OQ-43 remain OPEN for all content-level decisions** (decision record: `docs/tasks/task-28/owner-decision-record.md`) |
 | OQ-62 / OQ-63         | Compatibility of account coding/configuration pins and legacy fallback shape; affects validation/migration semantics                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | `docs/open-questions.md`, Task 11 report; default 2+3 fallback is recorded behavior, not a newly ratified decision                                           | Product/architecture                                                                                         | OPEN                                                                                                                                                                                                                                                                     |
+| OQ-72                 | **NEW (opened 2026-10-07 by the C-60 Inventory → Accounting boundary audit).** Authorization of system-origin postings: is the source module's command permission (`Inventory.Document.AccountingPost`) sufficient authority for the Accounting side to create a voucher, or is a dedicated Accounting code required (alone or in addition), and what actor/source evidence must a worker-originated posting carry? No system posting exists yet, so nothing may be implemented while the row is open.                                                                                                                                                                                        | `docs/open-questions.md` OQ-72; `docs/tasks/c-60-inventory-accounting-boundary-and-decision-package.md` §18.2/§21.3; ADR-0026 §6; contract §16.5/AC-D-26 | Owner (with accountant + architecture); together with OQ-39 it gates any production system-generated posting | OPEN                                                                                                                                                                                                                                                                     |
 
 **OQ-19 remains OPEN:** the in-review Bootstrap System Administrator task
 implements the out-of-band provisioning procedure, but that implementation note
@@ -1930,3 +1931,56 @@ e2e spec asserting it).
   including unit tests, the live-PostgreSQL e2e suites and the migration
   rehearsal.
 - **Record:** [`docs/tasks/post-c-59-force-unvalued-replay-propagation.md`](docs/tasks/post-c-59-force-unvalued-replay-propagation.md).
+
+## 27. C-60 — Inventory → Accounting Boundary & Decision Package (2026-10-07)
+
+- **Type:** Audit + decision/architecture package. **DOCUMENTATION ONLY** — no backend or
+  frontend source change, no Prisma schema, no migration, no API, no permission, no event
+  consumer, no posting rule, no test, no CI or dependency change.
+- **Baseline:** `main` @ `24474ac6b28f89e5799057370d86fb603bb89897` (merge of PR #128).
+  Branch `arena/6f3fecd4-vardena`. 27 migrations / 140 unit specs / 48 e2e suites / 49
+  Accounting permission codes (unchanged by this sprint).
+- **Deliverable:**
+  [`docs/tasks/c-60-inventory-accounting-boundary-and-decision-package.md`](docs/tasks/c-60-inventory-accounting-boundary-and-decision-package.md)
+  — 22 sections: current-state matrix per inventory flow; the inventory→accounting gap
+  matrix including the **four ledger writers that are not business documents**
+  (`InventoryMovementsService`, `InventoryTransfersService`, `MaterialRequestsService.invoke`,
+  and the business-document path itself); the OQ dependency matrix; the accounting boundary
+  (value ownership A1–A3, journal-creation options B1–B5, transaction boundary and forbidden
+  partial states, idempotency identity); the four transaction questions; event/integration
+  options O1–O5 with one recommendation; idempotency options I1–I3; **sixteen failure
+  scenarios** plus extras; per-flow analysis (Receipt, Issue, Transfer, Purchase Return, Sales
+  Return, Reversal/Correction); Pricing/Reverse-Pricing ↔ Accounting with the post-boundary
+  mutation models P1–P4; the OQ-69 valuation-history audit (gaps M1–M6); the
+  `accountingEligible` two-axis semantics; frontend surfaces (MVP/later/deferred); security and
+  organization isolation; a dependency graph; six proposed epics **C-61…C-66**; the Product
+  Owner decision register **PO-01…PO-12**; and the C-60 final report.
+- **Key verified findings (evidence in the package):** `accountingPostDocument` writes a
+  boundary flag and creates **no** accounting effect, stores **no** accounting reference, and
+  publishes a post-commit event; `accountingEligible` reads the document flag and the
+  movements' `valuation_status` but **not** the key-level
+  `inventory_valuation_states.status = 'stale'` (**E-1**); after Accounting Post only
+  `reversePricing` refuses a valuation change — `runPricing`, one-key `recalculate`, backdated
+  repricing and `assignCost` have no accounting awareness; the kernel event bus is in-memory,
+  unpersisted and **swallows subscriber errors**, and the Inventory document path publishes
+  **after** commit; there is exactly one subscriber in the repository; `AccountingModule`
+  exports `AccountingDocumentsService` with no caller; and **PDR-08 §8's OD-PRC-11 row is
+  stale** (the eligibility gate it assigns to C-59F was implemented by PR #125) — recorded,
+  not edited, because a decision record is the Owner's to change.
+- **Open Questions:** **OQ-72 opened** (authority for system-origin postings; also recorded in
+  this file §9 and in `docs/open-questions.md`). No OQ is closed, narrowed or reclassified;
+  OQ-24/25/27/30/39/42/69/70/71 remain OPEN and are mapped to what they block.
+- **Decisions requested (not taken):** PO-01 value ownership (recommend A2) · PO-02 journal
+  creation/delivery (recommend B3/O3 transactional in-process subscription) · PO-03 boundary
+  subject (recommend documents only) · PO-04 voucher granularity · PO-05 key-stale blocking
+  (recommend yes) · PO-06 transfer journal (recommend T1 no journal) · PO-07 post-boundary
+  valuation change (recommend P1 block) · PO-08 cancellation/reversal linkage · PO-09
+  idempotency identity (recommend I3) · PO-10 ratify the two-axis rule · PO-11 purchase-return
+  posting (recommend blocked until OQ-70/counterparty) · PO-12 sales-return posting (recommend
+  deferred until Sales).
+- **Verified locally:** `git diff --check` clean; documentation-only diff; every OQ/PDR/ADR
+  identifier and code anchor in the package checked against the tree. Heavy verification
+  (suites, live PostgreSQL, E2E, migration rehearsal) is delegated to CI under the standing
+  local-test policy; the PR pipeline runs the standard gates.
+- **Record:** [`docs/tasks/c-60-inventory-accounting-boundary-and-decision-package.md`](docs/tasks/c-60-inventory-accounting-boundary-and-decision-package.md).
+  **READY FOR REVIEW — documentation only; this sprint authorizes no implementation.**
