@@ -466,6 +466,14 @@ export class PostInventoryTransferDto {
   @IsString()
   @MaxLength(MAX_REFERENCE_ID_LENGTH)
   referenceId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Acknowledges that the transfer is dated before the latest movement on one of its two warehouses. A backdated transfer is rejected (422 inventory.backdated_document) until this is true; once confirmed it also requires Inventory.Valuation.Recalculate, because the coupled two-key replay restates both warehouses from the transfer date onward. There is no repricing choice: the pair is valued together (PDR-08 OD-TRF-01/05).',
+  })
+  @IsOptional()
+  @IsBoolean()
+  backdateConfirmed?: boolean;
 }
 
 export class InventoryTransferResponseDto {

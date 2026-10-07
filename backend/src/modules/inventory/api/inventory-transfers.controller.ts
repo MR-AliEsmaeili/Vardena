@@ -28,6 +28,12 @@ import {
  * committed atomically. No accounting entry is created. There is no transfer
  * list endpoint — transfer legs are movements and are read through
  * GET /inventory/movements (filter by `transferId`).
+ *
+ * A BACKDATED transfer is supported (C-59C, PDR-08 OD-TRF-01…09): it is valued
+ * by the coupled two-key replay — source key first, destination derived — in
+ * the same transaction that writes the legs, after the operator confirms the
+ * backdating (`backdateConfirmed`) and only for a caller holding
+ * `Inventory.Valuation.Recalculate`.
  */
 @ApiTags('inventory-transfers')
 @ApiUnauthorizedResponse({ description: 'Not authenticated.' })
@@ -53,7 +59,7 @@ export class InventoryTransfersController {
   @ApiUnprocessableEntityResponse({
     description:
       'Source equals destination, negative-stock policy violation at the source, a non-stockable or disabled item/warehouse, no unit conversion covering the movement date, ' +
-      'or a backdated transfer whose valuation would depend on the unresolved transfer-average convention (inventory.backdated_transfer_valuation_unresolved).',
+      'an unconfirmed backdated transfer (inventory.backdated_document), a bounded-replay refusal (inventory.recalculation_too_large), or a stored unvalued transfer leg of another transfer that this replay may not resolve on its own (inventory.transfer_replay_unpaired_leg).',
   })
   @ApiNotFoundResponse({
     description: 'Organization, warehouse, item or unit does not exist.',
@@ -74,6 +80,7 @@ export class InventoryTransfersController {
       reason: body.reason,
       referenceType: body.referenceType,
       referenceId: body.referenceId,
+      backdateConfirmed: body.backdateConfirmed,
     });
   }
 }

@@ -209,7 +209,7 @@ export class InventoryBusinessDocumentsController {
   })
   @ApiUnprocessableEntityResponse({
     description:
-      'Illegal transition, insufficient stock, missing backdating decision, a backdated transfer (OQ-67 fail-closed), or no numbering series configured.',
+      'Illegal transition, insufficient stock, a missing backdating decision, an unconfirmed backdated transfer (inventory.backdated_document), or no numbering series configured.',
   })
   async finalize(
     @Param('id') id: string,

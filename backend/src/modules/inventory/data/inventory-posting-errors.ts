@@ -113,3 +113,39 @@ export class RecalculationTooLargeError extends Error {
     this.limit = limit;
   }
 }
+
+/**
+ * A transfer is dated before the latest movement on one of its two keys and
+ * the operator's backdating confirmation did not reach the locked write
+ * (C-59C, OD-VAL-10).
+ *
+ * The confirmation is assessed BEFORE the transaction (the caller can show the
+ * operator what the posting disturbs), but the verdict that decides which
+ * valuation path runs is re-derived under the locked rows — so a transfer that
+ * became backdated by a concurrent posting can never be valued by a rule the
+ * operator did not confirm. The refusal names both keys and their latest
+ * movement dates so a retry can carry the confirmation.
+ */
+export class TransferBackdateConfirmationRequiredError extends Error {
+  readonly movementDate: Date;
+  readonly keys: readonly {
+    warehouseId: string;
+    latestMovementDate: Date | null;
+  }[];
+
+  constructor(input: {
+    movementDate: Date;
+    keys: readonly {
+      warehouseId: string;
+      latestMovementDate: Date | null;
+    }[];
+  }) {
+    super(
+      'A transfer dated before the latest movement on one of its warehouses needs the explicit ' +
+        'backdating confirmation before it can be valued.',
+    );
+    this.name = 'TransferBackdateConfirmationRequiredError';
+    this.movementDate = input.movementDate;
+    this.keys = input.keys;
+  }
+}

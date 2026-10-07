@@ -4260,6 +4260,8 @@ export interface components {
             referenceType?: string;
             /** @description Opaque source reference, stored on both legs. Both-or-neither with referenceType. */
             referenceId?: string;
+            /** @description Acknowledges that the transfer is dated before the latest movement on one of its two warehouses. A backdated transfer is rejected (422 inventory.backdated_document) until this is true; once confirmed it also requires Inventory.Valuation.Recalculate, because the coupled two-key replay restates both warehouses from the transfer date onward. There is no repricing choice: the pair is valued together (PDR-08 OD-TRF-01/05). */
+            backdateConfirmed?: boolean;
         };
         InventoryTransferResponseDto: {
             /**
@@ -11387,7 +11389,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Source equals destination, negative-stock policy violation at the source, a non-stockable or disabled item/warehouse, no unit conversion covering the movement date, or a backdated transfer whose valuation would depend on the unresolved transfer-average convention (inventory.backdated_transfer_valuation_unresolved). */
+            /** @description Source equals destination, negative-stock policy violation at the source, a non-stockable or disabled item/warehouse, no unit conversion covering the movement date, an unconfirmed backdated transfer (inventory.backdated_document), a bounded-replay refusal (inventory.recalculation_too_large), or a stored unvalued transfer leg of another transfer that this replay may not resolve on its own (inventory.transfer_replay_unpaired_leg). */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -13318,7 +13320,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Illegal transition, insufficient stock, missing backdating decision, a backdated transfer (OQ-67 fail-closed), or no numbering series configured. */
+            /** @description Illegal transition, insufficient stock, a missing backdating decision, an unconfirmed backdated transfer (inventory.backdated_document), or no numbering series configured. */
             422: {
                 headers: {
                     [name: string]: unknown;

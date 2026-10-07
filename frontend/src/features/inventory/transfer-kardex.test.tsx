@@ -17,9 +17,10 @@ import { TransferFormPage } from './transfer-form-page';
  * FE-UX-02 §8–§9 regression coverage for the transfer form and the Kardex.
  *
  * Transfer contract: NO cost anywhere and NO backdate pre-check — a
- * backdated transfer is REFUSED by the backend with
- * `inventory.backdated_transfer_valuation_unresolved` (OQ-67 is open), and
- * the form renders exactly that canonical copy inline.
+ * backdated transfer is answered with the shared backdating refusal
+ * (`inventory.backdated_document`, C-59C) until it is confirmed, and the form
+ * renders the transfer-specific explanation inline (this surface has no
+ * confirmation dialog yet — recorded UI follow-up).
  *
  * Kardex contract: quantity-only, and page 2+ replays the opaque snapshot
  * of the page-1 response unchanged (snapshot paging).
@@ -275,14 +276,25 @@ describe('Transfer form — no cost, no pre-check, honest refusal', () => {
     expect(inventoryApi.postInventoryTransfer).not.toHaveBeenCalled();
   });
 
-  it('renders the canonical backdated-transfer refusal inline (OQ-67: no bypass is offered)', async () => {
+  it('renders the backdating refusal inline and offers no bypass (C-59C)', async () => {
     vi.mocked(inventoryApi.postInventoryTransfer).mockRejectedValue(
       new ApiError({
         code: 'BusinessRuleViolation',
-        message: 'Backdated transfer valuation unresolved (never shown)',
+        message: 'Backdated transfer not confirmed (never shown)',
         status: 422,
         details: {
-          code: 'inventory.backdated_transfer_valuation_unresolved',
+          code: 'inventory.backdated_document',
+          movementDate: '2020-01-01T00:00:00.000Z',
+          keys: [
+            {
+              warehouseId: 'wh-1',
+              latestMovementDate: '2026-01-20T00:00:00.000Z',
+            },
+            {
+              warehouseId: 'wh-2',
+              latestMovementDate: '2026-02-01T00:00:00.000Z',
+            },
+          ],
         },
       }),
     );

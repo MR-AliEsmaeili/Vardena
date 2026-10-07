@@ -67,9 +67,10 @@
  *    and the uncosted part of the quantity stays uncosted on the other side.
  *    A transfer therefore cannot create or destroy inventory value — the
  *    failure mode a quantity-only transfer would have introduced the moment
- *    this state table existed. Which warehouse's average a transfer SHOULD
- *    use when the two differ is the open modelling question (OQ-67); moving
- *    the source's own value is the only answer that conserves it.
+ *    this state table existed. Which warehouse's average a transfer uses when
+ *    the two differ was OQ-67, decided 2026-10-06 (PDR-08 OD-TRF-01…03,
+ *    source-side valuation); moving the source's own value is what conserves
+ *    it, and the destination's divergence afterwards is intended.
  *
  * 7. **A reversal undoes the original's value exactly.** Not the current
  *    average: a correction must leave the pool as if the original had never

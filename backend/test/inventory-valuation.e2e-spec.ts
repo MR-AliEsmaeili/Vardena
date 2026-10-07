@@ -55,7 +55,11 @@ import { createTestApp } from './support/test-app.js';
  *      audited, and idempotent;
  *   5. money is a separate authority: a user without `Valuation.View` reads
  *      the same movements with the monetary fields blanked;
- *   6. none of it crosses an organization boundary.
+ *   6. a backdated transfer is valued by the COUPLED two-key replay (C-59C):
+ *      the pair is confirmed first, needs the valuation authority, and the
+ *      destination's later movements are recomputed around the value the
+ *      source position carried ON THE TRANSFER'S DATE;
+ *   7. none of it crosses an organization boundary.
  *
  * Real row locks stay with the opt-in live suite; everything asserted here
  * is behaviour the in-memory doubles reproduce faithfully (they run the same
@@ -92,6 +96,9 @@ describe('Inventory valuation (e2e)', () => {
     denserThanLimitItemId: '',
     overlapItemId: '',
     uncostedReceiptId: '',
+    replayItemId: '',
+    replayDestinationIssueId: '',
+    rollbackItemId: '',
   };
 
   function prismaStub(): PrismaService {
@@ -362,6 +369,28 @@ describe('Inventory valuation (e2e)', () => {
       })
       .expect(201);
     state.overlapItemId = overlapItem.body.id as string;
+    const replayItem = await root
+      .post('/api/v1/inventory/items')
+      .send({
+        organizationId: state.orgId,
+        code: 'ITM-VAL-9',
+        name: 'Backdated Transfer Bolt',
+        itemKind: 'goods',
+        baseUnitId: state.unitId,
+      })
+      .expect(201);
+    state.replayItemId = replayItem.body.id as string;
+    const rollbackItem = await root
+      .post('/api/v1/inventory/items')
+      .send({
+        organizationId: state.orgId,
+        code: 'ITM-VAL-10',
+        name: 'Unpaired Leg Bolt',
+        itemKind: 'goods',
+        baseUnitId: state.unitId,
+      })
+      .expect(201);
+    state.rollbackItemId = rollbackItem.body.id as string;
   });
 
   afterAll(async () => {
@@ -1606,26 +1635,317 @@ describe('Inventory valuation (e2e)', () => {
 
   // ---- 6. transfers and reversals keep the two ledgers in step --------------
 
-  it('detects a backdated transfer and refuses to invent a transfer repricing rule while OQ-67 is open', async () => {
+  // The coupled replay's seeded history (C-59C), shared by the three tests
+  // below — the two refusals must not write anything, so the successful
+  // transfer can run on the seeded state:
+  //
+  //   source (WH1):      10 @ 1000 (Jan 10) + 10 @ 3000 (Jan 20) → 100/unit
+  //   destination (WH2): 20 @ 1000 (Jan  5), issue 12 (Feb 1)     →  50/unit
+  //
+  // A transfer dated Jan 15 is therefore backdated on BOTH keys, and its
+  // correct value (5 × 100 = 500) is only reachable by replaying the source
+  // history as it stood on Jan 15.
+  async function seedCoupledReplayHistory(): Promise<void> {
+    await post({
+      operationKey: 'val-replay-src-1',
+      itemId: state.replayItemId,
+      movementType: 'inbound',
+      quantity: '10',
+      totalCost: '1000.00',
+      movementDate: '2026-01-10T00:00:00.000Z',
+    }).expect(201);
+    await post({
+      operationKey: 'val-replay-dst-1',
+      itemId: state.replayItemId,
+      warehouseId: state.secondWarehouseId,
+      movementType: 'inbound',
+      quantity: '20',
+      totalCost: '1000.00',
+      movementDate: '2026-01-05T00:00:00.000Z',
+    }).expect(201);
+    await post({
+      operationKey: 'val-replay-src-2',
+      itemId: state.replayItemId,
+      movementType: 'inbound',
+      quantity: '10',
+      totalCost: '3000.00',
+      movementDate: '2026-01-20T00:00:00.000Z',
+    }).expect(201);
+    const issue = await post({
+      operationKey: 'val-replay-dst-2',
+      itemId: state.replayItemId,
+      warehouseId: state.secondWarehouseId,
+      movementType: 'outbound',
+      quantity: '12',
+      movementDate: '2026-02-01T00:00:00.000Z',
+    }).expect(201);
+    state.replayDestinationIssueId = issue.body.id as string;
+  }
+
+  it('refuses a backdated transfer that is not confirmed, naming both warehouses', async () => {
+    await seedCoupledReplayHistory();
+
     const rejected = await root
       .post('/api/v1/inventory/transfers')
       .send({
         organizationId: state.orgId,
-        operationKey: 'val-backdated-transfer-blocked',
+        operationKey: 'val-backdated-transfer-unconfirmed',
         sourceWarehouseId: state.warehouseId,
         destinationWarehouseId: state.secondWarehouseId,
-        itemId: state.itemId,
-        quantity: '1',
+        itemId: state.replayItemId,
+        quantity: '5',
         unitId: state.unitId,
-        movementDate: '2020-01-01T00:00:00.000Z',
+        movementDate: '2026-01-15T00:00:00.000Z',
       })
       .expect(422);
 
-    expect(rejected.body.details.code).toBe(
-      'inventory.backdated_transfer_valuation_unresolved',
+    expect(rejected.body.details.code).toBe('inventory.backdated_document');
+    expect(rejected.body.details.keys).toEqual([
+      {
+        warehouseId: state.warehouseId,
+        latestMovementDate: '2026-01-20T00:00:00.000Z',
+      },
+      {
+        warehouseId: state.secondWarehouseId,
+        latestMovementDate: '2026-02-01T00:00:00.000Z',
+      },
+    ]);
+    // Nothing moved: the quantity ledger is exactly as seeded.
+    const source = await stateOf(state.warehouseId, state.replayItemId).expect(
+      200,
     );
-    expect(rejected.body.details.source.backdated).toBe(true);
-    expect(rejected.body.details.source.affectedMovements).toBeGreaterThan(0);
+    expect(source.body.valuedQuantity).toBe('20');
+    expect(source.body.totalValue).toBe('4000');
+  });
+
+  it('requires the valuation authority before a confirmed backdated transfer may restate', async () => {
+    const denied = await operator
+      .post('/api/v1/inventory/transfers')
+      .send({
+        organizationId: state.orgId,
+        operationKey: 'val-backdated-transfer-denied',
+        sourceWarehouseId: state.warehouseId,
+        destinationWarehouseId: state.secondWarehouseId,
+        itemId: state.replayItemId,
+        quantity: '5',
+        unitId: state.unitId,
+        movementDate: '2026-01-15T00:00:00.000Z',
+        backdateConfirmed: true,
+      })
+      .expect(403);
+
+    expect(String(denied.body.message)).toMatch(/permission/i);
+    // Still nothing written.
+    const destination = await stateOf(
+      state.secondWarehouseId,
+      state.replayItemId,
+    ).expect(200);
+    expect(destination.body.valuedQuantity).toBe('8');
+    expect(destination.body.totalValue).toBe('400');
+  });
+
+  it('values a confirmed backdated transfer by replaying BOTH keys together', async () => {
+    const before = await root
+      .get(`/api/v1/inventory/movements/${state.replayDestinationIssueId}`)
+      .query({ organizationId: state.orgId })
+      .expect(200);
+    expect(before.body.totalCost).toBe('-600');
+
+    const posted = await root
+      .post('/api/v1/inventory/transfers')
+      .send({
+        organizationId: state.orgId,
+        operationKey: 'val-backdated-transfer-confirmed',
+        sourceWarehouseId: state.warehouseId,
+        destinationWarehouseId: state.secondWarehouseId,
+        itemId: state.replayItemId,
+        quantity: '5',
+        unitId: state.unitId,
+        movementDate: '2026-01-15T00:00:00.000Z',
+        backdateConfirmed: true,
+      })
+      .expect(201);
+
+    // Exactly value-neutral, and derived from the SOURCE position on the
+    // transfer's date (5 × 100), not from the destination's 50/unit average.
+    expect(posted.body.outLeg.totalCost).toBe('-500');
+    expect(posted.body.inLeg.totalCost).toBe('500');
+    expect(posted.body.outLeg.valuationSource).toBe('transfer');
+
+    const source = await stateOf(state.warehouseId, state.replayItemId).expect(
+      200,
+    );
+    expect(source.body.valuedQuantity).toBe('15');
+    expect(source.body.uncostedQuantity).toBe('0');
+    expect(source.body.totalValue).toBe('3500');
+
+    const destination = await stateOf(
+      state.secondWarehouseId,
+      state.replayItemId,
+    ).expect(200);
+    expect(destination.body.valuedQuantity).toBe('13');
+    expect(destination.body.totalValue).toBe('780');
+
+    // The destination's later issue was recomputed around the arriving
+    // value: 12 of the 25 units now cost 720, not the 600 the incremental
+    // path had written.
+    const restated = await root
+      .get(`/api/v1/inventory/movements/${state.replayDestinationIssueId}`)
+      .query({ organizationId: state.orgId })
+      .expect(200);
+    expect(restated.body.totalCost).toBe('-720');
+    expect(restated.body.valuationRunId).not.toBeNull();
+  });
+
+  it('rolls BOTH keys back when the replay may not resolve an unpaired leg of another transfer', async () => {
+    // The destination key's canonical history contains an UNVALUED
+    // `transfer_out` leg of ANOTHER pair, positioned after the new transfer's
+    // date. Once the new pair's value arrives before it (a later-dated
+    // outbound, entered under an explicit "skip", empties the uncosted pool),
+    // that stored leg would consume valued stock — which a replay may not do
+    // on ONE key (OD-TRF-09). The coupled replay must refuse by name, and
+    // because the whole command is ONE transaction, neither key is left
+    // restated and no leg of the new transfer is written.
+    const thirdWarehouse = (
+      await root
+        .post('/api/v1/inventory/warehouses')
+        .send({
+          organizationId: state.orgId,
+          branchId: state.branchId,
+          code: 'WH3',
+          name: 'Warehouse 3',
+        })
+        .expect(201)
+    ).body.id as string;
+
+    // Source (WH1): 10 valued units at 100/unit, dated before the transfer.
+    await post({
+      operationKey: 'val-rollback-src-1',
+      itemId: state.rollbackItemId,
+      movementType: 'inbound',
+      quantity: '10',
+      totalCost: '1000.00',
+      movementDate: '2025-12-30T00:00:00.000Z',
+    }).expect(201);
+    // Destination (WH2): 10 UNCOSTED units (Jan 1) …
+    await post({
+      operationKey: 'val-rollback-dst-1',
+      itemId: state.rollbackItemId,
+      warehouseId: state.secondWarehouseId,
+      movementType: 'inbound',
+      quantity: '10',
+      movementDate: '2026-01-01T00:00:00.000Z',
+    }).expect(201);
+    // … the unpaired leg of a DIFFERENT pair (Jan 10), posted unvalued
+    // because that key held no valued stock at all …
+    const unpaired = await root
+      .post('/api/v1/inventory/transfers')
+      .send({
+        organizationId: state.orgId,
+        operationKey: 'val-rollback-unpaired',
+        sourceWarehouseId: state.secondWarehouseId,
+        destinationWarehouseId: thirdWarehouse,
+        itemId: state.rollbackItemId,
+        quantity: '5',
+        unitId: state.unitId,
+        movementDate: '2026-01-10T00:00:00.000Z',
+      })
+      .expect(201);
+    expect(unpaired.body.outLeg.valuationStatus).toBe('unvalued');
+    await post({
+      operationKey: 'val-rollback-dst-2',
+      itemId: state.rollbackItemId,
+      warehouseId: state.secondWarehouseId,
+      movementType: 'inbound',
+      quantity: '20',
+      movementDate: '2026-01-20T00:00:00.000Z',
+    }).expect(201);
+    // … and a later-dated outbound (Jan 5) entered with an explicit "skip":
+    // in the canonical order it drains the uncosted pool before the unpaired
+    // leg is replayed.
+    await post({
+      operationKey: 'val-rollback-dst-3',
+      itemId: state.rollbackItemId,
+      warehouseId: state.secondWarehouseId,
+      movementType: 'outbound',
+      quantity: '23',
+      movementDate: '2026-01-05T00:00:00.000Z',
+      backdateConfirmed: true,
+      repricing: 'skip',
+    }).expect(201);
+
+    const sourceBefore = await stateOf(
+      state.warehouseId,
+      state.rollbackItemId,
+    ).expect(200);
+    const destinationBefore = await stateOf(
+      state.secondWarehouseId,
+      state.rollbackItemId,
+    ).expect(200);
+    const movementsBefore = await root
+      .get('/api/v1/inventory/movements')
+      .query({
+        organizationId: state.orgId,
+        itemId: state.rollbackItemId,
+        page: 1,
+        pageSize: 20,
+      })
+      .expect(200);
+
+    const refused = await root
+      .post('/api/v1/inventory/transfers')
+      .send({
+        organizationId: state.orgId,
+        operationKey: 'val-rollback-transfer',
+        sourceWarehouseId: state.warehouseId,
+        destinationWarehouseId: state.secondWarehouseId,
+        itemId: state.rollbackItemId,
+        quantity: '5',
+        unitId: state.unitId,
+        movementDate: '2026-01-07T00:00:00.000Z',
+        backdateConfirmed: true,
+      })
+      .expect(422);
+
+    expect(refused.body.details.code).toBe(
+      'inventory.transfer_replay_unpaired_leg',
+    );
+    expect(refused.body.details.movementId).toBe(unpaired.body.outLeg.id);
+    expect(refused.body.details.transferId).toBe(unpaired.body.transferId);
+    // The sibling key is not part of this replay and is not guessed at.
+    expect(refused.body.details.counterpartWarehouseId).toBeNull();
+
+    // Neither key moved a single number, and the failed command wrote no leg
+    // of its own: no restatement survives a refusal.
+    const sourceAfter = await stateOf(
+      state.warehouseId,
+      state.rollbackItemId,
+    ).expect(200);
+    const destinationAfter = await stateOf(
+      state.secondWarehouseId,
+      state.rollbackItemId,
+    ).expect(200);
+    expect(sourceAfter.body).toEqual(sourceBefore.body);
+    expect(destinationAfter.body).toEqual(destinationBefore.body);
+    const movementsAfter = await root
+      .get('/api/v1/inventory/movements')
+      .query({
+        organizationId: state.orgId,
+        itemId: state.rollbackItemId,
+        page: 1,
+        pageSize: 20,
+      })
+      .expect(200);
+    expect(movementsAfter.body.total).toBe(movementsBefore.body.total);
+    expect(
+      (movementsAfter.body.items as Array<Record<string, unknown>>).map(
+        (row) => row['id'],
+      ),
+    ).toEqual(
+      (movementsBefore.body.items as Array<Record<string, unknown>>).map(
+        (row) => row['id'],
+      ),
+    );
   });
 
   it('moves value with a transfer without inventing or destroying any', async () => {

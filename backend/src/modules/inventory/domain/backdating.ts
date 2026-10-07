@@ -90,6 +90,34 @@ export function backdateConfirmationMessage(
   );
 }
 
+/**
+ * The transfer's version of question 1 (C-59C): the SAME acknowledgement code
+ * (`inventory.backdated_document`) and the same measured facts, phrased for a
+ * document that touches TWO keys, because both histories are restated by the
+ * coupled replay and the operator is entitled to see both.
+ */
+export function transferBackdateConfirmationMessage(params: {
+  movementDate: Date;
+  keys: readonly {
+    warehouseId: string;
+    latestMovementDate: Date | null;
+  }[];
+}): string {
+  const keys = params.keys
+    .map(
+      (key) =>
+        `warehouse "${key.warehouseId}" (latest movement ` +
+        `${key.latestMovementDate?.toISOString() ?? 'none'})`,
+    )
+    .join(' and ');
+  return (
+    `The transfer is dated ${params.movementDate.toISOString()}, earlier than the latest movement on ` +
+    `${keys}. Valuing it correctly restates both warehouses from that date onward, so the backdated ` +
+    'transfer must be explicitly confirmed. There is no per-warehouse repricing choice: the transfer ' +
+    'pair is valued together, source first, and the destination receives exactly the source value.'
+  );
+}
+
 export function repricingChoiceMessage(): string {
   return (
     'A backdated posting requires an explicit repricing choice: "recalculate" to reprice this item and ' +

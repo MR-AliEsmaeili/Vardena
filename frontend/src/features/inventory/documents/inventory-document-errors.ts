@@ -95,7 +95,10 @@ const SUBCODE_MESSAGES: Record<string, string> = {
   'inventory.document.transfer_warehouses_required':
     t.inventoryDocuments.sourceWarehouseRequired,
   'inventory.insufficient_stock': t.inventory.errors.insufficientStock,
-  'inventory.backdated_transfer_valuation_unresolved':
+  // A TRANSFER document's backdating refusal shares the code every document
+  // uses (C-59C); the confirmation dialog normally handles it before this
+  // map, and the copy below is the safe fallback for a transfer.
+  'inventory.backdated_document':
     t.inventory.errors.backdatedTransferUnresolved,
 };
 

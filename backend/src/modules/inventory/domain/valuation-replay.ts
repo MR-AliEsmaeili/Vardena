@@ -120,23 +120,47 @@ export class UnsupportedValuationMethodError extends Error {
  * (the source key held no valued stock when the transfer moved it). Valuing
  * the source leg alone leaks the moved value out of the organization: the
  * paired destination leg lives on another key and is never revalued by this
- * replay. The coupled two-key replay that would resolve both legs together
- * is the C-59C gap (OD-TRF-08/09), so until it exists the replay REFUSES
- * with this named error instead of silently breaking organization-level value
- * conservation (OD-TRF-01: the pair is exactly value-neutral).
+ * replay. A single-key command therefore REFUSES with this named error instead
+ * of silently breaking organization-level value conservation (OD-TRF-01: the
+ * pair is exactly value-neutral).
+ *
+ * Since C-59C the caller that CAN resolve the pair — the coupled two-key
+ * replay (`domain/transfer-replay.ts`), run by the transfer command itself —
+ * does not go through this guard for the pair it is posting. The guard still
+ * fires for a STORED leg of some OTHER transfer: its counterpart key is not
+ * being replayed, so the refusal (and its remedy: price both keys together)
+ * stands.
  */
 export class UnvaluedTransferReplayError extends Error {
   readonly movementId: string;
+  /** The transfer whose leg could not be resolved, when the caller knows it. */
+  readonly transferId: string | null;
+  /** The key the OTHER leg of that transfer lives on, when known. */
+  readonly counterpartWarehouseId: string | null;
 
-  constructor(movementId: string) {
+  constructor(
+    movementId: string,
+    context: {
+      transferId?: string | null | undefined;
+      counterpartWarehouseId?: string | null | undefined;
+    } = {},
+  ) {
+    const transferId = context.transferId ?? null;
+    const counterpartWarehouseId = context.counterpartWarehouseId ?? null;
     super(
       `Movement "${movementId}" is an unvalued transfer leg; repricing it on this ` +
-        'warehouse alone would strand the moved value on the other side of the transfer. ' +
-        'Assign a cost to the transferred stock (or price the key before the transfer date) ' +
-        'so both legs carry their value. Coupled two-key transfer repricing is not implemented yet.',
+        'warehouse alone would strand the moved value on the other side of the transfer.' +
+        (transferId === null ? '' : ` The transfer is "${transferId}".`) +
+        (counterpartWarehouseId === null
+          ? ''
+          : ` Its paired leg lives on warehouse "${counterpartWarehouseId}".`) +
+        ' Price BOTH keys of that transfer together (a Pricing Operation covering both' +
+        ' warehouses), or assign the transferred stock a cost, so both legs carry their value.',
     );
     this.name = 'UnvaluedTransferReplayError';
     this.movementId = movementId;
+    this.transferId = transferId;
+    this.counterpartWarehouseId = counterpartWarehouseId;
   }
 }
 
@@ -201,33 +225,73 @@ export function replay(facts: readonly ReplayFact[]): ReplayResult {
   const movements: ReplayedMovement[] = [];
   let provisional = false;
   for (const fact of facts) {
-    // Transfer-leg guard (C-59 hardening): a transfer leg that was posted
-    // `unvalued` (the source held no valued stock) must stay unvalued in a
-    // single-key replay. Valuing it here would move value out of this key's
-    // pool while the paired leg on the other key receives nothing — an
-    // organization-level value leak. The coupled two-key replay that could
-    // resolve both legs together is the C-59C gap (OD-TRF-08/09), so the
-    // replay fails closed with a named error instead.
-    if (
-      fact.movementType === 'transfer_out' &&
-      fact.knownValue === null &&
-      outboundConsumesValuedStock(position, magnitudeOf(fact.baseQuantity))
-    ) {
-      throw new UnvaluedTransferReplayError(fact.id);
-    }
+    assertUnpairedTransferLegIsReplayable(position, fact);
     const strategy = valuationStrategyFor(fact.method, fact.id);
-    const outcome = strategy(position, {
-      movementType: fact.movementType,
-      baseQuantity: fact.baseQuantity,
-      knownValue: fact.knownValue,
-      knownValueSource: fact.knownValueSource,
-      backdated: false,
-    });
+    const outcome = strategy(position, toStrategyInput(fact));
     position = outcome.position;
     provisional ||= outcome.valuation.status === 'provisional';
     movements.push({ id: fact.id, valuation: outcome.valuation });
   }
   return { position, movements, provisional };
+}
+
+/**
+ * The transfer-leg guard (C-59 hardening), shared by every replay driver —
+ * the single-key `replay()` above and the coupled two-key driver
+ * (`domain/transfer-replay.ts`), so the two can never disagree about which
+ * stored legs a replay may not resolve on its own.
+ *
+ * A stored `transfer_out` leg with no value of its own that would consume
+ * valued stock is refused: the value it would move lives on this key, and the
+ * paired leg on the other key is not part of THIS replay. The caller that
+ * holds both keys (the coupled transfer replay) applies its own pair instead
+ * and never calls this for it.
+ *
+ * `context` is the movement's own transfer identity, when the caller holds the
+ * row that carries it: the coupled replay does (its entries come from the
+ * stored rows), the single-key replay does not (it folds facts only) — in
+ * which case the refusal still names the blocking movement id.
+ */
+export function assertUnpairedTransferLegIsReplayable(
+  position: ValuationPosition,
+  fact: ReplayFact,
+  context: {
+    transferId?: string | null | undefined;
+    counterpartWarehouseId?: string | null | undefined;
+  } = {},
+): void {
+  if (
+    fact.movementType === 'transfer_out' &&
+    fact.knownValue === null &&
+    outboundConsumesValuedStock(position, magnitudeOf(fact.baseQuantity))
+  ) {
+    throw new UnvaluedTransferReplayError(fact.id, context);
+  }
+}
+
+/**
+ * The strategy input a STORED fact replays as.
+ *
+ * Shared by both drivers for one reason: the coupled transfer replay must
+ * compute exactly what a single-key recalculation computes for the movements
+ * it does not couple, so "how a stored fact is dispatched" exists once.
+ *
+ * `backdated` is cleared — the facts are in order by definition, and valuing a
+ * late document as if it had arrived on time is precisely what a replay is
+ * for. NOTE (pre-existing, recorded in
+ * `docs/tasks/c-59c-transfer-coupled-backdated-replay.md` §10): this dispatch
+ * mirrors the single-key replay's historical shape and does not propagate
+ * `forceUnvalued`; a fix belongs to a separate change because it alters
+ * recalculation behaviour for basis-linked unvalued purchase returns.
+ */
+export function toStrategyInput(fact: ReplayFact): ValuationFact {
+  return {
+    movementType: fact.movementType,
+    baseQuantity: fact.baseQuantity,
+    knownValue: fact.knownValue,
+    knownValueSource: fact.knownValueSource,
+    backdated: false,
+  };
 }
 
 /** `|baseQuantity|` — the magnitude the strategy consumes. */

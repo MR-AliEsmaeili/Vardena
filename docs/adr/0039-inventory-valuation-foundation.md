@@ -181,6 +181,11 @@ allowed to touch**.
   `inventory.backdated_transfer_valuation_unresolved` while OQ-67 remains
   open. This is a fail-closed boundary: C-57 does not invent a paired transfer
   repricing convention or silently report a stale transfer valuation as current.
+  **(2026-10-07, C-59C)** the boundary is lifted once, and only where the
+  convention now exists: PDR-08 §2 decided source-side valuation (OD-TRF-01…09),
+  so a backdated transfer is confirmed through the OD-VAL-10 acknowledgement
+  and valued by the coupled two-key replay; the retired code above is emitted by
+  no path. Every other failure mode of the replay still refuses by name.
 
 ## Consequences
 
