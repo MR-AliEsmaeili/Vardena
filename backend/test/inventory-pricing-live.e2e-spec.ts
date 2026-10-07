@@ -1412,5 +1412,76 @@ describe.skipIf(DATABASE_URL === undefined)(
       // (The reverse-after-accounting-post blocker is proven by its own
       // dedicated test above, on a run that actually stamped movements.)
     });
+
+    it('keeps a basis-linked unvalued purchase return unvalued through a recalculation (OD-RET-02/04)', async () => {
+      const warehouseId = privateWarehouses[14]!;
+
+      // Basis receipt WITHOUT a cost, an issue that consumes exactly those
+      // uncosted units, then a costed receipt: the return's quantity will
+      // come out of the VALUED pool without carrying value.
+      const basisReceipt = await receiveStock(itemAId, '10', warehouseId);
+      const basisMovement = (
+        await movementsOfDocument(basisReceipt['id'] as string)
+      )[0]!;
+      expect(basisMovement.valuationStatus).toBe('unvalued');
+      await issueStock(itemAId, '10', warehouseId);
+      await receiveStock(itemAId, '5', warehouseId, '500');
+
+      const purchaseReturn = await createDocument({
+        kind: 'purchase_return',
+        warehouseId,
+        lines: [
+          {
+            itemId: itemAId,
+            quantity: '4',
+            unitId: unitAId,
+            basisMovementId: basisMovement.id,
+          },
+        ],
+      });
+      await finalize(purchaseReturn['id'] as string);
+      const returnMovement = (
+        await movementsOfDocument(purchaseReturn['id'] as string)
+      )[0]!;
+      // The posting path already refuses to invent a value…
+      expect(returnMovement.valuationStatus).toBe('unvalued');
+      expect(returnMovement.totalCost).toBeNull();
+      expect(returnMovement.valuationSource).toBe('return_basis');
+      // …and honestly flags the key, because the exit consumed valued stock.
+      const afterPost = await stateRow(warehouseId, itemAId);
+      expect(afterPost.status).toBe('stale');
+      expect(dec(afterPost.valuedQuantity, 4)).toBe('1.0000');
+      expect(dec(afterPost.totalValue, 2)).toBe('100.00');
+
+      // A recalculation replays the whole key and must reproduce that fact
+      // EXACTLY: the same unvalued exit, nothing restated, the key still
+      // honestly stale, and every quantity untouched.
+      const recalculation = await operator
+        .post('/api/v1/inventory/valuation/recalculations')
+        .send({
+          organizationId: orgAId,
+          operationKey: nextOperationKey('recalc'),
+          warehouseId,
+          itemId: itemAId,
+        })
+        .expect(201);
+      const run = recalculation.body['run'] as Record<string, unknown>;
+      expect(run['movementsExamined']).toBe(4);
+      expect(run['movementsRevalued']).toBe(0);
+
+      const replayed = (
+        await movementsOfDocument(purchaseReturn['id'] as string)
+      )[0]!;
+      expect(replayed.valuationStatus).toBe('unvalued');
+      expect(replayed.totalCost).toBeNull();
+      expect(replayed.valuationSource).toBe('return_basis');
+
+      const afterReplay = await stateRow(warehouseId, itemAId);
+      expect(afterReplay.status).toBe('stale');
+      expect(dec(afterReplay.valuedQuantity, 4)).toBe('1.0000');
+      expect(dec(afterReplay.uncostedQuantity, 4)).toBe('0.0000');
+      expect(dec(afterReplay.totalValue, 2)).toBe('100.00');
+      expect(await onHand(warehouseId, itemAId)).toBe(1);
+    });
   },
 );

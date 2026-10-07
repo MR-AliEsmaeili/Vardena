@@ -281,6 +281,14 @@ Implemented in this slice (all names are real files on the branch):
   `api/dto/inventory-pricing.dto.ts` (NEW) — `POST /v1/inventory/pricing/runs`,
   `POST …/runs/reverse`, `GET …/runs`, `GET …/runs/:id`; module wiring in
   `inventory.module.ts`.
+- **Post-merge correction (2026-10-07,**
+  [`post-c-59-force-unvalued-replay-propagation.md`](./post-c-59-force-unvalued-replay-propagation.md)**):**
+  the sentence above was true of `toReplayFact` and false of the replay as a
+  whole — the shared fact→strategy dispatch (`toStrategyInput`) dropped
+  `forceUnvalued`, so a recalculation re-derived a basis-linked unvalued
+  purchase return from the average. Fixed in the shared dispatch; the
+  `return_basis` exit is now preserved verbatim by every replay, as §4.1
+  always claimed it was.
 - **Database**: migration `20261008000000_inventory_returns_and_pricing_runs`
   (additive only: `basis_movement_id` + org/basis index, the two
   `inventory_pricing_run*` tables; RESTRICT everywhere except outcome→run

@@ -1888,3 +1888,41 @@ e2e spec asserting it).
   exposed the FK-order defect (37595239576).
 - **Record:** `docs/tasks/c-59c-transfer-coupled-backdated-replay.md`
   (§9 carries the evidence and §9.2 the implementation report).
+
+## 26. Post-C-59 Valuation Correctness — `forceUnvalued` Replay Propagation (2026-10-07)
+
+- **Defect fixed (branch `arena/f4b20873-vardena`):** a recalculation
+  re-derived a **basis-linked unvalued purchase return** from the current
+  Moving Weighted Average. The posting path records the exit as
+  `valuation_status = 'unvalued'`, `total_cost = NULL`,
+  `valuation_source = 'return_basis'` (OD-RET-02/04) and `toReplayFact` rebuilt
+  that fact — but the replay's shared fact→strategy dispatch
+  (`toStrategyInput` in `domain/valuation-replay.ts`) dropped `forceUnvalued`,
+  so every replay driver — the one-key `Recalculate`, the document backdating
+  path (`repricing: "recalculate"`), the Pricing Operation batch and the
+  coupled backdated-transfer replay — rewrote the row as
+  `valued`/`average_cost`. After the first recalculation the intent was
+  unrecoverable from the stored row. The defect was recorded as a pre-existing,
+  out-of-scope observation in
+  [`docs/tasks/c-59c-transfer-coupled-backdated-replay.md`](docs/tasks/c-59c-transfer-coupled-backdated-replay.md)
+  §10 and contradicted the documented contract in
+  [`docs/tasks/c-59-returns-pricing-execution-report.md`](docs/tasks/c-59-returns-pricing-execution-report.md)
+  §4.1 ("preserved verbatim by every replay").
+- **Fix:** the shared dispatch propagates `forceUnvalued` verbatim (typed
+  options object, the repository's conditional-spread convention), and both
+  drivers now keep the key stale from the strategy's own `marksStale` instead
+  of comparing `status === 'provisional'` — the forced exit that consumed
+  valued stock is the only case where the two disagree, and the posting path
+  already flags that key. No schema, migration, API, permission, ledger,
+  ordering or MWA-arithmetic change.
+- **Tests:** a domain suite for the flag (exit stays `unvalued`; identical
+  quantities and canonical order; the key stays stale; no stale flag when
+  nothing left the valued pool; absent/`false` flag keeps the average-derived
+  behaviour), the coupled driver's identical answer, a new data-chain spec
+  (`buildReplayFacts` → `replay` → `valuationChanged` reports no write), and a
+  live-PostgreSQL recalculation of a real purchase-return key asserting
+  `movementsRevalued = 0`, a `stale` state and unchanged on-hand.
+- **Verified locally:** the three touched unit specs, `typecheck`, `lint`,
+  `format:check`, `git diff --check`. Heavy verification (live PostgreSQL e2e,
+  migration rehearsal) stays with CI under the standing local-test policy.
+- **Record:** [`docs/tasks/post-c-59-force-unvalued-replay-propagation.md`](docs/tasks/post-c-59-force-unvalued-replay-propagation.md).

@@ -199,7 +199,17 @@ export interface ReplayedMovement {
 export interface ReplayResult {
   position: ValuationPosition;
   movements: ReplayedMovement[];
-  /** True when any replayed row is still provisional — the key stays stale. */
+  /**
+   * True when the replay leaves the key's stored value inconsistent — the
+   * key stays stale after it. The authority is the STRATEGY's own
+   * `marksStale`, never a status comparison: a row can be `unvalued` and
+   * still leave the key inconsistent — the basis-linked unvalued purchase
+   * return that consumed valued stock attributes no value to its own row,
+   * so the movement sum no longer matches the position (OD-RET-02/04,
+   * exactly as on the posting path). A replay re-establishes consistency;
+   * it may only conclude "still inconsistent" from what the strategy itself
+   * reports for its facts.
+   */
   provisional: boolean;
 }
 
@@ -229,7 +239,13 @@ export function replay(facts: readonly ReplayFact[]): ReplayResult {
     const strategy = valuationStrategyFor(fact.method, fact.id);
     const outcome = strategy(position, toStrategyInput(fact));
     position = outcome.position;
-    provisional ||= outcome.valuation.status === 'provisional';
+    // The key stays stale when the STRATEGY says it does — `marksStale` is
+    // its own answer, not a status comparison. In a replay `backdated` is
+    // always false, so the one case where it differs from "some row is
+    // `provisional`" is the basis-linked unvalued purchase return that
+    // consumed valued stock without attributing value to its own row: the
+    // key must stay stale rather than be reported consistent (OD-RET-02/04).
+    provisional ||= outcome.marksStale;
     movements.push({ id: fact.id, valuation: outcome.valuation });
   }
   return { position, movements, provisional };
@@ -278,11 +294,15 @@ export function assertUnpairedTransferLegIsReplayable(
  *
  * `backdated` is cleared — the facts are in order by definition, and valuing a
  * late document as if it had arrived on time is precisely what a replay is
- * for. NOTE (pre-existing, recorded in
- * `docs/tasks/c-59c-transfer-coupled-backdated-replay.md` §10): this dispatch
- * mirrors the single-key replay's historical shape and does not propagate
- * `forceUnvalued`; a fix belongs to a separate change because it alters
- * recalculation behaviour for basis-linked unvalued purchase returns.
+ * for.
+ *
+ * `forceUnvalued` is propagated VERBATIM: it is part of what the stored fact
+ * carries on its own authority. A basis-linked purchase return whose receipt
+ * basis carried no value was posted as an unvalued exit, deriving no value
+ * from the average (OD-RET-02/04); `toReplayFact` rebuilds that fact from the
+ * stored row, and a replay must re-apply exactly that exit. Dropping the flag
+ * here would silently re-derive the exit from the current average — the
+ * recalculation inventing the value the posting path refused to invent.
  */
 export function toStrategyInput(fact: ReplayFact): ValuationFact {
   return {
@@ -291,6 +311,7 @@ export function toStrategyInput(fact: ReplayFact): ValuationFact {
     knownValue: fact.knownValue,
     knownValueSource: fact.knownValueSource,
     backdated: false,
+    ...(fact.forceUnvalued === true ? { forceUnvalued: true } : {}),
   };
 }
 

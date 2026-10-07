@@ -402,3 +402,50 @@ describe('the driver is a fold, not a second implementation', () => {
     expect(replayed.in.status).toBe('unvalued');
   });
 });
+
+describe("the coupled driver applies a stored fact's forceUnvalued flag (OD-RET-02/04)", () => {
+  it('keeps a stored unvalued purchase return unvalued on its own key, and keeps THAT key stale', () => {
+    // A purchase return is not a transfer fact, but this driver replays BOTH
+    // keys' whole histories — so a stored one must get the same answer the
+    // single-key driver gives, through the same shared dispatch
+    // (`toStrategyInput`).
+    const forcedReturn: ReplayFact = {
+      id: 'pr-1',
+      method: MWA,
+      movementType: 'purchase_return',
+      baseQuantity: '-4',
+      knownValue: null,
+      knownValueSource: 'return_basis',
+      forceUnvalued: true,
+    };
+
+    const replayed = replayCoupledTransfer({
+      entries: [
+        entry('source', 1, receipt('s1', '10', null)),
+        entry('source', 2, issue('s2', '10')),
+        entry('source', 3, receipt('s3', '5', '500.00')),
+        entry('source', 4, forcedReturn),
+        entry('destination', 1, receipt('d1', '4', '400.00')),
+      ],
+      transfer: pair(10, '1'),
+    });
+
+    // The exit carries no value and no derived one — 4 × 100 is never
+    // invented for it.
+    expect(replayed.sourceValuations[3]?.valuation).toEqual({
+      status: 'unvalued',
+      totalCost: null,
+      source: 'return_basis',
+      unvaluedReason: 'no_cost_supplied',
+    });
+    // The source key stays honestly inconsistent; the destination key, whose
+    // own facts are all preserve-or-average, does not.
+    expect(replayed.provisional).toEqual({
+      source: true,
+      destination: false,
+    });
+    // The pair still moves its value out of whatever the source holds.
+    expect(replayed.out.status).toBe('valued');
+    expect(replayed.in.totalCost).toBe('100');
+  });
+});

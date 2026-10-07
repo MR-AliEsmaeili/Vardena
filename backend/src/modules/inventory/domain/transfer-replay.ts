@@ -109,7 +109,12 @@ export interface CoupledTransferReplayResult {
   sourceValuations: ReplayedMovement[];
   /** Stored destination rows, in canonical order, with their replayed valuation. */
   destinationValuations: ReplayedMovement[];
-  /** True when a replayed row is still provisional — the key stays stale. */
+  /**
+   * True when the key's stored value is still inconsistent after the replay —
+   * the key stays stale. Driven by the strategy's own `marksStale`, so it
+   * covers both a `provisional` row and the unvalued exit that consumed
+   * valued stock (OD-RET-02/04); the two drivers cannot disagree.
+   */
   provisional: { source: boolean; destination: boolean };
 }
 
@@ -190,13 +195,17 @@ export function replayCoupledTransfer(params: {
       id: entry.fact.id,
       valuation: outcome.valuation,
     };
+    // The strategy's own `marksStale` keeps the key stale, exactly as in the
+    // single-key driver: a stored fact can be `unvalued` and still leave its
+    // key inconsistent (the basis-linked unvalued purchase return that
+    // consumed valued stock, OD-RET-02/04).
     if (entry.side === 'source') {
       source = outcome.position;
-      sourceProvisional ||= outcome.valuation.status === 'provisional';
+      sourceProvisional ||= outcome.marksStale;
       sourceValuations.push(replayed);
     } else {
       destination = outcome.position;
-      destinationProvisional ||= outcome.valuation.status === 'provisional';
+      destinationProvisional ||= outcome.marksStale;
       destinationValuations.push(replayed);
     }
   }

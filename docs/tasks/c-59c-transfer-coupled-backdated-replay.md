@@ -309,7 +309,8 @@ green on CI. See §9.1.
 **Residual risks / follow-ups (all recorded, none silent).** (1) the transfer
 form has no two-step backdate dialog yet — the backend refusal is additive and
 the existing mapping renders a safe message (UI follow-up); (2) the pre-existing
-single-key replay `forceUnvalued` defect is out of scope (§10); (3) an operator
+single-key replay `forceUnvalued` defect is out of scope of this slice and was
+fixed on 2026-10-07 (§10); (3) an operator
 holding both document-finalize and transfer-create rights can still post a
 confirmed backdated transfer by another route only through this same replay, so
 the permission gate is the single chokepoint; (4) the OQ-67 registry row and
@@ -329,6 +330,13 @@ every current-state doc were updated to C-59C.
   both drivers identical by construction, so the defect stays in ONE place and
   the coupled path cannot silently diverge from the single-key path. Fixing it
   changes C-59D recalculation behaviour and is out of this slice's scope.
+  **FIXED 2026-10-07 — [`post-c-59-force-unvalued-replay-propagation.md`](./post-c-59-force-unvalued-replay-propagation.md).**
+  The fix landed exactly where this note predicted it had to: in the shared
+  `toStrategyInput` dispatch, so BOTH drivers stopped dropping the flag at
+  once. The same change makes the drivers keep a key stale from the strategy's
+  own `marksStale` (the forced exit that consumed valued stock), which the
+  status comparison used here would also have discarded. The coupled-replay
+  behaviour of this slice is otherwise unchanged.
 - Frontend: the transfer form has no backdate confirmation dialog yet; the
   backend refusal is additive and the existing error mapping still renders a
   safe message. Wiring the two-step dialog for transfers is a UI follow-up.
