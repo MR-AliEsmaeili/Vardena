@@ -1998,3 +1998,7 @@ e2e spec asserting it).
 - **Documentation set:** PDR-09, ADR-0041, C-61 task package, OQ registry, this state record, ADR/product indexes, `.vardena` rules/context, architecture/module/accounting indexes, and domain-contract/analysis/blueprint/glossary/decision references are reconciled to the Owner decisions. Complete file list and actual lightweight-check/CI status belong in the C-61 completion report.
 
 **Implementation pending — C-61 is not C-62.**
+
+## 29. C-62 dependency and decision readiness (2026-10-07)
+
+Documentation-only post-C-61 merge analysis: [C-62 readiness package](docs/tasks/c-62-dependency-decision-readiness.md) classifies OQ-24/25/39/42/69/70/71/72 against a conditional first Receipt posting slice and prepares six unanswered Owner decision cards. No OQ is closed, no production posting authorized. Current Inventory `accounting_posted` flag is not an Accounting voucher reference; C-62 implementation remains gated by the package's hard blockers.
