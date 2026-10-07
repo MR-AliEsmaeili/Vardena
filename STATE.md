@@ -1925,4 +1925,8 @@ e2e spec asserting it).
 - **Verified locally:** the three touched unit specs, `typecheck`, `lint`,
   `format:check`, `git diff --check`. Heavy verification (live PostgreSQL e2e,
   migration rehearsal) stays with CI under the standing local-test policy.
+- **Verified in CI:** PR #128 — both jobs green on `caa0b31` (run
+  [37651803989](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37651803989)),
+  including unit tests, the live-PostgreSQL e2e suites and the migration
+  rehearsal.
 - **Record:** [`docs/tasks/post-c-59-force-unvalued-replay-propagation.md`](docs/tasks/post-c-59-force-unvalued-replay-propagation.md).

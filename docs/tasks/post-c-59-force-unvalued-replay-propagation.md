@@ -1,8 +1,10 @@
 # Post-C-59 — `forceUnvalued` propagation in the valuation replay
 
-Status: **IMPLEMENTED, locally verified; CI pending** (PR
+Status: **IMPLEMENTED, locally verified, CI green** (PR
 [#128](https://github.com/MR-AliEsmaeili/Vardena/pull/128), branch
-`arena/f4b20873-vardena`)
+`arena/f4b20873-vardena`; both jobs green on `caa0b31`, run
+[37651803989](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37651803989)
+— merged by the Product Owner)
 Date: 2026-10-07
 Baseline: `main` @ `0b36a07777ee1808959eb9032eb981047d4febe6` (merge of PR #127)
 Decision ids: PDR-08 OD-RET-02/03/04, PDR-05 OD-VAL-11/12/14
@@ -119,7 +121,11 @@ For the forced exit, a recalculation now reproduces the posting path exactly:
 
 Local verification (fast, targeted): the three touched unit specs above,
 `typecheck`, `lint`, `format:check`, `git diff --check`. The live-PostgreSQL
-suite runs only in CI, per the standing local-test policy.
+suite and the migration rehearsal run only in CI, per the standing local-test
+policy. CI re-ran everything on the change commit (`caa0b31`, run
+[37651803989](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37651803989)):
+unit tests, e2e including the live suites above, migration rehearsal and the
+frontend job — all green.
 
 ## 6. Remaining scope (recorded, not fixed here)
 
