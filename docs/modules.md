@@ -324,7 +324,10 @@ Remove`. No `Rbac.Role.Delete` (OQ-20).
 > Still genuinely absent in code: posting rules / automatic account mapping,
 > control roles, detail dimensions, cross-year opening carry-forward,
 > statutory/legal books, exports, print, a Reporting module, and any
-> source-module (Inventory/Sales/**Treasury**) posting trigger.
+> source-module posting trigger. **C-61 records the Owner-approved Inventory →
+> Accounting contract, but no production integration exists**; the future C-62
+> implementation remains gated by the listed OQs. Sales Accounting is not
+> authorized by this Inventory decision package.
 > **Treasury is deferred and out of MVP** — Accounting must not implement cash,
 > bank, payment, receipt, cheque or settlement behavior implicitly.
 
@@ -517,9 +520,11 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   and adds no endpoint, no permission, no event, no table and no state. There
   is deliberately **no Posting Engine** behind it: no posting rules, no account
   mapping, no control roles, no dimensions, no balances/reports, no
-  correction/reversal, no source-module trigger, no outbox/queue/worker — and
-  OQ-39…OQ-43 stay open (a cross-module caller would need §16.3 plus OQ-39's
-  delivery decision first, so the seam is provided, not exported, AR-07).
+  correction/reversal, no source-module trigger, no outbox/queue/worker. This was
+  the pre-C-61 state; C-61 / ADR-0041 now selects the synchronous Inventory public
+  contract, but the integration remains unimplemented. OQ-39 covers transaction and
+  failure semantics, not the primary mechanism; the source-module seam remains
+  separately gated and is not an exported integration yet (AR-07).
 - **Fiscal-calendar ownership moved here.** ADR-0020 §2 and the Organization entry
   gave the fiscal calendar to Organization; ADR-0026 §2 assigns financial areas,
   fiscal years and periods to Accounting (the module that enforces posting
@@ -527,11 +532,16 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   precedent that numbering went to Documents (ADR-0023) and workflow definitions
   to Workflow (ADR-0024). Accepted 2026-09-14 and implemented by Task 10.2, so
   this paragraph is now history, kept for the trail (AG-17).
-- **Consumes:** inventory/sales/purchasing/treasury facts **only** through the
-  source-posting contract (contract §16.3: scope, financial area, source
-  module/entity/id/operation, `operationKey`, business date, validated payload naming
-  accounts **or control roles**) — never another module's tables (AR-07/AR-16).
-  Event names it will consume are the source modules' own (ADR-0005).
+- **Consumes:** source contracts and Accounting mapping remain source-specific.
+  For Inventory, PO-01/03/04 require an explicitly approved Business Document and
+  Inventory-supplied business/valuation facts; Accounting chooses accounts and
+  constructs journal structure. The generic §16.3 composed-payload shape does not
+  authorize Inventory to choose accounts or journal lines. PO-09 approves operation
+  key + request hash semantics only; exact key scope/format and hash construction are
+  not decided. The primary internal call is the synchronous public application/domain
+  contract (ADR-0041 / PDR-09), not an event subscriber; no Inventory → Accounting
+  implementation exists and OQ-39 remains open for transaction/failure semantics.
+  Cross-module data access remains through public contracts only (AR-07/AR-16).
 - **API (implemented):** `/api/v1/{financial-areas,fiscal-years,accounting-periods}` —
   list (mandatory `organizationId`, pagination, filtering, sorting), get, create,
   patch (areas/years only — periods have no `Edit` code, so no update endpoint),
@@ -803,16 +813,19 @@ states/current,backdate-check,movements/:id/cost,recalculations}`. Events:
   another transfer, which the command may not resolve on its own). The
   retired `inventory.backdated_transfer_valuation_unresolved` code is emitted
   by no path; OQ-67 is Resolved (PDR-08 §2), and the former implementation
-  gap OD-TRF-09 is closed. **Still not implemented:** COGS/journal posting into Accounting
-  (OQ-39/OQ-42), returns costing (OD-VAL-19), landed cost, FIFO/LIFO/specific
-  identification, lot/serial-level valuation, **Receipt/Issue documents**
-  (C-51/C-52 — the OQ-54 lifecycle policy was decided 2026-10-05 (edit until
-  Accounting Post, then cancel/correct only; ADR-0040 Proposed), so these now
-  wait on their own contracts and OQ-13/OQ-26, not on OQ-54) and **any
-  Inventory UI** (candidate C-57 UI remains unbuilt). This
-  is an operational valuation slice, not a finished Inventory Accounting
-  capability. OQ-24 stays OPEN; ADR-0039 stays **Proposed** (PR #116 merged but
-  not Owner-accepted).
+  gap OD-TRF-09 is closed. **C-59 valuation/document flows are complete** for
+  Receipt, Issue, Transfer, Purchase Return, Sales Return and Reversal, including
+  Periodic Pricing, Reverse Pricing and concurrency hardening (see the C-59 reports
+  and PDR-08). **Still not implemented:** Inventory → Accounting posting, account
+  mapping, vouchers or journal lines; the C-61-approved integration is future
+  C-62 work, gated by OQ-24/25/39/42/72. The current `accounting_posted` Inventory
+  flag is not a GL posting. Key-level stale eligibility and post-Accounting-Post
+  valuation immutability have known gaps recorded in C-61; no production fix is
+  made here. OQ-69 remains open for valuation-history sufficiency; OQ-70 remains
+  open only for Purchase Return agreed-price variance policy; OQ-71 remains open
+  for Accounting-side reversal/correction. Landed cost, FIFO/LIFO/specific
+  identification, lot/serial-level valuation and **any Inventory UI** are also
+  outside this integration decision. OQ-24 stays OPEN; ADR-0039 stays **Proposed**.
 - **API (implemented):** `/api/v1/inventory/{items,item-groups,units,unit-conversions,warehouses}`.
   Unit conversions are the exception: **no PATCH and no enable/disable**, because
   effective-dated configuration is never edited in place — a change is a new version
@@ -1063,15 +1076,17 @@ meta)`, idempotency support, retryable-vs-permanent error taxonomy, health.
 
 ## Event Catalog (initial v1 set)
 
-> **Implementation status (verified 2026-09-26).** The "Consumed by" column is
-> the **target** wiring. Today the kernel bus is in-process and in-memory only
-> (no `core.domain_events`, no outbox table, no worker dispatch loop), and
-> **no module subscribes to another module's events** — in particular
-> **Accounting consumes no Inventory or Sales event and creates no automatic
-> journal entry**. Durable delivery semantics for system-generated posting are
-> **OQ-39 (OPEN)**; an event consumer must not be added on the strength of this
-> table alone. Rows naming Sales, Excel, Print, Sync/Integration or Jobs refer
-> to modules that do not exist.
+> **Implementation status / C-61 decision (verified 2026-10-07).** The
+> "Consumed by" column is target wiring, not current functionality. The kernel
+> bus is in-memory, with no `core.domain_events`, outbox table, or worker
+> dispatch loop; one subscriber exists, but Accounting consumes no Inventory
+> event and creates no automatic journal entry. **PO-02 / ADR-0041** select a
+> synchronous public application-service contract—not an event consumer—as the
+> primary internal Inventory → Accounting mechanism. **OQ-39 remains OPEN** for
+> transaction/failure semantics. Event rows below do not authorize posting;
+> Inventory posting sources must be approved Business Documents (PDR-09 / PO-03).
+> Rows naming Sales, Excel, Print, Sync/Integration or Jobs refer to modules
+> that do not exist.
 
 > Naming: `Entity.PastTenseVerb` (PascalCase). This is the **initial** catalog;
 > it grows with implementation. Event schemas are versioned; changing an existing
@@ -1086,11 +1101,11 @@ meta)`, idempotency support, retryable-vs-permanent error taxonomy, health.
 | `Branch.*` / `Department.*` / `Employee.*` / `Party.*` (`Created` / `Updated` / `Enabled` / `Disabled`)                                                                                                                                                                                                                                                                                     | Organization       | Audit                                                                                     | organization-structure and party master-data lifecycle (implemented, Task 6)                                                                                 |
 | `Item.*` / `ItemGroup.*` / `Unit.*` / `Warehouse.*` (`Created` / `Updated` / `Enabled` / `Disabled`)                                                                                                                                                                                                                                                                                        | Inventory          | Audit                                                                                     | inventory master-data lifecycle (implemented, Task 6)                                                                                                        |
 | `UnitConversion.Created`                                                                                                                                                                                                                                                                                                                                                                    | Inventory          | Audit                                                                                     | a new effective-dated conversion version (payload carries `supersededConversionId`); **no update/disable event exists** — versions are never edited in place |
-| `InventoryReceipt.Created`                                                                                                                                                                                                                                                                                                                                                                  | Inventory          | **Accounting (journal)**, Audit, (Sync → outbox if configured)                            | stock in                                                                                                                                                     |
-| `InventoryIssue.Created`                                                                                                                                                                                                                                                                                                                                                                    | Inventory          | **Accounting**, Audit                                                                     | stock out                                                                                                                                                    |
-| `StockTransfer.Created` / `StockAdjustment.Created`                                                                                                                                                                                                                                                                                                                                         | Inventory          | Accounting (adjustment), Audit                                                            | stock changes                                                                                                                                                |
+| `InventoryReceipt.Created`                                                                                                                                                                                                                                                                                                                                                                  | Inventory          | Audit, (external Sync → outbox if configured)                                             | stock in; not itself an Accounting posting authority                                                                                                         |
+| `InventoryIssue.Created`                                                                                                                                                                                                                                                                                                                                                                    | Inventory          | Audit                                                                                     | stock out; not itself an Accounting posting authority                                                                                                        |
+| `StockTransfer.Created` / `StockAdjustment.Created`                                                                                                                                                                                                                                                                                                                                         | Inventory          | Audit                                                                                     | stock changes; any Accounting effect requires an approved Business Document and its public contract                                                          |
 | `SalesOrder.Created` / `SalesOrder.Confirmed`                                                                                                                                                                                                                                                                                                                                               | Sales              | Audit, (Sync → outbox if configured)                                                      | sales flow                                                                                                                                                   |
-| `Invoice.Issued`                                                                                                                                                                                                                                                                                                                                                                            | Sales              | **Accounting (revenue journal)**, Audit, (Sync → taxpayer/faraPayam outbox if configured) | billing                                                                                                                                                      |
+| `Invoice.Issued`                                                                                                                                                                                                                                                                                                                                                                            | Sales              | Audit, (external Sync → taxpayer/faraPayam outbox if configured)                         | billing; no Sales Accounting posting authority or contract is established by C-61                                                                    |
 | `JournalEntry.Posted` / `AccountingPeriod.Closed` _(placeholders — refined by the Accounting Domain Contract §21 into `AccountingDocument.*`, `FiscalYear.*`, `AccountingPeriod.*` when those ship; `FinancialArea.*`, `AccountingPeriod.*`, `Account.*` and `AccountingDocument.{Created,Updated,Finalized,Deleted}` are already SHIPPED with their refined names — Tasks 10.2/10.3/10.4)_ | Accounting         | Audit, Notifications                                                                      | books                                                                                                                                                        |
 | `ImportSession.Completed` / `ImportSession.Failed`                                                                                                                                                                                                                                                                                                                                          | Excel              | Notifications, Audit                                                                      | import feedback                                                                                                                                              |
 | `PrintJob.Completed` / `PrintJob.Failed`                                                                                                                                                                                                                                                                                                                                                    | Print              | Notifications, Audit                                                                      | print feedback                                                                                                                                               |

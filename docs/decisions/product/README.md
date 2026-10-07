@@ -51,10 +51,11 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 | [PDR-02](./PDR-02-item-taxonomy-and-capabilities.md) | Item taxonomy and capability governance (OQ-33 Option D) | PDR | Decided — governance rule only (2026-10-02) | OQ-33 stays Open (taxonomy confirmation withheld) |
 | [PDR-03](./PDR-03-item-barcode-policy.md) | Item barcode policy (Option A) | PDR | Decided (2026-10-02) | Lifecycle detail split out as OQ-65 |
 | [PDR-04](./PDR-04-item-deletion-and-code-reuse.md) | Item deletion eligibility (OQ-36 Option C) | PDR | Decided in part (2026-10-02) | OQ-36 stays Open (code reuse unanswered) |
-| [PDR-05](./PDR-05-inventory-valuation-and-cost-optional-operations.md) | Inventory valuation foundation and cost-optional warehouse operations (OQ-24 — partial) | PDR | Decided (2026-10-04) | OQ-24 stays Open (returns, COGS posting, landed cost, valuation precision unanswered) |
+| [PDR-05](./PDR-05-inventory-valuation-and-cost-optional-operations.md) | Inventory valuation foundation and cost-optional warehouse operations (OQ-24 — partial) | PDR | Decided (2026-10-04) | OQ-24 stays Open (broader COGS/accounting policy, landed cost, precision and other unresolved topics; return-costing conventions are in PDR-08) |
 | [PDR-06](./PDR-06-initial-usable-product-v1.md) | Vardena Initial Usable Product / V1 — MVP completion definition + 2026-10-05 re-baseline index | PDR | Decided (2026-10-05) | OQ-60 stays Open (numeric thresholds unratified) |
 | [PDR-07](./PDR-07-inventory-pricing-sources-and-periodic-pricing-operation.md) | Inventory pricing sources, the periodic Pricing Operation, and the Accounting eligibility gate (OD-PRC-01…12, OD-VH-01, OD-DOC-01/02) | PDR | Decided (2026-10-06) | OQ-24 stays Open; opens OQ-70 / OQ-71 |
 | [PDR-08](./PDR-08-transfer-return-reversal-and-reverse-pricing-valuation.md) | Transfer / Purchase Return / Sales Return / Reversal / Reverse Pricing valuation (OD-TRF-01…09, OD-RET-01…07, OD-REV-01…08, OD-RVP-01…08, OD-PDP-01…05) | PDR | Decided (2026-10-06) | **Resolves OQ-67 and OQ-68**; OQ-70 / OQ-71 stay Open for their Accounting-side counterpart |
+| [PDR-09](./PDR-09-inventory-accounting-posting-boundary.md) | Inventory → Accounting posting boundary and Owner decisions (PO-01…PO-12; C-61) | PDR | Decided (2026-10-07) | Records approved boundaries; OQ-24/25/39/42/69/70/71/72 remain Open; no implementation authorized |
 
 > **Numbering note (2026-10-02).** `OQ-62`, `OQ-63` and `OQ-64` are accounting /
 > migration questions that live only in the central registry
@@ -80,12 +81,20 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 > Architecture contract: ADR-0040 (**Proposed** — not self-accepted). None of
 > this authorizes implementation or accepts merged work.
 
+> **C-61 Owner decision update (2026-10-07).** C-60's PO-01…PO-12 were
+> recommendations only. The Owner explicitly approved the decisions recorded in
+> [PDR-09](./PDR-09-inventory-accounting-posting-boundary.md); all other C-60
+> recommendations remain unapproved. OQ-24/25/39/42/69/70/71/72 remain Open,
+> including OQ-70's narrowed Purchase Return variance scope. C-61 authorizes no
+> production implementation; C-62 is the future implementation stage.
+
 ## Related architecture records
 
 | ADR | Title | Status | Product relevance |
 |---|---|---|---|
 | [ADR-0029](../../adr/0029-machine-api-access-model.md) | Machine/API access model (API keys; OAuth2 deferred) | Proposed | Defines the licensed machine-access foundation (PD-35/PD-36) |
 | [ADR-0030](../../adr/0030-license-foundation.md) | License foundation (minimal, non-punitive, enforcement-off) | Proposed | Defines the MVP license foundation (PD-08/PD-09/PD-12) |
+| [ADR-0041](../../adr/0041-synchronous-inventory-accounting-application-contract.md) | Synchronous Inventory → Accounting application contract | Accepted (PO-02) | Records the primary internal integration style; OQ-39 transaction/failure semantics remain open |
 
 ## Decision flow
 

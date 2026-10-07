@@ -79,21 +79,28 @@ not decided here).
 | **Movement type** | A closed, code-defined classification of *why* stock moved (`purchase_receipt`, `sales_issue`, `transfer_out`, `transfer_in`, `adjustment_gain`, `adjustment_loss`, `opening`, `return_in`, `return_out`, …). Reports group by it; it is not user-extensible. | Document type |
 | **Stock balance** | The quantity on hand for (item, warehouse, location, lot/serial) at a point in time. Vardena keeps a **materialized balance row** updated in the same transaction as the movement, rebuildable from the ledger. | Ledger |
 | **Opening balance** | Stock (and its value) present when a warehouse/accounting area starts being used in Vardena. Recorded as explicit movements (`opening`) dated before the first live transaction. *(OQ-23 relates to accounting opening balances.)* | Adjustment |
-| **Inventory valuation** | Assigning a monetary value to stock (and to cost of goods sold). **Method is an accounting decision (moving weighted average, FIFO, standard cost) — OQ-24, expert-gated.** The inventory data model must not force one. *(expert)* | Pricing |
-| **Negative stock** | Stock balance below zero. Whether it is allowed is a **policy** configuration, per item and/or per warehouse *(OQ-24)*; the default when the policy is undecided is **reject** (fail closed). | Backorder |
+| **Inventory valuation** | Inventory-owned calculation and history assigning monetary value to stock; the only active MVP method is Moving Weighted Average (PDR-05). Accounting consumes these facts and owns financial mapping; broader COGS/journal policy remains open (OQ-24/OQ-25). | Pricing |
+| **Negative stock** | Physical stock below zero is **rejected for MVP** (OD-VAL-17 / PDR-05). A future allowance requires a separate Owner decision; this is not an open OQ-24 policy choice. | Backorder |
 | **Reservation** | A soft claim on stock (e.g. an approved sales order) that does not move stock or change the balance report; it is tracked separately as `reserved_quantity`. Whether reservations exist in v1 is a workflow decision *(OQ-26 depends on it)*. | Movement |
 
-## Accounting terms (all expert-gated)
+## Accounting terms (Owner decisions and open policies)
 
 | Term | Vardena meaning | Not to be confused with |
 |---|---|---|
 | **Account** | A node in the chart of accounts; journal lines reference accounts. Structure (code scheme, hierarchy, levels) is expert-gated *(OQ-25)*. | Cost center |
+| **Approved Inventory Business Document** | An explicitly Owner-approved Inventory document type allowed to initiate the Accounting posting contract. Raw movements/ledger operations, reservations, Material Requests, technical projections and arbitrary service/repository calls are not direct posting authorities (PDR-09 / PO-03). | Raw movement |
 | **Chart of accounts (CoA)** | The organization's account tree. Options and recommendation in `accounting-domain-analysis.md` §2. *(expert)* | Ledger |
-| **Journal entry (voucher)** (سند حسابداری) | An immutable double-entry record with ≥2 lines whose debits equal credits. | Document (it is a document type too, but with the strictest rules) |
-| **Posting rule / mapping** | The Accounting-owned mapping from a business event (e.g. `InventoryReceipt.Created`) to a journal template (accounts, debit/credit sides, amount sources). Mapping rules belong to Accounting only (AR-16, ADR-0005). *(expert)* | Automation rule |
+| **Accounting Posting Operation** | A logical operation initiated for one approved Inventory Business Document; it may create one Voucher. Inventory posting idempotency uses an operation key + request hash (PO-04/09). | Inventory movement; Voucher |
+| **Accounting Eligibility** | A current assessment that an approved source document may be posted, considering operational state, valuation state (including relevant stale keys) and future Accounting policy gates. Eligibility is not proof that posting occurred (PO-05/10). | `accountingPosted` |
+| **Accounting Posted** | Evidence of an actual Accounting outcome, not merely an Inventory flag or an eligible document. A posted document is not eligible for ordinary direct reposting (PO-10). | `accountingEligible` |
+| **Voucher** (سند حسابداری) | The Accounting-owned document an Accounting Posting Operation may create; one Voucher can contain many Journal Lines. | Accounting Posting Operation; movement count |
+| **Journal line** | One debit/credit detail in a Voucher. A Voucher's line count is independent of Inventory movement count (PO-04). | Stock movement |
+| **Posting rule / mapping** | The Accounting-owned mapping from an explicitly approved Business Document's facts (supplied through its public contract) to a journal structure (accounts, debit/credit sides, amount sources). Inventory supplies valuation facts; Accounting does not recompute them (AR-16, ADR-0041, PDR-09). *(expert)* | Automation rule |
 | **Accounting period close** | Making a fiscal period read-only for posting. Reopening, if allowed at all, is an expert/legal decision *(OQ-23)*. *(expert)* | Document posting |
+| **Same-Legal-Entity warehouse transfer** | Inventory values the source Issue first; the destination Receipt receives exactly the same value, and no GL Voucher is created (PO-06). Other entity/tax/financial-area scopes are not implied. | Intercompany transfer |
+| **Post-boundary valuation change** | Direct valuation edit/repricing after Accounting Post is forbidden; correction/reversal/compensating-posting policy remains a separate open decision (PO-07/08). | Silent repricing |
 | **Trial balance / ledger / balance sheet / P&L** | Standard financial reports derived from journal lines. The **report formats** (column layout, Iranian statutory formats) are expert-gated. *(expert)* | Operational reports |
-| **Cost of goods sold (COGS)** | The accounting expense recognized when stock leaves the business, derived from the valuation method. *(expert, OQ-24)* | Purchase price |
+| **Cost of goods sold (COGS)** | The Accounting expense recognized when policy treats inventory cost as consumed/sold. Any amount and posting policy use Inventory-supplied valuation facts; C-61 does not select COGS mapping or timing (OQ-24/OQ-25). | Purchase price |
 
 ## Configurability terms
 

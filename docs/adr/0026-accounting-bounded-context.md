@@ -5,7 +5,7 @@
 - **Date:** 2026-09-14
 - **Accepted:** 2026-09-14
 - **Refines / partially supersedes:** ADR-0020 §2 (fiscal-calendar ownership)
-- **Implements:** nothing yet — this ADR gates the first Accounting migration
+- **Implementation status:** Accounting has implemented capabilities; see [`docs/accounting/task-index.md`](../accounting/task-index.md) and `STATE.md` for current evidence and acceptance. The Inventory integration selected by C-61 remains unimplemented.
 
 ## Context
 
@@ -56,17 +56,20 @@ The full analysis is [`docs/accounting/domain-contract.md`](../accounting/domain
    the Workflow Foundation for review/approval (ADR-0024). Lifecycle is the Foundation's
    `draft` phase + `temporary`/`final` states — no `initial`, no `void`, no universal
    document table, no EAV, no JSONB ledger, no rules engine.
-5. **One source-posting contract for every source module**: scope, financial area,
-   source module/entity/id/operation, `operationKey`, business date, description and a
-   validated accounting payload naming accounts **or control roles**. Idempotency uses an
-   Accounting-owned posting-operation ledger keyed by `(organization_id, operation_key)`
-   with `request_hash` over canonical client intent only — the ADR-0022 §3/§4 pattern,
-   applied unchanged. Source modules never read or write `accounting.*`; Accounting never
-   reads another module's tables (AR-07/AR-16).
-6. **Delivery semantics stay open, and that is a gate.** The posting interface is
-   delivery-agnostic (transactional subscription per ADR-0005 vs durable queue/outbox per
-   AR-14). The event bus is in-memory only (ADR-0024 §9 gap), so **no production
-   system-generated posting may be enabled before OQ-39 is resolved**.
+5. **Original generic source-posting contract baseline.** A source contract carries scope,
+   financial area, source module/entity/id/operation, `operationKey`, business date,
+   description and an Accounting-validated payload. The earlier generic shape allowed
+   accounts **or control roles** and proposed an Accounting-owned posting-operation
+   ledger keyed by `(organization_id, operation_key)` with the ADR-0022 §3/§4
+   canonical-intent hash. For Inventory, the later PDR-09 decisions supersede any
+   conflicting details: PO-03 limits sources to explicitly approved Business Documents;
+   PO-01/04 require Inventory to supply facts while Accounting chooses accounts and
+   constructs journal structure; PO-09 approves operation key + request hash semantics
+   only. Exact key format/scope, hash algorithm and canonical request fields are not
+   decided for Inventory. Other source modules require their own approved contracts.
+   Source modules never read or write `accounting.*`; Accounting never reads another
+   module's tables (AR-07/AR-16).
+6. **C-61 superseding addendum (2026-10-07; see PDR-09 / ADR-0041).** At the time of this ADR, delivery alternatives were open. PO-02 later selected a synchronous in-process public application-service contract for internal Inventory → Accounting; it is not an event subscriber or outbox-delivered internal posting. Outbox delivery remains for external integrations. OQ-39 remains open for source/Accounting transaction ownership, atomicity, refusal, retry/durability and failure semantics; OQ-69 remains open for valuation-history/auditor sufficiency; **no production integration may be enabled before applicable OQs and policy gates are resolved**.
 7. **Organization isolation is inherited verbatim** (ADR-0021 §3/§4, ADR-0022 §8,
    ADR-0025): scope-qualified by-id reads answering 404 — never 403 — on mismatch,
    explicit `organizationId` on every list, the global deployment pin guard, and
@@ -96,7 +99,7 @@ The full analysis is [`docs/accounting/domain-contract.md`](../accounting/domain
 ## Links
 
 - Contract: [`docs/accounting/domain-contract.md`](../accounting/domain-contract.md)
-- Builds on: ADR-0005 (events), ADR-0008 (schemas), ADR-0009 (reporting), ADR-0017/0022
+- Builds on: ADR-0005 (historical event architecture; superseded for internal Inventory posting by ADR-0041), ADR-0041 (Inventory posting contract), ADR-0008 (schemas), ADR-0009 (reporting), ADR-0017/0022
   (ledger + idempotency), ADR-0019/0023 (documents), ADR-0018/0024 (workflow),
   ADR-0020/0021/0025 (scope)
 - Design lineage: `docs/architecture/domain/accounting-domain-analysis.md`, D-03/D-11/

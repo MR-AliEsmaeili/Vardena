@@ -1,8 +1,10 @@
 # Accounting Domain Analysis
 
-Status: Proposed (design for review) · Updated: 2026-09-11
+Status: Proposed (design for review) · Updated: 2026-10-07 (C-61 boundary decisions linked)
 Companion: [blueprint](./domain-blueprint.md) §9 · [glossary](./domain-glossary.md) ·
-ADR-0005 (events), ADR-0017 (inventory ledger), AR-13/16 · OQ-23, OQ-24, OQ-25, OQ-30
+ADR-0041 (synchronous Inventory → Accounting contract), ADR-0017 (inventory ledger),
+AR-13/16 · [PDR-09](../../decisions/product/PDR-09-inventory-accounting-posting-boundary.md) ·
+OQ-23, OQ-24, OQ-25, OQ-30, OQ-39, OQ-70, OQ-72
 
 > **Superseded in part (2026-09-14, Task 10.1).** This file remains the *conceptual
 > options analysis* (chart-of-accounts options, fiscal-calendar options, posting-rule
@@ -14,6 +16,16 @@ ADR-0005 (events), ADR-0017 (inventory ledger), AR-13/16 · OQ-23, OQ-24, OQ-25,
 > in [ADR-0026](../../adr/0026-accounting-bounded-context.md) (Proposed). Where the two
 > differ on structure or ownership, the contract and ADR-0026 win; where the contract
 > marks a rule EXPERT-GATED, the questions in §8 below are still the ones to answer.
+
+> **C-61 current decision overlay (2026-10-07).** For Inventory → Accounting,
+> [PDR-09](../../decisions/product/PDR-09-inventory-accounting-posting-boundary.md)
+> and [ADR-0041](../../adr/0041-synchronous-inventory-accounting-application-contract.md)
+> supersede the event-subscription mechanism described in older analysis below.
+> The posting call is synchronous through a public application/domain contract;
+> C-61 does not implement it. Only approved Business Documents may initiate it,
+> Inventory owns valuation facts, and Accounting owns mapping/journal policy.
+> Illustrative rows below are not additional Owner decisions. Sales Accounting
+> and the OQ-70 Purchase Return variance policy remain undecided/deferred as PDR-09 states.
 
 > **Expert boundary (explicit).** The project owner does not have formal accounting
 > expertise. This document is a *conceptual* analysis: it frames the decisions,
@@ -28,13 +40,15 @@ ADR-0005 (events), ADR-0017 (inventory ledger), AR-13/16 · OQ-23, OQ-24, OQ-25,
 | Accounting owns | Accounting must not own |
 |---|---|
 | Chart of accounts, journals, periods, fiscal calendar | Stock quantities (Inventory) |
-| Event → journal **mapping rules** (AR-16) | Document lifecycles (owning modules) |
+| Accounting mapping/journal policy for approved Business Document facts (AR-16, PDR-09) | Document lifecycles (owning modules) |
 | Posting, reversal, period close | Pricing/tax computation on documents (Sales/Purchasing, expert-gated) |
 | Financial statements & ledger inquiries | Whether a warehouse may go negative (Inventory policy) |
-| Costing/valuation **method** choice (with the accountant) | Computing movement quantities |
+| Accounting mapping/journal policy over Inventory-supplied valuation facts (PDR-09; OQ-24) | Inventory valuation method/calculation and movement quantities (Inventory; PDR-05 / PDR-09) |
 
-The boundary is enforced by ADR-0005: Inventory publishes facts, Accounting decides
-their financial meaning. Accounting never calls back into Inventory.
+For Inventory → Accounting, the current Owner-approved boundary is PDR-09 / ADR-0041:
+Inventory supplies valuation facts for an approved Business Document through a
+synchronous public application/domain contract, and Accounting decides the financial
+mapping. No event subscriber or cross-module table access implements this today.
 
 ---
 
@@ -96,21 +110,22 @@ calendar service — so reporting never recomputes periods from dates.
   status, reversal link) + lines (account, debit, credit, currency, exchange rate,
   cost centre, project, branch, partner?, quantity? for statistical entries).
 - **Invariants (core, not configurable):** debits = credits per entry (in base
-  currency); entries are immutable once posted; corrections are reversing entries;
-  posting is idempotent per source event (dedup on event id — AR-15).
-- **Posting rules** (Accounting-owned code + organization mapping data): for each
-  event type, which control roles are debited/credited, how amounts are derived
-  (document totals, line amounts, tax, inventory cost from the movement), and which
-  dimensions are propagated. Example shape (illustrative — **the actual mapping is
-  expert work**):
+  currency); entries are immutable once posted. For Inventory, PDR-09 requires
+  operation-key + request-hash idempotency; an event id is not the primary posting key.
+  Accounting correction/reversal policy remains open (OQ-27/OQ-39/OQ-42).
+- **Posting rules** (Accounting-owned code + organization mapping data): for an
+  explicitly approved Business Document type, which control roles are debited/credited,
+  how amounts are derived from supplied facts, and which dimensions are propagated.
+  Example shape only (illustrative — **not a source-approval or accounting-rule
+decision; the actual mapping is expert work**):
 
-  | Event | Debit | Credit | Notes |
+  | Illustrative source (not an approval) | Debit | Credit | Notes |
   |---|---|---|---|
-  | `Invoice.Issued` | receivable (total) | revenue (net) + tax payable (tax) | Rounding rule expert-gated |
-  | `InventoryReceipt.Created` (valued) | inventory (cost) | goods-received/clearing | Depends on perpetual payroll/ledger policy |
-  | `SalesIssue.Posted` / COGS | COGS (cost of movements) | inventory (cost) | Cost comes from the valuation method (OQ-24) |
-  | `PurchaseInvoice.Received` | expense or inventory | payable (total) | Tax handling expert-gated |
-  | Payment/receipts | cash/bank | receivable / payable | Later module |
+  | Sales invoice (future Sales contract required) | receivable (total) | revenue (net) + tax payable (tax) | No Sales Accounting mapping approved by C-61; rounding expert-gated |
+  | Inventory Receipt Business Document (if later approved) | inventory (cost) | goods-received/clearing | Source eligibility and account/offset mapping are open |
+  | Inventory Issue Business Document (if later approved) | COGS (cost of movements) | inventory (cost) | Inventory supplies authoritative valuation; COGS/journal policy remains open (OQ-24) |
+  | Purchase Invoice (future Purchasing contract required) | expense or inventory | payable (total) | Purchasing not in C-61; tax handling expert-gated |
+  | Payment/receipts | cash/bank | receivable / payable | Later module; no C-61 decision |
 
 - **Dimensions:** account + cost centre + project + branch are stored on lines (typed
   columns) so ledger reports group and total in SQL. Whether cost centre and project
@@ -126,14 +141,14 @@ calendar service — so reporting never recomputes periods from dates.
 
 | Domain | Effect | Owned by | Expert questions |
 |---|---|---|---|
-| Inventory receipt (purchase) | Inventory/expense up, payable/clearing up | Accounting mapping over `InventoryReceipt.Created` | Perpetual vs periodic inventory; landed cost; VAT recoverability |
-| Inventory issue (sale) | COGS up, inventory down | Accounting over `InventoryIssue.Posted` / sales event | Costing method effects (OQ-24); timing (perpetual) |
-| Inventory adjustment | Gain/loss accounts | Accounting mapping over `StockAdjustment.Created` | Which accounts; whether adjustments need approval |
-| Sales invoice | Receivable up, revenue + tax up | Accounting over `Invoice.Issued` | Revenue recognition timing, discounts, returns handling |
-| Sales return | Revenue/receivable down, stock back in | Accounting over `SalesReturn.Created` | Cost reversal method |
-| Purchase invoice | Expense/inventory up, payable + tax up | Accounting over `PurchaseInvoice.Received` | Expense vs inventory capitalization; three-way matching |
+| Inventory receipt (purchase) | Inventory fact plus a separately decided financial effect | Accounting mapping through the approved synchronous public contract (PDR-09 / ADR-0041) | Account/offset content, landed cost, tax and other OQs; no rule implemented |
+| Inventory issue (sale) | Inventory fact plus a separately decided financial effect | Accounting mapping through the approved synchronous public contract (PDR-09 / ADR-0041) | COGS/offset content and timing (OQ-24/25/39); no rule implemented |
+| Inventory adjustment | No automatic posting rule assumed | Requires an explicitly approved Business Document and Accounting contract | Eligibility and account policy are not decided here |
+| Sales invoice | Revenue/receivable policy not established by C-61 | Separate Sales Accounting contract required | Revenue recognition timing, discounts, tax and source authority remain outside C-61 |
+| Sales return | Inventory effect may exist independently; Accounting posting is deferred | No Sales Accounting contract yet (PO-12 / PDR-09) | Do not invent revenue, receivable or cost reversal rules |
+| Purchase invoice | Purchase-side financial effect not established by C-61 | Separate Purchasing/Accounting contract required | Expense vs inventory capitalization; three-way matching |
 | Payment/receipts | Cash/bank vs receivable/payable | Later module | Bank reconciliation, cheque handling (Iran-specific, expert) |
-| Inter-branch transfer | Possibly no entry (same legal entity) or internal clearing entries | Accounting + Organization scope | OQ-31 — expert |
+| Same-Legal-Entity warehouse transfer | **No GL Voucher**; Inventory transfers the source Issue value to the destination Receipt unchanged (PO-06) | Inventory valuation contract; no Accounting Voucher | Intercompany/different-entity, tax and financial-area cases remain open (OQ-31) |
 | Tax | Tax payable/input tax | Accounting mapping; tax computation on documents | OQ-30 — tax expert |
 
 ```mermaid
@@ -150,7 +165,7 @@ flowchart LR
   end
 
   subgraph Books["Accounting (owns financial meaning)"]
-    MAP["Event → journal mapping (per organization, versioned)"]
+    MAP["Accounting mapping for approved Business Documents"]
     JRN["Journal entry (immutable, balanced)"]
     REP["Ledger · trial balance · statements"]
   end
@@ -158,9 +173,9 @@ flowchart LR
   INVX -->|"command: create issue (physical goods)"| ISSUE
   ISSUE --> MOV
   MOV --> BAL
-  MOV -->|"InventoryIssue.Posted event"| MAP
-  INVX -->|"Invoice.Issued event"| MAP
-  RETX -->|"SalesReturn.Created event"| MAP
+  MOV -->|"Approved Inventory document facts via public contract (ADR-0041)"| MAP
+  INVX -.->|"Sales Accounting contract not decided"| MAP
+  RETX -.->|"Accounting deferred until Sales contract (PO-12)"| MAP
   MAP --> JRN --> REP
 
   MAP -.->|"reads accounts/periods (own data)"| JRN
@@ -169,11 +184,12 @@ flowchart LR
 The pattern is the same for purchasing (order → receipt → purchase invoice), with
 Inventory owning the receipt and Accounting owning the payable/expense meaning.
 
-**Rule:** none of these mappings are invented in module code; they are configuration
-over code-defined event types, reviewed by the accountant. Until sign-off, the
-Inventory and Sales modules may ship *events and documents* without accounting
-activation (feature switch `accounting.enabled` per organization), so the ERP is
-usable while the accounting decisions are still pending.
+**Rule:** no posting mapping is invented in Inventory/Sales code. For Inventory,
+Accounting mapping applies to explicitly approved Business Documents and is invoked
+through the synchronous public contract (ADR-0041); it is not an event subscription.
+C-61 implements nothing and does not enable posting. Sales Accounting, including
+Sales Return posting, remains outside this decision package until its own contract
+exists. The product can continue Inventory operations without an Accounting effect.
 
 ---
 
@@ -209,8 +225,8 @@ usable while the accounting decisions are still pending.
 
 1. Chart-of-accounts template content, coding scheme, levels, control roles (OQ-25).
 2. Fiscal year start/period structure and the close/reopen policy (OQ-23).
-3. Posting mappings per event, including which dimensions are mandatory (OQ-25).
-4. Inventory valuation method and its COGS/return/adjustment behaviour (OQ-24).
+3. Posting mappings per explicitly approved Business Document, including which dimensions are mandatory (OQ-25); C-61 approves no Sales Accounting rule.
+4. Accounting treatment of Inventory valuation (COGS/journal mapping, landed cost, precision/currency, write-down/NRV and remaining adjustment policy: OQ-24). Inventory's MVP valuation method and Inventory return-costing conventions are recorded in PDR-05/PDR-08; agreed Purchase Return variance policy is OQ-70.
 5. Tax computation model: rates, inclusive/exclusive, rounding, exemptions (OQ-30).
 6. Revenue recognition and discount treatment on invoices/returns (expert).
 7. Opening balances and migration from the legacy ERP (OQ-04 area, expert).

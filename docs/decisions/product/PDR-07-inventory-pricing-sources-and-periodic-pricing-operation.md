@@ -102,6 +102,8 @@ carried into the Decision Sprint rather than guessed:
 | **Reversal valuation** — original movement value vs current average | **OPEN** (OQ-68); the initial direction is *original movement valuation*, with the detail to be settled in the Sprint — resolved by [PDR-08](./PDR-08-transfer-return-reversal-and-reverse-pricing-valuation.md) §4 |
 | **Reverse Pricing constraints** — what may be reversed, and what happens to a created accounting document | **OPEN** (new **OQ-71**) — resolved by [PDR-08](./PDR-08-transfer-return-reversal-and-reverse-pricing-valuation.md) §5 |
 
+**C-61 reconciliation (2026-10-07):** PDR-08 §3 decided Inventory purchase- and sales-return costing. OQ-70 no longer asks for an Inventory return-pricing rule; under C-61 / [PDR-09](./PDR-09-inventory-accounting-posting-boundary.md) PO-11, it remains open only for Accounting policy/account mapping when the agreed Purchase Return amount differs from authoritative Inventory cost. At-cost Purchase Return posting is allowed; variance posting is blocked until OQ-70 is decided.
+
 ## 5. Confirmed-unchanged decisions (restated, not re-decided)
 
 The following stand exactly as recorded and were re-confirmed rather than

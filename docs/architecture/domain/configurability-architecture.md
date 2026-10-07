@@ -46,7 +46,7 @@ customer" is achieved *and bounded*.
 
 | Kind | Examples | Storage shape | Effective dating? |
 |---|---|---|---|
-| **Scalar settings** | negative-stock policy default, default branch, tax-inclusive display, accounting enabled | key/value-per-organization settings row (typed columns for known keys, not free JSON) | No (immediate, audited) |
+| **Scalar settings** | default branch, tax-inclusive display, accounting enabled | key/value-per-organization settings row (typed columns for known keys, not free JSON) | No (immediate, audited) |
 | **Numbering series** | invoice/order/receipt number formats, scopes | rows per (document type, scope, series) | `valid_from` (a series change must not renumber history) |
 | **Tax definitions** | tax groups, rates, exemptions | rows + `valid_from/valid_to` | Yes |
 | **Account mapping** | control role → account per organization | mapping rows, versioned when used by posted entries | Effective-dated; posted entries store the mapping version |
@@ -55,6 +55,11 @@ customer" is achieved *and bounded*.
 | **Custom-field definitions** | extra descriptive fields per entity | definition registry rows | Definitions versioned; values stored per record |
 | **Workflow definitions** | transitions/approvals/automations | definition + version tables | Yes (ADR-0018) |
 | **Required-field policy** | which *code-supported* fields are mandatory per document type | rows per document type/field | Effective-dated with the workflow version |
+
+> **Inventory negative-stock boundary:** physical negative inventory is rejected for
+> the MVP (OD-VAL-17 / PDR-05); an allowance is not an Organization configuration
+> choice. Legacy Item/Warehouse allow overrides remain in code and are recorded in
+> C-61 as an implementation discrepancy, not an approved configurability rule.
 
 **Anti-pattern guard:** configuration never stores **free-form business logic**
 (scripts, SQL, conditions beyond the supported vocabulary). If a business needs a rule
@@ -160,7 +165,7 @@ just the column.
 | **Workflow rules** | Which enabled transitions require what | Workflow definition versions | Yes |
 | **Validation rules** | Field/DTO validation, capability constraints, required-ness | DTO/domain code + required-field policy | Partly (required-ness over code-supported fields) |
 | **Automation rules** | Reactions to transitions/events | Action catalogue (code) + bindings (config) | Yes (within catalogue) |
-| **Accounting rules** | Event → journal mapping, recognition, valuation | Accounting mapping data + expert-approved code | Organization mapping yes; rules expert-gated |
+| **Accounting rules** | Approved Business Document facts → journal mapping and recognition (Inventory valuation itself remains Inventory-owned) | Accounting mapping data + expert-approved code, invoked through public contracts | Organization mapping yes; rules expert-gated |
 | **Integration rules** | Destinations, retry, payload versions | Integration configuration | Yes |
 
 **No universal rules engine.** A general expression language or user-authored scripts
