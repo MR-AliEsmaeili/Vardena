@@ -1825,7 +1825,10 @@ e2e spec asserting it).
   zero, audit columns verified in information_schema): **48 files / 562
   tests PASS**, including the new 16-test pricing live suite (three
   consecutive green runs) and every other live suite.
-- **CI:** see the PR checks for the final correction head; the prior heads
-  `30ca7b2` (runs 37537658703 / 37538284793) and `0a23956` (red — the
-  migration defect above) frame the loop.
+- **CI:** **GREEN on the final correction head `325c099`** —
+  [run 37582663933](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37582663933)
+  (backend 4m24s incl. `migrate deploy` of the corrected migration, the
+  migration rehearsal and the full live-DB e2e suites; frontend 1m46s). The
+  prior heads `30ca7b2` (green, runs 37537658703 / 37538284793) and
+  `0a23956` (red — the migration defect above) frame the loop.
 - **Status:** see the sprint report's single verdict.
