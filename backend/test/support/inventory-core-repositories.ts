@@ -64,6 +64,7 @@ import {
   RecalculationTooLargeError,
   ReservationAvailabilityError,
   ReservationNotActiveError,
+  TransferBackdateConfirmationRequiredError,
 } from '../../src/modules/inventory/data/inventory-posting-errors.js';
 import {
   distinctInstants,
@@ -96,6 +97,10 @@ import {
   toReplayFact,
   valuationChanged,
 } from '../../src/modules/inventory/domain/valuation-replay.js';
+import {
+  replayCoupledTransfer,
+  type CoupledReplayEntry,
+} from '../../src/modules/inventory/domain/transfer-replay.js';
 import type {
   BalanceKey,
   ItemValuationMethodCreate,
@@ -529,6 +534,321 @@ function valueMovementInMemory(
   return toMovementColumns(outcome.valuation, input.at);
 }
 
+/** Both keys' latest movement dates, as the repository reads them in-tx. */
+function latestMovementDatesInMemory(
+  tables: InventoryCoreTables,
+  input: PostTransferInput,
+): { warehouseId: string; latestMovementDate: Date | null }[] {
+  return [input.outLeg.warehouseId, input.inLeg.warehouseId].map(
+    (warehouseId) => ({
+      warehouseId,
+      latestMovementDate: maxMovementDateInMemory(
+        tables,
+        input.outLeg.organizationId,
+        warehouseId,
+        input.outLeg.itemId,
+      ),
+    }),
+  );
+}
+
+function maxMovementDateInMemory(
+  tables: InventoryCoreTables,
+  organizationId: string,
+  warehouseId: string,
+  itemId: string,
+): Date | null {
+  let max: Date | null = null;
+  for (const row of tables.movements.findMany(
+    (movement) =>
+      movement.organizationId === organizationId &&
+      movement.warehouseId === warehouseId &&
+      movement.itemId === itemId,
+  )) {
+    max = maxDate(max, row.movementDate);
+  }
+  return max;
+}
+
+/** One key's stored rows in the canonical ledger order, with the bound. */
+function replayedKeyRows(
+  tables: InventoryCoreTables,
+  key: BalanceKey,
+): InventoryMovement[] {
+  const rows = tables.movements
+    .findMany(
+      (row) =>
+        row.organizationId === key.organizationId &&
+        row.warehouseId === key.warehouseId &&
+        row.itemId === key.itemId,
+    )
+    .sort(compareLedgerOrder)
+    .slice(0, RECALCULATION_MOVEMENT_LIMIT + 1);
+  if (rows.length > RECALCULATION_MOVEMENT_LIMIT) {
+    throw new RecalculationTooLargeError(RECALCULATION_MOVEMENT_LIMIT);
+  }
+  return rows;
+}
+
+/** One key's resolved facts, per movement at its own business date. */
+function replayedKeyEntries(
+  tables: InventoryCoreTables,
+  side: 'source' | 'destination',
+  key: BalanceKey,
+  rows: readonly InventoryMovement[],
+): CoupledReplayEntry[] {
+  const instants = distinctInstants(rows.map((row) => row.movementDate));
+  const versions =
+    instants.length === 0
+      ? []
+      : tables.valuationMethods.findMany(
+          (version) =>
+            version.organizationId === key.organizationId &&
+            version.itemId === key.itemId &&
+            versionCoversAnyInstant(version, instants),
+        );
+  const ambiguous = findAmbiguousInstant(versions, instants);
+  if (ambiguous !== null) {
+    throw new AmbiguousValuationMethodError(
+      key.itemId,
+      ambiguous.instant,
+      ambiguous.versionIds,
+    );
+  }
+  return rows.map((row) => ({
+    side,
+    movementDate: row.movementDate,
+    createdAt: row.createdAt,
+    id: row.id,
+    fact: toReplayFact(
+      {
+        id: row.id,
+        movementType: row.movementType,
+        baseQuantity: row.baseQuantity,
+        totalCost: row.totalCost,
+        valuationStatus: row.valuationStatus,
+        valuationSource: row.valuationSource,
+      },
+      resolveValuationMethodAt(versions, row.movementDate).method,
+    ),
+    // Mirror of the production entry: the row's transfer identity travels
+    // with the entry so a coupled refusal can name the pair.
+    transferId: row.transferId,
+  }));
+}
+
+/**
+ * Mirror of `replayTransferPairWithin` (C-59C): ONE pure coupled pass over
+ * both keys, then the same writes the production orchestration performs —
+ * changed movement rows, one `inventory_valuation_runs` row per key with the
+ * `backdated_document` trigger, then the state row through the same sticky
+ * `writeValuationState` seam. The arithmetic is the SHARED pure driver, so
+ * the fake cannot drift from the posting path's coupled numbers.
+ */
+function replayCoupledTransferInMemory(
+  tables: InventoryCoreTables,
+  input: {
+    outLeg: MovementCreate;
+    inLeg: MovementCreate;
+    sourceState: InventoryValuationState;
+    destinationState: InventoryValuationState;
+    method: ValuationMethod;
+    at: Date;
+    operationKey: string;
+    reason: string | null;
+  },
+): { out: MovementValuationColumns; in: MovementValuationColumns } {
+  const sourceKey = movementKey(input.outLeg);
+  const destinationKey = movementKey(input.inLeg);
+  const sourceRows = replayedKeyRows(tables, sourceKey);
+  const destinationRows = replayedKeyRows(tables, destinationKey);
+  const result = replayCoupledTransfer({
+    entries: [
+      ...replayedKeyEntries(tables, 'source', sourceKey, sourceRows),
+      ...replayedKeyEntries(
+        tables,
+        'destination',
+        destinationKey,
+        destinationRows,
+      ),
+    ],
+    transfer: {
+      movementDate: input.outLeg.movementDate,
+      createdAt: input.outLeg.createdAt,
+      id: input.outLeg.id,
+      quantity: magnitudeOf(input.outLeg.baseQuantity),
+    },
+  });
+  const sourceRunId = generateId();
+  const destinationRunId = generateId();
+  persistCoupledSide(tables, {
+    key: sourceKey,
+    state: input.sourceState,
+    rows: sourceRows,
+    replayed: result.sourceValuations,
+    position: result.sourcePosition,
+    provisional: result.provisional.source,
+    runId: sourceRunId,
+    input: { ...input, fromDate: input.outLeg.movementDate },
+  });
+  persistCoupledSide(tables, {
+    key: destinationKey,
+    state: input.destinationState,
+    rows: destinationRows,
+    replayed: result.destinationValuations,
+    position: result.destinationPosition,
+    provisional: result.provisional.destination,
+    runId: destinationRunId,
+    input: { ...input, fromDate: input.outLeg.movementDate },
+  });
+  return {
+    out: coupledLegColumns(result.out, input.at, sourceRunId),
+    in: coupledLegColumns(result.in, input.at, destinationRunId),
+  };
+}
+
+function persistCoupledSide(
+  tables: InventoryCoreTables,
+  side: {
+    key: BalanceKey;
+    state: InventoryValuationState;
+    rows: readonly InventoryMovement[];
+    replayed: readonly { id: string; valuation: MovementValuation }[];
+    position: ValuationPosition;
+    provisional: boolean;
+    runId: string;
+    input: {
+      method: ValuationMethod;
+      at: Date;
+      /** The pair's business date — the run's informational lower bound. */
+      fromDate: Date;
+      operationKey: string;
+      reason: string | null;
+    };
+  },
+): void {
+  const changes = side.rows.flatMap((row, index) => {
+    const next = side.replayed[index];
+    if (next === undefined) return [];
+    return valuationChanged(
+      {
+        status: row.valuationStatus,
+        totalCost: row.totalCost,
+        source: row.valuationSource,
+      },
+      next.valuation,
+    )
+      ? [{ id: row.id, valuation: next.valuation }]
+      : [];
+  });
+  // Run row FIRST, like `applyReplay` — a movement may only point at a run
+  // that already exists (`valuationRunId` is a foreign key on real
+  // PostgreSQL; this mirror enforces the same ordering so a broken write
+  // order cannot pass here and fail only in the live suite).
+  insertRunRow(tables, side, changes.length);
+  for (const change of changes) {
+    requireRunRow(tables, side.runId);
+    tables.movements.patch(change.id, {
+      totalCost: change.valuation.totalCost,
+      valuationStatus: change.valuation.status,
+      valuationSource: change.valuation.source,
+      valuedAt: change.valuation.status === 'unvalued' ? null : side.input.at,
+      valuationRunId: side.runId,
+      updatedAt: side.input.at,
+    });
+  }
+  writeCoupledState(tables, side);
+}
+
+/** Mirror of the run row `persistCoupledSide` writes (FK target). */
+function insertRunRow(
+  tables: InventoryCoreTables,
+  side: {
+    key: BalanceKey;
+    position: ValuationPosition;
+    provisional: boolean;
+    runId: string;
+    rows: readonly InventoryMovement[];
+    input: {
+      method: ValuationMethod;
+      at: Date;
+      fromDate: Date;
+      operationKey: string;
+      reason: string | null;
+    };
+  },
+  movementsRevalued: number,
+): void {
+  tables.valuationRuns.insert({
+    id: side.runId,
+    organizationId: side.key.organizationId,
+    branchId: side.key.branchId,
+    warehouseId: side.key.warehouseId,
+    itemId: side.key.itemId,
+    method: side.input.method,
+    trigger: 'backdated_document',
+    fromDate: side.input.fromDate,
+    movementsExamined: side.rows.length,
+    movementsRevalued,
+    resultingValuedQuantity: side.position.valuedQuantity,
+    resultingUncostedQuantity: side.position.uncostedQuantity,
+    resultingTotalValue: side.position.totalValue,
+    resultingStatus: resolveValuationStatus({
+      uncostedQuantity: side.position.uncostedQuantity,
+      staleSince: side.provisional ? side.input.at : null,
+    }),
+    operationKey: side.input.operationKey,
+    reason: side.input.reason,
+    executedAt: side.input.at,
+    createdAt: side.input.at,
+    updatedAt: side.input.at,
+  });
+}
+
+/** The `valuation_run_id` foreign key: the target run must already exist. */
+function requireRunRow(tables: InventoryCoreTables, runId: string): void {
+  if (tables.valuationRuns.findById(runId) === null) {
+    throw new Error(
+      `TEST DOUBLE: movement points at valuation run "${runId}" before it exists (FK order).`,
+    );
+  }
+}
+
+function writeCoupledState(
+  tables: InventoryCoreTables,
+  side: {
+    state: InventoryValuationState;
+    position: ValuationPosition;
+    provisional: boolean;
+    runId: string;
+    input: { method: ValuationMethod; at: Date };
+  },
+): void {
+  writeValuationState(tables, {
+    state: side.state,
+    position: side.position,
+    method: side.input.method,
+    marksStale: side.provisional,
+    at: side.input.at,
+    recalculationId: side.runId,
+    clearStale: true,
+  });
+}
+
+function coupledLegColumns(
+  valuation: MovementValuation,
+  at: Date,
+  runId: string,
+): MovementValuationColumns {
+  return {
+    totalCost: valuation.totalCost,
+    valuationStatus: valuation.status,
+    valuationSource: valuation.source,
+    valuedAt: valuation.status === 'unvalued' ? null : at,
+    valuationRunId: runId,
+  };
+}
+
 function magnitudeOf(signed: string): string {
   return signed.trim().startsWith('-')
     ? subtractDecimalStrings('0', signed)
@@ -643,6 +963,9 @@ function applyReplayInMemory(
     updatedAt: input.at,
   });
   for (const change of changes) {
+    // Same FK order production must honour: the run exists before a movement
+    // may point at it.
+    requireRunRow(tables, input.runId);
     tables.movements.patch(change.id, {
       totalCost: change.valuation.totalCost,
       valuationStatus: change.valuation.status,
@@ -861,39 +1184,70 @@ export class InMemoryInventoryMovementsRepository {
         movementKey(input.inLeg),
         input.valuationMethod,
       );
-      const transferOutcome = applyTransfer({
-        source: positionOf(sourceState),
-        destination: positionOf(destinationState),
-        quantity: magnitudeOf(input.outLeg.baseQuantity),
-      });
-      writeValuationState(this.tables, {
-        state: sourceState,
-        position: transferOutcome.source,
-        method: input.valuationMethod,
-        marksStale: transferOutcome.marksStale,
-        at: input.outLeg.updatedAt,
-      });
-      writeValuationState(this.tables, {
-        state: destinationState,
-        position: transferOutcome.destination,
-        method: input.valuationMethod,
-        marksStale: transferOutcome.marksStale,
-        at: input.inLeg.updatedAt,
-      });
+      // Mirror of the production re-derivation (C-59C): the verdict comes
+      // from the rows themselves, so a transfer that became backdated by a
+      // concurrent posting is refused unless the operator confirmed it.
+      const backdated = latestMovementDatesInMemory(this.tables, input).some(
+        (key) =>
+          key.latestMovementDate !== null &&
+          input.outLeg.movementDate.getTime() <
+            key.latestMovementDate.getTime(),
+      );
+      if (backdated && input.backdateConfirmed !== true) {
+        throw new TransferBackdateConfirmationRequiredError({
+          movementDate: input.outLeg.movementDate,
+          keys: latestMovementDatesInMemory(this.tables, input),
+        });
+      }
+      const legColumns = backdated
+        ? // The coupled two-key replay: both histories in one pass, the pair
+          // valued by the same pure arithmetic the posting path uses.
+          replayCoupledTransferInMemory(this.tables, {
+            outLeg: input.outLeg,
+            inLeg: input.inLeg,
+            sourceState,
+            destinationState,
+            method: input.valuationMethod,
+            at: input.outLeg.updatedAt,
+            operationKey: input.outLeg.operationKey,
+            reason: input.outLeg.reason,
+          })
+        : (() => {
+            const transferOutcome = applyTransfer({
+              source: positionOf(sourceState),
+              destination: positionOf(destinationState),
+              quantity: magnitudeOf(input.outLeg.baseQuantity),
+            });
+            writeValuationState(this.tables, {
+              state: sourceState,
+              position: transferOutcome.source,
+              method: input.valuationMethod,
+              marksStale: transferOutcome.marksStale,
+              at: input.outLeg.updatedAt,
+            });
+            writeValuationState(this.tables, {
+              state: destinationState,
+              position: transferOutcome.destination,
+              method: input.valuationMethod,
+              marksStale: transferOutcome.marksStale,
+              at: input.inLeg.updatedAt,
+            });
+            return {
+              out: toMovementColumns(
+                transferOutcome.outValuation,
+                input.outLeg.updatedAt,
+              ),
+              in: toMovementColumns(
+                transferOutcome.inValuation,
+                input.inLeg.updatedAt,
+              ),
+            };
+          })();
       const outLeg = this.tables.movements.insert(
-        toMovement(
-          input.outLeg,
-          toMovementColumns(
-            transferOutcome.outValuation,
-            input.outLeg.updatedAt,
-          ),
-        ),
+        toMovement(input.outLeg, legColumns.out),
       );
       const inLeg = this.tables.movements.insert(
-        toMovement(
-          input.inLeg,
-          toMovementColumns(transferOutcome.inValuation, input.inLeg.updatedAt),
-        ),
+        toMovement(input.inLeg, legColumns.in),
       );
       this.tables.balances.patch(sourceBalance.id, {
         onHand: addDecimalStrings(

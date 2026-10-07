@@ -666,7 +666,7 @@ export class InventoryValuationRepository {
  * bound. The `+ 1` read is how the bound is DETECTED rather than silently
  * truncated: a key with more history than the command can replay is refused.
  */
-async function readKeyMovements(
+export async function readKeyMovements(
   tx: CoreTxClient,
   key: BalanceKey,
 ): Promise<MovementRow[]> {
@@ -754,7 +754,7 @@ function toFact(row: MovementRow, method: ValuationMethod): ReplayFact {
  * beyond the cut-off, the rows before it would have to cover the remaining
  * dates more than once — which the same per-date check would have caught.
  */
-async function readMethodVersions(
+export async function readMethodVersions(
   tx: CoreTxClient,
   key: BalanceKey,
   movementDates: readonly Date[],

@@ -26,6 +26,16 @@ import { publishEvent } from './master-data-support.js';
 import { InventoryValuationService } from './inventory-valuation.service.js';
 import type { BackdateAssessment } from '../domain/backdating.js';
 import {
+  BACKDATE_CONFIRMATION_CODE,
+  transferBackdateConfirmationMessage,
+} from '../domain/backdating.js';
+import { DEFAULT_VALUATION_METHOD } from '../domain/valuation-method.js';
+import {
+  UnsupportedValuationMethodError,
+  UnvaluedTransferReplayError,
+} from '../domain/valuation-replay.js';
+import { VALUATION_PERMISSIONS } from '../domain/inventory-valuation-permissions.js';
+import {
   buildRequestHash,
   canonicalClientDate,
   normalizeReference,
@@ -33,7 +43,11 @@ import {
   requireOperationKey,
   resolveEnteredToBase,
 } from './inventory-posting-support.js';
-import { InsufficientStockError } from '../data/inventory-posting-errors.js';
+import {
+  InsufficientStockError,
+  RecalculationTooLargeError,
+  TransferBackdateConfirmationRequiredError,
+} from '../data/inventory-posting-errors.js';
 import { assertPostableItem } from './inventory-movements.service.js';
 import { ItemsService } from './items.service.js';
 import { WarehousesService } from './warehouses.service.js';
@@ -51,6 +65,14 @@ export interface PostTransferInput {
   reason?: string | null | undefined;
   referenceType?: string | null | undefined;
   referenceId?: string | null | undefined;
+  /**
+   * OD-VAL-10 acknowledgement: the operator knows the transfer is dated
+   * before the latest movement on one of its two keys. Required only for a
+   * backdated transfer; a confirmed one additionally requires
+   * `Inventory.Valuation.Recalculate`, because the coupled replay restates
+   * both keys from the transfer date onward.
+   */
+  backdateConfirmed?: boolean | undefined;
 }
 
 export interface TransferResultDto {
@@ -179,7 +201,22 @@ export class InventoryTransfersService {
         movementDate,
       }),
     ]);
-    assertTransferNotBackdated(sourceBackdate, destinationBackdate);
+    const backdated = requireTransferBackdateDecision({
+      movementDate,
+      sourceWarehouseId: input.sourceWarehouseId,
+      destinationWarehouseId: input.destinationWarehouseId,
+      source: sourceBackdate,
+      destination: destinationBackdate,
+      confirmed: input.backdateConfirmed === true,
+    });
+    if (backdated) {
+      // Restating existing values is a valuation authority, not a warehouse
+      // side effect (C-57 hardening): check it BEFORE the quantity fact is
+      // written, so a caller who lacks it cannot create stock and then fail.
+      await this.authorization.requireAllPermissions([
+        VALUATION_PERMISSIONS.RECALCULATE,
+      ]);
+    }
 
     // A transfer moves stock AND the value that stock carries, so the pair
     // is exactly value-neutral (PDR-05 rule 6). No cost is ever accepted on
@@ -260,6 +297,9 @@ export class InventoryTransfersService {
         }),
         actorId,
         valuationMethod: valuationMethod.method,
+        // The repository re-derives the verdict from the LOCKED rows; this is
+        // the operator's answer, not the repository's decision.
+        backdateConfirmed: input.backdateConfirmed === true,
       });
       await publishEvent(this.events, {
         type: INVENTORY_MOVEMENT_POSTED_EVENT,
@@ -341,6 +381,8 @@ export class InventoryTransfersService {
           },
         );
       }
+      const translated = translateTransferReplayError(error);
+      if (translated !== null) throw translated;
       if (isUniqueViolation(error)) {
         const raced = await this.replayOrReject(
           input.organizationId,
@@ -388,25 +430,118 @@ export class InventoryTransfersService {
 // ---- Internal helpers ----
 
 /**
- * OQ-67 fail-closed gate, shared with the C-58 Transfer document finalize
- * (`inventory-business-documents.service.ts`): the transfer-average
- * convention for a backdated transfer is unresolved, so no stock is moved
- * rather than valued by a rule nobody approved.
+ * The backdating gate for a transfer, shared with the C-58 Transfer document
+ * finalize (`inventory-business-documents.service.ts`).
+ *
+ * A backdated transfer is SUPPORTED since C-59C: the coupled two-key replay
+ * values the pair from the source position at the transfer date (OD-TRF-01).
+ * What the operator must still do is acknowledge the backdating itself
+ * (OD-VAL-10, question 1), because the replay restates both keys from that
+ * date onward. There is deliberately no repricing question: the pair is one
+ * valuation unit (OD-TRF-05) and the coupled replay is how the transfer is
+ * valued, not an optional reprice of values that could be left alone.
+ *
+ * Returns `true` when the transfer is backdated and confirmed — the caller
+ * then also needs `Inventory.Valuation.Recalculate` before writing.
  */
-export function assertTransferNotBackdated(
-  source: BackdateAssessment,
-  destination: BackdateAssessment,
-): void {
-  if (!source.backdated && !destination.backdated) return;
-  throw AppException.businessRule(
-    'Backdated inventory transfers can affect valuation in both warehouses. ' +
-      'Vardena does not silently value or reprice a backdated transfer while the transfer-average convention remains open; no stock was moved.',
+export function requireTransferBackdateDecision(params: {
+  movementDate: Date;
+  sourceWarehouseId: string;
+  destinationWarehouseId: string;
+  source: BackdateAssessment;
+  destination: BackdateAssessment;
+  confirmed: boolean;
+}): boolean {
+  const backdated = params.source.backdated || params.destination.backdated;
+  if (!backdated) return false;
+  if (params.confirmed) return true;
+  const keys = [
     {
-      code: 'inventory.backdated_transfer_valuation_unresolved',
-      source: backdateSummary(source),
-      destination: backdateSummary(destination),
+      warehouseId: params.sourceWarehouseId,
+      latestMovementDate: params.source.latestMovementDate,
+    },
+    {
+      warehouseId: params.destinationWarehouseId,
+      latestMovementDate: params.destination.latestMovementDate,
+    },
+  ];
+  throw AppException.businessRule(
+    transferBackdateConfirmationMessage({
+      movementDate: params.movementDate,
+      keys,
+    }),
+    {
+      code: BACKDATE_CONFIRMATION_CODE,
+      movementDate: params.movementDate.toISOString(),
+      keys: keys.map((key) => ({
+        warehouseId: key.warehouseId,
+        latestMovementDate: key.latestMovementDate?.toISOString() ?? null,
+      })),
+      source: backdateSummary(params.source),
+      destination: backdateSummary(params.destination),
     },
   );
+}
+
+/**
+ * The replay failures that are business answers rather than faults, mapped
+ * once for every transfer surface (the direct endpoint and the C-58 Transfer
+ * document). Returns `null` when the error is something else entirely.
+ *
+ * `TransferBackdateConfirmationRequiredError` is the same refusal as the gate
+ * above, raised from the locked write when a concurrent posting made the
+ * transfer backdated between the assessment and the transaction: the retry
+ * with the confirmation resolves it, which is exactly what the message says.
+ */
+export function translateTransferReplayError(
+  error: unknown,
+): AppException | null {
+  if (error instanceof TransferBackdateConfirmationRequiredError) {
+    return AppException.businessRule(
+      transferBackdateConfirmationMessage({
+        movementDate: error.movementDate,
+        keys: error.keys,
+      }),
+      {
+        code: BACKDATE_CONFIRMATION_CODE,
+        movementDate: error.movementDate.toISOString(),
+        keys: error.keys.map((key) => ({
+          warehouseId: key.warehouseId,
+          latestMovementDate: key.latestMovementDate?.toISOString() ?? null,
+        })),
+      },
+    );
+  }
+  if (error instanceof RecalculationTooLargeError) {
+    return AppException.businessRule(error.message, {
+      code: 'inventory.recalculation_too_large',
+      limit: error.limit,
+    });
+  }
+  if (error instanceof UnsupportedValuationMethodError) {
+    // History configured with a method this build cannot execute: the replay
+    // refuses rather than restating that period under today's method
+    // (OD-VAL-14/OD-VAL-18).
+    return AppException.businessRule(error.message, {
+      code: 'inventory.valuation_method_not_implemented',
+      method: error.method,
+      movementId: error.movementId,
+      activeMethods: [DEFAULT_VALUATION_METHOD],
+    });
+  }
+  if (error instanceof UnvaluedTransferReplayError) {
+    // A STORED leg of some OTHER transfer stands in the way: its counterpart
+    // key is not part of this replay, so valuing it here would strand value.
+    // Genuinely unresolvable by this command — price both keys of that
+    // transfer together instead (OD-TRF-08/09).
+    return AppException.businessRule(error.message, {
+      code: 'inventory.transfer_replay_unpaired_leg',
+      movementId: error.movementId,
+      transferId: error.transferId,
+      counterpartWarehouseId: error.counterpartWarehouseId,
+    });
+  }
+  return null;
 }
 
 function backdateSummary(

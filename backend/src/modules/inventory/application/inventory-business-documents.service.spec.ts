@@ -22,7 +22,10 @@ import type { InventoryBalancesRepository } from '../data/inventory-balances.rep
 import type { InventoryMovementsRepository } from '../data/inventory-movements.repository.js';
 import type { InventoryBusinessDocumentsRepository } from '../data/inventory-business-documents.repository.js';
 import type { UnitConversionsRepository } from '../data/unit-conversions.repository.js';
-import { InsufficientStockError } from '../data/inventory-posting-errors.js';
+import {
+  InsufficientStockError,
+  RecalculationTooLargeError,
+} from '../data/inventory-posting-errors.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { negateMoney } from '../domain/money.js';
 import {
@@ -30,6 +33,8 @@ import {
   compareDecimalStrings,
 } from '../domain/quantities.js';
 import { INVENTORY_DOCUMENT_PERMISSIONS } from '../domain/inventory-document-permissions.js';
+import { VALUATION_PERMISSIONS } from '../domain/inventory-valuation-permissions.js';
+import { TRANSFER_PERMISSIONS } from '../domain/inventory-core-permissions.js';
 import { INVENTORY_DOCUMENT_EVENT_TYPES } from '../domain/inventory-document.events.js';
 
 /**
@@ -545,6 +550,7 @@ function fakeDocumentsRepository(
 
 function fakeMovementsRepository(
   world: FakeWorld,
+  options: { failTransferReplay?: boolean } = {},
 ): InventoryMovementsRepository {
   const insert = (
     movement: Record<string, unknown>,
@@ -665,6 +671,11 @@ function fakeMovementsRepository(
       return { movement, balance: {} };
     },
     async postTransfer(input: Record<string, unknown>) {
+      if (options.failTransferReplay === true) {
+        // The real repository's coupled replay refusing inside the document's
+        // own transaction: the document layer must render the named code.
+        throw new RecalculationTooLargeError(10_000);
+      }
       const operation = input['operation'] as {
         organizationId: string;
         operationKey: string;
@@ -716,6 +727,8 @@ interface ValuationOptions {
   repricingFails?: boolean;
   /** Simulate a key with no valued stock (sales-return cold start). */
   noValuedStock?: boolean;
+  /** Make the transfer ledger's coupled replay refuse, to prove the mapping. */
+  transferReplayFails?: boolean;
 }
 
 function fakeValuation(
@@ -778,6 +791,7 @@ interface BuildOptions {
   backdated?: boolean;
   repricingFails?: boolean;
   noValuedStock?: boolean;
+  transferReplayFails?: boolean;
 }
 
 async function buildFixture(options: BuildOptions = {}) {
@@ -894,7 +908,9 @@ async function buildFixture(options: BuildOptions = {}) {
 
   const service = new InventoryBusinessDocumentsService(
     fakeDocumentsRepository(world),
-    fakeMovementsRepository(world),
+    fakeMovementsRepository(world, {
+      failTransferReplay: options.transferReplayFails === true,
+    }),
     stores.unitConversions as unknown as UnitConversionsRepository,
     organizations,
     items,
@@ -1401,7 +1417,11 @@ describe('C-58 runtime — finalize (Transfer)', () => {
     );
   });
 
-  it('refuses a backdated transfer fail-closed (OQ-67)', async () => {
+  it('asks for the backdating confirmation before posting a backdated transfer (C-59C)', async () => {
+    // The convention is decided now (PDR-08 OD-TRF-01…09): the pair is valued
+    // by the coupled two-key replay. What the operator must still do is
+    // acknowledge the backdating itself, exactly as for any other document
+    // (OD-VAL-10), so the refusal is the SHARED code and nothing is written.
     const backdating = await buildFixture({ backdated: true });
     const transfer = await asActor(() =>
       backdating.service.createDraft({
@@ -1426,8 +1446,144 @@ describe('C-58 runtime — finalize (Transfer)', () => {
           {},
         ),
       ),
-    ).rejects.toMatchObject({ status: 422 });
+    ).rejects.toMatchObject({
+      status: 422,
+      details: { code: 'inventory.backdated_document' },
+    });
     expect(backdating.world.movements.size).toBe(0);
+    expect(
+      backdating.world.onHand(backdating.warehouseId, backdating.itemId),
+    ).toBe('0');
+    expect(
+      backdating.world.onHand(backdating.otherWarehouseId, backdating.itemId),
+    ).toBe('0');
+  });
+
+  it('posts a CONFIRMED backdated transfer with the recalculation authority, and leaves it consistent (C-59C)', async () => {
+    const backdating = await buildFixture({ backdated: true });
+    await asActor(() => stockUp(backdating, '10'));
+    const transfer = await asActor(() =>
+      backdating.service.createDraft({
+        organizationId: backdating.organizationId,
+        kind: 'transfer',
+        sourceWarehouseId: backdating.warehouseId,
+        destinationWarehouseId: backdating.otherWarehouseId,
+        lines: [
+          {
+            itemId: backdating.itemId,
+            quantity: '4',
+            unitId: backdating.unitId,
+          },
+        ],
+      }),
+    );
+
+    // The confirmation alone is not the whole decision: restating BOTH keys
+    // from the transfer date is a valuation authority (C-57 hardening), and
+    // the authority is checked BEFORE the quantity fact is written.
+    const before = backdating.world.movements.size;
+    backdating.restrictPermissions([
+      INVENTORY_DOCUMENT_PERMISSIONS.FINALIZE,
+      TRANSFER_PERMISSIONS.CREATE,
+    ]);
+    await expect(
+      asActor(() =>
+        backdating.service.finalizeDocument(
+          transfer.id,
+          backdating.organizationId,
+          { backdateConfirmed: true },
+        ),
+      ),
+    ).rejects.toMatchObject({
+      status: 403,
+      message: expect.stringContaining(VALUATION_PERMISSIONS.RECALCULATE),
+    });
+    expect(backdating.world.movements.size).toBe(before);
+    expect(
+      backdating.world.onHand(backdating.otherWarehouseId, backdating.itemId),
+    ).toBe('0');
+
+    backdating.restrictPermissions([
+      INVENTORY_DOCUMENT_PERMISSIONS.FINALIZE,
+      TRANSFER_PERMISSIONS.CREATE,
+      VALUATION_PERMISSIONS.RECALCULATE,
+    ]);
+    const finalized = await asActor(() =>
+      backdating.service.finalizeDocument(
+        transfer.id,
+        backdating.organizationId,
+        { backdateConfirmed: true },
+      ),
+    );
+
+    // A transfer is never left stale by a successful finalize: the pair's own
+    // value comes from the coupled replay, not from a skipped repricing
+    // (OD-TRF-05).
+    expect(finalized.status).toBe('operational');
+    expect(finalized.valuationStale).toBe(false);
+    // And no SEPARATE repricing plan ran: the pair's replay is the valuation.
+    expect(backdating.recalculations).toEqual([]);
+    expect(finalized.lines[0]!.outMovementId).not.toBeNull();
+    expect(finalized.lines[0]!.inMovementId).not.toBeNull();
+    expect(
+      backdating.world.onHand(backdating.warehouseId, backdating.itemId),
+    ).toBe('6');
+    expect(
+      backdating.world.onHand(backdating.otherWarehouseId, backdating.itemId),
+    ).toBe('4');
+  });
+
+  it('renders a refusing coupled replay as its own business code, never a generic failure (C-59C)', async () => {
+    // A transfer's replay can genuinely refuse inside the document's own
+    // transaction (a key past the bounded horizon, an unimplemented stored
+    // method, an unpaired leg of another transfer, a concurrent posting that
+    // made the transfer backdated). Every one of those is a NAMED answer the
+    // caller can act on, so it must not surface as an opaque 500 — and the
+    // whole document transaction must roll back behind it.
+    const failing = await buildFixture({
+      backdated: true,
+      transferReplayFails: true,
+    });
+    await asActor(() => stockUp(failing, '10'));
+    const transfer = await asActor(() =>
+      failing.service.createDraft({
+        organizationId: failing.organizationId,
+        kind: 'transfer',
+        sourceWarehouseId: failing.warehouseId,
+        destinationWarehouseId: failing.otherWarehouseId,
+        lines: [
+          {
+            itemId: failing.itemId,
+            quantity: '4',
+            unitId: failing.unitId,
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      asActor(() =>
+        failing.service.finalizeDocument(transfer.id, failing.organizationId, {
+          backdateConfirmed: true,
+        }),
+      ),
+    ).rejects.toMatchObject({
+      status: 422,
+      details: { code: 'inventory.recalculation_too_large', limit: 10_000 },
+    });
+
+    // Nothing survived the refusal: no leg, no balance change, still a draft.
+    expect(failing.world.movements.size).toBe(1);
+    expect(failing.world.onHand(failing.warehouseId, failing.itemId)).toBe(
+      '10',
+    );
+    expect(failing.world.onHand(failing.otherWarehouseId, failing.itemId)).toBe(
+      '0',
+    );
+    const unchanged = await asActor(() =>
+      failing.service.getDocument(transfer.id, failing.organizationId),
+    );
+    expect(unchanged.status).toBe('draft');
   });
 });
 

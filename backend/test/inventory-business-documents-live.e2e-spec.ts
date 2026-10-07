@@ -110,6 +110,10 @@ describe.skipIf(DATABASE_URL === undefined)(
     let unitAId = '';
     let itemAId = '';
     let itemBId = '';
+    /** A fresh item for the coupled backdated-transfer replay (C-59C): the
+     * replay restates a key's WHOLE history, so it needs a key whose history
+     * this test controls. */
+    let itemCId = '';
 
     let operatorId = '';
     let clerkId = '';
@@ -318,8 +322,16 @@ describe.skipIf(DATABASE_URL === undefined)(
         itemKind: 'goods',
         baseUnitId: unitAId,
       });
+      const itemC = await items.createItem({
+        organizationId: orgAId,
+        code: 'ITM-C',
+        name: 'Item C (coupled replay)',
+        itemKind: 'goods',
+        baseUnitId: unitAId,
+      });
       itemAId = itemA.id;
       itemBId = itemB.id;
+      itemCId = itemC.id;
 
       // Org B exists with its own master data so the isolation probes are
       // real rows in the same tables, not an empty organization.
@@ -627,6 +639,133 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(rows[0]!['transferId']).not.toBeNull();
       expect(await onHand(whMainId, itemAId)).toBe(sourceBefore - 15);
       expect(await onHand(whSecondId, itemAId)).toBe(destinationBefore + 15);
+    });
+
+    it('values a BACKDATED transfer by replaying BOTH keys together (C-59C)', async () => {
+      const costedReceipt = async (
+        warehouseId: string,
+        quantity: string,
+        cost: string,
+        businessDate: string,
+      ): Promise<void> => {
+        const draft = await createDocument({
+          kind: 'receipt',
+          warehouseId,
+          businessDate,
+          cost,
+          lines: [{ itemId: itemCId, quantity, unitId: unitAId }],
+        });
+        await finalize(draft['id'] as string);
+      };
+      // Source average 100/unit, destination average 50/unit, and a movement
+      // AFTER the transfer on both keys. The pair (Jan 15) must therefore be
+      // valued from the source position ON ITS DATE (5 × 100), and the
+      // movements that follow it must be recomputed around the arriving
+      // value.
+      await costedReceipt(whMainId, '10', '1000', '2026-01-10T00:00:00.000Z');
+      await costedReceipt(whSecondId, '20', '1000', '2026-01-05T00:00:00.000Z');
+      await costedReceipt(whMainId, '10', '3000', '2026-01-20T00:00:00.000Z');
+      const issueDraft = await createDocument({
+        kind: 'issue',
+        warehouseId: whSecondId,
+        businessDate: '2026-02-01T00:00:00.000Z',
+        lines: [{ itemId: itemCId, quantity: '12', unitId: unitAId }],
+      });
+      const issued = await finalize(issueDraft['id'] as string);
+      const issueMovementId = (
+        issued['lines'] as Array<Record<string, unknown>>
+      )[0]!['movementId'] as string;
+
+      const draft = await createDocument({
+        kind: 'transfer',
+        sourceWarehouseId: whMainId,
+        destinationWarehouseId: whSecondId,
+        businessDate: '2026-01-15T00:00:00.000Z',
+        lines: [{ itemId: itemCId, quantity: '5', unitId: unitAId }],
+      });
+      const draftId = draft['id'] as string;
+
+      // Unconfirmed: the shared backdating refusal, naming BOTH keys with
+      // what each of them actually holds. Nothing is written.
+      const refused = await operator
+        .post(`${base}/${draftId}/finalize`)
+        .query({ organizationId: orgAId })
+        .send({})
+        .expect(422);
+      expect(refused.body['details']).toMatchObject({
+        code: 'inventory.backdated_document',
+        keys: [
+          {
+            warehouseId: whMainId,
+            latestMovementDate: '2026-01-20T00:00:00.000Z',
+          },
+          {
+            warehouseId: whSecondId,
+            latestMovementDate: '2026-02-01T00:00:00.000Z',
+          },
+        ],
+      });
+      expect(await movementCount(draftId)).toBe(0);
+
+      const confirmedResponse = await operator
+        .post(`${base}/${draftId}/finalize`)
+        .query({ organizationId: orgAId })
+        .send({ backdateConfirmed: true })
+        .expect(200);
+      const confirmed = confirmedResponse.body as Record<string, unknown>;
+      expect(confirmed['status']).toBe('operational');
+      // The coupled replay restated both keys, so the document is NOT flagged
+      // as carrying unreconciled values.
+      expect(confirmed['valuationStale']).toBe(false);
+
+      const legs = await (
+        await movementRows()
+      ).findMany({ where: { referenceId: draftId } });
+      expect(legs).toHaveLength(2);
+      const outLeg = legs.find(
+        (leg) => leg['movementType'] === 'transfer_out',
+      )!;
+      const inLeg = legs.find((leg) => leg['movementType'] === 'transfer_in')!;
+      expect(decimalAtScale(outLeg['totalCost'], 2)).toBe('-500.00');
+      expect(decimalAtScale(inLeg['totalCost'], 2)).toBe('500.00');
+      expect(outLeg['valuationSource']).toBe('transfer');
+
+      // The destination's later issue was recomputed around the arriving
+      // value: 12 of the 25 units now cost 720, where the incremental path
+      // had written 600.
+      const restated = await (
+        await movementRows()
+      ).findMany({ where: { id: issueMovementId } });
+      expect(decimalAtScale(restated[0]!['totalCost'], 2)).toBe('-720.00');
+      expect(restated[0]!['valuationRunId']).not.toBeNull();
+
+      const stateProbe = (
+        await prisma.getClient<{
+          inventoryValuationState: {
+            findMany: (
+              args: unknown,
+            ) => Promise<Array<Record<string, unknown>>>;
+          };
+        }>()
+      ).inventoryValuationState;
+      const states = await stateProbe.findMany({
+        where: {
+          organizationId: orgAId,
+          itemId: itemCId,
+          warehouseId: { in: [whMainId, whSecondId] },
+        },
+      });
+      const byWarehouse = new Map(
+        states.map((row) => [row['warehouseId'] as string, row]),
+      );
+      expect(decimalAtScale(byWarehouse.get(whMainId)!['totalValue'], 2)).toBe(
+        '3500.00',
+      );
+      expect(
+        decimalAtScale(byWarehouse.get(whSecondId)!['totalValue'], 2),
+      ).toBe('780.00');
+      expect(byWarehouse.get(whMainId)!['staleSince']).toBeNull();
+      expect(byWarehouse.get(whSecondId)!['staleSince']).toBeNull();
     });
 
     // -----------------------------------------------------------------------

@@ -36,11 +36,13 @@ import { useInventoryReferences } from './use-inventory-references';
  *
  * - **No cost anywhere.** Neither leg is priced by the operator; value
  *   follows the moving-average mechanism of each key (OD-VAL-08/09).
- * - **Backdated transfers are refused, not confirmed.** The backend rejects
- *   a transfer whose date precedes the latest movement on either key with
- *   `inventory.backdated_transfer_valuation_unresolved` (OQ-67 is OPEN —
- *   no transfer repricing convention exists to confirm). The form renders
- *   exactly that refusal as a business error and offers no bypass.
+ * - **A backdated transfer is valued, but only once confirmed.** The
+ *   backend answers a transfer dated before the latest movement on either
+ *   key with the shared refusal (`inventory.backdated_document`, C-59C) until
+ *   the caller confirms it; the confirmed command replays BOTH keys together
+ *   and needs the valuation authority. This surface has no confirmation
+ *   dialog yet (recorded follow-up), so it renders the refusal as a business
+ *   error and offers no bypass.
  */
 
 export function TransferFormPage(): ReactElement {

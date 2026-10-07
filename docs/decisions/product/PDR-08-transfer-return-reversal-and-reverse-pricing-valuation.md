@@ -142,7 +142,7 @@ Warehouse A: Item X, average cost 100,000. Warehouse B: Item X, average cost
 | **OD-TRF-06** | **A transfer never accepts a manual cost** (confirms the implemented refusal). Its value is whatever the source key already held. |
 | **OD-TRF-07** | **If the source leg cannot be valued, both legs stay `unvalued` and the pair is not accounting-eligible.** The quantity effect is still posted and still final (OD-PRC-10). |
 | **OD-TRF-08** | **Ordering rule for the Pricing Operation:** the source key must be priced before the destination key. When both are in scope, the operation enforces the ordering itself; a destination-only scope that would value a leg whose source is still unpriced is **refused with a named reason**, never silently valued. |
-| **OD-TRF-09** | **Backdated transfers remain fail-closed for V1 — but the reason has changed.** The *convention* is now decided (OD-TRF-01). What is missing is the **coupled two-key replay** (source and destination must be replayed together, in order). That is an **implementation gap assigned to C-59C**, no longer an undecided domain question. The current refusal code stays until that replay exists. |
+| **OD-TRF-09** | **Backdated transfers remain fail-closed for V1 — but the reason has changed.** The *convention* is now decided (OD-TRF-01). What is missing is the **coupled two-key replay** (source and destination must be replayed together, in order). That is an **implementation gap assigned to C-59C**, no longer an undecided domain question. The current refusal code stays until that replay exists — **IMPLEMENTED 2026-10-07 (C-59C):** the replay exists (`domain/transfer-replay.ts` + `data/inventory-transfer-replay.ts`, OD-VAL-10 confirmation and `Inventory.Valuation.Recalculate` required, bounded by OD-VAL-12), and the retired refusal code is emitted by no path. |
 
 ### 2.6 Rejected alternatives
 
@@ -392,7 +392,7 @@ OQ-27 / OQ-39 / OQ-42.
 | Decision | Impact |
 |---|---|
 | OD-TRF-01…07 | **None** — confirms the merged `applyTransfer` neutrality |
-| OD-TRF-08/09 | C-59C: coupled source→destination replay; only then may the backdated-transfer refusal be lifted |
+| OD-TRF-08/09 | **DONE 2026-10-07 (C-59C):** coupled source→destination replay implemented; the backdated-transfer refusal is lifted and the pair is valued together, atomically, inside the posting transaction |
 | OD-RET-01…07 | C-59D: a Return document kind with an optional basis link, two costing routes, and a cold-start refusal |
 | OD-REV-01…06 | **None** — confirms the merged reversal behaviour |
 | OD-REV-07 | Blocked by OQ-27; correction documents stay out of scope |

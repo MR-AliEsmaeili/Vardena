@@ -784,10 +784,26 @@ states/current,backdate-check,movements/:id/cost,recalculations}`. Events:
   **C-57 operational hardening (2026-10-05):** backdated reversals now use the
   same two-step backdating + repricing gate as normal movements; choosing
   `recalculate` requires `Inventory.Valuation.Recalculate` before the side
-  effect is committed; late-cost assignment likewise requires Recalculate when
-  it asks to reprice; and backdated transfers are detected and refused with
-  `inventory.backdated_transfer_valuation_unresolved` while OQ-67 remains
-  OPEN. **Still not implemented:** COGS/journal posting into Accounting
+  effect is committed; and late-cost assignment likewise requires Recalculate
+  when it asks to reprice.
+  **C-59C (2026-10-07, OD-TRF-08/09):** a backdated transfer is now SUPPORTED
+  instead of fail-closed. `POST /inventory/transfers` (and the Transfer
+  document's finalize) accepts `backdateConfirmed` — the same OD-VAL-10
+  acknowledgement the movement endpoint uses, refused with the same
+  `inventory.backdated_document` code, naming BOTH keys — and a confirmed
+  backdated transfer additionally requires `Inventory.Valuation.Recalculate`
+  before any write. The pair is then valued by the **coupled two-key replay**
+  (`domain/transfer-replay.ts`, run inside the posting transaction): both
+  keys' histories are folded in canonical ledger order with the new pair at
+  its own position, the source leg removes the source position's value at the
+  transfer date, and the destination leg receives exactly that value
+  (OD-TRF-01/02/05). Refusals stay named:
+  `inventory.recalculation_too_large`, `inventory.valuation_method_not_implemented`
+  and `inventory.transfer_replay_unpaired_leg` (an unvalued stored leg of
+  another transfer, which the command may not resolve on its own). The
+  retired `inventory.backdated_transfer_valuation_unresolved` code is emitted
+  by no path; OQ-67 is Resolved (PDR-08 §2), and the former implementation
+  gap OD-TRF-09 is closed. **Still not implemented:** COGS/journal posting into Accounting
   (OQ-39/OQ-42), returns costing (OD-VAL-19), landed cost, FIFO/LIFO/specific
   identification, lot/serial-level valuation, **Receipt/Issue documents**
   (C-51/C-52 — the OQ-54 lifecycle policy was decided 2026-10-05 (edit until

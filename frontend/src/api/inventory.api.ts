@@ -131,9 +131,14 @@ export function postInventoryMovement(
 /**
  * Post the two-leg transfer (`POST /inventory/transfers`).
  *
- * A backdated transfer is REJECTED by the backend with
- * `inventory.backdated_transfer_valuation_unresolved` (OQ-67 open) — there is
- * deliberately no confirmation/repricing pair here.
+ * A BACKDATED transfer is supported (C-59C): the backend values the pair with
+ * the coupled two-key replay, which restates both warehouses from the
+ * transfer's date. It is refused with the shared backdating code
+ * (`inventory.backdated_document`) until `backdateConfirmed` is sent, and a
+ * confirmed one requires `Inventory.Valuation.Recalculate`. There is no
+ * repricing choice on this surface: the pair is valued together (PDR-08
+ * OD-TRF-01/05). The two-step confirmation dialog is a recorded UI follow-up;
+ * this surface currently renders the refusal as a business error.
  */
 export function postInventoryTransfer(
   body: PostInventoryTransferInput,

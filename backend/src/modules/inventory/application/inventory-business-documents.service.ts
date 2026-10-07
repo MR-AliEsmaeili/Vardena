@@ -83,7 +83,10 @@ import {
 } from '../domain/quantities.js';
 import { lockMovementRow } from '../data/inventory-locks.js';
 import { assertPostableItem } from './inventory-movements.service.js';
-import { assertTransferNotBackdated } from './inventory-transfers.service.js';
+import {
+  requireTransferBackdateDecision,
+  translateTransferReplayError,
+} from './inventory-transfers.service.js';
 import { ItemsService } from './items.service.js';
 import { UnitsService } from './units.service.js';
 import { WarehousesService } from './warehouses.service.js';
@@ -545,7 +548,10 @@ export class InventoryBusinessDocumentsService {
 
     // Backdating is assessed BEFORE anything is written, exactly like a
     // direct posting: a re-post into the past is still a posting into the
-    // past (OD-VAL-10/11, and OQ-67 fail-closed for transfers).
+    // past (OD-VAL-10/11). A TRANSFER re-post additionally requires the
+    // operator's acknowledgement and the recalculation authority (C-59C);
+    // its acknowledgement travels as the C-58 `acknowledgeSideEffects` flag
+    // (the recorded debt in `docs/tasks/c-59c-...` §6).
     if (assessment.requiresLedgerReconciliation) {
       await this.assertPostingAllowed({
         organizationId,
@@ -608,7 +614,17 @@ export class InventoryBusinessDocumentsService {
           description: header.description,
           reference: header.reference,
           ...(assessment.classification === 'material'
-            ? { valuationStale: repricing === 'skip' }
+            ? {
+                // Same reasoning as the finalize path: when a TRANSFER's
+                // effect is re-posted, the re-post itself (coupled replay or
+                // incremental pair) leaves both keys consistent, so the
+                // "did not reprice" flag would be a false alarm.
+                valuationStale:
+                  current.kind === 'transfer' &&
+                  assessment.requiresLedgerReconciliation
+                    ? false
+                    : repricing === 'skip',
+              }
             : {}),
           updatedAt: now,
           updatedBy: actorId,
@@ -624,6 +640,10 @@ export class InventoryBusinessDocumentsService {
             keyPrefix: `invdoc:${current.id}:e:${editId}`,
             actorId,
             at: now,
+            // The C-58 debt (recorded, not redesigned here): the edit endpoint
+            // still carries ONE acknowledgement flag for both the side-effect
+            // confirmation and the backdate confirmation.
+            backdateConfirmed: input.acknowledgeSideEffects === true,
           });
           movementIds.push(...reposted);
         }
@@ -779,9 +799,15 @@ export class InventoryBusinessDocumentsService {
     });
 
     // Planned before the transaction, executed inside it (see
-    // `planDocumentRepricing`).
+    // `planDocumentRepricing`). A TRANSFER needs no separate repricing plan
+    // (C-59C): the coupled two-key replay inside `postTransfer` already
+    // restates both of its keys from the transfer's date, so an extra
+    // recalculation would repeat the same work and add a second run row for
+    // the same command.
     const repricingPlans =
-      backdating.backdated && repricing === 'recalculate'
+      current.kind !== 'transfer' &&
+      backdating.backdated &&
+      repricing === 'recalculate'
         ? await this.planDocumentRepricing(
             current.id,
             organizationId,
@@ -806,12 +832,19 @@ export class InventoryBusinessDocumentsService {
           keyPrefix: operationKey,
           actorId,
           at: now,
+          backdateConfirmed: input.backdateConfirmed === true,
         });
         await this.documents.updateHeader(tx, current.id, {
           status: 'operational',
           number: allocation.number,
           operationKey,
-          valuationStale: backdating.backdated && repricing !== 'recalculate',
+          // A transfer is never left stale by a successful backdated
+          // finalize: the coupled replay restated both keys, and the transfer
+          // pair has no repricing choice to skip (OD-TRF-05).
+          valuationStale:
+            current.kind === 'transfer'
+              ? false
+              : backdating.backdated && repricing !== 'recalculate',
           finalizedAt: now,
           finalizedBy: actorId,
           updatedAt: now,
@@ -1407,9 +1440,11 @@ export class InventoryBusinessDocumentsService {
 
   /**
    * Everything that must be TRUE before any ledger write: the backdating
-   * decisions for a receipt/issue (OD-VAL-10/11) and the fail-closed OQ-67
-   * refusal for a backdated transfer. Runs entirely before the transaction so
-   * the user sees the refusal instead of a rollback.
+   * decisions for a receipt/issue (OD-VAL-10/11) and, for a transfer, the
+   * operator's acknowledgement of the backdating plus the valuation authority
+   * the coupled two-key replay needs (C-59C, OD-TRF-01…09). Runs entirely
+   * before the transaction so the user sees the refusal instead of a
+   * rollback.
    */
   private async assertPostingAllowed(params: {
     organizationId: string;
@@ -1429,6 +1464,7 @@ export class InventoryBusinessDocumentsService {
     if (params.kind === 'transfer') {
       const source = params.header.sourceWarehouseId as string;
       const destination = params.header.destinationWarehouseId as string;
+      let backdated = false;
       for (const line of params.lines) {
         const [sourceImpact, destinationImpact] = await Promise.all([
           this.valuation.assessBackdateImpact({
@@ -1444,9 +1480,27 @@ export class InventoryBusinessDocumentsService {
             movementDate: params.businessDate,
           }),
         ]);
-        assertTransferNotBackdated(sourceImpact, destinationImpact);
+        // C-59C: a backdated transfer is SUPPORTED (the coupled two-key replay
+        // values the pair from the source position at the transfer date), but
+        // it still needs the operator's acknowledgement and — because the
+        // replay restates both keys from that date onward — the valuation
+        // authority to do it.
+        backdated =
+          requireTransferBackdateDecision({
+            movementDate: params.businessDate,
+            sourceWarehouseId: source,
+            destinationWarehouseId: destination,
+            source: sourceImpact,
+            destination: destinationImpact,
+            confirmed: params.backdateConfirmed,
+          }) || backdated;
       }
-      return { backdated: false };
+      if (backdated) {
+        await this.authorization.requireAllPermissions([
+          VALUATION_PERMISSIONS.RECALCULATE,
+        ]);
+      }
+      return { backdated };
     }
 
     let backdated = false;
@@ -1530,6 +1584,13 @@ export class InventoryBusinessDocumentsService {
       keyPrefix: string;
       actorId: string | null;
       at: Date;
+      /**
+       * The caller's OD-VAL-10 answer for a backdated document, threaded to
+       * the ledger write: the repository re-derives backdating from the locked
+       * rows and refuses an unconfirmed transfer rather than repricing it
+       * silently (C-59C).
+       */
+      backdateConfirmed: boolean;
     },
   ): Promise<string[]> {
     const created: string[] = [];
@@ -1684,6 +1745,7 @@ export class InventoryBusinessDocumentsService {
             sourceAllowNegative: line.allowNegative,
             actorId: params.actorId,
             valuationMethod: method.method,
+            backdateConfirmed: params.backdateConfirmed,
           },
           tx,
         );
@@ -2082,7 +2144,9 @@ export class InventoryBusinessDocumentsService {
   /**
    * Turn the ledger's internal failures into the SAME stable business codes
    * a direct posting produces, so the UI renders one insufficient-stock
-   * experience regardless of which surface caused it (FE-UX-02 §1.2).
+   * experience regardless of which surface caused it (FE-UX-02 §1.2) — and a
+   * transfer whose coupled replay refuses gets the code the transfer endpoint
+   * uses (C-59C), never a generic failure.
    */
   private translatePostingError(
     error: unknown,
@@ -2101,7 +2165,7 @@ export class InventoryBusinessDocumentsService {
         },
       );
     }
-    return error;
+    return translateTransferReplayError(error) ?? error;
   }
 }
 

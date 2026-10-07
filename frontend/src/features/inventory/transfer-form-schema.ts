@@ -6,9 +6,10 @@ import { t } from '@/lib/i18n';
  *
  * Contract mirror of `PostInventoryTransferDto`: same quantity/unit/date
  * rules as the movement form, plus source ≠ destination. There is NO cost
- * field and NO backdate confirmation here: a backdated transfer is rejected
- * outright by the backend (`inventory.backdated_transfer_valuation_unresolved`,
- * OQ-67 open) and the form renders that refusal as a business error.
+ * field (OD-TRF-06) and — until the recorded UI follow-up — no backdate
+ * confirmation step: the backend answers a backdated transfer with the shared
+ * refusal (`inventory.backdated_document`, C-59C) and the form renders that
+ * as a business error.
  */
 
 const QUANTITY_PATTERN = /^\d+(\.\d{1,4})?$/;

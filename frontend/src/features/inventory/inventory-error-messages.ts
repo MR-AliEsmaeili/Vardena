@@ -12,7 +12,6 @@ import { t } from '@/lib/i18n';
  *    (`details.code` business subcodes: `inventory.backdated_document`,
  *    `inventory.repricing_choice_required`,
  *    `inventory.insufficient_stock`,
- *    `inventory.backdated_transfer_valuation_unresolved`,
  *    `inventory.recalculation_too_large`,
  *    `inventory.valuation_method_not_implemented`,
  *    `inventory.cost_assignment_requires_inbound`);
@@ -104,9 +103,6 @@ function businessRuleMessage(
         : '';
     return `${t.inventory.errors.insufficientStock}${numbers}`;
   }
-  if (subcode === 'inventory.backdated_transfer_valuation_unresolved') {
-    return t.inventory.errors.backdatedTransferUnresolved;
-  }
   if (subcode === 'inventory.recalculation_too_large') {
     return t.inventory.errors.recalculationTooLarge;
   }
@@ -117,10 +113,13 @@ function businessRuleMessage(
     return t.inventory.errors.costAssignmentRequiresInbound;
   }
   if (subcode === 'inventory.backdated_document') {
-    // Normally intercepted by the two-step dialog before rendering; reaching
-    // this mapping means the dialog flow was bypassed — the safe copy keeps
-    // the refusal honest instead of showing contract English.
-    return t.inventory.errors.generic;
+    // On the movement surface this is normally intercepted by the two-step
+    // dialog before rendering. The TRANSFER surface has no confirmation dialog
+    // yet (recorded follow-up), so it gets the explanation that a backdated
+    // transfer is valuable but must be confirmed — never a bypass.
+    return operation === 'postTransfer'
+      ? t.inventory.errors.backdatedTransferUnresolved
+      : t.inventory.errors.generic;
   }
   if (subcode === 'inventory.repricing_choice_required') {
     return t.inventory.errors.generic;

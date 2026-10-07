@@ -12,6 +12,7 @@ import type { InventoryBalance } from '../domain/inventory-balance.js';
 import {
   AlreadyReversedError,
   InsufficientStockError,
+  TransferBackdateConfirmationRequiredError,
 } from './inventory-posting-errors.js';
 import type {
   BalanceKey,
@@ -30,6 +31,7 @@ import {
   lockValuationStateRow,
 } from './inventory-locks.js';
 import { valueMovement, valueTransfer } from './inventory-valuation-writes.js';
+import { replayTransferPairWithin } from './inventory-transfer-replay.js';
 import type { ValuationMethod } from '../domain/valuation-method.js';
 import {
   MOVEMENT_VALUATION_STATUSES,
@@ -134,6 +136,16 @@ export interface PostTransferInput {
   actorId: string | null;
   /** The method both keys are valued with (required; see above). */
   valuationMethod: ValuationMethod;
+  /**
+   * The operator's backdating decision (OD-VAL-10), already permission-checked
+   * by the caller. `true` = "I know this transfer is dated before the latest
+   * movement on one of its warehouses". The verdict that decides which
+   * valuation path runs is re-derived from the LOCKED rows here, so a transfer
+   * that became backdated by a concurrent posting is refused
+   * (`TransferBackdateConfirmationRequiredError`) instead of being repriced
+   * without the operator's confirmation.
+   */
+  backdateConfirmed?: boolean | undefined;
 }
 
 export interface PostReversalInput extends PostMovementInput {
@@ -468,14 +480,56 @@ export class InventoryMovementsRepository {
       first.role === 'out' ? firstLock.state : secondLock.state;
     const destinationState =
       first.role === 'out' ? secondLock.state : firstLock.state;
-    const legColumns = await valueTransfer(tx, {
-      sourceState,
-      destinationState,
-      method: input.valuationMethod,
-      quantity: magnitudeOf(input.outLeg.baseQuantity),
-      at: input.outLeg.updatedAt,
-      actorId: input.actorId,
-    });
+
+    // A transfer dated before the latest movement on EITHER key cannot be
+    // valued from the keys' current positions: the source average at the
+    // transfer date is only reconstructible by replaying the history, and the
+    // destination leg must receive exactly the value that replay derives
+    // (OD-TRF-01/05). That is the coupled two-key replay (C-59C); the
+    // incremental path below stays for every other transfer.
+    //
+    // The verdict is re-derived HERE, from the locked rows, so a transfer that
+    // became backdated by a concurrent posting can never be valued by a rule
+    // the operator was not asked about (OD-VAL-10).
+    const backdated = await isBackdatedTransfer(tx, input);
+    if (backdated && input.backdateConfirmed !== true) {
+      throw new TransferBackdateConfirmationRequiredError({
+        movementDate: input.outLeg.movementDate,
+        keys: await transferKeyLatestMovementDates(tx, input),
+      });
+    }
+    const legColumns = backdated
+      ? await replayTransferPairWithin(tx, {
+          outLeg: {
+            id: input.outLeg.id,
+            key: movementKey(input.outLeg),
+            movementDate: input.outLeg.movementDate,
+            createdAt: input.outLeg.createdAt,
+            baseQuantity: input.outLeg.baseQuantity,
+          },
+          inLeg: {
+            id: input.inLeg.id,
+            key: movementKey(input.inLeg),
+            movementDate: input.inLeg.movementDate,
+            createdAt: input.inLeg.createdAt,
+            baseQuantity: input.inLeg.baseQuantity,
+          },
+          sourceState,
+          destinationState,
+          method: input.valuationMethod,
+          at: input.outLeg.updatedAt,
+          actorId: input.actorId,
+          operationKey: input.outLeg.operationKey,
+          reason: input.outLeg.reason,
+        })
+      : await valueTransfer(tx, {
+          sourceState,
+          destinationState,
+          method: input.valuationMethod,
+          quantity: magnitudeOf(input.outLeg.baseQuantity),
+          at: input.outLeg.updatedAt,
+          actorId: input.actorId,
+        });
 
     const outLeg = toDomain(
       await tx.inventoryMovement.create({
@@ -615,6 +669,51 @@ function movementKey(movement: MovementCreate): BalanceKey {
     warehouseId: movement.warehouseId,
     itemId: movement.itemId,
   };
+}
+
+/**
+ * Is this transfer dated before the latest movement on either of its keys?
+ * Read INSIDE the transfer's transaction (the caller passes its client), so
+ * the answer describes the state the locked write is about to extend.
+ */
+async function isBackdatedTransfer(
+  tx: CoreTxClient,
+  input: PostTransferInput,
+): Promise<boolean> {
+  const keys = await transferKeyLatestMovementDates(tx, input);
+  return keys.some(
+    (key) =>
+      key.latestMovementDate !== null &&
+      input.outLeg.movementDate.getTime() < key.latestMovementDate.getTime(),
+  );
+}
+
+/** Both keys with their latest movement date, for the refusal payload. */
+async function transferKeyLatestMovementDates(
+  tx: CoreTxClient,
+  input: PostTransferInput,
+): Promise<{ warehouseId: string; latestMovementDate: Date | null }[]> {
+  const keys = [
+    { warehouseId: input.outLeg.warehouseId },
+    { warehouseId: input.inLeg.warehouseId },
+  ];
+  const rows: { warehouseId: string; latestMovementDate: Date | null }[] = [];
+  for (const key of keys) {
+    const aggregate = await tx.inventoryMovement.aggregate({
+      where: {
+        organizationId: input.outLeg.organizationId,
+        warehouseId: key.warehouseId,
+        itemId: input.outLeg.itemId,
+      },
+      _sum: { baseQuantity: true },
+      _max: { movementDate: true },
+    });
+    rows.push({
+      warehouseId: key.warehouseId,
+      latestMovementDate: aggregate._max.movementDate,
+    });
+  }
+  return rows;
 }
 
 /** The two transfer keys in the fixed locking order (ascending warehouse). */
