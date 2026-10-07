@@ -1,10 +1,11 @@
 # Inventory Domain Analysis
 
-Status: Proposed (design for review) · Updated: 2026-10-04 (§2.1/§5 reconciled with the
-implemented valuation foundation — ADR-0039, PDR-05/OD-VAL-01…19)
+Status: Proposed (design for review) · Updated: 2026-10-07 (C-61 boundary decisions and
+C-59 as-built valuation reconciled; no production integration implemented)
 Companion: [blueprint](./domain-blueprint.md) §5/§9 · [master data](./master-data-strategy.md) ·
-ADR-0017 (proposed) · ADR-0022 (accepted) · ADR-0039 (proposed) · ADR-0005/0016 · AR-13/16 · OQ-24, OQ-29, OQ-31,
-OQ-67, OQ-68, OQ-69
+ADR-0017 (proposed) · ADR-0022 (accepted) · ADR-0039 (proposed) · ADR-0041 · AR-13/16 ·
+[PDR-09](../../decisions/product/PDR-09-inventory-accounting-posting-boundary.md) ·
+OQ-24, OQ-29, OQ-31, OQ-67, OQ-68, OQ-69, OQ-70, OQ-71
 
 Inventory answers one question with certainty: **how much of what is where, and what
 did it cost**. This analysis decides where the truth lives, how balances stay fast,
@@ -126,18 +127,23 @@ Inventory to do it through a public command (see blueprint §10).
   workflow/scope decision (OQ-26 dependency).
 - **Availability** = `quantity − reserved_quantity` (at the chosen warehouse scope).
   Reports must state which definition they use; APIs return both numbers.
-- **Negative stock policy** (configuration, per warehouse with an item-level
-  override): `reject` (default when undecided), `allow_with_permission`,
-  `allow`. Evaluated inside the movement transaction, before the balance update.
-  *(Expert: whether allowing negative stock is acceptable practice/legally meaningful,
-  and how it interacts with valuation — OQ-24.)*
+- **Negative stock policy:** physical negative inventory is **rejected for the MVP**
+  (OD-VAL-17 / PDR-05). The older configurable `allow_with_permission` / `allow`
+  alternatives below are not approved for MVP; they require a separate Owner decision.
+  C-61 records that the current Item/Warehouse APIs still expose allow overrides that
+  can permit negative physical stock; this is a known implementation discrepancy, not
+  an approved exception, and is not fixed by C-61. The enforcement check for the
+  approved reject path occurs inside the movement transaction, before the balance
+  update. OQ-24 remains open for broader valuation/Accounting policy, not this reject rule.
 
 ---
 
-## 5. Valuation — the accounting interface (partially decided, PDR-05)
+## 5. Valuation — the Inventory-owned Accounting interface (partially decided, PDR-05)
 
-Vardena must not hard-code a costing method; the model must be able to represent the
-common ones:
+Inventory owns valuation calculations and facts. PDR-05 / OD-VAL-02 and OD-VAL-18
+select Moving Weighted Average as the **only active MVP method**; an unimplemented
+method must not be offered or accepted. Additional methods require a separate decision.
+The table below distinguishes the current method from future options:
 
 | Method | What the model needs | Notes |
 |---|---|---|
@@ -179,12 +185,33 @@ of an explicit human choice, and it is sticky until an explicit recalculation cl
 ### 5.2 Still expert-gated (OQ-24 stays OPEN)
 
 The method, the *state* and the *operational* relationship between quantity and cost
-are decided. These are not, and must not be inferred from the implementation:
-returns costing (**OD-VAL-19** defers it — the reversal rule is not the return rule),
-COGS/journal posting into Accounting (AR-16 — never in Inventory), landed-cost
-allocation, purchase-price variance, valuation money precision and currency
-(OQ-03/OQ-11 — `numeric(18,2)` is interim), lot/serial-level valuation,
-write-down/NRV, revaluation runs and manufacturing WIP.
+are decided. Purchase Return and Sales Return **inventory valuation conventions**
+were later decided in PDR-08; the Reversal convention is distinct. Still open are
+broader Accounting/costing policies: COGS/journal policy and mapping (OQ-24/25),
+transaction/atomicity and failure semantics for the synchronous posting contract (OQ-39),
+Purchase Return agreed-price variance mapping (OQ-70), landed-cost allocation,
+purchase-price variance, valuation money precision and currency (OQ-03/OQ-11 —
+`numeric(18,2)` is interim), lot/serial-level valuation, write-down/NRV,
+revaluation policy and manufacturing WIP.
+
+### 5.3 C-61 Inventory → Accounting boundary (Owner-decided, not implemented)
+
+[PDR-09](../../decisions/product/PDR-09-inventory-accounting-posting-boundary.md)
+records PO-01…PO-12. Inventory is authoritative for quantity, movement, valuation
+and valuation history; Accounting owns account mapping, journal construction,
+voucher policy and financial posting. The primary internal integration is a
+synchronous application-service call through explicit public contracts in the
+Modular Monolith (ADR-0041), not an event subscriber or outbox delivery. Only
+explicitly approved Inventory Business Documents may initiate posting; raw
+movements, reservations, Material Requests and technical projections do not.
+
+Eligibility requires an operational document, complete valuation, no relevant
+stale valuation key, and applicable Accounting policy gates. Eligibility is not
+posting evidence. After actual Accounting Post, direct valuation changes are
+forbidden; Inventory/Accounting corrections remain independent but linked and
+policy-open. The current Inventory `accounting_posted` flag is not a Voucher or
+proof of Accounting posting. OQ-39/69/70/71/72 and the implementation gaps are
+tracked in the C-61 package; no integration code is authorized here.
 
 ## 6. Lot / serial / expiry tracking
 
@@ -225,11 +252,11 @@ All of these are plain SQL over typed columns — the design requirement from
 | Risk | Mitigation |
 |---|---|
 | Balance drift under concurrency | One transaction per movement with a locked balance row; reconciliation query; rebuild tool |
-| Valuation method chosen late | Ledger shape keeps cost data method-agnostic; method state is rebuildable |
+| Valuation method changes or unsupported methods are assumed | Moving Weighted Average is the only active MVP method; method state is effective-dated and rebuildable (PDR-05); new methods require a decision |
 | Fractional quantities/rounding | Base-unit storage, explicit conversions, precision config, expert sign-off (OQ-29) |
-| Negative stock "temporarily" allowed | Policy per warehouse + permission + audit event on each negative movement |
+| Negative stock "temporarily" allowed | Reject physical negative inventory for MVP (OD-VAL-17); any future allowance requires a separate Owner decision |
 | Lot/serial enforced inconsistently | Capability flags drive validation in one place (Inventory domain), not per document type |
-| Cross-branch transfers treated naively | Inter-branch flag + OQ-31 decision before enabling transfers across branches |
+| Cross-branch transfers treated naively | Same-Legal-Entity warehouse transfer has no GL Voucher (PO-06); other legal/entity/tax/financial-area scopes remain open (OQ-31) |
 
 ## 9. Decisions introduced here
 
@@ -237,10 +264,11 @@ All of these are plain SQL over typed columns — the design requirement from
   transaction and rebuildable (ADR-0017).
 - **D-05** Movement vocabulary is a closed enum; signed base-unit quantities; every
   movement references its document and audit context.
-- **D-06** Valuation method is configuration consuming the ledger, not schema-shaping;
-  method and its accounting effects are expert-gated (OQ-24). *Partially answered
-  2026-10-04 by OD-VAL-02/03/04/14 and implemented by ADR-0039: the method stays
-  configuration (effective-dated, per organization + item) and only the **result** —
-  the signed `total_cost` a movement actually carried — lives on the ledger row.*
+- **D-06** Valuation method is Inventory-owned configuration consuming the ledger,
+  not schema-shaping; Moving Weighted Average is the only active MVP method
+  (OD-VAL-02/03/04/14/18, PDR-05). Broader Accounting effects remain open under OQ-24.
+  *Implemented by ADR-0039: method configuration is effective-dated per organization
+  + item, and only the **result** — the signed `total_cost` a movement actually carried
+  — lives on the ledger row.*
 - **D-07** Reservations are separate from movements and quantities; negative stock is
   a policy, defaulting to reject.

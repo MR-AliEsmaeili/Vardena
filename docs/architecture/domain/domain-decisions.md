@@ -57,8 +57,12 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
   a shared "posting" module.
 - **Pros/cons:** per-module mapping duplicates and drifts; Accounting-owned mapping
   centralizes expert-reviewed rules (existing AR-16); a new module adds nothing.
-- **Recommendation:** reaffirm **AR-16/ADR-0005** — operational modules publish events;
-  Accounting owns accounts, periods, journals and event→journal mappings.
+- **Historical recommendation:** reaffirm AR-16/ADR-0005's event-only Inventory →
+  Accounting mechanism; this was a recommendation, not an Owner approval.
+- **C-61 Owner Decision:** PO-01/PO-02 confirm that Inventory owns valuation facts
+  and Accounting owns mapping/journal policy, but replace the internal event-only
+  posting mechanism with a synchronous public application-service contract
+  (PDR-09 / ADR-0041).
 - **Reason:** single place for accounting rules; modules stay free of financial policy.
 - **Consequences:** Accounting may be **disabled per organization** (D-19) so
   undecided accounting does not block operational ERP use.
@@ -103,15 +107,17 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 - **Pros/cons:** baking a method in makes a later change a migration of history;
   inferring per movement makes reports ambiguous; a consuming strategy keeps the
   quantity model stable and lets the method be chosen per organization.
-- **Recommendation:** **the ledger + balance carry quantity and the cost actually
-  assigned**; the *method* (moving average / FIFO / standard) is organization
-  configuration evaluated by an Accounting-owned engine reading movements;
-  method-specific state (average state, cost layers) is derived and rebuildable.
-- **Reason:** valuation policy is an accounting decision (OQ-24) and must not be
-  hard-coded; quantity correctness must be independent of valuation correctness.
+- **Original recommendation (superseded as to ownership by PDR-05 / OD-VAL):**
+  the ledger + balance carry quantity and assigned cost; the method is organization
+  configuration and method-specific state is derived/rebuildable. The original
+  Accounting-owned-engine wording below was corrected by later Owner decisions.
+- **Historical rationale:** valuation behavior must not be hard-coded; quantity
+  correctness remains independent of valuation correctness. PDR-05 / OD-VAL later
+  established Inventory ownership of valuation calculation and the active MVP method.
 - **Consequences:** valuation is re-computable for audit/repair; changing method
-  affects the future, not posted history; valuation reports stay marked "requires
-  accounting configuration" until OQ-24 is answered.
+  affects the future, not posted history. Inventory valuation is method-configured;
+  Accounting consumes its facts. Remaining Accounting mapping/COGS policy is still
+  gated by OQ-24/OQ-25/OQ-30.
 - **Docs:** [inventory](./inventory-domain-analysis.md) §5, OQ-24, ADR-0017
   (proposed), D-19.
 - **Expert?** accounting/inventory.
@@ -137,8 +143,9 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
     silent divergence.
   - **Narrowed.** Only Moving Weighted Average is executable; FIFO/standard remain
     vocabulary that the configuration endpoint refuses (OD-VAL-02/OD-VAL-18). OQ-24
-    stays OPEN for returns costing, COGS posting, landed cost and valuation
-    precision.
+    stays OPEN for broader COGS/journal policy, landed cost, precision/currency,
+    write-down/NRV and other unresolved accounting treatment. Inventory return-costing
+    conventions are recorded in PDR-08; Purchase Return variance mapping is OQ-70.
 
 ## D-07 — Reservations are separate; negative stock is a fail-closed policy
 
@@ -149,15 +156,17 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 - **Pros/cons:** movement-based reservations pollute the ledger and valuation;
   counter-based reservations keep the ledger a record of facts; allowing negatives
   makes valuation undefined, while rejecting them outright can block receiving flows.
-- **Recommendation:** **reservations are their own dimensions on the balance row**
-  (availability = quantity − reserved); **negative stock is policy** per warehouse with
-  item override, **defaulting to reject** until the business confirms (OQ-24).
+- **Original recommendation:** reservations are their own dimensions on the balance
+  row (availability = quantity − reserved); the earlier per-warehouse/item negative-
+  stock alternatives were proposals, not Owner decisions.
+- **Owner Decision (OD-VAL-17 / PDR-05):** physical negative inventory stays rejected
+  for the MVP; no `allow` or `allow_with_permission` rule is approved by OQ-24.
 - **Reason:** availability is an operational promise, not a movement; fail-closed
-  avoids inventing a costing rule.
+  behavior avoids inventing a costing rule.
 - **Consequences:** the reservation lifecycle (who may release, expiry, partial
-  fulfilment) must be specified before reservations are enforced (OQ-26); the policy
-  switch is configuration (D-20/D-21).
-- **Docs:** [inventory](./inventory-domain-analysis.md) §4, OQ-24, OQ-26, ADR-0017.
+  fulfilment) remains separate from movement/valuation policy (OQ-26). Any future
+  negative-stock allowance requires a separate Owner decision.
+- **Docs:** [inventory](./inventory-domain-analysis.md) §4, PDR-05, OQ-24/OQ-26, ADR-0017.
 - **Expert?** inventory/accounting.
 
 ## D-08 — Document foundation: typed tables + shared mechanics
@@ -412,7 +421,7 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 
 ## D-24 — Inter-branch and inter-company treatment is decided explicitly
 
-- **Problem:** Do warehouse/branch transfers create accounting events?
+- **Problem:** Do warehouse/branch transfers between different scope types create an Accounting Voucher?
 - **Options:** never (same books); internal clearing accounts; full internal invoicing.
 - **Pros/cons:** internal invoicing in one legal entity is usually unnecessary and adds
   tax/document noise; ignoring it entirely may be wrong for some setups (segregated
@@ -422,7 +431,13 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
   multi-company accounting are deferred to a designed feature (OQ-31).
 - **Reason:** avoids inventing an accounting policy; keeps branch reporting possible.
 - **Consequences:** if a business needs internal settlement, it is a follow-up ADR.
-- **Docs:** [inventory](./inventory-domain-analysis.md) §3, OQ-31.
+- **C-61 Owner Decision (PO-06, limited scope):** a transfer between warehouses of
+  the same Legal Entity creates no GL Voucher, while Inventory preserves source-issue
+  first valuation and passes the exact value to the destination receipt. This does
+  not decide intercompany/different-entity, tax, financial-area or other transfer
+  types; the broader historical recommendation above is not authority outside this case.
+- **Docs:** [PDR-09](../../decisions/product/PDR-09-inventory-accounting-posting-boundary.md),
+  [inventory](./inventory-domain-analysis.md) §5.3, OQ-31.
 - **Expert?** accounting.
 
 ## D-25 — Item model: one Item + kind + capability flags
@@ -468,11 +483,11 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 |---|---|---|---|
 | D-01 | Organization scope | O-2 organization + branch dimension | accounting/implementation |
 | D-02 | Party master ownership | Organization module owns parties | implementation |
-| D-03 | Accounting meaning vs operational facts | AR-16 reaffirmed | accounting |
+| D-03 | Accounting meaning vs operational facts | Inventory facts / Accounting mapping confirmed; internal event-only mechanism superseded by C-61 / ADR-0041 | accounting |
 | D-04 | Inventory source of truth | Ledger + materialized balance | inventory/accounting |
 | D-05 | Movement representation | Signed, typed, immutable | inventory |
 | D-06 | Valuation method | Ledger-consuming strategy; no schema lock-in. **As built 2026-10-04 (ADR-0039):** upheld, but the engine is Inventory-owned, not Accounting-owned | accounting/inventory |
-| D-07 | Reservations & negative stock | Separate reservations; reject negatives by default | inventory/accounting |
+| D-07 | Reservations & negative stock | Separate reservations; physical negative inventory rejected for MVP (OD-VAL-17 / PDR-05) | inventory/accounting |
 | D-08 | Document foundation | Typed tables + shared mechanics | — |
 | D-09 | Document relations | Closed kinds, line-level links, logical refs | implementation |
 | D-10 | Cancellation/reversal | Cancel unposted; reverse posted | accounting/legal |
@@ -489,6 +504,6 @@ Legend for **Expert?**: `—` no · `accounting` · `tax` · `inventory` · `leg
 | D-21 | History mechanism | Effective dating + version pinning | accounting/legal |
 | D-22 | Custom fields | Governed JSONB whitelist + promotion path | legal |
 | D-23 | Rules engine | None; six bounded categories | — |
-| D-24 | Inter-branch/internal settlement | Inventory-only transfers; settlement deferred | accounting |
+| D-24 | Inter-branch/internal settlement | PO-06: same-Legal-Entity warehouse transfer has no GL Voucher; different-entity/other cases remain open | accounting |
 | D-25 | Item model | One Item + kind + capabilities | inventory |
 | D-26 | Units/conversions | Store both; base-unit ledgers | inventory/accounting |

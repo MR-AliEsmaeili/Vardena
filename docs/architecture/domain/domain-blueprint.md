@@ -1,7 +1,7 @@
 # Vardena — Domain & Configurability Blueprint
 
 Status: Proposed (design for review — no implementation authorized by this document)
-Updated: 2026-09-11
+Updated: 2026-10-07 (C-61 Owner decision overlay; design remains Proposed)
 Scope: business domain, core model boundaries, configurability architecture.
 Companion docs: [index](./README.md) · [glossary](./domain-glossary.md) ·
 [decisions](./domain-decisions.md) · [`../../architecture.md`](../../architecture.md) ·
@@ -11,6 +11,15 @@ Companion docs: [index](./README.md) · [glossary](./domain-glossary.md) ·
 > approval chains, valuation and retention are either *configuration* or *expert
 > decisions*; where Vardena must choose, this document states options, a
 > recommendation, and what would make it wrong. Registered ids: OQ-22 … OQ-35.
+>
+> **C-61 current decision overlay (2026-10-07).** For Inventory → Accounting,
+> [PDR-09](../../decisions/product/PDR-09-inventory-accounting-posting-boundary.md)
+> and [ADR-0041](../../adr/0041-synchronous-inventory-accounting-application-contract.md)
+> supersede older event-only statements below. The approved internal posting
+> mechanism is a synchronous public application/domain contract in the Modular
+> Monolith. Inventory owns valuation facts; Accounting owns mapping and journal
+> policy. Only approved Business Documents may initiate posting. This overlay
+> is a decision reference, not implementation authorization; relevant OQs remain open.
 
 ---
 
@@ -47,8 +56,10 @@ Vardena owns its model (`.vardena/project-context.md`).
 
 - Modular monolith, module boundaries are law, one schema per module (AR-01/07/08/09).
 - Backend authorization on every endpoint (AR-21/22); auditing is event-driven (AR-23).
-- Inventory ⇢ Accounting is event-only; accounting mapping belongs to Accounting
-  (AR-16, ADR-0005). External side effects go through the outbox (AR-14).
+- Inventory → Accounting posting uses a synchronous public application/domain
+  contract; Inventory owns valuation facts and Accounting owns mapping/journal
+  policy (AR-16, ADR-0041, PDR-09). External side effects go through the outbox
+  (AR-14); events are not the primary internal posting mechanism.
 - Immutability for journals, movements and audit (AR-13); corrections are
   counter-records.
 - Reporting must stay SQL-friendly (ADR-0009).
@@ -85,7 +96,8 @@ flowchart TB
     SALES["Sales: quotation · order · invoice · return"]
     PURCH["Purchasing: request · order · invoice · return"]
     INV["Inventory: receipt · issue · transfer · adjustment · count"]
-    FIN["Accounting: journal voucher"]
+    OP["Accounting Posting Operation"]
+    FIN["Accounting Voucher"]
   end
 
   subgraph L["Ledgers (immutable facts)"]
@@ -105,10 +117,11 @@ flowchart TB
   end
 
   F --> M --> D
-  D -->|post| LEDGER
-  D -->|post| JOURNAL
+  D -->|operational post| LEDGER
   D --> HISTORY
-  LEDGER -->|events| JOURNAL
+  INV -->|approved Business Document only; synchronous public contract| OP
+  OP -->|may create one Voucher| FIN
+  FIN -->|one Voucher may contain many| JOURNAL
   L --> H
   D --> H
   H -.->|never writes core facts| D
@@ -150,21 +163,22 @@ flowchart LR
   Org -->|scope, calendar, config| Ops
   Org -->|scope, calendar, config| ACC
 
-  INV -->|"StockMovement.Posted, StockBalance…"| ACC
-  SAL -->|"Invoice.Issued, SalesReturn.Created"| ACC
+  INV -->|"approved Business Document: synchronous public contract (ADR-0041)"| ACC
+  SAL -.->|"separate Sales Accounting contract required; not decided by C-61"| ACC
   SAL -->|"command (public service): create issue"| INV
   PUR -->|"command: create receipt"| INV
-  PUR -->|"PurchaseReceipt.Created"| ACC
+  PUR -.->|"future Purchasing Accounting contract required"| ACC
   INV ---|"stock availability (read)"| SAL
   INV ---|"stock availability (read)"| PUR
 
   ACC -.->|"never calls back (AR-16)"| INV
 ```
 
-Two rules visible here are non-negotiable: **side effects are events**, and
-**commands (Sales → Inventory) are explicit public-service calls** with the caller
-supplying the business intent, while the *effects* (movements, journals) are owned
-by the receiving module.
+The Inventory → Accounting edge is an explicit synchronous public
+application/domain contract (ADR-0041); independent reactions may use domain
+events. Other module commands (such as Sales → Inventory) remain explicit
+public-service calls with the caller supplying business intent, while each
+receiving module owns its effects.
 
 ---
 
@@ -206,15 +220,15 @@ configuration* (Configurable), *what can be added without touching existing code
 | **Fiscal calendar** | Fiscal year & periods exist; posting is period-bounded; periods can close | Start date, period count/length, open/close workflow, who may reopen | Multi-year calendars, 13-period calendars | Period definition and closing rules *(expert, OQ-23)* |
 | **Item / product** | One Item record + kind + capability flags + base unit | Which kinds/groups exist; which capabilities are allowed; required fields per group; lot/serial/expiry on/off | New *capabilities* (code change), kit/BOM, variants — later modules | Whether services/contracts need revenue recognition treatment *(expert)* |
 | **Units & conversions** | Quantities stored in one base unit; conversions are explicit data | Allowed units, their precision, global and item-specific conversions | Alternative packaging, catch-weight items | Fractional-unit rounding & presentation rules *(expert, OQ-29)* |
-| **Warehouses & locations** | Stock is always per warehouse; movements immutable | Locations on/off, per-warehouse defaults, negative-stock policy | Automated/robotic location addressing | Whether negative stock is legally/semantically allowed *(expert, OQ-24)* |
+| **Warehouses & locations** | Stock is always per warehouse; movements immutable; physical negative inventory is rejected for MVP (OD-VAL-17 / PDR-05) | Locations on/off, per-warehouse defaults | Automated/robotic location addressing | Any post-MVP negative-stock change would require a separate Owner decision; OQ-24 remains open for other valuation/Accounting policy |
 | **Document flows** (`quote → order → invoice → issue`) | Document types and their allowed transitions are code-defined; posting is irreversible | *Which* flow a business uses: which documents are required, which transitions auto-create which follow-up document, which are optional | New document types (new module/session), new relation kinds (code change) | Legal/statutory documents and their required sequence *(expert, OQ-27)* |
 | **Approvals** | A transition may require approval; the decision is recorded with actor + time | Thresholds, which transitions need approval, who approves (permission code), single vs multi-level | Delegation, escalation, parallel approval *(later, OQ-26)* | Segregation-of-duties expectations for finance roles *(expert, OQ-26)* |
 | **Statuses** | Status set per document type is fixed in code (`draft/approved/posted/cancelled/…`) | Which transitions are enabled; labels/translations; whether approval is needed between states | Additional states require a code change + ADR | Whether a status has legal meaning (e.g. "issued" invoice) *(expert)* |
 | **Numbering** | Numbers are unique per configured scope; assigned inside the write transaction | Prefix, scope (org/branch/warehouse/type), padding, reset period | Multiple series per type (per branch/warehouse) | Legal gap/year rules and required formats *(expert, OQ-12)* |
 | **Taxes** | Tax is computed per line and stored explicitly on the document | Rates, tax groups, inclusive/exclusive behaviour, exempt categories | New tax types (withholding, excise) via code | All of it: rates, liability accounts, e-invoice fields *(expert, OQ-30)* |
 | **Chart of accounts** | Accounts exist, are hierarchical, and are referenced by journal lines | Which accounts, codes, levels and mappings a business uses | Industry templates; sub-ledger modules; consolidation | Coding scheme, statutory formats, control accounts *(expert, OQ-25)* |
-| **Posting rules (event → journal)** | Mapping is owned by Accounting; posting is idempotent per event | Per-organization account mapping (which account, which dimension defaults) | New mapping templates per event type | Which account, which side, when revenue/cost is recognized *(expert)* |
-| **Costing / valuation** | Movements carry quantity and (when known) unit cost; balances are derivable | The **method** is a per-organization setting (moving average / FIFO / standard) | Cost layers, revaluation runs | The method itself, its effects on COGS/margin and inventory value *(expert, OQ-24)* |
+| **Posting rules (approved document facts → journal)** | Mapping is owned by Accounting; posting is idempotent under the approved operation contract | Per-organization account mapping (which account, which dimension defaults) | New mapping templates per approved source-document type | Which account, which side, when revenue/cost is recognized *(expert)* |
+| **Costing / valuation** | Inventory owns valuation calculations and facts; Moving Weighted Average is the only active MVP method (PDR-05, OD-VAL-01/02/03/14/18) | Method selection is Inventory configuration scoped to organization + item and effective-dated; Accounting consumes the resulting facts | Additional valuation methods require a separate decision | Accounting/COGS mapping, landed cost, precision/currency, write-down/NRV and other unresolved policies (OQ-24/OQ-03) |
 | **Period close & year-end** | Closing produces an auditable state; posting into closed periods is rejected | Close checklist, lock granularity | Retained-earnings automation, opening-balance import tooling | Closing/opening entries, profit appropriation *(expert, OQ-23)* |
 | **Currencies** | Amounts store their currency; base currency per organization | Whether foreign currency is used at all; rate source & frequency | Multi-currency ledgers, revaluation | IRR/RMT legality, precision, exchange-difference accounts *(expert, OQ-03)* |
 | **Permissions & roles** | Code-registered granular permissions; backend enforcement (ADR-0006/0016) | Which roles exist and which codes they hold; seed role sets | Module-provided permission namespaces | Auditor separation-of-duties expectations (OQ-14) |
@@ -327,7 +341,7 @@ Permission    RBAC code required for an edge      (authorization, ADR-0006/0016)
 Approval      recorded decision that an edge may  (segregation of duties, auditable)
               proceed (threshold/role conditions)
 Business rule declarative condition on fields     (bounded expressions, no scripting)
-Automation    event-driven, idempotent effects    (creates documents/movements/journals)
+Automation    contract-specific, idempotent reactions (e.g. follow-up documents/movements; Accounting posting needs a separate approved contract)
 ```
 
 Key decisions:
@@ -342,9 +356,12 @@ Key decisions:
 - **No scripting, no expression language beyond a bounded condition set** (numeric
   comparison on document totals/lines, date, partner/warehouse attributes, permission
   and organizational scope). Conditions are evaluated in code against typed fields.
-- **Automation is event-driven and idempotent**, using the existing event/outbox
-  machinery (AR-14/15): "on `Invoice.Issued`, create the linked inventory issue" is a
-  registered action, not a user-defined script.
+- **Automation reactions are contract-specific and idempotent** (AR-14/15): for
+  example, "on `Invoice.Issued`, create the linked Inventory issue" is a registered
+  follow-up action, not a user-defined script. This does not authorize event-driven
+  Inventory → Accounting posting; PO-02 / ADR-0041 selects its synchronous public
+  application-service contract. External integrations use the separately authorized
+  outbox boundary.
 - Minimum viable workflow (v1 scope): enabled transitions + required permission +
   optional **single-level** approval with thresholds + a closed catalogue of
   automatic follow-up actions. Multi-level/parallel approvals, delegation and
@@ -362,8 +379,9 @@ Full analysis in [`accounting-domain-analysis.md`](./accounting-domain-analysis.
 **Every accounting recommendation in this blueprint is flagged for expert
 validation**; the project owner's operational experience is input, not authority.
 
-- Accounting owns accounts, journals, periods and the **event → journal mapping**
-  (AR-16). Inventory never posts; it publishes events.
+- Accounting owns accounts, journals, periods and the mapping/journal policy for
+  approved source documents (AR-16, PDR-09). Inventory supplies valuation facts
+  through the synchronous public contract (ADR-0041); this integration is not yet implemented.
 - **Chart of accounts:** four options compared (fixed system chart; standard
   template + customization; fully organization-defined; hybrid). Recommendation:
   **hybrid — a code-provided template skeleton, organization-editable accounts
@@ -375,12 +393,14 @@ validation**; the project owner's operational experience is input, not authority
   rejected (OQ-23, expert).
 - **Posting:** documents post to journals through mapping rules; journal entries are
   immutable and balanced; corrections are reversing entries (AR-13, expert).
-- **Inventory valuation interacts with accounting through the movement ledger**: the
-  ledger carries quantity and cost data; the *method* (moving average/FIFO/standard)
-  is an accounting decision that must not be baked into the inventory schema
-  (ADR-0017, OQ-24, expert).
-- **Sales/Purchasing effects** (revenue, receivable, COGS, payable, tax) are mapping
-  rules over events — never hard-coded in the selling/buying module (AR-16).
+- **Inventory valuation interacts with Accounting through Inventory-owned facts**:
+  Inventory computes and preserves valuation under its active method (Moving Weighted
+  Average for MVP per PDR-05); Accounting consumes these facts and owns financial
+  mapping. The method is not an Accounting-owned calculation (PDR-09). Broader
+  COGS/journal and valuation policy remains open under OQ-24/OQ-25.
+- **Sales/Purchasing financial effects** (revenue, receivable, COGS, payable, tax)
+  require separately approved source contracts and Accounting mapping; C-61 does not
+  authorize an event-based Sales/Purchasing posting rule or define its accounting content.
 
 ---
 
@@ -400,7 +420,8 @@ validation**; the project owner's operational experience is input, not authority
   from Inventory through a public command, or (b) publishes `Invoice.Issued` and an
   automation/configuration decides whether an issue is created. Both paths are
   supported without hard-coding `Invoice → Issue` as the only process.
-- **Accounting effect:** events only; Accounting maps them.
+- **Accounting effect:** not authorized by C-61 for Sales. A separate Sales
+  Accounting contract must define any eligible Business Document and its posting path; no temporary event-based Sales Accounting rule is assumed.
 
 ### Purchasing (`purchasing`, planned — OQ-16)
 
@@ -520,11 +541,11 @@ Full discussion in [`configurability-architecture.md`](./configurability-archite
 | Category | Examples | Where it lives | Changeable by configuration? |
 |---|---|---|---|
 | **Domain invariants** | Balanced journal entry; posted document immutable; quantity > 0 on a movement; debit = credit | Code + database constraints | **No** — this is the meaning of the facts |
-| **Organization configuration** | Fiscal start, numbering format, negative-stock policy, default warehouse per branch | Configuration tables | Yes |
+| **Organization configuration** | Fiscal start, numbering format, default warehouse per branch | Configuration tables | Yes |
 | **Workflow rules** | Which transition is enabled, who may perform it, approval thresholds | Workflow definition versions | Yes (within code-defined edges) |
 | **Validation rules** | Required fields, value ranges, partner/item capability constraints | DTO/domain validation + configuration for *which optional* fields become required | Partly (required-ness only) |
 | **Automation rules** | "On invoice issued, create issue"; "notify finance on credit-limit breach" | Registered actions + declarative triggers | Yes (within the registered action catalogue) |
-| **Accounting rules** | Which accounts, which side, recognition timing, valuation method | Accounting mapping data (+ expert-approved code) | Organization mapping: yes; method/rules: expert decision |
+| **Accounting rules** | Mapping approved Business Document facts to accounts, sides and recognition timing; Inventory valuation method remains Inventory-owned | Accounting mapping data + expert-approved code; valuation logic stays in Inventory | Organization mapping: yes; financial rules remain expert-gated |
 | **Integration rules** | Destination enabled, retry policy, payload version | Integration configuration | Yes |
 
 **No universal rules engine.** A general expression/scripting engine is rejected
@@ -611,8 +632,8 @@ expert and the artefact that must be signed off.
 |---|---|---|---|
 | Chart of accounts | Structure, coding scheme, control accounts, statutory reporting levels | Accountant | OQ-25 |
 | Fiscal calendar | Year start, period layout, close/reopen rules, year-end entries | Accountant | OQ-23 |
-| Posting rules | Event → account mapping, recognition timing, dimensions required per entry | Accountant | `accounting-domain-analysis.md` §4 |
-| Inventory valuation & costing | Method (moving average/FIFO/standard), COGS, revaluation, negative stock | Accountant + inventory expert | OQ-24 |
+| Posting rules | Approved Business Document facts → account mapping, recognition timing, dimensions required per entry | Accountant | `accounting-domain-analysis.md` §4; PDR-09 / ADR-0041 for Inventory |
+| Inventory valuation & Accounting treatment | Inventory-owned Moving Weighted Average method (PDR-05); COGS/journal mapping, landed cost, precision/currency and write-down/NRV remain open. Negative physical stock is rejected for MVP (OD-VAL-17); Inventory return-costing conventions are in PDR-08; Purchase Return variance mapping is OQ-70. | Inventory expert + accountant | OQ-24/OQ-70 |
 | Tax | Rates/groups, inclusive/exclusive, exemptions, liability accounts | Tax expert | OQ-30 |
 | E-invoicing / taxpayer system | Required fields, formats, submission flow, retention | Tax expert + integration owner | OQ-05 |
 | Legal documents | Which documents are statutory, required sequences, number formats/gaps, retention window | Accountant + legal | OQ-12/OQ-27 |
@@ -637,11 +658,13 @@ that does not exist in code) is a code change — deliberately.
 
 **2. Which parts are configurable?**
 Organization structure and scope, fiscal calendar, units/conversions, warehouse
-locations, negative-stock policy, document-flow selection, approvals and thresholds,
-numbering formats, taxes and rates, chart-of-accounts content, posting mappings,
-costing method, currencies, roles/permissions, required/optional fields among
-code-supported fields, notifications, saved reports/dashboards, and whitelisted
-custom fields (§4 matrix).
+locations, document-flow selection, approvals and thresholds, numbering formats,
+taxes and rates, chart-of-accounts content, posting mappings, Inventory valuation
+method selection (Moving Weighted Average is the only active MVP method), currencies,
+roles/permissions, required/optional fields among code-supported fields, notifications,
+saved reports/dashboards, and whitelisted custom fields (§4 matrix). Physical negative
+inventory is rejected for MVP; any future allowance requires a separate Owner decision,
+not a configuration toggle (§4 / OD-VAL-17).
 
 **3. Which parts must remain stable core domain concepts?**
 The spine: organization scope + fiscal calendar, party, item + capability flags,
@@ -667,18 +690,19 @@ relation is created automatically, not *whether the relation type exists*.
 **6. How can inventory remain reliable and reportable?**
 Movements are the immutable source of truth; balances are materialized in the same
 transaction and rebuildable from the ledger; dimensions (item, warehouse, location,
-lot/serial, branch, date) are typed columns; valuation method is a configuration that
-consumes the ledger rather than shaping it. Reconciliation (ledger vs balance vs
+lot/serial, branch, date) are typed columns. Inventory owns the valuation calculation
+and its method consumes the ledger (PDR-05); Accounting consumes valuation facts and
+owns their financial mapping (PDR-09). Reconciliation (ledger vs balance vs
 accounting inventory account) is a routine, not an emergency.
 
 **7. How can accounting remain correct while still allowing organizational
 flexibility?**
-Accounting owns the accounts, the calendar, the periods and the event→journal
-mappings; journals are immutable and balanced; branches are dimensions, not separate
+Accounting owns the accounts, the calendar, the periods and the mapping from
+approved Business Document facts to journals; journals are immutable and balanced; branches are dimensions, not separate
 books; the chart of accounts is a code-provided template with organization-editable
-accounts below fixed control-account semantics. Every accounting rule is validated by
-an accountant before implementation, including the valuation method that inventory
-must feed.
+accounts below fixed control-account semantics. Accounting rules and account mappings
+are validated by an accountant before implementation; Inventory supplies its
+authoritative valuation under its own valuation method (PDR-05 / PDR-09).
 
 **8. How can custom fields be supported without turning the ERP into EAV/JSONB?**
 By restricting them: a registry of definitions, a whitelist of entities (partners,
@@ -689,9 +713,11 @@ migration) when a field turns out to matter for reporting or legality.
 
 **9. What decisions are still unsafe to make without a domain expert?**
 Chart of accounts content/structure, fiscal calendar and closing rules, posting
-mappings and recognition timing, valuation/costing method, tax treatment and rates,
-e-invoice/legal document requirements and retention, fractional-unit rounding,
-inter-branch/inter-company settlement, and HR/payroll scope. See §19.
+mappings and recognition timing, Accounting's COGS/cost treatment and unresolved
+valuation policy (the active Inventory method is Moving Weighted Average under PDR-05),
+tax treatment and rates, e-invoice/legal document requirements and retention,
+fractional-unit rounding, inter-branch/inter-company settlement, and HR/payroll scope.
+See §19.
 
 **10. What should be frozen before the first major ERP Prisma migration?**
 The list below — "Gate Before Core ERP Schema".
@@ -709,12 +735,14 @@ answer in `docs/open-questions.md`, or an explicit, dated owner decision):
 1. **Organization model**: one organization per deployment confirmed; branch
    semantics agreed (branch ≠ legal entity); master-data scope per entity
    (organization-wide vs branch-scoped). → OQ-22, ADR-0020 (accept/reject).
-2. **Inventory source of truth**: accept ADR-0017 (immutable movement ledger +
-   materialized balances), and decide **negative-stock policy** and **location
-   granularity** defaults. → OQ-24.
-3. **Costing/valuation method** (at least: which method is *possible* in v1) →
-   OQ-24, accountant sign-off. Without it the movement/valuation columns cannot be
-   finalized (cost columns may be present, but their semantics must be agreed).
+2. **Inventory source of truth**: the movement ledger and valuation engine are
+   Inventory-owned; negative physical stock is rejected for MVP (OD-VAL-17 / PDR-05).
+   Any new location granularity remains a separate Inventory decision; it is not a
+   reason to move valuation logic into Accounting.
+3. **Accounting treatment of Inventory valuation**: COGS/journal mapping, landed cost,
+   precision/currency and write-down/NRV remain open (OQ-24/OQ-25/OQ-03). The active
+   Inventory valuation method is Moving Weighted Average (PDR-05); Accounting does
+   not choose or recompute that method (PDR-09).
 4. **Item model**: one Item + kind + capability flags and the closed kind list →
    OQ-33; unit/conversion semantics including precision and rounding → OQ-29.
 5. **Document foundation & relations**: accept ADR-0019 (typed tables + shared

@@ -65,8 +65,10 @@ allowed to touch**.
 5. **Valuation never gates a quantity posting (OD-VAL-13).** Inside the
    posting transaction the strategy either values the movement or records why
    it could not (`unvalued` + a reason derived on read); it has no branch that
-   rejects. Negative stock is still rejected — by the quantity policy, not by
-   valuation.
+   rejects. OD-VAL-17 / PDR-05 separately requires physical negative inventory
+   to be rejected for MVP. C-61 records that legacy Item/Warehouse allow overrides
+   still exposed by current code can violate that posture; this implementation
+   discrepancy is not changed by the valuation decision.
 6. **Movement `valuation_status` states FINALITY, key `status` states
    HEALTH.** Movement: `unvalued` | `provisional` | `valued`. Key: `valued` |
    `pending_cost` | `stale`, precedence `stale > pending_cost > valued`.

@@ -16,8 +16,10 @@ Produced by Task 10.1
 > **implemented in `backend/src/modules/accounting/`**. Which capability exists,
 > under which task and with which acceptance status, is recorded in
 > [`task-index.md`](./task-index.md) and `STATE.md` — implementation is **not**
-> acceptance. The contract text below is unchanged and remains binding; its
-> DECIDED / EXPERT-GATED / DEFERRED markers and every open OQ keep their meaning.
+> acceptance. The original contract remains the design baseline except where a later
+> explicit Owner decision supersedes a conflicting Inventory → Accounting statement;
+> its DECIDED / EXPERT-GATED / DEFERRED markers and open OQs retain their meaning
+> only within that boundary.
 
 > **Current Task 30 correction (2026-09-29):** PR #80 subsequently
 > implemented the bounded approved Detail foundation: versioned configurable
@@ -29,21 +31,43 @@ Produced by Task 10.1
 > `BALANCE_SHEET | INCOME_STATEMENT | MEMORANDUM` per OD-29-01/02. For current
 > truth use [`../current-state-reconciliation.md`](../current-state-reconciliation.md)
 > and [`task-index.md`](./task-index.md); the original contract text below remains
-> historical/normative evidence and is not retroactively rewritten.
+> historical/normative evidence except where a later explicit Owner decision
+> supersedes a conflicting statement, including the C-61 overlay below.
+
+> **C-61 Inventory → Accounting Owner Decision overlay (2026-10-07; documentation only).**
+> [PDR-09](../decisions/product/PDR-09-inventory-accounting-posting-boundary.md)
+> and [ADR-0041](../adr/0041-synchronous-inventory-accounting-application-contract.md)
+> supersede conflicting older contract text for this integration only. Inventory owns
+> quantity, movement, valuation and valuation-history facts; Accounting owns account
+> mapping, journal construction, voucher policy and posting. The selected internal
+> Modular Monolith path is a synchronous application-service call through explicit
+> public contracts—not microservices or an event/outbox primary mechanism. Only
+> approved Inventory Business Documents may initiate the chain Business Document →
+> Accounting Posting Operation → Voucher → Journal Lines (one operation per source
+> document; at most one voucher per operation; one voucher may have many lines). A
+> relevant stale valuation key blocks eligibility; eligibility is not posting evidence.
+> Same-Legal-Entity warehouse transfers create no GL Voucher; direct valuation edits
+> after Accounting Post are forbidden; correction lifecycles remain independent but
+> linked. Idempotency is operation key + request hash. At-cost Purchase Returns may
+> post; an agreed-price variance is blocked pending OQ-70. Sales Return Accounting is
+> deferred until a Sales contract exists. OQ-39 transaction/failure semantics remain
+> open. C-61 authorizes no implementation; see the linked decision package.
 
 | | |
 |---|---|
-| Companion decision | [ADR-0026 — Accounting bounded context](../adr/0026-accounting-bounded-context.md) (**Accepted 2026-09-14**; this table said "Proposed" — corrected 2026-09-26) |
+| Companion decisions | [ADR-0026 — Accounting bounded context](../adr/0026-accounting-bounded-context.md) (**Accepted 2026-09-14**); [ADR-0041](../adr/0041-synchronous-inventory-accounting-application-contract.md) + [PDR-09](../decisions/product/PDR-09-inventory-accounting-posting-boundary.md) (C-61 Inventory → Accounting overlay) |
 | Refines | [`architecture/domain/accounting-domain-analysis.md`](../architecture/domain/accounting-domain-analysis.md) (options/analysis record — still valid), blueprint §9, D-03/D-11/D-12/D-19 |
 | Binds | every future Accounting schema, migration, service, API, report and integration |
 | Must not contradict | ADR-0021/0022/0023/0024/0025, AR-07/08/12/13/14/15/16/21/22, `docs/security.md`, `docs/database-strategy.md` |
 | Raises / updates | OQ-39 … OQ-43 (new); notes added to OQ-03, OQ-11, OQ-12, OQ-23, OQ-25, OQ-27, OQ-31 |
 
-> **This document authorizes no code.** There is no Accounting Prisma schema, no
-> migration, no controller, no service, no report and no frontend behind it. Every
-> "shape" below is *conceptual* — the vocabulary, the invariants and the boundaries
-> that a later task must respect. Where a decision needs an accountant, a tax
-> expert or the product owner, it is **not** made here; it is registered as an OQ.
+> **This document authorizes no additional code.** Accounting schema, migrations,
+> services, controllers, posting orchestration and read surfaces already exist; current
+> implementation evidence and acceptance status are tracked in [`task-index.md`](./task-index.md)
+> and `STATE.md`. The unimplemented shapes and future source-integration behavior
+> described below remain conceptual and are not implementation authorization. Where a
+> decision needs an accountant, tax expert or Owner, it stays open unless an explicit
+> later decision record (including the C-61 overlay above) resolves it.
 >
 > **Design goal (Task 10.1 §35):** make the Accounting model *difficult to get
 > wrong* before making it easy to code. A wrong accounting abstraction contaminates
@@ -90,8 +114,8 @@ This contract does **not**:
 
 1. define account codes, account titles, a chart-of-accounts template, control-role
    content or statutory report layouts (EXPERT-GATED: OQ-25, OQ-43);
-2. define posting mappings from business events to accounts (EXPERT-GATED:
-   `accounting-domain-analysis.md` §4, OQ-24/OQ-25/OQ-30);
+2. define posting mappings from explicitly approved Business Document facts to
+   accounts (EXPERT-GATED: `accounting-domain-analysis.md` §4, OQ-24/OQ-25/OQ-30);
 3. decide fiscal-year start, period layout, close/reopen/seal policy, or year-end
    entry generation (EXPERT-GATED: OQ-23);
 4. decide numbering formats, gap policy or fiscal-year number components
@@ -227,16 +251,17 @@ equivalence, VAT invoice content). **All Class C items are OQ-43 inputs, not rul
 | Coding structure, chart of accounts, accounts, control-role mapping | Stock quantities, movements, balances, valuation quantities (Inventory — ADR-0017/0022) |
 | Detail dimensions, dimension groups, detail items (floating details) | Operational document lifecycles (owning business modules) |
 | Accounting documents + lines, their lifecycle, corrections | Pricing, discounts, tax computation (Sales/Purchasing/Tax — OQ-30/OQ-34) |
-| The **event/payload → accounting document mapping** (posting rules as configuration) | Whether stock may go negative (Inventory policy — ADR-0022 §5) |
+| Accounting mapping from approved Business Document facts to accounting documents (posting rules as configuration) | Whether stock may go negative (Inventory policy — ADR-0022 §5) |
 | Account/period balance projections for reporting | Numbering *mechanics* (Documents module — ADR-0023); workflow *mechanics* (Workflow module — ADR-0024) |
 | Year-transition operations (closing/opening/period transfer) as explicit actions | Authentication, tenancy, principal identity (Identity/Users/RBAC) |
 | Its own RBAC permission registry (`Accounting.*`) | Audit *storage* (Audit module — AR-23); Accounting only emits facts |
 
-**Boundary rules that follow (AR-07/08/16, ADR-0005):** Accounting never reads
+**Boundary rules that follow (AR-07/08/16; Inventory-specific mechanism per PDR-09 / ADR-0041):** Accounting never reads
 `inventory.*`, `sales.*`, `organization.*` or `documents.*` tables; other modules
 never read or write `accounting.*` tables. Cross-module **reads** go through the
-owning module's public application service; cross-module **effects** go through the
-posting contract of §16 (events/commands), never through SQL.
+owning module's public application service. Inventory → Accounting **posting** uses
+the synchronous public contract selected by C-61 / ADR-0041; independent events and
+other module commands do not replace that path. No cross-module SQL is allowed.
 
 ### 3.2 The four concept categories
 
@@ -305,7 +330,7 @@ Accounting — ADR-0004), and the Inventory→Accounting boundary (§20).
 | One physical table per account level (`groups`, `generals`, `subsidiaries`, `details`) | **Rejected** | Depth is configuration (reported up to 8 levels, §2.2); four tables would freeze depth at four and make the tree, code-prefix validation and rollups four-way joins. One adjacency table + level definitions (§8.2). |
 | Fixed four detail columns `detail_1_id … detail_4_id` on the line | **Rejected as the contract shape** | Hardcodes N=4 (Task 10.1 §12 forbids it). A typed child table keeps N configurable, uniqueness enforceable and reporting indexable (§10.6). May be revisited *only* as a reporting projection with its own ADR. |
 | Signed single-amount lines with a direction flag | **Considered, not chosen** | §13.3 explains: two non-negative columns make the balance invariant and the statutory column layouts direct aggregates and remove a sign-convention error class. |
-| Accounting writes triggered by SQL from Inventory/Sales | **Rejected** | AR-16/ADR-0005 and AC-I-13. |
+| Accounting writes triggered by SQL from Inventory/Sales | **Rejected** | AR-07/AR-16, AC-I-13 and the public-contract boundary in ADR-0041. |
 | Second tenant system for financial areas | **Rejected** | §5.7: area access is authorization *data* under the existing RBAC + organization posture (ADR-0021/0025); no second identity/tenancy mechanism. |
 | Microservices / separate accounting database | **Rejected** | ADR-0001/0008: one deployable, one database, schema per module. |
 
@@ -349,9 +374,11 @@ without a second mechanism**:
 7. **Permissions are checked twice** — route guard (`@RequirePermission`) and
    application service (`AuthorizationService.requireAllPermissions`) — with no
    wildcard, no superuser and no `role === 'admin'` bypass (ADR-0016, OQ-21).
-8. **System context** (worker/bootstrap/tests) is the documented exception where
-   authorization is the caller's concern (`docs/security.md` §3); system-generated
-   postings run there and are still scope-validated (§16).
+8. **System context** (worker/bootstrap/tests) is a documented general execution
+   context (`docs/security.md` §3). Whether/how an Inventory system-origin posting may
+   use it, its permission model, and its actor/origin evidence are **OPEN under
+   OQ-72**; do not infer that authority from this general exception. Scope must still
+   be validated for any future authorized flow (§16).
 
 **Consequence for financial areas:** the same 404 posture applies one level down —
 an area, year, period, account or document that exists but is not in the caller's
@@ -1310,9 +1337,9 @@ only in *who composes the lines* and *which evidence is stored*:
 | | Manual | System-generated |
 |---|---|---|
 | Composer | an accounting user through the Accounting API | a posting operation invoked by/for another module (§16.3) |
-| Authority | `Accounting.Document.Create` + the phase's action permissions | the *source* module's own permission for its business action, plus the posting contract's authorization (§16.5) |
+| Authority | `Accounting.Document.Create` + the phase's action permissions | System-origin Inventory posting authority, required permissions, and worker/system actor semantics remain **OPEN (OQ-72)**; no source permission or Accounting permission combination is selected by C-61. |
 | Evidence | actor, correlation id, timestamps | + source module/entity/id/operation, idempotency reference, request hash, mapping/rule version |
-| Failure surface | 422 validation, 403 permission | + 409 idempotency conflict, retry/backoff semantics (§16.6) |
+| Failure surface | 422 validation, 403 permission | + 409 operation-key/request-hash conflict (PO-09); source/Accounting refusal, retry and failure semantics remain OQ-39 |
 | Lifecycle | draft?/temporary → final per configuration | per posting mode (§17): Mode A ⇒ final directly; Mode B ⇒ temporary/draft awaiting an accounting approval |
 
 ### 16.2 What "system-generated" never means
@@ -1325,6 +1352,18 @@ only in *who composes the lines* and *which evidence is stored*:
   (§17.1).
 
 ### 16.3 The source-posting contract (conceptual — NOT implemented)
+
+> **C-61 scope:** PO-02 selects a synchronous public application-service contract
+> only for internal Inventory → Accounting posting. It does not decide integration
+> mechanics for Sales, Purchasing, Treasury or other source modules.
+>
+> **Inventory-specific PO-01/03/04 override:** only an explicitly approved Inventory
+> Business Document may call; Inventory supplies its business and authoritative
+> valuation facts, and Accounting chooses the accounts and constructs the journal
+> structure. The generic `accountingPayload.lines[]` shape below is not an approved
+> Inventory request DTO and must not be read as authority for Inventory to choose
+> accounts, debit/credit sides or journal lines. No exhaustive Inventory source-type
+> catalog is approved here.
 
 **DECIDED shape (`AC-D-25`).** One contract for every source module (Inventory, Sales,
 Purchasing, Treasury, Fixed assets, Payroll — whenever they exist):
@@ -1359,62 +1398,73 @@ Notes:
   postable and applicable; dimensions must be legal for the account (§10.6); amounts
   must satisfy §13. A source module cannot push an unbalanced or non-postable
   document into the books.
-- Whether the *source* module composes lines at all, or sends business facts and lets
-  an Accounting-owned **posting rule** compose them, is the distinction between
-  "contract A" (facts + rule) and "contract B" (composed payload). **DECIDED:** the
-  contract supports both, and the *preferred* form is facts + Accounting-owned rule
-  (AR-16: mapping belongs to Accounting); a composed payload is allowed only where a
-  rule cannot express the mapping, and then the mapping is still reviewed as
-  Accounting configuration. Which form each source uses, and the rule content, are
-  EXPERT-GATED (OQ-24/OQ-25/OQ-30).
+- The older generic contract baseline distinguishes "contract A" (business facts +
+  Accounting-owned posting rule) from "contract B" (source-composed lines). For
+  Inventory, PO-01/04 decide the facts-based boundary: Inventory supplies business
+  and valuation facts; Accounting chooses accounts and constructs journal structure.
+  The generic composed-payload alternative is not authorized for Inventory. Other
+  source modules require their own approved contracts; their source shape and mapping
+  content remain gated by the applicable decisions/OQs (including OQ-24/OQ-25/OQ-30).
 
-### 16.4 Idempotency (DECIDED — mirrors ADR-0022 §3/§4 and ADR-0023 §4)
+### 16.4 Idempotency (generic Accounting design baseline; Inventory decision in C-61 PO-09)
 
 An Accounting-owned **posting-operation ledger** (`accounting_posting_operations`):
 
 | Rule | Statement |
 |---|---|
-| Key | one row per completed posting operation, unique on `(organization_id, operation_key)` |
-| Atomicity | written in the **same transaction** as the document, its lines and any balance projection: a committed effect always has its key, a failed one never does |
-| Hash | `request_hash` = sha256 over the **canonical client intent only** — no generated ids, no server clocks, an omitted optional date hashed as explicit `null` (ADR-0022 §4, the Task 9.6 finding) |
-| Replay | same key + same hash ⇒ replay the stored result (re-reading current rows, never a stale snapshot) |
+| Key | The older generic contract proposed one row per `(organization_id, operation_key)`. For Inventory, PO-09 approves operation key + request hash semantics only; exact key format and scope remain undecided and must not be inferred from that generic proposal. |
+| Atomicity | written in the same Accounting transaction as its Voucher, lines and any balance projection: a committed Accounting effect always has its key, a failed one never does. This does **not** select a shared transaction with the Inventory source document; cross-module atomicity remains OQ-39 |
+| Hash | Inventory PO-09 requires a `request_hash`, but its algorithm and canonical request fields are **not decided**. The older Task 10.1 / ADR-0022 SHA-256 canonical-intent shape is not Owner-approved for Inventory and must not be inferred. |
+| Replay | Inventory PO-09 requires idempotent success for the same logical operation on a matching key/request. The older generic contract proposed replaying a stored result; exact Inventory result-persistence and response mechanics remain subject to OQ-39. |
 | Conflict | same key + different hash ⇒ **409**, nothing applied |
 | Kinds | closed code-defined list, e.g. `document_finalize`, `document_reverse`, `document_correct`, `document_replace`, `system_post`, `year_close`, `year_seal` |
-| Event-derived | where posting is triggered by a domain event, the **event id** is the natural operation key (ADR-0005, AR-15) |
+| Inventory operation identity | Under C-61 PO-09, the caller supplies an **operation key + request hash**; same key/same request replays the same logical operation, and same key/different request conflicts (`409`). An event id is not the primary Inventory → Accounting posting trigger or a substitute for this contract. |
 
-**AC-I-12:** system-generated posting must be idempotent — retries, double clicks,
-replayed events and worker restarts must not duplicate a document.
+**C-61 PO-09 for Inventory:** idempotency is keyed by **operation key + request
+hash**. Same key and same request is an idempotent success returning the same logical
+operation; same key and different request conflicts (`409` semantics). Retries never
+create duplicate vouchers. This does not decide a generic event-delivery key for other
+source modules.
 
-### 16.5 Authorization for system postings
+**AC-I-12:** system-generated posting must be idempotent — retries and repeated
+requests must not duplicate a document.
 
-- The HTTP surface of the source module enforces the source's own permissions; the
-  posting contract enforces Accounting's scope and validation rules.
-- A posting executed **inside** a source module's request runs under that request's
-  principal (so actor evidence is real); a posting executed by the **worker** runs in
-  system context (`docs/security.md` §3) and must carry the original actor as evidence
-  data, never as an authorization bypass.
-- No "posting superuser" permission exists; no wildcard (OQ-21).
+### 16.5 Authorization for system postings (OPEN — OQ-72)
+
+C-61 makes no system-origin authority or worker-actor choice; those remain open
+under OQ-72. Still open are: whether the
+source action's permission alone is sufficient, whether Accounting permission is also
+required, whether a dedicated non-interactive system-posting authority is used, what
+actor/origin evidence is required for a worker, and whether Accounting must refuse a
+system-origin request with incomplete source evidence. The older source-permission
+and worker-actor descriptions in prior contract text are **not approved rules**.
+
+Existing general constraints still apply: no module may write another module's
+tables, Accounting must validate organization scope, and no wildcard or implicit
+superuser may be assumed (OQ-21). No Inventory system-origin posting authority is
+implemented or authorized while OQ-72 remains open.
 
 ### 16.6 Delivery, transaction boundary and retry
 
-Two delivery shapes are architecturally available, and the **choice is not made here**:
+**C-61 Owner Decision PO-02:** internal Inventory → Accounting posting uses a
+synchronous in-process application-service call through explicit public contracts
+in the Modular Monolith. It is not a microservice call, an event subscriber or an
+outbox-delivered internal posting. The outbox/event-driven pattern remains the
+boundary for later external integrations, not the primary internal mechanism.
 
-| Shape | Semantics | Precedent |
-|---|---|---|
-| **Transactional subscription** | The accounting effect commits **with** the source business write; a posting failure fails the source operation ("safe for the books") | ADR-0005 (Accepted), AR-16 |
-| **Durable queue / outbox** | The source write commits; posting happens later, at-least-once, with retry and a dead-letter surface; the books lag the operation | AR-14, ADR-0004, `sync.outbox_events` |
+| Concern | C-61 decision / remaining question |
+|---|---|
+| Internal Inventory → Accounting call | Synchronous public application/domain contract selected by PO-02 (ADR-0041). |
+| Source/Accounting transaction ownership and atomicity | **OQ-39 OPEN.** The synchronous mechanism does not decide shared-transaction scope, commit ordering or partial-failure handling. |
+| Accounting refusal (for example, missing mapping or closed period) | **OQ-39 OPEN.** Whether the source operation is blocked, rejected or otherwise handled remains undecided. |
+| Retry, failure and durability guarantees | **OQ-39 OPEN.** PO-09 prevents duplicate logical operations; it does not define every retry/failure or persistence guarantee. |
+| External system delivery | Use the external adapter/outbox boundary (AR-14, ADR-0004) when such integration is separately authorized. |
 
-**DECIDED (`AC-D-26`):** the posting *interface* (§16.3) is identical for both, so the
-delivery choice is swappable without changing source modules. **EXPERT/ARCH-GATED
-(`OQ-39`):** which shape production uses, what happens to a source document whose
-posting is rejected near a period close, and — critically — the fact that **today the
-event bus is in-memory only** (ADR-0024 §9 "gap accepted"): a crash after commit and
-before dispatch loses the effect. Therefore:
-
-> **No production system-generated posting integration may be enabled before OQ-39 is
-> resolved and durable dispatch (or the transactional-subscription decision) is
-> implemented.** The current in-memory bus provides **no** durable integration
-> guarantee, and this contract does not pretend otherwise (Task 10.1 §22).
+**No implementation is authorized by C-61.** No production Inventory system-posting
+integration may be enabled until the relevant transaction/failure semantics in OQ-39
+and the applicable source/accounting policy gates are decided and implemented. The
+in-memory event bus is not a fallback internal posting mechanism and does not provide
+a durable delivery guarantee (ADR-0024 §9).
 
 ### 16.7 Financial-area resolution for system postings (DECIDED, fail closed)
 
@@ -1427,32 +1477,40 @@ before dispatch loses the effect. Therefore:
 
 ## 17. Operational document → accounting document
 
-### 17.1 The chain (DECIDED `AC-D-27`)
+### 17.1 The chain (C-61 overlay on `AC-D-27` for Inventory)
 
 ```
-Operational Document (Inventory/Sales/Purchasing/Treasury — owning module)
-        │  business transaction happens (movement, invoice, receipt, payment)
+Approved Inventory Business Document
+        │  one Accounting Posting Operation per source document
+        ▼  synchronous public application/domain contract (ADR-0041)
+Accounting Posting Operation
+        │  may create at most one Voucher
         ▼
-Accounting Contract (§16.3 posting request / domain event)
-        │  Accounting validates + composes + applies posting policy
-        ▼
-Accounting Document (voucher — Accounting-owned, immutable once Final)
+Voucher → one or more Journal Lines (Accounting-owned)
 ```
+
+Only explicitly approved Inventory Business Documents may initiate this path. Raw
+movements/ledger operations, reservations, Material Requests, technical projections,
+and arbitrary service/repository calls do not directly create vouchers. Accounting
+owns account mapping and journal construction; Inventory supplies valuation facts.
 
 An operational document **does not** become an accounting journal merely because it
-exists. Three things must all be true: (a) accounting is enabled for the organization
-(D-19 feature switch), (b) a posting rule/contract exists for that source operation
-(EXPERT-GATED content), and (c) the posting mode for that source type resolves to
-"post now" (§17.2). Otherwise the operational document simply has no accounting
-effect — which is how Inventory and Sales can ship before accounting decisions are
-made (D-19, ADR-0022's "no costing yet" gap).
+exists. Posting requires an approved source type, an allowed operational state,
+complete/current valuation (any relevant stale valuation key blocks eligibility),
+applicable future Accounting policy gates and a configured posting rule/mode. The
+permitted check and actual outcome are distinct: `accountingEligible !==
+accountingPosted`. Eligible-unposted, ineligible-unposted and actually-posted
+(no ordinary direct repost) are separate states; document-level state alone cannot
+override stale key-level valuation. Accounting-enabled configuration and posting-mode
+questions remain governed by their existing OQs. Raw events are not a substitute for
+Business Document approval.
 
 ### 17.2 Posting modes (DECIDED mechanism `AC-D-28`; EXPERT-GATED default OQ-42)
 
 | Mode | Behaviour | Expressed with |
 |---|---|---|
 | **A — direct** | The source operation creates an accounting document that goes **straight to `final`** | Document Foundation entry state `['final']` for the registered accounting type in that organization (`document_type_configs`, ADR-0023 §2) |
-| **B — review** | The source operation creates an accounting **draft/temporary** document that an accounting authority must finalize; rejection returns it to the source | entry state `['temporary']` + `draft_required = true`, with the approval carried by the **Workflow Foundation** (ADR-0024: bounded transitions, single-level approvals, `require_different_actor`, pinned versions) |
+| **B — review** | The source operation creates an accounting **draft/temporary** document that an accounting authority may finalize; the effect of rejection on the source document remains **OPEN (OQ-42)** | entry state `['temporary']` + `draft_required = true`, with the approval carried by the **Workflow Foundation** (ADR-0024: bounded transitions, single-level approvals, `require_different_actor`, pinned versions) |
 
 This is the reported Iranian `پیش نویس اسناد` pattern (§2.2) implemented with
 mechanisms that already exist and are accepted — **no new engine, no new state, no new
@@ -1471,8 +1529,9 @@ how a backlog of unapproved accounting drafts is governed.
 
 - It does not own the operational document's lifecycle, numbering or approval
   (owning module + Documents/Workflow foundations).
-- It does not call back into the source module to change it (ADR-0005: Accounting
-  never calls Inventory).
+- It does not call back into the source module to change its operational document.
+  Any read needed for additional source facts must use the owning module's public
+  service (AR-07); no cross-module table access is allowed.
 - It does not store operational quantities/prices "for convenience": the accounting
   document stores accounting facts plus a logical reference to the source (§12.5).
 
@@ -1555,61 +1614,84 @@ hardcoded before OQ-43 validation.
 
 ## 20. Inventory → Accounting boundary
 
-### 20.1 The boundary (DECIDED `AC-D-32`, reaffirming AR-16 / ADR-0005)
+### 20.1 The boundary (C-61 PO-01/02 overlay on `AC-D-32`)
 
 ```
-Inventory (owns stock facts: movements, balances, reservations — ADR-0022)
+Inventory (owns quantity, movement, valuation facts and their history)
    │
-   │  publishes facts / invokes the posting contract (§16.3)
+   │ approved Business Document calls Accounting through a synchronous
+   │ public application/domain contract (ADR-0041)
    ▼
-Accounting (owns financial meaning: accounts, rules, documents, periods)
+Accounting (owns account mapping, journal construction, voucher policy and posting)
 ```
 
 Inventory must never `INSERT INTO accounting_…`, `UPDATE accounting_…` or
 `SELECT … FROM accounting_…` (AC-I-13). Accounting must never read `inventory.*`
-tables: it consumes the payload and, if it needs more (e.g. an item's account
-binding), calls Inventory's **public application service** (AR-07).
+tables: it receives Inventory facts through the approved contract and must not
+recompute or duplicate valuation. A needed Inventory fact may be obtained only from
+Inventory's public application service (AR-07).
 
 ### 20.2 Where each concern belongs
 
-| Concern | Owner | Contract reference |
+| Concern | Owner / current decision | Contract reference |
 |---|---|---|
-| Source reference (which movement/document caused the entry) | Accounting stores it as a **logical** reference `(source_module, source_entity_type, source_entity_id[, line])`; optionally a document relation created through the Documents module | §12.2, §12.5, ADR-0023 §5 |
-| Idempotency | Accounting's posting-operation ledger keyed by the source `operationKey` / event id | §16.4, AC-I-12 |
-| Posting policy (which accounts, which mode, whether enabled at all) | Accounting-owned **configuration** (posting rules + control-role mapping + D-19 switch + §17.2 mode) | §8.7, §17.2 |
-| Cost/valuation input | **Inventory ledger + valuation method (OQ-24)** — unresolved; until it is, inventory-driven postings cannot be activated (ADR-0022 records the ledger stores quantities, not money) | §20.4 |
-| Transaction boundary | OQ-39 (transactional subscription per ADR-0005 vs durable queue per AR-14) | §16.6 |
-| Retry behaviour | Only meaningful in the queued shape: at-least-once + idempotent consumer + dead-letter surfacing (ADR-0004, AR-15). Never a blind retry of a non-idempotent posting | §16.4, §16.6 |
-| Rounding/residual of a computed amount | Computed **before** composition, policy expert-gated; Accounting never rounds to balance | §13.5 |
-| Failure near a period close | Policy: OQ-23/OQ-27 + OQ-39 (what happens to the source document) | §16.6, §7.2 rule 8 |
+| Approved source | Only explicitly approved Inventory Business Documents may initiate posting. Raw movements/ledger operations, reservations, Material Requests, technical projections and arbitrary service/repository calls cannot directly create vouchers (PO-03). | PDR-09; §17.1 |
+| Operation chain | Business Document → Accounting Posting Operation → Voucher → Journal Lines. One operation per Business Document; an operation may create one voucher; one voucher may contain many journal lines (PO-04). | PDR-09 |
+| Idempotency | **Operation key + request hash**. Same key/same request is the same logical operation; same key/different request conflicts (`409` semantics); retries do not create duplicate vouchers (PO-09). | §16.4, PDR-09 |
+| Eligibility versus posting | Eligibility is current permission to post; `accountingEligible !== accountingPosted`. Operational state, valuation state and future Accounting policy gates apply; any relevant stale valuation key blocks eligibility. Eligibility is not evidence of posting (PO-05/10). | §17.1, PDR-09 |
+| Posting policy | Accounting owns account mapping, journal construction, voucher policy and financial posting; Inventory supplies facts, not account/journal decisions (PO-01). | AR-16, ADR-0041, PDR-09 |
+| Cost/valuation input | Inventory's authoritative valuation facts and history. Accounting must not duplicate valuation logic. Broader COGS/journal and other accounting policy questions remain open under OQ-24/OQ-25; do not infer content from current code. | PDR-09; OQ-24/25 |
+| Same-entity warehouse transfer | Same Legal Entity only: Inventory values the source Issue first, and the destination Receipt receives exactly the same value; no GL Voucher is created (PO-06). No extension to different Legal Entities, tax, financial-area transfers or other types. | PDR-09; OQ-31 for other scopes |
+| After Accounting Post | Direct valuation edit/repricing is forbidden; do not silently change valuation. Reversal/correction/adjustment/compensating-posting policy remains future work (PO-07). | PDR-09; OQ-27/39/42 |
+| Correction traceability | Inventory and Accounting correction lifecycles are independent but linked. Preserve auditable references among Inventory document/valuation and Accounting operation/voucher/correction operation; invent no correction policy (PO-08). | PDR-09; §20.3 |
+| Purchase Return | A Purchase Return at authoritative Inventory cost may post. If the agreed amount differs, Accounting Post for the variance is blocked pending OQ-70; no variance account is invented and the difference is not absorbed into Inventory valuation (PO-11). | PDR-09; OQ-70 |
+| Sales Return | Inventory processing/valuation may exist independently; Sales Return Accounting is deferred until a Sales Accounting contract exists (PO-12). | PDR-09 |
+| Transaction boundary | Synchronous in-process public contract selected; source/Accounting atomicity, refusal and failure semantics remain open (OQ-39). | §16.6; ADR-0041 |
+| Retry / external delivery | Retry/failure guarantees remain OQ-39; external adapter delivery uses the outbox boundary. No event/outbox primary mechanism for internal Inventory posting. | §16.6; AR-14 |
 
-### 20.3 Traceability requirement (DECIDED)
+### 20.3 Traceability requirement (DECIDED; C-61 PO-08)
 
-Every system-generated accounting document must be traceable **both ways** without
-cross-module SQL:
+Preserve auditable references without cross-module SQL among the Inventory Business
+Document and its valuation facts/history, the Accounting Posting Operation, any
+Voucher, and any later Accounting correction operation. Forward and reverse lookup
+must use public module contracts and the logical source reference (`source_*`); no
+cross-module foreign key or table access is introduced. Inventory and Accounting
+correction lifecycles are independent but linked. The reference requirement does not
+select or invent correction, reversal or compensating-posting policy.
 
-- forward: accounting document → `source_*` → Inventory's public read API;
-- backward: inventory movement → Accounting's public read API filtered by
-  `sourceModule/sourceEntityType/sourceEntityId` (an indexed query, §12.2).
+### 20.4 Eligibility and activation gate (C-61 PO-05/10; future policy gates)
 
-This is what makes reconciliation a routine (blueprint §20 question 6) and what a
-statutory mismatch investigation (Class C5/C6) will need.
+C-61 authorizes no production posting integration. Eligibility must check the
+Business Document's operational state, valuation state—including every relevant
+key, where any stale key blocks eligibility—and applicable Accounting policy gates.
+`accountingEligible` describes current permission to post; `accountingPosted` records
+an actual completed post. The two are not interchangeable. A posting requires an
+approved source document, current eligibility and the applicable Accounting
+configuration/policy. OQ-24/OQ-25/OQ-30 remain open for broader valuation and mapping
+content; OQ-39 remains open for transaction/failure semantics; OQ-42/OQ-72 remain
+open for posting mode and system-origin authority. OQ-69 remains open on whether the
+valuation-history and reference evidence meets accountant/auditor sufficiency; do not
+assume run-level evidence is enough. OQ-70 gates only the Purchase Return agreed-price
+variance: a return at authoritative Inventory cost is not blocked by OQ-70, while a
+variance post is blocked until OQ-70 is decided. OQ-71 applies only to a separately
+admitted Accounting correction/reversal scope.
 
-### 20.4 Activation gate (DECIDED)
-
-Inventory→Accounting posting stays **disabled** until: OQ-24 (valuation/costing) is
-answered, the posting rules for each movement type are reviewed by an accountant
-(OQ-25/OQ-30), and OQ-39 (delivery durability) is resolved. D-19's per-organization
-accounting switch is the mechanism: operational modules work fully while the books
-stay clean (ADR-0022's accepted gap).
+D-19's per-organization accounting switch remains a configuration mechanism, not an
+implementation authorization. External integrations continue to use the outbox
+boundary; the in-memory event bus is not an internal-posting fallback.
 
 ---
 
 ## 21. Events and the outbox decision
 
 **DECIDED (`AC-D-33`): Accounting reuses the existing kernel `DomainEventBus` and the
-`core.domain_events` log — no second event architecture, no competing outbox table
-(ADR-0024 §9 precedent).**
+`core.domain_events` log for independent domain events — no second event architecture,
+no competing outbox table (ADR-0024 §9 precedent).**
+
+> **C-61 PO-02 clarification:** domain events may notify or serve independent
+> reactions, but an event subscriber or outbox delivery is not the primary internal
+> Inventory → Accounting posting mechanism. That path is the synchronous public
+> contract in §16.6 / ADR-0041. Outbox delivery remains for external integrations.
 
 Proposed event vocabulary (`Entity.PastTenseVerb`, `docs/architecture.md` §5). These
 **refine** the placeholder catalog rows `JournalEntry.Posted` /
@@ -1636,11 +1718,12 @@ them, and never as a substitute for reading the owning module.
 publisher's transaction. Therefore:
 
 - events are **evidence and notification**, not a durable delivery guarantee;
-- a crash between commit and dispatch loses the effect (ADR-0024 §9 "gap accepted");
-- **any accounting integration that must not lose an effect** (system posting,
-  statutory submission, audit capture of finalization) requires the durable path
-  (`sync.outbox_events` + worker, AR-14/ADR-0004) or the transactional-subscription
-  decision of §16.6 — and that decision is **OQ-39**, not an assumption.
+- a crash between commit and dispatch can lose an event delivery (ADR-0024 §9);
+- this event-delivery gap does not change PO-02's selected synchronous internal
+  Inventory → Accounting contract; its transaction, refusal and failure semantics
+  remain open under OQ-39;
+- external integrations that require durable delivery use the external adapter/outbox
+  path (`sync.outbox_events` + worker, AR-14/ADR-0004), when separately authorized.
 
 ---
 
@@ -1670,7 +1753,7 @@ not exist (`docs/security.md` §3).
 | `Accounting.Balance` | `View, Rebuild` | projection reads and the audited rebuild (§19.3) |
 | `Accounting.LedgerMovement` | `View` | non-statutory ledger-native read source (Task 17A ACCEPTED; read-only access to immutable posted ledger entries) |
 | `Accounting.AccountStatement` | `View` | bounded account statement read (Task 17B; one account + one fiscal year + optional period, opening/running/closing derived from the immutable ledger per request; read-only, no mutation code exists — Owner decision D6 authorized this addition to the §22 vocabulary) |
-| `Accounting.SystemPosting` | `View, Retry` | inspection and manual retry of rejected/failed system postings (§16.6, §21) — only meaningful once OQ-39 is resolved |
+| `Accounting.SystemPosting` | **Candidate only; no codes approved** | Any permission namespace/actions for system-origin posting or retry remain open under OQ-72 (and delivery semantics under OQ-39); do not register or enforce by inference. |
 
 Reports use `Report.<id>.View` codes registered by the Reporting module
 (`reporting-strategy.md` §1 item 4); numbering configuration uses the Documents module's
@@ -1764,8 +1847,8 @@ architecture-rules.md` preamble).
 | **AC-I-09** | Only **postable**, active, area-applicable accounts may receive lines; a postable account is always a leaf. | domain rule (posting) + chart maintenance rules (§14 rule 2) | 422 `account_not_postable` / `account_has_children` |
 | **AC-I-10** | The account hierarchy stays valid: level = parent level + 1, child code = parent code + the level's segment, no cycles, one root path. | domain rule on create/move | 422 |
 | **AC-I-11** | An account `code` is unique within its scope, digits-only, never changed after use and never reused; `parent_id`, `level`, `nature`, `type` and `is_postable` are immutable once the account has lines. | DB unique index + domain rule | 409 (unique violation) / 422 (immutable-after-use) |
-| **AC-I-12** | System-generated posting is **idempotent**: one posting-operation row per `(organization_id, operation_key)`, written in the same transaction as the document; same key + same hash replays, same key + different hash is refused. | posting-operation ledger (ADR-0022 §3/§4 pattern) | 200 replay / **409** conflict |
-| **AC-I-13** | No source module mutates or reads Accounting persistence; no Accounting query reads another module's tables. Cross-module effects go through the posting contract/events; cross-module reads through public services. | architecture review + module boundary (AR-07/16) | defect (rejected in review) |
+| **AC-I-12** | System-generated posting is **idempotent**. For Inventory, PO-09 approves operation-key + request-hash replay/conflict semantics only; exact key format/scope and hash construction remain open. Accounting-operation atomicity with its Voucher is distinct from cross-module transaction scope, which remains OQ-39. | posting-operation ledger (§16.4; Inventory decision PDR-09 / PO-09) | idempotent success / **409 semantics** for changed request |
+| **AC-I-13** | No source module mutates or reads Accounting persistence; no Accounting query reads another module's tables. Inventory → Accounting posting uses the synchronous public contract (PO-02); independent events may serve other reactions but are not the primary posting mechanism. Cross-module reads use public services. | architecture review + module boundary (AR-07/16, ADR-0041) | defect (rejected in review) |
 | **AC-I-14** | Historical accounting records remain interpretable without current master data: documents store resolved year/period/area, the pinned coding-structure version, and (for system origin) the source reference and rule/mapping identity. | composition rules (blueprint §12/§14, D-21) | defect |
 | **AC-I-15** | Corrections never mutate history: reversal/correction/replacement/adjustment produce **new** Final documents with typed links and a mandatory reason; each mechanism is idempotent per (original, mechanism, operation key). | domain rule + posting-operation ledger | 422 / 409 (`already_reversed`) |
 | **AC-I-16** | Cross-organization references are forbidden everywhere in Accounting (accounts, areas, years, dimensions, items, branches, parties, documents) and answer as not-found. | service reference resolution | **404** |
@@ -1806,15 +1889,15 @@ architecture-rules.md` preamble).
 | AC-D-22 | Four additive correction mechanisms (reversal, correction, replacement, adjustment), typed links, mandatory reason, idempotent; `reopen` refused for accounting documents | 15.4 | A |
 | AC-D-23 | Finalization is one locked transaction: re-validate, number, state, projections, idempotency row, events, audit | 15.5 | A |
 | AC-D-24 | Manual and system origins share one aggregate and one invariant set; they differ in composer and evidence | 16.1 | A |
-| AC-D-25 | One source-posting contract for every source module (scope, source identity, operation, idempotency key, date, payload with accounts-or-roles) | 16.3 | A |
-| AC-D-26 | The posting interface is delivery-agnostic; transactional-vs-durable delivery is OQ-39 and no production integration is enabled before it is resolved | 16.6 | A |
-| AC-D-27 | An operational document produces an accounting document only when accounting is enabled, a rule/contract exists, and the posting mode says so | 17.1 | A |
+| AC-D-25 | Generic source-posting contract shape for separately approved sources; for Inventory, PO-01/03/04 require approved-document facts and Accounting-composed accounts/journal, not a source-composed payload (PDR-09) | 16.3, PDR-09 | A |
+| AC-D-26 | For Inventory, PO-02 selects synchronous in-process posting through public contracts; source/Accounting transaction ownership, refusal, failure and retry/durability semantics remain OQ-39; no production integration is enabled by C-61 | 16.6 | A |
+| AC-D-27 | Only an explicitly approved Business Document may initiate posting, and only when operational state, complete/current valuation, applicable Accounting policy, configuration and posting mode permit it | 17.1, 20 | A |
 | AC-D-28 | Posting Mode A (direct final) / Mode B (review then finalize) are configuration over the existing Foundation entry states + Workflow approvals | 17.2 | B |
 | AC-D-29 | Accounting consumes Document Foundation numbering; a fiscal-year component would be a new Foundation strategy, never an Accounting fork | 18 | A |
 | AC-D-30 | Reports read Final lines via Accounting-owned views consumed by Reporting; period filters are stored-column predicates; column variants are layouts | 19.2 | A |
 | AC-D-31 | Balances are a rebuildable projection, never the ledger; materialization mechanism deferred to the balance task | 19.3 | A |
-| AC-D-32 | Inventory→Accounting is contract/event-only both ways; traceability without cross-module SQL; activation gated on OQ-24/25/30/39 | 20 | A |
-| AC-D-33 | Accounting reuses the kernel event bus + `core.domain_events`; no second event architecture; durability is OQ-39 | 21 | A |
+| AC-D-32 | Inventory→Accounting uses the synchronous public contract (PO-02), approved Business Documents and public-service traceability; no event/outbox primary mechanism or cross-module SQL; relevant policies and OQ-39 semantics gate future implementation | 20 | A |
+| AC-D-33 | Accounting reuses the kernel event bus + `core.domain_events` for independent events; it is not the primary Inventory posting path; external delivery durability uses the outbox boundary | 21 | A |
 | AC-D-34 | Granular `Accounting.*` permission vocabulary; no wildcards; `Finalize` ≠ `Approve`; corrections are their own authorities | 22 | A |
 | AC-D-35 | Accounting produces and preserves all audit facts in-transaction; persistent audit stays the Audit module's concern | 23 | A |
 
@@ -1829,7 +1912,7 @@ New (**full text in [`../open-questions.md`](../open-questions.md)**):
 
 | id | Area | One-line question |
 |---|---|---|
-| **OQ-39** | Accounting / Events | Durable event & outbox semantics for system-generated posting: transactional subscription (ADR-0005) or durable queue (AR-14), and what happens to a source document whose posting is rejected? |
+| **OQ-39** | Accounting / Inventory integration | Given PO-02's synchronous public application-service contract for Inventory → Accounting, what source/Accounting transaction ownership and atomicity, posting-refusal, retry/durability and failure semantics apply? |
 | **OQ-40** | Accounting | Financial Area semantics: how many per organization, separate charts?, user access grants in v1?, default area, consolidation/aggregation? |
 | **OQ-41** | Accounting | Detail dimensions: how many, are attached dimensions independently optional/required, which dimensions must bind to master data, item governance? |
 | **OQ-42** | Accounting | System-posting mode: default Mode A vs Mode B per source type, who may finalize/approve, what rejection means for the source document? |
@@ -1846,6 +1929,16 @@ Updated with Task 10.1 notes (no new OQ, to avoid duplicating settled scope):
 | OQ-25 | coding-structure configurability, posting eligibility per level, account freeze guards, control-role list (§8, §9, §14) |
 | OQ-27 | the four correction mechanisms and their windows/period rules (§15.4) |
 | OQ-31 | financial area ≠ company; consolidation stays deferred (§5.1, §24.2) |
+
+**C-61 reconciliation (2026-10-07; documentation only; no OQ closed):** OQ-39 now
+asks only about transaction ownership/atomicity, refusal, retry/durability and failure
+semantics after PO-02 selected the synchronous public contract. OQ-70 is narrowed to
+Accounting policy/account mapping for a Purchase Return agreed-price variance: a
+return at authoritative Inventory cost may post, while variance posting is blocked
+until OQ-70 is decided. OQ-69 remains open on accountant/auditor sufficiency of
+Ledger Authority + Immutable Valuation History; OQ-71 remains open for Accounting
+correction/reversal behavior; OQ-72 remains open for system-origin posting authority.
+See [PDR-09](../decisions/product/PDR-09-inventory-accounting-posting-boundary.md).
 
 Explicitly **not** raised (already settled by existing architecture, per Task 10.1 §28):
 organization scoping and the 404 posture (ADR-0021/0022/0025), idempotency mechanics
@@ -1879,8 +1972,8 @@ shape of §5, §6, §7 (plus §4 scoping) and no posting/closing automation.
 | Detail dimensions + items | OQ-41 (count, requiredness default, binding policy) |
 | Accounting documents + finalization | OQ-12 (numbering year component, gaps), OQ-03 (precision/currency), OQ-23 (period policy for posting), OQ-27 (correction windows) |
 | Reporting (ledgers, trial balances) | OQ-25/OQ-43 (statutory layouts); ADR-0009 mechanics already accepted |
-| Inventory → Accounting posting | OQ-24 (valuation), OQ-25/OQ-30 (mappings/tax), **OQ-39 (delivery durability)** |
-| Any production system-generated posting | **OQ-39** (AC-D-26) |
+| Inventory → Accounting posting | Applicable valuation/mapping/tax policy (OQ-24/OQ-25/OQ-30), **OQ-39 transaction/failure semantics**, OQ-42/OQ-72 authority/mode gates, and OQ-69 for auditability/traceability sufficiency; OQ-70 blocks only agreed-price Purchase Return variance posting; OQ-71 only if a separate correction scope is admitted |
+| Any production system-generated posting | **OQ-39/OQ-42/OQ-72** and all applicable source/accounting policy gates; OQ-69 remains open for auditor-sufficiency/traceability acceptance. C-61 authorizes no implementation |
 | Statutory/e-ledger features | **OQ-43** validation with an accountant and current authoritative sources |
 
 ### 28.3 What must be true before *any* Accounting migration
@@ -1919,8 +2012,8 @@ shape of §5, §6, §7 (plus §4 scoping) and no posting/closing automation.
 | 18 posting eligibility | 14 | attribute + leaf invariant; policy → OQ-25 |
 | 19 numbering | 18 | Foundation reuse; fiscal-year component path; immutability |
 | 20 reporting boundary | 19 | report inventory; views/projections; layouts vs models |
-| 21 Inventory boundary | 20 | contract/event only; where each concern belongs; activation gate |
-| 22 event/outbox decision | 21, 16.6 | OQ-39; in-memory bus explicitly not durable |
+| 21 Inventory boundary | 20 | approved-document synchronous public contract; PO-01…PO-12 overlay; OQ gates |
+| 22 event/outbox decision | 21, 16.6 | independent domain events; external outbox; Inventory posting is synchronous; OQ-39 semantics remain open |
 | 23 security/RBAC | 22 | granular vocabulary, no wildcards, no single role assumption |
 | 24 auditability | 23 | requirements; Audit module not implemented |
 | 25 multi-currency | 24.1 | deferred with an explicit seam |

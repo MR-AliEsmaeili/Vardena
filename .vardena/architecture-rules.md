@@ -35,10 +35,16 @@ without an accepted ADR that supersedes it is a defect, not a style choice.
   DTOs. **No business logic in the kernel.** A "shared business service" is a
   code smell — the logic belongs to exactly one module.
 - **AR-07 — Cross-module communication rules.**
-  - Side effects in another module → **domain events** only.
-  - Reads from another module → the owning module's **public application service**,
-    or a **module-owned SQL view** (reporting use).
-  - **Forbidden:** module A reading module B's tables/Prisma models directly.
+  - An explicitly synchronous cross-module operation uses the owning module's
+    **public application/domain contract** (in-process); Inventory → Accounting
+    posting uses this mechanism under ADR-0041.
+  - Independent reactions to published facts may use **domain events** under the
+    event contract that governs them; an event is not a substitute for the
+    synchronous Inventory → Accounting posting contract.
+  - Reads from another module use the owning module's **public application
+    service**, or a **module-owned SQL view** (reporting use).
+  - **Forbidden:** module A reading or writing module B's tables/Prisma models
+    directly.
   *Why: boundaries stay extractable; the database cannot hide coupling.*
 - **AR-08 — One owner per fact.** Every table, and every business fact, belongs to
   exactly one module. If two modules need the same fact, one owns it and publishes
@@ -73,10 +79,13 @@ without an accepted ADR that supersedes it is a defect, not a style choice.
 - **AR-15 — Idempotent consumers.** Every event consumer (domain event handlers and
   outbox dispatch) must be idempotent, deduplicating on the stable event/
   `dedup_key` identity.
-- **AR-16 — Inventory ⇢ Accounting is event-only.** Inventory publishes domain
-  events; Accounting subscribes and owns the mapping from business events to
-  journal entries. No Inventory → Accounting service call, no shared tables.
-  (ADR-0005)
+- **AR-16 — Inventory ⇢ Accounting posting uses an explicit synchronous public
+  contract.** The Inventory Business Document invokes Accounting through a
+  public application/domain contract inside the Modular Monolith; Inventory
+  supplies valuation facts and Accounting owns mapping and journal policy.
+  No direct cross-module table access, no microservices, and no event/outbox as
+  the primary internal posting mechanism. (ADR-0041, PDR-09; OQ-39 still gates
+  transaction/failure semantics)
 - **AR-17 — Worker from the same codebase.** Background work (outbox dispatch, PDF
   rendering, heavy imports/reports, scheduled jobs) runs in the `worker` entrypoint
   of the same NestJS codebase. v1 job queue is **DB-backed** (no external broker).

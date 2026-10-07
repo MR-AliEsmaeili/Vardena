@@ -113,9 +113,11 @@ api/  →  application/  →  domain/
 - `api/` calls application services; application services call domain logic and
   data repositories.
 - `domain/` is plain TypeScript: no Nest decorators, no Prisma, no HTTP.
-- A module's **public surface** is: its application services (for other modules'
-  *reads*), its published domain events (for other modules' *side effects*), and
-  its extension-point folders (for horizontal features).
+- A module's **public surface** is its application/domain contracts (for
+  explicit synchronous operations and reads), published domain events (for
+  independent reactions), and extension-point folders (for horizontal features).
+  Inventory → Accounting posting specifically uses the synchronous public
+  contract in ADR-0041, not a domain-event subscription.
 
 **`kernel/`** (`backend/src/kernel/`) holds technical primitives only (AR-06):
 event bus + event log, outbox port, ULID generation, pagination helpers,
@@ -126,7 +128,8 @@ Result/error types, base DTOs, exception filters. If you feel the need for a
 
 | Need | Mechanism |
 |---|---|
-| "Another module must react to something I changed" | **Domain event** (synchronous in-process dispatch in v1, persisted in `core.domain_events`; consumers idempotent) — ADR-0005 |
+| "A current command must synchronously ask another module to perform an operation" | That module's **public application/domain contract**, called in-process; Inventory → Accounting uses this pattern (ADR-0041) |
+| "An independent consumer must react to a published fact" | **Domain event** under its governing contract; events are not the primary internal Inventory → Accounting posting path (ADR-0041; ADR-0005 superseded for that path) |
 | "I need to read another module's data" | That module's **public application service** (in-process), or its **module-owned SQL view** for reporting |
 | "I need to send something to an external system" | **Outbox row** written in my transaction → worker → integration adapter — ADR-0004 |
 | Direct cross-module table/Prisma access | **Forbidden** |
@@ -230,33 +233,31 @@ Vardena/
 
 ## 8. Event Model (overview)
 
-> **Implementation status (verified 2026-09-26).** The table below is the
-> **target** event model. Today only the in-process bus exists
-> (`backend/src/kernel/events/domain-event-bus.ts`): events are emitted
-> synchronously and are **not persisted** — there is no `core` schema, no
-> `core.domain_events`, no `sync.outbox_events` and no `jobs.job_runs` table,
-> and the worker (`backend/src/worker.service.ts`) runs no dispatch loop. No
-> module currently subscribes to another module's events (in particular,
-> Accounting does **not** consume Inventory events; durable delivery semantics
-> are OQ-39). Do not treat the rows below as available infrastructure.
+> **Implementation status / C-61 decision (verified 2026-10-07).** The table
+> below remains a target event model, not a claim that persistence/dispatch exists.
+> The in-process bus is in-memory; there is no `core.domain_events`, outbox table,
+> or worker dispatch loop. One event subscriber exists, but Accounting does not
+> consume Inventory events and no Inventory → Accounting posting is implemented.
+> Under **ADR-0041 / PO-02**, that posting uses a synchronous public
+> application-service contract, not an event subscriber. **OQ-39 remains open**
+> for transaction ownership, refusal, retry and failure semantics.
 
 | Kind | Transport (v1) | Durability | Use |
 |---|---|---|---|
-| Domain event (internal) | in-process bus, dispatched in the publisher's unit of work | appended to `core.domain_events` in the same transaction | cross-module side effects (inventory → accounting), audit, notifications |
-| Outbox event (external) | `sync.outbox_events` table, worker dispatch | transactional with the business write | sending to external systems with retry (ADR-0004) |
+| Domain event (internal) | in-process bus, according to the event's contract | No persisted event log is currently implemented | Independent reactions, audit and notifications; not the primary internal Inventory → Accounting posting path |
+| Outbox event (external) | `sync.outbox_events` table, worker dispatch | Intended to be transactional with the business write | Sending to external systems with retry (ADR-0004); not the primary internal Inventory → Accounting path |
 | Job (delayed work) | `jobs.job_runs` DB queue, worker pickup | DB | PDF rendering, heavy imports/reports, scheduled tasks (ADR-0010) |
 | Notification | event → notifications module → `notifications.items` | DB | in-app user notifications (email/SMS channels later) |
 
 Consistency rules:
 
-- A business write, its domain-event log entry, and any outbox rows commit or roll
-  back **together** (one DB transaction).
-- If a transactional domain-event consumer (e.g. Accounting creating a journal
-  entry) fails, the **whole business operation fails** — safe for the books
-  (ADR-0005).
-- If the worker is down, outbox rows accumulate; business operations continue.
-  Dispatch resumes on restart. Dead-lettered rows surface in the admin UI for
-  manual retry/cancel.
+- Event and outbox persistence/transaction semantics are defined by their owning
+  contract; this target table does not assert that the infrastructure is present.
+- Inventory → Accounting posting must use the synchronous public contract in
+  ADR-0041. Its transaction/atomicity and refusal/failure behavior remain open
+  under OQ-39; ADR-0041 authorizes no production implementation.
+- If the worker is down, future external outbox rows may accumulate and resume
+  through retry/dead-letter handling under ADR-0004.
 - External systems are never a dependency of a business transaction: their
   availability affects sync latency, not ERP usability (ADR-0004).
 

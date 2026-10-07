@@ -3,6 +3,12 @@
 Status: Accepted
 Date: 2026-09-10
 
+> **Scoped clarification (2026-10-07).** ADR-0041 / PO-02 supersedes this ADR's
+> event-only side-effect mechanism for internal Inventory → Accounting posting
+> only. That path uses a synchronous public application/domain contract; independent
+> reactions may still use domain events. OQ-39 leaves its transaction/failure
+> semantics open.
+
 ## Context
 
 Vardena is an ERP for on-premise deployments by default. Microservices would
@@ -18,8 +24,9 @@ Build Vardena as a **modular monolith**: one NestJS application, one database,
 with **hard module boundaries** enforced by rules (AR-02…AR-08):
 
 - each module owns its tables (one DB schema per module — ADR-0008);
-- no cross-module table/Prisma access; cross-module side effects via domain
-  events, reads via public services or module-owned views;
+- no cross-module table/Prisma access; cross-module operations use an explicitly
+  approved public contract where selected, while independent reactions may use
+  domain events; reads use public services or module-owned views;
 - a technical-only `kernel/` (no shared business layer);
 - controllers are transport-only; use cases live in application services.
 
@@ -35,6 +42,8 @@ public-service reads for an API — without rewriting neighbors.
 - Discipline is the cost: boundary violations must be caught in review (and
   later, optionally, by CI checks); a "shared business service" smell is banned
   (AR-06).
-- In-process events mean a bug in a consumer can fail the publisher's
-  transaction (accepted: for accounting effects this is *desired* atomicity,
-  ADR-0005); future async dispatch is a kernel-level swap, not a module rewrite.
+- Event-consumer consistency follows each event's governing contract. The former
+  ADR-0005 event-based Inventory → Accounting atomicity is superseded for that path
+  by ADR-0041; its transaction and failure semantics remain open under OQ-39. Future
+  async dispatch for independent/external event use is a kernel-level concern, not
+  a reason to replace the approved internal Inventory posting contract.

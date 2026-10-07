@@ -176,16 +176,20 @@ docker-compose.yml   ← API + worker + PostgreSQL
    domain unit. No microservices (ADR-0001).
 2. **Layer purity.** Controllers = transport only. Business logic lives in
    application/domain layers, never in controllers (AR-03/04).
-3. **Module boundaries are law.** No cross-module table access. Cross-module side
-   effects go through domain events; cross-module reads through the owning module's
-   public service or module-owned views (AR-07).
+3. **Module boundaries are law.** No cross-module table access. Inventory →
+   Accounting posting uses the synchronous public application/domain contract
+   (ADR-0041); independent reactions may use domain events. Cross-module reads use
+   the owning module's public service or module-owned views (AR-07).
 4. **Backend authorization is mandatory.** Every endpoint declares a permission;
    frontend checks are UX only (AR-21).
 5. **External integrations only through adapters**, driven by the **Outbox pattern**:
    local transaction → outbox row → worker → adapter → retry → terminal state
    (AR-14, ADR-0004).
-6. **Inventory never calls Accounting.** Accounting effects happen by subscribing to
-   domain events; mapping rules belong to Accounting (AR-16, ADR-0005).
+6. **Inventory does not own Accounting policy or write Accounting tables.** An
+   approved Inventory Business Document calls Accounting through the synchronous
+   public application/domain contract; Inventory supplies valuation facts and
+   Accounting owns mapping and journal policy (AR-16, ADR-0041, PDR-09). The
+   integration is not implemented; OQ-39 still gates transaction/failure semantics.
 7. **Database changes only via Prisma migrations.** Raw SQL only where documented
    (module views, reporting, perf-critical paths) — always parameterized (AR-10/11).
 8. **Architecture changes require an ADR** before or with the change (AR-29).

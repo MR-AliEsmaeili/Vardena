@@ -42,12 +42,13 @@ organization scoping.
    still defaults to the first attempt's `new Date()`. Hashing the server
    clock made every dateless retry — the exact case keys exist for — hash
    differently and fail with a false 409 (Task 9.6 finding).
-5. **One negative-stock policy, applied to movements and reservations.**
-   Per-warehouse `allow_negative_stock`, default reject (fail closed), with
-   an optional per-item tri-state override (`true`/`false`/inherit). The
-   effective policy guards both resulting on-hand and resulting
-   availability (`on_hand − reserved`); there is no permission-gated third
-   level (OQ-24, unapproved).
+5. **MVP physical negative-stock posture (OD-VAL-17 / PDR-05).** Physical
+   on-hand below zero is rejected. This Owner decision supersedes the earlier
+   per-warehouse `allow_negative_stock` / per-item override as an MVP allowance;
+   those legacy fields do not authorize physical negative inventory. C-61 records
+   that the current code still exposes configurable allow overrides as a separate
+   implementation discrepancy; no production code was changed. OD-VAL-17 does not
+   decide whether reserved availability may be negative, so do not infer that policy.
 6. **Versioned unit conversion, resolved at the business date.** Postings
    resolve the conversion version covering the (possibly backdated) movement
    date; quantities are stored canonically in the item base unit.
@@ -72,9 +73,13 @@ organization scoping.
   pin replay/reject semantics.
 - Backdated postings follow the conversion version in force then, so
   historical corrections stay reproducible.
-- **Gap accepted:** no costing/valuation fields yet (OQ-24 valuation
-  remains open); the ledger stores quantities, not money — Accounting
-  (Task 10) consumes it.
+- **Historical gap accepted when ADR-0022 was written:** no costing/valuation
+  fields yet; the ledger then stored quantities, not money. This was superseded by
+  ADR-0039 / PDR-05 (Inventory-owned Moving Weighted Average valuation facts and
+  state). OQ-24 remains open for broader Accounting/COGS mapping, landed cost and
+  precision policy; Inventory return-costing conventions are recorded in PDR-08 and
+  the Purchase Return variance policy is OQ-70. Current Accounting boundary is
+  PDR-09 / ADR-0041; it consumes Inventory facts and does not recalculate them.
 - Cross-org ledger access is indistinguishable from "not found", which is
   less debuggable for operators; the decision is deliberate (no existence
   disclosure across tenants).
@@ -83,5 +88,5 @@ organization scoping.
 
 - Implements: ADR-0017; scope: ADR-0021; deployment pin: ADR-0025
 - Design: `docs/architecture/domain/` (inventory domain analysis, D-04/D-07/D-24)
-- Open questions: OQ-24 (negative stock/valuation), OQ-29 (units)
+- Open questions: OQ-24 (remaining valuation/accounting policy; negative physical stock is rejected for MVP under OD-VAL-17), OQ-29 (units); see PDR-05/PDR-08/PDR-09 for later valuation and posting decisions.
 - Tests: `test/inventory-core.e2e-spec.ts`, `inventory-posting-support.spec.ts`

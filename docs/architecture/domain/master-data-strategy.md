@@ -194,18 +194,19 @@ capability extension* with its own ADR; none of them may require redefining
 ## 4. Warehouses and locations
 
 - **Warehouse** belongs to exactly one branch; carries `code`, `name`, `is_active`,
-  optional default location behaviour, and the negative-stock policy fields
-  (organization default + per-warehouse override — OQ-24).
+  and optional default location behaviour. Physical negative inventory is rejected
+  for the MVP (OD-VAL-17 / PDR-05); no allow policy is approved by OQ-24.
 - **Locations (bins)** are configuration: a warehouse either operates with locations
   or without. The stock balance key is `(item, warehouse, location, lot, serial)`
   where location/lot/serial are only filled when enabled/required.
 - **Transfer** between warehouses = two movements (out/in) sharing a transfer
-  document and a transfer identifier; between *branches* it is the same mechanism
-  with an inter-branch flag that accounting may treat specially (OQ-31, expert).
-- **Negative stock:** policy `reject | allow_with_permission | allow` evaluated at
-  movement creation inside the transaction that updates the balance. Default when
-  undecided: **reject** (fail closed). Whether it is legally meaningful to allow it
-  is expert-gated (OQ-24).
+  document and a transfer identifier. Under PO-06, a transfer between warehouses
+  of the same Legal Entity creates no GL Voucher; different-entity, tax,
+  financial-area and other transfer cases remain undecided (PDR-09 / OQ-31).
+- **Negative stock:** physical negative inventory is rejected for the MVP
+  (OD-VAL-17 / PDR-05), evaluated at movement creation inside the balance-update
+  transaction. A future allowance requires a separate Owner decision; it is not an
+  unresolved OQ-24 choice.
 
 ---
 
@@ -308,6 +309,6 @@ master record.*
 
 ## 9. Open questions introduced here
 
-OQ-22 (organization/branch scope & multi-company), OQ-24 (negative stock part),
+OQ-22 (organization/branch scope & multi-company), OQ-24 (remaining Inventory/Accounting costing policy; negative physical stock reject is decided by OD-VAL-17),
 OQ-29 (unit conversion semantics & rounding), OQ-31 (inter-branch/internal
 settlement), OQ-32 (employee/HR scope). See [`../open-questions.md`](../../open-questions.md).

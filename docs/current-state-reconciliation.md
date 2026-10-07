@@ -242,7 +242,7 @@ No pending decision is guessed, and no decided record is altered.
 - **CONTRACT GAP:** no persistent Customization/preferences API; Dashboard layout persistence is not backend-supported.
 - **FUTURE PRODUCT DECISION:** dark mode, Jalali/date and digit policy, final permission-denied presentation, and global state introduction triggers remain governed by current standards/OQs.
 - **FUTURE PRODUCT DECISION:** richer domain-specific error branching requires structured subcodes/contracts. The stable envelope's human-readable `message` is not canonical Persian UX copy and must not be parsed to infer a business rule.
-- **CONTRACT GAP:** no durable Inventory→Accounting or Sales→Accounting delivery/consumer exists; in-memory events do not satisfy OQ-39.
+- **CONTRACT GAP:** C-61's selected synchronous public application-service contract for Inventory → Accounting is not implemented. The in-memory event bus has no Accounting consumer and is not the selected posting path or a fallback; OQ-39 remains open for transaction/failure semantics. Sales → Accounting requires its own contract.
 - **FUTURE PRODUCT DECISION:** Statement Classification taxonomy/runtime, Base Chart content, control roles, legal profiles, and report builder remain separately gated.
 
 These are findings, not authorizations to modify backend, OpenAPI, schema, or frontend behavior.
@@ -349,7 +349,7 @@ the decision-recording task.**
 | OQ-33 | **Still Open and explicitly unconfirmed.** OD-C47-02 supplies a change-governance rule only; the Owner withheld confirmation of the eight kinds and the per-item capability model |
 | OQ-36 | Partially resolved (OD-C47-04) and **still Open**: code reuse after physical deletion, case-sensitivity policy, soft-vs-hard delete shape, the reference-proof obligation, the delete permission/audit model, and cross-entity scope. Task 21 §10 Base Chart prerequisites remain unsatisfied |
 | OQ-65 | **New, Open.** Barcode lifecycle/reuse and comparison semantics; blocks only the barcode-uniqueness candidate |
-| OQ-11 / OQ-24 / OQ-39 / OQ-42 | Unchanged and Open. Verified scope: OQ-11 is an *Accounting* question (opening balance import + inventory costing method); OQ-24 gates every valued/rial inventory flow and its negative-stock half has an implemented fail-closed default that is not a decided policy; OQ-39 and OQ-42 gate the accounting effect and are irrelevant to quantity-only flows |
+| OQ-11 / OQ-24 / OQ-39 / OQ-42 / OQ-69 / OQ-70 / OQ-71 / OQ-72 | **Open after C-61.** OQ-11 remains the Accounting opening/import question. OQ-24 remains open for broader costing/Accounting policy; OD-VAL-17 decides physical negative inventory is rejected for MVP, although legacy Item/Warehouse allow overrides remain in code as a documented discrepancy (C-61 package). PO-02 selects synchronous Inventory → Accounting integration; OQ-39 transaction/refusal/retry/failure semantics and OQ-42 mode/approval remain open. OQ-69 auditor sufficiency, OQ-70 Purchase Return variance policy, OQ-71 Accounting correction behavior and OQ-72 system-origin authority remain open within their PDR-09 scopes. These posting questions do not gate quantity-only flows. |
 | OQ-54 | Unchanged and Open; verified to govern the lifecycle of Material Request, Warehouse Receipt/Issue and the opening documents |
 
 The registry still contains no Resolved row other than OQ-64. This addendum

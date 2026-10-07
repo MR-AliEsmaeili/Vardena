@@ -31,8 +31,12 @@ choice must be explicit before the first inventory table exists.
    The method (moving average / FIFO / standard) and its accounting effects are an
    accounting decision (OQ-24) and must not force a schema redesign. Method-specific
    state (moving-average state or cost layers) is a separate, rebuildable structure.
-6. **Negative stock is a policy**, per warehouse with item-level override; when the
-   policy is undecided the default is **reject** (fail closed).
+6. **MVP physical negative-stock posture (Owner decision OD-VAL-17 / PDR-05):**
+   physical on-hand below zero is rejected. The older per-warehouse/item override
+   wording is not authority to allow negative physical stock. C-61 records that the
+   current code still exposes configurable allow overrides as a separate
+   implementation discrepancy; no production code was changed. Reservation-availability
+   treatment is not broadened by this physical-stock decision.
 
 ## Consequences
 
@@ -53,5 +57,4 @@ choice must be explicit before the first inventory table exists.
 ## Links
 
 - Analysis: `docs/architecture/domain/inventory-domain-analysis.md`
-- Related: ADR-0005 (Inventory → Accounting via events), ADR-0008 (schemas),
-  AR-13 (immutability), OQ-24 (valuation, negative stock), OQ-29 (units).
+- Related: [PDR-09](../decisions/product/PDR-09-inventory-accounting-posting-boundary.md) and [ADR-0041](./0041-synchronous-inventory-accounting-application-contract.md) (current internal Inventory → Accounting contract; they supersede ADR-0005's event mechanism for this path), ADR-0008 (schemas), AR-13 (immutability), OQ-24 (remaining costing/Accounting policy), OQ-29 (units).

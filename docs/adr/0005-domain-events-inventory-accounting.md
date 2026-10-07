@@ -1,7 +1,12 @@
 # ADR-0005: Domain Events for Inventory → Accounting
 
-Status: Accepted
+Status: Superseded by ADR-0041 for the primary internal Inventory → Accounting posting mechanism
 Date: 2026-09-10
+
+> **Supersession note (2026-10-07).** ADR-0041 supersedes only this ADR's
+> event-subscription mechanism for internal Inventory → Accounting posting.
+> The accepted historical decision remains recorded below; independent domain
+> events and other consumers are not generally withdrawn.
 
 ## Context
 
