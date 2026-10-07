@@ -1,6 +1,6 @@
 # C-59C — Transfer operational flow: coupled backdated valuation replay
 
-Status: Implemented — locally verified; CI verification pending
+Status: **DONE — CI green** (PR #127, head `2c7186f`, run 37597572636)
 Date: 2026-10-07
 Baseline: `main` @ `047f5ea94e284e4db23816eee0976190279ff50e` (merge of PR #126)
 Branch: `arena/6e2e35f1-vardena`
@@ -208,8 +208,18 @@ text) and the existing movement/state/run tables.
 
 ## 9. Verification evidence
 
-Local (this working tree, before the commit; the commit SHA/PR/CI are added by
-the implementation report once CI has run):
+**Commit/PR/CI (final).** Commit `1b5af2b` (implementation) → `2c7186f`
+(the FK-order fix below). Pull request
+[#127](https://github.com/MR-AliEsmaeili/Vardena/pull/127) —
+`feat(inventory): support coupled backdated transfer valuation replay`.
+CI: the first head `1b5af2b` failed run
+[37595239576](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37595239576)
+(one real defect, §9.1); the final head `2c7186f` passed run
+[37597572636](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37597572636)
+— both jobs green (backend 5m41s including `migrate deploy`, the migration
+rehearsal and the live-DB e2e suites; frontend 2m49s).
+
+Local (all of it re-run on the committed tree):
 
 | Command (from `backend/` unless noted) | Result |
 |---|---|
@@ -256,6 +266,54 @@ e2e config are green locally, and CI was re-run on the fixed head.
 This is the same failure class the C-59 correction sprint's Reverse Pricing
 work hit (stamping movements with a run id before the run existed) — recorded
 here because it is the second occurrence.
+
+## 9.2 Implementation report
+
+**What shipped.** A backdated transfer is no longer refused. `POST
+/v1/inventory/transfers` and the Transfer document finalize accept
+`backdateConfirmed`; an unconfirmed backdated transfer is refused with the
+shared `inventory.backdated_document` code and BOTH keys' assessed latest
+movement dates (so the caller can see exactly what the replay will restate); a
+confirmed one additionally requires `Inventory.Valuation.Recalculate`, checked
+before the first write. When the pair is backdated, the posting transaction
+values it with the coupled two-key replay — one pass over both keys' histories
+in canonical ledger order with the pair at its own position — and the
+destination leg carries exactly the source-derived value (OD-TRF-01/02/05).
+Nothing partial can survive: the replay and both leg inserts share one
+transaction.
+
+**Decisions applied (no new business rules).** PDR-08 OD-TRF-01…09 (OD-TRF-09
+is this slice), PDR-05 OD-VAL-10/11/12/14, ADR-0039/ADR-0022 transaction and
+lock discipline. The one interpretation, recorded in §3: a transfer gets the
+OD-VAL-10 acknowledgement but NOT the OD-VAL-11 repricing choice, because the
+pair is one valuation unit and there is no "leave it alone" variant that keeps
+OD-TRF-05 true. No migration; no API break; `backdateConfirmed` vs
+`acknowledgeSideEffects` untouched (OQ-69 stays open).
+
+**Evidence.** 36 files, +2874/−160 (PR #127). New/changed behaviour is covered
+at four levels: pure domain (11 tests), hermetic service (3 new tests incl. the
+permission pre-check and a refusing replay), in-memory HTTP journey (44 tests
+in `inventory-valuation.e2e-spec.ts`, incl. the two-key rollback), and live
+PostgreSQL (`inventory-business-documents-live.e2e-spec.ts`, 18 tests). Local:
+backend unit 139/1756, frontend 48/342, typecheck/lint/format clean, and the
+FULL live-DB e2e config 48/566 against an embedded PostgreSQL 18.4 instance.
+
+**Defect found by CI and fixed (recorded honestly).** The first head returned
+500 for a confirmed backdated transfer because the orchestration patched
+movement rows pointing at a valuation run it had not inserted yet (real FK,
+`fk_inventory_movements_valuation_run`); the hermetic fake has no constraints
+and could not see it. Fixed by writing the run row first (`applyReplay`'s
+order), with the FK order now enforced by the fake as well, and re-verified
+green on CI. See §9.1.
+
+**Residual risks / follow-ups (all recorded, none silent).** (1) the transfer
+form has no two-step backdate dialog yet — the backend refusal is additive and
+the existing mapping renders a safe message (UI follow-up); (2) the pre-existing
+single-key replay `forceUnvalued` defect is out of scope (§10); (3) an operator
+holding both document-finalize and transfer-create rights can still post a
+confirmed backdated transfer by another route only through this same replay, so
+the permission gate is the single chokepoint; (4) the OQ-67 registry row and
+every current-state doc were updated to C-59C.
 
 ## 10. Deferred / observed
 

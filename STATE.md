@@ -1832,3 +1832,59 @@ e2e spec asserting it).
   prior heads `30ca7b2` (green, runs 37537658703 / 37538284793) and
   `0a23956` (red — the migration defect above) frame the loop.
 - **Status:** see the sprint report's single verdict.
+
+## 25. C-59C — Coupled Backdated Transfer Valuation Replay (2026-10-07)
+
+- **Scope delivered (backend + frontend, branch `arena/6e2e35f1-vardena`,
+  PR [#127](https://github.com/MR-AliEsmaeili/Vardena/pull/127)):** the
+  OD-TRF-08/09 gap assigned to C-59C. A backdated transfer is no longer
+  fail-closed: `POST /inventory/transfers` and the Transfer document finalize
+  accept `backdateConfirmed` (the OD-VAL-10 acknowledgement, same
+  `inventory.backdated_document` code, now naming BOTH keys and their latest
+  movement dates), a confirmed backdated transfer additionally requires
+  `Inventory.Valuation.Recalculate` before any write, and the pair is valued by
+  the **coupled two-key replay** — both keys' histories folded in canonical
+  ledger order with the pair at its own position, the destination leg
+  receiving exactly the source-derived value (OD-TRF-01/02/05) — inside the
+  posting transaction. No migration, no API break, no new permission.
+- **New code:** `domain/transfer-replay.ts` (pure driver),
+  `data/inventory-transfer-replay.ts` (in-transaction orchestration: run rows
+  with the existing `backdated_document` trigger, `writeValuationState`, the
+  same bounded read as a recalculation). `domain/valuation-replay.ts` now
+  exports the shared unpaired-leg guard and fact dispatch, so the single-key
+  and coupled drivers cannot disagree.
+- **Fail-closed residuals stay named:** `inventory.recalculation_too_large`
+  (OD-VAL-12 bound), `inventory.valuation_method_not_implemented` (OD-VAL-18),
+  `inventory.transfer_replay_unpaired_leg` (a stored unvalued leg of another
+  transfer, whose counterpart key is not in this replay). The retired
+  `inventory.backdated_transfer_valuation_unresolved` code is emitted by no
+  path; OQ-67's "known implementation gap" is closed in
+  `docs/open-questions.md`, and PDR-05/PDR-08/ADR-0039/`modules.md`/
+  `feedback-standard.md` were updated in the same change. The interpretation
+  that a transfer gets NO OD-VAL-11 repricing choice is recorded in the task
+  doc §3; no new business rule was invented.
+- **Tests:** `domain/transfer-replay.spec.ts` (new, 11), three new hermetic
+  service tests replacing the retired gate test (confirmation refusal,
+  confirmed-with-authority posting incl. the permission pre-check, and a
+  refusing replay mapping to its named 422), the in-memory HTTP journey in
+  `test/inventory-valuation.e2e-spec.ts` (44, incl. the two-key rollback), and
+  a live-PostgreSQL coupled-replay test in the documents live suite (18).
+- **Defect found by CI and fixed on the same branch:** the first head
+  (`1b5af2b`) returned 500 for a confirmed backdated transfer because the
+  orchestration patched movement rows pointing at a valuation run it had not
+  inserted yet — a real FK (`fk_inventory_movements_valuation_run`) the
+  constraint-free fake could not see. Fixed in `2c7186f` by writing the run row
+  first (the `applyReplay` order); the in-memory mirror now enforces the same
+  FK order.
+- **Verified locally:** backend unit **139 files / 1756 tests**, frontend
+  **48/342**, typecheck/lint/format clean, `git diff --check` clean; and the
+  FULL live-DB e2e config **48 files / 566 tests PASS** against an embedded
+  PostgreSQL 18.4 instance (all 28 migrations, generated client, system-admin
+  bootstrap) — the first time this slice's live assertions ran in the sandbox.
+- **CI:** **GREEN on `2c7186f`** — run
+  [37597572636](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37597572636)
+  (backend 5m41s incl. `migrate deploy`, migration rehearsal and the live-DB
+  e2e suites; frontend 2m49s). The prior head `1b5af2b` is the red run that
+  exposed the FK-order defect (37595239576).
+- **Record:** `docs/tasks/c-59c-transfer-coupled-backdated-replay.md`
+  (§9 carries the evidence and §9.2 the implementation report).
