@@ -419,3 +419,137 @@ describe('effective-dated resolution — the 1404/1405 case', () => {
     expect(factFor('ancient', '2024-01-01T00:00:00.000Z').method).toBe(MWA);
   });
 });
+
+describe('forceUnvalued — the basis-linked unvalued purchase return survives a replay', () => {
+  /**
+   * The exact shape the posting path writes for a purchase return based on an
+   * UNVALUED receipt (OD-RET-02/04): the exit carries no value and
+   * `return_basis` is recorded as WHY. A recalculation rebuilds that fact
+   * from the stored row (`toReplayFact`) and must re-apply it — never derive
+   * a value from the current average.
+   *
+   * The issue consumed the uncosted units the basis receipt contributed, so
+   * the return's quantity comes out of the VALUED pool without attributing
+   * value: the key is honestly inconsistent (the same verdict the posting
+   * path records) and every quantity still moves.
+   */
+  const basisReceipt: ReplayFact = {
+    id: 'basis-receipt',
+    method: MWA,
+    movementType: 'inbound',
+    baseQuantity: '10',
+    knownValue: null,
+  };
+  const issue: ReplayFact = {
+    id: 'issue',
+    method: MWA,
+    movementType: 'outbound',
+    baseQuantity: '-10',
+    knownValue: null,
+  };
+  const costedReceipt: ReplayFact = {
+    id: 'costed-receipt',
+    method: MWA,
+    movementType: 'inbound',
+    baseQuantity: '5',
+    knownValue: '500.00',
+    knownValueSource: 'entered',
+  };
+  const forcedExit: ReplayFact = {
+    id: 'purchase-return',
+    method: MWA,
+    movementType: 'purchase_return',
+    baseQuantity: '-4',
+    knownValue: null,
+    knownValueSource: 'return_basis',
+    forceUnvalued: true,
+  };
+  const history: ReplayFact[] = [
+    basisReceipt,
+    issue,
+    costedReceipt,
+    forcedExit,
+  ];
+
+  it('keeps the exit unvalued — the average never supplies the value the posting path refused to invent', () => {
+    const result = replay(history);
+
+    // Before the fix the shared fact→strategy dispatch dropped the flag, so
+    // the recalculation re-derived this row from the average (4 × 100) and
+    // rewrote it as a `valued`/`average_cost` exit.
+    expect(result.movements[3]?.valuation).toEqual({
+      status: 'unvalued',
+      totalCost: null,
+      source: 'return_basis',
+      unvaluedReason: 'no_cost_supplied',
+    });
+    // No rows before it changed value either.
+    expect(
+      result.movements.map((movement) => movement.valuation.totalCost),
+    ).toEqual([null, null, '500', null]);
+  });
+
+  it('moves the same quantities in the same order as the posting path', () => {
+    const result = replay(history);
+
+    // 10 − 10 + 5 − 4 = 1 on hand: the exit consumes like any other outbound
+    // (uncosted stock first, then the valued pool); only its VALUE is
+    // withheld.
+    expect(result.position).toEqual({
+      valuedQuantity: '1',
+      uncostedQuantity: '0',
+      totalValue: '100',
+    });
+    // Canonical ledger order is preserved — the driver never reorders facts.
+    expect(result.movements.map((movement) => movement.id)).toEqual([
+      'basis-receipt',
+      'issue',
+      'costed-receipt',
+      'purchase-return',
+    ]);
+  });
+
+  it('keeps the key stale: an unvalued exit that consumed valued stock is not a consistent key', () => {
+    // The strategy's own `marksStale` — the identical verdict the posting
+    // path records — must reach the replay result, or the recalculation
+    // would report the key consistent and clear its stale flag.
+    expect(replay(history).provisional).toBe(true);
+  });
+
+  it('leaves the key consistent when nothing left the valued pool', () => {
+    // Same facts, but the return happens while the basis receipt's uncosted
+    // units are still there: no value is stranded, so no stale flag.
+    const clean = replay([
+      basisReceipt,
+      { ...forcedExit, id: 'purchase-return-full', baseQuantity: '-10' },
+    ]);
+
+    expect(clean.movements[1]?.valuation.status).toBe('unvalued');
+    expect(clean.provisional).toBe(false);
+  });
+
+  it('values the same history from the average when the flag is absent — normal behaviour is unchanged', () => {
+    const unflagged: ReplayFact = {
+      id: forcedExit.id,
+      method: forcedExit.method,
+      movementType: forcedExit.movementType,
+      baseQuantity: forcedExit.baseQuantity,
+      knownValue: forcedExit.knownValue,
+      knownValueSource: forcedExit.knownValueSource,
+    };
+
+    // Omitted (a basis-less return under OD-RET-03) and explicit `false`
+    // are the same thing: only `=== true` forces the exit.
+    for (const fact of [unflagged, { ...unflagged, forceUnvalued: false }]) {
+      const result = replay([basisReceipt, issue, costedReceipt, fact]);
+
+      expect(result.movements[3]?.valuation).toEqual({
+        status: 'valued',
+        totalCost: '-400',
+        source: 'average_cost',
+        unvaluedReason: null,
+      });
+      expect(result.provisional).toBe(false);
+    }
+  });
+});
