@@ -224,11 +224,38 @@ the implementation report once CI has run):
 | frontend `npx tsc --noEmit`, `npm run lint`, `npm run format:check`, `npm test` | clean, clean, clean, **48 files / 342 tests PASS** |
 | `git diff --check` | clean |
 
-NOT executed anywhere yet: every `*-live.e2e-spec.ts`, including the new live
-test in `test/inventory-business-documents-live.e2e-spec.ts`. They run in CI
-(which provisions PostgreSQL 16); the sandbox has no `psql`/`postgres`/`pg_ctl`
-binary, so their assertions were verified statically against the schema
-(`numeric(18,2)` movement/state columns) and the repository code they exercise.
+The live-PostgreSQL suites were then executed **in this sandbox** against a
+real database: an embedded PostgreSQL 18.4 instance (`@embedded-postgres`),
+all 28 migrations applied, a locally generated Prisma client and the
+system-administrator bootstrap, running the FULL e2e config:
+
+| Command | Result |
+|---|---|
+| `VARDENA_TEST_DATABASE_URL=… npm run test:e2e` | **48 files / 566 tests PASS** — every live suite, including the new coupled-replay live test (18/18 in `inventory-business-documents-live.e2e-spec.ts`) |
+
+### 9.1 The first CI head failed — and why (real defect, fixed)
+
+CI run [37595239576](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/37595239576)
+(head `1b5af2b`) went red on the new live test only: the confirmed backdated
+finalize returned **500** instead of 200.
+
+Root cause: `persistSide` patched the restated movement rows
+(`valuation_run_id = <new run>`) BEFORE inserting the
+`inventory_valuation_runs` row. `inventory_movements.valuation_run_id` is a real
+foreign key (`fk_inventory_movements_valuation_run`), so on PostgreSQL every
+confirmed backdated transfer violated it — while the in-memory fake, which has
+no constraints, could not see it. `applyReplay` (the recalculation path) has
+always written the run row first; this slice's orchestration did not.
+
+Fix: `persistSide` now writes the run row FIRST, then the movement patches, then
+the state (the `applyReplay` order), and the in-memory mirror additionally
+enforces the FK order (`requireRunRow`) so the same class of mistake cannot
+pass the hermetic suites again. Re-verified: the live suite and the full live
+e2e config are green locally, and CI was re-run on the fixed head.
+
+This is the same failure class the C-59 correction sprint's Reverse Pricing
+work hit (stamping movements with a run id before the run existed) — recorded
+here because it is the second occurrence.
 
 ## 10. Deferred / observed
 

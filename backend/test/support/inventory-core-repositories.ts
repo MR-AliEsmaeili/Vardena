@@ -741,7 +741,13 @@ function persistCoupledSide(
       ? [{ id: row.id, valuation: next.valuation }]
       : [];
   });
+  // Run row FIRST, like `applyReplay` — a movement may only point at a run
+  // that already exists (`valuationRunId` is a foreign key on real
+  // PostgreSQL; this mirror enforces the same ordering so a broken write
+  // order cannot pass here and fail only in the live suite).
+  insertRunRow(tables, side, changes.length);
   for (const change of changes) {
+    requireRunRow(tables, side.runId);
     tables.movements.patch(change.id, {
       totalCost: change.valuation.totalCost,
       valuationStatus: change.valuation.status,
@@ -751,6 +757,28 @@ function persistCoupledSide(
       updatedAt: side.input.at,
     });
   }
+  writeCoupledState(tables, side);
+}
+
+/** Mirror of the run row `persistCoupledSide` writes (FK target). */
+function insertRunRow(
+  tables: InventoryCoreTables,
+  side: {
+    key: BalanceKey;
+    position: ValuationPosition;
+    provisional: boolean;
+    runId: string;
+    rows: readonly InventoryMovement[];
+    input: {
+      method: ValuationMethod;
+      at: Date;
+      fromDate: Date;
+      operationKey: string;
+      reason: string | null;
+    };
+  },
+  movementsRevalued: number,
+): void {
   tables.valuationRuns.insert({
     id: side.runId,
     organizationId: side.key.organizationId,
@@ -761,7 +789,7 @@ function persistCoupledSide(
     trigger: 'backdated_document',
     fromDate: side.input.fromDate,
     movementsExamined: side.rows.length,
-    movementsRevalued: changes.length,
+    movementsRevalued,
     resultingValuedQuantity: side.position.valuedQuantity,
     resultingUncostedQuantity: side.position.uncostedQuantity,
     resultingTotalValue: side.position.totalValue,
@@ -775,6 +803,27 @@ function persistCoupledSide(
     createdAt: side.input.at,
     updatedAt: side.input.at,
   });
+}
+
+/** The `valuation_run_id` foreign key: the target run must already exist. */
+function requireRunRow(tables: InventoryCoreTables, runId: string): void {
+  if (tables.valuationRuns.findById(runId) === null) {
+    throw new Error(
+      `TEST DOUBLE: movement points at valuation run "${runId}" before it exists (FK order).`,
+    );
+  }
+}
+
+function writeCoupledState(
+  tables: InventoryCoreTables,
+  side: {
+    state: InventoryValuationState;
+    position: ValuationPosition;
+    provisional: boolean;
+    runId: string;
+    input: { method: ValuationMethod; at: Date };
+  },
+): void {
   writeValuationState(tables, {
     state: side.state,
     position: side.position,
@@ -914,6 +963,9 @@ function applyReplayInMemory(
     updatedAt: input.at,
   });
   for (const change of changes) {
+    // Same FK order production must honour: the run exists before a movement
+    // may point at it.
+    requireRunRow(tables, input.runId);
     tables.movements.patch(change.id, {
       totalCost: change.valuation.totalCost,
       valuationStatus: change.valuation.status,

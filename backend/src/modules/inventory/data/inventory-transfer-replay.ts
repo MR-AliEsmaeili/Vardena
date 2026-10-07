@@ -251,21 +251,10 @@ async function persistSide(
       : [];
   });
 
-  for (const change of changes) {
-    await tx.inventoryMovement.update({
-      where: { id: change.id },
-      data: {
-        totalCost: change.valuation.totalCost,
-        valuationStatus: change.valuation.status,
-        valuationSource: change.valuation.source,
-        valuedAt: change.valuation.status === 'unvalued' ? null : input.at,
-        valuationRunId: side.runId,
-        updatedAt: input.at,
-        updatedBy: input.actorId,
-      },
-    });
-  }
-
+  // The RUN row is written FIRST, exactly as `applyReplay` does: every
+  // restated movement points at it (`valuationRunId` is a foreign key), so
+  // patching a movement before the run exists is a constraint violation on
+  // real PostgreSQL. The in-memory mirror enforces the same order.
   await tx.inventoryValuationRun.create({
     data: {
       id: side.runId,
@@ -295,6 +284,21 @@ async function persistSide(
       createdBy: input.actorId,
     },
   });
+
+  for (const change of changes) {
+    await tx.inventoryMovement.update({
+      where: { id: change.id },
+      data: {
+        totalCost: change.valuation.totalCost,
+        valuationStatus: change.valuation.status,
+        valuationSource: change.valuation.source,
+        valuedAt: change.valuation.status === 'unvalued' ? null : input.at,
+        valuationRunId: side.runId,
+        updatedAt: input.at,
+        updatedBy: input.actorId,
+      },
+    });
+  }
 
   await writeValuationState(tx, {
     state: side.state,
