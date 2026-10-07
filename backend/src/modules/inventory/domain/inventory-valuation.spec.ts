@@ -142,7 +142,7 @@ describe('money — entered amounts are never rounded', () => {
 });
 
 describe('valuation permission vocabulary', () => {
-  it('contains exactly the four implemented codes', () => {
+  it('contains exactly the six implemented codes', () => {
     expect(
       INVENTORY_VALUATION_PERMISSION_DEFINITIONS.map(({ code }) => code).sort(),
     ).toEqual(
@@ -150,6 +150,8 @@ describe('valuation permission vocabulary', () => {
         VALUATION_PERMISSIONS.ASSIGN_COST,
         VALUATION_PERMISSIONS.CONFIGURE,
         VALUATION_PERMISSIONS.RECALCULATE,
+        VALUATION_PERMISSIONS.REVERSE_PRICING,
+        VALUATION_PERMISSIONS.RUN_PRICING,
         VALUATION_PERMISSIONS.VIEW,
       ].sort(),
     );

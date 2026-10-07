@@ -268,6 +268,10 @@ model Warehouse {
   valuationStates InventoryValuationState[]
   valuationRuns   InventoryValuationRun[]
 
+  // C-59E Pricing Run batches scoped to this warehouse (all-warehouse runs
+  // keep warehouse_id NULL and do not appear here).
+  pricingRuns InventoryPricingRun[] @relation("InventoryPricingRunWarehouse")
+
   @@unique([organizationId, code], map: "uq_warehouses_organization_id_code")
   @@index([organizationId, isActive], map: "idx_warehouses_organization_id_is_active")
   @@index([branchId], map: "idx_warehouses_branch_id")
@@ -715,8 +719,10 @@ model InventoryValuationRun {
   itemId         String   @map("item_id")
   method         String   @db.VarChar(32)
   /// Closed, code-defined list (`domain/inventory-valuation.ts`):
-  /// `user_requested` (the explicit repricing choice) or `maintenance`
-  /// (a rebuild run by an operator to repair drift).
+  /// `backdated_document`, `cost_assignment`, `manual`, and — C-59E —
+  /// `pricing_operation` (a per-key replay inside a Periodic Pricing
+  /// Operation batch) and `reverse_pricing` (a per-key compensating run
+  /// written by Reverse Pricing).
   trigger        String   @db.VarChar(24)
   /// The business date the run was requested for; audit only.
   fromDate       DateTime? @map("from_date") @db.Timestamptz(6)
@@ -747,6 +753,9 @@ model InventoryValuationRun {
 
   movements InventoryMovement[]
   states    InventoryValuationState[]
+
+  // C-59E: the pricing-run key outcomes this per-key run was produced by.
+  pricingRunKeyOutcomes InventoryPricingRunKeyOutcome[]
 
   @@index([organizationId, warehouseId, itemId, executedAt], map: "idx_valuation_runs_org_key_executed_at")
   @@index([organizationId, executedAt], map: "idx_valuation_runs_org_executed_at")

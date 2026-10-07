@@ -78,6 +78,11 @@ model Organization {
   inventoryBusinessDocuments      InventoryBusinessDocument[]
   inventoryBusinessDocumentLines  InventoryBusinessDocumentLine[]
 
+  // Back-relations for the C-59E Pricing Run batch records. Virtual side
+  // only — the real FK columns stay `inventory.inventory_pricing_run*`.
+  inventoryPricingRuns         InventoryPricingRun[]
+  inventoryPricingRunKeyOutcomes InventoryPricingRunKeyOutcome[]
+
   // Back-relations for the Document Foundation (Task 8, ADR-0023). Virtual
   // side only — the real FK columns stay `documents.*.organization_id`.
   documentTypeConfigs  DocumentTypeConfig[]

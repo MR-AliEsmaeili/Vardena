@@ -101,6 +101,12 @@ export interface MovementValuationPlan {
   knownValueSource?: ValuationSource | undefined;
   /** `movementDate` is strictly before the key's latest movement. */
   backdated: boolean;
+  /**
+   * C-59D (OD-RET-02/04): the purchase return whose basis receipt carries
+   * no value. Only the business-document return path sets this; it is never
+   * defaulted and never inferred.
+   */
+  forceUnvalued?: boolean | undefined;
 }
 
 export interface PostMovementInput {
@@ -134,6 +140,22 @@ export interface PostReversalInput extends PostMovementInput {
   /** The original movement being reversed (locked for the check). */
   originalMovementId: string;
 }
+
+/**
+ * Bound for the movements one Pricing Run's date window may cover. The
+ * per-key replay is separately bounded by `RECALCULATION_MOVEMENT_LIMIT`;
+ * this bound keeps the scope-resolution read and the batch itself inside a
+ * reviewable envelope (OD-VAL-12's bounded-command doctrine).
+ */
+const PRICING_SCOPE_MOVEMENT_LIMIT = 20_000;
+
+/**
+ * Bound for one valuation run's affected movements (Reverse Pricing). A run
+ * is itself bounded by `RECALCULATION_MOVEMENT_LIMIT` per key, and a reverse
+ * touches one run's keys, so this is a defensive ceiling that refuses
+ * unbounded work rather than trusting it.
+ */
+const REVERSAL_MOVEMENT_LIMIT = 50_000;
 
 @Injectable()
 export class InventoryMovementsRepository {
@@ -225,6 +247,91 @@ export class InventoryMovementsRepository {
     return result._max.movementDate;
   }
 
+  /**
+   * Movements in a Pricing Run's date window that reference a business
+   * document (C-59E scope resolution). The half-open window is
+   * `(fromDateExclusive, toDateInclusive]` — OD-PDP-01's contiguous,
+   * non-overlapping runs. Bounded: a window with more movements than the
+   * bound is the caller's named refusal, never a silent truncation.
+   */
+  async listScopedToDocuments(
+    organizationId: string,
+    window: { fromDateExclusive: Date | null; toDateInclusive: Date },
+  ): Promise<InventoryMovement[]> {
+    const { inventoryMovement } = await this.client();
+    const rows = await inventoryMovement.findMany({
+      where: {
+        organizationId,
+        referenceType: 'inventory_business_document',
+        movementDate: {
+          ...(window.fromDateExclusive === null
+            ? {}
+            : { gt: window.fromDateExclusive }),
+          lte: window.toDateInclusive,
+        },
+      },
+      orderBy: [{ movementDate: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      skip: 0,
+      take: PRICING_SCOPE_MOVEMENT_LIMIT + 1,
+    });
+    if (rows.length > PRICING_SCOPE_MOVEMENT_LIMIT) {
+      throw new Error(
+        `The pricing scope covers more than ${PRICING_SCOPE_MOVEMENT_LIMIT} movements. Narrow the date window.`,
+      );
+    }
+    return rows.map(toDomain);
+  }
+
+  /**
+   * Movements last written by one valuation run (C-59E: Reverse Pricing's
+   * affected set — OD-RVP-03's accounting guard and OD-RVP-06's un-valuing
+   * both key off exactly these rows).
+   */
+  async findByValuationRun(
+    valuationRunId: string,
+  ): Promise<InventoryMovement[]> {
+    const { inventoryMovement } = await this.client();
+    const rows = await inventoryMovement.findMany({
+      where: { valuationRunId },
+      orderBy: [{ movementDate: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+      skip: 0,
+      take: REVERSAL_MOVEMENT_LIMIT,
+    });
+    return rows.map(toDomain);
+  }
+
+  /**
+   * Movements by logical reference (C-59E scope resolution: the movements
+   * owned by the documents a Pricing Run covers). Bounded and ordered
+   * deterministically.
+   */
+  async findByReferences(
+    organizationId: string,
+    referenceType: string,
+    referenceIds: readonly string[],
+  ): Promise<InventoryMovement[]> {
+    if (referenceIds.length === 0) return [];
+    const { inventoryMovement } = await this.client();
+    const rows: InventoryMovement[] = [];
+    // Chunked id sets: the ids arrive from a bounded document list, and the
+    // chunk keeps the parameter count inside sane bounds.
+    for (let offset = 0; offset < referenceIds.length; offset += 500) {
+      const chunk = referenceIds.slice(offset, offset + 500);
+      const found = await inventoryMovement.findMany({
+        where: {
+          organizationId,
+          referenceType,
+          referenceId: { in: chunk },
+        },
+        orderBy: [{ movementDate: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
+        skip: 0,
+        take: 10_000,
+      });
+      rows.push(...found.map(toDomain));
+    }
+    return rows;
+  }
+
   /** Master-data freeze guard: has this item ever moved? */
   async existsForItem(itemId: string): Promise<boolean> {
     const { inventoryMovement } = await this.client();
@@ -281,6 +388,9 @@ export class InventoryMovementsRepository {
         ? {}
         : { knownValueSource: input.valuation.knownValueSource }),
       backdated: input.valuation.backdated,
+      ...(input.valuation.forceUnvalued === true
+        ? { forceUnvalued: true }
+        : {}),
       at: input.movement.updatedAt,
       actorId: input.actorId,
     });

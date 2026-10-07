@@ -20,10 +20,19 @@
  * number and stays visible (OD-54-07/08/09); numbers are never reused.
  */
 
+/**
+ * `inventory_movements.reference_type` for a business document's effect
+ * (C-58/C-59D). Domain-owned: it is a stored vocabulary value both the
+ * application services and the ledger reads compare against.
+ */
+export const INVENTORY_DOCUMENT_REFERENCE_TYPE = 'inventory_business_document';
+
 export const INVENTORY_DOCUMENT_KINDS = [
   'receipt',
   'issue',
   'transfer',
+  'purchase_return',
+  'sales_return',
 ] as const;
 export type InventoryDocumentKind = (typeof INVENTORY_DOCUMENT_KINDS)[number];
 
@@ -108,6 +117,12 @@ export type InventoryDocumentLine = {
   baseQuantity: string;
   baseUnitId: string;
   conversionFactor: string;
+  /**
+   * RETURN KINDS ONLY (OD-RET-01): the ledger fact of the originating
+   * receipt (purchase return) or issue (sales return) this line is based on.
+   * `null` for receipt/issue/transfer lines and for basis-less returns.
+   */
+  basisMovementId: string | null;
   /** The ledger fact this line currently owns, or `null` while unposted. */
   movementId: string | null;
   /** Transfer legs; both null for receipt/issue and while unposted. */
@@ -171,7 +186,42 @@ export type InventoryTransfer = InventoryDocumentBase & {
   cost: null;
 };
 export type InventoryBusinessDocument =
-  InventoryReceipt | InventoryIssue | InventoryTransfer;
+  | InventoryReceipt
+  | InventoryIssue
+  | InventoryTransfer
+  | InventoryPurchaseReturn
+  | InventorySalesReturn;
+
+/**
+ * C-59D (PDR-08 OD-RET-01…04): stock returned to a supplier. An OUTBOUND
+ * document: `cost` is deliberately absent — with a basis the value is the
+ * original receipt's own cost (a Derived Price), without one it is the
+ * current Moving Weighted Average. An agreed settlement amount has no
+ * decided variance account (OD-RET-04 + OQ-70), so no amount input exists
+ * at all.
+ */
+export type InventoryPurchaseReturn = InventoryDocumentBase & {
+  kind: 'purchase_return';
+  warehouseId: string;
+  sourceWarehouseId: null;
+  destinationWarehouseId: null;
+  cost: null;
+};
+
+/**
+ * C-59D (PDR-08 OD-RET-05…07): goods coming back from a customer. An INBOUND
+ * document valued at INVENTORY COST — the key's current Moving Weighted
+ * Average — never at the sales price. `cost` is an optional Manual Price
+ * (OD-PRC-02) permitted ONLY with a basis on the originating issue, exactly
+ * like a receipt's optional cost.
+ */
+export type InventorySalesReturn = InventoryDocumentBase & {
+  kind: 'sales_return';
+  warehouseId: string;
+  sourceWarehouseId: null;
+  destinationWarehouseId: null;
+  cost: string | null;
+};
 
 export class InventoryDocumentRuleError extends Error {
   readonly code: string;
@@ -292,6 +342,7 @@ type ValidatableLine = {
   unitId: string;
   quantity: string;
   conversionFactor: string;
+  basisMovementId?: string | null;
 };
 
 type ValidatableDocument = {
@@ -369,22 +420,36 @@ export function validateDocument(document: ValidatableDocument): void {
   } else {
     if ((document.warehouseId ?? '') === '') {
       throw new InventoryDocumentRuleError(
-        'A receipt or issue requires a warehouse.',
+        'A receipt, issue or return requires a warehouse.',
         'inventory.document.warehouse_required',
       );
     }
   }
-  if (document.kind === 'receipt') {
+  if (document.kind === 'receipt' || document.kind === 'sales_return') {
     const cost = document.cost;
     if (cost !== null && cost !== undefined && !isNonNegativeDecimal(cost)) {
       throw new InventoryDocumentRuleError(
-        'Receipt cost must be a non-negative amount when supplied; it is optional.',
+        'A receipt cost / sales-return amount must be a non-negative amount when supplied; it is optional.',
         'inventory.document.receipt_cost_invalid',
       );
     }
+    if (document.kind === 'sales_return') {
+      // OD-RET-06: an explicit sales-return amount is a Manual Price, and a
+      // Manual Price is only valid where the document carries a BASIS on the
+      // original issue — the two inputs travel together or not at all.
+      const hasBasis = document.lines.some(
+        (line) => (line.basisMovementId ?? '') !== '',
+      );
+      if (cost !== null && cost !== undefined && !hasBasis) {
+        throw new InventoryDocumentRuleError(
+          'A sales return may only carry an explicit amount when it is based on the original issue. Without a basis the return is valued at the current inventory cost.',
+          'inventory.document.sales_return_amount_requires_basis',
+        );
+      }
+    }
   } else if (document.cost !== null && document.cost !== undefined) {
     throw new InventoryDocumentRuleError(
-      'Only a receipt may carry a cost. Issue cost is derived by Inventory valuation and transfers are value-neutral.',
+      'Only a receipt or a basis-linked sales return may carry a cost. Issue cost is derived by Inventory valuation, transfers are value-neutral, and a purchase return never takes a commercial amount (OD-RET-04).',
       'inventory.document.manual_cost_forbidden',
     );
   }
@@ -440,6 +505,7 @@ type EffectShape = {
     unitId: string;
     quantity: string;
     baseQuantity: string;
+    basisMovementId: string | null;
   }[];
 };
 
@@ -451,6 +517,9 @@ function normalizedLines(shape: EffectShape): string {
         unitId: line.unitId,
         quantity: line.quantity.trim(),
         baseQuantity: line.baseQuantity.trim(),
+        // A basis change re-routes a return's valuation (OD-RET-02/03), so
+        // it is as material as a quantity change.
+        basisMovementId: line.basisMovementId,
       }))
       .sort((left, right) =>
         `${left.itemId}:${left.unitId}:${left.quantity}`.localeCompare(
@@ -529,6 +598,8 @@ export interface InventoryDocumentLineDto {
   baseQuantity: string;
   baseUnitId: string;
   conversionFactor: string;
+  /** Return kinds only: the originating movement this line is based on. */
+  basisMovementId: string | null;
   movementId: string | null;
   outMovementId: string | null;
   inMovementId: string | null;
@@ -547,7 +618,8 @@ export interface InventoryDocumentDto {
   warehouseId: string | null;
   sourceWarehouseId: string | null;
   destinationWarehouseId: string | null;
-  /** Receipt only, and only for a caller allowed to see inventory value. */
+  /** Receipt / basis-linked sales return only, and only for a caller allowed
+   *  to see inventory value. */
   cost?: string | null;
   status: InventoryDocumentStatus;
   description: string | null;
@@ -609,7 +681,8 @@ export function toInventoryDocumentDto(
     warehouseId: document.warehouseId,
     sourceWarehouseId: document.sourceWarehouseId,
     destinationWarehouseId: document.destinationWarehouseId,
-    ...(document.kind === 'receipt' && includeCost
+    ...((document.kind === 'receipt' || document.kind === 'sales_return') &&
+    includeCost
       ? { cost: document.cost }
       : {}),
     status,
@@ -644,6 +717,7 @@ export function toInventoryDocumentDto(
       baseQuantity: line.baseQuantity,
       baseUnitId: line.baseUnitId,
       conversionFactor: line.conversionFactor,
+      basisMovementId: line.basisMovementId,
       movementId: line.movementId,
       outMovementId: line.outMovementId,
       inMovementId: line.inMovementId,

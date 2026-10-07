@@ -103,6 +103,12 @@ function toResult(
     }
     return { kind, reservationId: record['reservationId'] };
   }
+  if (kind === 'pricing') {
+    if (typeof record['pricingRunId'] !== 'string') {
+      throw new Error('Stored inventory operation has a malformed result.');
+    }
+    return { kind, pricingRunId: record['pricingRunId'] };
+  }
   const movementIds = record['movementIds'];
   if (
     !Array.isArray(movementIds) ||

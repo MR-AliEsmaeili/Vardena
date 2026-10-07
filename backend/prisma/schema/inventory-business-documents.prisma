@@ -95,6 +95,12 @@ model InventoryBusinessDocumentLine {
   baseQuantity     Decimal @map("base_quantity") @db.Decimal(18, 4)
   baseUnitId       String  @map("base_unit_id")
   conversionFactor Decimal @map("conversion_factor") @db.Decimal(18, 6)
+  /// RETURN KINDS ONLY (C-59D, PDR-08 OD-RET-01): the ledger fact of the
+  /// originating receipt (purchase return) or issue (sales return) this line
+  /// is based on. A plain id, not a foreign key to the ledger, exactly like
+  /// the movement links below: a reversed basis row stays forever (AR-13).
+  /// NULL for receipt/issue/transfer lines and for basis-less returns.
+  basisMovementId String? @map("basis_movement_id")
   /// The ledger fact this line currently owns (receipt/issue), or NULL while
   /// the document is a draft / after a cancellation reversed it.
   movementId    String? @map("movement_id")
@@ -117,6 +123,124 @@ model InventoryBusinessDocumentLine {
   @@unique([documentId, lineNumber], map: "uq_inventory_business_document_lines_document_line_number")
   @@index([documentId], map: "idx_inventory_business_document_lines_document")
   @@index([organizationId, itemId], map: "idx_inventory_business_document_lines_org_item")
+  /// The return basis lookup: "which returns are based on this receipt line?"
+  @@index([organizationId, basisMovementId], map: "idx_inventory_business_document_lines_org_basis_movement")
   @@map("inventory_business_document_lines")
+  @@schema("inventory")
+}
+
+/// C-59E: ONE executed Periodic Pricing Operation batch — or the compensating
+/// batch written by Reverse Pricing (PDR-07 OD-PRC-05…07, PDR-08
+/// OD-PDP-01…05 / OD-RVP-01…08).
+///
+/// This is the AUDIT/REPORTING record of a scoped batch, never a second
+/// ledger and never a second truth (OD-VH-01, OD-DOC-01): current truth stays
+/// `inventory_valuation_states` + `inventory_movements`, and the per-key
+/// arithmetic stays the existing `inventory_valuation_runs` replay. The header
+/// records who scoped what, when, with which outcome per key, and — for a
+/// compensating run — which run it reverses. Rows are insert-only; reversing
+/// marks the original via `reversed_by_run_id` and NEVER deletes it
+/// (OD-RVP-05).
+model InventoryPricingRun {
+  id             String   @id
+  organizationId String   @map("organization_id")
+  /// NULL = all warehouses (OD-PRC-06: "one warehouse or all warehouses").
+  warehouseId    String?  @map("warehouse_id")
+  /// Sorted, de-duplicated inventory document kinds in scope
+  /// (`domain/inventory-business-document.ts`'s closed list). A text[] of a
+  /// code-defined vocabulary — typed enough to query, never an EAV surface.
+  documentKinds  String[] @map("document_kinds")
+  /// Half-open range lower bound (EXCLUSIVE); NULL = from the beginning of
+  /// history. AUTOMATIC (OD-PDP-01): immediately after the last COMPLETED
+  /// run for the same scope — the operator never chooses it. "Completed"
+  /// means every key priced (`keys_failed = 0`) and not reversed since: a
+  /// partially-failed or reversed run does not advance the boundary, so the
+  /// next run re-covers its window (failed keys are retried, never
+  /// silently skipped past).
+  fromDate       DateTime? @map("from_date") @db.Timestamptz(6)
+  /// Range upper bound (INCLUSIVE); the operator's choice (OD-PDP-01).
+  toDate         DateTime @map("to_date") @db.Timestamptz(6)
+  /// Closed, code-defined list (`domain/inventory-valuation.ts`):
+  /// `pricing_operation` | `reverse_pricing`.
+  kind           String   @db.VarChar(24)
+  /// Compensating runs only: the run this run reverses (OD-RVP-01/05).
+  /// UNIQUE = a run is reversed AT MOST ONCE, enforced by the database the
+  /// same way the one-reversal-per-movement rule is (the guard decides, the
+  /// index is the backstop).
+  reversesRunId  String?  @unique(map: "uq_inventory_pricing_runs_reverses_run") @map("reverses_run_id")
+  /// Set once this run has been reversed — the run is retained forever.
+  reversedByRunId String? @map("reversed_by_run_id")
+  reversedAt     DateTime? @map("reversed_at") @db.Timestamptz(6)
+  /// OD-PRC-07: the run must report its outcome. Counts are aggregates of
+  /// the per-key outcome rows; a "mostly worked" run says exactly what did
+  /// not through those rows and their named reasons.
+  keysExamined   Int      @default(0) @map("keys_examined")
+  keysPriced     Int      @default(0) @map("keys_priced")
+  keysFailed     Int      @default(0) @map("keys_failed")
+  movementsExamined Int   @default(0) @map("movements_examined")
+  movementsRevalued Int  @default(0) @map("movements_revalued")
+  reason         String?  @db.VarChar(500)
+  /// Echo of the idempotency key (uniqueness enforced by
+  /// `inventory_operations`).
+  operationKey   String   @map("operation_key") @db.VarChar(128)
+  executedBy     String?  @map("executed_by")
+  executedAt     DateTime @map("executed_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse?   @relation("InventoryPricingRunWarehouse", fields: [warehouseId], references: [id], onDelete: Restrict)
+  reverses     InventoryPricingRun?  @relation("InventoryPricingRunReversal", fields: [reversesRunId], references: [id], onDelete: Restrict)
+  reversedBy   InventoryPricingRun?  @relation("InventoryPricingRunReversal")
+  keyOutcomes  InventoryPricingRunKeyOutcome[]
+
+  /// The last completed run for a scope is the one the NEXT run's from-date
+  /// follows (OD-PDP-01); the partial index keeps that lookup honest for the
+  /// "all warehouses" case (warehouse_id IS NULL) too.
+  @@index([organizationId, warehouseId, kind, executedAt], map: "idx_pricing_runs_org_scope_executed_at")
+  @@index([organizationId, executedAt], map: "idx_pricing_runs_org_executed_at")
+  @@index([reversesRunId], map: "idx_pricing_runs_reverses_run_id")
+  @@map("inventory_pricing_runs")
+  @@schema("inventory")
+}
+
+/// Per-key outcome of one pricing run (OD-PRC-07 / OD-PDP-03): one row per
+/// stocking key the batch examined, `priced` or `failed` — with the named
+/// reason and the offending movements when it failed, and the per-key
+/// `inventory_valuation_runs` row it produced when it succeeded.
+model InventoryPricingRunKeyOutcome {
+  id              String   @id
+  pricingRunId    String   @map("pricing_run_id")
+  organizationId  String   @map("organization_id")
+  warehouseId     String   @map("warehouse_id")
+  itemId          String   @map("item_id")
+  /// Closed, code-defined list (`domain/inventory-valuation.ts`):
+  /// `priced` | `failed` | `reversed` (the last on compensating runs).
+  outcome         String   @db.VarChar(16)
+  /// Stable reason code for a failure (e.g.
+  /// `inventory.pricing.unvalued_inbound_in_range`); NULL when priced.
+  reason          String?  @db.VarChar(500)
+  /// The movements that made the key fail (OD-PDP-03 names the offenders).
+  failedMovementIds String[] @map("failed_movement_ids")
+  /// The per-key `inventory_valuation_runs` row this outcome produced
+  /// (priced/reversed), when any.
+  valuationRunId  String?  @map("valuation_run_id")
+  movementsExamined Int    @default(0) @map("movements_examined")
+  movementsRevalued Int    @default(0) @map("movements_revalued")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy       String?  @map("created_by")
+  updatedBy       String?  @map("updated_by")
+
+  pricingRun    InventoryPricingRun @relation(fields: [pricingRunId], references: [id], onDelete: Cascade)
+  organization  Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  valuationRun  InventoryValuationRun? @relation(fields: [valuationRunId], references: [id], onDelete: Restrict)
+
+  @@index([pricingRunId], map: "idx_pricing_run_key_outcomes_run")
+  @@index([organizationId, warehouseId, itemId], map: "idx_pricing_run_key_outcomes_key")
+  @@index([valuationRunId], map: "idx_pricing_run_key_outcomes_valuation_run")
+  @@map("inventory_pricing_run_key_outcomes")
   @@schema("inventory")
 }

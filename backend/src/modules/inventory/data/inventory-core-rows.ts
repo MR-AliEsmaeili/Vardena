@@ -54,7 +54,7 @@ export type MovementRow = {
 } & AuditColumns;
 
 export interface MovementWhere {
-  id?: string;
+  id?: string | { in: string[] };
   organizationId?: string;
   branchId?: string;
   warehouseId?: string;
@@ -65,6 +65,9 @@ export interface MovementWhere {
   movementDate?: { gt?: Date; gte?: Date; lte?: Date };
   valuationStatus?: string | { in: string[] };
   valuationRunId?: string | null;
+  /** C-59E: scope resolution reads movements by their document reference. */
+  referenceType?: string;
+  referenceId?: string | { in: string[] };
 }
 
 export interface MovementCreate {
@@ -567,6 +570,8 @@ export interface ValuationRunWhere {
   warehouseId?: string;
   itemId?: string;
   trigger?: string;
+  /** C-59E OD-RVP-02: runs on the key executed after this instant. */
+  executedAt?: { gt?: Date };
 }
 
 export interface ValuationRunCreate {
@@ -644,6 +649,154 @@ export interface OperationDelegate {
 }
 
 // ---------------------------------------------------------------------------
+// Pricing runs (C-59E — batch audit/reporting records, never a second truth)
+// ---------------------------------------------------------------------------
+
+export type PricingRunRow = {
+  id: string;
+  organizationId: string;
+  warehouseId: string | null;
+  documentKinds: string[];
+  fromDate: Date | null;
+  toDate: Date;
+  kind: string;
+  reversesRunId: string | null;
+  reversedByRunId: string | null;
+  reversedAt: Date | null;
+  keysExamined: number;
+  keysPriced: number;
+  keysFailed: number;
+  movementsExamined: number;
+  movementsRevalued: number;
+  reason: string | null;
+  operationKey: string;
+  executedBy: string | null;
+  executedAt: Date;
+} & AuditColumns;
+
+export interface PricingRunCreate {
+  id: string;
+  organizationId: string;
+  warehouseId: string | null;
+  documentKinds: string[];
+  fromDate: Date | null;
+  toDate: Date;
+  kind: string;
+  reversesRunId: string | null;
+  keysExamined: number;
+  keysPriced: number;
+  keysFailed: number;
+  movementsExamined: number;
+  movementsRevalued: number;
+  reason: string | null;
+  operationKey: string;
+  executedBy: string | null;
+  executedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface PricingRunUpdate {
+  keysExamined?: number;
+  keysPriced?: number;
+  keysFailed?: number;
+  movementsExamined?: number;
+  movementsRevalued?: number;
+  reversedByRunId?: string | null;
+  reversedAt?: Date | null;
+  updatedAt: Date;
+  updatedBy?: string | null;
+}
+
+export interface PricingRunWhere {
+  id?: string;
+  organizationId?: string;
+  warehouseId?: string | null;
+  kind?: string;
+  /**
+   * C-59 correction sprint (failed-key progression): the from-date lookup
+   * filters on the completion counters — `keysFailed: 0` selects only fully
+   * completed runs.
+   */
+  keysFailed?: number;
+  /**
+   * C-59 correction sprint (concurrent empty run): `keysExamined: { gt: 0 }`
+   * selects runs that actually did work in their window — an empty run (no
+   * movements in range) advances nothing.
+   */
+  keysExamined?: { gt: number };
+  /** `null` selects runs that have NOT been reversed. */
+  reversedByRunId?: string | null;
+}
+
+export interface PricingRunDelegate {
+  findUnique(args: { where: { id: string } }): Promise<PricingRunRow | null>;
+  findFirst(args: { where: PricingRunWhere }): Promise<PricingRunRow | null>;
+  findMany(args: {
+    where: PricingRunWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<PricingRunRow[]>;
+  count(args: { where: PricingRunWhere }): Promise<number>;
+  create(args: { data: PricingRunCreate }): Promise<PricingRunRow>;
+  update(args: {
+    where: { id: string };
+    data: PricingRunUpdate;
+  }): Promise<PricingRunRow>;
+}
+
+export type PricingRunKeyOutcomeRow = {
+  id: string;
+  pricingRunId: string;
+  organizationId: string;
+  warehouseId: string;
+  itemId: string;
+  outcome: string;
+  reason: string | null;
+  failedMovementIds: string[];
+  valuationRunId: string | null;
+  movementsExamined: number;
+  movementsRevalued: number;
+} & AuditColumns;
+
+export interface PricingRunKeyOutcomeCreate {
+  id: string;
+  pricingRunId: string;
+  organizationId: string;
+  warehouseId: string;
+  itemId: string;
+  outcome: string;
+  reason: string | null;
+  failedMovementIds: string[];
+  valuationRunId: string | null;
+  movementsExamined: number;
+  movementsRevalued: number;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface PricingRunKeyOutcomeWhere {
+  pricingRunId?: string | { in: string[] };
+  organizationId?: string;
+}
+
+export interface PricingRunKeyOutcomeDelegate {
+  findMany(args: {
+    where: PricingRunKeyOutcomeWhere;
+    orderBy?: OrderBy;
+    skip?: number;
+    take?: number;
+  }): Promise<PricingRunKeyOutcomeRow[]>;
+  count(args: { where: PricingRunKeyOutcomeWhere }): Promise<number>;
+  create(args: {
+    data: PricingRunKeyOutcomeCreate;
+  }): Promise<PricingRunKeyOutcomeRow>;
+}
+
+// ---------------------------------------------------------------------------
 // Transaction client
 // ---------------------------------------------------------------------------
 
@@ -656,6 +809,8 @@ export interface CoreClient {
   itemValuationMethod: ItemValuationMethodDelegate;
   inventoryValuationState: ValuationStateDelegate;
   inventoryValuationRun: ValuationRunDelegate;
+  inventoryPricingRun: PricingRunDelegate;
+  inventoryPricingRunKeyOutcome: PricingRunKeyOutcomeDelegate;
 }
 
 /**

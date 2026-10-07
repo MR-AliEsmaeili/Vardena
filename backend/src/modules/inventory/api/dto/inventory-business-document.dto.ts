@@ -54,6 +54,18 @@ export class InventoryDocumentLineInputDto {
   @ApiProperty({ format: 'ulid' })
   @IsUlid()
   unitId!: string;
+
+  @ApiPropertyOptional({
+    format: 'ulid',
+    description:
+      'RETURNS ONLY: the movement this return is issued against — the ' +
+      'receipt movement for a purchase return (its value is mirrored ' +
+      'pro-rata), the issue movement for a sales return (required when a ' +
+      'commercial amount is entered). Refused for non-return kinds.',
+  })
+  @IsOptional()
+  @IsUlid()
+  basisMovementId?: string;
 }
 
 export class CreateInventoryDocumentDto {

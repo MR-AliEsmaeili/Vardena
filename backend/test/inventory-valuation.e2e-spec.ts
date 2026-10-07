@@ -1788,7 +1788,7 @@ describe('Inventory valuation (e2e)', () => {
       .expect(404);
   });
 
-  it('registers exactly the four valuation permissions it implements', async () => {
+  it('registers exactly the six valuation permissions it implements', async () => {
     const codes = app
       .get(PermissionRegistry)
       .all()
@@ -1800,6 +1800,8 @@ describe('Inventory valuation (e2e)', () => {
         VALUATION_PERMISSIONS.ASSIGN_COST,
         VALUATION_PERMISSIONS.CONFIGURE,
         VALUATION_PERMISSIONS.RECALCULATE,
+        VALUATION_PERMISSIONS.REVERSE_PRICING,
+        VALUATION_PERMISSIONS.RUN_PRICING,
         VALUATION_PERMISSIONS.VIEW,
       ].sort(),
     );

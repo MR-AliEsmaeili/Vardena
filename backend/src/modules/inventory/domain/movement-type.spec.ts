@@ -10,15 +10,19 @@ import {
 } from './movement-type.js';
 
 describe('movement type vocabulary', () => {
-  it('is a closed list of eight types', () => {
+  it('is a closed list of ten types', () => {
     expect([...MOVEMENT_TYPES].sort()).toEqual(
       [
         'adjustment_in',
         'adjustment_out',
         'inbound',
         'outbound',
+        // C-59D: the return types exist ONLY through their business
+        // documents, which own the basis/manual-amount valuation rules.
+        'purchase_return',
         'reversal_in',
         'reversal_out',
+        'sales_return',
         'transfer_in',
         'transfer_out',
       ].sort(),

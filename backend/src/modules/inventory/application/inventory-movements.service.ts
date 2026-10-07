@@ -17,6 +17,8 @@ import { AuthorizationService } from '../../rbac/application/authorization.servi
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { InventoryMovementsRepository } from '../data/inventory-movements.repository.js';
 import { InventoryOperationsRepository } from '../data/inventory-operations.repository.js';
+import { InventoryBusinessDocumentsRepository } from '../data/inventory-business-documents.repository.js';
+import { INVENTORY_DOCUMENT_REFERENCE_TYPE } from '../domain/inventory-business-document.js';
 import { UnitConversionsRepository } from '../data/unit-conversions.repository.js';
 import {
   isMovementType,
@@ -133,6 +135,7 @@ export class InventoryMovementsService {
   constructor(
     private readonly movements: InventoryMovementsRepository,
     private readonly operations: InventoryOperationsRepository,
+    private readonly documents: InventoryBusinessDocumentsRepository,
     private readonly conversions: UnitConversionsRepository,
     private readonly organizations: OrganizationsService,
     private readonly items: ItemsService,
@@ -473,6 +476,35 @@ export class InventoryMovementsService {
     const original = await this.movements.findById(id);
     if (original === null || original.organizationId !== organizationId) {
       throw AppException.notFound('Movement', id);
+    }
+
+    // OD-REV-07 (C-59D): no reversal after Accounting Post. A movement that
+    // belongs to a business document is reversed through that document
+    // (its cancel/edit pipeline) while it is operational; once the document
+    // has crossed the accounting boundary, its economic result is immutable
+    // and the correction convention is an explicit accounting correction,
+    // which Vardena does not implement (OQ-27). A document-less movement
+    // (a direct posting) has no boundary to cross and reverses as before.
+    if (original.referenceType === INVENTORY_DOCUMENT_REFERENCE_TYPE) {
+      const [header] = await this.documents.listHeadersByIds(organizationId, [
+        original.referenceId ?? '',
+      ]);
+      if (header !== undefined) {
+        if (
+          header.status === 'accounting_posted' ||
+          header.status === 'immutable'
+        ) {
+          throw AppException.businessRule(
+            'This movement belongs to an accounting-posted document and can no longer be reversed. Accounting-posted documents are immutable; use an explicit accounting correction once Vardena defines one (OQ-27).',
+            {
+              code: 'inventory.reversal.accounting_posted',
+              movementId: original.id,
+              documentId: header.id,
+              documentStatus: header.status,
+            },
+          );
+        }
+      }
     }
 
     const movementDate = input.movementDate ?? new Date();

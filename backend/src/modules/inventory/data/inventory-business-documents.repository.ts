@@ -9,6 +9,8 @@ import {
   type InventoryDocumentStatus,
 } from '../domain/inventory-business-document.js';
 import { decimalToString } from './inventory-core-rows.js';
+import { lockValuationStateRowsInOrder } from './inventory-locks.js';
+import type { ValuationMethod } from '../domain/valuation-method.js';
 import type { OrderBy } from './master-data-rows.js';
 import type {
   DocClient,
@@ -73,6 +75,8 @@ export interface DocumentLineCreate {
   baseQuantity: string;
   baseUnitId: string;
   conversionFactor: string;
+  /** C-59D return basis link (OD-RET-01); `null` on non-return lines. */
+  basisMovementId: string | null;
 }
 
 @Injectable()
@@ -154,6 +158,177 @@ export class InventoryBusinessDocumentsRepository {
       items: rows.map((row) => toDomain(row, byDocument.get(row.id) ?? [])),
       total,
     };
+  }
+
+  /**
+   * Document headers by id set, organization-scoped (C-59E: the pricing
+   * scope's kind resolution and Reverse Pricing's OD-RVP-03 accounting
+   * guard). Returns the raw header facts the callers need — id, kind,
+   * status and the warehouse columns — without loading lines.
+   */
+  async listHeadersByIds(
+    organizationId: string,
+    ids: readonly string[],
+  ): Promise<
+    Array<{
+      id: string;
+      kind: string;
+      status: InventoryDocumentStatus;
+      warehouseId: string | null;
+      sourceWarehouseId: string | null;
+      destinationWarehouseId: string | null;
+    }>
+  > {
+    if (ids.length === 0) return [];
+    const client = await this.client();
+    const rows: InventoryDocumentRow[] = [];
+    for (let offset = 0; offset < ids.length; offset += 500) {
+      const chunk = ids.slice(offset, offset + 500);
+      const found = await client.inventoryBusinessDocument.findMany({
+        where: { organizationId, id: { in: chunk } },
+        orderBy: [{ createdAt: 'asc' }],
+        skip: 0,
+        take: 500,
+      });
+      rows.push(...found);
+    }
+    return rows.map((row) => {
+      if (!isInventoryDocumentStatus(row.status)) {
+        throw new Error(
+          `Stored inventory document "${row.id}" has an unknown status "${row.status}".`,
+        );
+      }
+      return {
+        id: row.id,
+        kind: row.kind,
+        status: row.status,
+        warehouseId: row.warehouseId,
+        sourceWarehouseId: row.sourceWarehouseId,
+        destinationWarehouseId: row.destinationWarehouseId,
+      };
+    });
+  }
+
+  /**
+   * Every line linked to one basis movement, with its document's status —
+   * the input to the purchase-return over-return guard (C-59D OD-RET-03).
+   * Transaction-scoped on purpose: the guard runs while the basis movement
+   * row is locked, so a concurrent return against the same basis cannot
+   * slip between this read and its own.
+   */
+  async listBasisLinkedLines(
+    tx: DocTxClient,
+    organizationId: string,
+    basisMovementId: string,
+  ): Promise<
+    Array<{
+      documentId: string;
+      documentStatus: string;
+      lineNumber: number;
+      itemId: string;
+      baseQuantity: string;
+    }>
+  > {
+    const lines = await tx.inventoryBusinessDocumentLine.findMany({
+      where: { organizationId, basisMovementId },
+      orderBy: [{ lineNumber: 'asc' }],
+      skip: 0,
+      take: 500,
+    });
+    if (lines.length === 0) return [];
+    const documentIds = [...new Set(lines.map((line) => line.documentId))];
+    const documents = await tx.inventoryBusinessDocument.findMany({
+      where: { organizationId, id: { in: documentIds } },
+      orderBy: [{ createdAt: 'asc' }],
+      skip: 0,
+      take: documentIds.length,
+    });
+    const statusById = new Map(documents.map((row) => [row.id, row.status]));
+    return lines.map((line) => ({
+      documentId: line.documentId,
+      documentStatus: statusById.get(line.documentId) ?? 'missing',
+      lineNumber: line.lineNumber,
+      itemId: line.itemId,
+      baseQuantity: decimalToString(line.baseQuantity),
+    }));
+  }
+
+  /**
+   * Lock the valuation-state rows of every key a hardened Accounting Post
+   * depends on, in the module's fixed ascending multi-key order (C-59
+   * concurrency hardening). Thin data-layer wrapper over
+   * `lockValuationStateRowsInOrder` so the service orchestrates through its
+   * own repository and unit fakes can stub the DB lock.
+   */
+  async lockValuationStateRows(
+    tx: DocTxClient,
+    entries: readonly {
+      key: {
+        organizationId: string;
+        branchId: string;
+        warehouseId: string;
+        itemId: string;
+      };
+      method: string;
+    }[],
+    actorId: string | null,
+  ): Promise<void> {
+    await lockValuationStateRowsInOrder(
+      tx,
+      entries.map((entry) => ({
+        key: entry.key,
+        method: entry.method as ValuationMethod,
+      })),
+      actorId,
+    );
+  }
+
+  /**
+   * Lock ONE document header row `FOR UPDATE` — the serialization point of
+   * the hardened Accounting Post (C-59 concurrency hardening). The caller
+   * then re-derives the valuation state under the key locks and writes the
+   * lifecycle change in the SAME transaction, so a concurrent Pricing Run /
+   * Reverse Pricing (which locks the same key rows) can never interleave
+   * between the check and the write.
+   */
+  async lockDocumentRow(
+    tx: DocTxClient,
+    organizationId: string,
+    id: string,
+  ): Promise<InventoryDocumentRow | null> {
+    const rows = await tx.$queryRaw<InventoryDocumentRow>`
+      SELECT "id",
+             "organization_id" AS "organizationId",
+             "kind",
+             "number",
+             "business_date" AS "businessDate",
+             "warehouse_id" AS "warehouseId",
+             "source_warehouse_id" AS "sourceWarehouseId",
+             "destination_warehouse_id" AS "destinationWarehouseId",
+             "receipt_cost" AS "receiptCost",
+             "status",
+             "description",
+             "reference",
+             "operation_key" AS "operationKey",
+             "valuation_stale" AS "valuationStale",
+             "finalized_at" AS "finalizedAt",
+             "finalized_by" AS "finalizedBy",
+             "accounting_posted_at" AS "accountingPostedAt",
+             "accounting_posted_by" AS "accountingPostedBy",
+             "sealed_at" AS "sealedAt",
+             "sealed_by" AS "sealedBy",
+             "cancelled_at" AS "cancelledAt",
+             "cancelled_by" AS "cancelledBy",
+             "cancellation_reason" AS "cancellationReason",
+             "created_at" AS "createdAt",
+             "updated_at" AS "updatedAt",
+             "created_by" AS "createdBy",
+             "updated_by" AS "updatedBy"
+        FROM "inventory"."inventory_business_documents"
+       WHERE "id" = ${id}
+         AND "organization_id" = ${organizationId}
+       FOR UPDATE`;
+    return rows[0] ?? null;
   }
 
   // ---- writes --------------------------------------------------------------
@@ -266,6 +441,7 @@ export class InventoryBusinessDocumentsRepository {
         baseQuantity: line.baseQuantity,
         baseUnitId: line.baseUnitId,
         conversionFactor: line.conversionFactor,
+        basisMovementId: line.basisMovementId,
         movementId: null,
         outMovementId: null,
         inMovementId: null,
@@ -327,6 +503,7 @@ function toLineDomain(row: InventoryDocumentLineRow): InventoryDocumentLine {
     baseQuantity: decimalToString(row.baseQuantity),
     baseUnitId: row.baseUnitId,
     conversionFactor: decimalToString(row.conversionFactor),
+    basisMovementId: row.basisMovementId,
     movementId: row.movementId,
     outMovementId: row.outMovementId,
     inMovementId: row.inMovementId,
@@ -400,6 +577,26 @@ export function toDomain(
       sourceWarehouseId: null,
       destinationWarehouseId: null,
       cost: null,
+    };
+  }
+  if (row.kind === 'purchase_return') {
+    return {
+      ...base,
+      kind: 'purchase_return',
+      warehouseId: row.warehouseId,
+      sourceWarehouseId: null,
+      destinationWarehouseId: null,
+      cost: null,
+    };
+  }
+  if (row.kind === 'sales_return') {
+    return {
+      ...base,
+      kind: 'sales_return',
+      warehouseId: row.warehouseId,
+      sourceWarehouseId: null,
+      destinationWarehouseId: null,
+      cost: row.receiptCost === null ? null : decimalToString(row.receiptCost),
     };
   }
   return {

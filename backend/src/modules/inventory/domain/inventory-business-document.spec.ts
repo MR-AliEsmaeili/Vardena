@@ -37,6 +37,7 @@ const line: InventoryDocumentLine = {
   baseQuantity: '10',
   baseUnitId: 'unit-1',
   conversionFactor: '1',
+  basisMovementId: null,
   movementId: null,
   outMovementId: null,
   inMovementId: null,
@@ -294,7 +295,15 @@ describe('C-58 side-effect classification (ADR-0040 §3)', () => {
     sourceWarehouseId: null,
     destinationWarehouseId: null,
     cost: null,
-    lines: [{ itemId: 'i1', unitId: 'u1', quantity: '10', baseQuantity: '10' }],
+    lines: [
+      {
+        itemId: 'i1',
+        unitId: 'u1',
+        quantity: '10',
+        baseQuantity: '10',
+        basisMovementId: null,
+      },
+    ],
   };
 
   it('classifies any change to a draft as safe (a draft has no effect)', () => {
@@ -304,7 +313,13 @@ describe('C-58 side-effect classification (ADR-0040 §3)', () => {
       after: {
         ...before,
         lines: [
-          { itemId: 'i1', unitId: 'u1', quantity: '99', baseQuantity: '99' },
+          {
+            itemId: 'i1',
+            unitId: 'u1',
+            quantity: '99',
+            baseQuantity: '99',
+            basisMovementId: null,
+          },
         ],
       },
     });
@@ -329,7 +344,13 @@ describe('C-58 side-effect classification (ADR-0040 §3)', () => {
       after: {
         ...before,
         lines: [
-          { itemId: 'i1', unitId: 'u1', quantity: '9', baseQuantity: '9' },
+          {
+            itemId: 'i1',
+            unitId: 'u1',
+            quantity: '9',
+            baseQuantity: '9',
+            basisMovementId: null,
+          },
         ],
       },
     });
@@ -361,7 +382,13 @@ describe('C-58 side-effect classification (ADR-0040 §3)', () => {
         after: {
           ...before,
           lines: [
-            { itemId: 'i2', unitId: 'u1', quantity: '10', baseQuantity: '10' },
+            {
+              itemId: 'i2',
+              unitId: 'u1',
+              quantity: '10',
+              baseQuantity: '10',
+              basisMovementId: null,
+            },
           ],
         },
       }).reasons,
@@ -379,8 +406,20 @@ describe('C-58 side-effect classification (ADR-0040 §3)', () => {
     const twoLines = {
       ...before,
       lines: [
-        { itemId: 'i1', unitId: 'u1', quantity: '10', baseQuantity: '10' },
-        { itemId: 'i2', unitId: 'u1', quantity: '5', baseQuantity: '5' },
+        {
+          itemId: 'i1',
+          unitId: 'u1',
+          quantity: '10',
+          baseQuantity: '10',
+          basisMovementId: null,
+        },
+        {
+          itemId: 'i2',
+          unitId: 'u1',
+          quantity: '5',
+          baseQuantity: '5',
+          basisMovementId: null,
+        },
       ],
     };
     const reordered = {
