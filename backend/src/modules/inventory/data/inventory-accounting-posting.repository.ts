@@ -16,7 +16,6 @@ import type {
   InventoryAccountingPostingSnapshotMovementCreate,
   InventoryAccountingPostingSnapshotMovementRow,
   InventoryAccountingPostingSnapshotRow,
-  InventoryAccountingPostingTransactionalClient,
   InventoryAccountingPostingTxClient,
 } from './inventory-accounting-posting-rows.js';
 
@@ -152,10 +151,6 @@ export class InventoryAccountingPostingRepository {
     return this.prisma.getClient<InventoryAccountingPostingClient>();
   }
 
-  private transacting(): Promise<InventoryAccountingPostingTransactionalClient> {
-    return this.prisma.getClient<InventoryAccountingPostingTransactionalClient>();
-  }
-
   async findByKey(input: {
     organizationId: string;
     documentId: string;
@@ -244,18 +239,29 @@ export class InventoryAccountingPostingRepository {
    * posting exists, and a retry starts from a clean slate rather than from a
    * half-written ledger.
    */
+  /**
+   * Write the durable operation and its immutable snapshot INSIDE the caller's
+   * transaction.
+   *
+   * The `tx` is the document transaction that has ALREADY locked the header
+   * row and the valuation-state rows and re-derived eligibility from a
+   * post-lock read. Opening a second `$transaction` here is not an option:
+   * Prisma does not nest transactions, so the inner one would either
+   * deadlock against the connection pool or fail outright, and - far worse -
+   * the eligibility decision would stop being atomic with the record of what
+   * was actually sent across the boundary. The caller owns the boundary; this
+   * method only joins it.
+   */
   async createOperationWithSnapshot(
+    tx: InventoryAccountingPostingTxClient,
     operation: CreateAccountingPostingOperationInput,
     snapshot: RecordAccountingPostingSnapshotInput,
   ): Promise<InventoryAccountingPostingOperation> {
-    const client = await this.transacting();
-    return client.$transaction(async (tx) => {
-      const created = await tx.inventoryAccountingPostingOperation.create({
-        data: toOperationCreate(operation),
-      });
-      await this.writeSnapshot(tx, created.id, snapshot);
-      return toOperationDomain(created);
+    const created = await tx.inventoryAccountingPostingOperation.create({
+      data: toOperationCreate(operation),
     });
+    await this.writeSnapshot(tx, created.id, snapshot);
+    return toOperationDomain(created);
   }
 
   /** Apply a state transition and/or an Accounting result to an operation. */

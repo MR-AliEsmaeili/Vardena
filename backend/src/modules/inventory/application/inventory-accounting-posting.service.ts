@@ -675,7 +675,12 @@ export class InventoryAccountingPostingService {
         warehouse.branchId,
       );
 
+      // PHASE 1 stays ONE transaction: the operation and its snapshot are
+      // written on the SAME `tx` that holds the header and valuation-state
+      // locks, so the eligibility decision and the record of what was sent
+      // across the boundary can never disagree.
       const created = await this.postings.createOperationWithSnapshot(
+        tx,
         {
           organizationId,
           documentId: id,

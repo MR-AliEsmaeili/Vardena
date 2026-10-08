@@ -5,6 +5,11 @@ import type {
   CoreTxClient,
   DecimalLike,
 } from './inventory-core-rows.js';
+import type {
+  InventoryAccountingPostingOperationDelegate,
+  InventoryAccountingPostingSnapshotDelegate,
+  InventoryAccountingPostingSnapshotMovementDelegate,
+} from './inventory-accounting-posting-rows.js';
 
 /**
  * Row/delegate shapes for the Inventory Business Document data layer (C-58).
@@ -215,13 +220,32 @@ export interface DocClient extends CoreClient {
   inventoryBusinessDocumentLine: InventoryDocumentLineDelegate;
 }
 
+/**
+ * C-62 adds the three posting tables to the SAME caller-owned transaction.
+ *
+ * Phase 1 of the Inventory to Accounting posting locks the document header,
+ * re-derives eligibility from a post-lock read, and then writes the durable
+ * PENDING operation together with its immutable snapshot. That cannot be a
+ * second `$transaction`: Prisma does not nest transactions, so an inner one
+ * either deadlocks against the connection pool or fails outright - and the
+ * eligibility decision would stop being atomic with the record of what was
+ * actually sent across the boundary. So the posting delegates are part of the
+ * document transaction client, exactly as the core's movement, balance and
+ * valuation delegates already are.
+ */
 export interface DocTxClient extends CoreTxClient {
   inventoryBusinessDocument: InventoryDocumentDelegate;
   inventoryBusinessDocumentLine: InventoryDocumentLineDelegate;
+  inventoryAccountingPostingOperation: InventoryAccountingPostingOperationDelegate;
+  inventoryAccountingPostingSnapshot: InventoryAccountingPostingSnapshotDelegate;
+  inventoryAccountingPostingSnapshotMovement: InventoryAccountingPostingSnapshotMovementDelegate;
 }
 
 export interface DocTransactionalClient extends CoreTransactionalClient {
   inventoryBusinessDocument: InventoryDocumentDelegate;
   inventoryBusinessDocumentLine: InventoryDocumentLineDelegate;
+  inventoryAccountingPostingOperation: InventoryAccountingPostingOperationDelegate;
+  inventoryAccountingPostingSnapshot: InventoryAccountingPostingSnapshotDelegate;
+  inventoryAccountingPostingSnapshotMovement: InventoryAccountingPostingSnapshotMovementDelegate;
   $transaction: <T>(fn: (tx: DocTxClient) => Promise<T>) => Promise<T>;
 }
