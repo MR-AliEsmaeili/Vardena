@@ -231,6 +231,8 @@ function fakePostingRepository(world: FakeWorld) {
       completedAt: null,
       createdAt: operation.now,
       updatedAt: operation.now,
+      createdBy: operation.actorUserId,
+      updatedBy: operation.actorUserId,
     };
     world.operations.push(row);
     return row;
@@ -327,6 +329,8 @@ function fakePostingRepository(world: FakeWorld) {
         totalValue: pad(snapshot.totalValue, 2),
         actorUserId: snapshot.actorUserId,
         capturedAt: snapshot.capturedAt,
+        createdAt: snapshot.now,
+        createdBy: snapshot.actorUserId,
         movements: snapshot.movements.map((movement, index) => ({
           id: `snapmv-${row.id}-${index}`,
           movementId: movement.movementId,
@@ -374,7 +378,7 @@ function fakePostingRepository(world: FakeWorld) {
       }
       row.replayed = true;
       row.updatedAt = now;
-      void actorUserId;
+      row.updatedBy = actorUserId;
     },
   } as unknown as InventoryAccountingPostingRepository;
 }
@@ -535,6 +539,9 @@ function fakeAccountingPosting(world: FakeWorld) {
       operationKey: string;
     }) {
       world.cancelCalls.push(input);
+      if (world.accountingMode === 'crash') {
+        throw new Error('simulated crash before Accounting answered');
+      }
       const key = `${input.organizationId}:${input.operationKey}`;
       const entry = world.accountingLedger.get(key);
       if (entry === undefined) {
@@ -719,11 +726,14 @@ function buildService(world: FakeWorld) {
 }
 
 /** Run one service call as the authenticated operator. */
-async function asUser<T>(fn: () => Promise<T>): Promise<T> {
+async function asUser<T>(
+  fn: () => Promise<T>,
+  userId: string = USER,
+): Promise<T> {
   return runWithRequestContext(
     {
       correlationId: 'c62-hermetic',
-      principal: { userId: USER, sessionId: 'session-1' },
+      principal: { userId, sessionId: `session-${userId}` },
     },
     fn,
   );
@@ -1344,6 +1354,126 @@ describe('C-62 OD-01 durable recovery (hermetic)', () => {
     expect(operationOf(world, documentId).state).toBe('POSTED');
     expect(documentOf(world, documentId).status).toBe('accounting_posted');
   });
+
+  it('preserves initiating actor and records recovery actor when retried by a different user', async () => {
+    const world = createWorld();
+    const service = buildService(world);
+    const { documentId, movementId } = seedReceipt(world, {
+      cost: '100.00',
+      quantity: '10.0000',
+    });
+
+    const USER_A = 'user-a';
+    const USER_B = 'user-b';
+
+    // 1. User A initiates operation -> simulated crash leaves it PENDING
+    world.accountingMode = 'crash';
+    await expect(
+      asUser(
+        () =>
+          service.requestAccountingPosting(documentId, ORG, {
+            operationKey: 'recovery-actor-key-1',
+          }),
+        USER_A,
+      ),
+    ).rejects.toThrow('simulated crash');
+
+    const pendingOp = operationOf(world, documentId);
+    expect(pendingOp.state).toBe('PENDING');
+    expect(pendingOp.actorUserId).toBe(USER_A);
+    expect(pendingOp.actorPermission).toBe('Inventory.Document.AccountingPost');
+    expect(pendingOp.createdBy).toBe(USER_A);
+    expect(pendingOp.updatedBy).toBe(USER_A);
+
+    const snapshot = world.snapshots.get(pendingOp.id)!;
+    expect(snapshot.actorUserId).toBe(USER_A);
+    expect(snapshot.createdBy).toBe(USER_A);
+
+    // Simulate mutable Inventory state change between crash and recovery
+    const movement = world.movements.get(movementId)!;
+    movement.totalCost = '999.00';
+
+    // 2. User B retries/recovers the operation
+    world.accountingMode = 'ok';
+    const result = await asUser(
+      () =>
+        service.requestAccountingPosting(documentId, ORG, {
+          operationKey: 'recovery-actor-key-1',
+        }),
+      USER_B,
+    );
+
+    expect(result.outcome).toBe('final_posted');
+
+    // Verification of all relevant durable identities:
+    // a. Original initiator remains USER_A
+    const completedOp = operationOf(world, documentId);
+    expect(completedOp.actorUserId).toBe(USER_A);
+    expect(completedOp.actorPermission).toBe(
+      'Inventory.Document.AccountingPost',
+    );
+    expect(completedOp.createdBy).toBe(USER_A);
+
+    // Snapshot remains immutable with USER_A
+    expect(snapshot.actorUserId).toBe(USER_A);
+    expect(snapshot.createdBy).toBe(USER_A);
+
+    // Document lifecycle preserves original initiator
+    const doc = documentOf(world, documentId);
+    expect(doc.status).toBe('accounting_posted');
+    expect(doc.accountingPostedBy).toBe(USER_A);
+
+    // b. Recovery actor is recorded as USER_B in updatedBy
+    expect(completedOp.updatedBy).toBe(USER_B);
+    expect(completedOp.state).toBe('POSTED');
+
+    // c. Organization remains original organization
+    expect(completedOp.organizationId).toBe(ORG);
+    expect(snapshot.organizationId).toBe(ORG);
+
+    // d. Accounting received the recovery call with explicit service authority semantics for USER_B
+    const lastAccountingCall = world.accountingCalls.at(-1)!;
+    expect(lastAccountingCall.actor.userId).toBe(USER_B);
+    expect(lastAccountingCall.actor.permission).toBe(
+      'Inventory.Document.AccountingPost',
+    );
+    expect(lastAccountingCall.actor.organizationId).toBe(ORG);
+
+    // e. Recovery used facts from immutable Posting Snapshot (100.00, not mutated 999.00)
+    expect(lastAccountingCall.valuation.totalValue).toBe('100');
+    expect(lastAccountingCall.movements[0]!.value).toBe('100.00');
+
+    // f. Exactly one Accounting effect occurred
+    expect(world.accountingDocuments).toHaveLength(1);
+  });
+
+  it('fails closed when recovery is attempted without an authenticated user (no authorization bypass)', async () => {
+    const world = createWorld();
+    const service = buildService(world);
+    const { documentId } = seedReceipt(world, { cost: '100.00' });
+
+    // User A initiates, crash leaves operation PENDING
+    world.accountingMode = 'crash';
+    await expect(
+      asUser(
+        () =>
+          service.requestAccountingPosting(documentId, ORG, {
+            operationKey: 'anon-recovery-key-1',
+          }),
+        'user-a',
+      ),
+    ).rejects.toThrow('simulated crash');
+
+    world.accountingMode = 'ok';
+    // Anonymous recovery attempt (no request context / principal)
+    await expect(
+      service.requestAccountingPosting(documentId, ORG, {
+        operationKey: 'anon-recovery-key-1',
+      }),
+    ).rejects.toThrow(
+      'An authenticated user is required to post an inventory document to Accounting.',
+    );
+  });
 });
 
 // ---- cancellation -----------------------------------------------------------
@@ -1854,5 +1984,79 @@ describe('C-62 draft cancellation (hermetic)', () => {
       ),
       'inventory.document.accounting_post_draft_required',
     );
+  });
+
+  it('preserves initiating cancellation actor and records recovery actor when draft cancellation is retried by a different user', async () => {
+    const world = createWorld();
+    const service = buildService(world);
+    const { documentId } = seedReceipt(world, { mode: 'draft' });
+
+    const postKey = 'post-draft-actor-key-1';
+    const cancelKey = 'cancel-draft-actor-key-1';
+    const USER_A = 'user-a';
+    const USER_C = 'user-c';
+    const USER_D = 'user-d';
+
+    // 1. User A posts draft
+    await asUser(
+      () =>
+        service.requestAccountingPosting(documentId, ORG, {
+          operationKey: postKey,
+        }),
+      USER_A,
+    );
+
+    const postingOp = operationOf(world, documentId);
+    expect(postingOp.state).toBe('DRAFT_CREATED');
+    expect(postingOp.actorUserId).toBe(USER_A);
+
+    // 2. User C initiates draft cancellation -> crash before Accounting call
+    world.accountingMode = 'crash';
+    await expect(
+      asUser(
+        () =>
+          service.cancelAccountingPosting(documentId, ORG, {
+            operationKey: cancelKey,
+          }),
+        USER_C,
+      ),
+    ).rejects.toThrow('simulated crash');
+
+    const pendingCancelOp = cancellationOperationOf(world, documentId);
+    expect(pendingCancelOp.state).toBe('PENDING');
+    expect(pendingCancelOp.actorUserId).toBe(USER_C);
+    expect(pendingCancelOp.createdBy).toBe(USER_C);
+    expect(pendingCancelOp.updatedBy).toBe(USER_C);
+
+    // Original posting operation remains historical and untouched
+    expect(postingOp.state).toBe('DRAFT_CREATED');
+    expect(postingOp.actorUserId).toBe(USER_A);
+
+    // 3. User D retries/recovers the cancellation
+    world.accountingMode = 'ok';
+    const result = await asUser(
+      () =>
+        service.cancelAccountingPosting(documentId, ORG, {
+          operationKey: cancelKey,
+        }),
+      USER_D,
+    );
+
+    expect(result.outcome).toBe('draft_cancelled');
+
+    // Cancellation operation preserves USER_C as initiating actor and records USER_D as recovery actor
+    const completedCancelOp = cancellationOperationOf(world, documentId);
+    expect(completedCancelOp.state).toBe('CANCELLED');
+    expect(completedCancelOp.actorUserId).toBe(USER_C);
+    expect(completedCancelOp.createdBy).toBe(USER_C);
+    expect(completedCancelOp.updatedBy).toBe(USER_D);
+
+    // Original posting operation STILL historical and untouched
+    expect(postingOp.state).toBe('DRAFT_CREATED');
+    expect(postingOp.actorUserId).toBe(USER_A);
+
+    // Document projection reflects draft_cancelled
+    const doc = documentOf(world, documentId);
+    expect(doc.accountingPostingState).toBe('draft_cancelled');
   });
 });

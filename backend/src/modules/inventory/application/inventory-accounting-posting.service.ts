@@ -96,7 +96,11 @@ const CANCEL_ACTION = ACCOUNTING_POST_CANCEL_ACTION;
 type Phase1Result =
   | {
       kind: 'created';
-      intent: { request: InventoryPostingRequest; operationId: string };
+      intent: {
+        request: InventoryPostingRequest;
+        operationId: string;
+        initiatingActorUserId?: string | null;
+      };
     }
   | { kind: 'raced'; operation: InventoryAccountingPostingOperation };
 
@@ -494,7 +498,7 @@ export class InventoryAccountingPostingService {
       await this.postings.markReplayed(
         existing.organizationId,
         existing.id,
-        existing.actorUserId,
+        this.actorFor(existing.organizationId).userId,
         new Date(),
       );
       return this.replayExisting(existing.organizationId, existing);
@@ -628,13 +632,14 @@ export class InventoryAccountingPostingService {
     // the state machine's only legal exit from FAILED — so the resumed
     // transition PENDING → terminal stays legal.
     if (existing.state === 'FAILED' || existing.state === 'REQUESTED') {
+      const actor = this.actorFor(existing.organizationId);
       await this.postings.updateOperation(
         existing.organizationId,
         existing.id,
         {
           state: 'PENDING',
           updatedAt: new Date(),
-          updatedBy: existing.actorUserId,
+          updatedBy: actor.userId,
         },
       );
     }
@@ -673,7 +678,14 @@ export class InventoryAccountingPostingService {
     // PHASE 3 — record what Accounting said (converges the operation row and
     // the document projection even when an earlier attempt wrote only one of
     // the two).
-    return this.applyOutcome({ request, operationId: existing.id }, result);
+    return this.applyOutcome(
+      {
+        request,
+        operationId: existing.id,
+        initiatingActorUserId: existing.actorUserId,
+      },
+      result,
+    );
   }
 
   /**
@@ -1162,7 +1174,7 @@ export class InventoryAccountingPostingService {
       await this.postings.markReplayed(
         existing.organizationId,
         existing.id,
-        existing.actorUserId,
+        this.actorFor(existing.organizationId).userId,
         new Date(),
       );
       const updated = await this.mustFind(
@@ -1726,7 +1738,11 @@ export class InventoryAccountingPostingService {
       );
       result = {
         kind: 'created',
-        intent: { request, operationId: created.id },
+        intent: {
+          request,
+          operationId: created.id,
+          initiatingActorUserId: actor.userId,
+        },
       };
     });
 
@@ -1981,12 +1997,17 @@ export class InventoryAccountingPostingService {
    * cannot both decide the lifecycle.
    */
   private async applyOutcome(
-    intent: { request: InventoryPostingRequest; operationId: string },
+    intent: {
+      request: InventoryPostingRequest;
+      operationId: string;
+      initiatingActorUserId?: string | null;
+    },
     result: InventoryPostingResult,
   ): Promise<AccountingPostingOutcomeDto> {
     const { request } = intent;
     const now = new Date();
     const actorUserId = request.actor.userId;
+    const initiatingUserId = intent.initiatingActorUserId ?? actorUserId;
     const crossesLifecycle =
       result.outcome === 'final_posted' && result.glPosted;
     const operationState: InventoryAccountingPostingState =
@@ -2035,7 +2056,7 @@ export class InventoryAccountingPostingService {
       if (crossesLifecycle) {
         patch.status = 'accounting_posted';
         patch.accountingPostedAt = now;
-        patch.accountingPostedBy = actorUserId;
+        patch.accountingPostedBy = initiatingUserId;
       }
       await this.documents.updateHeader(tx, request.sourceDocumentId, patch);
     });

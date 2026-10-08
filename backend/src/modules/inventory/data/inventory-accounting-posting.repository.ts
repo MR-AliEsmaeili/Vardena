@@ -45,6 +45,8 @@ export interface InventoryAccountingPostingOperation {
   completedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  createdBy?: string | null;
+  updatedBy?: string | null;
 }
 
 /** The immutable snapshot header, as the domain reads it. */
@@ -67,6 +69,8 @@ export interface InventoryAccountingPostingSnapshot {
   totalValue: string;
   actorUserId: string | null;
   capturedAt: Date;
+  createdAt: Date;
+  createdBy?: string | null;
   movements: readonly InventoryAccountingPostingSnapshotMovement[];
 }
 
@@ -556,6 +560,8 @@ function toOperationDomain(
     completedAt: row.completedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    createdBy: row.createdBy,
+    updatedBy: row.updatedBy,
   };
 }
 
@@ -582,6 +588,8 @@ function toSnapshotDomain(
     totalValue: decimalToString(row.totalValue),
     actorUserId: row.actorUserId,
     capturedAt: row.capturedAt,
+    createdAt: row.createdAt,
+    createdBy: row.createdBy,
     movements: movements
       .slice()
       .sort((left, right) => left.movementId.localeCompare(right.movementId))
