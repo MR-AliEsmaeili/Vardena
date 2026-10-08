@@ -181,7 +181,10 @@ CREATE TABLE "inventory"."inventory_accounting_posting_snapshot_movements" (
 CREATE UNIQUE INDEX "uq_inventory_accounting_posting_snapshot_movements"
   ON "inventory"."inventory_accounting_posting_snapshot_movements" ("snapshot_id", "movement_id");
 
-CREATE INDEX "idx_inventory_accounting_posting_snapshot_movements_org_movement"
+-- Reverse lookup from a ledger movement to the snapshot rows that carried
+-- it. The name drops the redundant `posting`: the fully-spelled form is 64
+-- characters and PostgreSQL caps an identifier at 63.
+CREATE INDEX "idx_inventory_accounting_snapshot_movements_org_movement"
   ON "inventory"."inventory_accounting_posting_snapshot_movements" ("organization_id", "movement_id");
 
 -- 5. The Accounting-owned source posting mapping ---------------------------

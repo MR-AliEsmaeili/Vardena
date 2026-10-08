@@ -238,7 +238,11 @@ model InventoryAccountingPostingSnapshotMovement {
   baseUnit     Unit                              @relation("SnapshotMovementBaseUnit", fields: [baseUnitId], references: [id], onDelete: Restrict)
 
   @@unique([snapshotId, movementId], map: "uq_inventory_accounting_posting_snapshot_movements")
-  @@index([organizationId, movementId], map: "idx_inventory_accounting_posting_snapshot_movements_org_movement")
+  // NB: the index name deliberately drops the redundant `posting` — the
+  // fully-spelled `idx_inventory_accounting_posting_snapshot_movements_org_movement`
+  // is 64 characters and PostgreSQL caps an identifier at 63. Kept spelled out
+  // everywhere else on purpose; do not "restore" the longer name.
+  @@index([organizationId, movementId], map: "idx_inventory_accounting_snapshot_movements_org_movement")
   @@map("inventory_accounting_posting_snapshot_movements")
   @@schema("inventory")
 }
