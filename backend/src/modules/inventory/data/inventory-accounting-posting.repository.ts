@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
+import type { DocTxClient } from './inventory-business-document-rows.js';
 import {
   isInventoryAccountingPostingState,
   type InventoryAccountingPostingState,
@@ -272,6 +273,38 @@ export class InventoryAccountingPostingRepository {
     if (row === null) return null;
     const movements = row.movements ?? [];
     return toSnapshotDomain(row, movements);
+  }
+
+  /**
+   * Lock ONE operation row `FOR UPDATE` — the serialization point of PHASE 2.
+   *
+   * Two calls may legitimately reach the boundary for the SAME operation (a
+   * fresh posting racing its own retry, or two concurrent retries of a
+   * PENDING one). Accounting's own ledger replays the second call — but only
+   * once the first call's ledger row is COMMITTED, and the numbering
+   * allocation Accounting performs on the fresh-create path commits BEFORE
+   * that row and is keyed by the operation key with a per-call reference, so
+   * an unserialized second call can be refused as "a different request" even
+   * though it is the same one. Holding the operation row across the boundary
+   * call makes the second call start after the first committed its ledger
+   * row, so it replays instead of conflicting: one operation, one effect,
+   * one answer. The lock is per operation — it never serializes different
+   * documents, and it is always released before PHASE 3 takes the document
+   * row, so the lock order (document → operation → document, never nested)
+   * cannot deadlock.
+   */
+  async lockOperationRow(
+    tx: DocTxClient,
+    organizationId: string,
+    operationId: string,
+  ): Promise<{ id: string; organizationId: string } | null> {
+    const rows = await tx.$queryRaw<{ id: string; organizationId: string }>`
+      SELECT "id", "organization_id" AS "organizationId"
+      FROM "inventory"."inventory_accounting_posting_operations"
+      WHERE "id" = ${operationId}
+        AND "organization_id" = ${organizationId}
+      FOR UPDATE`;
+    return rows[0] ?? null;
   }
 
   /**

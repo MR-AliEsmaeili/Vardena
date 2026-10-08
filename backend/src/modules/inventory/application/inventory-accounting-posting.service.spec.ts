@@ -232,6 +232,14 @@ function fakePostingRepository(world: FakeWorld) {
         ? row
         : null;
     },
+    async lockOperationRow(_tx: unknown, organizationId: string, id: string) {
+      // The fake's `withTransaction` mutex already serializes the critical
+      // sections; the row lock only has to resolve the row.
+      const row = world.operations.find((entry) => entry.id === id);
+      return row !== undefined && row.organizationId === organizationId
+        ? { id: row.id, organizationId: row.organizationId }
+        : null;
+    },
     async listForDocument(input: {
       organizationId: string;
       documentId: string;

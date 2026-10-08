@@ -190,9 +190,12 @@ interface CollectedFacts {
  *     operation row and its immutable snapshot. A crash here leaves a
  *     recoverable row that says exactly what was attempted (C62-OD-06).
  *
- *   PHASE 2 (outside any transaction): the synchronous in-process call to
- *     Accounting. Accounting commits its own voucher in its own transaction
- *     and answers with a typed result.
+ *   PHASE 2 (the synchronous in-process call to Accounting, ADR-0041 §2):
+ *     the call runs while the operation row is locked `FOR UPDATE`, so two
+ *     calls for the SAME operation serialize and the second one replays
+ *     through Accounting's committed ledger instead of racing it. The lock
+ *     transaction writes nothing — Accounting still commits its own voucher
+ *     in its own transactions, which is why OD-01's rule is untouched.
  *
  *   PHASE 3 (a second short Inventory transaction): record the answer on the
  *     operation row and project the resulting standing onto the document.
@@ -333,10 +336,57 @@ export class InventoryAccountingPostingService {
       return this.answerExisting(phase1.operation);
     }
 
-    // PHASE 2 — the one synchronous boundary call (ADR-0041 §2).
-    const result = await this.posting.postFromInventory(phase1.intent.request);
+    // PHASE 2 — the one synchronous boundary call (ADR-0041 §2), serialized
+    // per operation so a racing retry replays instead of conflicting.
+    const result = await this.withOperationLock(
+      organizationId,
+      phase1.intent.operationId,
+      () => this.posting.postFromInventory(phase1.intent.request),
+    );
     // PHASE 3 — record what Accounting said.
     return this.applyOutcome(phase1.intent, result);
+  }
+
+  /**
+   * PHASE 2's serialization: hold the operation row `FOR UPDATE` across the
+   * boundary call.
+   *
+   * Two calls may legitimately reach the boundary for the SAME operation —
+   * a fresh posting racing its own retry, or two concurrent retries of a
+   * PENDING one. Accounting's own idempotency ledger replays the second call,
+   * but only once the first call's ledger row is COMMITTED; the numbering
+   * allocation on Accounting's fresh-create path commits BEFORE that row and
+   * is keyed by the operation key with a per-call reference, so an
+   * unserialized second call can be refused as "a different request" even
+   * though it is the same one. Serializing on the operation row makes the
+   * second call start after the first committed its ledger row, so it
+   * replays: one operation, one effect, one answer. The lock is per
+   * operation (different documents never contend) and is always released
+   * before PHASE 3 takes the document row, so the lock order — document in
+   * PHASE 1, operation in PHASE 2, document in PHASE 3, never nested —
+   * cannot deadlock. The transaction writes nothing; it exists to hold the
+   * lock, which is why OD-01's "no shared transaction" rule is untouched:
+   * Accounting still commits its own effect in its own transactions.
+   */
+  private async withOperationLock<T>(
+    organizationId: string,
+    operationId: string,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    return this.documents.withTransaction(async (tx) => {
+      const locked = await this.postings.lockOperationRow(
+        tx,
+        organizationId,
+        operationId,
+      );
+      if (locked === null) {
+        throw AppException.notFound(
+          'Accounting posting operation',
+          operationId,
+        );
+      }
+      return work();
+    });
   }
 
   /**
@@ -500,11 +550,16 @@ export class InventoryAccountingPostingService {
       );
     }
 
-    // PHASE 2 resumed — with the SNAPSHOT's request (ADR-0041 §2). Accounting
+    // PHASE 2 resumed — with the SNAPSHOT's request (ADR-0041 §2), serialized
+    // on the operation row exactly like a fresh PHASE 2. Accounting
     // reconciles it through its own ledger: if the effect already exists this
     // is a replay, if it does not this completes it. Either way there is at
     // most one effect.
-    const result = await this.posting.postFromInventory(request);
+    const result = await this.withOperationLock(
+      existing.organizationId,
+      existing.id,
+      () => this.posting.postFromInventory(request),
+    );
     // PHASE 3 — record what Accounting said (converges the operation row and
     // the document projection even when an earlier attempt wrote only one of
     // the two).

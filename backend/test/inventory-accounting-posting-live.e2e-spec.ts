@@ -407,12 +407,15 @@ describe.skipIf(DATABASE_URL === undefined)(
 
     /**
      * Erase an Accounting voucher with every row it produced: its ledger
-     * entries, its lines, its idempotency-ledger rows and the document
-     * itself. This is the exact durable state of "Accounting was never
-     * called" (a real pre-final deletion keeps the ledger rows; here they go
-     * too, because the whole point is that the boundary call never happened).
-     * The aggregate balance projections are derived rows no assertion reads
-     * and the teardown wipes them, so they are left alone.
+     * entries, its lines, its idempotency-ledger rows, the numbering
+     * allocation it consumed and the document itself. This is the exact
+     * durable state of "Accounting was never called" — a real crash before
+     * the boundary call leaves no allocation either, because the allocation
+     * is written by the call itself. (A real pre-final deletion KEEPS the
+     * ledger rows; here they go too, because the whole point is that the
+     * boundary call never happened.) The aggregate balance projections are
+     * derived rows no assertion reads and the teardown wipes them, so they
+     * are left alone.
      */
     async function eraseAccountingVoucher(
       accountingDocumentId: string,
@@ -424,6 +427,8 @@ describe.skipIf(DATABASE_URL === undefined)(
         WHERE organization_id = ${organizationId} AND document_id = ${accountingDocumentId}`;
       await client.$queryRaw`DELETE FROM accounting.accounting_posting_operations
         WHERE organization_id = ${organizationId} AND result->>'documentId' = ${accountingDocumentId}`;
+      await client.$queryRaw`DELETE FROM documents.numbering_allocations
+        WHERE organization_id = ${organizationId} AND reference_document_id = ${accountingDocumentId}`;
       await client.$queryRaw`DELETE FROM accounting.accounting_documents
         WHERE organization_id = ${organizationId} AND id = ${accountingDocumentId}`;
     }
