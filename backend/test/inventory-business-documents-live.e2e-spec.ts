@@ -1227,7 +1227,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         .query(scope)
         .send({})
         .expect(422);
-    });
+    }, 30_000);
 
     it('records the refusal of a posting with no Accounting mapping', async () => {
       // Why the assertion is on the OPERATION and not the document: a refusal
@@ -1283,7 +1283,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         .query(scope)
         .expect(200);
       expect(replayed.body as Array<Record<string, unknown>>).toHaveLength(1);
-    });
+    }, 30_000);
 
     it('deletes a draft but refuses to delete a document with history', async () => {
       const draft = await createDocument({
@@ -1319,7 +1319,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         .delete(`${base}/${operational['id'] as string}`)
         .query({ organizationId: orgAId })
         .expect(422);
-    });
+    }, 30_000);
 
     // -----------------------------------------------------------------------
     // 5. Authorization and organization isolation

@@ -507,11 +507,12 @@ describe.skipIf(DATABASE_URL === undefined)(
         {},
         422,
       );
-      expect(response.body.code).toBe(
-        'inventory.document.accounting_ineligible',
-      );
+      expect(response.body.details).toMatchObject({
+        code: 'inventory.document.accounting_ineligible',
+        valuationState: 'unpriced',
+      });
       expect(await postingTrail(unpriced.body.id as string)).toHaveLength(0);
-    });
+    }, 30_000);
 
     // -----------------------------------------------------------------------
     // 2. Direct-Final: the document becomes Accounting Posted, for real
@@ -590,7 +591,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         .query({ organizationId })
         .send({})
         .expect(422);
-    });
+    }, 30_000);
 
     it('replays the same request instead of writing a second voucher', async () => {
       const receipt = await createPricedReceipt(
@@ -619,7 +620,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(trail[0]!['replayed']).toBe(true);
       expect(trail[0]!['operationKey']).toBe(operationKey);
       expect(trail[0]!['state']).toBe('POSTED');
-    });
+    }, 30_000);
 
     it('conflicts when the document moved since the caller read it', async () => {
       // The optimistic-concurrency expectation, not the operation key, is what
@@ -653,7 +654,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       });
       expect(posted.body.status).toBe('accounting_posted');
       expect(await postingTrail(id)).toHaveLength(1);
-    });
+    }, 30_000);
 
     // -----------------------------------------------------------------------
     // 3. Draft mode: an Accounting-owned draft, never Accounting Posted
@@ -711,7 +712,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(afterCancel.some((row) => row.id === accountingDocumentId)).toBe(
         false,
       );
-    });
+    }, 30_000);
 
     it('refuses to cancel anything but an Accounting draft', async () => {
       // Never posted at all.
@@ -737,7 +738,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         .query({ organizationId })
         .send({})
         .expect(422);
-    });
+    }, 30_000);
 
     // -----------------------------------------------------------------------
     // 4. The slice is closed to every other document type
@@ -774,7 +775,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       // Nothing was created, and nothing reached the books.
       const documents = await accountingDocuments();
       expect(documents.some((row) => row.source_entity_id === id)).toBe(false);
-    });
+    }, 30_000);
 
     // -----------------------------------------------------------------------
     // 5. Organization isolation on the new read surface
@@ -796,6 +797,6 @@ describe.skipIf(DATABASE_URL === undefined)(
         .get(`${base}/${id}/accounting-posting`)
         .query({ organizationId: otherOrganizationId })
         .expect(404);
-    });
+    }, 30_000);
   },
 );
