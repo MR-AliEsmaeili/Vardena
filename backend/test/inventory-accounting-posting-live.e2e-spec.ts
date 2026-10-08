@@ -103,6 +103,13 @@ describe.skipIf(DATABASE_URL === undefined)(
     let branchId = '';
     let directFinalWarehouseId = '';
     let draftWarehouseId = '';
+    // A pricing run's scope is (organization, warehouse, document kinds) and it
+    // resumes from the previous run's end date, so every test that needs a run
+    // to price something gets a warehouse of its own. Sharing one would make
+    // each run inherit the earlier tests' movements — including any document
+    // they left unpriced on purpose, which fails the whole key.
+    let issueWarehouseId = '';
+    let reverseWarehouseId = '';
     let unitId = '';
     let itemId = '';
     let financialAreaId = '';
@@ -308,9 +315,17 @@ describe.skipIf(DATABASE_URL === undefined)(
     }
 
     /** Price every movement of a warehouse up to `toDate`. */
+    /**
+     * Run pricing over one warehouse's scope.
+     *
+     * The window ends at `toDate`, and a later run for the same scope resumes
+     * strictly after the previous one's end date — so a run must never end in
+     * the future: it would claim a window the movements it should price have
+     * not reached yet, and every later run would resume past them.
+     */
     async function runPricing(
       warehouseId: string,
-      toDate: Date,
+      toDate: Date = new Date(),
     ): Promise<Record<string, unknown>> {
       const response = await operator
         .post(`${pricingBase}/runs`)
@@ -427,8 +442,24 @@ describe.skipIf(DATABASE_URL === undefined)(
         name: 'Draft warehouse',
         accountingPostingMode: 'draft',
       });
+      const issueWarehouse = await warehouses.createWarehouse({
+        organizationId,
+        branchId,
+        code: 'WH-ISS',
+        name: 'Issue pricing warehouse',
+        accountingPostingMode: 'direct_final',
+      });
+      const reverseWarehouse = await warehouses.createWarehouse({
+        organizationId,
+        branchId,
+        code: 'WH-RVP',
+        name: 'Reverse pricing warehouse',
+        accountingPostingMode: 'direct_final',
+      });
       directFinalWarehouseId = directFinal.id;
       draftWarehouseId = draft.id;
+      issueWarehouseId = issueWarehouse.id;
+      reverseWarehouseId = reverseWarehouse.id;
 
       const unit = await units.createUnit({
         organizationId,
@@ -913,7 +944,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         .send({
           organizationId,
           kind: 'receipt',
-          warehouseId: directFinalWarehouseId,
+          warehouseId: issueWarehouseId,
           lines: [{ itemId, quantity: '10', unitId }],
         })
         .expect(201);
@@ -926,13 +957,15 @@ describe.skipIf(DATABASE_URL === undefined)(
         .send({
           organizationId,
           kind: 'issue',
-          warehouseId: directFinalWarehouseId,
+          warehouseId: issueWarehouseId,
           lines: [{ itemId, quantity: '1', unitId }],
         })
         .expect(201);
       const id = response.body.id as string;
       await finalize(id);
-      await runPricing(directFinalWarehouseId, new Date(Date.now() + 60_000));
+      const run = await runPricing(issueWarehouseId, new Date());
+      expect(run['keysPriced']).toBe(1);
+      expect(run['keysFailed']).toBe(0);
 
       // Pin the premise: the issue must be PRICED, or the refusal below would be
       // Inventory's own eligibility gate rather than Accounting's closure.
@@ -965,25 +998,28 @@ describe.skipIf(DATABASE_URL === undefined)(
       // Accounting mapping, so it can no longer build the premise. The rule is
       // also covered hermetically; this is the proof that a REAL crossing is
       // what enforces it.
-      // Unpriced on purpose: the blocker is built from the movements a run
-      // VALUED, so a receipt that already carries an entered cost gives the run
-      // nothing to value and nothing to block on.
+      // The blocker is built from the movements a run VALUED, so the receipt
+      // must reach the run still unvalued — no entered cost at finalize — and
+      // the run must then really value it, or there is nothing to block on.
+      // A cost assigned with "skip" is what makes that possible: it prices the
+      // inbound without recording a valuation run, leaving the key for the run
+      // to restate. "recalculate" would instead record the run itself and the
+      // pricing run would have nothing left to change.
       const receipt = await operator
         .post(base)
         .send({
           organizationId,
           kind: 'receipt',
-          warehouseId: directFinalWarehouseId,
+          warehouseId: reverseWarehouseId,
           lines: [{ itemId, quantity: '9', unitId }],
         })
         .expect(201);
       const id = receipt.body.id as string;
       await finalize(id);
-      const run = await runPricing(
-        directFinalWarehouseId,
-        new Date(Date.now() + 300_000),
-      );
+      await assignCost(await firstLineMovementId(id), '90');
+      const run = await runPricing(reverseWarehouseId, new Date());
       expect(run['keysPriced']).toBe(1);
+      expect(run['keysFailed']).toBe(0);
 
       await accountingPost(id);
 
