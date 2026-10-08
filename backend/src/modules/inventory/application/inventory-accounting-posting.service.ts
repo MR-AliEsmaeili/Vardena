@@ -39,7 +39,7 @@ import { INVENTORY_DOCUMENT_PERMISSIONS } from '../domain/inventory-document-per
 import { documentTypeFor } from '../domain/inventory-document-types.js';
 import { INVENTORY_DOCUMENT_ACCOUNTING_POSTED_EVENT } from '../domain/inventory-document.events.js';
 import type { WarehouseAccountingPostingMode } from '../domain/warehouse-posting-mode.js';
-import { WarehousesService } from './warehouses.service.js';
+import { WarehousesRepository } from '../data/warehouses.repository.js';
 import { InventoryValuationService } from './inventory-valuation.service.js';
 import { publishEvent } from './master-data-support.js';
 import { InventoryPostingService } from '../../accounting/application/inventory-posting.service.js';
@@ -166,7 +166,7 @@ export class InventoryAccountingPostingService {
     private readonly documents: InventoryBusinessDocumentsRepository,
     private readonly movements: InventoryMovementsRepository,
     private readonly postings: InventoryAccountingPostingRepository,
-    private readonly warehouses: WarehousesService,
+    private readonly warehouses: WarehousesRepository,
     private readonly valuation: InventoryValuationService,
     private readonly organizations: OrganizationsService,
     private readonly authorization: AuthorizationService,
@@ -468,10 +468,23 @@ export class InventoryAccountingPostingService {
     document: InventoryBusinessDocument,
   ): Promise<WarehouseAccountingPostingMode> {
     if (document.warehouseId === null) return 'direct_final';
-    const warehouse = await this.warehouses.getWarehouse(
+    const warehouse = await this.warehouses.findByIdInOrganization(
       document.organizationId,
       document.warehouseId,
     );
+    if (warehouse === null) {
+      // The document names a warehouse that is not in this organization (or
+      // no longer exists). A posting mode is the accountant's configuration,
+      // so guessing one would post under a policy nobody chose: fail closed.
+      throw AppException.businessRule(
+        'The warehouse this inventory document was posted against cannot be resolved in this organization.',
+        {
+          code: 'inventory.document.accounting_post_warehouse_unresolved',
+          documentId: document.id,
+          warehouseId: document.warehouseId,
+        },
+      );
+    }
     return warehouse.accountingPostingMode;
   }
 
@@ -629,10 +642,20 @@ export class InventoryAccountingPostingService {
         );
       }
 
-      const warehouse = await this.warehouses.getWarehouse(
+      const warehouse = await this.warehouses.findByIdInOrganization(
         organizationId,
         locked.warehouseId,
       );
+      if (warehouse === null) {
+        throw AppException.businessRule(
+          'The warehouse this inventory document was posted against cannot be resolved in this organization.',
+          {
+            code: 'inventory.document.accounting_post_warehouse_unresolved',
+            documentId: id,
+            warehouseId: locked.warehouseId,
+          },
+        );
+      }
       const request = this.buildRequest(
         {
           id: locked.id,

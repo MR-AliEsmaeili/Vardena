@@ -1306,6 +1306,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       const operational = await createDocument({
         kind: 'receipt',
         warehouseId: whMainId,
+        cost: '80.00',
         lines: [{ itemId: itemAId, quantity: '4', unitId: unitAId }],
       });
       await finalize(operational['id'] as string);

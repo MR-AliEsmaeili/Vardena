@@ -65,9 +65,13 @@ import { createTestApp } from './support/test-app.js';
  */
 const DATABASE_URL = process.env['VARDENA_TEST_DATABASE_URL'];
 
-/** Wide, fixed, open window so the document's business date always lands in it. */
-const PERIOD_START = '2020-01-01';
-const PERIOD_END = '2035-12-31';
+/**
+ * Wide, fixed, open window so the document's business date always lands in it.
+ *
+ * Written as SQL LITERALS on purpose: Prisma parameterizes a `${...}`
+ * interpolation, and `DATE $6` is a PostgreSQL syntax error. These are
+ * compile-time constants of this file, never caller input.
+ */
 
 interface AccountingDocumentRow {
   id: string;
@@ -327,7 +331,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         id, organization_id, financial_area_id, code, title, start_date, end_date,
         status, is_active, created_at, updated_at
       ) VALUES (${fiscalYearId}, ${organizationId}, ${financialAreaId}, ${'C62Y'},
-        ${'C-62 year'}, DATE ${PERIOD_START}, DATE ${PERIOD_END}, 'open', true,
+        ${'C-62 year'}, DATE '2020-01-01', DATE '2035-12-31', 'open', true,
         now(), now())`;
 
       const accountingPeriodId = generateId();
@@ -335,8 +339,8 @@ describe.skipIf(DATABASE_URL === undefined)(
         id, organization_id, financial_area_id, fiscal_year_id, sequence, title,
         start_date, end_date, status, created_at, updated_at
       ) VALUES (${accountingPeriodId}, ${organizationId}, ${financialAreaId},
-        ${fiscalYearId}, 1, ${'Whole window'}, DATE ${PERIOD_START},
-        DATE ${PERIOD_END}, 'open', now(), now())`;
+        ${fiscalYearId}, 1, ${'Whole window'}, DATE '2020-01-01',
+        DATE '2035-12-31', 'open', now(), now())`;
 
       const codingStructureVersionId = generateId();
       await client.$queryRaw`INSERT INTO accounting.coding_structure_versions (
@@ -459,7 +463,10 @@ describe.skipIf(DATABASE_URL === undefined)(
         await client.$queryRaw`DELETE FROM rbac.user_roles WHERE user_id = ${operatorId}`;
         await client.$queryRaw`DELETE FROM rbac.role_permissions WHERE role_id IN (SELECT id FROM rbac.roles WHERE name LIKE ${`C-62 posting operator ${suffix}%`})`;
         await client.$queryRaw`DELETE FROM rbac.roles WHERE name LIKE ${`C-62 posting operator ${suffix}%`}`;
-        await client.$queryRaw`DELETE FROM identity.users WHERE id = ${operatorId}`;
+        // The user's session RESTRICTs the user row, so it goes first. The
+        // users table lives in the `users` schema, not `identity`.
+        await client.$queryRaw`DELETE FROM identity.sessions WHERE user_id = ${operatorId}`;
+        await client.$queryRaw`DELETE FROM users.users WHERE id = ${operatorId}`;
       } finally {
         await app.close();
       }

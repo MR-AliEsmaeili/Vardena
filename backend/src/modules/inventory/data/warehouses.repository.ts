@@ -33,6 +33,8 @@ type WarehouseRow = {
 
 interface WarehouseWhere {
   organizationId?: string;
+  /** Exact-id read, used by the organization-scoped lookup below. */
+  id?: string;
   branchId?: string;
   code?: string;
   isActive?: boolean;
@@ -98,6 +100,28 @@ export class WarehousesRepository {
   async findById(id: string): Promise<Warehouse | null> {
     const { warehouse } = await this.client();
     const row = await warehouse.findUnique({ where: { id } });
+    return row === null ? null : toDomain(row);
+  }
+
+  /**
+   * The same read, scoped by organization (C-62).
+   *
+   * The C-62 posting command needs ONE field of the warehouse — its posting
+   * mode — and it is already authorized by
+   * `Inventory.Document.AccountingPost`. Going through
+   * `WarehousesService.getWarehouse` instead would demand a SECOND,
+   * unrelated permission (`Inventory.Warehouse.View`) for a read the caller
+   * never asked for, which both widens the command's effective permission
+   * surface and locks out exactly the role that is supposed to run it.
+   * So the mode is read as DATA, inside the module, and the organization
+   * scope is applied here rather than trusted from a caller.
+   */
+  async findByIdInOrganization(
+    organizationId: string,
+    id: string,
+  ): Promise<Warehouse | null> {
+    const { warehouse } = await this.client();
+    const row = await warehouse.findFirst({ where: { organizationId, id } });
     return row === null ? null : toDomain(row);
   }
 
