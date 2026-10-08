@@ -264,6 +264,33 @@ export class InventoryAccountingPostingRepository {
     return toOperationDomain(created);
   }
 
+  /**
+   * Record that this operation ANSWERED a replay (C62-OD-06).
+   *
+   * Without it the durable row would keep `replayed = false` for an operation
+   * that was in fact replayed, because the replay path answers from the
+   * existing record and never performs a new effect. That is dishonest audit
+   * evidence: "this request was answered twice" is exactly what an auditor
+   * reconciling the two ledgers needs to see.
+   */
+  async markReplayed(
+    organizationId: string,
+    id: string,
+    actorUserId: string | null,
+    now: Date,
+  ): Promise<void> {
+    const { inventoryAccountingPostingOperation } = await this.client();
+    const row = await inventoryAccountingPostingOperation.update({
+      where: { id },
+      data: { replayed: true, updatedAt: now, updatedBy: actorUserId },
+    });
+    if (row.organizationId !== organizationId) {
+      throw new Error(
+        'An accounting posting operation was updated outside its organization.',
+      );
+    }
+  }
+
   /** Apply a state transition and/or an Accounting result to an operation. */
   async updateOperation(
     organizationId: string,

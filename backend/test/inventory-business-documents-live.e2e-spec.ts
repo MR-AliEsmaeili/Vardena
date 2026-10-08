@@ -407,6 +407,15 @@ describe.skipIf(DATABASE_URL === undefined)(
           inventoryBusinessDocumentLine: {
             deleteMany: (args: unknown) => Promise<unknown>;
           };
+          inventoryAccountingPostingSnapshotMovement: {
+            deleteMany: (args: unknown) => Promise<unknown>;
+          };
+          inventoryAccountingPostingSnapshot: {
+            deleteMany: (args: unknown) => Promise<unknown>;
+          };
+          inventoryAccountingPostingOperation: {
+            deleteMany: (args: unknown) => Promise<unknown>;
+          };
           inventoryBusinessDocument: {
             deleteMany: (args: unknown) => Promise<unknown>;
           };
@@ -447,6 +456,15 @@ describe.skipIf(DATABASE_URL === undefined)(
         const userIds = [operatorId, clerkId].filter((id) => id !== '');
         const roleIds = [operatorRoleId, clerkRoleId].filter((id) => id !== '');
 
+        await client.inventoryAccountingPostingSnapshotMovement.deleteMany({
+          where: { organizationId: { in: orgIds } },
+        });
+        await client.inventoryAccountingPostingSnapshot.deleteMany({
+          where: { organizationId: { in: orgIds } },
+        });
+        await client.inventoryAccountingPostingOperation.deleteMany({
+          where: { organizationId: { in: orgIds } },
+        });
         await client.inventoryBusinessDocumentLine.deleteMany({
           where: { organizationId: { in: orgIds } },
         });

@@ -163,9 +163,9 @@ describe.skipIf(DATABASE_URL === undefined)(
       return client.$queryRaw<
         LedgerEntryRow[]
       >`SELECT id, account_id, debit_amount, credit_amount
-        FROM accounting.ledger_entries
-        WHERE organization_id = ${organizationId}
-          AND accounting_document_id = ${documentId}`;
+      FROM accounting.ledger_entries
+      WHERE organization_id = ${organizationId}
+        AND voucher_id = ${documentId}`;
     }
 
     async function createPricedReceipt(
@@ -262,6 +262,40 @@ describe.skipIf(DATABASE_URL === undefined)(
         JOIN inventory.inventory_accounting_posting_operations o
           ON o.id = s.operation_id
         WHERE m.organization_id = ${organizationId} AND o.document_id = ${id}`;
+    }
+
+    const pricingBase = '/api/v1/inventory/pricing';
+
+    /** Price every movement of a warehouse up to `toDate`. */
+    async function runPricing(
+      warehouseId: string,
+      toDate: Date,
+    ): Promise<Record<string, unknown>> {
+      const response = await operator
+        .post(`${pricingBase}/runs`)
+        .send({
+          organizationId,
+          operationKey: `c62-price-${suffix}-${generateId()}`,
+          warehouseId,
+          documentKinds: ['receipt', 'issue', 'transfer'],
+          toDate: toDate.toISOString(),
+        })
+        .expect(201);
+      return response.body as Record<string, unknown>;
+    }
+
+    async function reversePricing(
+      pricingRunId: string,
+      expected = 201,
+    ): Promise<request.Response> {
+      return operator
+        .post(`${pricingBase}/runs/reverse`)
+        .send({
+          organizationId,
+          pricingRunId,
+          operationKey: `c62-reverse-${suffix}-${generateId()}`,
+        })
+        .expect(expected);
     }
 
     async function postingTrail(
@@ -461,6 +495,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           BALANCE_PERMISSIONS.VIEW,
           VALUATION_PERMISSIONS.ASSIGN_COST,
           VALUATION_PERMISSIONS.RECALCULATE,
+          VALUATION_PERMISSIONS.RUN_PRICING,
+          VALUATION_PERMISSIONS.REVERSE_PRICING,
         ],
       });
       const operatorUser = await users.createUser({
@@ -836,6 +872,11 @@ describe.skipIf(DATABASE_URL === undefined)(
         .expect(201);
       const id = response.body.id as string;
       await finalize(id);
+      // An issue carries no entered cost: its value comes from a pricing run.
+      // Without one the document is UNPRICED, and the refusal would be
+      // Inventory's own eligibility gate rather than Accounting's closure of
+      // the slice — which is what this test is about.
+      await runPricing(directFinalWarehouseId, new Date());
 
       const refused = await accountingPost(id);
       expect(refused.body.status).toBe('operational');
@@ -851,7 +892,47 @@ describe.skipIf(DATABASE_URL === undefined)(
     }, 30_000);
 
     // -----------------------------------------------------------------------
-    // 5. Organization isolation on the new read surface
+    // 5. A crossed boundary really freezes the valuation history
+    // -----------------------------------------------------------------------
+
+    it('blocks a reverse pricing run over a document that crossed the boundary', async () => {
+      // Moved here from `inventory-pricing-live.e2e-spec.ts`: that suite has no
+      // Accounting mapping, so it can no longer build the premise. The rule is
+      // also covered hermetically; this is the proof that a REAL crossing is
+      // what enforces it.
+      const receipt = await createPricedReceipt(
+        directFinalWarehouseId,
+        '90.00',
+        '9',
+      );
+      const id = receipt['id'] as string;
+      await finalize(id);
+      const run = await runPricing(
+        directFinalWarehouseId,
+        new Date(Date.now() + 300_000),
+      );
+
+      await accountingPost(id);
+
+      const refused = await reversePricing(run['id'] as string, 422);
+      expect(refused.body.details).toMatchObject({
+        code: 'inventory.pricing.reverse_accounting_posted',
+      });
+
+      // The refused reverse left the original run untouched.
+      const stillThere = await operator
+        .get(`${pricingBase}/runs`)
+        .query({ organizationId })
+        .expect(200);
+      expect(
+        (stillThere.body.items as Array<Record<string, unknown>>).some(
+          (row) => row['id'] === run['id'],
+        ),
+      ).toBe(true);
+    }, 30_000);
+
+    // -----------------------------------------------------------------------
+    // 6. Organization isolation on the new read surface
     // -----------------------------------------------------------------------
 
     it('answers 404 — never 403 — for a posting trail outside the organization', async () => {

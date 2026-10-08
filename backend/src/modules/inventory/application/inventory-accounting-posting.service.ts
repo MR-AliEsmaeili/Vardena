@@ -209,6 +209,15 @@ export class InventoryAccountingPostingService {
       operationKey,
     });
     if (existing !== null) {
+      // A replay is answered from the durable record, but it is still an EVENT
+      // in that record: without this the row would keep `replayed = false`
+      // forever, which is false audit evidence (C62-OD-06).
+      await this.postings.markReplayed(
+        organizationId,
+        existing.id,
+        existing.actorUserId,
+        new Date(),
+      );
       return this.replayExisting(organizationId, existing);
     }
 
