@@ -998,28 +998,103 @@ describe.skipIf(DATABASE_URL === undefined)(
       // Accounting mapping, so it can no longer build the premise. The rule is
       // also covered hermetically; this is the proof that a REAL crossing is
       // what enforces it.
-      // The blocker is built from the movements a run VALUED, so the receipt
-      // must reach the run still unvalued — no entered cost at finalize — and
-      // the run must then really value it, or there is nothing to block on.
-      // A cost assigned with "skip" is what makes that possible: it prices the
-      // inbound without recording a valuation run, leaving the key for the run
-      // to restate. "recalculate" would instead record the run itself and the
-      // pricing run would have nothing left to change.
-      const receipt = await operator
+      //
+      // The blocker is built from the movements a run VALUED, so the receipt we
+      // post must have an inbound that the run genuinely RESTATES. Two facts
+      // decide whether that is reachable, and both have to be arranged:
+      //
+      //  - a movement carrying an entered cost is PRESERVED by the replay
+      //    (`toReplayFact` keeps any source other than `average_cost`), so a
+      //    costed receipt is never restated and can never be blocked on;
+      //  - an UNVALUED inbound inside the run's window fails the whole key
+      //    (OD-PDP-03), so the receipt cannot simply be left unpriced either.
+      //
+      // The way through is the window's lower bound: a run resumes strictly
+      // after the previous run's end date, so an unvalued inbound dated BEFORE
+      // that boundary is invisible to the pre-check while the replay — which
+      // reads the key's whole history — still values it.
+      //
+      // Hence three receipts and two runs on this warehouse:
+      //   E  costed, dated before run 1  -> the pool the receipt derives from
+      //   run 1 ends at "now"           -> sets the boundary
+      //   B  UNCOSTED, dated after E but before the boundary, and finalized
+      //      after run 1 so it is not backdated (no repricing choice, no
+      //      staleness)                  -> the document we post
+      //   F  costed, dated after the boundary -> brings the key back into
+      //                                       run 2's window, valued, so the
+      //                                       pre-check passes
+      //   run 2 restates B               -> B is what the blocker names
+      const costed = async (
+        cost: string,
+        quantity: string,
+        businessDate: string,
+      ): Promise<string> => {
+        const draft = await operator
+          .post(base)
+          .send({
+            organizationId,
+            kind: 'receipt',
+            warehouseId: reverseWarehouseId,
+            businessDate,
+            cost,
+            lines: [{ itemId, quantity, unitId }],
+          })
+          .expect(201);
+        const id = draft.body.id as string;
+        await finalize(id);
+        return id;
+      };
+
+      // E: the valued pool B will be priced from.
+      await costed(
+        '100.00',
+        '10',
+        new Date(Date.now() - 300_000).toISOString(),
+      );
+      // Run 1 covers everything up to now, which is the boundary that hides B.
+      await runPricing(reverseWarehouseId, new Date());
+
+      // B: uncosted, so its inbound stays unvalued; dated after E (so it is not
+      // backdated) and before the boundary (so run 2's pre-check cannot see it).
+      const draft = await operator
         .post(base)
         .send({
           organizationId,
           kind: 'receipt',
           warehouseId: reverseWarehouseId,
-          lines: [{ itemId, quantity: '9', unitId }],
+          businessDate: new Date(Date.now() - 120_000).toISOString(),
+          lines: [{ itemId, quantity: '10', unitId }],
         })
         .expect(201);
-      const id = receipt.body.id as string;
+      const id = draft.body.id as string;
       await finalize(id);
-      await assignCost(await firstLineMovementId(id), '90');
-      const run = await runPricing(reverseWarehouseId, new Date());
+      expect(
+        (
+          await operator
+            .get(`${base}/${id}`)
+            .query({ organizationId })
+            .expect(200)
+        ).body.valuationState,
+      ).toBe('unpriced');
+
+      // F: valued and inside run 2's window, so the key is selected and the
+      // pre-check finds nothing unvalued to fail on.
+      await costed('50.00', '5', new Date(Date.now() + 60_000).toISOString());
+
+      const run = await runPricing(
+        reverseWarehouseId,
+        new Date(Date.now() + 120_000),
+      );
       expect(run['keysPriced']).toBe(1);
       expect(run['keysFailed']).toBe(0);
+
+      // The premise, pinned: the run is what priced B, not B's own entry.
+      const priced = await operator
+        .get(`${base}/${id}`)
+        .query({ organizationId })
+        .expect(200);
+      expect(priced.body.valuationState).toBe('priced');
+      expect(priced.body.accountingEligible).toBe(true);
 
       await accountingPost(id);
 
