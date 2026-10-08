@@ -111,7 +111,11 @@ CREATE TABLE "inventory"."inventory_accounting_posting_snapshots" (
   "organization_id" text NOT NULL,
   "operation_id" text NOT NULL,
   "document_id" text NOT NULL,
-  "document_type" varchar(16) NOT NULL,
+  -- The FULL Inventory document-type vocabulary is 18 characters
+  -- (`inventory_transfer`), so 16 is not enough: this column stores the source
+  -- document type Accounting resolves its mapping by, and the very type this
+  -- slice posts (`inventory_receipt`, 17) would not fit.
+  "document_type" varchar(32) NOT NULL,
   "document_number" varchar(64),
   "document_version" varchar(64) NOT NULL,
   "document_date" timestamptz(6) NOT NULL,

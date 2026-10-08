@@ -211,6 +211,59 @@ describe.skipIf(DATABASE_URL === undefined)(
         .expect(expected);
     }
 
+    interface SnapshotRow {
+      document_type: string;
+      document_number: string | null;
+      valuation_state: string;
+      valuation_basis: string;
+      total_value: string;
+    }
+
+    interface SnapshotMovementRow {
+      movement_id: string;
+      quantity: string;
+      base_quantity: string;
+      total_value: string;
+      unit_cost: string;
+      valuation_status: string;
+    }
+
+    /**
+     * The immutable snapshot of a document's posting, read straight from the
+     * table. This is the audit evidence an accountant would query, so it is
+     * asserted here rather than trusted from the API: it is also what turns a
+     * column-width or truncation defect into a readable failure instead of a
+     * bare 500 from PostgreSQL.
+     */
+    async function postingSnapshot(id: string): Promise<SnapshotRow | null> {
+      const client = await db();
+      const rows = await client.$queryRaw<
+        SnapshotRow[]
+      >`SELECT s.document_type, s.document_number, s.valuation_state,
+          s.valuation_basis, s.total_value
+        FROM inventory.inventory_accounting_posting_snapshots s
+        JOIN inventory.inventory_accounting_posting_operations o
+          ON o.id = s.operation_id
+        WHERE s.organization_id = ${organizationId} AND o.document_id = ${id}`;
+      return rows[0] ?? null;
+    }
+
+    async function postingSnapshotMovements(
+      id: string,
+    ): Promise<SnapshotMovementRow[]> {
+      const client = await db();
+      return client.$queryRaw<
+        SnapshotMovementRow[]
+      >`SELECT m.movement_id, m.quantity, m.base_quantity, m.total_value,
+          m.unit_cost, m.valuation_status
+        FROM inventory.inventory_accounting_posting_snapshot_movements m
+        JOIN inventory.inventory_accounting_posting_snapshots s
+          ON s.id = m.snapshot_id
+        JOIN inventory.inventory_accounting_posting_operations o
+          ON o.id = s.operation_id
+        WHERE m.organization_id = ${organizationId} AND o.document_id = ${id}`;
+    }
+
     async function postingTrail(
       id: string,
     ): Promise<Array<Record<string, unknown>>> {
@@ -566,6 +619,26 @@ describe.skipIf(DATABASE_URL === undefined)(
       const trail = await postingTrail(id);
       expect(trail).toHaveLength(1);
       expect(trail[0]!['state']).toBe('POSTED');
+
+      // The snapshot itself: the source document type must survive the column
+      // it is stored in (`inventory_receipt` is 17 characters), and the value
+      // must be the authoritative movement value, never a re-derivation.
+      const snapshot = await postingSnapshot(id);
+      expect(snapshot).not.toBe(null);
+      expect(snapshot!.document_type).toBe('inventory_receipt');
+      expect(snapshot!.document_number).toBe(posted.body.number);
+      expect(snapshot!.valuation_state).toBe('priced');
+      expect(Number(snapshot!.total_value)).toBeCloseTo(1250, 6);
+
+      const snapshotMovements = await postingSnapshotMovements(id);
+      expect(snapshotMovements).toHaveLength(1);
+      expect(Number(snapshotMovements[0]!.quantity)).toBeCloseTo(10, 6);
+      expect(Number(snapshotMovements[0]!.base_quantity)).toBeCloseTo(10, 6);
+      expect(Number(snapshotMovements[0]!.total_value)).toBeCloseTo(1250, 6);
+      // The derived per-unit figure is FROZEN here as audit evidence; the
+      // ledger keeps no second rounded truth of its own.
+      expect(Number(snapshotMovements[0]!.unit_cost)).toBeCloseTo(125, 6);
+      expect(snapshotMovements[0]!.valuation_status).toBe('valued');
       expect(trail[0]!['glPosted']).toBe(true);
       expect(trail[0]!['postingMode']).toBe('direct_final');
       expect(trail[0]!['accountingDocumentId']).toBe(accountingDocumentId);
