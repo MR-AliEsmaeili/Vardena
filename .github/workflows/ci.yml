@@ -135,7 +135,14 @@ jobs:
       - name: E2E tests (incl. live-DB suites)
         working-directory: backend
         timeout-minutes: 10
-        run: timeout 540 npm run test:e2e
+        # `pipefail` so a failing suite still fails the step through the pipe,
+        # and the tee'd log is what the "Upload backend logs on failure" step
+        # below actually collects: without a file on disk that step has always
+        # been a no-op, and a live-database failure was undiagnosable from CI.
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          timeout 540 npm run test:e2e 2>&1 | tee test-results/e2e.log
 
       - name: Upload backend logs on failure
         if: failure()
