@@ -266,6 +266,47 @@ describe.skipIf(DATABASE_URL === undefined)(
 
     const pricingBase = '/api/v1/inventory/pricing';
 
+    /**
+     * Assign a cost to ONE movement directly.
+     *
+     * This is the step that makes an ISSUE priceable at all: an issue carries
+     * no entered cost of its own, so its value is derived from the pool the
+     * pricing run averages, and that pool needs a costed receipt to exist.
+     */
+    async function assignCost(
+      movementId: string,
+      totalCost: string,
+    ): Promise<Record<string, unknown>> {
+      const response = await operator
+        .post(`/api/v1/inventory/valuation/movements/${movementId}/cost`)
+        .send({
+          organizationId,
+          operationKey: `c62-assign-${suffix}-${generateId()}`,
+          totalCost,
+          repricing: 'skip',
+        })
+        .expect(201);
+      return response.body as Record<string, unknown>;
+    }
+
+    /**
+     * The movement a document's first line currently owns.
+     *
+     * Read from the document's own lines rather than the movement list: the
+     * line is the authoritative owner of its movement, and the movement list
+     * has no document filter to scope it by.
+     */
+    async function firstLineMovementId(documentId: string): Promise<string> {
+      const response = await operator
+        .get(`${base}/${documentId}`)
+        .query({ organizationId })
+        .expect(200);
+      const lines = response.body.lines as Array<Record<string, unknown>>;
+      const movementId = lines[0]!['movementId'];
+      expect(typeof movementId).toBe('string');
+      return movementId as string;
+    }
+
     /** Price every movement of a warehouse up to `toDate`. */
     async function runPricing(
       warehouseId: string,
@@ -541,7 +582,15 @@ describe.skipIf(DATABASE_URL === undefined)(
         await client.$queryRaw`DELETE FROM inventory.inventory_balances WHERE organization_id = ${organizationId}`;
         await client.$queryRaw`DELETE FROM inventory.inventory_movements WHERE organization_id = ${organizationId}`;
         await client.$queryRaw`DELETE FROM inventory.inventory_valuation_states WHERE organization_id = ${organizationId}`;
+        // A pricing run's key outcomes RESTRICT the valuation run they name, so
+        // they go first; the runs themselves restrict the warehouse they were
+        // scoped to, so they go before the warehouses. The runs also reference
+        // each other (`reverses_run_id`), and PostgreSQL checks that per row,
+        // so a second pass clears whatever the first one left parented.
+        await client.$queryRaw`DELETE FROM inventory.inventory_pricing_run_key_outcomes WHERE organization_id = ${organizationId}`;
         await client.$queryRaw`DELETE FROM inventory.inventory_valuation_runs WHERE organization_id = ${organizationId}`;
+        await client.$queryRaw`DELETE FROM inventory.inventory_pricing_runs WHERE organization_id = ${organizationId}`;
+        await client.$queryRaw`DELETE FROM inventory.inventory_pricing_runs WHERE organization_id = ${organizationId}`;
         await client.$queryRaw`DELETE FROM inventory.item_valuation_methods WHERE organization_id = ${organizationId}`;
         await client.$queryRaw`DELETE FROM inventory.warehouses WHERE organization_id = ${organizationId}`;
         await client.$queryRaw`DELETE FROM inventory.items WHERE organization_id = ${organizationId}`;
@@ -854,13 +903,24 @@ describe.skipIf(DATABASE_URL === undefined)(
     // -----------------------------------------------------------------------
 
     it('refuses an ISSUE even though the warehouse and the mapping are fine', async () => {
-      // An issue needs stock to be operational at all, so the receipt that
-      // creates it is deliberately left un-posted to Accounting.
-      await finalize(
-        (await createPricedReceipt(directFinalWarehouseId, '50.00', '10'))[
-          'id'
-        ] as string,
-      );
+      // An issue carries no entered cost of its own, so it is only priceable
+      // from a costed pool: unpriced receipt, issue against it, cost assigned
+      // to the receipt movement, then the run. Without the run the document is
+      // UNPRICED and the refusal would be Inventory's own eligibility gate
+      // rather than Accounting's closure of the slice, which is the point here.
+      const stock = await operator
+        .post(base)
+        .send({
+          organizationId,
+          kind: 'receipt',
+          warehouseId: directFinalWarehouseId,
+          lines: [{ itemId, quantity: '10', unitId }],
+        })
+        .expect(201);
+      const stockId = stock.body.id as string;
+      await finalize(stockId);
+      await assignCost(await firstLineMovementId(stockId), '50');
+
       const response = await operator
         .post(base)
         .send({
@@ -872,11 +932,16 @@ describe.skipIf(DATABASE_URL === undefined)(
         .expect(201);
       const id = response.body.id as string;
       await finalize(id);
-      // An issue carries no entered cost: its value comes from a pricing run.
-      // Without one the document is UNPRICED, and the refusal would be
-      // Inventory's own eligibility gate rather than Accounting's closure of
-      // the slice — which is what this test is about.
-      await runPricing(directFinalWarehouseId, new Date());
+      await runPricing(directFinalWarehouseId, new Date(Date.now() + 60_000));
+
+      // Pin the premise: the issue must be PRICED, or the refusal below would be
+      // Inventory's own eligibility gate rather than Accounting's closure.
+      const priced = await operator
+        .get(`${base}/${id}`)
+        .query({ organizationId })
+        .expect(200);
+      expect(priced.body.valuationState).toBe('priced');
+      expect(priced.body.accountingEligible).toBe(true);
 
       const refused = await accountingPost(id);
       expect(refused.body.status).toBe('operational');
@@ -900,17 +965,25 @@ describe.skipIf(DATABASE_URL === undefined)(
       // Accounting mapping, so it can no longer build the premise. The rule is
       // also covered hermetically; this is the proof that a REAL crossing is
       // what enforces it.
-      const receipt = await createPricedReceipt(
-        directFinalWarehouseId,
-        '90.00',
-        '9',
-      );
-      const id = receipt['id'] as string;
+      // Unpriced on purpose: the blocker is built from the movements a run
+      // VALUED, so a receipt that already carries an entered cost gives the run
+      // nothing to value and nothing to block on.
+      const receipt = await operator
+        .post(base)
+        .send({
+          organizationId,
+          kind: 'receipt',
+          warehouseId: directFinalWarehouseId,
+          lines: [{ itemId, quantity: '9', unitId }],
+        })
+        .expect(201);
+      const id = receipt.body.id as string;
       await finalize(id);
       const run = await runPricing(
         directFinalWarehouseId,
         new Date(Date.now() + 300_000),
       );
+      expect(run['keysPriced']).toBe(1);
 
       await accountingPost(id);
 
