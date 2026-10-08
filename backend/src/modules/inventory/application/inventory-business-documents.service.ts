@@ -974,7 +974,10 @@ export class InventoryBusinessDocumentsService {
   async cancelAccountingPosting(
     id: string,
     organizationId: string,
-    input: { operationKey?: string | undefined } = {},
+    input: {
+      operationKey?: string | undefined;
+      expectedDocumentRevision?: string | undefined;
+    } = {},
   ): Promise<InventoryDocumentDto> {
     const outcome = await this.posting.cancelAccountingPosting(
       id,

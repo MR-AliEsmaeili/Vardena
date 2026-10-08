@@ -95,6 +95,10 @@ export interface CreateAccountingPostingOperationInput {
   documentVersion: string;
   postingMode: string;
   state: InventoryAccountingPostingState;
+  accountingDocumentId?: string | null | undefined;
+  accountingDocumentNumber?: string | null | undefined;
+  accountingDocumentPhase?: string | null | undefined;
+  accountingOperationKey?: string | null | undefined;
   actorUserId: string | null;
   actorPermission: string;
   now: Date;
@@ -181,25 +185,28 @@ export class InventoryAccountingPostingRepository {
   }
 
   /**
-   * The newest operation of one (organization, document, action) that has NOT
-   * durably answered yet — `REQUESTED`, `PENDING`, `FAILED` (an Accounting
-   * effect may already exist for it) or `DRAFT_CREATED` (an Accounting draft
-   * exists). While one exists, a SECOND operation under ANY key would be a
-   * second Accounting effect for the same document, so Phase 1 refuses it
-   * instead of racing it (the same-key retry never reaches this check: it is
-   * answered by `findByKey` first).
+   * The newest operation of one (organization, document) — ANY action — that
+   * has NOT durably answered yet: `REQUESTED`, `PENDING`, `FAILED` (an
+   * Accounting effect may already exist for it) or `DRAFT_CREATED` (an
+   * Accounting draft exists). While one exists, a SECOND operation under ANY
+   * key would be a second Accounting effect for the same document, so Phase 1
+   * refuses it instead of racing it (the same-key retry never reaches this
+   * check: it is answered by `findByKey` first).
+   *
+   * The one deliberate exception is a `DRAFT_CREATED` POSTING operation that
+   * a terminal cancellation operation has superseded: its draft is gone, the
+   * posting is history, and the document is re-postable. The caller decides
+   * that with `findLatestInState`.
    */
   async findInFlightForDocument(input: {
     organizationId: string;
     documentId: string;
-    action: string;
   }): Promise<InventoryAccountingPostingOperation | null> {
     const { inventoryAccountingPostingOperation } = await this.client();
     const row = await inventoryAccountingPostingOperation.findFirst({
       where: {
         organizationId: input.organizationId,
         documentId: input.documentId,
-        action: input.action,
         // Every non-terminal state: REQUESTED/PENDING mean Accounting has
         // not answered, FAILED means an effect may already exist, and
         // DRAFT_CREATED means an Accounting draft exists.
@@ -315,6 +322,26 @@ export class InventoryAccountingPostingRepository {
    * half-written ledger.
    */
   /**
+   * Write the durable operation row INSIDE the caller's transaction, WITHOUT
+   * a snapshot.
+   *
+   * Used by the CANCELLATION operation (`accounting_post:cancel`): its request
+   * is the operation identity itself (organization, document, action, posting
+   * operation key), so it is reconstructable from the row alone and needs no
+   * immutable snapshot — OD-05's snapshot exists to freeze the POSTING's
+   * valuation facts, which a cancellation never re-sends.
+   */
+  async createOperation(
+    tx: InventoryAccountingPostingTxClient,
+    operation: CreateAccountingPostingOperationInput,
+  ): Promise<InventoryAccountingPostingOperation> {
+    const created = await tx.inventoryAccountingPostingOperation.create({
+      data: toOperationCreate(operation),
+    });
+    return toOperationDomain(created);
+  }
+
+  /**
    * Write the durable operation and its immutable snapshot INSIDE the caller's
    * transaction.
    *
@@ -332,11 +359,9 @@ export class InventoryAccountingPostingRepository {
     operation: CreateAccountingPostingOperationInput,
     snapshot: RecordAccountingPostingSnapshotInput,
   ): Promise<InventoryAccountingPostingOperation> {
-    const created = await tx.inventoryAccountingPostingOperation.create({
-      data: toOperationCreate(operation),
-    });
+    const created = await this.createOperation(tx, operation);
     await this.writeSnapshot(tx, created.id, snapshot);
-    return toOperationDomain(created);
+    return created;
   }
 
   /**
@@ -427,10 +452,10 @@ function toOperationCreate(
     state: input.state,
     refusalCode: null,
     refusalReason: null,
-    accountingDocumentId: null,
-    accountingDocumentNumber: null,
-    accountingDocumentPhase: null,
-    accountingOperationKey: null,
+    accountingDocumentId: input.accountingDocumentId ?? null,
+    accountingDocumentNumber: input.accountingDocumentNumber ?? null,
+    accountingDocumentPhase: input.accountingDocumentPhase ?? null,
+    accountingOperationKey: input.accountingOperationKey ?? null,
     glPosted: false,
     replayed: false,
     actorUserId: input.actorUserId,

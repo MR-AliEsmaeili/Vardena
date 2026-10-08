@@ -303,6 +303,7 @@ export class InventoryBusinessDocumentsController {
   ): Promise<InventoryDocumentResponseDto> {
     return this.documents.cancelAccountingPosting(id, scope.organizationId, {
       operationKey: body.operationKey,
+      expectedDocumentRevision: body.expectedDocumentRevision,
     });
   }
 

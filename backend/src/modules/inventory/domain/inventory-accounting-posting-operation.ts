@@ -33,14 +33,20 @@
  *                     │            │       registered/finalized later)
  *                     ├──▶ POSTED  │
  *                     ├──▶ REFUSED (terminal)
- *                     └──▶ FAILED
- *                                  DRAFT_CREATED ──▶ CANCELLED (terminal)
+ *                     ├──▶ FAILED
+ *                     └──▶ CANCELLED (terminal) — the CANCELLATION
+ *                                  operation (`accounting_post:cancel`),
+ *                                  never the posting operation
  *
  *   - `REQUESTED` — the intent is durable; Accounting has not been invoked.
  *   - `PENDING`   — Accounting has been invoked and has not answered. A
  *                   caller whose request timed out MUST re-query this row and
  *                   never infer failure from the timeout (C62-OD-06).
  *   - `DRAFT_CREATED` — Accounting owns a draft. Inventory is NOT posted.
+ *                   For a POSTING operation this state is HISTORICAL once
+ *                   the draft is cancelled: the posting operation is never
+ *                   moved to `CANCELLED` — the cancellation is recorded as
+ *                   its own operation (action `accounting_post:cancel`).
  *   - `POSTED`   — Accounting reported a FINAL voucher; Inventory may now
  *                   become Accounting Posted. Terminal.
  *   - `REFUSED`  — a deterministic business refusal (not eligible, missing
@@ -61,6 +67,16 @@ export const MAX_ACCOUNTING_POSTING_ACTION_LENGTH = 32;
 /** The one action the C-62 slice implements (PO-03: an explicit, approved
  *  document command — never a raw movement or a repository call). */
 export const ACCOUNTING_POST_ACTION = 'accounting_post';
+
+/**
+ * The cancellation action (C62-OD-02/OD-06): cancelling the Accounting draft
+ * is a SEPARATE business effect from the posting that created it, so it has
+ * its OWN durable operation identity (`action` is part of the operation key
+ * space). The posting operation keeps its own history — it is never moved to
+ * `CANCELLED` — and the cancellation operation carries the cancellation's
+ * own request hash, actor and terminal state.
+ */
+export const ACCOUNTING_POST_CANCEL_ACTION = `${ACCOUNTING_POST_ACTION}:cancel`;
 
 export const INVENTORY_ACCOUNTING_POSTING_STATES = [
   'REQUESTED',
@@ -121,8 +137,12 @@ export const INVENTORY_ACCOUNTING_POSTING_TRANSITIONS: Readonly<
   >
 > = {
   REQUESTED: ['PENDING', 'REFUSED', 'FAILED'],
-  PENDING: ['DRAFT_CREATED', 'POSTED', 'REFUSED', 'FAILED'],
-  DRAFT_CREATED: ['POSTED', 'CANCELLED', 'FAILED'],
+  // PENDING -> CANCELLED is the CANCELLATION operation's success transition
+  // (`accounting_post:cancel`). A POSTING operation never takes it: its
+  // DRAFT_CREATED state is the historical evidence of the Accounting draft it
+  // produced, and a cancellation is recorded as its own operation.
+  PENDING: ['DRAFT_CREATED', 'POSTED', 'REFUSED', 'FAILED', 'CANCELLED'],
+  DRAFT_CREATED: ['POSTED', 'FAILED'],
   POSTED: [],
   REFUSED: [],
   FAILED: ['PENDING'],

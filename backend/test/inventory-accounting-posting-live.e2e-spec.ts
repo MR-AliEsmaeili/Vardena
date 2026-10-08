@@ -361,6 +361,7 @@ describe.skipIf(DATABASE_URL === undefined)(
     /** The document's newest durable posting operation, read from the table. */
     async function postingOperation(
       id: string,
+      action = 'accounting_post',
     ): Promise<PostingOperationRow | null> {
       const client = await db();
       const rows = await client.$queryRaw<
@@ -369,6 +370,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           gl_posted
         FROM inventory.inventory_accounting_posting_operations
         WHERE organization_id = ${organizationId} AND document_id = ${id}
+          AND action = ${action}
         ORDER BY requested_at DESC, created_at DESC`;
       return rows[0] ?? null;
     }
@@ -378,14 +380,18 @@ describe.skipIf(DATABASE_URL === undefined)(
      * no recorded result. A fixture write, scoped to this test's own rows —
      * the honest durable state after a crash between Phase 2 and Phase 3.
      */
-    async function revertOperationToPending(id: string): Promise<void> {
+    async function revertOperationToPending(
+      id: string,
+      action = 'accounting_post',
+    ): Promise<void> {
       const client = await db();
       await client.$queryRaw`UPDATE inventory.inventory_accounting_posting_operations
         SET state = 'PENDING', completed_at = NULL,
             accounting_document_id = NULL, accounting_document_number = NULL,
             accounting_document_phase = NULL, accounting_operation_key = NULL,
             gl_posted = false, replayed = false, updated_at = now()
-        WHERE organization_id = ${organizationId} AND document_id = ${id}`;
+        WHERE organization_id = ${organizationId} AND document_id = ${id}
+          AND action = ${action}`;
     }
 
     /**
@@ -979,6 +985,16 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(afterCancel.some((row) => row.id === accountingDocumentId)).toBe(
         false,
       );
+
+      // The cancellation is its OWN durable operation: the posting operation
+      // stays DRAFT_CREATED as historical evidence, and the cancellation
+      // operation is CANCELLED.
+      const trailAfterCancel = await postingTrail(id);
+      expect(trailAfterCancel).toHaveLength(2);
+      expect(trailAfterCancel[0]!['action']).toBe('accounting_post:cancel');
+      expect(trailAfterCancel[0]!['state']).toBe('CANCELLED');
+      expect(trailAfterCancel[1]!['action']).toBe('accounting_post');
+      expect(trailAfterCancel[1]!['state']).toBe('DRAFT_CREATED');
     }, 30_000);
 
     it('refuses to cancel anything but an Accounting draft', async () => {
@@ -1386,7 +1402,12 @@ describe.skipIf(DATABASE_URL === undefined)(
         .send({})
         .expect(200);
       expect(cancelled.body.accountingPostingState).toBe('draft_cancelled');
-      expect((await postingOperation(id))!.state).toBe('CANCELLED');
+      expect(
+        (await postingOperation(id, 'accounting_post:cancel'))!.state,
+      ).toBe('CANCELLED');
+      expect((await postingOperation(id, 'accounting_post'))!.state).toBe(
+        'DRAFT_CREATED',
+      );
       expect(await accountingDocumentsForSource(id)).toHaveLength(0);
     }, 30_000);
 
@@ -1402,14 +1423,13 @@ describe.skipIf(DATABASE_URL === undefined)(
         .send({})
         .expect(200);
       expect(cancelled.body.accountingPostingState).toBe('draft_cancelled');
-      expect((await postingOperation(id))!.state).toBe('CANCELLED');
+      expect(
+        (await postingOperation(id, 'accounting_post:cancel'))!.state,
+      ).toBe('CANCELLED');
 
       // Crash between the document write and the operation write: the
-      // document says draft_cancelled, the operation still says DRAFT_CREATED.
-      const client = await db();
-      await client.$queryRaw`UPDATE inventory.inventory_accounting_posting_operations
-        SET state = 'DRAFT_CREATED', completed_at = NULL, updated_at = now()
-        WHERE organization_id = ${organizationId} AND document_id = ${id}`;
+      // document says draft_cancelled, the cancellation operation is still PENDING.
+      await revertOperationToPending(id, 'accounting_post:cancel');
 
       // The retry converges the operation onto the document's durable fact
       // without touching Accounting again.
@@ -1419,7 +1439,12 @@ describe.skipIf(DATABASE_URL === undefined)(
         .send({})
         .expect(200);
       expect(retried.body.accountingPostingState).toBe('draft_cancelled');
-      expect((await postingOperation(id))!.state).toBe('CANCELLED');
+      expect(
+        (await postingOperation(id, 'accounting_post:cancel'))!.state,
+      ).toBe('CANCELLED');
+      expect((await postingOperation(id, 'accounting_post'))!.state).toBe(
+        'DRAFT_CREATED',
+      );
 
       // A further retry replays the converged success answer.
       const replayed = await operator
@@ -1428,7 +1453,9 @@ describe.skipIf(DATABASE_URL === undefined)(
         .send({})
         .expect(200);
       expect(replayed.body.accountingPostingState).toBe('draft_cancelled');
-      expect((await postingOperation(id))!.state).toBe('CANCELLED');
+      expect(
+        (await postingOperation(id, 'accounting_post:cancel'))!.state,
+      ).toBe('CANCELLED');
     }, 30_000);
   },
 );

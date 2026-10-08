@@ -919,7 +919,7 @@ function fakeAccountingPosting(
         action: 'accounting_post:cancel',
         operationKey: 'inv-acct:accounting_post:cancel:create',
         state: 'draft_cancelled' as const,
-        outcome: 'refused' as const,
+        outcome: 'draft_cancelled' as const,
         postingMode: 'draft' as const,
         replayed: false,
         accountingDocumentId: current.accountingDocumentId,

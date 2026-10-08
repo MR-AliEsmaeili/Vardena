@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ACCOUNTING_POST_ACTION,
+  ACCOUNTING_POST_CANCEL_ACTION,
   INVENTORY_ACCOUNTING_POSTING_STATES,
   INVENTORY_ACCOUNTING_POSTING_TRANSITIONS,
   INVENTORY_DOCUMENT_ACCOUNTING_POSTING_STATES,
@@ -20,6 +21,7 @@ import {
 } from './warehouse-posting-mode.js';
 import {
   MAX_ACCOUNTING_POSTING_OPERATION_KEY_LENGTH,
+  buildAccountingPostingCancellationHash,
   buildAccountingPostingRequestHash,
   deriveAccountingOperationKey,
   deriveUnitCost,
@@ -142,13 +144,26 @@ describe('C-62 posting operation states', () => {
       canTransitionAccountingPostingState('PENDING', 'DRAFT_CREATED'),
     ).toBe(true);
     expect(canTransitionAccountingPostingState('PENDING', 'POSTED')).toBe(true);
+    expect(canTransitionAccountingPostingState('PENDING', 'CANCELLED')).toBe(
+      true,
+    );
     expect(canTransitionAccountingPostingState('DRAFT_CREATED', 'POSTED')).toBe(
       true,
     );
+    expect(canTransitionAccountingPostingState('FAILED', 'PENDING')).toBe(true);
+  });
+
+  it('never lets a posting operation become CANCELLED', () => {
+    // A cancellation is its OWN durable operation (action
+    // `accounting_post:cancel`, PENDING → CANCELLED). The posting operation's
+    // DRAFT_CREATED state is the historical evidence of the draft it produced
+    // and is never overwritten by a cancellation.
     expect(
       canTransitionAccountingPostingState('DRAFT_CREATED', 'CANCELLED'),
-    ).toBe(true);
-    expect(canTransitionAccountingPostingState('FAILED', 'PENDING')).toBe(true);
+    ).toBe(false);
+    expect(() =>
+      assertAccountingPostingTransition('DRAFT_CREATED', 'CANCELLED'),
+    ).toThrow(/cannot move from "DRAFT_CREATED" to "CANCELLED"/);
   });
 
   it('refuses every transition out of a terminal state', () => {
@@ -333,6 +348,43 @@ describe('C-62 canonical request hash', () => {
         request({ movements: [movement({ value: ' 100.00 ' })] }),
       ),
     );
+  });
+});
+
+describe('C-62 cancellation request hash', () => {
+  const cancellation = (
+    overrides: Partial<
+      Parameters<typeof buildAccountingPostingCancellationHash>[0]
+    > = {},
+  ): Parameters<typeof buildAccountingPostingCancellationHash>[0] => ({
+    organizationId: 'org-1',
+    sourceDocumentId: 'doc-1',
+    action: ACCOUNTING_POST_CANCEL_ACTION,
+    postingOperationKey: 'post-key-1',
+    documentVersion: '2026-10-08T00:00:00.000Z',
+    ...overrides,
+  });
+
+  it('hashes the same cancellation intent identically', () => {
+    expect(buildAccountingPostingCancellationHash(cancellation())).toBe(
+      buildAccountingPostingCancellationHash(cancellation()),
+    );
+  });
+
+  it('changes when any part of the intent changes', () => {
+    const base = buildAccountingPostingCancellationHash(cancellation());
+    const cases = [
+      cancellation({ organizationId: 'org-2' }),
+      cancellation({ sourceDocumentId: 'doc-2' }),
+      cancellation({ action: 'accounting_post' }),
+      cancellation({ documentVersion: '2026-10-08T01:00:00.000Z' }),
+      // The same document whose LIVE posting operation moved on (a re-post
+      // after a cancelled draft) is a different cancellation intent.
+      cancellation({ postingOperationKey: 'post-key-2' }),
+    ];
+    for (const changed of cases) {
+      expect(buildAccountingPostingCancellationHash(changed)).not.toBe(base);
+    }
   });
 });
 

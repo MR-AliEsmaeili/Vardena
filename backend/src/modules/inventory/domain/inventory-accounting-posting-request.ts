@@ -272,6 +272,45 @@ export function canonicalRequestFromSnapshot(
 }
 
 /**
+ * The canonical cancellation request (C62-OD-06 for `accounting_post:cancel`).
+ *
+ * The hash covers the meaningful, immutable cancellation intent: the
+ * organization, the source document, the action, and the posting operation
+ * whose Accounting draft the cancellation acts on. It contains no volatile
+ * value (no clock, no generated id): the same cancellation intent hashes
+ * identically, and a different one — a different document, or the same
+ * document whose live posting operation moved on — hashes differently, so a
+ * reused cancellation key conflicts instead of silently answering for a draft
+ * it never named.
+ */
+export interface AccountingPostingCancellationRequest {
+  organizationId: string;
+  sourceDocumentId: string;
+  action: string;
+  /** The posting operation whose Accounting draft this cancellation acts on. */
+  postingOperationKey: string;
+  /** The source document revision at cancellation time. */
+  documentVersion: string;
+}
+
+/** sha256 over the canonical cancellation request, in a fixed key order. */
+export function buildAccountingPostingCancellationHash(
+  request: AccountingPostingCancellationRequest,
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        organizationId: request.organizationId,
+        sourceDocumentId: request.sourceDocumentId,
+        action: request.action,
+        postingOperationKey: request.postingOperationKey,
+        documentVersion: request.documentVersion,
+      }),
+    )
+    .digest('hex');
+}
+
+/**
  * Derive the per-step operation keys Accounting's OWN idempotency ledger is
  * written under (`document_create`, `document_issue`, `document_finalize`).
  *

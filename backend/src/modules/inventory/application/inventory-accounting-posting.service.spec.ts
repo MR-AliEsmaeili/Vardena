@@ -25,6 +25,11 @@ import type { InventoryValuationService } from './inventory-valuation.service.js
 import type { InventoryBusinessDocument } from '../domain/inventory-business-document.js';
 import type { InventoryMovement } from '../domain/inventory-movement.js';
 import type { Warehouse } from '../domain/warehouse.js';
+import {
+  ACCOUNTING_POST_ACTION,
+  ACCOUNTING_POST_CANCEL_ACTION,
+} from '../domain/inventory-accounting-posting-operation.js';
+import { buildAccountingPostingCancellationHash } from '../domain/inventory-accounting-posting-request.js';
 import { InventoryAccountingPostingService } from './inventory-accounting-posting.service.js';
 
 /**
@@ -196,6 +201,41 @@ function fakePostingRepository(world: FakeWorld) {
         row.action === input.action &&
         row.operationKey === input.operationKey,
     ) ?? null;
+
+  const createOp = (operation: CreateAccountingPostingOperationInput) => {
+    world.blindFindByKey = false;
+    if (findOperation(operation) !== null) {
+      throw uniqueViolation();
+    }
+    const row: InventoryAccountingPostingOperation = {
+      id: `op-${++world.serial}`,
+      organizationId: operation.organizationId,
+      documentId: operation.documentId,
+      action: operation.action,
+      operationKey: operation.operationKey,
+      requestHash: operation.requestHash,
+      documentVersion: operation.documentVersion,
+      postingMode: operation.postingMode,
+      state: operation.state,
+      refusalCode: null,
+      refusalReason: null,
+      accountingDocumentId: operation.accountingDocumentId ?? null,
+      accountingDocumentNumber: operation.accountingDocumentNumber ?? null,
+      accountingDocumentPhase: operation.accountingDocumentPhase ?? null,
+      accountingOperationKey: operation.accountingOperationKey ?? null,
+      glPosted: false,
+      replayed: false,
+      actorUserId: operation.actorUserId,
+      actorPermission: operation.actorPermission,
+      requestedAt: operation.now,
+      completedAt: null,
+      createdAt: operation.now,
+      updatedAt: operation.now,
+    };
+    world.operations.push(row);
+    return row;
+  };
+
   return {
     async findByKey(
       input: {
@@ -212,7 +252,6 @@ function fakePostingRepository(world: FakeWorld) {
     async findInFlightForDocument(input: {
       organizationId: string;
       documentId: string;
-      action: string;
     }) {
       if (world.blindFindByKey) return null;
       const TERMINAL = ['POSTED', 'REFUSED', 'CANCELLED'];
@@ -221,7 +260,6 @@ function fakePostingRepository(world: FakeWorld) {
           (row) =>
             row.organizationId === input.organizationId &&
             row.documentId === input.documentId &&
-            row.action === input.action &&
             !TERMINAL.includes(row.state),
         ) ?? null
       );
@@ -257,43 +295,18 @@ function fakePostingRepository(world: FakeWorld) {
         ? snapshot
         : null;
     },
+    async createOperation(
+      _tx: unknown,
+      operation: CreateAccountingPostingOperationInput,
+    ) {
+      return createOp(operation);
+    },
     async createOperationWithSnapshot(
       _tx: unknown,
       operation: CreateAccountingPostingOperationInput,
       snapshot: RecordAccountingPostingSnapshotInput,
     ) {
-      // The insert attempt ends any test-controlled read blindness: from here
-      // on, reads see committed rows again.
-      world.blindFindByKey = false;
-      if (findOperation(operation) !== null) {
-        throw uniqueViolation();
-      }
-      const row: InventoryAccountingPostingOperation = {
-        id: `op-${++world.serial}`,
-        organizationId: operation.organizationId,
-        documentId: operation.documentId,
-        action: operation.action,
-        operationKey: operation.operationKey,
-        requestHash: operation.requestHash,
-        documentVersion: operation.documentVersion,
-        postingMode: operation.postingMode,
-        state: operation.state,
-        refusalCode: null,
-        refusalReason: null,
-        accountingDocumentId: null,
-        accountingDocumentNumber: null,
-        accountingDocumentPhase: null,
-        accountingOperationKey: null,
-        glPosted: false,
-        replayed: false,
-        actorUserId: operation.actorUserId,
-        actorPermission: operation.actorPermission,
-        requestedAt: operation.now,
-        completedAt: null,
-        createdAt: operation.now,
-        updatedAt: operation.now,
-      };
-      world.operations.push(row);
+      const row = createOp(operation);
       world.snapshots.set(row.id, {
         id: `snap-${row.id}`,
         organizationId: snapshot.organizationId,
@@ -767,9 +780,20 @@ function revertDocumentProjection(world: FakeWorld, documentId: string) {
 
 const operationOf = (world: FakeWorld, documentId: string) => {
   const operation = world.operations.find(
-    (row) => row.documentId === documentId,
+    (row) =>
+      row.documentId === documentId && row.action === ACCOUNTING_POST_ACTION,
   );
-  if (operation === undefined) throw new Error('no operation');
+  if (operation === undefined) throw new Error('no posting operation');
+  return operation;
+};
+
+const cancellationOperationOf = (world: FakeWorld, documentId: string) => {
+  const operation = world.operations.find(
+    (row) =>
+      row.documentId === documentId &&
+      row.action === ACCOUNTING_POST_CANCEL_ACTION,
+  );
+  if (operation === undefined) throw new Error('no cancellation operation');
   return operation;
 };
 
@@ -1277,119 +1301,531 @@ describe('C-62 OD-01 durable recovery (hermetic)', () => {
     expect(operationOf(world, documentId).state).toBe('PENDING');
     expect(world.accountingDocuments).toHaveLength(0);
   });
+
+  it('retry after mutable Inventory state changes still uses immutable posting snapshot', async () => {
+    const world = createWorld();
+    const service = buildService(world);
+    const { documentId, movementId } = seedReceipt(world, {
+      cost: '100.00',
+      quantity: '10.0000',
+    });
+
+    // Initial attempt crashes before Accounting is called
+    world.accountingMode = 'crash';
+    await expect(
+      asUser(() =>
+        service.requestAccountingPosting(documentId, ORG, {
+          operationKey: 'key-1',
+        }),
+      ),
+    ).rejects.toThrow('simulated crash');
+    expect(operationOf(world, documentId).state).toBe('PENDING');
+
+    // Mutable current Inventory state changes after the initial crash:
+    // e.g. movement cost or entered cost is mutated in current state to 500.00
+    const movement = world.movements.get(movementId)!;
+    movement.totalCost = '500.00';
+
+    // Retry the same operation:
+    world.accountingMode = 'ok';
+    const recovered = await asUser(() =>
+      service.requestAccountingPosting(documentId, ORG, {
+        operationKey: 'key-1',
+      }),
+    );
+
+    // Accounting request MUST still contain: quantity = 10, value = 100 from snapshot!
+    const lastAccountingCall = world.accountingCalls.at(-1);
+    expect(lastAccountingCall).toBeDefined();
+    expect(lastAccountingCall!.valuation.totalValue).toBe('100');
+    expect(lastAccountingCall!.movements[0]!.value).toBe('100.00');
+
+    expect(recovered.outcome).toBe('final_posted');
+    expect(operationOf(world, documentId).state).toBe('POSTED');
+    expect(documentOf(world, documentId).status).toBe('accounting_posted');
+  });
 });
 
 // ---- cancellation -----------------------------------------------------------
 
 describe('C-62 draft cancellation (hermetic)', () => {
-  it('answers a confirmed cancellation as a success, never as refused', async () => {
+  it('creates a separate durable cancellation operation and does not mutate the original posting operation identity', async () => {
     const world = createWorld();
     const service = buildService(world);
     const { documentId } = seedReceipt(world, { mode: 'draft' });
 
+    const postKey = 'post-draft-key-1';
+    const cancelKey = 'cancel-draft-key-1';
     await asUser(() =>
       service.requestAccountingPosting(documentId, ORG, {
-        operationKey: 'key-1',
+        operationKey: postKey,
       }),
     );
+
     const cancelled = await asUser(() =>
-      service.cancelAccountingPosting(documentId, ORG, {}),
+      service.cancelAccountingPosting(documentId, ORG, {
+        operationKey: cancelKey,
+      }),
     );
 
     expect(cancelled.outcome).toBe('draft_cancelled');
     expect(cancelled.state).toBe('draft_cancelled');
-    expect(cancelled.replayed).toBe(false);
-    expect(cancelled.refusalCode).toBe(null);
-    expect(operationOf(world, documentId).state).toBe('CANCELLED');
+
+    // Exactly TWO distinct operations for this document:
+    const documentOps = world.operations.filter(
+      (op) => op.documentId === documentId,
+    );
+    expect(documentOps).toHaveLength(2);
+
+    // 1. Posting operation retains historical identity (DRAFT_CREATED, not mutated to CANCELLED!):
+    const postingOp = operationOf(world, documentId);
+    expect(postingOp.action).toBe(ACCOUNTING_POST_ACTION);
+    expect(postingOp.operationKey).toBe(postKey);
+    expect(postingOp.state).toBe('DRAFT_CREATED');
+    expect(postingOp.accountingDocumentId).toBeTruthy();
+
+    // 2. Cancellation operation is separate, with action 'accounting_post:cancel' and state 'CANCELLED':
+    const cancelOp = cancellationOperationOf(world, documentId);
+    expect(cancelOp.action).toBe(ACCOUNTING_POST_CANCEL_ACTION);
+    expect(cancelOp.operationKey).toBe(cancelKey);
+    expect(cancelOp.state).toBe('CANCELLED');
+    expect(cancelOp.accountingOperationKey).toBe(postKey);
+
+    // 3. Document has projected state 'draft_cancelled':
     expect(documentOf(world, documentId).accountingPostingState).toBe(
       'draft_cancelled',
     );
-    expect(world.accountingDocuments).toHaveLength(0);
-    expect(world.cancelCalls).toHaveLength(1);
   });
 
-  it('converges when the draft is already gone but the document still says draft_created', async () => {
+  it('same cancellation key + same request replays', async () => {
     const world = createWorld();
     const service = buildService(world);
     const { documentId } = seedReceipt(world, { mode: 'draft' });
 
     await asUser(() =>
       service.requestAccountingPosting(documentId, ORG, {
-        operationKey: 'key-1',
+        operationKey: 'post-1',
       }),
     );
-    // Crash after Accounting deleted the draft, before Inventory wrote: the
-    // Accounting document is gone, the ledger row is kept (as a real
-    // pre-final deletion keeps it).
-    const operation = operationOf(world, documentId);
-    const entry = world.accountingLedger.get(
-      `${ORG}:${operation.operationKey}`,
+
+    const first = await asUser(() =>
+      service.cancelAccountingPosting(documentId, ORG, {
+        operationKey: 'cancel-1',
+      }),
     );
-    if (entry === undefined) throw new Error('no ledger entry');
-    world.accountingDocuments = world.accountingDocuments.filter(
-      (document) => document.id !== entry.documentId,
+    const second = await asUser(() =>
+      service.cancelAccountingPosting(documentId, ORG, {
+        operationKey: 'cancel-1',
+      }),
     );
+
+    expect(first.outcome).toBe('draft_cancelled');
+    expect(second.outcome).toBe('draft_cancelled');
+    expect(second.replayed).toBe(true);
+    // Accounting cancel was called only once:
+    expect(world.cancelCalls).toHaveLength(1);
+    expect(cancellationOperationOf(world, documentId).replayed).toBe(true);
+  });
+
+  it('same cancellation key + different request returns 409', async () => {
+    const world = createWorld();
+    const service = buildService(world);
+    const { documentId } = seedReceipt(world, { mode: 'draft' });
+
+    await asUser(() =>
+      service.requestAccountingPosting(documentId, ORG, {
+        operationKey: 'post-1',
+      }),
+    );
+
+    await asUser(() =>
+      service.cancelAccountingPosting(documentId, ORG, {
+        operationKey: 'cancel-1',
+      }),
+    );
+
+    // Retry with an unexpected expectedDocumentRevision returns 409 Conflict:
+    await expectConflict(
+      asUser(() =>
+        service.cancelAccountingPosting(documentId, ORG, {
+          operationKey: 'cancel-1',
+          expectedDocumentRevision: 'different-revision-than-frozen',
+        }),
+      ),
+    );
+  });
+
+  it('concurrent same-key same-cancellation-request produces one effect', async () => {
+    const world = createWorld();
+    const service = buildService(world);
+    const { documentId } = seedReceipt(world, { mode: 'draft' });
+
+    await asUser(() =>
+      service.requestAccountingPosting(documentId, ORG, {
+        operationKey: 'post-1',
+      }),
+    );
+
+    const [first, second] = await Promise.all([
+      asUser(() =>
+        service.cancelAccountingPosting(documentId, ORG, {
+          operationKey: 'cancel-race-1',
+        }),
+      ),
+      asUser(() =>
+        service.cancelAccountingPosting(documentId, ORG, {
+          operationKey: 'cancel-race-1',
+        }),
+      ),
+    ]);
+
+    expect(first.outcome).toBe('draft_cancelled');
+    expect(second.outcome).toBe('draft_cancelled');
+    const cancelOps = world.operations.filter(
+      (op) =>
+        op.documentId === documentId &&
+        op.action === ACCOUNTING_POST_CANCEL_ACTION,
+    );
+    expect(cancelOps).toHaveLength(1);
+    expect(cancelOps[0]!.state).toBe('CANCELLED');
+    expect(world.accountingDocuments).toHaveLength(0);
+    expect(documentOf(world, documentId).accountingPostingState).toBe(
+      'draft_cancelled',
+    );
+  });
+
+  it('concurrent same-key different-cancellation-request produces one winner and one 409', async () => {
+    const world = createWorld();
+    const service = buildService(world);
+    const { documentId } = seedReceipt(world, { mode: 'draft' });
+
+    await asUser(() =>
+      service.requestAccountingPosting(documentId, ORG, {
+        operationKey: 'post-1',
+      }),
+    );
+
+    const currentRev = documentOf(world, documentId).updatedAt.toISOString();
+
+    const results = await Promise.allSettled([
+      asUser(() =>
+        service.cancelAccountingPosting(documentId, ORG, {
+          operationKey: 'cancel-race-2',
+          expectedDocumentRevision: currentRev,
+        }),
+      ),
+      asUser(() =>
+        service.cancelAccountingPosting(documentId, ORG, {
+          operationKey: 'cancel-race-2',
+          expectedDocumentRevision: 'outdated-revision',
+        }),
+      ),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((fulfilled[0] as PromiseFulfilledResult<any>).value.outcome).toBe(
+      'draft_cancelled',
+    );
+    expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+      code: 'Conflict',
+    });
+  });
+
+  it('recovers PENDING cancellation before Accounting effect', async () => {
+    const world = createWorld();
+    const service = buildService(world);
+    const { documentId } = seedReceipt(world, { mode: 'draft' });
+
+    await asUser(() =>
+      service.requestAccountingPosting(documentId, ORG, {
+        operationKey: 'post-1',
+      }),
+    );
+
+    // Initial cancellation: write Phase 1 intent, then crash before Accounting call
+    const postOp = operationOf(world, documentId);
+    const cancelKey = 'cancel-pending-1';
+    const cancellationRequest = {
+      organizationId: ORG,
+      sourceDocumentId: documentId,
+      action: ACCOUNTING_POST_CANCEL_ACTION,
+      postingOperationKey: postOp.operationKey,
+      documentVersion: documentOf(world, documentId).updatedAt.toISOString(),
+    };
+    const requestHash =
+      buildAccountingPostingCancellationHash(cancellationRequest);
+    world.operations.push({
+      id: `op-cancel-${++world.serial}`,
+      organizationId: ORG,
+      documentId,
+      action: ACCOUNTING_POST_CANCEL_ACTION,
+      operationKey: cancelKey,
+      requestHash,
+      documentVersion: cancellationRequest.documentVersion,
+      postingMode: 'draft',
+      state: 'PENDING',
+      refusalCode: null,
+      refusalReason: null,
+      accountingDocumentId: documentOf(world, documentId).accountingDocumentId,
+      accountingDocumentNumber: null,
+      accountingDocumentPhase: 'draft',
+      accountingOperationKey: postOp.operationKey,
+      glPosted: false,
+      replayed: false,
+      actorUserId: USER,
+      actorPermission: 'Inventory.Document.AccountingPost',
+      requestedAt: new Date(),
+      completedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    expect(world.cancelCalls).toHaveLength(0);
     expect(documentOf(world, documentId).accountingPostingState).toBe(
       'draft_created',
     );
 
-    // The retry converges WITHOUT a second Accounting deletion: the contract
-    // answers cancelled:true because its ledger holds no document any more.
-    const cancelled = await asUser(() =>
-      service.cancelAccountingPosting(documentId, ORG, {}),
+    // Retry recovery:
+    const recovered = await asUser(() =>
+      service.cancelAccountingPosting(documentId, ORG, {
+        operationKey: cancelKey,
+      }),
     );
 
-    expect(cancelled.outcome).toBe('draft_cancelled');
-    expect(cancelled.state).toBe('draft_cancelled');
+    expect(recovered.outcome).toBe('draft_cancelled');
     expect(world.cancelCalls).toHaveLength(1);
-    expect(operationOf(world, documentId).state).toBe('CANCELLED');
+    expect(cancellationOperationOf(world, documentId).state).toBe('CANCELLED');
     expect(documentOf(world, documentId).accountingPostingState).toBe(
       'draft_cancelled',
     );
   });
 
-  it('converges when the document says draft_cancelled but the operation update was interrupted', async () => {
+  it('recovers PENDING cancellation after Accounting draft was already deleted', async () => {
     const world = createWorld();
     const service = buildService(world);
     const { documentId } = seedReceipt(world, { mode: 'draft' });
 
     await asUser(() =>
       service.requestAccountingPosting(documentId, ORG, {
-        operationKey: 'key-1',
+        operationKey: 'post-1',
       }),
     );
-    await asUser(() => service.cancelAccountingPosting(documentId, ORG, {}));
-    expect(operationOf(world, documentId).state).toBe('CANCELLED');
 
-    // Crash between the document write and the operation write: the document
-    // says draft_cancelled, the operation still says DRAFT_CREATED.
-    const operation = operationOf(world, documentId);
-    Object.assign(operation, {
-      state: 'DRAFT_CREATED',
+    // Accounting draft is already deleted in Accounting:
+    const postOp = operationOf(world, documentId);
+    const draftId = documentOf(world, documentId).accountingDocumentId;
+    world.accountingDocuments = world.accountingDocuments.filter(
+      (d) => d.id !== draftId,
+    );
+
+    // Cancellation operation is PENDING:
+    const cancelKey = 'cancel-already-deleted-1';
+    const cancellationRequest = {
+      organizationId: ORG,
+      sourceDocumentId: documentId,
+      action: ACCOUNTING_POST_CANCEL_ACTION,
+      postingOperationKey: postOp.operationKey,
+      documentVersion: documentOf(world, documentId).updatedAt.toISOString(),
+    };
+    const requestHash =
+      buildAccountingPostingCancellationHash(cancellationRequest);
+    world.operations.push({
+      id: `op-cancel-${++world.serial}`,
+      organizationId: ORG,
+      documentId,
+      action: ACCOUNTING_POST_CANCEL_ACTION,
+      operationKey: cancelKey,
+      requestHash,
+      documentVersion: cancellationRequest.documentVersion,
+      postingMode: 'draft',
+      state: 'PENDING',
+      refusalCode: null,
+      refusalReason: null,
+      accountingDocumentId: draftId,
+      accountingDocumentNumber: null,
+      accountingDocumentPhase: 'draft',
+      accountingOperationKey: postOp.operationKey,
+      glPosted: false,
+      replayed: false,
+      actorUserId: USER,
+      actorPermission: 'Inventory.Document.AccountingPost',
+      requestedAt: new Date(),
       completedAt: null,
+      createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    const retried = await asUser(() =>
-      service.cancelAccountingPosting(documentId, ORG, {}),
+    const recovered = await asUser(() =>
+      service.cancelAccountingPosting(documentId, ORG, {
+        operationKey: cancelKey,
+      }),
     );
 
-    // The retry converges the operation onto the document's durable fact
-    // WITHOUT touching Accounting again.
-    expect(retried.outcome).toBe('draft_cancelled');
-    expect(retried.replayed).toBe(true);
-    expect(world.cancelCalls).toHaveLength(1);
-    expect(operationOf(world, documentId).state).toBe('CANCELLED');
+    expect(recovered.outcome).toBe('draft_cancelled');
+    expect(cancellationOperationOf(world, documentId).state).toBe('CANCELLED');
     expect(documentOf(world, documentId).accountingPostingState).toBe(
       'draft_cancelled',
     );
+  });
 
-    // A further retry replays the converged success answer.
+  it('converges when inventory projection was already draft_cancelled', async () => {
+    const world = createWorld();
+    const service = buildService(world);
+    const { documentId } = seedReceipt(world, { mode: 'draft' });
+
+    await asUser(() =>
+      service.requestAccountingPosting(documentId, ORG, {
+        operationKey: 'post-1',
+      }),
+    );
+
+    // Crash after document was updated to draft_cancelled, before cancellation op moved to CANCELLED:
+    const postOp = operationOf(world, documentId);
+    const cancelKey = 'cancel-conv-proj-1';
+    const cancellationRequest = {
+      organizationId: ORG,
+      sourceDocumentId: documentId,
+      action: ACCOUNTING_POST_CANCEL_ACTION,
+      postingOperationKey: postOp.operationKey,
+      documentVersion: documentOf(world, documentId).updatedAt.toISOString(),
+    };
+    const requestHash =
+      buildAccountingPostingCancellationHash(cancellationRequest);
+    const cancelOpRow = {
+      id: `op-cancel-${++world.serial}`,
+      organizationId: ORG,
+      documentId,
+      action: ACCOUNTING_POST_CANCEL_ACTION,
+      operationKey: cancelKey,
+      requestHash,
+      documentVersion: cancellationRequest.documentVersion,
+      postingMode: 'draft',
+      state: 'PENDING' as const,
+      refusalCode: null,
+      refusalReason: null,
+      accountingDocumentId: documentOf(world, documentId).accountingDocumentId,
+      accountingDocumentNumber: null,
+      accountingDocumentPhase: 'draft',
+      accountingOperationKey: postOp.operationKey,
+      glPosted: false,
+      replayed: false,
+      actorUserId: USER,
+      actorPermission: 'Inventory.Document.AccountingPost',
+      requestedAt: new Date(),
+      completedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    world.operations.push(cancelOpRow);
+    documentOf(world, documentId).accountingPostingState = 'draft_cancelled';
+
+    const recovered = await asUser(() =>
+      service.cancelAccountingPosting(documentId, ORG, {
+        operationKey: cancelKey,
+      }),
+    );
+
+    expect(recovered.outcome).toBe('draft_cancelled');
+    expect(cancellationOperationOf(world, documentId).state).toBe('CANCELLED');
+    expect(world.cancelCalls).toHaveLength(0); // already gone, projection already done!
+  });
+
+  it('converges when cancellation operation is terminal but inventory projection was interrupted', async () => {
+    const world = createWorld();
+    const service = buildService(world);
+    const { documentId } = seedReceipt(world, { mode: 'draft' });
+
+    await asUser(() =>
+      service.requestAccountingPosting(documentId, ORG, {
+        operationKey: 'post-1',
+      }),
+    );
+
+    // Cancellation operation updated to CANCELLED, but document projection was interrupted (still draft_created)
+    const postOp = operationOf(world, documentId);
+    const cancelKey = 'cancel-interrupted-1';
+    const cancellationRequest = {
+      organizationId: ORG,
+      sourceDocumentId: documentId,
+      action: ACCOUNTING_POST_CANCEL_ACTION,
+      postingOperationKey: postOp.operationKey,
+      documentVersion: documentOf(world, documentId).updatedAt.toISOString(),
+    };
+    const requestHash =
+      buildAccountingPostingCancellationHash(cancellationRequest);
+    world.operations.push({
+      id: `op-cancel-${++world.serial}`,
+      organizationId: ORG,
+      documentId,
+      action: ACCOUNTING_POST_CANCEL_ACTION,
+      operationKey: cancelKey,
+      requestHash,
+      documentVersion: cancellationRequest.documentVersion,
+      postingMode: 'draft',
+      state: 'CANCELLED',
+      refusalCode: null,
+      refusalReason: null,
+      accountingDocumentId: documentOf(world, documentId).accountingDocumentId,
+      accountingDocumentNumber: null,
+      accountingDocumentPhase: 'draft',
+      accountingOperationKey: postOp.operationKey,
+      glPosted: false,
+      replayed: false,
+      actorUserId: USER,
+      actorPermission: 'Inventory.Document.AccountingPost',
+      requestedAt: new Date(),
+      completedAt: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    expect(documentOf(world, documentId).accountingPostingState).toBe(
+      'draft_created',
+    );
+
+    const recovered = await asUser(() =>
+      service.cancelAccountingPosting(documentId, ORG, {
+        operationKey: cancelKey,
+      }),
+    );
+
+    expect(recovered.outcome).toBe('draft_cancelled');
+    expect(documentOf(world, documentId).accountingPostingState).toBe(
+      'draft_cancelled',
+    );
+    expect(world.cancelCalls).toHaveLength(0);
+  });
+
+  it('does not issue duplicate Accounting cancellation on retry', async () => {
+    const world = createWorld();
+    const service = buildService(world);
+    const { documentId } = seedReceipt(world, { mode: 'draft' });
+
+    await asUser(() =>
+      service.requestAccountingPosting(documentId, ORG, {
+        operationKey: 'post-1',
+      }),
+    );
+
+    await asUser(() =>
+      service.cancelAccountingPosting(documentId, ORG, {
+        operationKey: 'cancel-1',
+      }),
+    );
+    expect(world.cancelCalls).toHaveLength(1);
+
+    // Retrying:
     const replayed = await asUser(() =>
-      service.cancelAccountingPosting(documentId, ORG, {}),
+      service.cancelAccountingPosting(documentId, ORG, {
+        operationKey: 'cancel-1',
+      }),
     );
     expect(replayed.outcome).toBe('draft_cancelled');
     expect(replayed.replayed).toBe(true);
+    // Still exactly 1 call to Accounting:
     expect(world.cancelCalls).toHaveLength(1);
   });
 
