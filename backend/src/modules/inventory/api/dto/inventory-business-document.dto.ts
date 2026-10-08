@@ -22,6 +22,8 @@ import {
   MAX_DOCUMENT_DESCRIPTION_LENGTH,
   MAX_DOCUMENT_REFERENCE_LENGTH,
 } from '../../domain/inventory-business-document.js';
+import { INVENTORY_DOCUMENT_ACCOUNTING_POSTING_STATES } from '../../domain/inventory-accounting-posting-operation.js';
+import { MAX_ACCOUNTING_POSTING_OPERATION_KEY_LENGTH } from '../../domain/inventory-accounting-posting-request.js';
 
 /**
  * Inventory Business Document API contracts (C-58).
@@ -220,12 +222,115 @@ export class FinalizeInventoryDocumentDto {
   repricing?: string;
 }
 
+export class AccountingPostInventoryDocumentDto {
+  @ApiPropertyOptional({
+    maxLength: MAX_ACCOUNTING_POSTING_OPERATION_KEY_LENGTH,
+    description:
+      'Idempotency key (C62-OD-06). Omit it and one is derived from the document, so a UI retry still replays the same durable operation instead of creating a second one. The same key with a different request conflicts (409).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_ACCOUNTING_POSTING_OPERATION_KEY_LENGTH)
+  operationKey?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'The document revision the caller read. When supplied, the request is refused (409) if the document changed since.',
+  })
+  @IsOptional()
+  @IsString()
+  expectedDocumentRevision?: string;
+}
+
 export class CancelInventoryDocumentDto {
   @ApiPropertyOptional({ maxLength: MAX_DOCUMENT_CANCELLATION_REASON_LENGTH })
   @IsOptional()
   @IsString()
   @MaxLength(MAX_DOCUMENT_CANCELLATION_REASON_LENGTH)
   reason?: string;
+}
+
+/**
+ * ONE durable C-62 Accounting posting operation (C62-OD-05/OD-06).
+ *
+ * This is the audit record, and the only place a refusal reason is visible:
+ * when Accounting refuses, the DOCUMENT keeps its own standing
+ * (`not_posted`) rather than absorbing Accounting's verdict, so the reason an
+ * operator needs lives here. `null` on `refusalCode`/`refusalReason` means the
+ * operation is either still open or succeeded.
+ */
+export class InventoryAccountingPostingOperationResponseDto {
+  @ApiProperty({ format: 'ulid' }) id!: string;
+  @ApiProperty({ format: 'ulid' }) organizationId!: string;
+  @ApiProperty({ format: 'ulid' }) documentId!: string;
+  @ApiProperty({ enum: ['accounting_post', 'accounting_post:cancel'] })
+  action!: string;
+  @ApiProperty({
+    description:
+      'The idempotency key this operation is keyed by (C62-OD-06). The same key replays the same answer; a different request under it conflicts.',
+  })
+  operationKey!: string;
+  @ApiProperty({
+    description:
+      'sha256 over the canonical request payload, so a replay can prove it asks for exactly the same thing.',
+  })
+  requestHash!: string;
+  @ApiProperty({
+    description: 'The document revision the request was built from.',
+  })
+  documentVersion!: string;
+  @ApiProperty({ enum: ['direct_final', 'draft'] }) postingMode!: string;
+  @ApiProperty({
+    enum: [
+      'REQUESTED',
+      'PENDING',
+      'DRAFT_CREATED',
+      'POSTED',
+      'REFUSED',
+      'FAILED',
+      'CANCELLED',
+    ],
+    description:
+      'REQUESTED/PENDING mean Accounting has not answered yet — re-query, never infer failure (C62-OD-06).',
+  })
+  state!: string;
+  @ApiProperty({ type: String, nullable: true })
+  refusalCode!: string | null;
+  @ApiProperty({ type: String, nullable: true })
+  refusalReason!: string | null;
+  @ApiProperty({ type: String, nullable: true })
+  accountingDocumentId!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The Accounting document serial. `null` while it is still a draft, because numbers allocate at issuance.',
+  })
+  accountingDocumentNumber!: string | null;
+  @ApiProperty({ enum: ['draft', 'temporary', 'final'], nullable: true })
+  accountingDocumentPhase!: string | null;
+  @ApiProperty({ type: String, nullable: true })
+  accountingOperationKey!: string | null;
+  @ApiProperty({
+    description:
+      'True once a FINAL Accounting voucher exists, i.e. the GL effect is real.',
+  })
+  glPosted!: boolean;
+  @ApiProperty({
+    description: 'True when this answer replayed an earlier identical request.',
+  })
+  replayed!: boolean;
+  @ApiProperty({ type: String, nullable: true }) actorUserId!: string | null;
+  @ApiProperty({
+    description:
+      'The Inventory permission the initiating human held (C62-OD-03) — the authority this operation ran under.',
+  })
+  actorPermission!: string;
+  @ApiProperty({ format: 'date-time' }) requestedAt!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'date-time' })
+  completedAt!: string | null;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
 }
 
 export class ListInventoryDocumentsQueryDto extends PageQueryDto {
@@ -343,6 +448,37 @@ export class InventoryDocumentResponseDto {
   accountingPostedAt!: string | null;
   @ApiProperty({ type: String, nullable: true })
   accountingPostedBy!: string | null;
+
+  @ApiProperty({
+    enum: INVENTORY_DOCUMENT_ACCOUNTING_POSTING_STATES,
+    description:
+      'C-62 Accounting standing: `not_posted` | `draft_created` | `final_posted` | `draft_cancelled`. A draft is NOT Accounting Posted; only a final Accounting voucher is.',
+  })
+  accountingPostingState!: string;
+
+  @ApiPropertyOptional({
+    format: 'ulid',
+    description:
+      'The durable C-62 posting operation behind the standing above. The authoritative record; this is its reference.',
+  })
+  accountingPostingOperationId?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'The Accounting-owned document reference, when one exists.',
+  })
+  accountingDocumentId?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'The Accounting document serial. `null` while the document is still a draft, because numbers allocate at issuance.',
+  })
+  accountingDocumentNumber?: string | null;
+
+  @ApiPropertyOptional({
+    enum: ['draft', 'temporary', 'final'],
+    description: 'The Accounting document phase, as Accounting reported it.',
+  })
+  accountingDocumentPhase?: string | null;
   @ApiProperty({ type: String, nullable: true }) sealedAt!: string | null;
   @ApiProperty({ type: String, nullable: true }) sealedBy!: string | null;
   @ApiProperty({ type: String, nullable: true }) cancelledAt!: string | null;

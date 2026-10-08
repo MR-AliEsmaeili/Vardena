@@ -48,6 +48,29 @@ model InventoryBusinessDocument {
   /// document's valuation consequence is honestly recorded as stale.
   valuationStale Boolean  @default(false) @map("valuation_stale")
 
+  // ---- C-62 Accounting posting state (PDR-10 C62-OD-02/OD-05) ------------
+  // Denormalized on the header exactly like `operation_key` above: the
+  // document must be self-describing about its Accounting standing without
+  // joining the posting-operation ledger. The AUTHORITATIVE record stays
+  // `inventory_accounting_posting_operations` (+ its snapshot); these columns
+  // are its projection, never a second truth.
+  //
+  // Closed, code-defined list (`domain/inventory-business-document.ts`):
+  // `not_posted`, `draft_created`, `final_posted`, `draft_cancelled`.
+  // `accounting_posted` is NOT one of them: a draft is never posted
+  // (C62-OD-02), and a cancelled draft leaves the document back in its normal
+  // accounting-eligible lifecycle state.
+  accountingPostingState String @default("not_posted") @map("accounting_posting_state") @db.VarChar(24)
+  /// The durable C-62 posting operation that produced the state above.
+  accountingPostingOperationId String? @map("accounting_posting_operation_id")
+  /// Accounting-owned document reference (opaque to Inventory — a plain id,
+  /// never a foreign key: Accounting owns that table, AR-07).
+  accountingDocumentId     String? @map("accounting_document_id")
+  accountingDocumentNumber String? @map("accounting_document_number") @db.VarChar(64)
+  /// `draft` | `temporary` | `final` — the Accounting phase the reference
+  /// points at, so the header can say "draft" without reading Accounting.
+  accountingDocumentPhase  String? @map("accounting_document_phase") @db.VarChar(16)
+
   finalizedAt        DateTime? @map("finalized_at") @db.Timestamptz(6)
   finalizedBy        String?   @map("finalized_by")
   accountingPostedAt DateTime? @map("accounting_posted_at") @db.Timestamptz(6)
@@ -68,6 +91,16 @@ model InventoryBusinessDocument {
   sourceWarehouse      Warehouse? @relation("InventoryDocumentSourceWarehouse", fields: [sourceWarehouseId], references: [id], onDelete: Restrict)
   destinationWarehouse Warehouse? @relation("InventoryDocumentDestinationWarehouse", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
   lines InventoryBusinessDocumentLine[]
+
+  // C-62: the durable Accounting posting operations raised for this document.
+  // One operation per (document, action, caller-supplied operation key); a
+  // document may carry several over its life (a cancelled draft is followed
+  // by a new attempt under a NEW key — the old one is never overwritten).
+  accountingPostingOperations InventoryAccountingPostingOperation[]
+  // ...and the ONE immutable snapshot each of those operations froze. Same
+  // projection direction as `operation_key`: the document is self-describing
+  // about what it sent Accounting, without joining the posting ledger.
+  accountingPostingSnapshots InventoryAccountingPostingSnapshot[]
 
   /// One monotonic numeric series PER DOCUMENT TYPE (Documents Foundation),
   /// so a receipt and an issue may both be `0001`; uniqueness is per kind.

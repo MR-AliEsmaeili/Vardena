@@ -513,6 +513,15 @@ describe.skipIf(DATABASE_URL === undefined)(
           inventoryBusinessDocumentLine: {
             deleteMany: (args: unknown) => Promise<unknown>;
           };
+          inventoryAccountingPostingSnapshotMovement: {
+            deleteMany: (args: unknown) => Promise<unknown>;
+          };
+          inventoryAccountingPostingSnapshot: {
+            deleteMany: (args: unknown) => Promise<unknown>;
+          };
+          inventoryAccountingPostingOperation: {
+            deleteMany: (args: unknown) => Promise<unknown>;
+          };
           inventoryBusinessDocument: {
             deleteMany: (args: unknown) => Promise<unknown>;
           };
@@ -560,6 +569,15 @@ describe.skipIf(DATABASE_URL === undefined)(
           user: { deleteMany: (args: unknown) => Promise<unknown> };
         }>();
         const orgIds = [orgAId, orgBId].filter((id) => id !== '');
+        await cleanup.inventoryAccountingPostingSnapshotMovement.deleteMany({
+          where: { organizationId: { in: orgIds } },
+        });
+        await cleanup.inventoryAccountingPostingSnapshot.deleteMany({
+          where: { organizationId: { in: orgIds } },
+        });
+        await cleanup.inventoryAccountingPostingOperation.deleteMany({
+          where: { organizationId: { in: orgIds } },
+        });
         await cleanup.inventoryBusinessDocumentLine.deleteMany({
           where: { organizationId: { in: orgIds } },
         });
@@ -930,24 +948,30 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(original?.['reversedByRunId']).toBeNull();
     });
 
-    it('refuses to reverse a run whose affected document crossed Accounting Post (reverse_accounting_posted)', async () => {
-      const { run, issueDocumentIds } = await pricedIssuesScenario(
-        privateWarehouses[7]!,
-      );
+    // The `reverse_accounting_posted` rule needs a document that REALLY crossed
+    // the Accounting boundary, and this suite configures no Accounting mapping
+    // — so every `accounting-post` here is a refusal and the premise cannot be
+    // built. It cannot be built in the C-62 suite either, for a structural
+    // reason documented there: the blocker is built from the movements a run
+    // RESTATED, and a receipt's inbound is either preserved verbatim (costed)
+    // or permanently `unvalued('no_cost_supplied')` (uncosted) — never
+    // restated — while a receipt is the only document type C-62 lets cross. The
+    // rule itself is covered hermetically
+    // (`inventory-pricing.service.spec.ts`, "refuses when an affected document
+    // has crossed Accounting Post"), which seeds the affected movement directly
+    // and so is not constrained by what a live receipt can express.
+    it('does NOT block reverse pricing for a document whose posting was refused', async () => {
+      const { run } = await pricedIssuesScenario(privateWarehouses[7]!);
       await operator
-        .post(`${documentsBase}/${issueDocumentIds[0]!}/accounting-post`)
+        .post(`${documentsBase}/${run['id'] as string}/accounting-post`)
         .query({ organizationId: orgAId })
         .send({})
-        .expect(200);
+        .expect(404);
 
-      const refused = await reversePricing(run['id'] as string, 422);
-      expect(refused['details']).toMatchObject({
-        code: 'inventory.pricing.reverse_accounting_posted',
-      });
-      const original = await client.inventoryPricingRun.findUnique({
-        where: { id: run['id'] as string },
-      });
-      expect(original?.['reversedByRunId']).toBeNull();
+      // A refused posting never reached the books, so it must not freeze the
+      // valuation history: the compensating run is still allowed.
+      const reverse = await reversePricing(run['id'] as string);
+      expect(reverse['kind']).toBe('reverse_pricing');
     });
 
     it('refuses to reverse a compensating run (reverse_of_reverse) and an already-reversed run (409)', async () => {
@@ -1281,8 +1305,14 @@ describe.skipIf(DATABASE_URL === undefined)(
         valuationStale: true,
       });
 
-      // Fully priced: the boundary crosses, and then the document is
-      // frozen for edits (an explicit accounting correction is required).
+      // Fully priced: Inventory DOES cross its own boundary here, but this
+      // suite configures no `accounting.source_posting_mappings` row, so
+      // Accounting refuses (fail closed, never a guessed account, C62-OD-04).
+      // A refusal is a durable fact about the OPERATION, not a lifecycle
+      // crossing: the document stays operational and stays editable. The happy
+      // path — the document actually becoming `accounting_posted` and freezing
+      // — is proven in `inventory-accounting-posting-live.e2e-spec.ts`, where
+      // the Accounting master data exists.
       const priced = await receiveStock(
         itemBId,
         '3',
@@ -1294,24 +1324,27 @@ describe.skipIf(DATABASE_URL === undefined)(
         .query({ organizationId: orgAId })
         .send({})
         .expect(200);
-      expect(posted.body['status']).toBe('accounting_posted');
+      expect(posted.body['status']).toBe('operational');
+      expect(posted.body['accountingPostingState']).toBe('not_posted');
 
-      // Idempotent replay of the boundary crossing.
+      // Idempotent replay of the refused attempt: the SAME durable operation
+      // answers, no second one is written.
       const replay = await operator
         .post(`${documentsBase}/${priced['id'] as string}/accounting-post`)
         .query({ organizationId: orgAId })
         .send({})
         .expect(200);
-      expect(replay.body['status']).toBe('accounting_posted');
+      expect(replay.body['status']).toBe('operational');
 
-      const editRefused = await operator
+      // Still operational, so an edit is still legal.
+      const edited = await operator
         .patch(`${documentsBase}/${priced['id'] as string}`)
         .query({ organizationId: orgAId })
-        .send({ description: 'edited after post' });
-      expect([409, 422]).toContain(editRefused.status);
-      expect(editRefused.body['details']).toMatchObject({
-        code: 'inventory.document.accounting_posted_is_immutable',
-      });
+        .send({ description: 'still editable after a refused posting' })
+        .expect(200);
+      expect(edited.body['description']).toBe(
+        'still editable after a refused posting',
+      );
     });
 
     it('walks the full pipeline: receipt → issue → returns → transfer → pricing → accounting post (e2e regression)', async () => {
@@ -1402,13 +1435,18 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(await onHand(privateWarehouses[15]!, itemAId)).toBe(35);
       expect(await onHand(whSecondId, itemAId)).toBe(20);
 
-      // The fully-priced receipt crosses the accounting boundary.
+      // The fully-priced receipt reaches the accounting boundary. This suite
+      // has no Accounting mapping configured, so the crossing is refused and
+      // the document stays operational — see the note in the eligibility test
+      // above, and `inventory-accounting-posting-live.e2e-spec.ts` for the run
+      // that really posts.
       const posted = await operator
         .post(`${documentsBase}/${receipt['id'] as string}/accounting-post`)
         .query({ organizationId: orgAId })
         .send({})
         .expect(200);
-      expect(posted.body['status']).toBe('accounting_posted');
+      expect(posted.body['status']).toBe('operational');
+      expect(posted.body['accountingPostingState']).toBe('not_posted');
       // (The reverse-after-accounting-post blocker is proven by its own
       // dedicated test above, on a run that actually stamped movements.)
     });

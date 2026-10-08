@@ -213,10 +213,21 @@ export interface VoucherCreatePlan {
  * Where a created voucher starts (§15.1): `draft` when the organization
  * requires it, otherwise the type's entry state (`temporary`) — issuance
  * happens at create in that case, so a number is allocated then.
+ *
+ * `forceDraft` (C-62, PDR-10 C62-OD-02) is the EXPLICIT request to start in
+ * `draft` regardless of the organization's `draft_required` selection. It is
+ * Accounting-owned policy: the Warehouse-configured posting mode arrives
+ * through the approved application contract, and Accounting — which owns draft
+ * classification and lifecycle — decides what that mode means for the phase.
+ * It is never client-supplied over HTTP.
  */
 export function planVoucherCreate(ctx: {
   draftRequired: boolean;
+  forceDraft?: boolean | undefined;
 }): VoucherCreatePlan {
+  if (ctx.forceDraft === true) {
+    return { problem: null, phase: DRAFT_PHASE };
+  }
   if (requiresDraft(ACCOUNTING_VOUCHER_TYPE_DEFINITION, ctx.draftRequired)) {
     return { problem: null, phase: DRAFT_PHASE };
   }

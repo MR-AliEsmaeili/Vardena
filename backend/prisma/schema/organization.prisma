@@ -83,6 +83,13 @@ model Organization {
   inventoryPricingRuns         InventoryPricingRun[]
   inventoryPricingRunKeyOutcomes InventoryPricingRunKeyOutcome[]
 
+  // Back-relations for the C-62 Accounting posting operations and their
+  // immutable snapshots. Virtual side only — the real FK columns stay
+  // `inventory.inventory_accounting_posting_*`.
+  inventoryAccountingPostingOperations      InventoryAccountingPostingOperation[]
+  inventoryAccountingPostingSnapshots       InventoryAccountingPostingSnapshot[]
+  inventoryAccountingPostingSnapshotMovements InventoryAccountingPostingSnapshotMovement[]
+
   // Back-relations for the Document Foundation (Task 8, ADR-0023). Virtual
   // side only — the real FK columns stay `documents.*.organization_id`.
   documentTypeConfigs  DocumentTypeConfig[]
@@ -121,6 +128,10 @@ model Organization {
   accountingDocuments        AccountingDocument[]
   accountingDocumentLines    AccountingDocumentLine[]
   accountingPostingOperations AccountingPostingOperation[]
+
+  // C-62: the Accounting-owned source posting mappings. Virtual side only —
+  // the real FK column is `accounting.source_posting_mappings.organization_id`.
+  sourcePostingMappings SourcePostingMapping[]
 
   // Back-relations for the immutable ledger entries (Task 10.7).
   // Virtual side only — the real FK column stays
@@ -189,6 +200,10 @@ model Branch {
   // Back-relation for Material Request lines (C-50): branch is denormalized
   // from the line's warehouse, same first-class-scope rule as above.
   materialRequestLines MaterialRequestLine[]
+
+  // C-62: the branch is the organizational (Legal Entity) context captured on
+  // every immutable Accounting posting snapshot. Virtual side only.
+  inventoryAccountingPostingSnapshots InventoryAccountingPostingSnapshot[]
 
   // Back-relation for the accounting documents of this branch (Task 10.4,
   // AC-D-17: branch lives on the voucher header, never on a line).

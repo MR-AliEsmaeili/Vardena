@@ -10,6 +10,7 @@ import {
 } from '../domain/inventory-business-document.js';
 import { decimalToString } from './inventory-core-rows.js';
 import { lockValuationStateRowsInOrder } from './inventory-locks.js';
+import { isInventoryDocumentAccountingPostingState } from '../domain/inventory-accounting-posting-operation.js';
 import type { ValuationMethod } from '../domain/valuation-method.js';
 import type { OrderBy } from './master-data-rows.js';
 import type {
@@ -311,6 +312,11 @@ export class InventoryBusinessDocumentsRepository {
              "reference",
              "operation_key" AS "operationKey",
              "valuation_stale" AS "valuationStale",
+             "accounting_posting_state" AS "accountingPostingState",
+             "accounting_posting_operation_id" AS "accountingPostingOperationId",
+             "accounting_document_id" AS "accountingDocumentId",
+             "accounting_document_number" AS "accountingDocumentNumber",
+             "accounting_document_phase" AS "accountingDocumentPhase",
              "finalized_at" AS "finalizedAt",
              "finalized_by" AS "finalizedBy",
              "accounting_posted_at" AS "accountingPostedAt",
@@ -524,6 +530,14 @@ export function toDomain(
       `Stored inventory document "${row.id}" has an unknown status "${row.status}".`,
     );
   }
+  if (!isInventoryDocumentAccountingPostingState(row.accountingPostingState)) {
+    // C-62: a stored standing the code does not know is a defect, never a
+    // silent default — the same rule the kind and status checks already
+    // follow, and the same fail-closed shape the warehouse posting mode uses.
+    throw new Error(
+      `Stored inventory document "${row.id}" has an unknown accounting posting state "${row.accountingPostingState}".`,
+    );
+  }
   const base = {
     id: row.id,
     organizationId: row.organizationId,
@@ -535,6 +549,11 @@ export function toDomain(
     status: row.status,
     operationKey: row.operationKey,
     valuationStale: row.valuationStale,
+    accountingPostingState: row.accountingPostingState,
+    accountingPostingOperationId: row.accountingPostingOperationId,
+    accountingDocumentId: row.accountingDocumentId,
+    accountingDocumentNumber: row.accountingDocumentNumber,
+    accountingDocumentPhase: row.accountingDocumentPhase,
     finalizedAt: row.finalizedAt,
     finalizedBy: row.finalizedBy,
     accountingPostedAt: row.accountingPostedAt,

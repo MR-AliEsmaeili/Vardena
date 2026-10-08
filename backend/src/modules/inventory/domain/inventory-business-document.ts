@@ -20,6 +20,8 @@
  * number and stays visible (OD-54-07/08/09); numbers are never reused.
  */
 
+import type { InventoryDocumentAccountingPostingState } from './inventory-accounting-posting-operation.js';
+
 /**
  * `inventory_movements.reference_type` for a business document's effect
  * (C-58/C-59D). Domain-owned: it is a stored vocabulary value both the
@@ -95,6 +97,8 @@ export function isAccountingEligible(
   );
 }
 
+export type { InventoryDocumentAccountingPostingState } from './inventory-accounting-posting-operation.js';
+
 export function isInventoryDocumentStatus(
   value: string,
 ): value is InventoryDocumentStatus {
@@ -147,6 +151,28 @@ export type InventoryDocumentBase = {
    * repricing, so this document's valuation consequence is known-stale.
    */
   valuationStale: boolean;
+  /**
+   * C-62 (PDR-10 C62-OD-02/OD-05): the document's Accounting STANDING —
+   * `not_posted`, `draft_created`, `final_posted` or `draft_cancelled`.
+   *
+   * Deliberately NOT the lifecycle status and NOT `accountingPosted`:
+   *   * a draft is a draft — creating it is not posting it;
+   *   * a cancelled draft is history, and it leaves the document back in its
+   *     normal accounting-eligible lifecycle state;
+   *   * only a FINAL Accounting voucher establishes `final_posted`, and only
+   *     then does the document cross into `accounting_posted`.
+   *
+   * The authoritative record is the posting-operation ledger; these fields are
+   * its projection onto the document, exactly like `operationKey` is the
+   * finalize's projection. The Accounting reference is a plain id, never a
+   * foreign key into Accounting (AR-07).
+   */
+  accountingPostingState: InventoryDocumentAccountingPostingState;
+  accountingPostingOperationId: string | null;
+  accountingDocumentId: string | null;
+  accountingDocumentNumber: string | null;
+  /** `draft` | `temporary` | `final`, as Accounting reported it. */
+  accountingDocumentPhase: string | null;
   finalizedAt: Date | null;
   finalizedBy: string | null;
   accountingPostedAt: Date | null;
@@ -626,6 +652,15 @@ export interface InventoryDocumentDto {
   reference: string | null;
   operationKey: string | null;
   valuationStale: boolean;
+  /** C-62: `not_posted` | `draft_created` | `final_posted` | `draft_cancelled`. */
+  accountingPostingState: InventoryDocumentAccountingPostingState;
+  /** The durable C-62 posting operation behind the standing above. */
+  accountingPostingOperationId: string | null;
+  /** The Accounting-owned document reference, when one exists. */
+  accountingDocumentId: string | null;
+  accountingDocumentNumber: string | null;
+  /** `draft` | `temporary` | `final`, as Accounting reported it. */
+  accountingDocumentPhase: string | null;
   /** What the caller may do next, computed from the lifecycle alone. The
    *  frontend uses it for UX; the backend re-checks every command anyway. */
   canEdit: boolean;
@@ -690,6 +725,11 @@ export function toInventoryDocumentDto(
     reference: document.reference,
     operationKey: document.operationKey,
     valuationStale: document.valuationStale,
+    accountingPostingState: document.accountingPostingState,
+    accountingPostingOperationId: document.accountingPostingOperationId,
+    accountingDocumentId: document.accountingDocumentId,
+    accountingDocumentNumber: document.accountingDocumentNumber,
+    accountingDocumentPhase: document.accountingDocumentPhase,
     canEdit: status === 'draft' || status === 'operational',
     canFinalize: canTransition(status, 'operational'),
     canAccountingPost:

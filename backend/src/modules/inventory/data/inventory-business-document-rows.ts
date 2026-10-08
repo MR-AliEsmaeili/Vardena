@@ -5,6 +5,11 @@ import type {
   CoreTxClient,
   DecimalLike,
 } from './inventory-core-rows.js';
+import type {
+  InventoryAccountingPostingOperationDelegate,
+  InventoryAccountingPostingSnapshotDelegate,
+  InventoryAccountingPostingSnapshotMovementDelegate,
+} from './inventory-accounting-posting-rows.js';
 
 /**
  * Row/delegate shapes for the Inventory Business Document data layer (C-58).
@@ -36,6 +41,13 @@ export type InventoryDocumentRow = {
   reference: string | null;
   operationKey: string | null;
   valuationStale: boolean;
+  // C-62: the document's Accounting standing projected onto its own header.
+  // The authoritative record stays `inventory_accounting_posting_operations`.
+  accountingPostingState: string;
+  accountingPostingOperationId: string | null;
+  accountingDocumentId: string | null;
+  accountingDocumentNumber: string | null;
+  accountingDocumentPhase: string | null;
   finalizedAt: Date | null;
   finalizedBy: string | null;
   accountingPostedAt: Date | null;
@@ -70,6 +82,8 @@ export interface InventoryDocumentCreate {
   description: string | null;
   reference: string | null;
   operationKey: string | null;
+  // C-62: deliberately absent, exactly like `valuationStale` above — the
+  // database default `not_posted` is the only value a new document may carry.
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
@@ -87,6 +101,11 @@ export interface InventoryDocumentUpdate {
   reference?: string | null;
   operationKey?: string | null;
   valuationStale?: boolean;
+  accountingPostingState?: string;
+  accountingPostingOperationId?: string | null;
+  accountingDocumentId?: string | null;
+  accountingDocumentNumber?: string | null;
+  accountingDocumentPhase?: string | null;
   finalizedAt?: Date | null;
   finalizedBy?: string | null;
   accountingPostedAt?: Date | null;
@@ -201,13 +220,32 @@ export interface DocClient extends CoreClient {
   inventoryBusinessDocumentLine: InventoryDocumentLineDelegate;
 }
 
+/**
+ * C-62 adds the three posting tables to the SAME caller-owned transaction.
+ *
+ * Phase 1 of the Inventory to Accounting posting locks the document header,
+ * re-derives eligibility from a post-lock read, and then writes the durable
+ * PENDING operation together with its immutable snapshot. That cannot be a
+ * second `$transaction`: Prisma does not nest transactions, so an inner one
+ * either deadlocks against the connection pool or fails outright - and the
+ * eligibility decision would stop being atomic with the record of what was
+ * actually sent across the boundary. So the posting delegates are part of the
+ * document transaction client, exactly as the core's movement, balance and
+ * valuation delegates already are.
+ */
 export interface DocTxClient extends CoreTxClient {
   inventoryBusinessDocument: InventoryDocumentDelegate;
   inventoryBusinessDocumentLine: InventoryDocumentLineDelegate;
+  inventoryAccountingPostingOperation: InventoryAccountingPostingOperationDelegate;
+  inventoryAccountingPostingSnapshot: InventoryAccountingPostingSnapshotDelegate;
+  inventoryAccountingPostingSnapshotMovement: InventoryAccountingPostingSnapshotMovementDelegate;
 }
 
 export interface DocTransactionalClient extends CoreTransactionalClient {
   inventoryBusinessDocument: InventoryDocumentDelegate;
   inventoryBusinessDocumentLine: InventoryDocumentLineDelegate;
+  inventoryAccountingPostingOperation: InventoryAccountingPostingOperationDelegate;
+  inventoryAccountingPostingSnapshot: InventoryAccountingPostingSnapshotDelegate;
+  inventoryAccountingPostingSnapshotMovement: InventoryAccountingPostingSnapshotMovementDelegate;
   $transaction: <T>(fn: (tx: DocTxClient) => Promise<T>) => Promise<T>;
 }

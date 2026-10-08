@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import { isRecordNotFound } from '../../../kernel/prisma/prisma-errors.js';
 import type { Warehouse } from '../domain/warehouse.js';
+import { resolveWarehouseAccountingPostingMode } from '../domain/warehouse-posting-mode.js';
 import {
   type AuditColumns,
   type MasterDataDelegate,
@@ -25,11 +26,15 @@ type WarehouseRow = {
   name: string;
   allowNegativeStock: boolean;
   reservationsReduceAvailable: boolean;
+  /** C-62: `direct_final` | `draft` (closed, code-defined vocabulary). */
+  accountingPostingMode: string;
   isActive: boolean;
 } & AuditColumns;
 
 interface WarehouseWhere {
   organizationId?: string;
+  /** Exact-id read, used by the organization-scoped lookup below. */
+  id?: string;
   branchId?: string;
   code?: string;
   isActive?: boolean;
@@ -49,6 +54,7 @@ interface WarehouseCreate {
   name: string;
   allowNegativeStock: boolean;
   reservationsReduceAvailable: boolean;
+  accountingPostingMode: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -61,6 +67,7 @@ interface WarehouseUpdate {
   name?: string | undefined;
   allowNegativeStock?: boolean | undefined;
   reservationsReduceAvailable?: boolean | undefined;
+  accountingPostingMode?: string | undefined;
   isActive?: boolean | undefined;
   updatedAt: Date;
   updatedBy: string | null;
@@ -93,6 +100,28 @@ export class WarehousesRepository {
   async findById(id: string): Promise<Warehouse | null> {
     const { warehouse } = await this.client();
     const row = await warehouse.findUnique({ where: { id } });
+    return row === null ? null : toDomain(row);
+  }
+
+  /**
+   * The same read, scoped by organization (C-62).
+   *
+   * The C-62 posting command needs ONE field of the warehouse — its posting
+   * mode — and it is already authorized by
+   * `Inventory.Document.AccountingPost`. Going through
+   * `WarehousesService.getWarehouse` instead would demand a SECOND,
+   * unrelated permission (`Inventory.Warehouse.View`) for a read the caller
+   * never asked for, which both widens the command's effective permission
+   * surface and locks out exactly the role that is supposed to run it.
+   * So the mode is read as DATA, inside the module, and the organization
+   * scope is applied here rather than trusted from a caller.
+   */
+  async findByIdInOrganization(
+    organizationId: string,
+    id: string,
+  ): Promise<Warehouse | null> {
+    const { warehouse } = await this.client();
+    const row = await warehouse.findFirst({ where: { organizationId, id } });
     return row === null ? null : toDomain(row);
   }
 
@@ -175,6 +204,11 @@ function toDomain(row: WarehouseRow): Warehouse {
     name: row.name,
     allowNegativeStock: row.allowNegativeStock,
     reservationsReduceAvailable: row.reservationsReduceAvailable,
+    // Fail closed on an unknown stored mode: guessing `draft` would silently
+    // post nothing, guessing `direct_final` would silently post to the GL.
+    accountingPostingMode: resolveWarehouseAccountingPostingMode(
+      row.accountingPostingMode,
+    ),
     isActive: row.isActive,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

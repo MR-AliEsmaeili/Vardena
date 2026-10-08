@@ -30,11 +30,17 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { InventoryBusinessDocumentsService } from '../application/inventory-business-documents.service.js';
 import { INVENTORY_DOCUMENT_PERMISSIONS } from '../domain/inventory-document-permissions.js';
+import {
+  toAccountingPostingOperationDto,
+  type AccountingPostingOperationDto,
+} from '../domain/inventory-accounting-posting-operation.js';
 import { InventoryScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
+  AccountingPostInventoryDocumentDto,
   CancelInventoryDocumentDto,
   CreateInventoryDocumentDto,
   FinalizeInventoryDocumentDto,
+  InventoryAccountingPostingOperationResponseDto,
   InventoryDocumentResponseDto,
   ListInventoryDocumentsQueryDto,
   UpdateInventoryDocumentDto,
@@ -51,7 +57,8 @@ const PaginatedInventoryDocumentDto = paginatedResponseOf(
  * PATCH, because the behaviours differ materially: `finalize` posts the
  * ledger effect, `accounting-post` crosses the immutability boundary, `seal`
  * is terminal and `cancel` reverses. There is deliberately no endpoint that
- * sets an arbitrary status.
+ * sets an arbitrary status. C-62 adds `accounting-post/cancel` for the one
+ * case that needs its own verb: an Accounting-owned DRAFT.
  *
  * Every route authenticates, checks an operation-level Inventory permission
  * and resolves the document inside the caller's organization scope — a
@@ -222,24 +229,82 @@ export class InventoryBusinessDocumentsController {
     });
   }
 
+  @Get(':id/accounting-posting')
+  @UseGuards(AuthGuard, AuthorizationGuard)
+  @RequirePermission(INVENTORY_DOCUMENT_PERMISSIONS.VIEW)
+  @ApiOperation({
+    summary:
+      'List the durable C-62 Accounting posting operations of one document, newest first. The only place a refusal or failure reason is visible: the document keeps its own standing, so why a posting did not cross the boundary is a fact about the OPERATION.',
+  })
+  @ApiOkResponse({ type: [InventoryAccountingPostingOperationResponseDto] })
+  @ApiNotFoundResponse({ description: 'The document does not exist.' })
+  async listAccountingPostings(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<readonly AccountingPostingOperationDto[]> {
+    const operations = await this.documents.listAccountingPostings(
+      id,
+      scope.organizationId,
+    );
+    return operations.map(toAccountingPostingOperationDto);
+  }
+
   @Post(':id/accounting-post')
   @HttpCode(HttpStatus.OK)
   @UseGuards(AuthGuard, AuthorizationGuard)
   @RequirePermission(INVENTORY_DOCUMENT_PERMISSIONS.ACCOUNTING_POST)
   @ApiOperation({
     summary:
-      'Cross the Accounting Post boundary (OD-54-01/02): after this the document cannot be edited, deleted or cancelled. This command records the boundary on the Inventory document; it creates no journal entry (Inventory→GL posting is outside C-58).',
+      "Cross the Accounting Post boundary (C-62): ask Accounting to post this document's authoritative value. A `direct_final` warehouse produces a FINAL Accounting voucher and the document becomes Accounting Posted; a `draft` warehouse produces an Accounting-owned DRAFT and the document does NOT. The same operation key replays the same answer.",
   })
   @ApiOkResponse({ type: InventoryDocumentResponseDto })
   @ApiNotFoundResponse({ description: 'The document does not exist.' })
   @ApiUnprocessableEntityResponse({
-    description: 'The document is not operational.',
+    description:
+      'The document is not accounting eligible: not operational, not fully priced, or its valuation is stale.',
+  })
+  @ApiConflictResponse({
+    description:
+      'The operation key was already used for a different request, or the document is already Accounting Posted.',
   })
   async accountingPost(
     @Param('id') id: string,
     @Query() scope: InventoryScopeQueryDto,
+    @Body() body: AccountingPostInventoryDocumentDto,
   ): Promise<InventoryDocumentResponseDto> {
-    return this.documents.accountingPostDocument(id, scope.organizationId);
+    return this.documents.accountingPostDocument(id, scope.organizationId, {
+      operationKey: body.operationKey,
+      expectedDocumentRevision: body.expectedDocumentRevision,
+    });
+  }
+
+  @Post(':id/accounting-post/cancel')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(AuthGuard, AuthorizationGuard)
+  @RequirePermission(INVENTORY_DOCUMENT_PERMISSIONS.ACCOUNTING_POST)
+  @ApiOperation({
+    summary:
+      'Cancel the Accounting DRAFT a posting created (C62-OD-02). The draft belongs to Accounting, so it is discarded through the same contract and the document returns to its normal accounting-eligible lifecycle state. A FINAL voucher is never cancellable here.',
+  })
+  @ApiOkResponse({ type: InventoryDocumentResponseDto })
+  @ApiNotFoundResponse({ description: 'The document does not exist.' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'The document has no Accounting draft to cancel: it was never posted in draft mode, was already cancelled, or is finally posted.',
+  })
+  @ApiConflictResponse({
+    description:
+      'Accounting no longer holds a cancellable draft for this operation.',
+  })
+  async cancelAccountingPost(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+    @Body() body: AccountingPostInventoryDocumentDto,
+  ): Promise<InventoryDocumentResponseDto> {
+    return this.documents.cancelAccountingPosting(id, scope.organizationId, {
+      operationKey: body.operationKey,
+      expectedDocumentRevision: body.expectedDocumentRevision,
+    });
   }
 
   @Post(':id/seal')

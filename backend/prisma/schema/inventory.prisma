@@ -62,6 +62,11 @@ model Unit {
   enteredInventoryDocumentLines InventoryBusinessDocumentLine[] @relation("InventoryDocumentLineEnteredUnit")
   baseInventoryDocumentLines    InventoryBusinessDocumentLine[] @relation("InventoryDocumentLineBaseUnit")
 
+  // C-62: the entered/base units captured on an immutable Accounting posting
+  // snapshot movement. Virtual side only.
+  enteredSnapshotMovements InventoryAccountingPostingSnapshotMovement[] @relation("SnapshotMovementEnteredUnit")
+  baseSnapshotMovements    InventoryAccountingPostingSnapshotMovement[] @relation("SnapshotMovementBaseUnit")
+
   @@unique([organizationId, code], map: "uq_units_organization_id_code")
   @@index([organizationId, isActive], map: "idx_units_organization_id_is_active")
   @@map("units")
@@ -205,6 +210,10 @@ model Item {
   valuationStates  InventoryValuationState[]
   valuationRuns    InventoryValuationRun[]
 
+  // C-62: the item identity captured on each immutable Accounting posting
+  // snapshot movement.
+  accountingPostingSnapshotMovements InventoryAccountingPostingSnapshotMovement[]
+
   @@unique([organizationId, code], map: "uq_items_organization_id_code")
   @@index([organizationId, isActive], map: "idx_items_organization_id_is_active")
   @@index([organizationId, itemKind], map: "idx_items_organization_id_item_kind")
@@ -245,6 +254,21 @@ model Warehouse {
   /// a "warehouse system setting" in this codebase (no organization-level or
   /// global settings surface exists to attach this to instead).
   reservationsReduceAvailable Boolean @default(true) @map("reservations_reduce_available")
+  /// Warehouse Accounting posting mode (C-62, PDR-10 C62-OD-02): how an
+  /// Accounting-eligible Inventory document of THIS warehouse reaches the
+  /// General Ledger — `direct_final` (the Accounting operation produces a
+  /// FINAL voucher / GL effect in the same request) or `draft` (the operation
+  /// produces an Accounting-owned draft that an accountant registers or
+  /// cancels later). A closed, code-defined list
+  /// (`domain/warehouse-posting-mode.ts`), stored as text like every other
+  /// vocabulary column in this module. Defaults to `direct_final`: it is the
+  /// behaviour every existing warehouse already has conceptually (the
+  /// document's accounting boundary is crossed once, in one command), so
+  /// turning the setting on for existing rows changes nothing. Same
+  /// per-warehouse granularity and same deterministic-default convention as
+  /// `reservations_reduce_available` above — there is no organization-level or
+  /// global settings surface to attach it to instead.
+  accountingPostingMode String @default("direct_final") @map("accounting_posting_mode") @db.VarChar(16)
   isActive       Boolean  @default(true) @map("is_active")
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
@@ -271,6 +295,10 @@ model Warehouse {
   // C-59E Pricing Run batches scoped to this warehouse (all-warehouse runs
   // keep warehouse_id NULL and do not appear here).
   pricingRuns InventoryPricingRun[] @relation("InventoryPricingRunWarehouse")
+
+  // C-62: the immutable Accounting posting snapshots captured for documents
+  // of this warehouse (one per posting operation).
+  accountingPostingSnapshots InventoryAccountingPostingSnapshot[]
 
   @@unique([organizationId, code], map: "uq_warehouses_organization_id_code")
   @@index([organizationId, isActive], map: "idx_warehouses_organization_id_is_active")

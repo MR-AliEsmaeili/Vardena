@@ -3,6 +3,7 @@ import { IdentityModule } from '../identity/identity.module.js';
 import { RbacModule } from '../rbac/rbac.module.js';
 import { OrganizationModule } from '../organization/organization.module.js';
 import { DocumentsModule } from '../documents/documents.module.js';
+import { AccountingModule } from '../accounting/accounting.module.js';
 import { UnitsRepository } from './data/units.repository.js';
 import { ItemGroupsRepository } from './data/item-groups.repository.js';
 import { ItemsRepository } from './data/items.repository.js';
@@ -17,6 +18,7 @@ import { InventoryValuationRepository } from './data/inventory-valuation.reposit
 import { ItemValuationMethodsRepository } from './data/item-valuation-methods.repository.js';
 import { MaterialRequestsRepository } from './data/material-requests.repository.js';
 import { InventoryBusinessDocumentsRepository } from './data/inventory-business-documents.repository.js';
+import { InventoryAccountingPostingRepository } from './data/inventory-accounting-posting.repository.js';
 import { InventoryPricingRepository } from './data/inventory-pricing.repository.js';
 import { UnitsService } from './application/units.service.js';
 import { ItemGroupsService } from './application/item-groups.service.js';
@@ -33,6 +35,7 @@ import { InventoryPermissionRegistration } from './application/inventory-permiss
 import { MaterialRequestDocumentTypeRegistration } from './application/material-request-document-type-registration.js';
 import { MaterialRequestsService } from './application/material-requests.service.js';
 import { InventoryBusinessDocumentsService } from './application/inventory-business-documents.service.js';
+import { InventoryAccountingPostingService } from './application/inventory-accounting-posting.service.js';
 import { InventoryPricingService } from './application/inventory-pricing.service.js';
 import { InventoryDocumentTypeRegistration } from './application/inventory-document-type-registration.js';
 import { UnitsController } from './api/units.controller.js';
@@ -92,6 +95,10 @@ import { InventoryPricingController } from './api/inventory-pricing.controller.j
     RbacModule,
     OrganizationModule,
     DocumentsModule,
+    // C-62: the one direction the Inventory → Accounting boundary runs.
+    // Accounting does NOT import Inventory (verified), so this is not a cycle;
+    // `forwardRef` is not needed and would only hide a real one.
+    AccountingModule,
     forwardRef(() => IdentityModule),
   ],
   controllers: [
@@ -125,6 +132,7 @@ import { InventoryPricingController } from './api/inventory-pricing.controller.j
     ItemValuationMethodsRepository,
     MaterialRequestsRepository,
     InventoryBusinessDocumentsRepository,
+    InventoryAccountingPostingRepository,
     InventoryPricingRepository,
     UnitsService,
     ItemGroupsService,
@@ -139,6 +147,7 @@ import { InventoryPricingController } from './api/inventory-pricing.controller.j
     InventoryValuationService,
     MaterialRequestsService,
     InventoryBusinessDocumentsService,
+    InventoryAccountingPostingService,
     InventoryPricingService,
     InventoryPermissionRegistration,
     MaterialRequestDocumentTypeRegistration,
@@ -156,6 +165,7 @@ import { InventoryPricingController } from './api/inventory-pricing.controller.j
     InventoryBalancesService,
     InventoryValuationService,
     InventoryBusinessDocumentsService,
+    InventoryAccountingPostingService,
     InventoryPricingService,
   ],
 })

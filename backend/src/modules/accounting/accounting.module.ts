@@ -12,6 +12,7 @@ import { AccountsRepository } from './data/accounts.repository.js';
 import { AccountingDocumentsRepository } from './data/accounting-documents.repository.js';
 import { AccountingDocumentLinesRepository } from './data/accounting-document-lines.repository.js';
 import { AccountingPostingOperationsRepository } from './data/accounting-posting-operations.repository.js';
+import { SourcePostingMappingsRepository } from './data/source-posting-mappings.repository.js';
 import { LedgerEntriesRepository } from './data/ledger-entries.repository.js';
 import { FinancialAreasService } from './application/financial-areas.service.js';
 import { FiscalYearsService } from './application/fiscal-years.service.js';
@@ -24,6 +25,7 @@ import { AccountingDocumentTypeRegistration } from './application/accounting-doc
 import { AccountingDocumentsService } from './application/accounting-documents.service.js';
 import { PostingReadinessService } from './application/posting-readiness.service.js';
 import { PostingService } from './application/posting.service.js';
+import { InventoryPostingService } from './application/inventory-posting.service.js';
 import { AccountBalanceProjectionsRepository } from './data/account-balance-projections.repository.js';
 import { AccountingBalancesService } from './application/accounting-balances.service.js';
 import { LedgerMovementsService } from './application/ledger-movements.service.js';
@@ -162,6 +164,10 @@ import { DetailsController } from './api/details.controller.js';
     AccountingDocumentLinesRepository,
     AccountingDocumentsRepository,
     AccountingPostingOperationsRepository,
+    // C-62: the Accounting-owned source posting mapping (read-only in this
+    // slice — a missing mapping fails closed, and the administrative surface
+    // that writes rows arrives with the mapping task).
+    SourcePostingMappingsRepository,
     // Task 10.7: insert-only evidence reads (`findByVoucher`); the writes
     // happen inside `finalizeChecked`, never through this provider directly.
     LedgerEntriesRepository,
@@ -221,6 +227,12 @@ import { DetailsController } from './api/details.controller.js';
     // OQ-39's delivery decision first (AR-07). It adds no endpoint, no
     // permission, no event, no table and no transaction of its own.
     PostingService,
+    // C-62: the Inventory -> Accounting posting contract (ADR-0041). The ONE
+    // exported seam Inventory may call: source facts in, typed Accounting
+    // result out. Accounting owns the mapping, the journal, the area, the
+    // period and the mode's finalization behaviour; Inventory supplies facts
+    // and persists the reference this service returns.
+    InventoryPostingService,
     // Task 10.5: the posting-readiness seam. Provided (not exported) — it is
     // an IN-MODULE contract for the future Posting Engine, which is
     // Accounting-owned (ADR-0026 §1). A cross-module consumer would need the
@@ -243,6 +255,11 @@ import { DetailsController } from './api/details.controller.js';
     // never touches `accounting.*` tables (AC-I-13) — but no such caller exists
     // yet, because no production system posting is enabled before OQ-39.
     AccountingDocumentsService,
+    // C-62 (PDR-10 C62-OD-04): the Accounting-owned application contract a
+    // source module calls instead of composing vouchers itself. Exported
+    // alongside the document service because it is the boundary through which
+    // Inventory is authorized to cause an Accounting effect at all.
+    InventoryPostingService,
   ],
 })
 export class AccountingModule {}

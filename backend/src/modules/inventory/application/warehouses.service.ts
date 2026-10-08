@@ -24,6 +24,10 @@ import { toWarehouseDto } from '../domain/warehouse.js';
 import { normalizeCode, normalizeName } from '../domain/master-data.js';
 import { WAREHOUSE_PERMISSIONS } from '../domain/inventory-permissions.js';
 import {
+  assertWarehouseAccountingPostingMode,
+  type WarehouseAccountingPostingMode,
+} from '../domain/warehouse-posting-mode.js';
+import {
   WAREHOUSE_CREATED_EVENT,
   WAREHOUSE_DISABLED_EVENT,
   WAREHOUSE_ENABLED_EVENT,
@@ -62,6 +66,11 @@ export interface CreateWarehouseInput {
   allowNegativeStock?: boolean | undefined;
   /** C-50 §3.7 warehouse setting; default true (preserves current reads). */
   reservationsReduceAvailable?: boolean | undefined;
+  /**
+   * C-62 (PDR-10 C62-OD-02) Accounting posting mode; default `direct_final`
+   * (the behaviour every existing warehouse already has conceptually).
+   */
+  accountingPostingMode?: WarehouseAccountingPostingMode | undefined;
 }
 
 export interface UpdateWarehouseInput {
@@ -70,6 +79,8 @@ export interface UpdateWarehouseInput {
   name?: string | undefined;
   allowNegativeStock?: boolean | undefined;
   reservationsReduceAvailable?: boolean | undefined;
+  /** C-62 Accounting posting mode (OD-02); never defaulted on an update. */
+  accountingPostingMode?: WarehouseAccountingPostingMode | undefined;
 }
 
 /**
@@ -178,6 +189,7 @@ export class WarehousesService {
         name,
         allowNegativeStock: input.allowNegativeStock ?? false,
         reservationsReduceAvailable: input.reservationsReduceAvailable ?? true,
+        accountingPostingMode: input.accountingPostingMode ?? 'direct_final',
         isActive: true,
         createdAt: now,
         updatedAt: now,
@@ -248,6 +260,7 @@ export class WarehousesService {
       name?: string;
       allowNegativeStock?: boolean;
       reservationsReduceAvailable?: boolean;
+      accountingPostingMode?: WarehouseAccountingPostingMode;
       updatedAt: Date;
       updatedBy: string | null;
     } = { updatedAt: new Date(), updatedBy: getPrincipal()?.userId ?? null };
@@ -258,6 +271,13 @@ export class WarehousesService {
     }
     if (input.reservationsReduceAvailable !== undefined) {
       patch.reservationsReduceAvailable = input.reservationsReduceAvailable;
+    }
+    if (input.accountingPostingMode !== undefined) {
+      // Fail closed on an unknown mode: guessing `draft` would silently post
+      // nothing, guessing `direct_final` would silently post to the GL.
+      patch.accountingPostingMode = assertWarehouseAccountingPostingMode(
+        input.accountingPostingMode,
+      );
     }
 
     // Only re-validate the branch when it changes: a warehouse whose branch was
