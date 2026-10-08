@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import { isRecordNotFound } from '../../../kernel/prisma/prisma-errors.js';
 import type { Warehouse } from '../domain/warehouse.js';
+import { resolveWarehouseAccountingPostingMode } from '../domain/warehouse-posting-mode.js';
 import {
   type AuditColumns,
   type MasterDataDelegate,
@@ -25,6 +26,8 @@ type WarehouseRow = {
   name: string;
   allowNegativeStock: boolean;
   reservationsReduceAvailable: boolean;
+  /** C-62: `direct_final` | `draft` (closed, code-defined vocabulary). */
+  accountingPostingMode: string;
   isActive: boolean;
 } & AuditColumns;
 
@@ -49,6 +52,7 @@ interface WarehouseCreate {
   name: string;
   allowNegativeStock: boolean;
   reservationsReduceAvailable: boolean;
+  accountingPostingMode: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -61,6 +65,7 @@ interface WarehouseUpdate {
   name?: string | undefined;
   allowNegativeStock?: boolean | undefined;
   reservationsReduceAvailable?: boolean | undefined;
+  accountingPostingMode?: string | undefined;
   isActive?: boolean | undefined;
   updatedAt: Date;
   updatedBy: string | null;
@@ -175,6 +180,11 @@ function toDomain(row: WarehouseRow): Warehouse {
     name: row.name,
     allowNegativeStock: row.allowNegativeStock,
     reservationsReduceAvailable: row.reservationsReduceAvailable,
+    // Fail closed on an unknown stored mode: guessing `draft` would silently
+    // post nothing, guessing `direct_final` would silently post to the GL.
+    accountingPostingMode: resolveWarehouseAccountingPostingMode(
+      row.accountingPostingMode,
+    ),
     isActive: row.isActive,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

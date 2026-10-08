@@ -109,6 +109,7 @@ export class WarehousesController {
       name: body.name,
       allowNegativeStock: body.allowNegativeStock,
       reservationsReduceAvailable: body.reservationsReduceAvailable,
+      accountingPostingMode: body.accountingPostingMode,
     });
   }
 
@@ -134,6 +135,7 @@ export class WarehousesController {
       name: body.name,
       allowNegativeStock: body.allowNegativeStock,
       reservationsReduceAvailable: body.reservationsReduceAvailable,
+      accountingPostingMode: body.accountingPostingMode,
     });
   }
 

@@ -1,0 +1,244 @@
+// C-62 — Inventory → Accounting posting operations and immutable posting
+// snapshots (PDR-09 PO-01…PO-12, PDR-10 C62-OD-01…06, ADR-0041).
+//
+// These tables are Inventory-owned RECORDS OF THE INTEGRATION. They are not a
+// second stock ledger and not a second accounting ledger:
+//   * quantity/movement/valuation truth stays `inventory_movements` +
+//     `inventory_valuation_states` (ADR-0017/ADR-0022, OD-VH-01);
+//   * accounts, journals, vouchers and the General Ledger stay in the
+//     `accounting` schema, owned by the Accounting module (ADR-0026).
+// What lives here is the durable evidence an AUDITOR needs to answer "what
+// exactly did Inventory send Accounting, under whose authority, and what came
+// back?" — plus the operation key that makes the integration restart-safe and
+// idempotent (C62-OD-05/OD-06).
+//
+// Why the state lives in Inventory and not in Accounting: the posting
+// operation is raised BY an Inventory business document FOR that document,
+// the request hash is computed from Inventory's own authoritative valuation
+// facts, and the initiating human's authority is an Inventory permission
+// (`Inventory.Document.AccountingPost`, PDR-10 C62-OD-03). Accounting keeps
+// its OWN idempotency ledger (`accounting.accounting_posting_operations`,
+// unique on `(organization_id, operation_key)`) for the voucher operations it
+// performs; the two ledgers are linked by the derived Accounting operation
+// key and never share a table (no cross-module database access, AR-07).
+//
+// Decimal precision follows docs/database-strategy.md §6 and the ledger:
+// quantities `numeric(18,4)`, unit costs `numeric(18,6)`, money `numeric(18,2)`.
+
+/// ONE durable Accounting posting operation per (organization, document,
+/// action, operation key).
+///
+/// The operation is the ONLY thing that may carry the document across the
+/// Accounting boundary. Its lifecycle is explicit and closed
+/// (`domain/inventory-accounting-posting-operation.ts`):
+///
+///   REQUESTED ──▶ PENDING ──▶ DRAFT_CREATED ──▶ POSTED
+///                     │                              ▲
+///                     ├────▶ POSTED                 │
+///                     ├────▶ REFUSED   (terminal)   │
+///                     └────▶ FAILED                 │
+///                                  DRAFT_CREATED ───┘ (draft registered)
+///                                  DRAFT_CREATED ──▶ CANCELLED (terminal)
+///
+/// `REQUESTED`/`PENDING` mean "Accounting has not answered yet" — a caller
+/// that timed out must re-query the operation, never infer failure
+/// (C62-OD-06). `REFUSED` and `CANCELLED` are terminal for this key/hash: a
+/// fresh attempt needs a NEW operation key, and the refused/cancelled row is
+/// never overwritten or deleted.
+model InventoryAccountingPostingOperation {
+  id             String @id
+  organizationId String @map("organization_id")
+  documentId     String @map("document_id")
+
+  /// Closed, code-defined list. `accounting_post` is the only C-62 action;
+  /// the column exists so a future action never reuses this key space.
+  action         String @db.VarChar(32)
+  /// Caller-supplied idempotency key. Scoped by (organization, document,
+  /// action) per C62-OD-06 — never global, so two organizations can pick the
+  /// same key without colliding.
+  operationKey   String @map("operation_key") @db.VarChar(128)
+  /// sha256 over the canonical request payload (C62-OD-06). CHAR(64) like
+  /// every other idempotency hash in this repository.
+  requestHash    String @map("request_hash") @db.VarChar(64)
+  /// The source document revision the request was built from — the document's
+  /// own `updated_at` instant. It is part of the hash, so an edit between two
+  /// attempts of the same key is a 409, never a silent re-post.
+  documentVersion String @map("document_version") @db.VarChar(64)
+  /// The Warehouse-configured posting mode the request was built under
+  /// (`direct_final` | `draft`). Part of the hash: switching a warehouse's
+  /// mode changes the request, it does not silently re-post it.
+  postingMode    String @map("posting_mode") @db.VarChar(16)
+  /// Closed, code-defined lifecycle state (see the model comment).
+  state          String @db.VarChar(24)
+
+  // ---- refusal / failure evidence -----------------------------------------
+  /// Stable, machine-readable refusal/failure code; `null` while none.
+  refusalCode    String? @map("refusal_code") @db.VarChar(128)
+  /// Human-readable reason, author-controlled (never a stack trace).
+  refusalReason  String? @map("refusal_reason") @db.VarChar(500)
+
+  // ---- the Accounting result (C62-OD-05/§9) -------------------------------
+  /// The Accounting-owned document this operation produced, when any.
+  accountingDocumentId     String? @map("accounting_document_id")
+  accountingDocumentNumber String? @map("accounting_document_number") @db.VarChar(64)
+  /// `draft` | `temporary` | `final` as Accounting reported it.
+  accountingDocumentPhase  String? @map("accounting_document_phase") @db.VarChar(16)
+  /// The derived key Accounting's OWN idempotency ledger was written under,
+  /// so the two ledgers can be reconciled without a shared table.
+  accountingOperationKey   String? @map("accounting_operation_key") @db.VarChar(128)
+  /// True only when Accounting reported a FINAL voucher in the books.
+  glPosted Boolean @default(false) @map("gl_posted")
+  /// True when this row answered a replay of an earlier request rather than
+  /// performing a new Accounting effect.
+  replayed Boolean @default(false) @map("replayed")
+
+  // ---- authority + time (C62-OD-03) ---------------------------------------
+  /// The initiating HUMAN. Never a system placeholder: the operation is only
+  /// ever raised by an authenticated caller holding
+  /// `Inventory.Document.AccountingPost`.
+  actorUserId     String? @map("actor_user_id")
+  /// The initiating permission whose grant was verified before the operation
+  /// was raised.
+  actorPermission String  @map("actor_permission") @db.VarChar(128)
+  requestedAt     DateTime @map("requested_at") @db.Timestamptz(6)
+  completedAt     DateTime? @map("completed_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  organization Organization                        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  document     InventoryBusinessDocument           @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  /// Exactly ONE immutable snapshot per operation (1:1, enforced by the unique
+  /// index below). The snapshot is written with the operation and never
+  /// updated afterwards.
+  snapshot     InventoryAccountingPostingSnapshot?
+
+  @@unique([organizationId, documentId, action, operationKey], map: "uq_inventory_accounting_posting_operations_key")
+  @@index([organizationId, documentId], map: "idx_inventory_accounting_posting_operations_org_document")
+  @@index([organizationId, state], map: "idx_inventory_accounting_posting_operations_org_state")
+  @@map("inventory_accounting_posting_operations")
+  @@schema("inventory")
+}
+
+/// The immutable posting snapshot of ONE operation (C62-OD-05).
+///
+/// Typed and normalized, not a JSON blob: an accountant or auditor must be
+/// able to ask "what exactly was sent to Accounting, and what exact Inventory
+/// valuation was used?" with a query, not a parser. The header carries the
+/// document-level facts and the valuation verdict; the per-movement rows carry
+/// the quantities, units, authoritative values and unit costs.
+///
+/// Nothing here is ever UPDATED. It survives every later Inventory change —
+/// a repricing, a reverse pricing, a direct valuation mutation or a document
+/// edit cannot alter what was posted, because the posted basis lives in these
+/// rows and not in the live ledger.
+model InventoryAccountingPostingSnapshot {
+  id             String @id
+  organizationId String @map("organization_id")
+  operationId    String @unique @map("operation_id")
+  documentId     String @map("document_id")
+
+  /// `receipt` for the C-62 first slice — the source document type Accounting
+  /// resolves its mapping by. Closed, code-defined.
+  documentType    String  @map("document_type") @db.VarChar(16)
+  documentNumber  String? @map("document_number") @db.VarChar(64)
+  documentVersion String  @map("document_version") @db.VarChar(64)
+  documentDate    DateTime @map("document_date") @db.Timestamptz(6)
+
+  /// The organizational (Legal Entity) context of the posting. Vardena has no
+  /// separate Legal Entity model: `branch` is the first-class organizational
+  /// scope a warehouse belongs to (ADR-0020 §1), and the movement's branch
+  /// snapshot is the entity the value was booked under.
+  branchId    String @map("branch_id")
+  warehouseId String @map("warehouse_id")
+
+  /// OD-PRC-12 valuation completeness at posting time (`priced` for an
+  /// eligible document).
+  valuationState String @map("valuation_state") @db.VarChar(24)
+  /// The document's own OD-54-06 stale flag.
+  valuationStale Boolean @map("valuation_stale")
+  /// The key-level verdict the eligibility gate actually enforced:
+  /// `not_stale` | `stale` (C-59/C-60 correction — ANY relevant stale key
+  /// blocks Accounting eligibility).
+  staleVerdict String @map("stale_verdict") @db.VarChar(24)
+  /// The recalculation run that last assigned the values, when the value came
+  /// from a run rather than from the posting itself.
+  valuationRunId String? @map("valuation_run_id")
+  /// The valuation basis the values were produced under: `entered_cost`,
+  /// `average_cost`, `transfer` or `reversal` — the closed ledger vocabulary,
+  /// snapshotted so history keeps its meaning.
+  valuationBasis String @map("valuation_basis") @db.VarChar(64)
+  /// Σ of the per-movement authoritative values (money, exact decimal).
+  totalValue Decimal @map("total_value") @db.Decimal(18, 2)
+
+  /// The initiating human and the instant the snapshot was captured.
+  actorUserId String? @map("actor_user_id")
+  capturedAt  DateTime @map("captured_at") @db.Timestamptz(6)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+
+  organization Organization                               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  operation    InventoryAccountingPostingOperation        @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  document     InventoryBusinessDocument                  @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  branch       Branch                                     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  warehouse    Warehouse                                  @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  movements    InventoryAccountingPostingSnapshotMovement[]
+
+  @@index([organizationId, documentId], map: "idx_inventory_accounting_posting_snapshots_org_document")
+  @@map("inventory_accounting_posting_snapshots")
+  @@schema("inventory")
+}
+
+/// ONE immutable row per ledger movement the posting carried (C62-OD-05).
+///
+/// The movement id is a plain reference, not a foreign key, exactly like the
+/// document's own `movement_id` columns: a reversed-and-re-posted line
+/// repoints the live document while the posted rows stay forever (AR-13).
+model InventoryAccountingPostingSnapshotMovement {
+  id             String @id
+  organizationId String @map("organization_id")
+  snapshotId     String @map("snapshot_id")
+  movementId     String @map("movement_id")
+  /// The document line that owns this movement.
+  lineId         String @map("line_id")
+  itemId         String @map("item_id")
+
+  /// Entered magnitude in `unit_id` (always > 0), and its signed base-unit
+  /// effect in `base_unit_id` — both snapshotted from the ledger.
+  quantity     Decimal @db.Decimal(18, 4)
+  unitId       String  @map("unit_id")
+  baseQuantity Decimal @map("base_quantity") @db.Decimal(18, 4)
+  baseUnitId   String  @map("base_unit_id")
+
+  /// The AUTHORITATIVE signed inventory value effect of this movement
+  /// (+ inbound, − outbound), copied verbatim from
+  /// `inventory_movements.total_cost`. Never recomputed here.
+  totalValue Decimal @map("total_value") @db.Decimal(18, 2)
+  /// The authoritative per-base-unit cost DERIVED at posting time
+  /// (`total_value / base_quantity`). Stored as evidence: the ledger
+  /// deliberately keeps no unit-cost column (a second, rounded truth), so the
+  /// snapshot is where that figure is frozen for the audit trail.
+  unitCost Decimal @map("unit_cost") @db.Decimal(18, 6)
+
+  /// `unvalued` | `provisional` | `valued` at posting time.
+  valuationStatus String  @map("valuation_status") @db.VarChar(16)
+  /// `entered_cost` | `average_cost` | `transfer` | `reversal` | null.
+  valuationSource String? @map("valuation_source") @db.VarChar(24)
+  valuationRunId  String? @map("valuation_run_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization                      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  snapshot     InventoryAccountingPostingSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  item         Item                              @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  unit         Unit                              @relation("SnapshotMovementEnteredUnit", fields: [unitId], references: [id], onDelete: Restrict)
+  baseUnit     Unit                              @relation("SnapshotMovementBaseUnit", fields: [baseUnitId], references: [id], onDelete: Restrict)
+
+  @@unique([snapshotId, movementId], map: "uq_inventory_accounting_posting_snapshot_movements")
+  @@index([organizationId, movementId], map: "idx_inventory_accounting_posting_snapshot_movements_org_movement")
+  @@map("inventory_accounting_posting_snapshot_movements")
+  @@schema("inventory")
+}

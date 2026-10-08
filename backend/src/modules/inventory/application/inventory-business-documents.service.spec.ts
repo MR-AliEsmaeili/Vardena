@@ -17,6 +17,7 @@ import { ItemGroupsService } from './item-groups.service.js';
 import { ItemsService } from './items.service.js';
 import { WarehousesService } from './warehouses.service.js';
 import { InventoryBusinessDocumentsService } from './inventory-business-documents.service.js';
+import type { InventoryAccountingPostingService } from './inventory-accounting-posting.service.js';
 import type { InventoryValuationService } from './inventory-valuation.service.js';
 import type { InventoryBalancesRepository } from '../data/inventory-balances.repository.js';
 import type { InventoryMovementsRepository } from '../data/inventory-movements.repository.js';
@@ -101,6 +102,13 @@ interface DocRow {
   reference: string | null;
   operationKey: string | null;
   valuationStale: boolean;
+  // C-62: the document's Accounting standing, projected from the posting
+  // operation exactly like `operationKey` is projected from the finalize.
+  accountingPostingState: string;
+  accountingPostingOperationId: string | null;
+  accountingDocumentId: string | null;
+  accountingDocumentNumber: string | null;
+  accountingDocumentPhase: string | null;
   finalizedAt: Date | null;
   finalizedBy: string | null;
   accountingPostedAt: Date | null;
@@ -279,6 +287,11 @@ function fakeDocumentsRepository(
       status: row.status,
       operationKey: row.operationKey,
       valuationStale: row.valuationStale,
+      accountingPostingState: row.accountingPostingState,
+      accountingPostingOperationId: row.accountingPostingOperationId,
+      accountingDocumentId: row.accountingDocumentId,
+      accountingDocumentNumber: row.accountingDocumentNumber,
+      accountingDocumentPhase: row.accountingDocumentPhase,
       finalizedAt: row.finalizedAt,
       finalizedBy: row.finalizedBy,
       accountingPostedAt: row.accountingPostedAt,
@@ -431,6 +444,11 @@ function fakeDocumentsRepository(
         reference: header.reference,
         operationKey: null,
         valuationStale: false,
+        accountingPostingState: 'not_posted',
+        accountingPostingOperationId: null,
+        accountingDocumentId: null,
+        accountingDocumentNumber: null,
+        accountingDocumentPhase: null,
         finalizedAt: null,
         finalizedBy: null,
         accountingPostedAt: null,
@@ -786,12 +804,143 @@ function fakeValuation(
   } as unknown as InventoryValuationService;
 }
 
+/**
+ * C-62 test double for the Inventory → Accounting boundary.
+ *
+ * It reproduces the boundary CONTRACT the document service consumes — a typed
+ * Accounting result plus the document standing that result establishes — and
+ * the lifecycle refusal the real service makes first, so the document-level
+ * lifecycle tests keep their meaning.
+ *
+ * It deliberately does NOT emulate Accounting's own mapping resolution, its
+ * idempotency ledger, its authority assertion or its voucher: those are
+ * Accounting-owned facts with their own unit tests, and the end-to-end proof
+ * runs against a live PostgreSQL in CI.
+ */
+function fakeAccountingPosting(
+  world: FakeWorld,
+  options: { outcome?: 'final_posted' | 'draft_created' | 'refused' } = {},
+): InventoryAccountingPostingService {
+  const outcome = options.outcome ?? 'final_posted';
+  const accountingDocumentId = 'acc-doc-1';
+  return {
+    async requestAccountingPosting(id: string, organizationId: string) {
+      const current = world.documents.get(id);
+      if (current === undefined) {
+        throw AppException.notFound('Inventory document', id);
+      }
+      if (current.status !== 'operational') {
+        throw AppException.businessRule(
+          `The inventory document cannot move from "${current.status}" to "accounting_posted".`,
+          { code: 'inventory.document.illegal_transition' },
+        );
+      }
+      const now = new Date();
+      world.documents.set(id, {
+        ...current,
+        accountingPostingState:
+          outcome === 'draft_created' ? 'draft_created' : 'not_posted',
+        accountingPostingOperationId: outcome === 'refused' ? null : 'op-1',
+        accountingDocumentId:
+          outcome === 'refused' ? null : accountingDocumentId,
+        accountingDocumentNumber: outcome === 'refused' ? null : 'JV-0001',
+        accountingDocumentPhase:
+          outcome === 'refused'
+            ? null
+            : outcome === 'draft_created'
+              ? 'draft'
+              : 'final',
+        ...(outcome === 'final_posted'
+          ? {
+              status: 'accounting_posted',
+              accountingPostedAt: now,
+              accountingPostedBy: current.updatedBy,
+            }
+          : {}),
+        updatedAt: now,
+      });
+      return {
+        documentId: id,
+        organizationId,
+        action: 'accounting_post',
+        operationKey: 'inv-acct:accounting_post:create',
+        state:
+          outcome === 'draft_created'
+            ? ('draft_created' as const)
+            : outcome === 'refused'
+              ? ('not_posted' as const)
+              : ('final_posted' as const),
+        outcome,
+        postingMode:
+          outcome === 'draft_created'
+            ? ('draft' as const)
+            : ('direct_final' as const),
+        replayed: false,
+        accountingDocumentId:
+          outcome === 'refused' ? null : accountingDocumentId,
+        accountingDocumentNumber: outcome === 'refused' ? null : 'JV-0001',
+        accountingDocumentPhase:
+          outcome === 'refused'
+            ? null
+            : outcome === 'draft_created'
+              ? 'draft'
+              : 'final',
+        glPosted: outcome === 'final_posted',
+        refusalCode:
+          outcome === 'refused' ? 'accounting.mapping_missing' : null,
+        refusalReason:
+          outcome === 'refused'
+            ? 'No Accounting posting mapping is configured.'
+            : null,
+      };
+    },
+    async cancelAccountingPosting(id: string, organizationId: string) {
+      const current = world.documents.get(id);
+      if (current === undefined) {
+        throw AppException.notFound('Inventory document', id);
+      }
+      if (current.accountingPostingState !== 'draft_created') {
+        throw AppException.businessRule(
+          'Only a document whose Accounting posting created a draft can be cancelled.',
+          {
+            code: 'inventory.document.accounting_post_draft_required',
+            documentId: id,
+          },
+        );
+      }
+      world.documents.set(id, {
+        ...current,
+        accountingPostingState: 'draft_cancelled',
+        updatedAt: new Date(),
+      });
+      return {
+        documentId: id,
+        organizationId,
+        action: 'accounting_post:cancel',
+        operationKey: 'inv-acct:accounting_post:cancel:create',
+        state: 'draft_cancelled' as const,
+        outcome: 'refused' as const,
+        postingMode: 'draft' as const,
+        replayed: false,
+        accountingDocumentId: current.accountingDocumentId,
+        accountingDocumentNumber: current.accountingDocumentNumber,
+        accountingDocumentPhase: current.accountingDocumentPhase,
+        glPosted: false,
+        refusalCode: null,
+        refusalReason: null,
+      };
+    },
+  } as unknown as InventoryAccountingPostingService;
+}
+
 interface BuildOptions {
   canViewCost?: boolean;
   backdated?: boolean;
   repricingFails?: boolean;
   noValuedStock?: boolean;
   transferReplayFails?: boolean;
+  /** C-62: what the Accounting boundary answers. */
+  postingOutcome?: 'final_posted' | 'draft_created' | 'refused';
 }
 
 async function buildFixture(options: BuildOptions = {}) {
@@ -906,6 +1055,10 @@ async function buildFixture(options: BuildOptions = {}) {
     },
   } as unknown as NumberingService;
 
+  const posting = fakeAccountingPosting(world, {
+    outcome: options.postingOutcome ?? 'final_posted',
+  });
+
   const service = new InventoryBusinessDocumentsService(
     fakeDocumentsRepository(world),
     fakeMovementsRepository(world, {
@@ -919,6 +1072,7 @@ async function buildFixture(options: BuildOptions = {}) {
     fakeValuation(options, recalculations),
     numbering,
     authorization,
+    posting,
     loggerStub(),
     bus,
   );

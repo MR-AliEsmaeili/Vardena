@@ -36,6 +36,13 @@ export type InventoryDocumentRow = {
   reference: string | null;
   operationKey: string | null;
   valuationStale: boolean;
+  // C-62: the document's Accounting standing projected onto its own header.
+  // The authoritative record stays `inventory_accounting_posting_operations`.
+  accountingPostingState: string;
+  accountingPostingOperationId: string | null;
+  accountingDocumentId: string | null;
+  accountingDocumentNumber: string | null;
+  accountingDocumentPhase: string | null;
   finalizedAt: Date | null;
   finalizedBy: string | null;
   accountingPostedAt: Date | null;
@@ -70,6 +77,8 @@ export interface InventoryDocumentCreate {
   description: string | null;
   reference: string | null;
   operationKey: string | null;
+  // C-62: deliberately absent, exactly like `valuationStale` above — the
+  // database default `not_posted` is the only value a new document may carry.
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
@@ -87,6 +96,11 @@ export interface InventoryDocumentUpdate {
   reference?: string | null;
   operationKey?: string | null;
   valuationStale?: boolean;
+  accountingPostingState?: string;
+  accountingPostingOperationId?: string | null;
+  accountingDocumentId?: string | null;
+  accountingDocumentNumber?: string | null;
+  accountingDocumentPhase?: string | null;
   finalizedAt?: Date | null;
   finalizedBy?: string | null;
   accountingPostedAt?: Date | null;

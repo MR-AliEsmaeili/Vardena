@@ -118,6 +118,10 @@ model FinancialArea {
   // Virtual side only — no migration impact.
   accountBalanceProjections AccountBalanceProjection[]
 
+
+  // C-62: the source posting mappings that target this area. Virtual side
+  // only — the real FK column is `source_posting_mappings.financial_area_id`.
+  sourcePostingMappings SourcePostingMapping[]
   @@unique([organizationId, code], map: "uq_financial_areas_organization_id_code")
   @@index([organizationId, isActive], map: "idx_financial_areas_organization_id_is_active")
   @@map("financial_areas")
@@ -401,6 +405,12 @@ model Account {
 
   /// The canonical-code uniqueness (§9.2) — the authoritative duplicate guard
   /// for concurrent creates (the service pre-check only produces a nicer 409).
+
+  /// C-62: the source posting mappings that post TO this account (debit side)
+  /// and the ones that post the offsetting side (credit side). Virtual side
+  /// only — the real FK columns are `source_posting_mappings.*_account_id`.
+  debitSourcePostingMappings  SourcePostingMapping[] @relation("SourcePostingMappingDebitAccount")
+  creditSourcePostingMappings SourcePostingMapping[] @relation("SourcePostingMappingCreditAccount")
   @@unique([organizationId, code], map: "uq_accounts_organization_id_code")
   /// Children of one node (the `hasChildren` guard, the tree walk, the
   /// direct-children list) — leads with the scope column (ADR-0021 §3).
@@ -1273,5 +1283,63 @@ model Detail {
   @@index([organizationId, isPostable], map: "idx_details_organization_id_is_postable")
   @@index([detailStructureVersionId], map: "idx_details_detail_structure_version_id")
   @@map("details")
+  @@schema("accounting")
+}
+
+// ---------------------------------------------------------------------------
+// Source posting mappings (C-62, PDR-09 PO-01/PO-04, PDR-10 C62-OD-04)
+// ---------------------------------------------------------------------------
+
+/// The Accounting-owned mapping from a SOURCE fact to the journal an Inventory
+/// business document produces.
+///
+/// This table is the whole reason Inventory can never choose an account: the
+/// only account selection that exists for a system-origin posting is the row
+/// an accountant configures HERE, resolved by the Accounting-owned application
+/// contract and nowhere else. Inventory supplies facts; Accounting owns
+/// mapping and journal policy (PO-01/OD-04).
+///
+/// Scope is `(organization, source module, source document type)`. The C-62
+/// first slice registers exactly one kind of source: module `inventory`,
+/// document type `inventory_receipt`. Other source types arrive with their own
+/// Owner-approved mapping — a missing row is a FAIL-CLOSED configuration
+/// error, never a guessed account (OD-04).
+///
+/// The two sides are deliberately explicit: the DEBIT side is the account the
+/// source document's value is recognised in (for a receipt, the inventory
+/// account), and the CREDIT side is the offsetting account the accountant
+/// chose for it. Vardena does not infer a payable/accrual account from a
+/// supplier, a purchase invoice or a tax code — none of those exists on an
+/// Inventory receipt, and inventing one would decide OQ-24/OQ-25/OQ-30 by
+/// accident.
+model SourcePostingMapping {
+  id             String @id
+  organizationId String @map("organization_id")
+
+  /// Code-defined, lowercase snake_case (`inventory`).
+  sourceModule       String @map("source_module") @db.VarChar(64)
+  /// Code-defined, lowercase snake_case (`inventory_receipt`).
+  sourceDocumentType String @map("source_document_type") @db.VarChar(64)
+
+  /// The financial area the produced voucher belongs to. Chosen by the
+  /// accountant, resolved by Accounting — Inventory never names a financial
+  /// area.
+  financialAreaId String @map("financial_area_id")
+  debitAccountId  String @map("debit_account_id")
+  creditAccountId String @map("credit_account_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  financialArea FinancialArea @relation(fields: [financialAreaId], references: [id], onDelete: Restrict)
+  debitAccount  Account       @relation("SourcePostingMappingDebitAccount", fields: [debitAccountId], references: [id], onDelete: Restrict)
+  creditAccount Account       @relation("SourcePostingMappingCreditAccount", fields: [creditAccountId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, sourceModule, sourceDocumentType], map: "uq_source_posting_mappings_org_module_document_type")
+  @@index([organizationId], map: "idx_source_posting_mappings_organization_id")
+  @@map("source_posting_mappings")
   @@schema("accounting")
 }

@@ -20,6 +20,7 @@ import {
   uniqueViolationTouches,
 } from '../../../kernel/prisma/prisma-errors.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
+import type { ServiceAuthority } from '../../rbac/domain/service-authority.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { BranchesService } from '../../organization/application/branches.service.js';
 import { NumberingService } from '../../documents/application/numbering.service.js';
@@ -77,6 +78,7 @@ import {
 } from './accounting-document-support.js';
 import { resolveSort } from './accounting-support.js';
 import { PostingService } from './posting.service.js';
+import { EXPECTED_ACCOUNTING_SOURCE_POSTING_AUTHORITY } from './inventory-posting-contract.js';
 import { ACCOUNTING_DOCUMENT_PERMISSIONS } from '../domain/accounting-permissions.js';
 import {
   ACCOUNTING_DOCUMENT_CREATED_EVENT,
@@ -147,7 +149,62 @@ export class AccountingDocumentsService {
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
   ) {}
 
+  // ---- authority -----------------------------------------------------------
+
+  /**
+   * The ONE place a document operation decides WHO may perform it (C-62,
+   * PDR-10 C62-OD-03).
+   *
+   * Without an explicit service authority the interactive permission is
+   * required, exactly as before. WITH one, the explicit bounded internal
+   * service authority is asserted instead: the initiating human must be the
+   * caller, must still hold the initiating Inventory permission, and the
+   * operation must stay in the authorized organization. That is an auditable
+   * decision, not a bypass — no wildcard, no "system context means trusted",
+   * and nothing here consults the License (a License is not a Permission).
+   */
+  private async assertDocumentAuthority(
+    permission: string,
+    organizationId: string,
+    authority: ServiceAuthority | undefined,
+  ): Promise<void> {
+    if (authority === undefined) {
+      await this.authorization.requireAllPermissions([permission]);
+      return;
+    }
+    await this.authorization.requireServiceAuthority(
+      authority,
+      EXPECTED_ACCOUNTING_SOURCE_POSTING_AUTHORITY,
+      organizationId,
+    );
+  }
+
   // ---- reads ---------------------------------------------------------------
+
+  /**
+   * The Accounting document an operation key produced, if any (C-62).
+   *
+   * Read through the module's OWN idempotency ledger — the one place that
+   * records which document an operation created — so a cross-module consumer
+   * can reconcile state without ever touching `accounting.*` tables. Scoped by
+   * organization: a foreign organization's key answers `null`, never a
+   * document (ADR-0021 \u00a74).
+   */
+  async getDocumentForOperation(
+    organizationId: string,
+    operationKey: string,
+  ): Promise<AccountingDocumentDto | null> {
+    const existing = await this.operations.findByKey(
+      organizationId,
+      operationKey,
+    );
+    if (existing === null) return null;
+    const document = await this.repository.findById(existing.result.documentId);
+    if (document === null || document.organizationId !== organizationId) {
+      return null;
+    }
+    return toAccountingDocumentDto(document);
+  }
 
   async listDocuments(
     query: ListAccountingDocumentsQuery,
@@ -212,10 +269,13 @@ export class AccountingDocumentsService {
    */
   async createDocument(
     input: CreateAccountingDocumentInput,
+    authority?: ServiceAuthority | undefined,
   ): Promise<AccountingDocumentDto> {
-    await this.authorization.requireAllPermissions([
+    await this.assertDocumentAuthority(
       ACCOUNTING_DOCUMENT_PERMISSIONS.CREATE,
-    ]);
+      input.organizationId,
+      authority,
+    );
     await this.organizations.assertOrganizationInScope(input.organizationId);
 
     const documentDate = parseDocumentDate(input.documentDate);
@@ -270,7 +330,10 @@ export class AccountingDocumentsService {
       input.organizationId,
       ACCOUNTING_VOUCHER_DOCUMENT_TYPE,
     );
-    const plan = planVoucherCreate({ draftRequired: settings.draftRequired });
+    const plan = planVoucherCreate({
+      draftRequired: settings.draftRequired,
+      forceDraft: input.draftPhase === true,
+    });
     if (plan.problem !== null) {
       throw AppException.businessRule(lifecycleProblemMessage(plan.problem));
     }
@@ -458,10 +521,13 @@ export class AccountingDocumentsService {
     organizationId: string,
     id: string,
     input: TransitionDocumentInput,
+    authority?: ServiceAuthority | undefined,
   ): Promise<AccountingDocumentDto> {
-    await this.authorization.requireAllPermissions([
+    await this.assertDocumentAuthority(
       ACCOUNTING_DOCUMENT_PERMISSIONS.EDIT,
-    ]);
+      organizationId,
+      authority,
+    );
     const current = await this.mustFindInOrganization(organizationId, id);
     const plan = planVoucherIssue(current.phase);
     if (plan.kind === 'replay') return toAccountingDocumentDto(current);
@@ -526,10 +592,13 @@ export class AccountingDocumentsService {
     organizationId: string,
     id: string,
     input: TransitionDocumentInput,
+    authority?: ServiceAuthority | undefined,
   ): Promise<AccountingDocumentDto> {
-    await this.authorization.requireAllPermissions([
+    await this.assertDocumentAuthority(
       ACCOUNTING_DOCUMENT_PERMISSIONS.FINALIZE,
-    ]);
+      organizationId,
+      authority,
+    );
     try {
       const outcome = await this.posting.postVoucher({
         organizationId,
@@ -554,10 +623,13 @@ export class AccountingDocumentsService {
   async deleteDocument(
     organizationId: string,
     id: string,
+    authority?: ServiceAuthority,
   ): Promise<AccountingDocumentDto> {
-    await this.authorization.requireAllPermissions([
+    await this.assertDocumentAuthority(
       ACCOUNTING_DOCUMENT_PERMISSIONS.DELETE,
-    ]);
+      organizationId,
+      authority,
+    );
     const current = await this.mustFindInOrganization(organizationId, id);
     const plan = planVoucherDelete(current.phase);
     if (plan.problem !== null) {
@@ -907,6 +979,14 @@ export interface CreateAccountingDocumentInput {
     entityId?: string | null | undefined;
     operation?: string | null | undefined;
   } | null;
+  /**
+   * C-62 (PDR-10 C62-OD-02): start the voucher in `draft` regardless of the
+   * organization's `draft_required` selection. Set by the Accounting-owned
+   * posting contract when the Warehouse is configured for Draft mode —
+   * Accounting owns draft classification, so the mode never reaches the
+   * document aggregate through any other path. Never client-supplied.
+   */
+  draftPhase?: boolean | undefined;
 }
 
 export interface UpdateAccountingDocumentInput {

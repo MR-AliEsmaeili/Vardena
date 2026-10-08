@@ -56,7 +56,6 @@ import {
 import { INVENTORY_DOCUMENT_PERMISSIONS } from '../domain/inventory-document-permissions.js';
 import { documentTypeFor } from '../domain/inventory-document-types.js';
 import {
-  INVENTORY_DOCUMENT_ACCOUNTING_POSTED_EVENT,
   INVENTORY_DOCUMENT_CANCELLED_EVENT,
   INVENTORY_DOCUMENT_CREATED_EVENT,
   INVENTORY_DOCUMENT_FINALIZED_EVENT,
@@ -94,6 +93,7 @@ import {
   InventoryValuationService,
   type PreparedRecalculation,
 } from './inventory-valuation.service.js';
+import { InventoryAccountingPostingService } from './inventory-accounting-posting.service.js';
 import type { InventoryValuationRunDto } from '../domain/inventory-valuation.js';
 
 const SORTABLE_FIELDS: Record<string, string> = {
@@ -270,6 +270,7 @@ export class InventoryBusinessDocumentsService {
     private readonly valuation: InventoryValuationService,
     private readonly numbering: NumberingService,
     private readonly authorization: AuthorizationService,
+    private readonly posting: InventoryAccountingPostingService,
     private readonly logger: JsonLogger,
     @Inject(DOMAIN_EVENT_BUS) private readonly events: DomainEventBus,
   ) {}
@@ -891,170 +892,91 @@ export class InventoryBusinessDocumentsService {
   // ---- accounting boundary --------------------------------------------------
 
   /**
-   * Cross the Accounting Post boundary (OD-54-01/02). After this the
-   * document is immutable to direct edit, delete and cancellation.
+   * Cross the Accounting Post boundary (OD-54-01/02, now C-62).
    *
-   * KNOWN BOUNDARY: this command records the accounting boundary on the
-   * Inventory document; it does NOT create journal entries. Inventory→GL
-   * posting (COGS, inventory accounts) is outside the C-58 scope and has no
-   * decided convention yet.
+   * PRE-C-62 THIS COMMAND ONLY SET A FLAG. It recorded the boundary on the
+   * Inventory document and created no Accounting effect at all — that was the
+   * gap C-62 closes. It now delegates to `InventoryAccountingPostingService`,
+   * which owns the whole operation: eligibility under the document and
+   * valuation locks, the durable intent, the synchronous application-service
+   * call to Accounting, and the Accounting-owned answer that decides the
+   * document's standing.
+   *
+   * WHAT THIS COMMAND STILL GUARANTEES
+   * ----------------------------------
+   *   * Inventory never selects an account and never writes an Accounting row
+   *     (PO-02, AR-07);
+   *   * the document only becomes Accounting Posted when Accounting reported
+   *     a FINAL voucher — never on a draft, never on a refusal (C62-OD-02);
+   *   * the same operation key replays the same answer instead of creating a
+   *     second voucher (C62-OD-06);
+   *   * the operation is NOT one shared transaction: OD-01's feasibility gate
+   *     failed, so this is the durable two-phase fallback and must never be
+   *     described as atomic (see `inventory-accounting-posting.service.ts`).
    */
   async accountingPostDocument(
     id: string,
     organizationId: string,
+    input: {
+      operationKey?: string | undefined;
+      expectedDocumentRevision?: string | undefined;
+    } = {},
   ): Promise<InventoryDocumentDto> {
-    await this.authorization.requireAllPermissions([
-      INVENTORY_DOCUMENT_PERMISSIONS.ACCOUNTING_POST,
-    ]);
-    await this.organizations.assertOrganizationInScope(organizationId);
-    const current = await this.mustFind(id, organizationId);
-    // A retry of the already-crossed boundary is a harmless replay, never a
-    // second Accounting effect (there is currently no GL document to create).
-    if (
-      current.status === 'accounting_posted' ||
-      current.status === 'immutable'
-    ) {
-      return this.toDto(current);
-    }
-    rethrowDomain(() => assertTransition(current.status, 'accounting_posted'));
-
-    // C-59 CONCURRENCY HARDENING. The eligibility check and the lifecycle
-    // write used to live in two transactions, so a Pricing Run (or a
-    // Reverse Pricing, or a backdated repricing) could commit between the
-    // check and the write and an accounting-posted document could carry a
-    // value Accounting never approved. Now ONE transaction:
-    //
-    //   1. lock the document header row (serializes edits/cancels/posts),
-    //   2. lock the valuation-state rows of EVERY key the document's
-    //      movements touch, in the module's fixed ascending order — the
-    //      same tier a Pricing Run / Reverse Pricing locks through,
-    //   3. re-derive the valuation state from the movements (a fresh read
-    //      AFTER the locks: any valuation writer that had committed is
-    //      visible, any in-flight one is still blocked on the same locks),
-    //   4. refuse or write the boundary — same transaction, no gap.
-    const now = new Date();
-    const actorId = getPrincipal()?.userId ?? null;
-    let alreadyCrossed = false;
-    await this.documents.withTransaction(async (tx) => {
-      const locked = await this.documents.lockDocumentRow(
-        tx,
-        organizationId,
-        id,
-      );
-      if (locked === null) {
-        throw AppException.notFound('Inventory business document', id);
-      }
-      if (!isInventoryDocumentStatus(locked.status)) {
-        throw new Error(
-          `Stored inventory document "${id}" has an unknown status "${locked.status}".`,
-        );
-      }
-      const lockedStatus: InventoryDocumentStatus = locked.status;
-      if (
-        lockedStatus === 'accounting_posted' ||
-        lockedStatus === 'immutable'
-      ) {
-        alreadyCrossed = true;
-        return;
-      }
-      rethrowDomain(() => assertTransition(lockedStatus, 'accounting_posted'));
-
-      const document = await this.mustFind(id, organizationId);
-      const movementIds = document.lines.flatMap((line) =>
-        [line.movementId, line.outMovementId, line.inMovementId].filter(
-          (movementId): movementId is string => movementId !== null,
-        ),
-      );
-      if (movementIds.length === 0) {
-        throw AppException.businessRule(
-          'The inventory document is not accounting eligible. It must be operational, fully priced, and have no stale valuation.',
-          {
-            code: 'inventory.document.accounting_ineligible',
-            documentId: document.id,
-            status: document.status,
-            valuationState: 'unpriced',
-            valuationStale: document.valuationStale,
-          },
-        );
-      }
-      // First read: derive the keys this document's valuation depends on.
-      const forKeys = await this.movements.findIds(movementIds);
-      const keys = [
-        ...new Map(
-          forKeys
-            .filter((movement) => movement.organizationId === organizationId)
-            .map((movement) => [
-              `${movement.warehouseId}:${movement.itemId}`,
-              {
-                organizationId: movement.organizationId,
-                branchId: movement.branchId,
-                warehouseId: movement.warehouseId,
-                itemId: movement.itemId,
-              },
-            ]),
-        ).values(),
-      ];
-      // The lock tier every multi-key valuation writer shares, taken in ONE
-      // call so the fixed ascending order holds across the whole set. The
-      // method is only used if a key has no state row yet (impossible for a
-      // priced document, but the locker's contract requires one).
-      const lockEntries = await Promise.all(
-        keys.map(async (key) => ({
-          key,
-          method: (
-            await this.valuation.resolveMethodForPosting({
-              organizationId: key.organizationId,
-              itemId: key.itemId,
-              asOf: now,
-            })
-          ).method,
-        })),
-      );
-      await this.documents.lockValuationStateRows(tx, lockEntries, actorId);
-      // Second read: the truth the boundary is decided on, taken AFTER the
-      // locks (see the block comment above for why that is exact).
-      const dto = await this.toDtoWithCostAccess(
-        document,
-        await this.valuation.canViewCost(),
-      );
-      if (!dto.accountingEligible) {
-        throw AppException.businessRule(
-          'The inventory document is not accounting eligible. It must be operational, fully priced, and have no stale valuation.',
-          {
-            code: 'inventory.document.accounting_ineligible',
-            documentId: document.id,
-            status: document.status,
-            valuationState: dto.valuationState,
-            valuationStale: document.valuationStale,
-          },
-        );
-      }
-      await this.documents.updateHeader(tx, id, {
-        status: 'accounting_posted',
-        accountingPostedAt: now,
-        accountingPostedBy: actorId,
-        updatedAt: now,
-        updatedBy: actorId,
-      });
-    });
-
+    const outcome = await this.posting.requestAccountingPosting(
+      id,
+      organizationId,
+      input,
+    );
     const updated = await this.mustFind(id, organizationId);
-    if (!alreadyCrossed) {
-      await this.publishDocumentEvent(
-        INVENTORY_DOCUMENT_ACCOUNTING_POSTED_EVENT,
-        updated,
-        [],
-      );
-      this.logger.log(
-        'Inventory business document accounting-posted',
-        {
-          documentId: updated.id,
-          organizationId,
-          number: updated.number,
-        },
-        InventoryBusinessDocumentsService.name,
-      );
-    }
+    this.logger.log(
+      'Inventory business document accounting posting requested',
+      {
+        documentId: id,
+        organizationId,
+        action: outcome.action,
+        operationKey: outcome.operationKey,
+        postingMode: outcome.postingMode,
+        outcome: outcome.outcome,
+        accountingPostingState: outcome.state,
+        accountingDocumentId: outcome.accountingDocumentId,
+        glPosted: outcome.glPosted,
+        refusalCode: outcome.refusalCode,
+        replayed: outcome.replayed,
+      },
+      InventoryBusinessDocumentsService.name,
+    );
+    return this.toDto(updated);
+  }
+
+  /**
+   * Cancel the Accounting DRAFT a posting created (C62-OD-02). Delegated for
+   * the same reason as the posting itself: the draft belongs to Accounting, so
+   * the request goes through the contract and the Inventory standing only
+   * moves once Accounting confirms.
+   */
+  async cancelAccountingPosting(
+    id: string,
+    organizationId: string,
+    input: { operationKey?: string | undefined } = {},
+  ): Promise<InventoryDocumentDto> {
+    const outcome = await this.posting.cancelAccountingPosting(
+      id,
+      organizationId,
+      input,
+    );
+    const updated = await this.mustFind(id, organizationId);
+    this.logger.log(
+      'Inventory business document accounting posting cancellation requested',
+      {
+        documentId: id,
+        organizationId,
+        action: outcome.action,
+        operationKey: outcome.operationKey,
+        accountingPostingState: outcome.state,
+        refusalCode: outcome.refusalCode,
+      },
+      InventoryBusinessDocumentsService.name,
+    );
     return this.toDto(updated);
   }
 

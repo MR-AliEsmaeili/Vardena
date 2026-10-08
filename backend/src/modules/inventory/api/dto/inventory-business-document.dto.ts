@@ -22,6 +22,8 @@ import {
   MAX_DOCUMENT_DESCRIPTION_LENGTH,
   MAX_DOCUMENT_REFERENCE_LENGTH,
 } from '../../domain/inventory-business-document.js';
+import { INVENTORY_DOCUMENT_ACCOUNTING_POSTING_STATES } from '../../domain/inventory-accounting-posting-operation.js';
+import { MAX_ACCOUNTING_POSTING_OPERATION_KEY_LENGTH } from '../../domain/inventory-accounting-posting-request.js';
 
 /**
  * Inventory Business Document API contracts (C-58).
@@ -220,6 +222,26 @@ export class FinalizeInventoryDocumentDto {
   repricing?: string;
 }
 
+export class AccountingPostInventoryDocumentDto {
+  @ApiPropertyOptional({
+    maxLength: MAX_ACCOUNTING_POSTING_OPERATION_KEY_LENGTH,
+    description:
+      'Idempotency key (C62-OD-06). Omit it and one is derived from the document, so a UI retry still replays the same durable operation instead of creating a second one. The same key with a different request conflicts (409).',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_ACCOUNTING_POSTING_OPERATION_KEY_LENGTH)
+  operationKey?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'The document revision the caller read. When supplied, the request is refused (409) if the document changed since.',
+  })
+  @IsOptional()
+  @IsString()
+  expectedDocumentRevision?: string;
+}
+
 export class CancelInventoryDocumentDto {
   @ApiPropertyOptional({ maxLength: MAX_DOCUMENT_CANCELLATION_REASON_LENGTH })
   @IsOptional()
@@ -343,6 +365,37 @@ export class InventoryDocumentResponseDto {
   accountingPostedAt!: string | null;
   @ApiProperty({ type: String, nullable: true })
   accountingPostedBy!: string | null;
+
+  @ApiProperty({
+    enum: INVENTORY_DOCUMENT_ACCOUNTING_POSTING_STATES,
+    description:
+      'C-62 Accounting standing: `not_posted` | `draft_created` | `final_posted` | `draft_cancelled`. A draft is NOT Accounting Posted; only a final Accounting voucher is.',
+  })
+  accountingPostingState!: string;
+
+  @ApiPropertyOptional({
+    format: 'ulid',
+    description:
+      'The durable C-62 posting operation behind the standing above. The authoritative record; this is its reference.',
+  })
+  accountingPostingOperationId?: string | null;
+
+  @ApiPropertyOptional({
+    description: 'The Accounting-owned document reference, when one exists.',
+  })
+  accountingDocumentId?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      'The Accounting document serial. `null` while the document is still a draft, because numbers allocate at issuance.',
+  })
+  accountingDocumentNumber?: string | null;
+
+  @ApiPropertyOptional({
+    enum: ['draft', 'temporary', 'final'],
+    description: 'The Accounting document phase, as Accounting reported it.',
+  })
+  accountingDocumentPhase?: string | null;
   @ApiProperty({ type: String, nullable: true }) sealedAt!: string | null;
   @ApiProperty({ type: String, nullable: true }) sealedBy!: string | null;
   @ApiProperty({ type: String, nullable: true }) cancelledAt!: string | null;

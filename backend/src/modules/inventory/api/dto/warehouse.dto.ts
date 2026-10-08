@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
   IsBoolean,
+  IsIn,
   IsOptional,
   IsString,
   MaxLength,
@@ -11,6 +12,10 @@ import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { parseQueryBoolean } from '../../../../kernel/http/parse-query-boolean.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
 import { MAX_CODE_LENGTH, MAX_NAME_LENGTH } from '../../domain/master-data.js';
+import {
+  WAREHOUSE_ACCOUNTING_POSTING_MODES,
+  type WarehouseAccountingPostingMode,
+} from '../../domain/warehouse-posting-mode.js';
 
 /**
  * Warehouse API contracts (master-data-strategy.md §4, ADR-0020 §1).
@@ -65,6 +70,16 @@ export class CreateWarehouseDto {
   @IsOptional()
   @IsBoolean()
   reservationsReduceAvailable?: boolean;
+
+  @ApiPropertyOptional({
+    enum: WAREHOUSE_ACCOUNTING_POSTING_MODES,
+    default: 'direct_final',
+    description:
+      'C-62 Accounting posting mode for this warehouse: "direct_final" posts a final Accounting voucher in one command; "draft" creates an Accounting-owned draft an accountant registers or cancels later.',
+  })
+  @IsOptional()
+  @IsIn([...WAREHOUSE_ACCOUNTING_POSTING_MODES])
+  accountingPostingMode?: WarehouseAccountingPostingMode;
 }
 
 export class UpdateWarehouseDto {
@@ -106,6 +121,15 @@ export class UpdateWarehouseDto {
   @IsOptional()
   @IsBoolean()
   reservationsReduceAvailable?: boolean;
+
+  @ApiPropertyOptional({
+    enum: WAREHOUSE_ACCOUNTING_POSTING_MODES,
+    description:
+      'C-62 Accounting posting mode for this warehouse: "direct_final" or "draft". Never defaulted - omitting it keeps the stored mode.',
+  })
+  @IsOptional()
+  @IsIn([...WAREHOUSE_ACCOUNTING_POSTING_MODES])
+  accountingPostingMode?: WarehouseAccountingPostingMode;
 }
 
 export class ListWarehousesQueryDto extends PageQueryDto {
@@ -160,6 +184,13 @@ export class WarehouseResponseDto {
       'Whether ACTIVE reservations reduce the read-time "available" figure for this warehouse (C-50 §3.7). Reservations never change on-hand stock regardless of this setting.',
   })
   reservationsReduceAvailable!: boolean;
+
+  @ApiProperty({
+    enum: WAREHOUSE_ACCOUNTING_POSTING_MODES,
+    description:
+      'C-62 Accounting posting mode for this warehouse: "direct_final" or "draft".',
+  })
+  accountingPostingMode!: WarehouseAccountingPostingMode;
 
   @ApiProperty()
   isActive!: boolean;

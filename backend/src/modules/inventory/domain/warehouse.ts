@@ -1,3 +1,5 @@
+import type { WarehouseAccountingPostingMode } from './warehouse-posting-mode.js';
+
 /**
  * Warehouse — a stock location, master data
  * (master-data-strategy.md §1/§4, ADR-0020 §1, blueprint §11, glossary).
@@ -43,6 +45,18 @@ export interface Warehouse {
    * preserves every existing consumer's current reading.
    */
   reservationsReduceAvailable: boolean;
+  /**
+   * C-62 (PDR-10 C62-OD-02): how an Accounting-eligible Inventory document of
+   * THIS warehouse reaches the General Ledger — `direct_final` (one command
+   * produces a final Accounting voucher) or `draft` (the command produces an
+   * Accounting-owned draft an accountant registers or cancels later).
+   *
+   * Resolved through `resolveWarehouseAccountingPostingMode`, which fails
+   * closed on an unknown stored value: guessing `draft` would silently post
+   * nothing, guessing `direct_final` would silently post to the General
+   * Ledger.
+   */
+  accountingPostingMode: WarehouseAccountingPostingMode;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -56,6 +70,7 @@ export interface WarehouseDto {
   name: string;
   allowNegativeStock: boolean;
   reservationsReduceAvailable: boolean;
+  accountingPostingMode: WarehouseAccountingPostingMode;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -70,6 +85,7 @@ export function toWarehouseDto(warehouse: Warehouse): WarehouseDto {
     name: warehouse.name,
     allowNegativeStock: warehouse.allowNegativeStock,
     reservationsReduceAvailable: warehouse.reservationsReduceAvailable,
+    accountingPostingMode: warehouse.accountingPostingMode,
     isActive: warehouse.isActive,
     createdAt: warehouse.createdAt.toISOString(),
     updatedAt: warehouse.updatedAt.toISOString(),

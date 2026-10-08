@@ -780,6 +780,71 @@ export interface AccountingPostingOperationDelegate {
 }
 
 // ---------------------------------------------------------------------------
+// Source posting mappings (C-62, PDR-10 C62-OD-04)
+// ---------------------------------------------------------------------------
+
+export type SourcePostingMappingRow = {
+  id: string;
+  organizationId: string;
+  sourceModule: string;
+  sourceDocumentType: string;
+  financialAreaId: string;
+  debitAccountId: string;
+  creditAccountId: string;
+} & AuditColumns;
+
+export interface SourcePostingMappingWhere {
+  organizationId?: string;
+  sourceModule?: string;
+  sourceDocumentType?: string;
+}
+
+export interface SourcePostingMappingCreate {
+  id: string;
+  organizationId: string;
+  sourceModule: string;
+  sourceDocumentType: string;
+  financialAreaId: string;
+  debitAccountId: string;
+  creditAccountId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string | null;
+}
+
+export interface SourcePostingMappingUpdate {
+  financialAreaId?: string;
+  debitAccountId?: string;
+  creditAccountId?: string;
+  updatedAt: Date;
+  updatedBy: string | null;
+}
+
+export interface SourcePostingMappingDelegate {
+  findUnique(args: {
+    where: { id: string };
+  }): Promise<SourcePostingMappingRow | null>;
+  findFirst(args: {
+    where: SourcePostingMappingWhere;
+  }): Promise<SourcePostingMappingRow | null>;
+  findMany(args: {
+    where: SourcePostingMappingWhere;
+    orderBy: OrderBy;
+    skip: number;
+    take: number;
+  }): Promise<SourcePostingMappingRow[]>;
+  count(args: { where: SourcePostingMappingWhere }): Promise<number>;
+  create(args: {
+    data: SourcePostingMappingCreate;
+  }): Promise<SourcePostingMappingRow>;
+  update(args: {
+    where: { id: string };
+    data: SourcePostingMappingUpdate;
+  }): Promise<SourcePostingMappingRow>;
+  delete(args: { where: { id: string } }): Promise<SourcePostingMappingRow>;
+}
+
+// ---------------------------------------------------------------------------
 // Balance projections (Task 12, contract §19.3 AC-D-31, ADR-0031)
 // ---------------------------------------------------------------------------
 
@@ -1479,6 +1544,16 @@ export interface AccountingTxClient {
   accountingPostingOperation: Pick<
     AccountingPostingOperationDelegate,
     'findFirst' | 'create'
+  >;
+  /**
+   * C-62: the Accounting-owned source posting mapping. Read-only for the
+   * posting contract (a missing mapping fails closed); the administrative
+   * surface that writes it arrives with the mapping task, so only the reads
+   * this slice needs are declared here.
+   */
+  sourcePostingMapping: Pick<
+    SourcePostingMappingDelegate,
+    'findFirst' | 'findMany' | 'count'
   >;
   /**
    * Task 10.7: the immutable ledger entries. Written only by

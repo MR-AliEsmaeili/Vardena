@@ -79,6 +79,12 @@ export interface PrismaClient {
   inventoryReservation: Delegate;
   /** `inventory.inventory_operations` — declared in prisma/schema/inventory.prisma. */
   inventoryOperation: Delegate;
+  /** `inventory.inventory_accounting_posting_operations` — declared in prisma/schema/inventory-accounting-posting.prisma. */
+  inventoryAccountingPostingOperation: Delegate;
+  /** `inventory.inventory_accounting_posting_snapshots` — declared in prisma/schema/inventory-accounting-posting.prisma. */
+  inventoryAccountingPostingSnapshot: Delegate;
+  /** `inventory.inventory_accounting_posting_snapshot_movements` — declared in prisma/schema/inventory-accounting-posting.prisma. */
+  inventoryAccountingPostingSnapshotMovement: Delegate;
   /** `documents.document_type_configs` — declared in prisma/schema/documents.prisma. */
   documentTypeConfig: Delegate;
   /** `documents.numbering_series` — declared in prisma/schema/documents.prisma. */
@@ -109,6 +115,8 @@ export interface PrismaClient {
   accountingDocumentLine: Delegate;
   /** `accounting.accounting_posting_operations` — declared in prisma/schema/accounting.prisma. */
   accountingPostingOperation: Delegate;
+  /** `accounting.source_posting_mappings` — declared in prisma/schema/accounting.prisma. */
+  sourcePostingMapping: Delegate;
   /** `accounting.ledger_entries` — declared in prisma/schema/accounting.prisma. */
   ledgerEntry: Delegate;
   /** `accounting.account_balance_projections` — declared in prisma/schema/accounting.prisma. */
@@ -216,6 +224,15 @@ const PrismaClientImpl = class {
   get inventoryOperation(): Delegate {
     return this.delegate;
   }
+  get inventoryAccountingPostingOperation(): Delegate {
+    return this.delegate;
+  }
+  get inventoryAccountingPostingSnapshot(): Delegate {
+    return this.delegate;
+  }
+  get inventoryAccountingPostingSnapshotMovement(): Delegate {
+    return this.delegate;
+  }
   get documentTypeConfig(): Delegate {
     return this.delegate;
   }
@@ -259,6 +276,9 @@ const PrismaClientImpl = class {
     return this.delegate;
   }
   get accountingPostingOperation(): Delegate {
+    return this.delegate;
+  }
+  get sourcePostingMapping(): Delegate {
     return this.delegate;
   }
   get ledgerEntry(): Delegate {
