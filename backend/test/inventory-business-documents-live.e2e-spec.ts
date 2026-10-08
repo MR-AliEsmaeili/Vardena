@@ -1189,34 +1189,100 @@ describe.skipIf(DATABASE_URL === undefined)(
         .send({ description: 'still editable while operational' })
         .expect(200);
 
-      await operator
+      // C-62: an operational document IS accounting eligible, so Inventory does
+      // cross its own boundary here — but Accounting REFUSES, because this
+      // suite deliberately configures no `accounting.source_posting_mappings`
+      // row (fail closed, never a guessed account, C62-OD-04). A refusal is a
+      // durable fact about the OPERATION and NOT a lifecycle crossing: the
+      // document keeps standing exactly where the lifecycle put it. The happy
+      // path — the document actually becoming `accounting_posted` — is proven
+      // in `inventory-accounting-posting-live.e2e-spec.ts`, where the
+      // Accounting master data exists.
+      const refused = await operator
         .post(`${base}/${id}/accounting-post`)
         .query(scope)
-        .send({})
-        .expect(200);
-      // Accounting posted: no direct edit, no delete, no cancel.
+        .send({});
+      expect(refused.status).toBe(200);
+      expect(refused.body.status).toBe('operational');
+      expect(refused.body.accountingPostingState).toBe('not_posted');
+      expect(refused.body.accountingDocumentId).toBe(null);
+      // Still operational, so the ordinary operational rules still hold — the
+      // proof that a REFUSED posting did not silently seal the document.
       await operator
         .patch(`${base}/${id}`)
         .query(scope)
-        .send({ description: 'nope' })
-        .expect(422);
+        .send({ description: 'still editable after a refused posting' })
+        .expect(200);
+      // History exists (the movements), so delete is refused and only cancel
+      // remains — exactly as before the posting attempt.
       await operator.delete(`${base}/${id}`).query(scope).expect(422);
       await operator
         .post(`${base}/${id}/cancel`)
         .query(scope)
         .send({})
-        .expect(422);
-
+        .expect(200);
+      // Once cancelled the document is closed to everything.
       await operator
         .post(`${base}/${id}/seal`)
+        .query(scope)
+        .send({})
+        .expect(422);
+    });
+
+    it('records the refusal of a posting with no Accounting mapping', async () => {
+      // Why the assertion is on the OPERATION and not the document: a refusal
+      // is Accounting's answer, and the document's own standing is unchanged by
+      // it. The refusal reason must therefore be readable somewhere, or an
+      // operator gets a 200 and no explanation — which is exactly the bug this
+      // endpoint exists to prevent.
+      const receipt = await createDocument({
+        kind: 'receipt',
+        warehouseId: whMainId,
+        cost: '60.00',
+        lines: [{ itemId: itemAId, quantity: '6', unitId: unitAId }],
+      });
+      const id = receipt['id'] as string;
+      const scope = { organizationId: orgAId };
+      await finalize(id);
+
+      await operator
+        .post(`${base}/${id}/accounting-post`)
         .query(scope)
         .send({})
         .expect(200);
+
+      const trail = await operator
+        .get(`${base}/${id}/accounting-posting`)
+        .query(scope)
+        .expect(200);
+      const operations = trail.body as Array<Record<string, unknown>>;
+      expect(operations).toHaveLength(1);
+      const operation = operations[0]!;
+      expect(operation['action']).toBe('accounting_post');
+      expect(operation['state']).toBe('REFUSED');
+      expect(operation['refusalCode']).toBe('accounting.mapping_missing');
+      expect(operation['refusalReason']).toContain(
+        'No Accounting posting mapping',
+      );
+      expect(operation['glPosted']).toBe(false);
+      expect(operation['accountingDocumentId']).toBe(null);
+      // The request hash is the determinism proof: the same document and the
+      // same facts always hash to the same value, which is what makes a replay
+      // safe (C62-OD-06).
+      expect(operation['requestHash']).toMatch(/^[0-9a-f]{64}$/);
+
+      // Replaying the SAME request answers from the durable record instead of
+      // writing a second operation.
       await operator
-        .post(`${base}/${id}/seal`)
+        .post(`${base}/${id}/accounting-post`)
         .query(scope)
         .send({})
-        .expect(422);
+        .expect(200);
+      const replayed = await operator
+        .get(`${base}/${id}/accounting-posting`)
+        .query(scope)
+        .expect(200);
+      expect(replayed.body as Array<Record<string, unknown>>).toHaveLength(1);
     });
 
     it('deletes a draft but refuses to delete a document with history', async () => {
@@ -1233,6 +1299,25 @@ describe.skipIf(DATABASE_URL === undefined)(
         .get(`${base}/${draft['id'] as string}`)
         .query({ organizationId: orgAId })
         .expect(404);
+
+      // An operational document HAS history (its movements), so it is cancelled
+      // rather than deleted — including after a refused Accounting posting,
+      // which never reaches the books and so never makes the document history.
+      const operational = await createDocument({
+        kind: 'receipt',
+        warehouseId: whMainId,
+        lines: [{ itemId: itemAId, quantity: '4', unitId: unitAId }],
+      });
+      await finalize(operational['id'] as string);
+      await operator
+        .post(`${base}/${operational['id'] as string}/accounting-post`)
+        .query({ organizationId: orgAId })
+        .send({})
+        .expect(200);
+      await operator
+        .delete(`${base}/${operational['id'] as string}`)
+        .query({ organizationId: orgAId })
+        .expect(422);
     });
 
     // -----------------------------------------------------------------------

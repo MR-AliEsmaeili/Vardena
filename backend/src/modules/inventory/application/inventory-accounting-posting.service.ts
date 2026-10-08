@@ -11,6 +11,7 @@ import { OrganizationsService } from '../../organization/application/organizatio
 import { InventoryBusinessDocumentsRepository } from '../data/inventory-business-documents.repository.js';
 import { InventoryMovementsRepository } from '../data/inventory-movements.repository.js';
 import { InventoryAccountingPostingRepository } from '../data/inventory-accounting-posting.repository.js';
+import type { InventoryAccountingPostingOperation } from '../data/inventory-accounting-posting.repository.js';
 import type {
   DocTxClient,
   InventoryDocumentUpdate,
@@ -229,6 +230,25 @@ export class InventoryAccountingPostingService {
     const result = await this.posting.postFromInventory(intent.request);
     // PHASE 3 — record what Accounting said.
     return this.applyOutcome(intent, result);
+  }
+
+  /**
+   * The durable posting trail of one document, newest first (C-62 audit
+   * surface).
+   *
+   * This is the ONLY honest way an operator can learn WHY a posting did not
+   * cross the boundary: a refusal and a failure are durable facts about the
+   * OPERATION, not about the document, and the document deliberately keeps its
+   * own standing (`not_posted`) instead of absorbing Accounting's verdict. So
+   * the answer is read from the ledger Inventory owns, and never from
+   * Accounting's tables (PO-02/AR-07).
+   */
+  async listAccountingPostings(
+    id: string,
+    organizationId: string,
+  ): Promise<readonly InventoryAccountingPostingOperation[]> {
+    await this.mustFind(id, organizationId);
+    return this.postings.listForDocument({ organizationId, documentId: id });
   }
 
   /**

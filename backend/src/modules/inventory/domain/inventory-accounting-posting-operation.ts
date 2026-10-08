@@ -193,3 +193,91 @@ export function documentAccountingPostingStateFor(
       return null;
   }
 }
+
+/**
+ * The wire shape of one durable posting operation.
+ *
+ * It lives beside the state machine on purpose: the operation IS the record of
+ * the crossing, and the mapping from row to wire must not be able to invent a
+ * state the state machine does not know. Every field is passed through
+ * verbatim — in particular the refusal reason is never softened, because an
+ * operator deciding whether to retry needs the real one.
+ */
+export interface AccountingPostingOperationDto {
+  id: string;
+  organizationId: string;
+  documentId: string;
+  action: string;
+  operationKey: string;
+  requestHash: string;
+  documentVersion: string;
+  postingMode: string;
+  state: InventoryAccountingPostingState;
+  refusalCode: string | null;
+  refusalReason: string | null;
+  accountingDocumentId: string | null;
+  accountingDocumentNumber: string | null;
+  accountingDocumentPhase: string | null;
+  accountingOperationKey: string | null;
+  glPosted: boolean;
+  replayed: boolean;
+  actorUserId: string | null;
+  actorPermission: string;
+  requestedAt: string;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Row → wire. Dates become ISO strings; nothing is derived or defaulted. */
+export function toAccountingPostingOperationDto(operation: {
+  id: string;
+  organizationId: string;
+  documentId: string;
+  action: string;
+  operationKey: string;
+  requestHash: string;
+  documentVersion: string;
+  postingMode: string;
+  state: InventoryAccountingPostingState;
+  refusalCode: string | null;
+  refusalReason: string | null;
+  accountingDocumentId: string | null;
+  accountingDocumentNumber: string | null;
+  accountingDocumentPhase: string | null;
+  accountingOperationKey: string | null;
+  glPosted: boolean;
+  replayed: boolean;
+  actorUserId: string | null;
+  actorPermission: string;
+  requestedAt: Date;
+  completedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}): AccountingPostingOperationDto {
+  return {
+    id: operation.id,
+    organizationId: operation.organizationId,
+    documentId: operation.documentId,
+    action: operation.action,
+    operationKey: operation.operationKey,
+    requestHash: operation.requestHash,
+    documentVersion: operation.documentVersion,
+    postingMode: operation.postingMode,
+    state: operation.state,
+    refusalCode: operation.refusalCode,
+    refusalReason: operation.refusalReason,
+    accountingDocumentId: operation.accountingDocumentId,
+    accountingDocumentNumber: operation.accountingDocumentNumber,
+    accountingDocumentPhase: operation.accountingDocumentPhase,
+    accountingOperationKey: operation.accountingOperationKey,
+    glPosted: operation.glPosted,
+    replayed: operation.replayed,
+    actorUserId: operation.actorUserId,
+    actorPermission: operation.actorPermission,
+    requestedAt: operation.requestedAt.toISOString(),
+    completedAt: operation.completedAt?.toISOString() ?? null,
+    createdAt: operation.createdAt.toISOString(),
+    updatedAt: operation.updatedAt.toISOString(),
+  };
+}

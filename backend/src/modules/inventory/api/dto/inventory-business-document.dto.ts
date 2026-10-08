@@ -250,6 +250,89 @@ export class CancelInventoryDocumentDto {
   reason?: string;
 }
 
+/**
+ * ONE durable C-62 Accounting posting operation (C62-OD-05/OD-06).
+ *
+ * This is the audit record, and the only place a refusal reason is visible:
+ * when Accounting refuses, the DOCUMENT keeps its own standing
+ * (`not_posted`) rather than absorbing Accounting's verdict, so the reason an
+ * operator needs lives here. `null` on `refusalCode`/`refusalReason` means the
+ * operation is either still open or succeeded.
+ */
+export class InventoryAccountingPostingOperationResponseDto {
+  @ApiProperty({ format: 'ulid' }) id!: string;
+  @ApiProperty({ format: 'ulid' }) organizationId!: string;
+  @ApiProperty({ format: 'ulid' }) documentId!: string;
+  @ApiProperty({ enum: ['accounting_post', 'accounting_post:cancel'] })
+  action!: string;
+  @ApiProperty({
+    description:
+      'The idempotency key this operation is keyed by (C62-OD-06). The same key replays the same answer; a different request under it conflicts.',
+  })
+  operationKey!: string;
+  @ApiProperty({
+    description:
+      'sha256 over the canonical request payload, so a replay can prove it asks for exactly the same thing.',
+  })
+  requestHash!: string;
+  @ApiProperty({
+    description: 'The document revision the request was built from.',
+  })
+  documentVersion!: string;
+  @ApiProperty({ enum: ['direct_final', 'draft'] }) postingMode!: string;
+  @ApiProperty({
+    enum: [
+      'REQUESTED',
+      'PENDING',
+      'DRAFT_CREATED',
+      'POSTED',
+      'REFUSED',
+      'FAILED',
+      'CANCELLED',
+    ],
+    description:
+      'REQUESTED/PENDING mean Accounting has not answered yet — re-query, never infer failure (C62-OD-06).',
+  })
+  state!: string;
+  @ApiProperty({ type: String, nullable: true })
+  refusalCode!: string | null;
+  @ApiProperty({ type: String, nullable: true })
+  refusalReason!: string | null;
+  @ApiProperty({ type: String, nullable: true })
+  accountingDocumentId!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The Accounting document serial. `null` while it is still a draft, because numbers allocate at issuance.',
+  })
+  accountingDocumentNumber!: string | null;
+  @ApiProperty({ enum: ['draft', 'temporary', 'final'], nullable: true })
+  accountingDocumentPhase!: string | null;
+  @ApiProperty({ type: String, nullable: true })
+  accountingOperationKey!: string | null;
+  @ApiProperty({
+    description:
+      'True once a FINAL Accounting voucher exists, i.e. the GL effect is real.',
+  })
+  glPosted!: boolean;
+  @ApiProperty({
+    description: 'True when this answer replayed an earlier identical request.',
+  })
+  replayed!: boolean;
+  @ApiProperty({ type: String, nullable: true }) actorUserId!: string | null;
+  @ApiProperty({
+    description:
+      'The Inventory permission the initiating human held (C62-OD-03) — the authority this operation ran under.',
+  })
+  actorPermission!: string;
+  @ApiProperty({ format: 'date-time' }) requestedAt!: string;
+  @ApiProperty({ type: String, nullable: true, format: 'date-time' })
+  completedAt!: string | null;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+}
+
 export class ListInventoryDocumentsQueryDto extends PageQueryDto {
   @ApiProperty({ format: 'ulid', description: 'Owning organization.' })
   @IsUlid()

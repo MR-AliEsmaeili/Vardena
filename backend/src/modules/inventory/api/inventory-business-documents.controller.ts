@@ -30,12 +30,17 @@ import { AuthorizationGuard } from '../../rbac/application/authorization.guard.j
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { InventoryBusinessDocumentsService } from '../application/inventory-business-documents.service.js';
 import { INVENTORY_DOCUMENT_PERMISSIONS } from '../domain/inventory-document-permissions.js';
+import {
+  toAccountingPostingOperationDto,
+  type AccountingPostingOperationDto,
+} from '../domain/inventory-accounting-posting-operation.js';
 import { InventoryScopeQueryDto } from './dto/organization-scope.dto.js';
 import {
   AccountingPostInventoryDocumentDto,
   CancelInventoryDocumentDto,
   CreateInventoryDocumentDto,
   FinalizeInventoryDocumentDto,
+  InventoryAccountingPostingOperationResponseDto,
   InventoryDocumentResponseDto,
   ListInventoryDocumentsQueryDto,
   UpdateInventoryDocumentDto,
@@ -222,6 +227,26 @@ export class InventoryBusinessDocumentsController {
       backdateConfirmed: body.backdateConfirmed,
       repricing: body.repricing,
     });
+  }
+
+  @Get(':id/accounting-posting')
+  @UseGuards(AuthGuard, AuthorizationGuard)
+  @RequirePermission(INVENTORY_DOCUMENT_PERMISSIONS.VIEW)
+  @ApiOperation({
+    summary:
+      'List the durable C-62 Accounting posting operations of one document, newest first. The only place a refusal or failure reason is visible: the document keeps its own standing, so why a posting did not cross the boundary is a fact about the OPERATION.',
+  })
+  @ApiOkResponse({ type: [InventoryAccountingPostingOperationResponseDto] })
+  @ApiNotFoundResponse({ description: 'The document does not exist.' })
+  async listAccountingPostings(
+    @Param('id') id: string,
+    @Query() scope: InventoryScopeQueryDto,
+  ): Promise<readonly AccountingPostingOperationDto[]> {
+    const operations = await this.documents.listAccountingPostings(
+      id,
+      scope.organizationId,
+    );
+    return operations.map(toAccountingPostingOperationDto);
   }
 
   @Post(':id/accounting-post')

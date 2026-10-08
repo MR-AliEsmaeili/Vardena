@@ -94,6 +94,7 @@ import {
   type PreparedRecalculation,
 } from './inventory-valuation.service.js';
 import { InventoryAccountingPostingService } from './inventory-accounting-posting.service.js';
+import type { InventoryAccountingPostingOperation } from '../data/inventory-accounting-posting.repository.js';
 import type { InventoryValuationRunDto } from '../domain/inventory-valuation.js';
 
 const SORTABLE_FIELDS: Record<string, string> = {
@@ -946,6 +947,22 @@ export class InventoryBusinessDocumentsService {
       InventoryBusinessDocumentsService.name,
     );
     return this.toDto(updated);
+  }
+
+  /**
+   * The durable C-62 posting trail of one document, newest first.
+   *
+   * Read-only and deliberately separate from the document read: the document
+   * states where it STANDS, the operation states what HAPPENED, and the two
+   * are not the same thing — a refusal leaves the document standing exactly
+   * where it was. An operator (and an auditor) needs both, so the trail is
+   * readable on its own instead of being inferred from the document.
+   */
+  async listAccountingPostings(
+    id: string,
+    organizationId: string,
+  ): Promise<readonly InventoryAccountingPostingOperation[]> {
+    return this.posting.listAccountingPostings(id, organizationId);
   }
 
   /**
