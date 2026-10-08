@@ -149,6 +149,129 @@ export function buildAccountingPostingRequestHash(
 }
 
 /**
+ * The canonical `YYYY-MM-DD` spelling of a document date. Shared by the
+ * request builder and the snapshot reconstruction so both produce byte-equal
+ * strings for the same instant (the hash compares them verbatim).
+ */
+export function toAccountingPostingDateOnly(value: Date): string {
+  return value.toISOString().slice(0, 10);
+}
+
+/**
+ * The frozen facts of one operation, exactly as the immutable snapshot stores
+ * them (OD-05) plus the identity columns of the operation row. Structural on
+ * purpose: the domain never imports the data layer (AR-07), so the service
+ * hands the stored rows over in this shape.
+ */
+export interface AccountingPostingSnapshotSource {
+  operation: {
+    organizationId: string;
+    documentId: string;
+    action: string;
+    postingMode: string;
+  };
+  snapshot: {
+    documentType: string;
+    documentNumber: string | null;
+    documentVersion: string;
+    documentDate: Date;
+    branchId: string;
+    warehouseId: string;
+    valuationState: string;
+    valuationStale: boolean;
+    staleVerdict: string;
+    valuationRunId: string | null;
+    valuationBasis: string;
+    movements: readonly {
+      movementId: string;
+      lineId: string;
+      itemId: string;
+      quantity: string;
+      unitId: string;
+      baseQuantity: string;
+      baseUnitId: string;
+      totalValue: string;
+      valuationStatus: string;
+      valuationSource: string | null;
+      valuationRunId: string | null;
+    }[];
+  };
+}
+
+/**
+ * Rebuild the canonical request an operation FROZE IN PHASE 1 from its
+ * immutable snapshot (OD-05/OD-06 recovery). The snapshot — never the live
+ * ledger — is the source of the original request facts: if Inventory valuation
+ * moved after Phase 1, recovery must not silently send a different value to
+ * Accounting.
+ *
+ * Two fields are deliberately NOT read back verbatim, because the columns
+ * pad them and the original hash never saw the padded spelling:
+ *
+ *   * `unitCost` is re-DERIVED (`total_value / base_quantity`) exactly as
+ *     `collectFacts` derived it — the ledger keeps no unit-cost truth of its
+ *     own, so the stored copy is audit evidence, not the hashed fact;
+ *   * `valuation.totalValue` is re-SUMMED from the snapshot movements with
+ *     the same exact decimal arithmetic the original request used.
+ *
+ * The result hashes to `operation.requestHash` for an honest snapshot; a
+ * mismatch means the durable record is corrupt and the operation must not be
+ * reused (the caller answers 409, OD-06).
+ */
+export function canonicalRequestFromSnapshot(
+  source: AccountingPostingSnapshotSource,
+): AccountingPostingCanonicalRequest {
+  if (
+    source.snapshot.staleVerdict !== 'not_stale' &&
+    source.snapshot.staleVerdict !== 'stale'
+  ) {
+    throw new Error(
+      `The posting snapshot of operation "${source.operation.documentId}" has an unknown stale verdict "${source.snapshot.staleVerdict}".`,
+    );
+  }
+  const movements: AccountingPostingMovementFact[] =
+    source.snapshot.movements.map((movement) => ({
+      movementId: movement.movementId,
+      lineId: movement.lineId,
+      itemId: movement.itemId,
+      quantity: movement.quantity,
+      unitId: movement.unitId,
+      baseQuantity: movement.baseQuantity,
+      baseUnitId: movement.baseUnitId,
+      // The authoritative signed value, verbatim.
+      value: movement.totalValue,
+      // Re-derived, never the padded stored copy (see the doc comment).
+      unitCost: deriveUnitCost(movement.totalValue, movement.baseQuantity),
+      valuationStatus: movement.valuationStatus,
+      valuationSource: movement.valuationSource,
+      valuationRunId: movement.valuationRunId,
+    }));
+  return {
+    organizationId: source.operation.organizationId,
+    branchId: source.snapshot.branchId,
+    sourceDocumentId: source.operation.documentId,
+    sourceDocumentType: source.snapshot.documentType,
+    sourceDocumentNumber: source.snapshot.documentNumber,
+    sourceDocumentDate: toAccountingPostingDateOnly(
+      source.snapshot.documentDate,
+    ),
+    sourceDocumentVersion: source.snapshot.documentVersion,
+    warehouseId: source.snapshot.warehouseId,
+    postingMode: source.operation.postingMode,
+    action: source.operation.action,
+    valuation: {
+      state: source.snapshot.valuationState,
+      documentStale: source.snapshot.valuationStale,
+      keyStaleVerdict: source.snapshot.staleVerdict,
+      valuationRunId: source.snapshot.valuationRunId,
+      basis: source.snapshot.valuationBasis,
+      totalValue: totalMovementValue(movements),
+    },
+    movements,
+  };
+}
+
+/**
  * Derive the per-step operation keys Accounting's OWN idempotency ledger is
  * written under (`document_create`, `document_issue`, `document_finalize`).
  *

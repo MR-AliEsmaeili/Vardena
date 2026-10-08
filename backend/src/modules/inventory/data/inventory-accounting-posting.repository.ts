@@ -151,11 +151,47 @@ export class InventoryAccountingPostingRepository {
     return this.prisma.getClient<InventoryAccountingPostingClient>();
   }
 
-  async findByKey(input: {
+  /**
+   * The durable operation for one (organization, document, action, key).
+   *
+   * The optional `tx` lets the caller read through its OWN transaction — the
+   * Phase-1 re-check that closes the find-then-create race reads under the
+   * document row lock, so it must not miss a row the lock holder can see.
+   */
+  async findByKey(
+    input: {
+      organizationId: string;
+      documentId: string;
+      action: string;
+      operationKey: string;
+    },
+    tx?: InventoryAccountingPostingTxClient | undefined,
+  ): Promise<InventoryAccountingPostingOperation | null> {
+    const client = tx ?? (await this.client());
+    const row = await client.inventoryAccountingPostingOperation.findFirst({
+      where: {
+        organizationId: input.organizationId,
+        documentId: input.documentId,
+        action: input.action,
+        operationKey: input.operationKey,
+      },
+    });
+    return row === null ? null : toOperationDomain(row);
+  }
+
+  /**
+   * The newest operation of one (organization, document, action) that has NOT
+   * durably answered yet — `REQUESTED`, `PENDING`, `FAILED` (an Accounting
+   * effect may already exist for it) or `DRAFT_CREATED` (an Accounting draft
+   * exists). While one exists, a SECOND operation under ANY key would be a
+   * second Accounting effect for the same document, so Phase 1 refuses it
+   * instead of racing it (the same-key retry never reaches this check: it is
+   * answered by `findByKey` first).
+   */
+  async findInFlightForDocument(input: {
     organizationId: string;
     documentId: string;
     action: string;
-    operationKey: string;
   }): Promise<InventoryAccountingPostingOperation | null> {
     const { inventoryAccountingPostingOperation } = await this.client();
     const row = await inventoryAccountingPostingOperation.findFirst({
@@ -163,8 +199,14 @@ export class InventoryAccountingPostingRepository {
         organizationId: input.organizationId,
         documentId: input.documentId,
         action: input.action,
-        operationKey: input.operationKey,
+        // Every non-terminal state: REQUESTED/PENDING mean Accounting has
+        // not answered, FAILED means an effect may already exist, and
+        // DRAFT_CREATED means an Accounting draft exists.
+        state: {
+          in: ['REQUESTED', 'PENDING', 'FAILED', 'DRAFT_CREATED'],
+        },
       },
+      orderBy: [{ requestedAt: 'desc' }, { createdAt: 'desc' }],
     });
     return row === null ? null : toOperationDomain(row);
   }

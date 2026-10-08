@@ -4,6 +4,10 @@ import {
   type DomainEventBus,
 } from '../../../kernel/events/domain-event-bus.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
+import {
+  isUniqueViolation,
+  uniqueViolationTouches,
+} from '../../../kernel/prisma/prisma-errors.js';
 import { getPrincipal } from '../../../kernel/correlation/request-context.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
@@ -11,7 +15,10 @@ import { OrganizationsService } from '../../organization/application/organizatio
 import { InventoryBusinessDocumentsRepository } from '../data/inventory-business-documents.repository.js';
 import { InventoryMovementsRepository } from '../data/inventory-movements.repository.js';
 import { InventoryAccountingPostingRepository } from '../data/inventory-accounting-posting.repository.js';
-import type { InventoryAccountingPostingOperation } from '../data/inventory-accounting-posting.repository.js';
+import type {
+  InventoryAccountingPostingOperation,
+  InventoryAccountingPostingSnapshot,
+} from '../data/inventory-accounting-posting.repository.js';
 import type {
   DocTxClient,
   InventoryDocumentUpdate,
@@ -51,10 +58,12 @@ import {
 import {
   ACCOUNTING_POST_ACTION,
   buildAccountingPostingRequestHash,
+  canonicalRequestFromSnapshot,
   deriveAccountingOperationKey,
   deriveUnitCost,
   isValidAccountingPostingOperationKey,
   normalizeAccountingPostingOperationKey,
+  toAccountingPostingDateOnly,
   totalMovementValue,
   valuationBasisOf,
   type AccountingPostingMovementFact,
@@ -62,11 +71,40 @@ import {
 import {
   documentAccountingPostingStateFor,
   isInventoryDocumentAccountingPostingState,
+  isTerminalAccountingPostingState,
   type InventoryAccountingPostingState,
 } from '../domain/inventory-accounting-posting-operation.js';
+import { resolveWarehouseAccountingPostingMode } from '../domain/warehouse-posting-mode.js';
 
 /** The cancel action, part of the operation identity (C62-OD-06). */
 const CANCEL_ACTION = `${ACCOUNTING_POST_ACTION}:cancel`;
+
+/**
+ * What `writeDurableIntent` (PHASE 1) produced: either the freshly written
+ * durable intent, or — when the in-lock idempotency re-check found that the
+ * key already has a durable operation — that operation, to be answered by the
+ * caller through the SAME OD-06 decision procedure.
+ */
+type Phase1Result =
+  | {
+      kind: 'created';
+      intent: { request: InventoryPostingRequest; operationId: string };
+    }
+  | { kind: 'raced'; operation: InventoryAccountingPostingOperation };
+
+/**
+ * The column names / constraint name Prisma reports on a P2002 for
+ * `uq_inventory_accounting_posting_operations_key`
+ * (organization_id, document_id, action, operation_key). The catch in
+ * `requestAccountingPosting` must only treat THE operation-key unique as a
+ * lost race; any other unique violation propagates.
+ */
+const OPERATION_KEY_UNIQUE_TARGETS = [
+  'operationKey',
+  'operation_key',
+  'operations_key',
+  'uq_inventory_accounting_posting_operations_key',
+] as const;
 
 /** What a caller asks for when crossing the boundary. */
 export interface RequestAccountingPostingInput {
@@ -91,8 +129,12 @@ export interface AccountingPostingOutcomeDto {
   operationKey: string;
   /** `not_posted` | `draft_created` | `final_posted` | `draft_cancelled`. */
   state: InventoryDocumentAccountingPostingState;
-  /** `final_posted` | `draft_created` | `refused` | `failed`. */
-  outcome: InventoryPostingResult['outcome'];
+  /**
+   * `final_posted` | `draft_created` | `draft_cancelled` | `refused` |
+   * `failed`. `draft_cancelled` is the SUCCESS answer of the cancellation
+   * command — a confirmed cancellation is never reported as `refused`.
+   */
+  outcome: InventoryPostingResult['outcome'] | 'draft_cancelled';
   postingMode: WarehouseAccountingPostingMode;
   /** True when this answer replays an earlier identical request. */
   replayed: boolean;
@@ -159,6 +201,41 @@ interface CollectedFacts {
  * operation left non-terminal is retried under the SAME key, Accounting's own
  * idempotency ledger replays it, and no second voucher can appear. Nothing
  * here claims the two phases are one atomic step, because they are not.
+ *
+ * THE OD-06 DECISION PROCEDURE (one place, `answerExisting`)
+ * ---------------------------------------------------------
+ * A request whose (organization, document, action, operation key) already has
+ * a durable operation is answered by THAT operation, never by fresh work:
+ *
+ *   1. rebuild the canonical request the caller is making NOW and compare its
+ *      hash with `operation.requestHash` — the same key with a DIFFERENT
+ *      request is a 409, never a silent replay (mirrors Accounting's own
+ *      `replayOrReject`);
+ *   2. same hash + a durably answered operation (POSTED / REFUSED /
+ *      CANCELLED, or DRAFT_CREATED — the draft IS the answer) → replay the
+ *      recorded answer and mark the row `replayed`;
+ *   3. same hash + a non-terminal operation (REQUESTED / PENDING / FAILED) →
+ *      RECOVER: reconstruct the request from the operation + its IMMUTABLE
+ *      snapshot (OD-05 — never from mutable current state), verify the
+ *      reconstruction hashes to the stored hash, resume PHASE 2 through the
+ *      contract (Accounting's ledger makes the resume a replay, not a second
+ *      effect) and run PHASE 3 again.
+ *
+ * The unique constraint on (organization, document, action, operation key)
+ * stays the authority for the insert race: Phase 1 re-checks the key UNDER
+ * the document row lock (the primary interception), and a unique violation
+ * that still surfaces is caught, the winner reloaded, and the SAME decision
+ * procedure applied — the loser replays, recovers or gets the 409, never a
+ * 500. While ANY non-terminal operation exists for the document, a second
+ * operation under a different key is refused: one document, one in-flight
+ * posting.
+ *
+ * One deliberate consequence: PHASE 3 does NOT bump the document's
+ * `updatedAt`. That column is the revision the canonical request hash freezes
+ * (`sourceDocumentVersion`), so the posting's own projection must not look
+ * like an edit — otherwise every retry of a completed operation would hash
+ * differently and conflict with itself, which would break OD-06's replay
+ * guarantee. The projection's own timestamps live on the operation row.
  */
 @Injectable()
 export class InventoryAccountingPostingService {
@@ -181,6 +258,10 @@ export class InventoryAccountingPostingService {
    * The action is part of the operation identity, so «post» and «cancel the
    * draft» are two durable operations over one document, never one
    * indistinguishable ledger row.
+   *
+   * The whole OD-06 decision procedure lives in `answerExisting`: a request
+   * whose key already has a durable operation is answered by that operation —
+   * replayed, recovered or refused with 409 — before any fresh work starts.
    */
   async requestAccountingPosting(
     id: string,
@@ -209,16 +290,7 @@ export class InventoryAccountingPostingService {
       operationKey,
     });
     if (existing !== null) {
-      // A replay is answered from the durable record, but it is still an EVENT
-      // in that record: without this the row would keep `replayed = false`
-      // forever, which is false audit evidence (C62-OD-06).
-      await this.postings.markReplayed(
-        organizationId,
-        existing.id,
-        existing.actorUserId,
-        new Date(),
-      );
-      return this.replayExisting(organizationId, existing);
+      return this.answerExisting(existing);
     }
 
     if (
@@ -230,15 +302,267 @@ export class InventoryAccountingPostingService {
       );
     }
 
-    const intent = await this.writeDurableIntent(
-      id,
+    let phase1: Phase1Result;
+    try {
+      phase1 = await this.writeDurableIntent(id, organizationId, operationKey);
+    } catch (error) {
+      // Lost the insert race on (organization, document, action, operation
+      // key). The unique constraint is the authority, not an accident to
+      // report: reload the winner and apply the SAME OD-06 decision procedure
+      // to it — same hash replays/recovers, a different hash is a 409. The
+      // loser never becomes an arbitrary 500.
+      if (
+        isUniqueViolation(error) &&
+        uniqueViolationTouches(error, OPERATION_KEY_UNIQUE_TARGETS)
+      ) {
+        const winner = await this.postings.findByKey({
+          organizationId,
+          documentId: id,
+          action: ACCOUNTING_POST_ACTION,
+          operationKey,
+        });
+        if (winner !== null) {
+          return this.answerExisting(winner);
+        }
+      }
+      throw error;
+    }
+    if (phase1.kind === 'raced') {
+      // The in-lock re-check found a durable operation for this key after all
+      // (the primary race interception — see `writeDurableIntent`).
+      return this.answerExisting(phase1.operation);
+    }
+
+    // PHASE 2 — the one synchronous boundary call (ADR-0041 §2).
+    const result = await this.posting.postFromInventory(phase1.intent.request);
+    // PHASE 3 — record what Accounting said.
+    return this.applyOutcome(phase1.intent, result);
+  }
+
+  /**
+   * The OD-06 answer for a request whose key already has a durable
+   * operation. This is the ONE place the replay-or-recover-or-reject decision
+   * is made, so the fast path, the in-lock re-check and the unique-violation
+   * backstop all decide identically.
+   */
+  private async answerExisting(
+    existing: InventoryAccountingPostingOperation,
+  ): Promise<AccountingPostingOutcomeDto> {
+    // 1. The key identifies ONE canonical request. Rebuild the request the
+    //    caller is making NOW and compare hashes BEFORE answering: the same
+    //    key with a different request is a 409, never a silent replay of the
+    //    old answer (mirrors `AccountingDocumentsService.replayOrReject`).
+    //
+    //    The rebuild reads current state WITHOUT the valuation locks: the
+    //    decision it feeds is fail-safe in both directions. A torn read can
+    //    only produce a spurious 409 (the caller retries once the concurrent
+    //    writer has committed), and a recovery never sends these facts — it
+    //    sends the immutable snapshot — so no wrong value can cross.
+    const currentRequest = await this.buildCurrentRequest(
+      existing.documentId,
+      existing.organizationId,
+      existing.operationKey,
+    );
+    if (currentRequest.requestHash !== existing.requestHash) {
+      throw AppException.conflict(
+        'The operation key was already used for a different accounting posting request. An idempotency key identifies one intent: use a new key for a new operation.',
+      );
+    }
+
+    // 2. A durably answered operation replays its recorded answer. DRAFT_CREATED
+    //    belongs here too: the draft IS the answer — a retry must never create
+    //    a second one.
+    if (
+      isTerminalAccountingPostingState(existing.state) ||
+      existing.state === 'DRAFT_CREATED'
+    ) {
+      // A replay is answered from the durable record, but it is still an EVENT
+      // in that record: without this the row would keep `replayed = false`
+      // forever, which is false audit evidence (C62-OD-06).
+      await this.postings.markReplayed(
+        existing.organizationId,
+        existing.id,
+        existing.actorUserId,
+        new Date(),
+      );
+      return this.replayExisting(existing.organizationId, existing);
+    }
+
+    // 3. REQUESTED / PENDING / FAILED: the operation never durably answered.
+    //    It is a recoverable state, not a refusal (OD-01's durable pending).
+    return this.recoverExisting(existing);
+  }
+
+  /**
+   * Rebuild the canonical request the caller is making NOW, from current
+   * state, exactly as PHASE 1 builds the frozen one. Only the HASH is used
+   * (the OD-06 comparison); a recovery never sends this request.
+   */
+  private async buildCurrentRequest(
+    documentId: string,
+    organizationId: string,
+    operationKey: string,
+  ): Promise<InventoryPostingRequest> {
+    const document = await this.mustFind(documentId, organizationId);
+    if (document.warehouseId === null) {
+      throw AppException.businessRule(
+        'Only an inventory document with a warehouse can be posted to Accounting.',
+        {
+          code: 'inventory.document.accounting_post_no_warehouse',
+          documentId,
+        },
+      );
+    }
+    const movements = await this.ownedMovementsOf(document);
+    const facts = await this.collectFacts(
+      documentId,
+      organizationId,
+      movements,
+    );
+    const warehouse = await this.warehouses.findByIdInOrganization(
+      organizationId,
+      document.warehouseId,
+    );
+    if (warehouse === null) {
+      throw AppException.businessRule(
+        'The warehouse this inventory document was posted against cannot be resolved in this organization.',
+        {
+          code: 'inventory.document.accounting_post_warehouse_unresolved',
+          documentId,
+          warehouseId: document.warehouseId,
+        },
+      );
+    }
+    return this.buildRequest(
+      {
+        id: document.id,
+        organizationId,
+        kind: document.kind,
+        number: document.number,
+        businessDate: document.businessDate,
+        warehouseId: document.warehouseId,
+        valuationStale: document.valuationStale,
+        updatedAt: document.updatedAt,
+      },
       organizationId,
       operationKey,
+      this.actorFor(organizationId),
+      facts,
+      warehouse.accountingPostingMode,
+      warehouse.branchId,
     );
-    // PHASE 2 — the one synchronous boundary call (ADR-0041 §2).
-    const result = await this.posting.postFromInventory(intent.request);
-    // PHASE 3 — record what Accounting said.
-    return this.applyOutcome(intent, result);
+  }
+
+  /**
+   * Recover a non-terminal operation (OD-01's durable pending): resume the
+   * crossing from the IMMUTABLE snapshot, through the same contract, and
+   * record the answer. The snapshot — never mutable current state — is the
+   * source of the request facts (OD-05); Accounting's own idempotency ledger
+   * makes the resumed call a replay when the effect already exists, so a
+   * crash between any two durable writes converges instead of duplicating.
+   */
+  private async recoverExisting(
+    existing: InventoryAccountingPostingOperation,
+  ): Promise<AccountingPostingOutcomeDto> {
+    const snapshot = await this.postings.findSnapshot(
+      existing.organizationId,
+      existing.id,
+    );
+    if (snapshot === null) {
+      // Impossible for an operation this service wrote: the snapshot is
+      // created in the SAME transaction as the operation. A missing one means
+      // the durable record is corrupt, and a corrupt record is never resumed.
+      throw new Error(
+        `Accounting posting operation "${existing.id}" has no immutable snapshot and cannot be recovered.`,
+      );
+    }
+    const request = this.reconstructRequest(existing, snapshot);
+    if (request.requestHash !== existing.requestHash) {
+      // The durable record does not reconstruct to its own frozen hash: the
+      // operation must not be reused (OD-06).
+      throw AppException.conflict(
+        'The durable accounting posting operation does not match its immutable snapshot, so it cannot be recovered. An idempotency key identifies one intent: use a new key for a new operation.',
+      );
+    }
+
+    // A FAILED (or REQUESTED) operation is retried by re-entering PENDING —
+    // the state machine's only legal exit from FAILED — so the resumed
+    // transition PENDING → terminal stays legal.
+    if (existing.state === 'FAILED' || existing.state === 'REQUESTED') {
+      await this.postings.updateOperation(
+        existing.organizationId,
+        existing.id,
+        {
+          state: 'PENDING',
+          updatedAt: new Date(),
+          updatedBy: existing.actorUserId,
+        },
+      );
+    }
+
+    // PHASE 2 resumed — with the SNAPSHOT's request (ADR-0041 §2). Accounting
+    // reconciles it through its own ledger: if the effect already exists this
+    // is a replay, if it does not this completes it. Either way there is at
+    // most one effect.
+    const result = await this.posting.postFromInventory(request);
+    // PHASE 3 — record what Accounting said (converges the operation row and
+    // the document projection even when an earlier attempt wrote only one of
+    // the two).
+    return this.applyOutcome({ request, operationId: existing.id }, result);
+  }
+
+  /**
+   * Reconstruct the contract request from the operation + its immutable
+   * snapshot. The reconstruction is verified against `operation.requestHash`
+   * by the caller before anything crosses the boundary.
+   */
+  private reconstructRequest(
+    existing: InventoryAccountingPostingOperation,
+    snapshot: InventoryAccountingPostingSnapshot,
+  ): InventoryPostingRequest {
+    const canonical = canonicalRequestFromSnapshot({
+      operation: {
+        organizationId: existing.organizationId,
+        documentId: existing.documentId,
+        action: existing.action,
+        postingMode: existing.postingMode,
+      },
+      snapshot: {
+        documentType: snapshot.documentType,
+        documentNumber: snapshot.documentNumber,
+        documentVersion: snapshot.documentVersion,
+        documentDate: snapshot.documentDate,
+        branchId: snapshot.branchId,
+        warehouseId: snapshot.warehouseId,
+        valuationState: snapshot.valuationState,
+        valuationStale: snapshot.valuationStale,
+        staleVerdict: snapshot.staleVerdict,
+        valuationRunId: snapshot.valuationRunId,
+        valuationBasis: snapshot.valuationBasis,
+        movements: snapshot.movements,
+      },
+    });
+    return {
+      organizationId: existing.organizationId,
+      branchId: snapshot.branchId,
+      warehouseId: snapshot.warehouseId,
+      sourceDocumentId: snapshot.documentId,
+      // Carried through verbatim so Accounting refuses an unsupported type
+      // with `accounting.source_type_unsupported`, exactly as a fresh request.
+      sourceDocumentType:
+        canonical.sourceDocumentType as InventoryPostingRequest['sourceDocumentType'],
+      sourceDocumentNumber: snapshot.documentNumber,
+      sourceDocumentDate: canonical.sourceDocumentDate,
+      sourceDocumentVersion: snapshot.documentVersion,
+      // Fail closed on an unknown stored mode: guessing one would post under
+      // a policy nobody chose.
+      postingMode: resolveWarehouseAccountingPostingMode(existing.postingMode),
+      operationKey: existing.operationKey,
+      requestHash: buildAccountingPostingRequestHash(canonical),
+      actor: this.actorFor(existing.organizationId),
+      movements: canonical.movements,
+      valuation: canonical.valuation,
+    };
   }
 
   /**
@@ -268,6 +592,22 @@ export class InventoryAccountingPostingService {
    * contract, and the Inventory standing only moves to `draft_cancelled` once
    * Accounting confirms the draft is gone. A final voucher is never
    * cancellable here.
+   *
+   * A successful cancellation is a SUCCESS — `outcome: 'draft_cancelled'`,
+   * never `refused`. And because the cancellation has its own crash window
+   * (Accounting confirms → document write → operation write), a retry
+   * CONVERGES on the durable records instead of refusing a state they
+   * themselves wrote:
+   *
+   *   * the draft is already gone but the document still says
+   *     `draft_created` → Accounting's contract answers `cancelled: true`
+   *     (its own ledger holds no document for the key any more), so the
+   *     Inventory write completes — no second deletion is needed;
+   *   * the document already says `draft_cancelled` but the operation row
+   *     still says `DRAFT_CREATED` → the operation is moved to `CANCELLED`,
+   *     converging on the document's durable fact without touching
+   *     Accounting again;
+   *   * both already agree → the retry replays the success answer.
    */
   async cancelAccountingPosting(
     id: string,
@@ -287,6 +627,12 @@ export class InventoryAccountingPostingService {
     const current = await this.mustFind(id, organizationId);
     const mode = await this.modeFor(current);
 
+    if (current.accountingPostingState === 'draft_cancelled') {
+      // CONVERGENCE: the cancellation's document write committed but the
+      // operation update did not (or the caller is simply retrying). The
+      // durable records converge instead of contradicting each other.
+      return this.convergeCancellation(current, operationKey, mode);
+    }
     if (current.accountingPostingState !== 'draft_created') {
       throw AppException.businessRule(
         'Only a document whose Accounting posting created a draft can be cancelled.',
@@ -320,7 +666,7 @@ export class InventoryAccountingPostingService {
       );
     }
 
-    const actor = this.actorFor(current);
+    const actor = this.actorFor(organizationId);
     const cancellation = await this.posting.cancelInventoryDraft({
       organizationId,
       operationKey: operation.operationKey,
@@ -353,18 +699,113 @@ export class InventoryAccountingPostingService {
       operationKey,
       actor,
     );
+    return this.cancellationAnswer(
+      updated,
+      operationKey,
+      await this.modeFor(updated),
+      false,
+    );
+  }
+
+  /**
+   * The convergence path of a cancelled draft: the document already says
+   * `draft_cancelled`, so the only durable record that can still disagree is
+   * the operation row. Move it onto the document's fact (or replay the
+   * already-converged answer) — without asking Accounting again, because the
+   * document's standing is only ever written AFTER Accounting confirmed.
+   */
+  private async convergeCancellation(
+    current: InventoryBusinessDocument,
+    operationKey: string,
+    mode: WarehouseAccountingPostingMode,
+  ): Promise<AccountingPostingOutcomeDto> {
+    if (current.accountingPostingOperationId === null) {
+      throw AppException.businessRule(
+        'The document names no Accounting posting operation to cancel.',
+        {
+          code: 'inventory.document.accounting_post_operation_missing',
+          documentId: current.id,
+        },
+      );
+    }
+    const operation = await this.postings.findById(
+      current.organizationId,
+      current.accountingPostingOperationId,
+    );
+    if (operation === null) {
+      throw AppException.businessRule(
+        'The Accounting posting operation this document names no longer exists.',
+        {
+          code: 'inventory.document.accounting_post_operation_missing',
+          documentId: current.id,
+        },
+      );
+    }
+    if (operation.state === 'CANCELLED') {
+      // Already fully cancelled: an idempotent replay of the success answer.
+      return this.cancellationAnswer(current, operationKey, mode, true);
+    }
+    if (operation.state !== 'DRAFT_CREATED') {
+      // The document says the draft was cancelled but the operation says a
+      // voucher crossed the boundary: the two durable records contradict
+      // each other, which no retry can reconcile — fail closed and loud.
+      throw AppException.businessRule(
+        'The durable accounting posting records contradict each other: the document says the draft was cancelled but the operation is in a different state.',
+        {
+          code: 'inventory.document.accounting_post_state_contradictory',
+          documentId: current.id,
+          operationId: operation.id,
+          operationState: operation.state,
+        },
+      );
+    }
+    // The document's write committed but the operation's did not: converge
+    // the operation onto the document's durable fact.
+    const actorUserId = this.actorFor(current.organizationId).userId;
+    await this.postings.updateOperation(current.organizationId, operation.id, {
+      state: 'CANCELLED',
+      glPosted: false,
+      completedAt: new Date(),
+      updatedAt: new Date(),
+      updatedBy: actorUserId,
+    });
+    this.logger.log(
+      'Inventory business document accounting draft cancellation converged',
+      {
+        documentId: current.id,
+        organizationId: current.organizationId,
+        operationKey: operation.operationKey,
+        accountingDocumentId: current.accountingDocumentId,
+        initiatedByUserId: actorUserId,
+      },
+      InventoryAccountingPostingService.name,
+    );
+    const updated = await this.mustFind(current.id, current.organizationId);
+    return this.cancellationAnswer(updated, operationKey, mode, true);
+  }
+
+  /**
+   * The SUCCESS answer of a (converged or fresh) draft cancellation. A
+   * confirmed cancellation is `draft_cancelled`, never `refused`.
+   */
+  private cancellationAnswer(
+    document: InventoryBusinessDocument,
+    operationKey: string,
+    mode: WarehouseAccountingPostingMode,
+    replayed: boolean,
+  ): AccountingPostingOutcomeDto {
     return {
-      documentId: id,
-      organizationId,
+      documentId: document.id,
+      organizationId: document.organizationId,
       action: CANCEL_ACTION,
       operationKey,
-      state: updated.accountingPostingState,
-      outcome: 'refused',
-      postingMode: await this.modeFor(updated),
-      replayed: false,
-      accountingDocumentId: updated.accountingDocumentId,
-      accountingDocumentNumber: updated.accountingDocumentNumber,
-      accountingDocumentPhase: updated.accountingDocumentPhase,
+      state: 'draft_cancelled',
+      outcome: 'draft_cancelled',
+      postingMode: mode,
+      replayed,
+      accountingDocumentId: document.accountingDocumentId,
+      accountingDocumentNumber: document.accountingDocumentNumber,
+      accountingDocumentPhase: document.accountingDocumentPhase,
       glPosted: false,
       refusalCode: null,
       refusalReason: null,
@@ -452,12 +893,20 @@ export class InventoryAccountingPostingService {
       action: existing.action,
       operationKey: existing.operationKey,
       state: standing ?? 'not_posted',
+      // The outcome mirrors the operation's own durable state — including a
+      // CANCELLED draft, which is a SUCCESS answer (`draft_cancelled`), never
+      // a refusal. Only durably answered operations reach this mapping (a
+      // non-terminal one is recovered instead).
       outcome:
         existing.state === 'POSTED'
           ? 'final_posted'
           : existing.state === 'DRAFT_CREATED'
             ? 'draft_created'
-            : 'refused',
+            : existing.state === 'CANCELLED'
+              ? 'draft_cancelled'
+              : existing.state === 'FAILED'
+                ? 'failed'
+                : 'refused',
       postingMode: this.normalizeMode(existing.postingMode),
       replayed: true,
       accountingDocumentId: existing.accountingDocumentId,
@@ -497,7 +946,7 @@ export class InventoryAccountingPostingService {
     return warehouse.accountingPostingMode;
   }
 
-  private actorFor(document: InventoryBusinessDocument): InventoryPostingActor {
+  private actorFor(organizationId: string): InventoryPostingActor {
     const userId = getPrincipal()?.userId;
     if (userId === undefined || userId === '') {
       // The request-context seam is what makes the service authority
@@ -511,7 +960,7 @@ export class InventoryAccountingPostingService {
     return {
       userId,
       permission: INVENTORY_DOCUMENT_PERMISSIONS.ACCOUNTING_POST,
-      organizationId: document.organizationId,
+      organizationId,
     };
   }
 
@@ -520,6 +969,11 @@ export class InventoryAccountingPostingService {
    *
    *   1. lock the document header row (serializes edits, cancels, seals and a
    *      second posting request);
+   *   1b. re-check the operation key UNDER that lock: a request whose key
+   *      already has a durable operation is answered by that operation —
+   *      never by the lifecycle gates below and never by a doomed insert.
+   *      This is the primary interception of the find-then-create race; the
+   *      unique constraint's violation remains the backstop.
    *   2. lock the valuation-state rows of every key the document's movements
    *      touch, in the module's fixed ascending order — the same tier a
    *      Pricing Run or Reverse Pricing locks through;
@@ -527,6 +981,9 @@ export class InventoryAccountingPostingService {
    *      valuation writer that had already committed is visible and any
    *      in-flight one is still blocked on the same locks;
    *   4. refuse ineligibility (nothing written);
+   *   4b. refuse a SECOND operation while any non-terminal one exists for the
+   *      document — under ANY key: two in-flight postings are two Accounting
+   *      effects for one document;
    *   5. write the PENDING operation row and its immutable snapshot, and return
    *      the request built from the SAME post-lock facts the snapshot froze.
    *
@@ -537,13 +994,10 @@ export class InventoryAccountingPostingService {
     id: string,
     organizationId: string,
     operationKey: string,
-  ): Promise<{ request: InventoryPostingRequest; operationId: string }> {
+  ): Promise<Phase1Result> {
     const now = new Date();
-    const actor = this.actorFor(await this.mustFind(id, organizationId));
-    let intent: {
-      request: InventoryPostingRequest;
-      operationId: string;
-    } | null = null;
+    const actor = this.actorFor(organizationId);
+    let result: Phase1Result | null = null;
 
     await this.documents.withTransaction(async (tx) => {
       const locked = await this.documents.lockDocumentRow(
@@ -553,6 +1007,23 @@ export class InventoryAccountingPostingService {
       );
       if (locked === null) {
         throw AppException.notFound('Inventory document', id);
+      }
+      // 1b. The in-lock idempotency re-check. Every create goes through this
+      // lock, so a committed operation for this key is visible here: the
+      // request is answered by `answerExisting` outside the transaction
+      // instead of racing the insert.
+      const raced = await this.postings.findByKey(
+        {
+          organizationId,
+          documentId: id,
+          action: ACCOUNTING_POST_ACTION,
+          operationKey,
+        },
+        tx,
+      );
+      if (raced !== null) {
+        result = { kind: 'raced', operation: raced };
+        return;
       }
       if (!isInventoryDocumentStatus(locked.status)) {
         throw new Error(
@@ -684,6 +1155,32 @@ export class InventoryAccountingPostingService {
         warehouse.branchId,
       );
 
+      // 4b. One document, one in-flight posting. While ANY non-terminal
+      // operation exists for this (organization, document, action), a second
+      // operation — under any key — would be a second Accounting effect for
+      // the same document (a second voucher, or a second draft next to the
+      // first). The same-key retry never reaches this check: it is answered
+      // by the in-lock re-check above. Checked under the document row lock,
+      // so it cannot race a concurrent Phase 1.
+      const inFlight = await this.postings.findInFlightForDocument({
+        organizationId,
+        documentId: id,
+        action: ACCOUNTING_POST_ACTION,
+      });
+      if (inFlight !== null) {
+        throw AppException.businessRule(
+          inFlight.state === 'DRAFT_CREATED'
+            ? 'The document already has an Accounting draft. Cancel it (or let an accountant register it) before posting again.'
+            : 'The document already has an accounting posting operation in progress. Retry it under its own operation key; a second operation would be a second Accounting effect.',
+          {
+            code: 'inventory.document.accounting_post_in_flight',
+            documentId: id,
+            operationKey: inFlight.operationKey,
+            state: inFlight.state,
+          },
+        );
+      }
+
       // PHASE 1 stays ONE transaction: the operation and its snapshot are
       // written on the SAME `tx` that holds the header and valuation-state
       // locks, so the eligibility decision and the record of what was sent
@@ -725,15 +1222,41 @@ export class InventoryAccountingPostingService {
           now,
         },
       );
-      intent = { request, operationId: created.id };
+      result = {
+        kind: 'created',
+        intent: { request, operationId: created.id },
+      };
     });
 
-    if (intent === null) {
+    if (result === null) {
       throw new Error(
         `The accounting posting intent for document "${id}" was not written.`,
       );
     }
-    return intent;
+    return result;
+  }
+
+  /**
+   * The ledger movements this document's lines actually own, scoped to its
+   * organization. The single fetch both PHASE 1 (under the valuation locks)
+   * and the OD-06 hash rebuild (a read-only decision) are built on.
+   */
+  private async ownedMovementsOf(
+    document: InventoryBusinessDocument,
+  ): Promise<readonly InventoryMovement[]> {
+    const movementIds = [
+      ...new Set(
+        document.lines.flatMap((line) =>
+          [line.movementId, line.outMovementId, line.inMovementId].filter(
+            (movementId): movementId is string => movementId !== null,
+          ),
+        ),
+      ),
+    ];
+    const movements = await this.movements.findIds(movementIds);
+    return movements.filter(
+      (movement) => movement.organizationId === document.organizationId,
+    );
   }
 
   /**
@@ -749,18 +1272,7 @@ export class InventoryAccountingPostingService {
     actorId: string | null,
   ): Promise<readonly InventoryMovement[]> {
     const document = await this.mustFind(id, organizationId);
-    const movementIds = [
-      ...new Set(
-        document.lines.flatMap((line) =>
-          [line.movementId, line.outMovementId, line.inMovementId].filter(
-            (movementId): movementId is string => movementId !== null,
-          ),
-        ),
-      ),
-    ];
-    const movements = (await this.movements.findIds(movementIds)).filter(
-      (movement) => movement.organizationId === organizationId,
-    );
+    const movements = await this.ownedMovementsOf(document);
     const keys = [
       ...new Map(
         movements.map((movement) => [
@@ -902,7 +1414,7 @@ export class InventoryAccountingPostingService {
       sourceDocumentId: header.id,
       sourceDocumentType,
       sourceDocumentNumber: header.number,
-      sourceDocumentDate: toDateOnly(header.businessDate),
+      sourceDocumentDate: toAccountingPostingDateOnly(header.businessDate),
       sourceDocumentVersion: header.updatedAt.toISOString(),
       warehouseId: header.warehouseId,
       postingMode,
@@ -1008,8 +1520,15 @@ export class InventoryAccountingPostingService {
         accountingDocumentId: result.accountingDocument?.id ?? null,
         accountingDocumentNumber: result.accountingDocument?.number ?? null,
         accountingDocumentPhase: result.accountingDocument?.phase ?? null,
-        updatedAt: now,
-        updatedBy: actorUserId,
+        // The projection of the Accounting result is NOT a document edit. The
+        // document's `updatedAt` is the revision the canonical request hash
+        // freezes (`sourceDocumentVersion`), so the posting's own projection
+        // must not look like one — otherwise every retry of a completed
+        // operation would hash differently and conflict with itself, breaking
+        // OD-06's replay guarantee. The projection's own timestamps live on
+        // the operation row (`completedAt`/`updatedAt`), which IS bumped.
+        updatedAt: locked.updatedAt,
+        updatedBy: locked.updatedBy,
       };
       if (crossesLifecycle) {
         patch.status = 'accounting_posted';
@@ -1166,10 +1685,6 @@ export class InventoryAccountingPostingService {
     );
     return this.mustFind(document.id, document.organizationId);
   }
-}
-
-function toDateOnly(value: Date): string {
-  return value.toISOString().slice(0, 10);
 }
 
 /**

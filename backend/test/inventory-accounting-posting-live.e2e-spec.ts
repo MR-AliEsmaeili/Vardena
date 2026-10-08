@@ -349,6 +349,102 @@ describe.skipIf(DATABASE_URL === undefined)(
       return response.body as Array<Record<string, unknown>>;
     }
 
+    interface PostingOperationRow {
+      id: string;
+      state: string;
+      operation_key: string;
+      request_hash: string;
+      accounting_document_id: string | null;
+      gl_posted: boolean;
+    }
+
+    /** The document's newest durable posting operation, read from the table. */
+    async function postingOperation(
+      id: string,
+    ): Promise<PostingOperationRow | null> {
+      const client = await db();
+      const rows = await client.$queryRaw<
+        PostingOperationRow[]
+      >`SELECT id, state, operation_key, request_hash, accounting_document_id,
+          gl_posted
+        FROM inventory.inventory_accounting_posting_operations
+        WHERE organization_id = ${organizationId} AND document_id = ${id}
+        ORDER BY requested_at DESC, created_at DESC`;
+      return rows[0] ?? null;
+    }
+
+    /**
+     * Simulate "Phase 3 never ran": the operation goes back to PENDING with
+     * no recorded result. A fixture write, scoped to this test's own rows —
+     * the honest durable state after a crash between Phase 2 and Phase 3.
+     */
+    async function revertOperationToPending(id: string): Promise<void> {
+      const client = await db();
+      await client.$queryRaw`UPDATE inventory.inventory_accounting_posting_operations
+        SET state = 'PENDING', completed_at = NULL,
+            accounting_document_id = NULL, accounting_document_number = NULL,
+            accounting_document_phase = NULL, accounting_operation_key = NULL,
+            gl_posted = false, replayed = false, updated_at = now()
+        WHERE organization_id = ${organizationId} AND document_id = ${id}`;
+    }
+
+    /**
+     * Simulate "Phase 3 never ran" on the document side: undo the Accounting
+     * result projection. The document's `updated_at` is deliberately NOT
+     * touched — Phase 3 does not bump it (the revision the request hash
+     * freezes must survive the posting itself), so this restores the exact
+     * pre-post row.
+     */
+    async function revertDocumentProjection(id: string): Promise<void> {
+      const client = await db();
+      await client.$queryRaw`UPDATE inventory.inventory_business_documents
+        SET status = 'operational', accounting_posting_state = 'not_posted',
+            accounting_posting_operation_id = NULL, accounting_document_id = NULL,
+            accounting_document_number = NULL, accounting_document_phase = NULL,
+            accounting_posted_at = NULL, accounting_posted_by = NULL
+        WHERE organization_id = ${organizationId} AND id = ${id}`;
+    }
+
+    /**
+     * Erase an Accounting voucher with every row it produced: its ledger
+     * entries, its lines, its idempotency-ledger rows and the document
+     * itself. This is the exact durable state of "Accounting was never
+     * called" (a real pre-final deletion keeps the ledger rows; here they go
+     * too, because the whole point is that the boundary call never happened).
+     * The aggregate balance projections are derived rows no assertion reads
+     * and the teardown wipes them, so they are left alone.
+     */
+    async function eraseAccountingVoucher(
+      accountingDocumentId: string,
+    ): Promise<void> {
+      const client = await db();
+      await client.$queryRaw`DELETE FROM accounting.ledger_entries
+        WHERE organization_id = ${organizationId} AND voucher_id = ${accountingDocumentId}`;
+      await client.$queryRaw`DELETE FROM accounting.accounting_document_lines
+        WHERE organization_id = ${organizationId} AND document_id = ${accountingDocumentId}`;
+      await client.$queryRaw`DELETE FROM accounting.accounting_posting_operations
+        WHERE organization_id = ${organizationId} AND result->>'documentId' = ${accountingDocumentId}`;
+      await client.$queryRaw`DELETE FROM accounting.accounting_documents
+        WHERE organization_id = ${organizationId} AND id = ${accountingDocumentId}`;
+    }
+
+    async function accountingDocumentsForSource(
+      sourceDocumentId: string,
+    ): Promise<AccountingDocumentRow[]> {
+      const documents = await accountingDocuments();
+      return documents.filter(
+        (row) => row.source_entity_id === sourceDocumentId,
+      );
+    }
+
+    async function readDocument(id: string): Promise<Record<string, unknown>> {
+      const response = await operator
+        .get(`${base}/${id}`)
+        .query({ organizationId })
+        .expect(200);
+      return response.body as Record<string, unknown>;
+    }
+
     beforeAll(async () => {
       const baseConfig = loadAppConfig();
       const built = await createTestApp({
@@ -1022,6 +1118,312 @@ describe.skipIf(DATABASE_URL === undefined)(
         .get(`${base}/${id}/accounting-posting`)
         .query({ organizationId: otherOrganizationId })
         .expect(404);
+    }, 30_000);
+
+    // -----------------------------------------------------------------------
+    // 6. OD-06: one operation key answers ONE request — replay or 409
+    // -----------------------------------------------------------------------
+
+    it('conflicts (409) when the same operation key is reused for a different request', async () => {
+      const receipt = await createPricedReceipt(draftWarehouseId, '60.00', '6');
+      const id = receipt['id'] as string;
+      await finalize(id);
+
+      const operationKey = `c62-hash-conflict-${suffix}`;
+      const posted = await accountingPost(id, { operationKey });
+      expect(posted.body.accountingPostingState).toBe('draft_created');
+
+      // The document moves between the two attempts of the same key: the
+      // request the caller is making now is not the frozen one.
+      await operator
+        .patch(`${base}/${id}`)
+        .query({ organizationId })
+        .send({ description: 'edited between the two attempts' })
+        .expect(200);
+
+      const conflict = await accountingPost(id, { operationKey }, 409);
+      expect(conflict.body.code).toBe('Conflict');
+
+      // Nothing new was written: one operation, one draft, no second effect.
+      const trail = await postingTrail(id);
+      expect(trail).toHaveLength(1);
+      expect(trail[0]!['state']).toBe('DRAFT_CREATED');
+      expect(await accountingDocumentsForSource(id)).toHaveLength(1);
+    }, 30_000);
+
+    it('refuses a second operation under a different key while one is in flight', async () => {
+      const receipt = await createPricedReceipt(draftWarehouseId, '70.00', '7');
+      const id = receipt['id'] as string;
+      await finalize(id);
+
+      await accountingPost(id, { operationKey: `c62-inflight-a-${suffix}` });
+      // A draft exists: a second operation under ANY key would be a second
+      // Accounting effect for the same document, so Phase 1 refuses it.
+      const refused = await accountingPost(
+        id,
+        { operationKey: `c62-inflight-b-${suffix}` },
+        422,
+      );
+      expect(refused.body.details).toMatchObject({
+        code: 'inventory.document.accounting_post_in_flight',
+        state: 'DRAFT_CREATED',
+      });
+      expect(await postingTrail(id)).toHaveLength(1);
+      expect(await accountingDocumentsForSource(id)).toHaveLength(1);
+    }, 30_000);
+
+    it('produces exactly one voucher for a concurrent same-key same-request race', async () => {
+      const receipt = await createPricedReceipt(
+        directFinalWarehouseId,
+        '80.00',
+        '8',
+      );
+      const id = receipt['id'] as string;
+      await finalize(id);
+      const operationKey = `c62-race-same-${suffix}`;
+
+      // Two requests race on one key with one request: both must be answered
+      // (the loser replays or recovers through the same decision procedure),
+      // and Accounting's own ledger makes the effect singular.
+      const [first, second] = await Promise.all([
+        accountingPost(id, { operationKey }),
+        accountingPost(id, { operationKey }),
+      ]);
+      expect(first.body.accountingPostingState).toBe('final_posted');
+      expect(second.body.accountingPostingState).toBe('final_posted');
+      expect(second.body.accountingDocumentId).toBe(
+        first.body.accountingDocumentId,
+      );
+
+      const trail = await postingTrail(id);
+      expect(trail).toHaveLength(1);
+      expect(trail[0]!['state']).toBe('POSTED');
+      const documents = await accountingDocumentsForSource(id);
+      expect(documents).toHaveLength(1);
+      expect(documents[0]!.state).toBe('final');
+      expect(await ledgerEntriesFor(documents[0]!.id)).toHaveLength(2);
+      expect((await readDocument(id))['status']).toBe('accounting_posted');
+    }, 30_000);
+
+    // -----------------------------------------------------------------------
+    // 7. OD-01 recovery: a PENDING operation resumes through Accounting's
+    //    own idempotency ledger, from its immutable snapshot
+    // -----------------------------------------------------------------------
+
+    it('recovers a PENDING operation whose FINAL voucher already exists (crash before Phase 3)', async () => {
+      const receipt = await createPricedReceipt(
+        directFinalWarehouseId,
+        '90.00',
+        '9',
+      );
+      const id = receipt['id'] as string;
+      await finalize(id);
+      const operationKey = `c62-recover-final-${suffix}`;
+
+      const posted = await accountingPost(id, { operationKey });
+      const voucherId = posted.body.accountingDocumentId as string;
+      expect(posted.body.accountingPostingState).toBe('final_posted');
+
+      // Crash simulation: Phase 3 never ran — the operation is PENDING, the
+      // document projection is undone, but Accounting already holds the FINAL
+      // voucher and its ledger rows.
+      await revertOperationToPending(id);
+      await revertDocumentProjection(id);
+      expect((await postingOperation(id))!.state).toBe('PENDING');
+
+      const recovered = await accountingPost(id, { operationKey });
+      expect(recovered.body.accountingPostingState).toBe('final_posted');
+      // Accounting's own ledger replayed: the SAME voucher, no second one.
+      expect(recovered.body.accountingDocumentId).toBe(voucherId);
+      const documents = await accountingDocumentsForSource(id);
+      expect(documents).toHaveLength(1);
+      expect(documents[0]!.id).toBe(voucherId);
+      expect(documents[0]!.state).toBe('final');
+      expect(await ledgerEntriesFor(voucherId)).toHaveLength(2);
+
+      // The durable records converged.
+      expect(await postingOperation(id)).toMatchObject({
+        state: 'POSTED',
+        gl_posted: true,
+        accounting_document_id: voucherId,
+      });
+      const document = await readDocument(id);
+      expect(document['status']).toBe('accounting_posted');
+      expect(document['accountingPostingState']).toBe('final_posted');
+    }, 30_000);
+
+    it('recovers a PENDING operation whose DRAFT already exists (crash before Phase 3)', async () => {
+      const receipt = await createPricedReceipt(draftWarehouseId, '11.00', '1');
+      const id = receipt['id'] as string;
+      await finalize(id);
+      const operationKey = `c62-recover-draft-${suffix}`;
+
+      const drafted = await accountingPost(id, { operationKey });
+      expect(drafted.body.accountingPostingState).toBe('draft_created');
+      const draftId = drafted.body.accountingDocumentId as string;
+
+      // Crash simulation: Phase 3 never ran — the operation is PENDING and
+      // the document standing is back to not_posted, but Accounting already
+      // holds the draft.
+      await revertOperationToPending(id);
+      await revertDocumentProjection(id);
+
+      const recovered = await accountingPost(id, { operationKey });
+      expect(recovered.body.accountingPostingState).toBe('draft_created');
+      // The SAME draft, discovered through Accounting's idempotency contract.
+      expect(recovered.body.accountingDocumentId).toBe(draftId);
+      const documents = await accountingDocumentsForSource(id);
+      expect(documents).toHaveLength(1);
+      expect(documents[0]!.id).toBe(draftId);
+      expect(documents[0]!.state).toBe('draft');
+      expect(await postingOperation(id)).toMatchObject({
+        state: 'DRAFT_CREATED',
+      });
+      const document = await readDocument(id);
+      expect(document['accountingPostingState']).toBe('draft_created');
+      expect(document['status']).toBe('operational');
+    }, 30_000);
+
+    it('completes a PENDING operation that never reached Accounting (crash before Phase 2)', async () => {
+      const receipt = await createPricedReceipt(
+        directFinalWarehouseId,
+        '12.00',
+        '1',
+      );
+      const id = receipt['id'] as string;
+      await finalize(id);
+      const operationKey = `c62-recover-fresh-${suffix}`;
+
+      const posted = await accountingPost(id, { operationKey });
+      const firstVoucherId = posted.body.accountingDocumentId as string;
+
+      // Crash simulation: Phase 1 committed, the process died before the
+      // boundary call — the whole Accounting side of the operation is erased,
+      // which is exactly "Accounting was never asked".
+      await revertOperationToPending(id);
+      await revertDocumentProjection(id);
+      await eraseAccountingVoucher(firstVoucherId);
+      expect(await accountingDocumentsForSource(id)).toHaveLength(0);
+
+      const recovered = await accountingPost(id, { operationKey });
+      expect(recovered.body.accountingPostingState).toBe('final_posted');
+      const documents = await accountingDocumentsForSource(id);
+      expect(documents).toHaveLength(1);
+      expect(documents[0]!.state).toBe('final');
+      expect(await ledgerEntriesFor(documents[0]!.id)).toHaveLength(2);
+      expect((await postingOperation(id))!.state).toBe('POSTED');
+      const document = await readDocument(id);
+      expect(document['status']).toBe('accounting_posted');
+      expect(document['accountingPostingState']).toBe('final_posted');
+    }, 30_000);
+
+    it('converges when the document was projected but the operation update was interrupted', async () => {
+      const receipt = await createPricedReceipt(
+        directFinalWarehouseId,
+        '13.00',
+        '1',
+      );
+      const id = receipt['id'] as string;
+      await finalize(id);
+      const operationKey = `c62-recover-converge-${suffix}`;
+
+      const posted = await accountingPost(id, { operationKey });
+      const voucherId = posted.body.accountingDocumentId as string;
+
+      // Crash between the document write and the operation write: the
+      // document is accounting_posted but the operation is still PENDING.
+      await revertOperationToPending(id);
+      expect((await readDocument(id))['status']).toBe('accounting_posted');
+
+      const recovered = await accountingPost(id, { operationKey });
+      expect(recovered.body.accountingPostingState).toBe('final_posted');
+      expect(recovered.body.accountingDocumentId).toBe(voucherId);
+      // Both durable records converged on the same answer.
+      expect((await postingOperation(id))!.state).toBe('POSTED');
+      const documents = await accountingDocumentsForSource(id);
+      expect(documents).toHaveLength(1);
+      expect(documents[0]!.id).toBe(voucherId);
+      const document = await readDocument(id);
+      expect(document['status']).toBe('accounting_posted');
+      expect(document['accountingPostingState']).toBe('final_posted');
+    }, 30_000);
+
+    // -----------------------------------------------------------------------
+    // 8. Cancellation: a success answer, and convergence of both crash
+    //    windows (the draft already gone / the operation update interrupted)
+    // -----------------------------------------------------------------------
+
+    it('converges a cancellation retry after Accounting already deleted the draft', async () => {
+      const receipt = await createPricedReceipt(draftWarehouseId, '14.00', '1');
+      const id = receipt['id'] as string;
+      await finalize(id);
+
+      const drafted = await accountingPost(id);
+      expect(drafted.body.accountingPostingState).toBe('draft_created');
+      const draftId = drafted.body.accountingDocumentId as string;
+
+      // Crash after Accounting deleted the draft, before Inventory wrote:
+      // the Accounting document is gone, its ledger rows are gone too (the
+      // whole cancellation effect is erased, as if the delete committed and
+      // the process died before the Inventory write).
+      await eraseAccountingVoucher(draftId);
+      expect(await accountingDocumentsForSource(id)).toHaveLength(0);
+      expect((await readDocument(id))['accountingPostingState']).toBe(
+        'draft_created',
+      );
+
+      // The retry converges WITHOUT a second Accounting deletion: the
+      // contract answers cancelled because its own ledger holds no document
+      // for the operation key any more.
+      const cancelled = await operator
+        .post(`${base}/${id}/accounting-post/cancel`)
+        .query({ organizationId })
+        .send({})
+        .expect(200);
+      expect(cancelled.body.accountingPostingState).toBe('draft_cancelled');
+      expect((await postingOperation(id))!.state).toBe('CANCELLED');
+      expect(await accountingDocumentsForSource(id)).toHaveLength(0);
+    }, 30_000);
+
+    it('converges a cancellation whose operation update was interrupted', async () => {
+      const receipt = await createPricedReceipt(draftWarehouseId, '15.00', '1');
+      const id = receipt['id'] as string;
+      await finalize(id);
+      await accountingPost(id);
+
+      const cancelled = await operator
+        .post(`${base}/${id}/accounting-post/cancel`)
+        .query({ organizationId })
+        .send({})
+        .expect(200);
+      expect(cancelled.body.accountingPostingState).toBe('draft_cancelled');
+      expect((await postingOperation(id))!.state).toBe('CANCELLED');
+
+      // Crash between the document write and the operation write: the
+      // document says draft_cancelled, the operation still says DRAFT_CREATED.
+      const client = await db();
+      await client.$queryRaw`UPDATE inventory.inventory_accounting_posting_operations
+        SET state = 'DRAFT_CREATED', completed_at = NULL, updated_at = now()
+        WHERE organization_id = ${organizationId} AND document_id = ${id}`;
+
+      // The retry converges the operation onto the document's durable fact
+      // without touching Accounting again.
+      const retried = await operator
+        .post(`${base}/${id}/accounting-post/cancel`)
+        .query({ organizationId })
+        .send({})
+        .expect(200);
+      expect(retried.body.accountingPostingState).toBe('draft_cancelled');
+      expect((await postingOperation(id))!.state).toBe('CANCELLED');
+
+      // A further retry replays the converged success answer.
+      const replayed = await operator
+        .post(`${base}/${id}/accounting-post/cancel`)
+        .query({ organizationId })
+        .send({})
+        .expect(200);
+      expect(replayed.body.accountingPostingState).toBe('draft_cancelled');
+      expect((await postingOperation(id))!.state).toBe('CANCELLED');
     }, 30_000);
   },
 );
