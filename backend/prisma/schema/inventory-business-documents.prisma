@@ -97,6 +97,10 @@ model InventoryBusinessDocument {
   // document may carry several over its life (a cancelled draft is followed
   // by a new attempt under a NEW key — the old one is never overwritten).
   accountingPostingOperations InventoryAccountingPostingOperation[]
+  // ...and the ONE immutable snapshot each of those operations froze. Same
+  // projection direction as `operation_key`: the document is self-describing
+  // about what it sent Accounting, without joining the posting ledger.
+  accountingPostingSnapshots InventoryAccountingPostingSnapshot[]
 
   /// One monotonic numeric series PER DOCUMENT TYPE (Documents Foundation),
   /// so a receipt and an issue may both be `0001`; uniqueness is per kind.
