@@ -1,10 +1,22 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AccountingDocument } from '@/api/contracts';
 import type { SortingState } from '@tanstack/react-table';
 import { t } from '@/lib/i18n';
 import { testAccountingDocument } from '@/test/fixtures';
+import { resetDateTimeSettings, setDateTimeSettings } from '@/lib/datetime';
 import { DocumentsTable } from './documents-table';
+
+// C-63: this component renders through the shared date formatter, so the
+// calendar has to be part of the arrangement — the product default is Jalali,
+// while this suite asserts canonical Gregorian days.
+beforeEach(() => {
+  setDateTimeSettings({ calendarSystem: 'GREGORIAN', timeZone: 'UTC' });
+});
+
+afterEach(() => {
+  resetDateTimeSettings();
+});
 
 const baseProps = {
   documents: [testAccountingDocument] as AccountingDocument[],

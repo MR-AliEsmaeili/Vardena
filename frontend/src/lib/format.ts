@@ -1,4 +1,6 @@
-import dayjs from 'dayjs';
+import { formatBusinessDay } from '@/lib/datetime/business-date';
+import { formatInstant } from '@/lib/datetime/instant';
+import { getDateTimeSettings } from '@/lib/datetime/settings';
 
 /**
  * Display formatters.
@@ -10,10 +12,15 @@ import dayjs from 'dayjs';
  * pure string transformation that adds grouping separators for readability
  * and preserves the returned value digit for digit.
  *
- * Dates are handled with Day.js (ADR-0002). Date-only API values
- * (`YYYY-MM-DD`) are displayed verbatim — the backend date contract is not
- * reinterpreted here, and no Gregorian/Jalali conversion is performed
- * (calendar display is OQ-02, still open).
+ * Dates go through the centralized date/time layer (C-63, ADR-0042):
+ * `src/lib/datetime/` owns the calendar and the time zone, and the helpers
+ * below merely apply the active organization settings. A component never
+ * formats a date itself and never converts a calendar — it calls these (or the
+ * layer directly, for the API-shaped values in §3 of `docs/datetime.md`).
+ *
+ * The settings are read from the module store rather than a hook, so a table
+ * cell, a helper and a test all render the same value in the same way. The
+ * store is updated once per selected organization by `OrganizationProvider`.
  */
 
 const DECIMAL_PATTERN = /^[+-]?\d+(\.\d+)?$/;
@@ -48,20 +55,36 @@ export function isNegativeAmount(value: string | null | undefined): boolean {
 }
 
 /**
- * Date-only API values (`YYYY-MM-DD`) are displayed exactly as returned:
- * the backend owns the date contract and no calendar conversion happens in
- * the UI (OQ-02).
+ * A canonical business day (`YYYY-MM-DD`), rendered in the organization's
+ * calendar — Jalali by default (`1405/07/16`), unchanged for a Gregorian
+ * organization. A value that is not a canonical day is returned as-is, so an
+ * unexpected server value stays visible instead of being mangled.
  */
 export function formatDateOnly(value: string | null | undefined): string {
   if (!value) return '';
-  return value;
+  return formatBusinessDay(value, getDateTimeSettings().calendarSystem);
 }
 
-/** ISO timestamps are rendered with Day.js in a fixed, unambiguous shape. */
+/**
+ * The canonical Gregorian value of a business day, for reconciliation: panels
+ * that show a Jalali day carry this in the element's `title`, and detail views
+ * show both (C-63 §11).
+ */
+export function formatDateOnlyCanonical(
+  value: string | null | undefined,
+): string {
+  return value ?? '';
+}
+
+/**
+ * An ISO timestamp, rendered in the organization's IANA zone with a fixed,
+ * unambiguous shape. Reading the zone from the settings is what makes the same
+ * instant render identically for every user of an organization — previously it
+ * followed the browser's own zone.
+ */
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return '';
-  const parsed = dayjs(value);
-  return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : value;
+  return formatInstant(value, getDateTimeSettings().timeZone);
 }
 
 /** Plain integer display (counts, page numbers) — never money. */

@@ -13,6 +13,17 @@ import {
 } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
+import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
+import type {
+  ApiBusinessDate,
+  ApiInstant,
+} from '../../../../kernel/datetime/api-date-time.js';
+import {
+  ApiBusinessDateDto,
+  ApiInstantDto,
+  DECLARED_BUSINESS_DATE_SCHEMA,
+} from '../../../../kernel/datetime/api-date-time.dto.js';
+import { CALENDAR_SYSTEMS } from '../../../../kernel/datetime/calendar-system.js';
 import { REPRICING_CHOICES } from '../../domain/backdating.js';
 import {
   INVENTORY_DOCUMENT_KINDS,
@@ -39,6 +50,15 @@ import { MAX_ACCOUNTING_POSTING_OPERATION_KEY_LENGTH } from '../../domain/invent
  * dropped), and a TRANSFER carries source/destination instead of a single
  * warehouse.
  */
+
+/**
+ * The API shape of a declared business date: the SAME `1405-07-16` a Persian
+ * user types, plus the calendar that gives it meaning. `YYYY-MM-DD` is
+ * identical in both calendars, so the declaration is not optional detail —
+ * it is the only thing that distinguishes the two.
+ */
+export type BusinessDateInputDto =
+  string | { calendar: (typeof CALENDAR_SYSTEMS)[number]; value: string };
 
 export class InventoryDocumentLineInputDto {
   @ApiProperty({ format: 'ulid' })
@@ -80,12 +100,16 @@ export class CreateInventoryDocumentDto {
   kind!: string;
 
   @ApiPropertyOptional({
-    format: 'date-time',
-    description: 'Business date. Defaults to now when omitted.',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'C-63 business date. A calendar DAY is canonical, and the calendar it is written in must be declared when it is Jalali: "2026-10-08" (Gregorian, the default), { "calendar": "JALALI", "value": "1405-07-16" }. A full ISO-8601 instant is accepted for backward compatibility and stored as given. A day is stored as its UTC-midnight instant. Omitted = now (historical behaviour; send an explicit day).',
   })
   @IsOptional()
-  @IsDateString()
-  businessDate?: string;
+  @IsBusinessDate()
+  businessDate?: BusinessDateInputDto;
 
   @ApiPropertyOptional({
     format: 'ulid',
@@ -136,10 +160,17 @@ export class CreateInventoryDocumentDto {
 }
 
 export class UpdateInventoryDocumentDto {
-  @ApiPropertyOptional({ format: 'date-time' })
+  @ApiPropertyOptional({
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'C-63 business date. Same three accepted forms as create: a canonical Gregorian day, a declared Jalali day ({ calendar, value }), or a legacy ISO instant (kept as given). Omitted = the document keeps its current business date.',
+  })
   @IsOptional()
-  @IsDateString()
-  businessDate?: string;
+  @IsBusinessDate()
+  businessDate?: BusinessDateInputDto;
 
   @ApiPropertyOptional({ format: 'ulid' })
   @IsOptional()
@@ -412,6 +443,13 @@ export class InventoryDocumentResponseDto {
   })
   number!: string | null;
   @ApiProperty({ format: 'date-time' }) businessDate!: string;
+
+  @ApiProperty({
+    type: ApiBusinessDateDto,
+    description:
+      'C-63: the SAME business day in both calendars, derived from the organization settings. `businessDate` above stays the canonical value.',
+  })
+  businessDateCalendar!: ApiBusinessDate;
   @ApiProperty({ type: String, nullable: true })
   warehouseId!: string | null;
   @ApiProperty({ type: String, nullable: true })
@@ -487,6 +525,20 @@ export class InventoryDocumentResponseDto {
   cancellationReason!: string | null;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+
+  @ApiProperty({
+    type: ApiInstantDto,
+    description:
+      'C-63: the creation EVENT timestamp in both calendars, plus the zone it was resolved in. `createdAt` above stays the authoritative instant.',
+  })
+  createdAtCalendar!: ApiInstant;
+
+  @ApiProperty({
+    type: ApiInstantDto,
+    description: 'C-63: the last-update EVENT timestamp in both calendars.',
+  })
+  updatedAtCalendar!: ApiInstant;
+
   @ApiProperty({ type: [InventoryDocumentLineResponseDto] })
   lines!: InventoryDocumentLineResponseDto[];
 }

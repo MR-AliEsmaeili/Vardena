@@ -131,6 +131,15 @@ Disable|ResetPassword`. There is no delete permission because there is no
 
 ## Organization (implemented — structure & party master data)
 
+**C-63 date/time policy (ADR-0042).** The organization row is also the single
+home of the deployment's date/time DISPLAY policy: `calendar_system`
+(`GREGORIAN` | `JALALI`, default `JALALI`) and `time_zone` (IANA id, default
+`Asia/Tehran`, numeric offsets rejected). They decide how days are shown and
+authored — never what is stored (instants stay UTC, business days stay
+Gregorian). Cross-module readers call
+`OrganizationsService.getDateTimeSettings(organizationId)` once per response;
+the contract is `docs/datetime.md`. No second settings store exists.
+
 - **Status:** implemented in Task 6 for the organizational-structure and party half
   (ADR-0020, ADR-0021). The _configuration_ half — fiscal calendar, numbering series,
   tax definitions, workflow definitions and custom-field definitions — is **not**
@@ -737,6 +746,16 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
   structure or party master data (Organization).
 
 ## Inventory (v1 core — implemented)
+
+**C-63 business dates.** A business document's `businessDate` is a calendar
+DAY, accepted in three forms (canonical Gregorian `YYYY-MM-DD`, a declared
+Jalali day `{ calendar, value }`, or a legacy ISO instant kept verbatim),
+normalized to the day's UTC-midnight instant, and returned with its
+`{ gregorian, jalali }` rendering; `createdAt`/`updatedAt` are event instants
+and are returned with `{ instant, timeZone, gregorian, jalali }`. A backdated
+document keeps its business day. Day filters (`dateFrom`/`dateTo`) are the
+day's UTC-midnight instant on both bounds — see `docs/datetime.md` §4/§7 and
+**OQ-73** for the still-open column-typing question.
 
 - **Status (corrected 2026-09-26 — `repository-documentation-audit.md`):**
   **both halves are implemented.** Master data (Task 6): schema `inventory` —

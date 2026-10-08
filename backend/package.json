@@ -1,7 +1,7 @@
 {
   "name": "vardena-backend",
   "version": "0.0.1",
-  "description": "Vardena ERP backend \u2014 NestJS modular monolith (API + worker). See README.md and ADR-0015.",
+  "description": "Vardena ERP backend — NestJS modular monolith (API + worker). See README.md and ADR-0015.",
   "author": "",
   "private": true,
   "license": "UNLICENSED",
@@ -47,6 +47,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "dotenv": "^16.4.5",
+    "jalaali-js": "^2.0.1",
     "pg": "^8.13.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",

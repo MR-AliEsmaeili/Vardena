@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { ArrowRight } from 'lucide-react';
 import { normalizeApiError } from '@/api/errors';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
+import { businessDayToInstantIso } from '@/lib/datetime';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
+import { DateInput } from '@/ui/patterns/date-input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
 import { LoadingState } from '@/ui/patterns/states';
@@ -156,7 +158,7 @@ function TransferForm({
           quantity: values.quantity,
           unitId: values.unitId,
           ...(values.movementDate !== ''
-            ? { movementDate: `${values.movementDate}T00:00:00.000Z` }
+            ? { movementDate: businessDayToInstantIso(values.movementDate) }
             : {}),
           ...(values.reason.trim() !== ''
             ? { reason: values.reason.trim() }
@@ -319,10 +321,17 @@ function TransferForm({
             hint={t.inventory.movementDateHint}
           >
             {(fieldProps) => (
-              <Input
-                {...fieldProps}
-                {...register('movementDate')}
-                type="date"
+              <Controller
+                control={form.control}
+                name="movementDate"
+                render={({ field }) => (
+                  <DateInput
+                    {...fieldProps}
+                    id="transfer-date"
+                    value={field.value}
+                    onValueChange={field.onChange}
+                  />
+                )}
               />
             )}
           </FormField>

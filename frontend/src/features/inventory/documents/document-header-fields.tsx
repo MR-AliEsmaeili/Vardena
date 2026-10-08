@@ -1,9 +1,11 @@
-import type { UseFormReturn } from 'react-hook-form';
+import { Controller, type UseFormReturn } from 'react-hook-form';
 import type { InventoryDocumentKind } from '@/api/contracts';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
+import { useCalendarSystem } from '@/lib/datetime';
 import { Input } from '@/ui/input';
+import { DateInput } from '@/ui/patterns/date-input';
 import { Select } from '@/ui/select';
 import { FormField } from '@/ui/patterns/form-field';
 import type { InventoryReferences } from '../use-inventory-references';
@@ -33,6 +35,7 @@ export function DocumentHeaderFields({
 }) {
   const permissions = usePermissions();
   const { register, formState, watch } = form;
+  const calendarSystem = useCalendarSystem();
   const errors = formState.errors;
   const lineCount = watch('lines').length;
   const mayAssignCost = permissions.has(
@@ -52,14 +55,26 @@ export function DocumentHeaderFields({
         id="document-business-date"
         label={t.inventoryDocuments.businessDate}
         error={errors.businessDate?.message}
-        hint={t.filters.dateFormatHint}
+        hint={
+          calendarSystem === 'JALALI'
+            ? t.filters.dateFormatHintJalali
+            : t.filters.dateFormatHint
+        }
       >
         {(fieldProps) => (
-          <Input
-            {...fieldProps}
-            {...register('businessDate')}
-            type="date"
-            disabled={disabled}
+          <Controller
+            control={form.control}
+            name="businessDate"
+            render={({ field }) => (
+              <DateInput
+                {...fieldProps}
+                id="document-business-date"
+                value={field.value}
+                onValueChange={field.onChange}
+                disabled={disabled}
+                data-testid="document-business-date"
+              />
+            )}
           />
         )}
       </FormField>

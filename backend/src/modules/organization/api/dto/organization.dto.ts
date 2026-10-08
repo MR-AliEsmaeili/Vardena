@@ -9,6 +9,7 @@ import {
 } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { parseQueryBoolean } from '../../../../kernel/http/parse-query-boolean.js';
+import { CALENDAR_SYSTEMS } from '../../../../kernel/datetime/calendar-system.js';
 import { MAX_CODE_LENGTH, MAX_NAME_LENGTH } from '../../domain/master-data.js';
 
 /**
@@ -34,6 +35,26 @@ export class CreateOrganizationDto {
   @MinLength(1, { message: 'Name is required.' })
   @MaxLength(MAX_NAME_LENGTH)
   name!: string;
+
+  @ApiPropertyOptional({
+    enum: CALENDAR_SYSTEMS,
+    description:
+      'C-63 display calendar. Omit for the deployment default (JALALI). A rendering/authoring setting: it never changes what is stored.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  calendarSystem?: string;
+
+  @ApiPropertyOptional({
+    example: 'Asia/Tehran',
+    description:
+      'C-63 IANA time zone used for local date-times. Omit for the deployment default (Asia/Tehran). A fixed offset is rejected.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  timeZone?: string;
 }
 
 /** Partial update: only the supplied fields change. */
@@ -51,6 +72,26 @@ export class UpdateOrganizationDto {
   @MinLength(1, { message: 'Name cannot be blank.' })
   @MaxLength(MAX_NAME_LENGTH)
   name?: string;
+
+  @ApiPropertyOptional({
+    enum: CALENDAR_SYSTEMS,
+    description:
+      'C-63 display calendar of this organization. Changing it re-renders history; it rewrites nothing.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  calendarSystem?: string;
+
+  @ApiPropertyOptional({
+    example: 'Asia/Tehran',
+    description:
+      'C-63 IANA time zone of this organization. Changing it re-renders history; it rewrites nothing.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(64)
+  timeZone?: string;
 }
 
 /**
@@ -91,6 +132,20 @@ export class OrganizationResponseDto {
       'False while disabled. A disabled organization blocks the creation of new organization-scoped records but keeps existing ones readable.',
   })
   isActive!: boolean;
+
+  @ApiProperty({
+    enum: CALENDAR_SYSTEMS,
+    description:
+      'C-63 display calendar. Instants are always stored and exchanged in UTC; a business date is always stored Gregorian. This value decides how days are SHOWN and authored.',
+  })
+  calendarSystem!: string;
+
+  @ApiProperty({
+    example: 'Asia/Tehran',
+    description:
+      'C-63 IANA time zone used to turn an instant into a local date-time for this organization.',
+  })
+  timeZone!: string;
 
   @ApiProperty({ format: 'date-time' })
   createdAt!: string;

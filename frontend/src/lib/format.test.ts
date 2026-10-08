@@ -1,11 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   formatAmount,
   formatCount,
   formatDateOnly,
+  formatDateOnlyCanonical,
   formatDateTime,
   isNegativeAmount,
 } from './format';
+import { resetDateTimeSettings, setDateTimeSettings } from './datetime';
 
 describe('formatAmount', () => {
   it('groups the integer part without touching the fraction digits', () => {
@@ -52,15 +54,27 @@ describe('isNegativeAmount', () => {
 });
 
 describe('date formatters', () => {
-  it('shows date-only API values verbatim (no calendar conversion)', () => {
-    expect(formatDateOnly('2026-03-21')).toBe('2026-03-21');
-    expect(formatDateOnly(null)).toBe('');
+  afterEach(() => {
+    resetDateTimeSettings();
   });
 
-  it('formats ISO timestamps through Day.js', () => {
-    expect(formatDateTime('2026-03-21T08:30:00.000Z')).toMatch(
-      /^2026-03-21 \d{2}:\d{2}$/,
-    );
+  it('renders a business day in the organization calendar (C-63)', () => {
+    // The product default is Jalali; the canonical value stays available.
+    expect(formatDateOnly('2026-03-21')).toBe('1405/01/01');
+    expect(formatDateOnlyCanonical('2026-03-21')).toBe('2026-03-21');
+    expect(formatDateOnly(null)).toBe('');
+
+    setDateTimeSettings({ calendarSystem: 'GREGORIAN', timeZone: 'UTC' });
+    expect(formatDateOnly('2026-03-21')).toBe('2026-03-21');
+  });
+
+  it('formats an ISO timestamp in the organization zone', () => {
+    setDateTimeSettings({ calendarSystem: 'JALALI', timeZone: 'UTC' });
+    expect(formatDateTime('2026-03-21T08:30:00.000Z')).toBe('2026-03-21 08:30');
+
+    setDateTimeSettings({ calendarSystem: 'JALALI', timeZone: 'Asia/Tehran' });
+    expect(formatDateTime('2026-03-21T08:30:00.000Z')).toBe('2026-03-21 12:00');
+    // An unexpected value is shown as-is, never blanked.
     expect(formatDateTime('not-a-date')).toBe('not-a-date');
   });
 });

@@ -271,8 +271,10 @@ src/
   worker.module.ts   # worker root
   worker.service.ts  # worker startup gate (DB check + handler listing)
   kernel/            # technical-only primitives (AR-06): config, correlation,
-                     # errors, http pipeline, ids, jobs registry, logging,
-                     # pagination, Prisma, rate limiting, bootstrap guard
+                     # datetime (instants, business days, calendars, zones —
+                     # ADR-0042 / docs/datetime.md), errors, http pipeline, ids,
+                     # jobs registry, logging, pagination, Prisma, rate limiting,
+                     # bootstrap guard
   modules/
     health/          # liveness/readiness probes (NOT a business module)
     identity/        # authentication: login/logout/me, server-side sessions,

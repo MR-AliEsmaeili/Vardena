@@ -20,6 +20,16 @@
  * number and stays visible (OD-54-07/08/09); numbers are never reused.
  */
 
+import type {
+  ApiBusinessDate,
+  ApiInstant,
+} from '../../../kernel/datetime/api-date-time.js';
+import {
+  toApiBusinessDate,
+  toApiInstant,
+} from '../../../kernel/datetime/api-date-time.js';
+import { businessDateFromUtcMidnight } from '../../../kernel/datetime/business-date.js';
+import type { DateTimeSettings } from '../../../kernel/datetime/date-time-settings.js';
 import type { InventoryDocumentAccountingPostingState } from './inventory-accounting-posting-operation.js';
 
 /**
@@ -640,7 +650,19 @@ export interface InventoryDocumentDto {
   /** Domain eligibility; permissions are enforced independently by commands. */
   accountingEligible: boolean;
   number: string | null;
+  /**
+   * The document's BUSINESS DATE, carried as the ledger's UTC-midnight
+   * instant (C-63, docs/datetime.md §Inventory). Canonical, unchanged — and
+   * deliberately NOT the creation instant: a backdated receipt is dated in
+   * the past while `createdAt` is today.
+   */
   businessDate: string;
+  /**
+   * C-63 §10: the SAME business day in both calendars, derived per response
+   * from the organization's settings. A derived field: nothing here is
+   * persisted, and a client that already reads `businessDate` is unaffected.
+   */
+  businessDateCalendar: ApiBusinessDate;
   warehouseId: string | null;
   sourceWarehouseId: string | null;
   destinationWarehouseId: string | null;
@@ -680,6 +702,13 @@ export interface InventoryDocumentDto {
   cancellationReason: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * C-63 §11: the technical event instants in both calendars plus the zone
+   * they were resolved in. Derived per response; the ISO fields above stay
+   * authoritative.
+   */
+  createdAtCalendar: ApiInstant;
+  updatedAtCalendar: ApiInstant;
   lines: InventoryDocumentLineDto[];
 }
 
@@ -694,8 +723,18 @@ export interface InventoryDocumentDto {
 export function toInventoryDocumentDto(
   document: InventoryBusinessDocument,
   includeCost: boolean,
-  movementValuationState?: InventoryDocumentValuationState,
+  options: {
+    /**
+     * The organization's date/time policy, read ONCE per response (C-63).
+     * Required on purpose: a caller that forgot it would render a Persian
+     * user's document in the wrong calendar, and a default here would hide
+     * exactly that bug.
+     */
+    dateTimeSettings: DateTimeSettings;
+    movementValuationState?: InventoryDocumentValuationState;
+  },
 ): InventoryDocumentDto {
+  const movementValuationState = options.movementValuationState;
   const status = document.status;
   // Operational history is always derived from its authoritative movement
   // facts. Draft receipts retain C-59A's valid manual-source preview.
@@ -705,6 +744,27 @@ export function toInventoryDocumentDto(
       ? 'priced'
       : 'unpriced');
   const accountingEligible = isAccountingEligible(document, valuationState);
+  const businessDateCalendar = toApiBusinessDate(
+    businessDateFromUtcMidnight(document.businessDate),
+  );
+  if (businessDateCalendar === null) {
+    throw new Error(
+      `Inventory document ${document.id} has a business date outside the supported calendar range.`,
+    );
+  }
+  const createdAtCalendar = toApiInstant(
+    document.createdAt,
+    options.dateTimeSettings.timeZone,
+  );
+  const updatedAtCalendar = toApiInstant(
+    document.updatedAt,
+    options.dateTimeSettings.timeZone,
+  );
+  if (createdAtCalendar === null || updatedAtCalendar === null) {
+    throw new Error(
+      `Inventory document ${document.id} has an event timestamp that cannot be rendered in ${options.dateTimeSettings.timeZone} (C-63).`,
+    );
+  }
   return {
     id: document.id,
     organizationId: document.organizationId,
@@ -713,6 +773,7 @@ export function toInventoryDocumentDto(
     accountingEligible,
     number: document.number,
     businessDate: document.businessDate.toISOString(),
+    businessDateCalendar,
     warehouseId: document.warehouseId,
     sourceWarehouseId: document.sourceWarehouseId,
     destinationWarehouseId: document.destinationWarehouseId,
@@ -748,6 +809,8 @@ export function toInventoryDocumentDto(
     cancellationReason: document.cancellationReason,
     createdAt: document.createdAt.toISOString(),
     updatedAt: document.updatedAt.toISOString(),
+    createdAtCalendar,
+    updatedAtCalendar,
     lines: document.lines.map((line) => ({
       id: line.id,
       lineNumber: line.lineNumber,

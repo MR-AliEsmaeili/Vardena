@@ -15,6 +15,11 @@ import {
 } from '../../../kernel/pagination/paginated-result.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
+import { businessDateToUtcMidnight } from '../../../kernel/datetime/business-date.js';
+import {
+  parseBusinessDateInput,
+  type BusinessDateInput,
+} from '../../../kernel/datetime/business-date-input.js';
 import { NumberingService } from '../../documents/application/numbering.service.js';
 import {
   InventoryBusinessDocumentsRepository,
@@ -127,7 +132,13 @@ export interface DocumentLineInput {
 export interface CreateDocumentInput {
   organizationId: string;
   kind: string;
-  businessDate?: Date | undefined;
+  /**
+   * C-63: the business date in its API INPUT form — a canonical Gregorian day
+   * (`YYYY-MM-DD`), a declared Jalali day (`{ calendar, value }`), or (legacy)
+   * a full ISO instant, which is kept as given. Omit to keep the historical
+   * "now" behaviour.
+   */
+  businessDate?: BusinessDateInput | undefined;
   warehouseId?: string | null | undefined;
   sourceWarehouseId?: string | null | undefined;
   destinationWarehouseId?: string | null | undefined;
@@ -139,7 +150,8 @@ export interface CreateDocumentInput {
 }
 
 export interface UpdateDocumentInput {
-  businessDate?: Date | undefined;
+  /** C-63: same input contract as {@link CreateDocumentInput.businessDate}. */
+  businessDate?: BusinessDateInput | undefined;
   warehouseId?: string | null | undefined;
   sourceWarehouseId?: string | null | undefined;
   destinationWarehouseId?: string | null | undefined;
@@ -335,7 +347,7 @@ export class InventoryBusinessDocumentsService {
     const kind = requireKind(input.kind);
     await this.organizations.requireUsableOrganization(input.organizationId);
 
-    const businessDate = input.businessDate ?? new Date();
+    const businessDate = await this.resolveBusinessDate(input);
     const header = this.normalizeHeader(kind, input);
     if (header.cost !== null) {
       await this.authorization.requireAllPermissions([
@@ -439,7 +451,13 @@ export class InventoryBusinessDocumentsService {
     rethrowDomain(() => assertEditable(current));
 
     // 2. VALIDATE
-    const businessDate = input.businessDate ?? current.businessDate;
+    const businessDate =
+      input.businessDate === undefined
+        ? current.businessDate
+        : await this.resolveBusinessDate({
+            organizationId,
+            businessDate: input.businessDate,
+          });
     const header = this.normalizeHeader(current.kind, {
       warehouseId:
         input.warehouseId === undefined
@@ -1120,13 +1138,21 @@ export class InventoryBusinessDocumentsService {
     document: InventoryBusinessDocument,
     includeCost: boolean,
   ): Promise<InventoryDocumentDto> {
+    // C-63: the organization's date/time policy is read ONCE per response and
+    // handed to the mapper, which derives the Gregorian+Jalali renderings of
+    // this document's business date and event timestamps from it.
+    const dateTimeSettings = await this.organizations.getDateTimeSettings(
+      document.organizationId,
+    );
     const movementIds = document.lines.flatMap((line) =>
       [line.movementId, line.outMovementId, line.inMovementId].filter(
         (id): id is string => id !== null,
       ),
     );
     if (movementIds.length === 0) {
-      return toInventoryDocumentDto(document, includeCost);
+      return toInventoryDocumentDto(document, includeCost, {
+        dateTimeSettings,
+      });
     }
     const movements = await this.movements.findIds(movementIds);
     // Missing/cross-organization facts are never interpreted as priced.
@@ -1138,7 +1164,64 @@ export class InventoryBusinessDocumentsService {
     const valuationState = deriveDocumentValuationState(
       complete ? movements.map((movement) => movement.valuationStatus) : [],
     );
-    return toInventoryDocumentDto(document, includeCost, valuationState);
+    return toInventoryDocumentDto(document, includeCost, {
+      dateTimeSettings,
+      movementValuationState: valuationState,
+    });
+  }
+
+  /**
+   * Resolve a business date INPUT into the instant this ledger stores
+   * (C-63 §16, ADR-0042).
+   *
+   * Three cases, each explicit:
+   *
+   *   * a calendar day (canonical Gregorian or a declared Jalali day) becomes
+   *     its UTC-midnight instant — the canonical day instant this ledger
+   *     already carries, so a Jalali `1405-07-16` and a Gregorian
+   *     `2026-10-08` are the SAME stored day;
+   *   * a legacy ISO instant is kept EXACTLY as sent (the day is derived for
+   *     display, the instant is never rewritten);
+   *   * an omitted date keeps the historical default (`now`), because
+   *     re-defaulting it to midnight would silently re-date every document
+   *     and reclassify same-day postings as backdated (see docs/datetime.md
+   *     §Inventory — clients are expected to send an explicit day).
+   */
+  private async resolveBusinessDate(input: {
+    organizationId: string;
+    businessDate?: BusinessDateInput | undefined;
+  }): Promise<Date> {
+    if (input.businessDate === undefined) return new Date();
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
+    );
+    const parsed = parseBusinessDateInput(input.businessDate, { timeZone });
+    if (!parsed.ok) {
+      throw AppException.validation([
+        {
+          field: 'businessDate',
+          code: parsed.reason,
+          message:
+            parsed.reason === 'business_date_calendar'
+              ? 'That date does not exist in the declared calendar.'
+              : parsed.reason === 'business_date_declaration'
+                ? 'A declared business date must be exactly { calendar, value } with calendar GREGORIAN or JALALI and value YYYY-MM-DD.'
+                : 'Business date must be YYYY-MM-DD, a declared Jalali/Gregorian day, or an ISO-8601 instant.',
+        },
+      ]);
+    }
+    if (parsed.source === 'instant') return parsed.instant;
+    const midnight = businessDateToUtcMidnight(parsed.gregorian);
+    if (midnight === null) {
+      throw AppException.validation([
+        {
+          field: 'businessDate',
+          code: 'business_date_calendar',
+          message: 'That date does not exist in the declared calendar.',
+        },
+      ]);
+    }
+    return midnight;
   }
 
   private normalizeHeader(

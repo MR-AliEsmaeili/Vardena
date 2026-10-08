@@ -197,7 +197,6 @@ async function fillMovement(
   await user.clear(dateInput);
   await user.type(dateInput, overrides.movementDate ?? '2026-04-05');
 }
-
 beforeEach(() => {
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([

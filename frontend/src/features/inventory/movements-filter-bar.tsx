@@ -1,10 +1,10 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import { FormField } from '@/ui/patterns/form-field';
-import { Input } from '@/ui/input';
+import { DateInput } from '@/ui/patterns/date-input';
 import { Select } from '@/ui/select';
 import type { InventoryReferences } from './use-inventory-references';
 import { MOVEMENT_TYPE_FILTERS } from './use-inventory-movements';
@@ -80,7 +80,7 @@ export function MovementsFilterBar({
     defaultValues: values,
     mode: 'onSubmit',
   });
-  const { register, formState } = form;
+  const { formState } = form;
 
   return (
     <form
@@ -149,22 +149,36 @@ export function MovementsFilterBar({
 
         <FormField id="movements-filter-date-from" label={t.inventory.dateFrom}>
           {(fieldProps) => (
-            <Input
-              {...fieldProps}
-              {...register('dateFrom')}
-              type="date"
-              className="h-9"
+            <Controller
+              control={form.control}
+              name="dateFrom"
+              render={({ field }) => (
+                <DateInput
+                  {...fieldProps}
+                  id="movements-filter-date-from"
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  className="h-9"
+                />
+              )}
             />
           )}
         </FormField>
 
         <FormField id="movements-filter-date-to" label={t.inventory.dateTo}>
           {(fieldProps) => (
-            <Input
-              {...fieldProps}
-              {...register('dateTo')}
-              type="date"
-              className="h-9"
+            <Controller
+              control={form.control}
+              name="dateTo"
+              render={({ field }) => (
+                <DateInput
+                  {...fieldProps}
+                  id="movements-filter-date-to"
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  className="h-9"
+                />
+              )}
             />
           )}
         </FormField>

@@ -17,6 +17,11 @@ import type {
 } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
+import {
+  businessDayFromInstantIso,
+  getDateTimeSettings,
+  toBusinessDateInput,
+} from '@/lib/datetime';
 import { Button } from '@/ui/button';
 import { Card } from '@/ui/card';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
@@ -101,7 +106,9 @@ export function InventoryDocumentFormPage(): ReactElement {
 function toFormValues(document: InventoryDocument): DocumentFormValues {
   return {
     kind: document.kind,
-    businessDate: document.businessDate.slice(0, 10),
+    // C-63: the canonical Gregorian day of the stored business date (the
+    // ledger carries the day as its UTC-midnight instant).
+    businessDate: businessDayFromInstantIso(document.businessDate) ?? '',
     warehouseId: document.warehouseId ?? '',
     sourceWarehouseId: document.sourceWarehouseId ?? '',
     destinationWarehouseId: document.destinationWarehouseId ?? '',
@@ -116,15 +123,32 @@ function toFormValues(document: InventoryDocument): DocumentFormValues {
   };
 }
 
+/**
+ * C-63: the business date travels as what the operator authored — a declared
+ * Jalali day for a Jalali organization, the canonical Gregorian day otherwise.
+ * The backend resolves both to the SAME stored day (a declared `1405-07-16`
+ * and a canonical `2026-10-08` are one day), so the request says which calendar
+ * the user worked in without the UI ever inventing a day.
+ */
+function businessDateBody(
+  businessDate: string,
+): Pick<CreateInventoryDocumentInput, 'businessDate'> {
+  if (businessDate === '') return {};
+  return {
+    businessDate: toBusinessDateInput(
+      businessDate,
+      getDateTimeSettings().calendarSystem,
+    ),
+  };
+}
+
 function toCreateBody(
   values: DocumentFormValues,
 ): Omit<CreateInventoryDocumentInput, 'organizationId'> {
   const transfer = values.kind === 'transfer';
   return {
     kind: values.kind,
-    ...(values.businessDate !== ''
-      ? { businessDate: `${values.businessDate}T00:00:00.000Z` }
-      : {}),
+    ...businessDateBody(values.businessDate),
     ...(transfer
       ? {
           sourceWarehouseId: values.sourceWarehouseId,
@@ -145,9 +169,7 @@ function toUpdateBody(
 ): UpdateInventoryDocumentInput {
   const transfer = values.kind === 'transfer';
   return {
-    ...(values.businessDate !== ''
-      ? { businessDate: `${values.businessDate}T00:00:00.000Z` }
-      : {}),
+    ...businessDateBody(values.businessDate),
     ...(transfer
       ? {
           sourceWarehouseId: values.sourceWarehouseId,

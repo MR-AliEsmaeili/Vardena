@@ -13,6 +13,7 @@ import type {
 } from '@/api/contracts';
 import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import { sortingFromParam } from '@/lib/sort-param';
+import { businessDayToInstantIso } from '@/lib/datetime';
 import { DOCUMENT_KINDS, DOCUMENT_STATUSES } from './inventory-document-labels';
 
 /**
@@ -175,10 +176,13 @@ export function buildDocumentsQuery(
     ...(state.kind !== '' ? { kind: state.kind } : {}),
     ...(state.status !== '' ? { status: state.status } : {}),
     ...(state.warehouseId !== '' ? { warehouseId: state.warehouseId } : {}),
+    // C-63: day filter → the day's UTC-midnight instant (docs/datetime.md §4).
     ...(state.dateFrom !== ''
-      ? { dateFrom: `${state.dateFrom}T00:00:00.000Z` }
+      ? { dateFrom: businessDayToInstantIso(state.dateFrom) }
       : {}),
-    ...(state.dateTo !== '' ? { dateTo: `${state.dateTo}T00:00:00.000Z` } : {}),
+    ...(state.dateTo !== ''
+      ? { dateTo: businessDayToInstantIso(state.dateTo) }
+      : {}),
   };
 }
 
