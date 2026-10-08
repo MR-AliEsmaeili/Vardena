@@ -951,11 +951,15 @@ describe.skipIf(DATABASE_URL === undefined)(
     // The `reverse_accounting_posted` rule needs a document that REALLY crossed
     // the Accounting boundary, and this suite configures no Accounting mapping
     // — so every `accounting-post` here is a refusal and the premise cannot be
-    // built. The rule itself is covered hermetically
+    // built. It cannot be built in the C-62 suite either, for a structural
+    // reason documented there: the blocker is built from the movements a run
+    // RESTATED, and a receipt's inbound is either preserved verbatim (costed)
+    // or permanently `unvalued('no_cost_supplied')` (uncosted) — never
+    // restated — while a receipt is the only document type C-62 lets cross. The
+    // rule itself is covered hermetically
     // (`inventory-pricing.service.spec.ts`, "refuses when an affected document
-    // has crossed Accounting Post"); the live proof now lives in
-    // `inventory-accounting-posting-live.e2e-spec.ts`, which has the Accounting
-    // master data and can actually cross.
+    // has crossed Accounting Post"), which seeds the affected movement directly
+    // and so is not constrained by what a live receipt can express.
     it('does NOT block reverse pricing for a document whose posting was refused', async () => {
       const { run } = await pricedIssuesScenario(privateWarehouses[7]!);
       await operator

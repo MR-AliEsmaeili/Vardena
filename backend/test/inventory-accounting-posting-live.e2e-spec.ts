@@ -109,7 +109,6 @@ describe.skipIf(DATABASE_URL === undefined)(
     // each run inherit the earlier tests' movements — including any document
     // they left unpriced on purpose, which fails the whole key.
     let issueWarehouseId = '';
-    let reverseWarehouseId = '';
     let unitId = '';
     let itemId = '';
     let financialAreaId = '';
@@ -340,20 +339,6 @@ describe.skipIf(DATABASE_URL === undefined)(
       return response.body as Record<string, unknown>;
     }
 
-    async function reversePricing(
-      pricingRunId: string,
-      expected = 201,
-    ): Promise<request.Response> {
-      return operator
-        .post(`${pricingBase}/runs/reverse`)
-        .send({
-          organizationId,
-          pricingRunId,
-          operationKey: `c62-reverse-${suffix}-${generateId()}`,
-        })
-        .expect(expected);
-    }
-
     async function postingTrail(
       id: string,
     ): Promise<Array<Record<string, unknown>>> {
@@ -449,17 +434,9 @@ describe.skipIf(DATABASE_URL === undefined)(
         name: 'Issue pricing warehouse',
         accountingPostingMode: 'direct_final',
       });
-      const reverseWarehouse = await warehouses.createWarehouse({
-        organizationId,
-        branchId,
-        code: 'WH-RVP',
-        name: 'Reverse pricing warehouse',
-        accountingPostingMode: 'direct_final',
-      });
       directFinalWarehouseId = directFinal.id;
       draftWarehouseId = draft.id;
       issueWarehouseId = issueWarehouse.id;
-      reverseWarehouseId = reverseWarehouse.id;
 
       const unit = await units.createUnit({
         organizationId,
@@ -990,134 +967,44 @@ describe.skipIf(DATABASE_URL === undefined)(
     }, 30_000);
 
     // -----------------------------------------------------------------------
-    // 5. A crossed boundary really freezes the valuation history
+    // 5. Why the reverse-pricing blocker has NO live proof here
     // -----------------------------------------------------------------------
 
-    it('blocks a reverse pricing run over a document that crossed the boundary', async () => {
-      // Moved here from `inventory-pricing-live.e2e-spec.ts`: that suite has no
-      // Accounting mapping, so it can no longer build the premise. The rule is
-      // also covered hermetically; this is the proof that a REAL crossing is
-      // what enforces it.
-      //
-      // The blocker is built from the movements a run VALUED, so the receipt we
-      // post must have an inbound that the run genuinely RESTATES. Two facts
-      // decide whether that is reachable, and both have to be arranged:
-      //
-      //  - a movement carrying an entered cost is PRESERVED by the replay
-      //    (`toReplayFact` keeps any source other than `average_cost`), so a
-      //    costed receipt is never restated and can never be blocked on;
-      //  - an UNVALUED inbound inside the run's window fails the whole key
-      //    (OD-PDP-03), so the receipt cannot simply be left unpriced either.
-      //
-      // The way through is the window's lower bound: a run resumes strictly
-      // after the previous run's end date, so an unvalued inbound dated BEFORE
-      // that boundary is invisible to the pre-check while the replay — which
-      // reads the key's whole history — still values it.
-      //
-      // Hence three receipts and two runs on this warehouse:
-      //   E  costed, dated before run 1  -> the pool the receipt derives from
-      //   run 1 ends at "now"           -> sets the boundary
-      //   B  UNCOSTED, dated after E but before the boundary, and finalized
-      //      after run 1 so it is not backdated (no repricing choice, no
-      //      staleness)                  -> the document we post
-      //   F  costed, dated after the boundary -> brings the key back into
-      //                                       run 2's window, valued, so the
-      //                                       pre-check passes
-      //   run 2 restates B               -> B is what the blocker names
-      const costed = async (
-        cost: string,
-        quantity: string,
-        businessDate: string,
-      ): Promise<string> => {
-        const draft = await operator
-          .post(base)
-          .send({
-            organizationId,
-            kind: 'receipt',
-            warehouseId: reverseWarehouseId,
-            businessDate,
-            cost,
-            lines: [{ itemId, quantity, unitId }],
-          })
-          .expect(201);
-        const id = draft.body.id as string;
-        await finalize(id);
-        return id;
-      };
-
-      // E: the valued pool B will be priced from.
-      await costed(
-        '100.00',
-        '10',
-        new Date(Date.now() - 300_000).toISOString(),
-      );
-      // Run 1 covers everything up to now, which is the boundary that hides B.
-      await runPricing(reverseWarehouseId, new Date());
-
-      // B: uncosted, so its inbound stays unvalued; dated after E (so it is not
-      // backdated) and before the boundary (so run 2's pre-check cannot see it).
-      const draft = await operator
-        .post(base)
-        .send({
-          organizationId,
-          kind: 'receipt',
-          warehouseId: reverseWarehouseId,
-          businessDate: new Date(Date.now() - 120_000).toISOString(),
-          lines: [{ itemId, quantity: '10', unitId }],
-        })
-        .expect(201);
-      const id = draft.body.id as string;
-      await finalize(id);
-      expect(
-        (
-          await operator
-            .get(`${base}/${id}`)
-            .query({ organizationId })
-            .expect(200)
-        ).body.valuationState,
-      ).toBe('unpriced');
-
-      // F: valued and inside run 2's window, so the key is selected and the
-      // pre-check finds nothing unvalued to fail on.
-      await costed('50.00', '5', new Date(Date.now() + 60_000).toISOString());
-
-      const run = await runPricing(
-        reverseWarehouseId,
-        new Date(Date.now() + 120_000),
-      );
-      expect(run['keysPriced']).toBe(1);
-      expect(run['keysFailed']).toBe(0);
-
-      // The premise, pinned: the run is what priced B, not B's own entry.
-      const priced = await operator
-        .get(`${base}/${id}`)
-        .query({ organizationId })
-        .expect(200);
-      expect(priced.body.valuationState).toBe('priced');
-      expect(priced.body.accountingEligible).toBe(true);
-
-      await accountingPost(id);
-
-      const refused = await reversePricing(run['id'] as string, 422);
-      expect(refused.body.details).toMatchObject({
-        code: 'inventory.pricing.reverse_accounting_posted',
-      });
-
-      // The refused reverse left the original run untouched.
-      const stillThere = await operator
-        .get(`${pricingBase}/runs`)
-        .query({ organizationId })
-        .expect(200);
-      expect(
-        (stillThere.body.items as Array<Record<string, unknown>>).some(
-          (row) => row['id'] === run['id'],
-        ),
-      ).toBe(true);
-    }, 30_000);
-
-    // -----------------------------------------------------------------------
-    // 6. Organization isolation on the new read surface
-    // -----------------------------------------------------------------------
+    // `inventory.pricing.reverse_accounting_posted` refuses to reverse a run
+    // that valued movements of a document which already crossed the Accounting
+    // boundary. It is a real rule and it is enforced in production — but it
+    // CANNOT be proven against a live database inside the C-62 slice, and the
+    // reason is structural rather than incidental:
+    //
+    //   the blocker is built from `movements.findByValuationRun(runId)`, the
+    //   movements a pricing run RESTATED. For a movement to be restated,
+    //   `valuationChanged(before, after)` must hold, and for a receipt's
+    //   inbound that is unreachable in BOTH directions:
+    //
+    //   - a costed inbound is `settled('valued', value, 'entered')`
+    //     (moving-weighted-average rule 1), and `toReplayFact` PRESERVES any
+    //     movement whose source is not `average_cost` — so the replay
+    //     reproduces it byte for byte and nothing changes;
+    //   - an uncosted inbound is `unvalued('no_cost_supplied')` (rule 2: "a
+    //     receipt with no cost is normal, not an error") and the strategy
+    //     never invents a value for one, so it stays unvalued forever.
+    //
+    // A receipt's inbound is therefore either preserved verbatim or permanently
+    // unvalued — never restated. And since C-62 maps only
+    // `('inventory', 'inventory_receipt')` into Accounting, the only documents
+    // that CAN cross are exactly the documents whose movements a run can never
+    // restate. The blocker has nothing to name.
+    //
+    // The rule is verified where the premise can actually be constructed:
+    // `inventory-pricing.service.spec.ts`, "refuses when an affected document
+    // has crossed Accounting Post", which seeds the affected movement directly
+    // and so is not constrained by what a live receipt can express. The
+    // complementary live rule — a REFUSED posting must NOT freeze the valuation
+    // history — is proven in `inventory-pricing-live.e2e-spec.ts`.
+    //
+    // What IS proven live, above, is the half this slice owns: a document that
+    // really crossed becomes immutable to direct edit and delete, and its
+    // posting trail is readable and organization-scoped.
 
     it('answers 404 — never 403 — for a posting trail outside the organization', async () => {
       const receipt = await createPricedReceipt(
