@@ -900,16 +900,8 @@ describe('Inventory valuation (e2e)', () => {
 
     // Two receipts in ascending date order: one in the earlier period, one in
     // the later period.
-    const early = await receipt(
-      'val-dated-1',
-      '2026-01-10',
-      '1000.00',
-    );
-    const late = await receipt(
-      'val-dated-2',
-      '2026-02-10',
-      '1200.00',
-    );
+    const early = await receipt('val-dated-1', '2026-01-10', '1000.00');
+    const late = await receipt('val-dated-2', '2026-02-10', '1200.00');
 
     // Both periods are Moving Weighted Average today, so the whole history is
     // executable and the recalculation succeeds.

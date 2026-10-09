@@ -6,12 +6,12 @@ Every module follows it; no module invents its own conversion.
 
 ## 1. The model
 
-| Concept                | Meaning                                                           | Stored as                                                                       | On the wire                                                          |
-| ---------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| **Instant**            | a point in time ("when it happened")                              | `timestamptz` (UTC)                                                             | ISO-8601 UTC string, e.g. `2026-10-08T08:32:14.421Z`                 |
-| **Business date**      | the calendar DAY a document belongs to ("which day it counts as") | PostgreSQL `date` (canonical Gregorian day)                                     | canonical Gregorian `YYYY-MM-DD` + `{ gregorian, jalali }` rendering |
-| **Local date-time**    | an instant expressed in a zone                                    | never stored                                                                    | `YYYY-MM-DD HH:mm:ss` (+ the zone name)                              |
-| **Calendar rendering** | a day written in a calendar (`2026-10-08`, `1405/07/16`)          | never stored                                                                    | derived per response                                                 |
+| Concept                | Meaning                                                           | Stored as                                   | On the wire                                                          |
+| ---------------------- | ----------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------- |
+| **Instant**            | a point in time ("when it happened")                              | `timestamptz` (UTC)                         | ISO-8601 UTC string, e.g. `2026-10-08T08:32:14.421Z`                 |
+| **Business date**      | the calendar DAY a document belongs to ("which day it counts as") | PostgreSQL `date` (canonical Gregorian day) | canonical Gregorian `YYYY-MM-DD` + `{ gregorian, jalali }` rendering |
+| **Local date-time**    | an instant expressed in a zone                                    | never stored                                | `YYYY-MM-DD HH:mm:ss` (+ the zone name)                              |
+| **Calendar rendering** | a day written in a calendar (`2026-10-08`, `1405/07/16`)          | never stored                                | derived per response                                                 |
 
 The derivation chain is **one-way**:
 
