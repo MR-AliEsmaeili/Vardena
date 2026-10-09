@@ -145,7 +145,7 @@ WITH visible AS (
 ), opening AS (
   SELECT COALESCE(SUM(base_quantity), 0)::numeric(18,4) AS quantity
   FROM visible
-  WHERE $4::timestamptz IS NOT NULL AND movement_date < $4
+  WHERE $4::date IS NOT NULL AND movement_date < $4
 ), ranged AS (
   SELECT v.*,
     ((SELECT quantity FROM opening) + SUM(v.base_quantity) OVER (
@@ -153,8 +153,8 @@ WITH visible AS (
       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
     ))::numeric(18,4) AS running_quantity
   FROM visible v
-  WHERE ($4::timestamptz IS NULL OR v.movement_date >= $4)
-    AND ($5::timestamptz IS NULL OR v.movement_date <= $5)
+  WHERE ($4::date IS NULL OR v.movement_date >= $4)
+    AND ($5::date IS NULL OR v.movement_date <= $5)
 ), summary AS (
   SELECT COUNT(*)::bigint AS total,
     (SELECT quantity FROM opening)::numeric(18,4) AS opening_quantity,

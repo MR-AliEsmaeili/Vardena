@@ -1,8 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsDate, IsOptional, IsString, Matches } from 'class-validator';
+import { IsOptional, IsString, Matches } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
+import { IsBusinessDay } from '../../../../kernel/http/is-business-day.decorator.js';
 import { MOVEMENT_TYPES } from '../../domain/movement-type.js';
 
 export class InventoryKardexQueryDto extends PageQueryDto {
@@ -10,17 +10,25 @@ export class InventoryKardexQueryDto extends PageQueryDto {
   @ApiProperty({ format: 'ulid' }) @IsUlid() itemId!: string;
   @ApiProperty({ format: 'ulid' }) @IsUlid() warehouseId!: string;
 
-  @ApiPropertyOptional({ format: 'date-time', description: 'Inclusive.' })
+  @ApiPropertyOptional({
+    format: 'date',
+    example: '2026-10-08',
+    description:
+      'Inclusive lower bound on the movement BUSINESS DAY, canonical Gregorian YYYY-MM-DD (OQ-73).',
+  })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  dateFrom?: Date;
+  @IsBusinessDay()
+  dateFrom?: string;
 
-  @ApiPropertyOptional({ format: 'date-time', description: 'Inclusive.' })
+  @ApiPropertyOptional({
+    format: 'date',
+    example: '2026-10-08',
+    description:
+      'Inclusive upper bound on the movement BUSINESS DAY, canonical Gregorian YYYY-MM-DD (OQ-73).',
+  })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  dateTo?: Date;
+  @IsBusinessDay()
+  dateTo?: string;
 
   @ApiPropertyOptional({
     format: 'ulid',
@@ -42,7 +50,8 @@ export class InventoryKardexQueryDto extends PageQueryDto {
 
 export class InventoryKardexRowDto {
   @ApiProperty({ format: 'ulid' }) movementId!: string;
-  @ApiProperty({ format: 'date-time' }) movementDate!: string;
+  @ApiProperty({ format: 'date', example: '2026-10-08' })
+  movementDate!: string;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ enum: MOVEMENT_TYPES }) movementType!: string;
   @ApiProperty({ example: '-20.0000' }) signedQuantity!: string;
@@ -59,9 +68,8 @@ export class InventoryKardexScopeDto {
   @ApiProperty({ format: 'ulid' }) organizationId!: string;
   @ApiProperty({ format: 'ulid' }) itemId!: string;
   @ApiProperty({ format: 'ulid' }) warehouseId!: string;
-  @ApiProperty({ format: 'date-time', nullable: true }) dateFrom!:
-    string | null;
-  @ApiProperty({ format: 'date-time', nullable: true }) dateTo!: string | null;
+  @ApiProperty({ format: 'date', nullable: true }) dateFrom!: string | null;
+  @ApiProperty({ format: 'date', nullable: true }) dateTo!: string | null;
   @ApiProperty({ format: 'ulid' }) baseUnitId!: string;
   @ApiProperty({ format: 'ulid' }) displayUnitId!: string;
 }

@@ -28,7 +28,7 @@ import {
   toApiBusinessDate,
   toApiInstant,
 } from '../../../kernel/datetime/api-date-time.js';
-import { businessDateFromUtcMidnight } from '../../../kernel/datetime/business-date.js';
+import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
 import type { DateTimeSettings } from '../../../kernel/datetime/date-time-settings.js';
 import type { InventoryDocumentAccountingPostingState } from './inventory-accounting-posting-operation.js';
 
@@ -149,6 +149,12 @@ export type InventoryDocumentBase = {
   organizationId: string;
   /** Allocated by the Documents Foundation at finalize; null while draft. */
   number: string | null;
+  /**
+   * Business DATE carrier (OQ-73): the PostgreSQL `date` value as Prisma
+   * materializes it — a `Date` whose UTC components are the calendar day.
+   * Never an instant: never render, compare-with-time or zone-shift it;
+   * convert with `businessDateFromDbDate` at the boundary.
+   */
   businessDate: Date;
   lines: readonly InventoryDocumentLine[];
   description: string | null;
@@ -651,9 +657,9 @@ export interface InventoryDocumentDto {
   accountingEligible: boolean;
   number: string | null;
   /**
-   * The document's BUSINESS DATE, carried as the ledger's UTC-midnight
-   * instant (C-63, docs/datetime.md §Inventory). Canonical, unchanged — and
-   * deliberately NOT the creation instant: a backdated receipt is dated in
+   * The document's BUSINESS DATE — a calendar DAY, canonical Gregorian
+   * `YYYY-MM-DD` (OQ-73: PostgreSQL `date`, no time-of-day, no time zone).
+   * Deliberately NOT the creation instant: a backdated receipt is dated in
    * the past while `createdAt` is today.
    */
   businessDate: string;
@@ -745,7 +751,7 @@ export function toInventoryDocumentDto(
       : 'unpriced');
   const accountingEligible = isAccountingEligible(document, valuationState);
   const businessDateCalendar = toApiBusinessDate(
-    businessDateFromUtcMidnight(document.businessDate),
+    businessDateFromDbDate(document.businessDate),
   );
   if (businessDateCalendar === null) {
     throw new Error(
@@ -772,7 +778,7 @@ export function toInventoryDocumentDto(
     valuationState,
     accountingEligible,
     number: document.number,
-    businessDate: document.businessDate.toISOString(),
+    businessDate: businessDateFromDbDate(document.businessDate),
     businessDateCalendar,
     warehouseId: document.warehouseId,
     sourceWarehouseId: document.sourceWarehouseId,

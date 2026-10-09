@@ -15,11 +15,7 @@ import {
 } from '../../../kernel/pagination/paginated-result.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
-import { businessDateToUtcMidnight } from '../../../kernel/datetime/business-date.js';
-import {
-  parseBusinessDateInput,
-  type BusinessDateInput,
-} from '../../../kernel/datetime/business-date-input.js';
+import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
 import { NumberingService } from '../../documents/application/numbering.service.js';
 import {
   InventoryBusinessDocumentsRepository,
@@ -79,7 +75,11 @@ import {
 } from '../domain/backdating.js';
 import { publishEvent, resolveSort } from './master-data-support.js';
 import { resolveEnteredCost } from './inventory-cost-support.js';
-import { resolveEnteredToBase } from './inventory-posting-support.js';
+import {
+  resolveBusinessDateCarrier,
+  resolveBusinessDateFilter,
+  resolveEnteredToBase,
+} from './inventory-posting-support.js';
 import { purchaseReturnValueFromBasis } from '../domain/return-valuation.js';
 import {
   addDecimalStrings,
@@ -182,8 +182,13 @@ export interface ListDocumentsQuery {
   kind?: string | undefined;
   status?: string | undefined;
   warehouseId?: string | undefined;
-  dateFrom?: Date | undefined;
-  dateTo?: Date | undefined;
+  /**
+   * INCLUSIVE business-day bounds, canonical Gregorian `YYYY-MM-DD`
+   * (OQ-73: the column is PostgreSQL `date`, so the filter is a true date
+   * comparison — no instant arithmetic, no UTC-midnight convention).
+   */
+  dateFrom?: string | undefined;
+  dateTo?: string | undefined;
   page: number;
   pageSize: number;
   sort?: string | undefined;
@@ -304,8 +309,8 @@ export class InventoryBusinessDocumentsService {
         kind: parseKind(query.kind),
         status: parseStatus(query.status),
         warehouseId: query.warehouseId,
-        dateFrom: query.dateFrom,
-        dateTo: query.dateTo,
+        dateFrom: resolveBusinessDateFilter('dateFrom', query.dateFrom),
+        dateTo: resolveBusinessDateFilter('dateTo', query.dateTo),
       },
       orderBy: resolveSort(query.sort, SORTABLE_FIELDS, [
         { businessDate: 'desc' },
@@ -1171,57 +1176,39 @@ export class InventoryBusinessDocumentsService {
   }
 
   /**
-   * Resolve a business date INPUT into the instant this ledger stores
-   * (C-63 §16, ADR-0042).
+   * Resolve a business date INPUT into the PostgreSQL `date` value stored on
+   * the column (C-63 §16, ADR-0042; OQ-73).
    *
    * Three cases, each explicit:
    *
-   *   * a calendar day (canonical Gregorian or a declared Jalali day) becomes
-   *     its UTC-midnight instant — the canonical day instant this ledger
-   *     already carries, so a Jalali `1405-07-16` and a Gregorian
-   *     `2026-10-08` are the SAME stored day;
-   *   * a legacy ISO instant is kept EXACTLY as sent (the day is derived for
-   *     display, the instant is never rewritten);
-   *   * an omitted date keeps the historical default (`now`), because
-   *     re-defaulting it to midnight would silently re-date every document
-   *     and reclassify same-day postings as backdated (see docs/datetime.md
-   *     §Inventory — clients are expected to send an explicit day).
+   *   * a calendar day (canonical Gregorian or a declared Jalali day) is
+   *     converted ONCE to the canonical Gregorian day — `1405-07-16` and
+   *     `2026-10-08` are the SAME stored `date`;
+   *   * a legacy ISO instant resolves to the DAY it falls on in the
+   *     organization's time zone — the compatibility boundary: the column is
+   *     a `date`, so no time-of-day can survive it (the instant itself is
+   *     never stored here; `created_at` records the registration moment);
+   *   * an omitted date defaults to TODAY's business day in the
+   *     organization's zone — the operator's "today", never the server's UTC
+   *     day and never a time-of-day (clients are still expected to send an
+   *     explicit day).
+   *
+   * The returned value is the DB carrier of the day (a `Date` whose UTC
+   * components ARE the day — see kernel/datetime/business-date.ts), which
+   * Prisma writes to the `date` column as `YYYY-MM-DD`.
    */
   private async resolveBusinessDate(input: {
     organizationId: string;
     businessDate?: BusinessDateInput | undefined;
   }): Promise<Date> {
-    if (input.businessDate === undefined) return new Date();
     const { timeZone } = await this.organizations.getDateTimeSettings(
       input.organizationId,
     );
-    const parsed = parseBusinessDateInput(input.businessDate, { timeZone });
-    if (!parsed.ok) {
-      throw AppException.validation([
-        {
-          field: 'businessDate',
-          code: parsed.reason,
-          message:
-            parsed.reason === 'business_date_calendar'
-              ? 'That date does not exist in the declared calendar.'
-              : parsed.reason === 'business_date_declaration'
-                ? 'A declared business date must be exactly { calendar, value } with calendar GREGORIAN or JALALI and value YYYY-MM-DD.'
-                : 'Business date must be YYYY-MM-DD, a declared Jalali/Gregorian day, or an ISO-8601 instant.',
-        },
-      ]);
-    }
-    if (parsed.source === 'instant') return parsed.instant;
-    const midnight = businessDateToUtcMidnight(parsed.gregorian);
-    if (midnight === null) {
-      throw AppException.validation([
-        {
-          field: 'businessDate',
-          code: 'business_date_calendar',
-          message: 'That date does not exist in the declared calendar.',
-        },
-      ]);
-    }
-    return midnight;
+    return resolveBusinessDateCarrier({
+      field: 'businessDate',
+      value: input.businessDate,
+      timeZone,
+    });
   }
 
   private normalizeHeader(

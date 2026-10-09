@@ -50,6 +50,7 @@ import {
 } from './money.js';
 import { addDecimalStrings } from './quantities.js';
 import type { ValuationMethod } from './valuation-method.js';
+import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
 
 /**
  * Per-movement valuation marker stored on the ledger row. It states
@@ -297,7 +298,8 @@ export function toInventoryValuationRunDto(
     itemId: run.itemId,
     method: run.method,
     trigger: run.trigger,
-    fromDate: run.fromDate?.toISOString() ?? null,
+    fromDate:
+      run.fromDate === null ? null : businessDateFromDbDate(run.fromDate),
     movementsExamined: run.movementsExamined,
     movementsRevalued: run.movementsRevalued,
     resultingValuedQuantity: run.resultingValuedQuantity,
@@ -473,8 +475,9 @@ export function toInventoryPricingRunDto(
     organizationId: run.organizationId,
     warehouseId: run.warehouseId,
     documentKinds: [...run.documentKinds],
-    fromDate: run.fromDate?.toISOString() ?? null,
-    toDate: run.toDate.toISOString(),
+    fromDate:
+      run.fromDate === null ? null : businessDateFromDbDate(run.fromDate),
+    toDate: businessDateFromDbDate(run.toDate),
     kind: run.kind,
     reversesRunId: run.reversesRunId,
     reversedByRunId: run.reversedByRunId,

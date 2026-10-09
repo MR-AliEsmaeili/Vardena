@@ -96,8 +96,8 @@ export class InventoryBusinessDocumentsController {
       kind: query.kind,
       status: query.status,
       warehouseId: query.warehouseId,
-      dateFrom: toDate(query.dateFrom),
-      dateTo: toDate(query.dateTo),
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
       page: query.page,
       pageSize: query.pageSize,
       sort: query.sort,
@@ -356,7 +356,3 @@ export class InventoryBusinessDocumentsController {
 }
 
 // ---- Internal helpers ----
-
-function toDate(value: string | undefined): Date | undefined {
-  return value === undefined ? undefined : new Date(value);
-}

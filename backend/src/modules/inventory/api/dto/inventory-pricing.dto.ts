@@ -4,7 +4,6 @@ import {
   ArrayMaxSize,
   ArrayNotEmpty,
   IsArray,
-  IsDate,
   IsIn,
   IsOptional,
   IsString,
@@ -14,9 +13,16 @@ import {
 } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
+import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
+import { DECLARED_BUSINESS_DATE_SCHEMA } from '../../../../kernel/datetime/api-date-time.dto.js';
+import { CALENDAR_SYSTEMS } from '../../../../kernel/datetime/calendar-system.js';
 import { MAX_OPERATION_KEY_LENGTH } from '../../application/inventory-posting-support.js';
 import { INVENTORY_DOCUMENT_KINDS } from '../../domain/inventory-business-document.js';
 import { PRICING_RUN_KINDS } from '../../domain/inventory-valuation.js';
+
+/** The business-date INPUT shape (OQ-73 / C-63) — see the document DTOs. */
+export type BusinessDateInputDto =
+  string | { calendar: (typeof CALENDAR_SYSTEMS)[number]; value: string };
 
 /**
  * Periodic Pricing Operation API contracts (C-59E, OD-PRC-05…07,
@@ -70,13 +76,15 @@ export class RunPricingDto {
   documentKinds!: string[];
 
   @ApiProperty({
-    format: 'date-time',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'Inclusive range END — the operator\u2019s only range choice. The start is automatic: immediately after the last completed run for the same scope (OD-PDP-01).',
+      'Inclusive range END, a movement BUSINESS DAY (OQ-73) — the operator\u2019s only range choice. Canonical Gregorian day, declared Jalali day, or legacy ISO instant. The start is automatic: the day after the last completed run for the same scope (OD-PDP-01).',
   })
-  @Type(() => Date)
-  @IsDate()
-  toDate!: Date;
+  @IsBusinessDate()
+  toDate!: BusinessDateInputDto;
 
   @ApiPropertyOptional({ maxLength: 500 })
   @IsOptional()
@@ -215,14 +223,14 @@ export class PricingRunResponseDto {
   documentKinds!: string[];
 
   @ApiProperty({
-    format: 'date-time',
+    format: 'date',
     nullable: true,
     description:
-      'The run\u2019s automatic range start (exclusive): immediately after the previous COMPLETED run for the same scope (every key priced, not reversed since), or null when no run of this scope has fully completed yet. A run with failed keys does not advance the boundary — the next run re-covers its window so the failed key is retried, never skipped.',
+      'The run\u2019s automatic range start, a movement BUSINESS DAY (exclusive): the `to_date` of the previous COMPLETED run for the same scope (every key priced, not reversed since), or null when no run of this scope has fully completed yet. A run with failed keys does not advance the boundary — the next run re-covers its window so the failed key is retried, never skipped.',
   })
   fromDate!: string | null;
 
-  @ApiProperty({ format: 'date-time' })
+  @ApiProperty({ format: 'date' })
   toDate!: string;
 
   @ApiProperty({ enum: PRICING_RUN_KINDS })

@@ -6,6 +6,7 @@ import {
   divideToScale,
   UNIT_COST_DISPLAY_DIGITS,
 } from './money.js';
+import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
 import { ACCOUNTING_POST_ACTION } from './inventory-accounting-posting-operation.js';
 
 /**
@@ -149,12 +150,13 @@ export function buildAccountingPostingRequestHash(
 }
 
 /**
- * The canonical `YYYY-MM-DD` spelling of a document date. Shared by the
- * request builder and the snapshot reconstruction so both produce byte-equal
- * strings for the same instant (the hash compares them verbatim).
+ * The canonical `YYYY-MM-DD` spelling of a document business DATE (OQ-73:
+ * a calendar day, carried as a PostgreSQL `date`). Shared by the request
+ * builder and the snapshot reconstruction so both produce byte-equal strings
+ * for the same day (the hash compares them verbatim).
  */
 export function toAccountingPostingDateOnly(value: Date): string {
-  return value.toISOString().slice(0, 10);
+  return businessDateFromDbDate(value);
 }
 
 /**

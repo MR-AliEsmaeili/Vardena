@@ -1,6 +1,16 @@
 import { createHash } from 'node:crypto';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import {
+  BUSINESS_DATE_PATTERN,
+  businessDateFromInstant,
+  businessDateToDbDate,
+  parseBusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
+  parseBusinessDateInput,
+  type BusinessDateInput,
+} from '../../../kernel/datetime/business-date-input.js';
+import {
   canonicalizeDecimal,
   fitsQuantity,
   multiplyDecimalStrings,
@@ -200,19 +210,119 @@ export async function resolveEnteredToBase(input: {
 
 /**
  * Canonical form of the CLIENT-SUPPLIED business date for idempotency
- * hashing: the supplied instant as an ISO string, or an explicit `null` when
- * the client omitted the date.
+ * hashing (OQ-73: the field is a calendar DAY, never an instant):
+ *
+ *   * a canonical Gregorian day hashes as itself;
+ *   * a declared day (`{ calendar, value }`) hashes as the canonical
+ *     Gregorian day it resolves to, so `1405-07-16`/JALALI and `2026-10-08`
+ *     are ONE intent;
+ *   * a legacy ISO instant hashes as the string supplied (its day depends
+ *     on the organization zone; the string itself is the stable intent);
+ *   * an omitted date hashes as an explicit `null`.
  *
  * The omission MUST be hashed as `null`, never as the server's effective
- * `new Date()`. Postings without a business date default it to the first
- * attempt's clock, but a retry is a different HTTP request milliseconds
- * later: hashing that clock would make every dateless retry hash differently
- * and turn the replay into a false `409` — the exact double-posting failure
- * idempotency keys exist to prevent. The stored row keeps the first attempt's
- * effective date; only the client's INTENT enters the hash.
+ * default. Postings without a business date default it to today's business
+ * day at the first attempt, but a retry is a different HTTP request later:
+ * hashing that clock would make every dateless retry hash differently and
+ * turn the replay into a false `409` — the exact double-posting failure
+ * idempotency keys exist to prevent. The stored row keeps the first
+ * attempt's effective day; only the client's INTENT enters the hash.
  */
-export function canonicalClientDate(value: Date | undefined): string | null {
-  return value === undefined ? null : value.toISOString();
+export function canonicalClientBusinessDate(
+  value: BusinessDateInput | undefined,
+): string | null {
+  if (value === undefined) return null;
+  if (typeof value === 'string') return value;
+  const resolved = parseBusinessDate(value.value, value.calendar);
+  return resolved === null
+    ? `${value.calendar}:${value.value}`
+    : resolved.gregorian;
+}
+
+/**
+ * Resolve a client-supplied business-date INPUT into the PostgreSQL `date`
+ * carrier stored on the column (OQ-73):
+ *
+ *   * a canonical Gregorian day or a declared Jalali day converts ONCE to
+ *     the canonical Gregorian day;
+ *   * a legacy ISO instant resolves to the DAY it falls on in `timeZone`
+ *     (the compatibility boundary — no time-of-day survives a `date`
+ *     column);
+ *   * an omitted date defaults to TODAY's business day in `timeZone` — the
+ *     organization's "today", never the server's UTC day.
+ *
+ * The returned `Date` is the transport adapter Prisma writes as
+ * `YYYY-MM-DD` (its UTC components ARE the day); it is never an instant the
+ * caller may render, compare-with-time or zone-shift.
+ */
+export function resolveBusinessDateCarrier(params: {
+  field: string;
+  value: BusinessDateInput | undefined;
+  timeZone: string;
+  now?: Date;
+}): Date {
+  let day: string;
+  if (params.value === undefined) {
+    day = businessDateFromInstant(params.now ?? new Date(), params.timeZone);
+  } else {
+    const parsed = parseBusinessDateInput(params.value, {
+      timeZone: params.timeZone,
+    });
+    if (!parsed.ok) {
+      throw AppException.validation([
+        {
+          field: params.field,
+          code: parsed.reason,
+          message:
+            parsed.reason === 'business_date_calendar'
+              ? 'That date does not exist in the declared calendar.'
+              : parsed.reason === 'business_date_declaration'
+                ? 'A declared business date must be exactly { calendar, value } with calendar GREGORIAN or JALALI and value YYYY-MM-DD.'
+                : 'Business date must be YYYY-MM-DD, a declared Jalali/Gregorian day, or an ISO-8601 instant.',
+        },
+      ]);
+    }
+    day = parsed.gregorian;
+  }
+  const carrier = businessDateToDbDate(day);
+  if (carrier === null) {
+    throw AppException.validation([
+      {
+        field: params.field,
+        code: 'business_date_calendar',
+        message: 'That date does not exist in the declared calendar.',
+      },
+    ]);
+  }
+  return carrier;
+}
+
+/**
+ * A business-day LIST FILTER (`YYYY-MM-DD`) into its PostgreSQL `date`
+ * carrier (OQ-73): strict canonical Gregorian day shape, calendar-validated,
+ * nothing else. Day filters are true date comparisons on the `date` column —
+ * index-friendly, no instant arithmetic, no UTC-midnight convention. A Jalali
+ * day entered by a user is converted to its canonical Gregorian day at the
+ * boundary (the frontend datetime layer) before arriving here.
+ */
+export function resolveBusinessDateFilter(
+  field: string,
+  value: string | undefined,
+): Date | undefined {
+  if (value === undefined) return undefined;
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw AppException.validation([
+      {
+        field,
+        code: BUSINESS_DATE_PATTERN.test(value)
+          ? 'business_date_calendar'
+          : 'business_date_format',
+        message: `${field} must be a Gregorian business day, YYYY-MM-DD.`,
+      },
+    ]);
+  }
+  return carrier;
 }
 
 /**

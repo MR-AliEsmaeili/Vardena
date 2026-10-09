@@ -1214,7 +1214,7 @@ function runInput(
       'purchase_return',
       'sales_return',
     ],
-    toDate: new Date('2026-01-31T23:59:59.000Z'),
+    toDate: '2026-01-31',
     ...overrides,
   };
 }
@@ -1321,9 +1321,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     const fixture = await buildFixture();
     // No movements in scope: the run completes but examines nothing.
     const empty = await asActor(() =>
-      fixture.service.runPricing(
-        runInput(fixture, { toDate: new Date('2026-01-31T00:00:00.000Z') }),
-      ),
+      fixture.service.runPricing(runInput(fixture, { toDate: '2026-01-31' })),
     );
     expect(empty.keysExamined).toBe(0);
     expect(empty.keysFailed).toBe(0);
@@ -1332,9 +1330,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     // window a concurrent reverse emptied must not strand the stale key it
     // would have re-priced behind an advanced boundary.
     const next = await asActor(() =>
-      fixture.service.runPricing(
-        runInput(fixture, { toDate: new Date('2026-02-28T00:00:00.000Z') }),
-      ),
+      fixture.service.runPricing(runInput(fixture, { toDate: '2026-02-28' })),
     );
     expect(next.fromDate).toBeNull();
   });
@@ -1357,19 +1353,15 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
       movementDate: new Date('2026-01-10T00:00:00.000Z'),
     });
     const first = await asActor(() =>
-      fixture.service.runPricing(
-        runInput(fixture, { toDate: new Date('2026-01-31T00:00:00.000Z') }),
-      ),
+      fixture.service.runPricing(runInput(fixture, { toDate: '2026-01-31' })),
     );
     expect(first.fromDate).toBeNull();
     expect(first.keysExamined).toBe(1);
 
     const second = await asActor(() =>
-      fixture.service.runPricing(
-        runInput(fixture, { toDate: new Date('2026-02-28T00:00:00.000Z') }),
-      ),
+      fixture.service.runPricing(runInput(fixture, { toDate: '2026-02-28' })),
     );
-    expect(second.fromDate).toBe('2026-01-31T00:00:00.000Z');
+    expect(second.fromDate).toBe('2026-01-31');
 
     // Same or earlier end date: refused with range_not_extending. The
     // refusal is asserted with the FIRST run's end date so it holds no
@@ -1377,9 +1369,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     // (equal-millisecond ties are over-cover-safe by design, never skips).
     await expectBusinessError(
       asActor(() =>
-        fixture.service.runPricing(
-          runInput(fixture, { toDate: new Date('2026-01-31T00:00:00.000Z') }),
-        ),
+        fixture.service.runPricing(runInput(fixture, { toDate: '2026-01-31' })),
       ),
       'inventory.pricing.range_not_extending',
     );
@@ -1404,9 +1394,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     });
 
     const first = await asActor(() =>
-      fixture.service.runPricing(
-        runInput(fixture, { toDate: new Date('2026-01-31T00:00:00.000Z') }),
-      ),
+      fixture.service.runPricing(runInput(fixture, { toDate: '2026-01-31' })),
     );
     expect(first.keysExamined).toBe(2);
     expect(first.keysPriced).toBe(1);
@@ -1431,9 +1419,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     // The next run's from-date is still the beginning: the failed run did
     // not advance the boundary (the axis-2 correction).
     const second = await asActor(() =>
-      fixture.service.runPricing(
-        runInput(fixture, { toDate: new Date('2026-02-28T00:00:00.000Z') }),
-      ),
+      fixture.service.runPricing(runInput(fixture, { toDate: '2026-02-28' })),
     );
     expect(second.fromDate).toBeNull();
     // Key A replays the whole key again (idempotent), key B fails again.
@@ -1444,9 +1430,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     unvaluedReceipt.totalCost = '120';
     unvaluedReceipt.valuationStatus = 'valued';
     const third = await asActor(() =>
-      fixture.service.runPricing(
-        runInput(fixture, { toDate: new Date('2026-03-31T00:00:00.000Z') }),
-      ),
+      fixture.service.runPricing(runInput(fixture, { toDate: '2026-03-31' })),
     );
     expect(third.keysPriced).toBe(2);
     expect(third.keysFailed).toBe(0);
@@ -1461,11 +1445,9 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
 
     // NOW the boundary advances: a fully-completed run advances it.
     const fourth = await asActor(() =>
-      fixture.service.runPricing(
-        runInput(fixture, { toDate: new Date('2026-04-30T00:00:00.000Z') }),
-      ),
+      fixture.service.runPricing(runInput(fixture, { toDate: '2026-04-30' })),
     );
-    expect(fourth.fromDate).toBe('2026-03-31T00:00:00.000Z');
+    expect(fourth.fromDate).toBe('2026-03-31');
   });
 
   it('AXIS 2: a reversed run does not advance the from-date either', async () => {
@@ -1478,9 +1460,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
       valuationStatus: 'valued',
     });
     const first = await asActor(() =>
-      fixture.service.runPricing(
-        runInput(fixture, { toDate: new Date('2026-01-31T00:00:00.000Z') }),
-      ),
+      fixture.service.runPricing(runInput(fixture, { toDate: '2026-01-31' })),
     );
     expect(first.fromDate).toBeNull();
 
@@ -1496,9 +1476,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     // falls back to the beginning of history, so the next run re-prices
     // the window instead of starting after it.
     const second = await asActor(() =>
-      fixture.service.runPricing(
-        runInput(fixture, { toDate: new Date('2026-02-28T00:00:00.000Z') }),
-      ),
+      fixture.service.runPricing(runInput(fixture, { toDate: '2026-02-28' })),
     );
     expect(second.fromDate).toBeNull();
     expect(second.keysPriced).toBe(1);
@@ -1705,7 +1683,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     const conflicting = asActor(() =>
       fixture.service.runPricing({
         ...input,
-        toDate: new Date('2026-06-30T00:00:00.000Z'),
+        toDate: '2026-06-30',
       }),
     );
     await expect(conflicting).rejects.toBeInstanceOf(AppException);

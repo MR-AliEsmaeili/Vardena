@@ -1332,7 +1332,7 @@ describe('C-63 business dates and calendars', () => {
         ],
       }),
     );
-    expect(created.businessDate).toBe('2026-10-08T00:00:00.000Z');
+    expect(created.businessDate).toBe('2026-10-08');
   });
 
   it('accepts a DECLARED Jalali day and stores the SAME day as the Gregorian form', async () => {
@@ -1378,14 +1378,13 @@ describe('C-63 business dates and calendars', () => {
         ],
       }),
     );
-    expect(created.businessDate).toBe('2026-09-23T00:00:00.000Z');
+    expect(created.businessDate).toBe('2026-09-23');
     expect(created.businessDateCalendar.jalali).toBe('1405-07-01');
     // The event instant is NOT the business date: creating a document can
     // never move its business date forward.
     expect(created.createdAt).not.toBe(created.businessDate);
     expect(
-      new Date(created.createdAt).getTime() >
-        new Date(created.businessDate).getTime(),
+      new Date(created.createdAt).getTime() > Date.parse(created.businessDate),
     ).toBe(true);
     expect(created.createdAtCalendar.instant).toBe(created.createdAt);
     expect(created.createdAtCalendar.timeZone).toBe('Asia/Tehran');
@@ -1411,7 +1410,10 @@ describe('C-63 business dates and calendars', () => {
     });
   });
 
-  it('keeps a legacy ISO instant exactly as sent', async () => {
+  it('collapses a legacy ISO instant onto the day it falls on in the organization zone', async () => {
+    // OQ-73: no time-of-day survives the `date` column. A legacy instant is
+    // resolved to the organization's business day it falls on (13:45 UTC is
+    // 17:15 in Asia/Tehran — still 2026-10-08 there).
     const instant = '2026-10-08T13:45:12.000Z';
     const created = await asActor(() =>
       fixture.service.createDraft({
@@ -1424,9 +1426,27 @@ describe('C-63 business dates and calendars', () => {
         ],
       }),
     );
-    expect(created.businessDate).toBe(instant);
-    // …and its DAY is derived for display, in the organization's zone.
+    expect(created.businessDate).toBe('2026-10-08');
     expect(created.businessDateCalendar.gregorian).toBe('2026-10-08');
+    expect(created.businessDateCalendar.jalali).toBe('1405-07-16');
+  });
+
+  it('rolls a late-evening UTC instant onto the NEXT Tehran day', async () => {
+    // 21:30 UTC = 01:00 the next morning in Asia/Tehran: the zone-aware
+    // day resolution must not leak the UTC day.
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'receipt',
+        warehouseId: fixture.warehouseId,
+        businessDate: '2026-10-08T21:30:00.000Z',
+        lines: [
+          { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
+        ],
+      }),
+    );
+    expect(created.businessDate).toBe('2026-10-09');
+    expect(created.businessDateCalendar.gregorian).toBe('2026-10-09');
   });
 
   it('edits a document to another day without touching its event instants', async () => {

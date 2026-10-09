@@ -645,7 +645,7 @@ export class MaterialRequestsRepository {
           balanceId: balance.id,
           onHandDelta: '0',
           reservedDelta: line.baseQuantity,
-          lastMovementAt: balance.lastMovementAt,
+          lastMovementDate: balance.lastMovementDate,
           updatedAt: input.approvedAt,
           updatedBy: input.approvedBy,
         });
@@ -1144,7 +1144,7 @@ export class MaterialRequestsRepository {
           balanceId: balance.id,
           onHandDelta: '0',
           reservedDelta: `-${input.invokedBase}`,
-          lastMovementAt: balance.lastMovementAt,
+          lastMovementDate: balance.lastMovementDate,
           updatedAt: input.now,
           updatedBy: input.actorId,
         });
@@ -1336,7 +1336,7 @@ export class MaterialRequestsRepository {
           balanceId: balance.id,
           onHandDelta: '0',
           reservedDelta: consumption.consumedBase,
-          lastMovementAt: balance.lastMovementAt,
+          lastMovementDate: balance.lastMovementDate,
           updatedAt: input.now,
           updatedBy: input.actorId,
         });
@@ -1477,7 +1477,7 @@ async function releaseActiveReservationsForLines(
       balanceId: balance.id,
       onHandDelta: '0',
       reservedDelta: `-${reservationLock.baseQuantity}`,
-      lastMovementAt: balance.lastMovementAt,
+      lastMovementDate: balance.lastMovementDate,
       updatedAt: input.releasedAt,
       updatedBy: input.releasedBy,
     });

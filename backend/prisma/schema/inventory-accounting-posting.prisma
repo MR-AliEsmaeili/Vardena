@@ -145,7 +145,10 @@ model InventoryAccountingPostingSnapshot {
   documentType    String  @map("document_type") @db.VarChar(16)
   documentNumber  String? @map("document_number") @db.VarChar(64)
   documentVersion String  @map("document_version") @db.VarChar(64)
-  documentDate    DateTime @map("document_date") @db.Timestamptz(6)
+  /// The source inventory document's BUSINESS DATE, frozen as sent. A
+  /// calendar day — PostgreSQL `date`, like the document column it mirrors
+  /// (OQ-73); the snapshot's own `captured_at` carries the instant.
+  documentDate    DateTime @map("document_date") @db.Date
 
   /// The organizational (Legal Entity) context of the posting. Vardena has no
   /// separate Legal Entity model: `branch` is the first-class organizational

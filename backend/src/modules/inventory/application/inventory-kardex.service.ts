@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../../kernel/errors/app-exception.js';
+import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
+import { resolveBusinessDateFilter } from './inventory-posting-support.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import { InventoryKardexRepository } from '../data/inventory-kardex.repository.js';
@@ -21,8 +23,13 @@ export interface KardexQuery {
   organizationId: string;
   itemId: string;
   warehouseId: string;
-  dateFrom?: Date;
-  dateTo?: Date;
+  /**
+   * INCLUSIVE movement BUSINESS DAY bounds, canonical Gregorian
+   * `YYYY-MM-DD` (OQ-73: `movement_date` is PostgreSQL `date`; the Kardex
+   * filters it with true date comparisons).
+   */
+  dateFrom?: string;
+  dateTo?: string;
   displayUnitId?: string;
   snapshot?: string;
   page: number;
@@ -44,9 +51,14 @@ export class InventoryKardexService {
   async read(query: KardexQuery) {
     await this.authorization.requireAllPermissions([MOVEMENT_PERMISSIONS.VIEW]);
     await this.organizations.assertOrganizationInScope(query.organizationId);
+    // Canonical YYYY-MM-DD days compare lexically in chronological order.
     if (query.dateFrom && query.dateTo && query.dateFrom > query.dateTo) {
       throw AppException.badRequest('dateFrom must not be later than dateTo.');
     }
+    // Day strings become the PostgreSQL `date` carriers the ledger query
+    // compares against (validation included — same codes as every filter).
+    const dateFrom = resolveBusinessDateFilter('dateFrom', query.dateFrom);
+    const dateTo = resolveBusinessDateFilter('dateTo', query.dateTo);
     if (query.page > 1 && query.snapshot === undefined) {
       throw AppException.badRequest('snapshot is required after page 1.');
     }
@@ -66,7 +78,7 @@ export class InventoryKardexService {
       query.organizationId,
     );
 
-    const page = await this.repository.read(query);
+    const page = await this.repository.read({ ...query, dateFrom, dateTo });
     const factorAt = await this.factorResolver(
       query.organizationId,
       query.itemId,
@@ -85,14 +97,16 @@ export class InventoryKardexService {
       }
       return formatQuantity(converted);
     };
-    const openingAt = query.dateFrom ?? new Date(0);
+    // The unit-conversion resolver works on the day carriers (instants in
+    // the validity-window sense), exactly as the ledger stores them.
+    const openingAt = dateFrom ?? new Date(0);
     const closingAt =
-      query.dateTo ?? page.closingMovementDate ?? query.dateFrom ?? new Date(0);
+      dateTo ?? page.closingMovementDate ?? dateFrom ?? new Date(0);
 
     return {
       items: page.items.map((movement) => ({
         movementId: movement.movementId,
-        movementDate: movement.movementDate.toISOString(),
+        movementDate: businessDateFromDbDate(movement.movementDate),
         createdAt: movement.createdAt.toISOString(),
         movementType: movement.movementType,
         signedQuantity: convert(
@@ -116,14 +130,14 @@ export class InventoryKardexService {
         organizationId: query.organizationId,
         itemId: query.itemId,
         warehouseId: query.warehouseId,
-        dateFrom: query.dateFrom?.toISOString() ?? null,
-        dateTo: query.dateTo?.toISOString() ?? null,
+        dateFrom: query.dateFrom ?? null,
+        dateTo: query.dateTo ?? null,
         baseUnitId: item.baseUnitId,
         displayUnitId,
       },
       opening: convert(page.openingBaseQuantity, openingAt),
       closing: convert(page.closingBaseQuantity, closingAt),
-      openingBasis: query.dateFrom
+      openingBasis: dateFrom
         ? 'ledger_movements_before_date_from'
         : 'zero_before_all_recorded_movements',
       snapshot: page.snapshot,

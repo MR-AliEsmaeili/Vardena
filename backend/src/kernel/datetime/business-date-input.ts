@@ -11,9 +11,12 @@
  *
  * The plain string stays the default (Gregorian, the canonical calendar) so
  * every existing client keeps working unchanged; a Jalali day must be
- * DECLARED. A full ISO-8601 instant is also accepted, because event timestamps
- * arrived on these fields before the calendar model existed; when one is
- * given, the day it names is resolved in the organization's time zone.
+ * DECLARED. A full ISO-8601 instant is also accepted for backward
+ * compatibility, because event timestamps arrived on these fields before the
+ * calendar model existed; when one is given, the DAY it names is resolved in
+ * the organization's time zone and that day becomes the business date (OQ-73:
+ * the persisted column is a PostgreSQL `date`, so no time-of-day can survive
+ * the boundary).
  *
  * Rejections are machine-readable codes ({@link BusinessDateInputRejection});
  * the Persian wording belongs to the caller (the frontend owns user text).
@@ -66,10 +69,10 @@ export type BusinessDateInputResult =
       gregorian: string;
       calendar: CalendarSystem;
       /**
-       * A legacy ISO instant was supplied. Carried through UNCHANGED so a
-       * column that stores the instant (the inventory ledger's day axis)
-       * keeps exactly the value the caller sent — the day is the derived
-       * part, never the other way round.
+       * A legacy ISO instant was supplied. The DAY is the value to persist
+       * (the columns are PostgreSQL `date` — OQ-73); the instant is carried
+       * through for audit/reporting only and is never written to a
+       * business-date column.
        */
       source: 'instant';
       instant: Date;

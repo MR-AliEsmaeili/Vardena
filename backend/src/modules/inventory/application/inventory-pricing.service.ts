@@ -52,8 +52,12 @@ import { InventoryValuationService } from './inventory-valuation.service.js';
 import { publishEvent } from './master-data-support.js';
 import {
   buildRequestHash,
+  canonicalClientBusinessDate,
   requireOperationKey,
+  resolveBusinessDateCarrier,
 } from './inventory-posting-support.js';
+import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
+import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
 
 /**
  * The Periodic Pricing Operation and its reverse (C-59E / C-59E+,
@@ -139,8 +143,12 @@ export interface RunPricingInput {
   warehouseId?: string | null | undefined;
   /** One or more inventory document kinds; sorted + de-duplicated. */
   documentKinds: string[];
-  /** Inclusive range end — the operator's ONLY range choice (OD-PDP-01). */
-  toDate: Date;
+  /**
+   * Inclusive range end over movement BUSINESS DAYS — the operator's ONLY
+   * range choice (OD-PDP-01). OQ-73 input contract: a canonical Gregorian
+   * day, a declared Jalali day, or a legacy ISO instant.
+   */
+  toDate: BusinessDateInput;
   reason?: string | null | undefined;
 }
 
@@ -197,10 +205,22 @@ export class InventoryPricingService {
       );
     }
     const reason = normalizeNote(input.reason);
+    // OQ-73: the range end is a business DAY (PostgreSQL `date`), resolved
+    // once from the caller's declared day.
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
+    );
+    const toDate = resolveBusinessDateCarrier({
+      field: 'toDate',
+      value: input.toDate,
+      timeZone,
+    });
     const requestHash = buildRequestHash('pricing_run', {
       warehouseId,
       documentKinds,
-      toDate: input.toDate.toISOString(),
+      // Day intent, not an instant: the same day under either calendar
+      // representation hashes identically.
+      toDate: canonicalClientBusinessDate(input.toDate),
     });
     const replayed = await this.replayPricingRun(
       input.organizationId,
@@ -222,13 +242,13 @@ export class InventoryPricingService {
       documentKinds,
     });
     const fromDate = lastRun?.toDate ?? null;
-    if (fromDate !== null && input.toDate.getTime() <= fromDate.getTime()) {
+    if (fromDate !== null && toDate.getTime() <= fromDate.getTime()) {
       throw AppException.businessRule(
-        `This scope\\u2019s last pricing run already covers up to ${fromDate.toISOString()}. A new run must extend it: choose a later end date.`,
+        `This scope\\u2019s last pricing run already covers up to ${businessDateFromDbDate(fromDate)}. A new run must extend it: choose a later end day.`,
         {
           code: 'inventory.pricing.range_not_extending',
           lastRunId: lastRun?.id ?? null,
-          lastToDate: fromDate.toISOString(),
+          lastToDate: businessDateFromDbDate(fromDate),
         },
       );
     }
@@ -237,7 +257,7 @@ export class InventoryPricingService {
     // the documents' kinds and ledger-standing decide what is in scope.
     const scopedMovements = await this.movements.listScopedToDocuments(
       input.organizationId,
-      { fromDateExclusive: fromDate, toDateInclusive: input.toDate },
+      { fromDateExclusive: fromDate, toDateInclusive: toDate },
     );
     const documentIds = [
       ...new Set(
@@ -437,7 +457,7 @@ export class InventoryPricingService {
           warehouseId,
           documentKinds,
           fromDate,
-          toDate: input.toDate,
+          toDate,
           kind: 'pricing_operation',
           reversesRunId: null,
           keysExamined: outcomes.length,
@@ -930,8 +950,9 @@ export class InventoryPricingService {
       organizationId: run.organizationId,
       warehouseId: run.warehouseId,
       documentKinds: [...run.documentKinds],
-      fromDate: run.fromDate?.toISOString() ?? null,
-      toDate: run.toDate.toISOString(),
+      fromDate:
+        run.fromDate === null ? null : businessDateFromDbDate(run.fromDate),
+      toDate: businessDateFromDbDate(run.toDate),
       kind: run.kind,
       reversesRunId: run.reversesRunId,
       keysExamined: run.keysExamined,

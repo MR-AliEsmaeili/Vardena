@@ -10,6 +10,14 @@ import {
 } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
+import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
+import { IsBusinessDay } from '../../../../kernel/http/is-business-day.decorator.js';
+import { DECLARED_BUSINESS_DATE_SCHEMA } from '../../../../kernel/datetime/api-date-time.dto.js';
+import { CALENDAR_SYSTEMS } from '../../../../kernel/datetime/calendar-system.js';
+
+/** The business-date INPUT shape (OQ-73 / C-63) — see the document DTOs. */
+export type BusinessDateInputDto =
+  string | { calendar: (typeof CALENDAR_SYSTEMS)[number]; value: string };
 import {
   MAX_OPERATION_KEY_LENGTH,
   MAX_REASON_LENGTH,
@@ -176,12 +184,13 @@ export class ValuationStateKeyQueryDto {
 
 export class BackdateCheckQueryDto extends ValuationStateKeyQueryDto {
   @ApiProperty({
-    format: 'date-time',
-    description: 'The business date the operator intends to post with.',
+    format: 'date',
+    example: '2026-10-08',
+    description:
+      'The business DAY the operator intends to post with — canonical Gregorian YYYY-MM-DD (OQ-73). A Jalali day is converted to its canonical Gregorian day at the boundary.',
   })
-  @Type(() => Date)
-  @IsDate()
-  movementDate!: Date;
+  @IsBusinessDay()
+  movementDate!: string;
 }
 
 export class ListValuationRunsQueryDto extends PageQueryDto {
@@ -279,14 +288,16 @@ export class RecalculateValuationDto {
   trigger?: string;
 
   @ApiPropertyOptional({
-    format: 'date-time',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'Recorded on the run for audit. The replay always covers the whole key: a partial replay cannot produce a deterministic average.',
+      'The business DAY the run was requested for, recorded on the run for audit (OQ-73: a calendar day, never an instant). The replay always covers the whole key: a partial replay cannot produce a deterministic average.',
   })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  fromDate?: Date;
+  @IsBusinessDate()
+  fromDate?: BusinessDateInputDto;
 
   @ApiPropertyOptional({ maxLength: MAX_REASON_LENGTH })
   @IsOptional()
@@ -459,7 +470,7 @@ export class InventoryValuationRunResponseDto {
   @ApiProperty({ enum: VALUATION_RUN_TRIGGERS })
   trigger!: string;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ format: 'date', nullable: true })
   fromDate!: string | null;
 
   @ApiProperty({ description: 'How many movements the replay read.' })
@@ -502,17 +513,19 @@ export class InventoryValuationRunResponseDto {
 export class BackdateCheckResponseDto {
   @ApiProperty({
     description:
-      'True when movementDate is strictly before the latest movement on this key. Equal instants are NOT backdating.',
+      'True when movementDate is strictly before the latest movement business day on this key. The same business day is NOT backdating.',
   })
   backdated!: boolean;
 
-  @ApiProperty({ format: 'date-time' })
+  @ApiProperty({ format: 'date', example: '2026-10-08' })
   movementDate!: string;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ format: 'date', nullable: true })
   latestMovementDate!: string | null;
 
-  @ApiProperty({ description: 'Movements dated strictly after movementDate.' })
+  @ApiProperty({
+    description: 'Movements dated strictly after the movementDate day.',
+  })
   affectedMovements!: number;
 
   @ApiProperty({

@@ -1,8 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import {
   IsBoolean,
-  IsDate,
   IsIn,
   IsOptional,
   IsString,
@@ -11,6 +9,10 @@ import {
 } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
+import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
+import { IsBusinessDay } from '../../../../kernel/http/is-business-day.decorator.js';
+import { DECLARED_BUSINESS_DATE_SCHEMA } from '../../../../kernel/datetime/api-date-time.dto.js';
+import { CALENDAR_SYSTEMS } from '../../../../kernel/datetime/calendar-system.js';
 import {
   MOVEMENT_TYPES,
   SINGLE_POST_TYPES,
@@ -45,6 +47,14 @@ import {
  * entered → base conversion against the conversion version in force at the
  * operation's business date — never silently (OQ-29).
  */
+
+/**
+ * The API shape of a declared business date (OQ-73 / C-63): the SAME day a
+ * Persian user types, plus the calendar that gives it meaning. Identical to
+ * the inventory business-document contract.
+ */
+export type BusinessDateInputDto =
+  string | { calendar: (typeof CALENDAR_SYSTEMS)[number]; value: string };
 
 // ---------------------------------------------------------------------------
 // Movements
@@ -84,22 +94,24 @@ export class ListInventoryMovementsQueryDto extends PageQueryDto {
   transferId?: string;
 
   @ApiPropertyOptional({
-    format: 'date-time',
-    description: 'Inclusive lower bound on the movement date.',
+    format: 'date',
+    example: '2026-10-08',
+    description:
+      'Inclusive lower bound on the movement BUSINESS DAY, canonical Gregorian YYYY-MM-DD (OQ-73: movement_date is a PostgreSQL date). A Jalali day is converted to its canonical Gregorian day at the boundary.',
   })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  dateFrom?: Date;
+  @IsBusinessDay()
+  dateFrom?: string;
 
   @ApiPropertyOptional({
-    format: 'date-time',
-    description: 'Inclusive upper bound on the movement date.',
+    format: 'date',
+    example: '2026-10-08',
+    description:
+      'Inclusive upper bound on the movement BUSINESS DAY, canonical Gregorian YYYY-MM-DD.',
   })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  dateTo?: Date;
+  @IsBusinessDay()
+  dateTo?: string;
 }
 
 export class PostInventoryMovementDto {
@@ -151,14 +163,16 @@ export class PostInventoryMovementDto {
   unitId!: string;
 
   @ApiPropertyOptional({
-    format: 'date-time',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'Business date of the movement; defaults to now. A backdated posting resolves the conversion version in force then, not today.',
+      'Business DATE of the movement — a calendar DAY, not an instant (OQ-73). Canonical Gregorian "2026-10-08", a declared Jalali day { calendar, value }, or a legacy ISO instant resolved to the day it falls on in the organization zone. Defaults to today\'s business day in the organization zone. A backdated posting resolves the conversion version in force then, not today.',
   })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  movementDate?: Date;
+  @IsBusinessDate()
+  movementDate?: BusinessDateInputDto;
 
   @ApiPropertyOptional({
     maxLength: MAX_REASON_LENGTH,
@@ -240,14 +254,16 @@ export class ReverseInventoryMovementDto {
   operationKey!: string;
 
   @ApiPropertyOptional({
-    format: 'date-time',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'Business date of the reversal movement; defaults to now. If this date precedes later movements on the same item and warehouse, the reversal requires the same explicit backdating acknowledgement and repricing choice as a normal posting.',
+      "Business DATE of the reversal movement — a calendar DAY, not an instant (OQ-73). Same accepted forms as posting. Defaults to today's business day in the organization zone. If this day precedes later movements on the same item and warehouse, the reversal requires the same explicit backdating acknowledgement and repricing choice as a normal posting.",
   })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  movementDate?: Date;
+  @IsBusinessDate()
+  movementDate?: BusinessDateInputDto;
 
   @ApiPropertyOptional({
     description:
@@ -310,7 +326,12 @@ export class InventoryMovementResponseDto {
   })
   conversionFactor!: string;
 
-  @ApiProperty({ format: 'date-time' })
+  @ApiProperty({
+    format: 'date',
+    example: '2026-10-08',
+    description:
+      'Business DAY of the movement — canonical Gregorian YYYY-MM-DD (OQ-73: a calendar day, never an instant). The registration instant is createdAt.',
+  })
   movementDate!: string;
 
   @ApiProperty({
@@ -430,13 +451,16 @@ export class PostInventoryTransferDto {
   unitId!: string;
 
   @ApiPropertyOptional({
-    format: 'date-time',
-    description: 'Business date of both legs; defaults to now.',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      "Business DATE of both legs — a calendar DAY, not an instant (OQ-73). Same accepted forms as posting. Defaults to today's business day in the organization zone.",
   })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  movementDate?: Date;
+  @IsBusinessDate()
+  movementDate?: BusinessDateInputDto;
 
   @ApiPropertyOptional({
     maxLength: MAX_REASON_LENGTH,
@@ -736,8 +760,14 @@ export class InventoryBalanceResponseDto {
   })
   available!: string;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
-  lastMovementAt!: string | null;
+  @ApiProperty({
+    format: 'date',
+    nullable: true,
+    example: '2026-10-08',
+    description:
+      'The newest movement BUSINESS DAY posted to this key — canonical Gregorian YYYY-MM-DD (OQ-73: a calendar day projection of movement_date, never an instant). Null before the first movement.',
+  })
+  lastMovementDate!: string | null;
 
   @ApiProperty({ format: 'date-time' })
   createdAt!: string;
@@ -852,8 +882,8 @@ export class ReconciliationMismatchDto {
   })
   expectedReserved!: string;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
-  expectedLastMovementAt!: string | null;
+  @ApiProperty({ format: 'date', nullable: true })
+  expectedLastMovementDate!: string | null;
 
   @ApiProperty({
     type: () => ReconciliationQuantitiesDto,
@@ -921,8 +951,8 @@ export class RebuildCorrectionDto {
   })
   expectedReserved!: string;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
-  expectedLastMovementAt!: string | null;
+  @ApiProperty({ format: 'date', nullable: true })
+  expectedLastMovementDate!: string | null;
 
   @ApiProperty({
     type: () => ReconciliationQuantitiesDto,
