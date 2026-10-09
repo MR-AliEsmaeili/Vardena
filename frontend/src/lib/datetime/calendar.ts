@@ -31,6 +31,9 @@ export type CalendarSystem = (typeof CALENDAR_SYSTEMS)[number];
 /** Product default, mirrored from the backend kernel (`DEFAULT_CALENDAR_SYSTEM`). */
 export const DEFAULT_CALENDAR_SYSTEM: CalendarSystem = 'JALALI';
 
+/** Maximum Gregorian year supported by backend and migration rendering. */
+const MAX_JALALI_RENDER_GREGORIAN_YEAR = 3798;
+
 /** True for a value the closed vocabulary accepts (any other string is not). */
 export function isCalendarSystem(value: unknown): value is CalendarSystem {
   return (
@@ -107,6 +110,7 @@ export function jalaliDayToGregorianDay(value: string): string | null {
   if (parts === null) return null;
   if (!isValidJalaaliDate(parts.year, parts.month, parts.day)) return null;
   const gregorian = toGregorian(parts.year, parts.month, parts.day);
+  if (gregorian.gy > MAX_JALALI_RENDER_GREGORIAN_YEAR) return null;
   return formatDayParts({
     year: gregorian.gy,
     month: gregorian.gm,
@@ -118,7 +122,9 @@ export function jalaliDayToGregorianDay(value: string): string | null {
 export function gregorianDayToJalaliDay(value: string): string | null {
   if (!isGregorianDay(value)) return null;
   const parts = parseDayParts(value);
-  if (parts === null) return null;
+  if (parts === null || parts.year > MAX_JALALI_RENDER_GREGORIAN_YEAR) {
+    return null;
+  }
   try {
     const jalali = toJalaali(parts.year, parts.month, parts.day);
     if (jalali.jy < 0 || !isValidJalaaliDate(jalali.jy, jalali.jm, jalali.jd)) {

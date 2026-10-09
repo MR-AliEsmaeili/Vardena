@@ -79,6 +79,11 @@ describe('calendar conversion', () => {
     expect(gregorianDayToJalaliDay('0560-03-20')).toBeNull();
     expect(gregorianDayToJalaliDay('0621-03-20')).toBeNull();
     expect(gregorianDayToJalaliDay('0621-03-21')).toBe('0000-01-01');
+    expect(gregorianDayToJalaliDay('3798-12-31')).toBe('3177-10-11');
+    expect(gregorianDayToJalaliDay('3799-01-01')).toBeNull();
+    expect(jalaliDayToGregorianDay('3177-10-11')).toBe('3798-12-31');
+    expect(jalaliDayToGregorianDay('3177-10-12')).toBeNull();
+    expect(resolveDayInput('3177/10/12', 'JALALI')).toBeNull();
   });
 
   it('parses and formats day parts', () => {
