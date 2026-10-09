@@ -4,7 +4,13 @@ import { ArrowRight } from 'lucide-react';
 import type { InventoryDocument } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
-import { formatDateOnly, formatDateTime, formatQuantity } from '@/lib/format';
+import {
+  formatDateOnly,
+  formatDateOnlyCanonical,
+  formatDateTime,
+  formatQuantity,
+} from '@/lib/format';
+import { businessDayFromInstantIso } from '@/lib/datetime';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
@@ -158,7 +164,25 @@ function DocumentFacts({
         />
         <Fact
           label={t.inventoryDocuments.columnDate}
-          value={formatDateOnly(document.businessDate)}
+          value={
+            // C-63 §11: the business day in the organization calendar PLUS the
+            // canonical Gregorian day, so a Jalali reader and an auditor see
+            // the same document.
+            <span dir="ltr">
+              {formatDateOnly(
+                businessDayFromInstantIso(document.businessDate) ??
+                  document.businessDate,
+              )}{' '}
+              <span className="text-slate-500">
+                (
+                {formatDateOnlyCanonical(
+                  businessDayFromInstantIso(document.businessDate) ??
+                    document.businessDate,
+                )}
+                )
+              </span>
+            </span>
+          }
         />
         <Fact
           label={t.inventoryDocuments.columnNumber}

@@ -14,6 +14,7 @@ import { listMyOrganizations } from '@/api/organization.api';
 import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { useSession } from '@/features/auth/use-session';
+import { setDateTimeSettings } from '@/lib/datetime';
 
 /** The organization-only resolution state machine. */
 export type OrganizationContextStatus =
@@ -161,6 +162,22 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     if (organizations.length === 1) return organizations[0] ?? null;
     return null;
   }, [isSelectionForCurrentUser, selectedOrganization, organizations]);
+
+  // C-63 / ADR-0042 §6: the selected organization's date/time policy is the
+  // one the whole UI renders through. It is published to the date/time layer
+  // HERE, once per change, so formatters, form defaults and the date field all
+  // read the same value instead of each holding a copy (a signed-out or
+  // organization-less session falls back to the product defaults).
+  useEffect(() => {
+    setDateTimeSettings(
+      organization === null
+        ? null
+        : {
+            calendarSystem: organization.calendarSystem,
+            timeZone: organization.timeZone,
+          },
+    );
+  }, [organization]);
 
   const status: OrganizationContextStatus =
     sessionStatus !== 'authenticated' || organizationsQuery.isPending

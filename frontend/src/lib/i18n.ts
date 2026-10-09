@@ -1201,6 +1201,7 @@ export const fa = {
     submit: 'نمایش گزارش',
     reset: 'پاک کردن فیلترها',
     dateFormatHint: 'قالب تاریخ: YYYY-MM-DD (مطابق قرارداد API)',
+    dateFormatHintJalali: 'قالب تاریخ: YYYY/MM/DD (تقویم هجری شمسی)',
     invalidDate: 'تاریخ باید به قالب YYYY-MM-DD باشد.',
     requiredField: 'این فیلد الزامی است.',
     postableOnly: 'فقط حساب‌های قابل ثبت (برگ) قابل انتخاب هستند.',

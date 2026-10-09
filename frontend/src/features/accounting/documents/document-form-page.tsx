@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { FormProvider, useForm } from 'react-hook-form';
+import { Controller, FormProvider, useForm } from 'react-hook-form';
 import { getAccount } from '@/api/accounting.api';
 import { normalizeApiError } from '@/api/errors';
 import { queryKeys } from '@/api/query-keys';
@@ -15,6 +15,7 @@ import { Button } from '@/ui/button';
 import { Card, CardContent } from '@/ui/card';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
+import { DateInput } from '@/ui/patterns/date-input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { ConfirmDialog } from '@/ui/patterns/confirm-dialog';
 import { LoadingState } from '@/ui/patterns/states';
@@ -432,13 +433,18 @@ function DocumentForm({
                 htmlFor="documentDate"
                 error={formState.errors.documentDate?.message}
               >
-                <Input
-                  id="documentDate"
-                  type="date"
-                  dir="ltr"
-                  className="code"
-                  aria-invalid={formState.errors.documentDate !== undefined}
-                  {...register('documentDate')}
+                <Controller
+                  control={form.control}
+                  name="documentDate"
+                  render={({ field }) => (
+                    <DateInput
+                      id="documentDate"
+                      className="code"
+                      aria-invalid={formState.errors.documentDate !== undefined}
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    />
+                  )}
                 />
               </Field>
               <Field

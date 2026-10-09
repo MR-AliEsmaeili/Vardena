@@ -161,7 +161,6 @@ function kardexResponse(
     ...overrides,
   };
 }
-
 beforeEach(() => {
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([

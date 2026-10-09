@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { t } from '@/lib/i18n';
 import type { InventoryDocumentKind } from '@/api/contracts';
+import { getDateTimeSettings, todayBusinessDay } from '@/lib/datetime';
 
 /**
  * Business-document form schema — the client-side mirror of
@@ -113,7 +114,10 @@ export function emptyDocumentForm(
 ): DocumentFormValues {
   return {
     kind,
-    businessDate: new Date().toLocaleDateString('en-CA'),
+    // C-63: "today" is the business day of the ORGANIZATION's zone, not the
+    // browser's — a document created from another zone must be dated the day
+    // the business is actually on.
+    businessDate: todayBusinessDay(getDateTimeSettings().timeZone),
     warehouseId: '',
     sourceWarehouseId: '',
     destinationWarehouseId: '',

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_DATE_TIME_SETTINGS } from '../../../kernel/datetime/date-time-settings.js';
 import {
   assertCancellable,
   assertDeletable,
@@ -27,6 +28,9 @@ import {
  * legal AND illegal transition is asserted, because "reject illegal
  * transitions" is a contract, not an implementation detail.
  */
+
+/** C-63: the date/time policy every DTO mapping now requires. */
+const SETTINGS = { dateTimeSettings: DEFAULT_DATE_TIME_SETTINGS };
 
 const line: InventoryDocumentLine = {
   id: 'line-1',
@@ -451,21 +455,24 @@ describe('C-58 guards and DTO', () => {
 
   it('hides the cost from a caller who may not see inventory value', () => {
     const priced = { ...receipt, cost: '100.00' };
-    expect(toInventoryDocumentDto(priced, true).cost).toBe('100.00');
-    expect('cost' in toInventoryDocumentDto(priced, false)).toBe(false);
+    expect(toInventoryDocumentDto(priced, true, SETTINGS).cost).toBe('100.00');
+    expect('cost' in toInventoryDocumentDto(priced, false, SETTINGS)).toBe(
+      false,
+    );
   });
 
   it('never advertises an action the lifecycle forbids', () => {
     const posted = toInventoryDocumentDto(
       { ...receipt, status: 'accounting_posted' },
       true,
+      SETTINGS,
     );
     expect(posted.canEdit).toBe(false);
     expect(posted.canCancel).toBe(false);
     expect(posted.canDelete).toBe(false);
     expect(posted.canSeal).toBe(true);
 
-    const draft = toInventoryDocumentDto(receipt, true);
+    const draft = toInventoryDocumentDto(receipt, true, SETTINGS);
     expect(draft.canEdit).toBe(true);
     expect(draft.canFinalize).toBe(true);
     expect(draft.canAccountingPost).toBe(false);

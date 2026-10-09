@@ -6,6 +6,7 @@ import { listInventoryMovements } from '@/api/inventory.api';
 import type { InventoryMovementListQuery, MovementType } from '@/api/contracts';
 import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import { sortingFromParam } from '@/lib/sort-param';
+import { businessDayToInstantIso } from '@/lib/datetime';
 import { MOVEMENT_TYPE_LABELS } from './inventory-labels';
 
 /**
@@ -159,10 +160,14 @@ export function buildMovementsQuery(
     ...(state.warehouseId !== '' ? { warehouseId: state.warehouseId } : {}),
     ...(state.itemId !== '' ? { itemId: state.itemId } : {}),
     ...(state.movementType !== '' ? { movementType: state.movementType } : {}),
+    // C-63: a day filter is the day's UTC-midnight instant (the ledger's day
+    // convention), produced by the date/time layer rather than by hand.
     ...(state.dateFrom !== ''
-      ? { dateFrom: `${state.dateFrom}T00:00:00.000Z` }
+      ? { dateFrom: businessDayToInstantIso(state.dateFrom) }
       : {}),
-    ...(state.dateTo !== '' ? { dateTo: `${state.dateTo}T00:00:00.000Z` } : {}),
+    ...(state.dateTo !== ''
+      ? { dateTo: businessDayToInstantIso(state.dateTo) }
+      : {}),
   };
 }
 

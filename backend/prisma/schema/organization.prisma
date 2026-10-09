@@ -31,6 +31,19 @@ model Organization {
   code      String   @db.VarChar(64)
   name      String   @db.VarChar(200)
   isActive  Boolean  @default(true) @map("is_active")
+  /// C-63 (ADR-0042 §5/§6): the calendar this organization's days are SHOWN
+  /// in — `GREGORIAN` | `JALALI` (closed, code-defined list in
+  /// `src/kernel/datetime/calendar-system.ts`). A display/authoring setting:
+  /// it never changes what is stored (every instant stays UTC, every business
+  /// day stays Gregorian `date`), so changing it re-renders history instead of
+  /// rewriting it. `JALALI` is the Persian-business default; existing rows
+  /// keep working through the column default.
+  calendarSystem String @default("JALALI") @map("calendar_system") @db.VarChar(16)
+  /// C-63 (ADR-0042 §5): the IANA time zone (e.g. `Asia/Tehran`) used to turn
+  /// an instant into a local date-time for this organization. NEVER a numeric
+  /// offset: offsets have no rules, and Vardena's runtime (tz database) owns
+  /// the historical and future offset rules.
+  timeZone  String   @default("Asia/Tehran") @map("time_zone") @db.VarChar(64)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy String?  @map("created_by")

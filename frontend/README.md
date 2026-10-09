@@ -93,6 +93,8 @@ src/
 │   └── accounting/{chart-tree,account-statement,general-ledger,trial-balance,shared}
 ├── ui/                       # primitives (button, card, input, table, …) + patterns/
 ├── lib/                      # i18n dictionary, formatters, cn(), small hooks
+│   └── datetime/             # C-63 date/time layer (ADR-0042 / docs/datetime.md):
+│                             # calendars, zones, formatters, settings store, API mapping
 ├── styles/                   # Tailwind entry
 └── test/                     # setup, render helpers, fixtures
 ```

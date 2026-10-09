@@ -7,10 +7,11 @@ import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { formatQuantity, formatDateTime } from '@/lib/format';
 import { t } from '@/lib/i18n';
+import { businessDayToInstantIso, useCalendarSystem } from '@/lib/datetime';
 import { Button } from '@/ui/button';
 import { DataTable } from '@/ui/patterns/data-table';
 import { FormField } from '@/ui/patterns/form-field';
-import { Input } from '@/ui/input';
+import { DateInput } from '@/ui/patterns/date-input';
 import { EmptyState, LoadingState } from '@/ui/patterns/states';
 import { PageHeader } from '@/ui/patterns/page-header';
 import { Select } from '@/ui/select';
@@ -97,6 +98,12 @@ export function KardexPage() {
   // any filter changes.
   const [snapshot, setSnapshot] = useState<string | undefined>(undefined);
 
+  const calendarSystem = useCalendarSystem();
+  const dateFieldHint =
+    calendarSystem === 'JALALI'
+      ? t.filters.dateFormatHintJalali
+      : t.filters.dateFormatHint;
+
   const scopeReady =
     organizationId !== null && itemId !== '' && warehouseId !== '';
 
@@ -108,8 +115,12 @@ export function KardexPage() {
       warehouseId,
       page,
       pageSize: 50,
-      ...(dateFrom !== '' ? { dateFrom: `${dateFrom}T00:00:00.000Z` } : {}),
-      ...(dateTo !== '' ? { dateTo: `${dateTo}T00:00:00.000Z` } : {}),
+      // C-63: a day filter is the day's UTC-midnight instant on both bounds
+      // (the ledger's day convention) — never hand-built in a component.
+      ...(dateFrom !== ''
+        ? { dateFrom: businessDayToInstantIso(dateFrom) }
+        : {}),
+      ...(dateTo !== '' ? { dateTo: businessDayToInstantIso(dateTo) } : {}),
       ...(page > 1 && snapshot !== undefined ? { snapshot } : {}),
     };
   }, [
@@ -215,14 +226,18 @@ export function KardexPage() {
           )}
         </FormField>
 
-        <FormField id="kardex-date-from" label={t.inventory.dateFrom}>
+        <FormField
+          id="kardex-date-from"
+          label={t.inventory.dateFrom}
+          hint={dateFieldHint}
+        >
           {(fieldProps) => (
-            <Input
+            <DateInput
               {...fieldProps}
-              type="date"
+              id="kardex-date-from"
               value={dateFrom}
-              onChange={(event) => {
-                setDateFrom(event.target.value);
+              onValueChange={(day) => {
+                setDateFrom(day);
                 setPage(1);
                 setSnapshot(undefined);
               }}
@@ -230,14 +245,18 @@ export function KardexPage() {
           )}
         </FormField>
 
-        <FormField id="kardex-date-to" label={t.inventory.dateTo}>
+        <FormField
+          id="kardex-date-to"
+          label={t.inventory.dateTo}
+          hint={dateFieldHint}
+        >
           {(fieldProps) => (
-            <Input
+            <DateInput
               {...fieldProps}
-              type="date"
+              id="kardex-date-to"
               value={dateTo}
-              onChange={(event) => {
-                setDateTo(event.target.value);
+              onValueChange={(day) => {
+                setDateTo(day);
                 setPage(1);
                 setSnapshot(undefined);
               }}

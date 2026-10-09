@@ -1,8 +1,13 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import { Link } from 'react-router-dom';
 import type { InventoryDocument } from '@/api/contracts';
-import { formatCount, formatDateOnly, formatDateTime } from '@/lib/format';
+import {
+  formatCount,
+  formatDateOnly,
+  formatDateOnlyCanonical,
+} from '@/lib/format';
 import { t } from '@/lib/i18n';
+import { businessDayFromInstantIso } from '@/lib/datetime';
 import { Badge } from '@/ui/badge';
 import type { InventoryReferences } from '../use-inventory-references';
 import {
@@ -55,8 +60,20 @@ export function inventoryDocumentsColumns(
       accessorKey: 'businessDate',
       header: t.inventoryDocuments.columnDate,
       cell: ({ row }) => (
-        <span className="num" title={formatDateTime(row.original.businessDate)}>
-          {formatDateOnly(row.original.businessDate)}
+        // C-63 §11: the day is shown in the organization calendar, with the
+        // canonical Gregorian value on hover so the two can be reconciled.
+        <span
+          className="num"
+          dir="ltr"
+          title={formatDateOnlyCanonical(
+            businessDayFromInstantIso(row.original.businessDate) ??
+              row.original.businessDate,
+          )}
+        >
+          {formatDateOnly(
+            businessDayFromInstantIso(row.original.businessDate) ??
+              row.original.businessDate,
+          )}
         </span>
       ),
       meta: { align: 'start' },

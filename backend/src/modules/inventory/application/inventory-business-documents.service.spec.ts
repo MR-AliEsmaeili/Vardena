@@ -1308,6 +1308,152 @@ describe('C-58 runtime — create and read', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+
+/**
+ * C-63 — the business date is a calendar DAY, the event timestamps are
+ * instants, and the two must never be confused (docs/datetime.md §Inventory).
+ */
+describe('C-63 business dates and calendars', () => {
+  let fixture: Fixture;
+  beforeEach(async () => {
+    fixture = await buildFixture();
+  });
+
+  it('accepts a canonical Gregorian day and stores it as the day instant', async () => {
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'receipt',
+        warehouseId: fixture.warehouseId,
+        businessDate: '2026-10-08',
+        lines: [
+          { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
+        ],
+      }),
+    );
+    expect(created.businessDate).toBe('2026-10-08T00:00:00.000Z');
+  });
+
+  it('accepts a DECLARED Jalali day and stores the SAME day as the Gregorian form', async () => {
+    const jalali = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'receipt',
+        warehouseId: fixture.warehouseId,
+        businessDate: { calendar: 'JALALI', value: '1405-07-16' },
+        lines: [
+          { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
+        ],
+      }),
+    );
+    const gregorian = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'receipt',
+        warehouseId: fixture.warehouseId,
+        businessDate: '2026-10-08',
+        lines: [
+          { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
+        ],
+      }),
+    );
+    expect(jalali.businessDate).toBe(gregorian.businessDate);
+    expect(jalali.businessDateCalendar).toEqual({
+      gregorian: '2026-10-08',
+      jalali: '1405-07-16',
+    });
+  });
+
+  it('keeps the business date distinct from the creation instant (backdated document)', async () => {
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'receipt',
+        warehouseId: fixture.warehouseId,
+        // Deliberately in the past: dated 1405-07-01, created today.
+        businessDate: { calendar: 'JALALI', value: '1405-07-01' },
+        lines: [
+          { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
+        ],
+      }),
+    );
+    expect(created.businessDate).toBe('2026-09-23T00:00:00.000Z');
+    expect(created.businessDateCalendar.jalali).toBe('1405-07-01');
+    // The event instant is NOT the business date: creating a document can
+    // never move its business date forward.
+    expect(created.createdAt).not.toBe(created.businessDate);
+    expect(
+      new Date(created.createdAt).getTime() >
+        new Date(created.businessDate).getTime(),
+    ).toBe(true);
+    expect(created.createdAtCalendar.instant).toBe(created.createdAt);
+    expect(created.createdAtCalendar.timeZone).toBe('Asia/Tehran');
+  });
+
+  it('refuses a day that does not exist in the declared calendar', async () => {
+    await expect(
+      asActor(() =>
+        fixture.service.createDraft({
+          organizationId: fixture.organizationId,
+          kind: 'receipt',
+          warehouseId: fixture.warehouseId,
+          // 1405 is not a leap year: Esfand has 29 days.
+          businessDate: { calendar: 'JALALI', value: '1405-12-30' },
+          lines: [
+            { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      details: [{ field: 'businessDate', code: 'business_date_calendar' }],
+    });
+  });
+
+  it('keeps a legacy ISO instant exactly as sent', async () => {
+    const instant = '2026-10-08T13:45:12.000Z';
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'receipt',
+        warehouseId: fixture.warehouseId,
+        businessDate: instant,
+        lines: [
+          { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
+        ],
+      }),
+    );
+    expect(created.businessDate).toBe(instant);
+    // …and its DAY is derived for display, in the organization's zone.
+    expect(created.businessDateCalendar.gregorian).toBe('2026-10-08');
+  });
+
+  it('edits a document to another day without touching its event instants', async () => {
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'receipt',
+        warehouseId: fixture.warehouseId,
+        businessDate: '2026-10-08',
+        lines: [
+          { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
+        ],
+      }),
+    );
+    const updated = await asActor(() =>
+      fixture.service.updateDocument(created.id, fixture.organizationId, {
+        businessDate: { calendar: 'JALALI', value: '1405-07-16' },
+      }),
+    );
+    // Same day, declared in the other calendar: no change at all.
+    expect(updated.businessDate).toBe(created.businessDate);
+    expect(updated.createdAt).toBe(created.createdAt);
+  });
+});
+
+// ---------------------------------------------------------------------------
+
 describe('C-58 runtime — authorization', () => {
   it('refuses creation without Inventory.Document.Create', async () => {
     const fixture = await buildFixture();

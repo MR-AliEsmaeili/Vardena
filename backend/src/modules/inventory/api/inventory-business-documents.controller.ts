@@ -139,7 +139,10 @@ export class InventoryBusinessDocumentsController {
     return this.documents.createDraft({
       organizationId: body.organizationId,
       kind: body.kind,
-      businessDate: toDate(body.businessDate),
+      // C-63: the business date travels as its typed INPUT and is resolved
+      // (calendar day → canonical day instant, or a legacy instant as-is) in
+      // the application layer, with the organization's zone.
+      businessDate: body.businessDate,
       warehouseId: body.warehouseId,
       sourceWarehouseId: body.sourceWarehouseId,
       destinationWarehouseId: body.destinationWarehouseId,
@@ -169,7 +172,7 @@ export class InventoryBusinessDocumentsController {
     @Body() body: UpdateInventoryDocumentDto,
   ): Promise<InventoryDocumentResponseDto> {
     return this.documents.updateDocument(id, scope.organizationId, {
-      businessDate: toDate(body.businessDate),
+      businessDate: body.businessDate,
       warehouseId: body.warehouseId,
       sourceWarehouseId: body.sourceWarehouseId,
       destinationWarehouseId: body.destinationWarehouseId,

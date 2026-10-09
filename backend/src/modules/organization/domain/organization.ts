@@ -1,3 +1,9 @@
+import type { CalendarSystem } from '../../../kernel/datetime/calendar-system.js';
+import {
+  DEFAULT_DATE_TIME_SETTINGS,
+  type DateTimeSettings,
+} from '../../../kernel/datetime/date-time-settings.js';
+
 /**
  * Organization — the business/tenant root of a Vardena deployment
  * (docs/architecture/domain/domain-glossary.md §Organizational terms,
@@ -15,6 +21,14 @@
  * definitions that ADR-0020 also assigns to this module are NOT implemented
  * here (later tasks).
  *
+ * It DOES own the date/time **display policy** (C-63, ADR-0042 §5/§6): which
+ * calendar the organization's days are shown in and which IANA zone turns an
+ * instant into a local date-time. Those two values are rendering/authoring
+ * configuration — they never decide what is stored. `is_active` on a document
+ * is a fact; the calendar it was dated in is a presentation of that fact.
+ * Keeping them here (and only here) is what stops a second, competing
+ * settings store from appearing for dates.
+ *
  * Framework-free (AR-05).
  */
 
@@ -30,8 +44,46 @@ export interface Organization {
    * readable and reportable.
    */
   isActive: boolean;
+  /**
+   * The calendar this organization's days are rendered in and new dates are
+   * authored in (C-63 §4). A closed code-defined list; stored values outside
+   * it are a defect, not a default.
+   */
+  calendarSystem: CalendarSystem;
+  /** The IANA zone used to resolve an instant to a local date-time (C-63 §5). */
+  timeZone: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/**
+ * The date/time policy every rendering and day-authoring path reads (C-63,
+ * ADR-0042 §6).
+ *
+ * The TYPE lives in the kernel (`kernel/datetime/date-time-settings.ts`) so a
+ * consumer — a report, a document DTO mapper, the frontend's settings store —
+ * depends on the technical shape and never reaches into the Organization
+ * module for it (AR-06/AR-07). This module owns the durable record.
+ */
+export type OrganizationDateTimeSettings = DateTimeSettings;
+
+/**
+ * The settings as they apply to any organization that has not stated its own.
+ *
+ * This is the DEFAULT, not a hardcoded behaviour: the product ships with a
+ * Persian/Jalali business default (C-63 §4/§5), and a deployment that needs
+ * another one changes the organization row — no code changes.
+ */
+export { DEFAULT_DATE_TIME_SETTINGS };
+
+/** The date/time policy in effect for an organization. */
+export function toDateTimeSettings(
+  organization: Organization,
+): OrganizationDateTimeSettings {
+  return {
+    calendarSystem: organization.calendarSystem,
+    timeZone: organization.timeZone,
+  };
 }
 
 /** API representation. Audit actor ids are not exposed (AR-24). */
@@ -40,6 +92,10 @@ export interface OrganizationDto {
   code: string;
   name: string;
   isActive: boolean;
+  /** C-63: display calendar (`GREGORIAN` | `JALALI`). */
+  calendarSystem: CalendarSystem;
+  /** C-63: IANA zone used for local date-times. */
+  timeZone: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -50,6 +106,8 @@ export function toOrganizationDto(organization: Organization): OrganizationDto {
     code: organization.code,
     name: organization.name,
     isActive: organization.isActive,
+    calendarSystem: organization.calendarSystem,
+    timeZone: organization.timeZone,
     createdAt: organization.createdAt.toISOString(),
     updatedAt: organization.updatedAt.toISOString(),
   };
