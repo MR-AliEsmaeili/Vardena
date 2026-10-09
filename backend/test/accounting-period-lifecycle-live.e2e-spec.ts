@@ -288,8 +288,8 @@ describe.skipIf(DATABASE_URL === undefined)(
     const seedCalendar = async (): Promise<Calendar> => {
       const slot = calendarSlot++;
       const startYear = 2030 + slot;
-      const start = new Date(Date.UTC(startYear, 0, 1));
-      const end = new Date(Date.UTC(startYear, 11, 31));
+      const startDate = `${startYear}-01-01`;
+      const endDate = `${startYear}-12-31`;
       const yearId = generateId();
       const periodId = generateId();
       const db = await client();
@@ -297,12 +297,14 @@ describe.skipIf(DATABASE_URL === undefined)(
         id, organization_id, financial_area_id, code, title, start_date, end_date,
         status, is_active, created_at, updated_at
       ) VALUES (${yearId}, ${organizationId}, ${financialAreaId}, ${`FY-${startYear}`},
-        ${`Year ${startYear}`}, ${start}, ${end}, 'open', true, now(), now())`;
+        ${`Year ${startYear}`}, CAST(${startDate} AS date), CAST(${endDate} AS date),
+        'open', true, now(), now())`;
       await db.$queryRaw`INSERT INTO accounting.accounting_periods (
         id, organization_id, financial_area_id, fiscal_year_id, sequence, title,
         start_date, end_date, status, period_kind, created_at, updated_at
       ) VALUES (${periodId}, ${organizationId}, ${financialAreaId}, ${yearId},
-        1, ${`Period ${startYear}`}, ${start}, ${end}, 'open', 'normal', now(), now())`;
+        1, ${`Period ${startYear}`}, CAST(${startDate} AS date),
+        CAST(${endDate} AS date), 'open', 'normal', now(), now())`;
       return {
         yearId,
         periodId,
@@ -568,14 +570,14 @@ describe.skipIf(DATABASE_URL === undefined)(
         id, organization_id, financial_area_id, code, title, start_date, end_date,
         status, is_active, created_at, updated_at
       ) VALUES (${otherYearId}, ${otherOrganizationId}, ${otherAreaId}, ${'FY-B'},
-        ${'Foreign year'}, ${new Date(Date.UTC(2099, 0, 1))}, ${new Date(Date.UTC(2099, 11, 31))},
-        'open', true, now(), now())`;
+        ${'Foreign year'}, CAST(${'2099-01-01'} AS date),
+        CAST(${'2099-12-31'} AS date), 'open', true, now(), now())`;
       await db.$queryRaw`INSERT INTO accounting.accounting_periods (
         id, organization_id, financial_area_id, fiscal_year_id, sequence, title,
         start_date, end_date, status, period_kind, created_at, updated_at
       ) VALUES (${otherPeriodId}, ${otherOrganizationId}, ${otherAreaId}, ${otherYearId},
-        1, ${'Foreign period'}, ${new Date(Date.UTC(2099, 0, 1))}, ${new Date(Date.UTC(2099, 11, 31))},
-        'open', 'normal', now(), now())`;
+        1, ${'Foreign period'}, CAST(${'2099-01-01'} AS date),
+        CAST(${'2099-12-31'} AS date), 'open', 'normal', now(), now())`;
     }, 120_000);
 
     afterAll(async () => {

@@ -411,11 +411,16 @@ describe.skipIf(DATABASE_URL === undefined)(
         baseUnitId: pcsAId,
       });
       // Eight racers at distinct consecutive business days.
-      const validFromDates = Array.from({ length: 8 }, (_, index) =>
-        toBusinessDate(
-          new Date(Date.UTC(2026, 3, 1 + index)).toISOString().slice(0, 10),
-        )!,
-      );
+      const validFromDates = [
+        '2026-04-01',
+        '2026-04-02',
+        '2026-04-03',
+        '2026-04-04',
+        '2026-04-05',
+        '2026-04-06',
+        '2026-04-07',
+        '2026-04-08',
+      ].map((value) => toBusinessDate(value)!);
       const attempts = await Promise.allSettled(
         validFromDates.map((validFrom) =>
           conversions.createConversion({

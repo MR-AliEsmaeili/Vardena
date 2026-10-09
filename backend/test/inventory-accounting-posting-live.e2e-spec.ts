@@ -313,18 +313,17 @@ describe.skipIf(DATABASE_URL === undefined)(
       return movementId as string;
     }
 
-    /** Price every movement of a warehouse up to `toDate`. */
     /**
-     * Run pricing over one warehouse's scope.
+     * Run pricing through an explicit canonical Gregorian BusinessDate.
      *
      * The window ends at `toDate`, and a later run for the same scope resumes
-     * strictly after the previous one's end date — so a run must never end in
-     * the future: it would claim a window the movements it should price have
-     * not reached yet, and every later run would resume past them.
+     * strictly after the previous one's end date. Keep this a day string—not a
+     * JavaScript `Date`/ISO instant—so the API doesn't resolve it to a UTC day
+     * that can differ from the organization-local day on new documents.
      */
     async function runPricing(
       warehouseId: string,
-      toDate: Date = new Date(),
+      toDate: string,
     ): Promise<Record<string, unknown>> {
       const response = await operator
         .post(`${pricingBase}/runs`)
@@ -333,7 +332,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           operationKey: `c62-price-${suffix}-${generateId()}`,
           warehouseId,
           documentKinds: ['receipt', 'issue', 'transfer'],
-          toDate: toDate.toISOString(),
+          toDate,
         })
         .expect(201);
       return response.body as Record<string, unknown>;
@@ -1043,6 +1042,8 @@ describe.skipIf(DATABASE_URL === undefined)(
         })
         .expect(201);
       const stockId = stock.body.id as string;
+      const businessDate = stock.body.businessDate as string;
+      expect(businessDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       await finalize(stockId);
       await assignCost(await firstLineMovementId(stockId), '50');
 
@@ -1052,12 +1053,13 @@ describe.skipIf(DATABASE_URL === undefined)(
           organizationId,
           kind: 'issue',
           warehouseId: issueWarehouseId,
+          businessDate,
           lines: [{ itemId, quantity: '1', unitId }],
         })
         .expect(201);
       const id = response.body.id as string;
       await finalize(id);
-      const run = await runPricing(issueWarehouseId, new Date());
+      const run = await runPricing(issueWarehouseId, businessDate);
       expect(run['keysPriced']).toBe(1);
       expect(run['keysFailed']).toBe(0);
 

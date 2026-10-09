@@ -2,7 +2,10 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
-import { toBusinessDate } from '../src/kernel/datetime/business-date.js';
+import {
+  toBusinessDate,
+  type BusinessDate,
+} from '../src/kernel/datetime/business-date.js';
 import { RECALCULATION_MOVEMENT_LIMIT } from '../src/modules/inventory/data/inventory-valuation.repository.js';
 import { UsersRepository } from '../src/modules/users/data/users.repository.js';
 import { UsersService } from '../src/modules/users/application/users.service.js';
@@ -36,6 +39,46 @@ import { createInMemoryStores } from './support/in-memory-repositories.js';
 import { createMasterDataStores } from './support/master-data-repositories.js';
 import { createInventoryCoreStores } from './support/inventory-core-repositories.js';
 import { createTestApp } from './support/test-app.js';
+
+/** Advance a canonical Gregorian day without constructing an Instant carrier. */
+function nextGregorianBusinessDate(value: BusinessDate): BusinessDate {
+  const [yearText, monthText, dayText] = value.split('-');
+  let year = Number(yearText);
+  let month = Number(monthText);
+  let day = Number(dayText) + 1;
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [
+    31,
+    leapYear ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ][month - 1]!;
+
+  if (day > daysInMonth) {
+    day = 1;
+    month += 1;
+    if (month > 12) {
+      month = 1;
+      year += 1;
+    }
+  }
+
+  const next = toBusinessDate(
+    `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+  );
+  if (next === null) {
+    throw new Error(`Unable to advance BusinessDate "${value}".`);
+  }
+  return next;
+}
 
 /**
  * Inventory valuation journey (e2e, in-memory data doubles — PDR-05).
@@ -1171,15 +1214,10 @@ describe('Inventory valuation (e2e)', () => {
     // would look). It is outside the replay horizon, so it cannot reach
     // these 2026-01/02 movements and the recalculation still runs.
     //
-    // The window starts strictly after "now" so the key's CURRENT method is
-    // still the executable one — the separate, pre-existing rule that a key
-    // whose method in force today is unimplemented cannot be recalculated at
-    // all stays untouched and is not what this case probes.
-    const futureFrom = toBusinessDate(
-      new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10),
-    )!;
+    // The window starts at the upper supported Gregorian/Jalali-renderable
+    // BusinessDate, strictly after this fixture's fixed 2026 replay horizon.
+    // Keeping it a canonical day avoids deriving a date from a runtime instant.
+    const futureFrom = toBusinessDate('3798-12-31')!;
     core.tables.valuationMethods.patch(versionIds[3] as string, {
       validTo: futureFrom,
     });
@@ -1194,8 +1232,9 @@ describe('Inventory valuation (e2e)', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    // Sanity: today still resolves to the executable policy.
-    expect((await resolveAt(new Date().toISOString())).method).toBe(
+    // A canonical day before the future policy still resolves to the
+    // executable method; the explicit legacy-instant boundary is tested above.
+    expect((await resolveAt('2026-09-15')).method).toBe(
       'moving_weighted_average',
     );
     const afterFuture = await root
@@ -1349,47 +1388,41 @@ describe('Inventory valuation (e2e)', () => {
       warehouseId: state.warehouseId,
       itemId: state.denserThanLimitItemId,
     };
-    const yearStart = Date.UTC(1990, 0, 1);
-    const lastMovement = Date.UTC(2026, 5, 1);
+    const firstMovementDate = toBusinessDate('1990-01-01')!;
+    const lastMovementDate = toBusinessDate('2026-06-01')!;
     const versionCount = RECALCULATION_MOVEMENT_LIMIT + 1;
     // Every window opens on or before the LAST movement, so all of them are
     // in force somewhere inside the replayed period. That is what makes this
     // a regression test: the previous horizon read returned all
     // `RECALCULATION_MOVEMENT_LIMIT + 1` of them and refused the replay,
     // even though only two of them govern a movement.
-    const step = Math.floor((lastMovement - yearStart) / versionCount);
-    // Contiguous half-open windows: dense, but never overlapping. Seeded
-    // rather than inserted because the per-row uniqueness scan is O(n) and
-    // this fixture is deliberately large; the windows are distinct by
-    // construction, so the guard has nothing to catch.
+    // Contiguous half-open daily windows are seeded rather than inserted
+    // because the per-row uniqueness scan is O(n) and this fixture is
+    // deliberately large; their order makes duplicate starts impossible.
+    let validFrom = firstMovementDate;
     for (let index = 0; index < versionCount; index += 1) {
-      const versionAuditInstant = new Date(yearStart + index * step);
-      const validFrom = toBusinessDate(
-        versionAuditInstant.toISOString().slice(0, 10),
-      )!;
+      const validTo =
+        index === versionCount - 1
+          ? null
+          : nextGregorianBusinessDate(validFrom);
+      const auditInstant = new Date('2026-01-01T00:00:00.000Z');
       core.tables.valuationMethods.seed({
         id: `dense-${index}`,
         organizationId: state.orgId,
         itemId: state.denserThanLimitItemId,
         method: 'moving_weighted_average',
         validFrom,
-        validTo:
-          index === versionCount - 1
-            ? null
-            : toBusinessDate(
-                new Date(yearStart + (index + 1) * step)
-                  .toISOString()
-                  .slice(0, 10),
-              )!,
+        validTo,
         note: null,
-        createdAt: versionAuditInstant,
-        updatedAt: versionAuditInstant,
+        createdAt: auditInstant,
+        updatedAt: auditInstant,
       });
+      if (validTo !== null) validFrom = validTo;
     }
 
     for (const [index, movementDate] of [
-      new Date(yearStart).toISOString().slice(0, 10),
-      new Date(lastMovement).toISOString().slice(0, 10),
+      firstMovementDate,
+      lastMovementDate,
     ].entries()) {
       await root
         .post('/api/v1/inventory/movements')
