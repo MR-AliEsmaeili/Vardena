@@ -73,9 +73,12 @@ describe('calendar conversion', () => {
     expect(isGregorianDay('not-a-day')).toBe(false);
   });
 
-  it('never throws for a day outside the library range', () => {
+  it('never throws for a day outside the library or wire-rendering range', () => {
     expect(gregorianDayToJalaliDay('9999-12-31')).toBeNull();
     expect(convertDay('9999-12-31', 'GREGORIAN', 'JALALI')).toBeNull();
+    expect(gregorianDayToJalaliDay('0560-03-20')).toBeNull();
+    expect(gregorianDayToJalaliDay('0621-03-20')).toBeNull();
+    expect(gregorianDayToJalaliDay('0621-03-21')).toBe('0000-01-01');
   });
 
   it('parses and formats day parts', () => {
@@ -103,6 +106,8 @@ describe('business days', () => {
     expect(isBusinessDay('2026-10-08')).toBe(true);
     expect(isBusinessDay('2026-02-30')).toBe(false);
     expect(isBusinessDay('2026-10-08T00:00:00.000Z')).toBe(false);
+    expect(isBusinessDay('0001-01-01')).toBe(true);
+    expect(isBusinessDay('0000-01-01')).toBe(false);
   });
 
   it('sends a declared Jalali day for Jalali organizations, canonical otherwise', () => {
@@ -126,6 +131,8 @@ describe('business days', () => {
   it('renders a day in the active calendar and keeps the canonical value', () => {
     expect(formatBusinessDay('2026-10-08', 'JALALI')).toBe('1405/07/16');
     expect(formatBusinessDay('2026-10-08', 'GREGORIAN')).toBe('2026-10-08');
+    // Unsupported legacy years remain visible as their canonical source day.
+    expect(formatBusinessDay('0600-01-01', 'JALALI')).toBe('0600-01-01');
     // An unexpected value stays visible instead of being mangled.
     expect(formatBusinessDay('2026-10-08T13:00:00.000Z', 'JALALI')).toBe(
       '2026-10-08T13:00:00.000Z',
@@ -160,6 +167,8 @@ describe('event timestamps', () => {
     expect(isInstant('2026-10-08T08:32:14')).toBe(false);
     expect(isInstant('2026-10-08')).toBe(false);
     expect(isInstant('2026-02-30T08:32:14.000Z')).toBe(false);
+    // This wire contract is canonical UTC-Z; an offset-bearing ISO timestamp
+    // is not silently reparsed in the browser or substituted for the API form.
     expect(isInstant('2026-10-08T08:32:14.000+03:30')).toBe(false);
     expect(formatInstant('nope', 'UTC')).toBe('nope');
     expect(formatInstant('2026-10-08T08:32:14', 'Asia/Tehran')).toBe(

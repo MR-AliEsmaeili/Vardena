@@ -14,8 +14,8 @@ import {
  * out of every screen:
  *
  *  - the field's VALUE is always the canonical Gregorian day (`YYYY-MM-DD`),
- *    or `''` while empty — the same value the API takes, so a form never holds
- *    a Jalali string;
+ *    or `''` while empty — forms hold the canonical day, then API adapters
+ *    declare the calendar if the operator entered a Jalali day;
  *  - the field's PRESENTATION follows the organization's calendar: a Gregorian
  *    organization gets the native date input (unchanged behaviour, unchanged
  *    accessibility, unchanged keyboard), a Jalali organization gets a text

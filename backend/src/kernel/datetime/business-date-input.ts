@@ -144,9 +144,13 @@ export function parseBusinessDateInput(
       if (Number.isNaN(instant.getTime())) {
         return { ok: false, reason: 'business_date_format' };
       }
+      const gregorian = businessDateFromUtcInstant(instant);
+      if (gregorian === null) {
+        return { ok: false, reason: 'business_date_calendar' };
+      }
       return {
         ok: true,
-        gregorian: businessDateFromUtcInstant(instant),
+        gregorian,
         calendar: 'GREGORIAN',
         source: 'instant',
         instant,

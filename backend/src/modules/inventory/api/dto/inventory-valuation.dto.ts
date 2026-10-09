@@ -64,14 +64,17 @@ export class ListValuationMethodsQueryDto extends PageQueryDto {
   itemId?: string;
 
   @ApiPropertyOptional({
-    format: 'date',
-    example: '2026-10-08',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'Only versions in force on this canonical Gregorian business date.',
+      'Only versions in force on this BusinessDate. Legacy ISO instants resolve by UTC calendar day; declared calendar input is converted once.',
   })
   @IsOptional()
-  @IsBusinessDay()
-  activeAt?: string;
+  @IsBusinessDate()
+  activeAt?: BusinessDateInput;
 }
 
 export class ConfigureValuationMethodDto {
@@ -133,14 +136,17 @@ export class ResolveValuationMethodQueryDto {
   itemId!: string;
 
   @ApiPropertyOptional({
-    format: 'date',
-    example: '2026-10-08',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'Canonical Gregorian business date to resolve; defaults to today in the organization time zone.',
+      'BusinessDate to resolve. Legacy ISO instants resolve by UTC calendar day; declared calendar input is converted once. If omitted, uses today in the organization time zone.',
   })
   @IsOptional()
-  @IsBusinessDay()
-  asOf?: string;
+  @IsBusinessDate()
+  asOf?: BusinessDateInput;
 }
 
 export class ListValuationStatesQueryDto extends PageQueryDto {

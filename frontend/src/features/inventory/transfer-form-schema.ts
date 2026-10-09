@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isBusinessDay } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 
 /**
@@ -32,8 +33,10 @@ export const transferFormSchema = z
     unitId: z.string().min(1, t.inventory.unitRequired),
     movementDate: z
       .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, t.filters.invalidDate)
-      .or(z.literal('')),
+      .refine(
+        (value) => value === '' || isBusinessDay(value),
+        t.filters.invalidDate,
+      ),
     reason: z.string().max(500),
   })
   .refine(

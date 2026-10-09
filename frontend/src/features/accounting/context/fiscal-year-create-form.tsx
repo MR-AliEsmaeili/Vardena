@@ -70,6 +70,10 @@ export function FiscalYearCreateForm({
 }) {
   const queryClient = useQueryClient();
   const calendarSystem = useCalendarSystem();
+  const dateHint =
+    calendarSystem === 'JALALI'
+      ? t.filters.dateFormatHintJalali
+      : t.filters.dateFormatHint;
   const form = useForm<FiscalYearFormValues>({
     resolver: zodResolver(fiscalYearSchema),
     defaultValues: { code: '', title: '', startDate: '', endDate: '' },
@@ -143,7 +147,7 @@ export function FiscalYearCreateForm({
             <FormField
               id="fiscal-year-start-date"
               label={t.financialContext.startDate}
-              hint={t.financialContext.dateHint}
+              hint={dateHint}
               error={form.formState.errors.startDate?.message}
             >
               {(fieldProps) => (
@@ -164,7 +168,7 @@ export function FiscalYearCreateForm({
             <FormField
               id="fiscal-year-end-date"
               label={t.financialContext.endDate}
-              hint={t.financialContext.dateHint}
+              hint={dateHint}
               error={form.formState.errors.endDate?.message}
             >
               {(fieldProps) => (

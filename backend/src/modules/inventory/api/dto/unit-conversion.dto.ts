@@ -3,7 +3,6 @@ import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
 import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
-import { IsBusinessDay } from '../../../../kernel/http/is-business-day.decorator.js';
 import {
   DECLARED_BUSINESS_DATE_SCHEMA,
   LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
@@ -121,13 +120,17 @@ export class ListUnitConversionsQueryDto extends PageQueryDto {
   toUnitId?: string;
 
   @ApiPropertyOptional({
-    format: 'date',
-    example: '2026-10-08',
-    description: 'Only versions in force on this Gregorian business date.',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'Only versions in force on this BusinessDate. Legacy ISO instants resolve by UTC calendar day; declared calendar input is converted once.',
   })
   @IsOptional()
-  @IsBusinessDay()
-  activeAt?: string;
+  @IsBusinessDate()
+  activeAt?: BusinessDateInput;
 }
 
 export class UnitConversionResponseDto {
@@ -195,13 +198,16 @@ export class ResolveUnitConversionQueryDto {
   toUnitId!: string;
 
   @ApiProperty({
-    format: 'date',
-    example: '2026-10-08',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'Canonical Gregorian business date. A past date returns the version that was effective then.',
+      'BusinessDate to resolve. Legacy ISO instants resolve by UTC calendar day; declared calendar input is converted once.',
   })
-  @IsBusinessDay()
-  asOf!: string;
+  @IsBusinessDate()
+  asOf!: BusinessDateInput;
 }
 
 export class ResolveUnitConversionResponseDto {

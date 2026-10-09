@@ -80,6 +80,7 @@ import {
   buildRequestHash,
   canonicalClientBusinessDate,
   requireOperationKey,
+  requireBusinessDateInput,
   resolveBusinessDate as resolveBusinessDateInput,
   resolveBusinessDateFilter,
 } from './inventory-posting-support.js';
@@ -157,7 +158,7 @@ export class InventoryValuationService {
   async listMethods(query: {
     organizationId: string;
     itemId?: string | undefined;
-    activeAt?: string | undefined;
+    activeAt?: BusinessDateInput | undefined;
     page: number;
     pageSize: number;
     sort?: string | undefined;
@@ -167,7 +168,10 @@ export class InventoryValuationService {
     ]);
     await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
-    const activeAt = resolveBusinessDateFilter('activeAt', query.activeAt);
+    const activeAt =
+      query.activeAt === undefined
+        ? undefined
+        : requireBusinessDateInput(query.activeAt, 'activeAt');
     const { items, total } = await this.methods.list({
       where: {
         organizationId: query.organizationId,
@@ -202,7 +206,7 @@ export class InventoryValuationService {
   async resolveMethod(params: {
     organizationId: string;
     itemId: string;
-    asOf?: string | undefined;
+    asOf?: BusinessDateInput | undefined;
   }): Promise<{
     organizationId: string;
     itemId: string;
@@ -233,12 +237,7 @@ export class InventoryValuationService {
               )
             ).timeZone,
           )
-        : resolveBusinessDateFilter('asOf', params.asOf);
-    if (asOf === undefined) {
-      throw AppException.badRequest(
-        'asOf must be a valid Gregorian business date.',
-      );
-    }
+        : requireBusinessDateInput(params.asOf, 'asOf');
     const resolved = await this.resolveMethodForPosting({
       organizationId: params.organizationId,
       itemId: params.itemId,

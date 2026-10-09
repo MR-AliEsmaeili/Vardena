@@ -345,7 +345,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).rejects.toMatchObject({ code: 'EntityNotFound' });
     });
 
-    it('serializes concurrent same-business-date-start conversion creates: exactly one version, the rest get the stable overlap rejection', async () => {
+    it('serializes concurrent same-BusinessDate conversion creates: exactly one version, the rest get the stable overlap rejection', async () => {
       const itemPair = await items.createItem({
         organizationId: orgAId,
         code: `ITM-CVP-${suffix}`,
@@ -374,9 +374,9 @@ describe.skipIf(DATABASE_URL === undefined)(
         (attempt) => attempt.status === 'rejected',
       );
       // Advisory-lock serialization turns the race into sequential creates:
-      // exactly one version starts on that business date, and every loser gets
+      // exactly one version starts on that BusinessDate, and every loser gets
       // the SAME stable error a single-threaded overlapping create gets — the
-      // pair can never carry two versions sharing a start date.
+      // pair can never carry two versions sharing a date start.
       expect(fulfilled).toHaveLength(1);
       expect(rejected).toHaveLength(7);
       for (const loser of rejected) {

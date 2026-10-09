@@ -768,9 +768,13 @@ conversions, item-specific unit conversions, and item valuation methods have
 BusinessDate `valid_from`/`valid_to` bounds with half-open `[valid_from,
 valid_to)` semantics and a nullable open end; they are not event Instants. The
 new conversion migration is `20261012000000_inventory_business_date_validity_windows`.
-Its fixture rehearsal and preflight guards do not establish the contents of a
-production/customer database; run and retain target-data evidence before
-migration deployment.
+Its aggregate-only target-data report is
+`backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; run it
+read-only after migration 110 and before migration 120, then retain the counts
+and migration NOTICE with a rehearsal against a fresh, restorable target-like
+copy. CI fixtures and code inspection do not establish production/customer data
+safety. Resolve preflight failures only through approved repairs and apply schema
+changes through Prisma migrations.
 
 - **Status (corrected 2026-09-26 — `repository-documentation-audit.md`):**
   **both halves are implemented.** Master data (Task 6): schema `inventory` —

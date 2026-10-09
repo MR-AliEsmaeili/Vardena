@@ -195,3 +195,16 @@ drifting definition of the contract.
 6. **Localization decision (OQ-02)** remains open: the dictionary and the
    formatters are the single place where the language/calendar decision will
    land.
+
+## Later date/time clarification (2026-10-09)
+
+This report records the state of the Task 22 implementation on 2026-09-26; the
+`YYYY-MM-DD`-verbatim/no-Jalali row above is historical evidence, not current
+architecture. Owner-accepted ADR-0042 (2026-10-09) later established canonical
+Gregorian BusinessDates stored as PostgreSQL `date`, organization-configured
+calendar input/display (Jalali by default), and UTC Instants displayed after
+conversion to the organization's valid IANA zone and calendar. The current
+implementation was audited separately; PR #62 itself did not implement or
+prove this later contract. OQ-02 remains open only for primary UI language,
+Persian numerals, and broader localization. See ADR-0042, `docs/datetime.md`,
+and the resolved OQ-73 entry in `docs/open-questions.md`.

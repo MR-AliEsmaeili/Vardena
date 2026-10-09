@@ -71,9 +71,22 @@ Three rules follow, and they are the ones reviewers check:
   adjacent versions may meet on the same business date without overlapping.
   The migration converts the UTC calendar day, reports discarded non-midnight
   UTC time components, and fails closed on collapsed/reversed windows,
-  duplicate starts, or overlap. The CI fixture rehearsal is not evidence about
-  any production or customer database; target-data evidence remains a separate
-  deployment requirement.
+  duplicate starts, overlap, and unrepresentable values. Its aggregate-only,
+  read-only target report is
+  `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; run it
+  after migration `20261011000000_business_date_persistence` and before this
+  migration using a read-only connection. It returns counts by table/column,
+  not IDs, organization keys, conversion factors, or business payloads.
+  Deployment gate: review and retain that report plus the migration NOTICE;
+  rehearse the exact migration on a fresh, restorable target-like copy; resolve
+  any nonzero invalid-range/collision/overlap/unrepresentable counts through an
+  explicitly approved data repair and rerun the audit/rehearsal; and verify a
+  recoverable backup before applying only through `prisma migrate deploy`.
+  Non-midnight UTC endpoint counts must be recorded and reviewed; they are not
+  automatically an error because the approved mapping preserves their UTC day.
+  The CI synthetic-fixture rehearsal is not evidence about any production or
+  customer database; no historical-data safety claim is made without
+  target-specific evidence.
 - **No formatted dates** are ever persisted (no `'1405/07/16'` column), and no
   parallel Jalali column is added for a date that already exists: the calendar
   is a rendering, and duplicate columns would let the two disagree.
@@ -303,14 +316,19 @@ date-input.test.tsx` (round trips, leap years, typed Jalali input, Persian
   malformed, naive, and offset-bearing wire Instants are preserved/rejected by
   the formatter, day, and offset helpers rather than browser-zone parsed.
 - PostgreSQL conversion rehearsal:
-  `backend/prisma/rehearsal/business-date-validity-windows/rehearse.mjs` creates
-  a disposable real PostgreSQL database, applies the validity-window migration
-  to representative fixtures, verifies UTC-day conversion and unchanged audit
-  Instants, and expects collapsed/reversed, duplicate-start, and overlap cases
-  to fail. CI runs it against its PostgreSQL 16 service
-  (`.github/workflows/ci.yml`). This fixture is not a customer/production
-  snapshot and does not prove a target dataset is safe; retain target-specific
-  preflight/rehearsal evidence before deployment.
+  `backend/prisma/rehearsal/business-date-validity-windows/rehearse.mjs` uses a
+  local PostgreSQL server to create a uniquely named disposable database,
+  applies the real validity-window migration to representative synthetic
+  fixtures, verifies UTC-day conversion/adjacency/open-ended ranges and
+  unchanged audit Instants, and expects collapsed/reversed, duplicate-start,
+  overlap, and unrepresentable-value cases to fail. It refuses non-local hosts
+  and any pre-existing database name; it never drops or reuses a database it did
+  not create. CI runs it against its ephemeral PostgreSQL 16 service
+  (`.github/workflows/ci.yml`). The aggregate-only target report is
+  `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`. The
+  fixture is not a customer/production snapshot and does not prove a target
+  dataset is safe; retain target-specific audit, rehearsal, backup, and recovery
+  evidence before deployment.
 
 ## 11. Open items
 

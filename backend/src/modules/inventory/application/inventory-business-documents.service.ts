@@ -12,6 +12,7 @@ import {
   businessDateFromInstant,
   type BusinessDate,
 } from '../../../kernel/datetime/business-date.js';
+import { toApiBusinessDate } from '../../../kernel/datetime/api-date-time.js';
 import {
   toOffset,
   toPaginatedResult,
@@ -1194,11 +1195,26 @@ export class InventoryBusinessDocumentsService {
     const { timeZone } = await this.organizations.getDateTimeSettings(
       input.organizationId,
     );
-    return resolveBusinessDateInput({
+    const businessDate = resolveBusinessDateInput({
       field: 'businessDate',
       value: input.businessDate,
       timeZone,
     });
+    // This Inventory response promises a paired Gregorian + Jalali day. Reject
+    // legacy/Gregorian dates that cannot satisfy that contract before any
+    // document write; otherwise createDraft could commit and then fail while
+    // mapping its response.
+    if (toApiBusinessDate(businessDate) === null) {
+      throw AppException.validation([
+        {
+          field: 'businessDate',
+          code: 'business_date_calendar',
+          message:
+            'Business date is outside the supported calendar rendering range.',
+        },
+      ]);
+    }
+    return businessDate;
   }
 
   private normalizeHeader(

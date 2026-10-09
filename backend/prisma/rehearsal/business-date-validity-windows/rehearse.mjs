@@ -8,11 +8,14 @@
  * starts, or overlap after conversion. This fixture rehearsal is not a
  * substitute for running the preflight against a production data snapshot.
  *
- * Connection: VARDENA_REHEARSAL_ADMIN_URL (same maintenance-database URL used
- * by the Task 11 migration rehearsal). Set KEEP=1 to retain the database.
+ * Connection: VARDENA_REHEARSAL_ADMIN_URL (same local maintenance-database URL
+ * used by the Task 11 migration rehearsal). This script refuses non-local hosts,
+ * never reuses or drops a pre-existing database, and removes only the uniquely
+ * created disposable database. Set KEEP=1 to retain that database.
  */
 
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,17 +33,24 @@ const MIGRATION_SQL = readFileSync(
   ),
   'utf8',
 );
+const AUDIT_SQL = readFileSync(join(HERE, 'audit.sql'), 'utf8');
 const ADMIN_URL =
   process.env['VARDENA_REHEARSAL_ADMIN_URL'] ??
   'postgresql://vardena:vardena_test_password@127.0.0.1:5432/postgres';
 const REHEARSAL_DB =
   process.env['VARDENA_REHEARSAL_DB'] ??
-  'vardena_rehearsal_business_date_validity';
+  `vardena_bd_validity_${process.pid}_${randomBytes(6).toString('hex')}`;
 const KEEP = process.env['KEEP'] === '1';
+const ADMIN_HOST = new URL(ADMIN_URL).hostname.replace(/^\[|\]$/g, '');
 
-if (!/^[A-Za-z0-9_]+$/.test(REHEARSAL_DB)) {
+if (!['localhost', '127.0.0.1', '::1'].includes(ADMIN_HOST)) {
   throw new Error(
-    'VARDENA_REHEARSAL_DB must contain only letters, digits, and underscores.',
+    'Migration rehearsal is local-only; VARDENA_REHEARSAL_ADMIN_URL must target localhost, 127.0.0.1, or ::1.',
+  );
+}
+if (!/^[A-Za-z0-9_]{1,63}$/.test(REHEARSAL_DB)) {
+  throw new Error(
+    'VARDENA_REHEARSAL_DB must be a PostgreSQL identifier of at most 63 letters, digits, or underscores.',
   );
 }
 
@@ -71,6 +81,20 @@ async function withClient(database, fn) {
 function printNotices(notices) {
   for (const notice of notices) log(`    PostgreSQL NOTICE: ${notice}`);
   notices.length = 0;
+}
+
+function auditRow(rows, section, table) {
+  const row = rows.find(
+    (candidate) =>
+      candidate['report_section'] === section &&
+      candidate['source_table'] === table,
+  );
+  assert.ok(row, `aggregate audit should report ${section}.${table}`);
+  return row;
+}
+
+function auditCount(row, column) {
+  return Number(row[column]);
 }
 
 async function expectRejected(client, notices, { setupSql, message }) {
@@ -110,19 +134,86 @@ async function expectWindow(client, table, id, expectedFrom, expectedTo) {
 
 async function main() {
   log('== BusinessDate validity-window migration rehearsal ==');
+  let createdDatabase = false;
   await withClient('postgres', async (client) => {
-    await client.query(
-      `DROP DATABASE IF EXISTS "${REHEARSAL_DB}" WITH (FORCE)`,
+    const existing = await client.query(
+      'SELECT 1 FROM pg_database WHERE datname = $1',
+      [REHEARSAL_DB],
     );
+    if (existing.rowCount !== 0) {
+      throw new Error(
+        `Refusing to reuse or drop existing database "${REHEARSAL_DB}"; choose a new VARDENA_REHEARSAL_DB.`,
+      );
+    }
     await client.query(`CREATE DATABASE "${REHEARSAL_DB}"`);
+    createdDatabase = true;
   });
-  log(`    created disposable database "${REHEARSAL_DB}"`);
+  log(`    created disposable database "${REHEARSAL_DB}" on ${ADMIN_HOST}`);
 
   let passed = false;
   try {
     await withClient(REHEARSAL_DB, async (client, notices) => {
       await client.query(`
+        CREATE SCHEMA "organization";
+        CREATE TABLE "organization"."organizations" (
+          "id" text PRIMARY KEY,
+          "calendar_system" varchar(16) NOT NULL
+        );
+        INSERT INTO "organization"."organizations" ("id", "calendar_system")
+          VALUES ('org-1', 'JALALI'), ('org-gregorian', 'GREGORIAN');
+
         CREATE SCHEMA "inventory";
+        CREATE TABLE "inventory"."inventory_movements" (
+          "id" text PRIMARY KEY,
+          "organization_id" text NOT NULL,
+          "movement_date" date NOT NULL
+        );
+        CREATE TABLE "inventory"."inventory_business_documents" (
+          "id" text PRIMARY KEY,
+          "organization_id" text NOT NULL,
+          "business_date" date NOT NULL
+        );
+        CREATE TABLE "inventory"."inventory_accounting_posting_snapshots" (
+          "id" text PRIMARY KEY,
+          "organization_id" text NOT NULL,
+          "document_date" date NOT NULL
+        );
+        CREATE TABLE "inventory"."inventory_pricing_runs" (
+          "id" text PRIMARY KEY,
+          "organization_id" text NOT NULL,
+          "from_date" date,
+          "to_date" date NOT NULL
+        );
+        CREATE TABLE "inventory"."inventory_valuation_runs" (
+          "id" text PRIMARY KEY,
+          "organization_id" text NOT NULL,
+          "from_date" date
+        );
+        CREATE TABLE "inventory"."inventory_balances" (
+          "id" text PRIMARY KEY,
+          "organization_id" text NOT NULL,
+          "last_movement_date" date
+        );
+
+        INSERT INTO "inventory"."inventory_movements"
+          ("id", "organization_id", "movement_date")
+          VALUES ('movement-1', 'org-1', DATE '2026-10-08');
+        INSERT INTO "inventory"."inventory_business_documents"
+          ("id", "organization_id", "business_date")
+          VALUES ('document-1', 'org-1', DATE '2026-10-08');
+        INSERT INTO "inventory"."inventory_accounting_posting_snapshots"
+          ("id", "organization_id", "document_date")
+          VALUES ('snapshot-1', 'org-1', DATE '2026-10-08');
+        INSERT INTO "inventory"."inventory_pricing_runs"
+          ("id", "organization_id", "from_date", "to_date")
+          VALUES ('pricing-run-1', 'org-1', DATE '2026-10-08', DATE '2026-10-09');
+        INSERT INTO "inventory"."inventory_valuation_runs"
+          ("id", "organization_id", "from_date")
+          VALUES ('valuation-run-1', 'org-1', DATE '2026-10-08');
+        INSERT INTO "inventory"."inventory_balances"
+          ("id", "organization_id", "last_movement_date")
+          VALUES ('balance-1', 'org-1', DATE '2026-10-08');
+
         CREATE TABLE "inventory"."unit_conversions" (
           "id" text PRIMARY KEY,
           "organization_id" text NOT NULL,
@@ -174,7 +265,8 @@ async function main() {
           ("id", "organization_id", "from_unit_id", "to_unit_id", "valid_from", "valid_to", "created_at", "updated_at")
          VALUES
           ('global-before', 'org-1', 'kg', 'g', '2026-01-01 09:30:00-05', '2026-03-01 08:00:00-05', '2026-02-03 04:05:06.789012+03:30', '2026-02-03 04:05:06.789012+03:30'),
-          ('global-next', 'org-1', 'kg', 'g', '2026-03-01 18:00:00+04', NULL, '2026-02-03 04:05:06.789012+03:30', '2026-02-03 04:05:06.789012+03:30')`,
+          ('global-next', 'org-1', 'kg', 'g', '2026-03-01 18:00:00+04', NULL, '2026-02-03 04:05:06.789012+03:30', '2026-02-03 04:05:06.789012+03:30'),
+          ('gregorian-legacy-range', 'org-gregorian', 'old-unit', 'new-unit', '0600-01-01 00:00:00+00', NULL, '2026-02-03 04:05:06.789012+03:30', '2026-02-03 04:05:06.789012+03:30')`,
       );
       await client.query(
         `INSERT INTO "inventory"."item_unit_conversions"
@@ -190,6 +282,100 @@ async function main() {
                  '2026-10-09 12:00:00-04', '2026-11-08 00:05:00+00',
                  '2026-02-03 04:05:06.789012+03:30', '2026-02-03 04:05:06.789012+03:30')`,
       );
+
+      // The aggregate-only, read-only report is itself exercised against the
+      // synthetic legacy rows before the migration changes their column types.
+      const audit = await client.query(AUDIT_SQL);
+      const globalAudit = auditRow(
+        audit.rows,
+        'validity_window',
+        'unit_conversions',
+      );
+      assert.equal(auditCount(globalAudit, 'row_count'), 3);
+      assert.equal(auditCount(globalAudit, 'valid_from_non_midnight_utc'), 2);
+      assert.equal(auditCount(globalAudit, 'valid_to_non_midnight_utc'), 1);
+      assert.equal(auditCount(globalAudit, 'open_ended_rows'), 2);
+      assert.equal(auditCount(globalAudit, 'collapsed_or_reversed_rows'), 0);
+      assert.equal(auditCount(globalAudit, 'duplicate_start_groups'), 0);
+      assert.equal(auditCount(globalAudit, 'overlapping_rows'), 0);
+      assert.equal(auditCount(globalAudit, 'unrenderable_rows'), 0);
+      for (const table of ['item_unit_conversions', 'item_valuation_methods']) {
+        const row = auditRow(audit.rows, 'validity_window', table);
+        assert.equal(auditCount(row, 'row_count'), 1);
+        assert.equal(auditCount(row, 'valid_from_non_midnight_utc'), 1);
+        assert.equal(auditCount(row, 'valid_to_non_midnight_utc'), 1);
+        assert.equal(auditCount(row, 'open_ended_rows'), 0);
+        assert.equal(auditCount(row, 'collapsed_or_reversed_rows'), 0);
+        assert.equal(auditCount(row, 'duplicate_start_groups'), 0);
+        assert.equal(auditCount(row, 'overlapping_rows'), 0);
+        assert.equal(auditCount(row, 'unrenderable_rows'), 0);
+      }
+      for (const table of [
+        'inventory_movements.movement_date',
+        'inventory_business_documents.business_date',
+        'inventory_accounting_posting_snapshots.document_date',
+        'inventory_pricing_runs.from_date',
+        'inventory_pricing_runs.to_date',
+        'inventory_valuation_runs.from_date',
+        'inventory_balances.last_movement_date',
+      ]) {
+        const row = auditRow(
+          audit.rows,
+          'existing_business_date_column',
+          table,
+        );
+        assert.equal(auditCount(row, 'row_count'), 1);
+        assert.equal(auditCount(row, 'unrenderable_rows'), 0);
+      }
+
+      const nonMidnightEndpoints = audit.rows
+        .filter((row) => row['report_section'] === 'validity_window')
+        .reduce(
+          (total, row) =>
+            total +
+            auditCount(row, 'valid_from_non_midnight_utc') +
+            auditCount(row, 'valid_to_non_midnight_utc'),
+          0,
+        );
+      assert.equal(nonMidnightEndpoints, 7);
+      log(
+        '    aggregate-only audit SQL report (synthetic fixture; counts only):',
+      );
+      for (const row of audit.rows) {
+        const counts =
+          row['report_section'] === 'validity_window'
+            ? `rows=${row['row_count']}, non-midnight UTC starts=${row['valid_from_non_midnight_utc']}, non-midnight UTC ends=${row['valid_to_non_midnight_utc']}, open=${row['open_ended_rows']}, collapsed=${row['collapsed_or_reversed_rows']}, duplicate-start groups=${row['duplicate_start_groups'] ?? 0}, overlaps=${row['overlapping_rows'] ?? 0}, unrenderable=${row['unrenderable_rows']}`
+            : `values=${row['row_count']}, unrenderable=${row['unrenderable_rows']}`;
+        log(`      ${row['report_section']} ${row['source_table']}: ${counts}`);
+      }
+      log(
+        `    synthetic fixture non-midnight UTC endpoints: ${nonMidnightEndpoints}`,
+      );
+
+      await expectRejected(client, notices, {
+        setupSql: `INSERT INTO "inventory"."item_unit_conversions"
+          ("id", "organization_id", "item_id", "from_unit_id", "to_unit_id", "valid_from", "valid_to", "created_at", "updated_at")
+          VALUES ('jalali-out-of-range', 'org-1', 'legacy-item', 'old', 'new',
+                  '0600-01-01 00:00:00+00', NULL, now(), now())`,
+        message:
+          'outside the supported BusinessDate/API/calendar rendering range',
+      });
+
+      await expectRejected(client, notices, {
+        setupSql: `INSERT INTO "inventory"."inventory_business_documents"
+          ("id", "organization_id", "business_date")
+          VALUES ('legacy-jalali-out-of-range', 'org-1', DATE '0600-01-01')`,
+        message:
+          'outside the supported BusinessDate/API/calendar rendering range',
+      });
+
+      await expectRejected(client, notices, {
+        setupSql: `INSERT INTO "inventory"."inventory_movements"
+          ("id", "organization_id", "movement_date")
+          VALUES ('legacy-too-wide-for-api', 'org-gregorian', DATE '10000-01-01')`,
+        message:
+          'outside the supported BusinessDate/API/calendar rendering range',
+      });
 
       await expectRejected(client, notices, {
         setupSql: `INSERT INTO "inventory"."item_unit_conversions"
@@ -255,6 +441,13 @@ async function main() {
         '2026-03-01',
         null,
       );
+      await expectWindow(
+        client,
+        'unit_conversions',
+        'gregorian-legacy-range',
+        '0600-01-01',
+        null,
+      );
 
       const columnTypes = await client.query(`
         SELECT table_name, column_name, data_type
@@ -292,13 +485,13 @@ async function main() {
     });
     passed = true;
   } finally {
-    if (KEEP) {
+    if (createdDatabase && KEEP) {
       log(`    KEEP=1: "${REHEARSAL_DB}" kept for inspection`);
-    } else {
+    } else if (createdDatabase) {
       await withClient('postgres', async (client) => {
-        await client.query(
-          `DROP DATABASE IF EXISTS "${REHEARSAL_DB}" WITH (FORCE)`,
-        );
+        // This exact database was created by this run; an existing database is
+        // rejected above and can never reach this cleanup path.
+        await client.query(`DROP DATABASE "${REHEARSAL_DB}" WITH (FORCE)`);
       });
       log(`    dropped disposable database "${REHEARSAL_DB}"`);
     }

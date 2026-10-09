@@ -78,7 +78,7 @@ export function formatDayParts(parts: DayParts): string {
  */
 export function isGregorianDay(value: string): boolean {
   const parts = parseDayParts(value);
-  if (parts === null) return false;
+  if (parts === null || parts.year < 1) return false;
   const probe = new Date(Date.UTC(2000, 0, 1));
   probe.setUTCFullYear(parts.year, parts.month - 1, parts.day);
   probe.setUTCHours(0, 0, 0, 0);
@@ -121,7 +121,9 @@ export function gregorianDayToJalaliDay(value: string): string | null {
   if (parts === null) return null;
   try {
     const jalali = toJalaali(parts.year, parts.month, parts.day);
-    if (!isValidJalaaliDate(jalali.jy, jalali.jm, jalali.jd)) return null;
+    if (jalali.jy < 0 || !isValidJalaaliDate(jalali.jy, jalali.jm, jalali.jd)) {
+      return null;
+    }
     return formatDayParts({
       year: jalali.jy,
       month: jalali.jm,

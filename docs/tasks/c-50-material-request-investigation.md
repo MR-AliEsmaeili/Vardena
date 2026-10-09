@@ -307,7 +307,7 @@ These are technical safeguards around whichever product answers are selected:
 1. Header and every referenced line/master row belong to the same organization.
 2. Every entered quantity is positive, exact, and representable in current
    `numeric(18,4)` base-quantity semantics; no silent rounding.
-3. Entered unit resolves to the item's base unit at the selected business instant;
+3. Entered unit resolves to the item's base unit on the selected BusinessDate;
    store the applied factor/snapshot so later conversion edits do not rewrite history.
 4. Draft-only edits and terminal-state immutability are enforced in the repository
    transaction, not only in controllers.

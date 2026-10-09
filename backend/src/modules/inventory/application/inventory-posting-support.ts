@@ -244,18 +244,48 @@ export function canonicalClientBusinessDate(
 }
 
 /**
+ * Resolve a required BusinessDate input to its canonical Gregorian day.
+ *
+ * This is the isolated compatibility boundary: canonical Gregorian days,
+ * explicitly declared calendar days, and legacy ISO instants are accepted;
+ * instants always resolve by UTC calendar day, never by the organization zone.
+ */
+export function requireBusinessDateInput(
+  value: BusinessDateInput,
+  field: string,
+): BusinessDate {
+  const parsed = parseBusinessDateInput(value);
+  if (!parsed.ok) {
+    throw AppException.validation([
+      {
+        field,
+        code: parsed.reason,
+        message:
+          parsed.reason === 'business_date_calendar'
+            ? 'That date does not exist in the declared calendar.'
+            : parsed.reason === 'business_date_declaration'
+              ? 'A declared business date must be exactly { calendar, value } with calendar GREGORIAN or JALALI and value YYYY-MM-DD.'
+              : 'Business date must be YYYY-MM-DD, a declared Jalali/Gregorian day, or a legacy ISO instant resolved by UTC calendar day.',
+      },
+    ]);
+  }
+  const businessDate = toBusinessDate(parsed.gregorian);
+  if (businessDate === null) {
+    throw AppException.validation([
+      {
+        field,
+        code: 'business_date_calendar',
+        message: 'That date does not exist in the declared calendar.',
+      },
+    ]);
+  }
+  return businessDate;
+}
+
+/**
  * Resolve a client-supplied business-date INPUT into the canonical day used
- * by the application/domain (OQ-73):
- *
- *   * a canonical Gregorian day or a declared Jalali day converts ONCE to
- *     the canonical Gregorian day;
- *   * a legacy ISO instant resolves to its UTC calendar day, matching the
- *     OQ-73 migration policy and ensuring resubmission does not re-date it;
- *   * an omitted date defaults to TODAY's business day in `timeZone` — the
- *     organization's "today", never the server's UTC day.
- *
- * Persistence repositories convert the returned `BusinessDate` to Prisma's
- * `Date` carrier; no carrier escapes into application or domain code.
+ * by the application/domain (OQ-73). If omitted, use TODAY's business day in
+ * the organization's zone; an explicit legacy instant uses its UTC day.
  */
 export function resolveBusinessDate(params: {
   field: string;
@@ -263,38 +293,10 @@ export function resolveBusinessDate(params: {
   timeZone: string;
   now?: Date;
 }): BusinessDate {
-  let day: BusinessDate;
   if (params.value === undefined) {
-    day = businessDateFromInstant(params.now ?? new Date(), params.timeZone);
-  } else {
-    const parsed = parseBusinessDateInput(params.value);
-    if (!parsed.ok) {
-      throw AppException.validation([
-        {
-          field: params.field,
-          code: parsed.reason,
-          message:
-            parsed.reason === 'business_date_calendar'
-              ? 'That date does not exist in the declared calendar.'
-              : parsed.reason === 'business_date_declaration'
-                ? 'A declared business date must be exactly { calendar, value } with calendar GREGORIAN or JALALI and value YYYY-MM-DD.'
-                : 'Business date must be YYYY-MM-DD, a declared Jalali/Gregorian day, or an ISO-8601 instant.',
-        },
-      ]);
-    }
-    day = parsed.gregorian;
+    return businessDateFromInstant(params.now ?? new Date(), params.timeZone);
   }
-  const businessDate = toBusinessDate(day);
-  if (businessDate === null) {
-    throw AppException.validation([
-      {
-        field: params.field,
-        code: 'business_date_calendar',
-        message: 'That date does not exist in the declared calendar.',
-      },
-    ]);
-  }
-  return businessDate;
+  return requireBusinessDateInput(params.value, params.field);
 }
 
 /**

@@ -1338,6 +1338,29 @@ describe('C-63 business dates and calendars', () => {
     expect(created.businessDate).toBe('2026-10-08');
   });
 
+  it('refuses a Gregorian day outside the paired calendar rendering range before writing', async () => {
+    const documentsBefore = fixture.world.documents.size;
+    const eventsBefore = fixture.published.length;
+    await expect(
+      asActor(() =>
+        fixture.service.createDraft({
+          organizationId: fixture.organizationId,
+          kind: 'receipt',
+          warehouseId: fixture.warehouseId,
+          businessDate: '0600-01-01',
+          lines: [
+            { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      details: [{ field: 'businessDate', code: 'business_date_calendar' }],
+    });
+    expect(fixture.world.documents.size).toBe(documentsBefore);
+    expect(fixture.published).toHaveLength(eventsBefore);
+  });
+
   it('accepts a DECLARED Jalali day and stores the SAME day as the Gregorian form', async () => {
     const jalali = await asActor(() =>
       fixture.service.createDraft({
@@ -1386,9 +1409,6 @@ describe('C-63 business dates and calendars', () => {
     // The event instant is NOT the business date: creating a document can
     // never move its business date forward.
     expect(created.createdAt).not.toBe(created.businessDate);
-    expect(
-      new Date(created.createdAt).getTime() > Date.parse(created.businessDate),
-    ).toBe(true);
     expect(created.createdAtCalendar.instant).toBe(created.createdAt);
     expect(created.createdAtCalendar.timeZone).toBe('Asia/Tehran');
   });

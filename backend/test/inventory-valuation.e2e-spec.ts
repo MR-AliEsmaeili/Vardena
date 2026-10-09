@@ -598,6 +598,61 @@ describe('Inventory valuation (e2e)', () => {
     expect(before.body.source).toBe('default');
   });
 
+  it('resolves legacy ISO validity endpoints and queries by their UTC business days', async () => {
+    const created = await root
+      .post('/api/v1/inventory/valuation/methods')
+      .send({
+        organizationId: state.orgId,
+        itemId: state.datedItemId,
+        method: 'moving_weighted_average',
+        validFrom: '2024-01-01T00:15:00+03:30',
+        validTo: '2025-01-01T00:15:00+03:30',
+      })
+      .expect(201);
+
+    // Both legacy instants fall on the prior UTC day. The API exposes the
+    // canonical BusinessDate endpoints, not an offset-local date or instant.
+    expect(created.body.validFrom).toBe('2023-12-31');
+    expect(created.body.validTo).toBe('2024-12-31');
+
+    const activeAtStartUtcDay = await root
+      .get('/api/v1/inventory/valuation/methods')
+      .query({
+        organizationId: state.orgId,
+        itemId: state.datedItemId,
+        activeAt: '2024-01-01T00:15:00+03:30',
+        page: 1,
+        pageSize: 10,
+      })
+      .expect(200);
+    expect(activeAtStartUtcDay.body.total).toBe(1);
+    expect(activeAtStartUtcDay.body.items[0].id).toBe(created.body.id);
+
+    const atStart = await root
+      .get('/api/v1/inventory/valuation/methods/resolve')
+      .query({
+        organizationId: state.orgId,
+        itemId: state.datedItemId,
+        asOf: '2024-01-01T00:15:00+03:30',
+      })
+      .expect(200);
+    expect(atStart.body.source).toBe('configured');
+    expect(atStart.body.configurationId).toBe(created.body.id);
+    expect(atStart.body.asOf).toBe('2023-12-31');
+
+    // The converted `validTo` is exclusive: an ISO instant resolving to that
+    // exact UTC BusinessDate no longer selects the version.
+    const atExclusiveEnd = await root
+      .get('/api/v1/inventory/valuation/methods/resolve')
+      .query({
+        organizationId: state.orgId,
+        itemId: state.datedItemId,
+        asOf: '2025-01-01T00:15:00+03:30',
+      })
+      .expect(200);
+    expect(atExclusiveEnd.body.source).toBe('default');
+  });
+
   it('supersedes the open version instead of editing it', async () => {
     await root
       .post('/api/v1/inventory/valuation/methods')
@@ -1027,6 +1082,21 @@ describe('Inventory valuation (e2e)', () => {
       .expect(200);
     expect(listed.body.total).toBe(4);
 
+    // The legacy instant is February 1 in the stated/organization offset but
+    // January 31 in UTC, so the first half-open version remains effective.
+    const activeAtUtcDay = await root
+      .get('/api/v1/inventory/valuation/methods')
+      .query({
+        organizationId: state.orgId,
+        itemId: state.seriesItemId,
+        activeAt: '2026-02-01T00:15:00+03:30',
+        page: 1,
+        pageSize: 10,
+      })
+      .expect(200);
+    expect(activeAtUtcDay.body.total).toBe(1);
+    expect(activeAtUtcDay.body.items[0].id).toBe(versionIds[0]);
+
     // Each date resolves ITS OWN version — the bounded single-row lookup must
     // not drift to the newest one.
     const resolveAt = async (asOf: string) =>
@@ -1052,6 +1122,9 @@ describe('Inventory valuation (e2e)', () => {
     expect((await resolveAt('2026-09-15T00:00:00.000Z')).configurationId).toBe(
       versionIds[3],
     );
+    const legacyBoundary = await resolveAt('2026-02-01T00:15:00+03:30');
+    expect(legacyBoundary.configurationId).toBe(versionIds[0]);
+    expect(legacyBoundary.asOf).toBe('2026-01-31');
     // Before the first version there is no configuration at all.
     expect((await resolveAt('2025-06-01T00:00:00.000Z')).source).toBe(
       'default',

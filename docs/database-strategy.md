@@ -118,8 +118,11 @@ Every entity table has:
   ranges (`NULL` end is open), persisted as PostgreSQL `date`. Migration
   `20261012000000_inventory_business_date_validity_windows` maps existing values
   by UTC calendar day and preflights invalid/collapsed/overlapping histories.
-  Fixture rehearsal is not production data evidence; inspect target data and
-  retain the migration preflight outcome before deployment. Other modules'
+  `backend/prisma/rehearsal/business-date-validity-windows/audit.sql` reports
+  aggregate counts without row IDs or business payloads. Fixture rehearsal is
+  not production data evidence; inspect target data and retain the audit counts,
+  migration NOTICE, backup/recovery evidence, and target-like rehearsal outcome
+  before deployment. Other modules'
   fields named `valid_*` are not reclassified by this decision.
 - FKs to users are logical (enforced at the app level; DB FK to `users.users`
   only where the owning schema and dependency are clean — e.g. not for

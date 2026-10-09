@@ -609,6 +609,34 @@ describe('Organization + Inventory master data (e2e)', () => {
       .expect(200);
     expect(january.body.conversion.factor).toBe('12');
 
+    const utcDayBoundary = await root
+      .get('/api/v1/inventory/unit-conversions/resolve')
+      .query({
+        organizationId: state.orgId,
+        fromUnitId: state.unitBoxId,
+        toUnitId: state.unitPcsId,
+        asOf: '2026-02-01T00:15:00+03:30',
+      })
+      .expect(200);
+    // The legacy timestamp is on February 1 in its +03:30 offset, but its UTC
+    // BusinessDate is January 31, still in the first [Jan 1, Feb 1) version.
+    expect(utcDayBoundary.body.conversion.factor).toBe('12');
+
+    const activeAtUtcDay = await root
+      .get('/api/v1/inventory/unit-conversions')
+      .query({
+        organizationId: state.orgId,
+        scope: 'global',
+        fromUnitId: state.unitBoxId,
+        toUnitId: state.unitPcsId,
+        activeAt: '2026-02-01T00:15:00+03:30',
+        page: 1,
+        pageSize: 10,
+      })
+      .expect(200);
+    expect(activeAtUtcDay.body.total).toBe(1);
+    expect(activeAtUtcDay.body.items[0].id).toBe(state.conversionId);
+
     const current = await root
       .get('/api/v1/inventory/unit-conversions/resolve')
       .query({
@@ -643,11 +671,16 @@ describe('Organization + Inventory master data (e2e)', () => {
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
         factor: '0.000001',
-        validFrom: '2026-01-01',
+        validFrom: '2026-01-01T00:15:00+03:30',
+        validTo: '2027-01-01T00:15:00+03:30',
       })
       .expect(201);
     expect(res.body.factor).toBe('0.000001');
     expect(res.body.itemId).toBe(state.itemId);
+    // Effective validity endpoints preserve the legacy HTTP input by its UTC
+    // business day, not the explicit +03:30 or organization-local date.
+    expect(res.body.validFrom).toBe('2025-12-31');
+    expect(res.body.validTo).toBe('2026-12-31');
 
     // The item-specific version wins over the global one.
     const resolved = await root

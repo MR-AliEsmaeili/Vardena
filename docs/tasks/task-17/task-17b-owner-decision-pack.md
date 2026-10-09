@@ -641,3 +641,17 @@ No runtime test was run and none is claimed.
 - 2026-09-25 — Created as part of *Task 17B — Owner Decision Pack and Implementation Gate
   Preparation* (OWNER DECISION PREPARATION ONLY). Documentation only: no production,
   schema, migration, index, endpoint, permission, projection, OQ, ADR or status change.
+
+## Later date/time clarification (2026-10-09)
+
+This pack is a historical Task 17B snapshot dated 2026-09-25. Its statements
+that BusinessDate fields were Gregorian-only/unlocalized and that Jalali display
+was blocked by OQ-02 accurately describe that snapshot; they are not current
+policy. Owner-accepted ADR-0042 (2026-10-09) later resolved the generic
+BusinessDate/Instant contract and OQ-73: canonical Gregorian BusinessDates are
+PostgreSQL `date` values, user-facing input/display follows the organization's
+calendar (Jalali by default), and UTC Instants render in the configured valid
+IANA zone and calendar. This later decision does not broaden Task 17B's accepted
+scope or imply that its implementation added date localization. OQ-02 remains
+open for primary UI language, Persian numerals, and broader localization. See
+ADR-0042 and `docs/datetime.md`.

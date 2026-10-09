@@ -96,11 +96,14 @@ its facts and rules.
   arbitrary timestamps or claim data safety without that evidence.
 - The Inventory validity-window migration uses the same explicit UTC-calendar-
   day mapping and preflights for collapsed/reversed windows, duplicate starts,
-  and overlaps after conversion. Its PostgreSQL fixture rehearsal covers
-  representative boundary and failure cases and preserves audit timestamps;
-  it is not evidence about customer/production rows. Inspect and retain the
-  preflight NOTICE and migration outcome for the actual target dataset before
-  deployment.
+  overlaps, and unrepresentable values after conversion. Its PostgreSQL fixture
+  rehearsal covers representative boundary and failure cases and preserves
+  audit timestamps; it is not evidence about customer/production rows. The
+  aggregate-only target audit is
+  `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; inspect
+  and retain its counts plus the migration NOTICE/outcome for the actual target
+  dataset. The rehearsal refuses non-local hosts and pre-existing database
+  names, and its synthetic fixtures never substantiate production-data safety.
 - The Kardex's deterministic order remains (business day, entry time, id), and
   BusinessDate filters remain true date comparisons (index-friendly).
 - Full normative contract and checklist: [`docs/datetime.md`](../datetime.md).

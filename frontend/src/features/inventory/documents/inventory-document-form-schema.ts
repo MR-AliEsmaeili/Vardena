@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import { t } from '@/lib/i18n';
 import type { InventoryDocumentKind } from '@/api/contracts';
-import { getDateTimeSettings, todayBusinessDay } from '@/lib/datetime';
+import {
+  getDateTimeSettings,
+  isBusinessDay,
+  todayBusinessDay,
+} from '@/lib/datetime';
 
 /**
  * Business-document form schema — the client-side mirror of
@@ -42,8 +46,10 @@ export const documentFormSchema = z
     kind: z.enum(FORM_DOCUMENT_KINDS),
     businessDate: z
       .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/, t.filters.invalidDate)
-      .or(z.literal('')),
+      .refine(
+        (value) => value === '' || isBusinessDay(value),
+        t.filters.invalidDate,
+      ),
     warehouseId: z.string(),
     sourceWarehouseId: z.string(),
     destinationWarehouseId: z.string(),

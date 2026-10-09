@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isBusinessDay } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 
 /**
@@ -7,8 +8,8 @@ import { t } from '@/lib/i18n';
  * Contract mirror of `PostInventoryMovementDto`:
  * - `quantity` is a POSITIVE decimal string (max `numeric(18,4)` scale — 4
  *   fractional digits), never a float;
- * - `movementDate` is optional (backend defaults to now) and, when present,
- *   a `YYYY-MM-DD` day sent as that day's UTC midnight instant;
+ * - `movementDate` is optional (backend defaults to today in the organization
+ *   time zone) and, when present, is a real canonical Gregorian BusinessDate;
  * - `totalCost` is OPTIONAL: a warehouse receipt posts without any cost
  *   (OD-VAL-05) and the field is only rendered for sessions holding
  *   `Inventory.Valuation.AssignCost`; an issue NEVER carries one (OD-VAL-07
@@ -40,8 +41,10 @@ const movementBaseSchema = z.object({
   unitId: z.string().min(1, t.inventory.unitRequired),
   movementDate: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, t.filters.invalidDate)
-    .or(z.literal('')),
+    .refine(
+      (value) => value === '' || isBusinessDay(value),
+      t.filters.invalidDate,
+    ),
   reason: z.string().max(500),
 });
 

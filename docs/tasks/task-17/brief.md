@@ -296,3 +296,15 @@ Task 12/14 evidence, and the current Accounting module/source/schema inventory.
 Only documentation files are changed by this task definition. No production behavior,
 Open Question status, ADR status, schema, migration, test, or implementation evidence
 is changed or claimed.
+
+### Later date/time clarification (2026-10-09)
+
+This brief records the Task 17 baseline before ADR-0042 was accepted. Its
+instruction not to infer a Jalali/statutory presentation remains binding for
+statutory/legal outputs and unresolved localization, but generic BusinessDate
+calendar input/display and Instant zone/calendar rendering are now governed by
+Owner-accepted ADR-0042 (Jalali default, organization-configured calendar and
+valid IANA zone). OQ-02 remains open for primary language, Persian numerals, and
+broader localization; it no longer blocks the generic date/time contract. This
+later decision does not expand Task 17's reporting scope or authorize statutory
+presentation. See ADR-0042 and `docs/datetime.md`.

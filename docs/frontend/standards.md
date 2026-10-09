@@ -201,7 +201,7 @@ grepهای بخش ۱۷ خالی · import/no-cycle پاک
 typecheck + lint + test + build سبز
 قالب PR کامل (لینک تسک، شواهد، self-review انجام شد)
 ۲۱) Open Questions — نیازمند تصمیم مالک (→ ADR)
-DatePicker شمسی: react-multi-date-picker یا جایگزین
+افزودن calendar-grid picker شمسی (جزئیات اختیاری UI؛ سیاست تقویم Jalali در ADR-0042 پذیرفته شده): react-multi-date-picker یا جایگزین
 Dark mode: بله/خیر/سیستم
 Density پیش‌فرض: comfortable یا compact
 ابزار تولید تایپ OpenAPI: orval یا openapi-typescript

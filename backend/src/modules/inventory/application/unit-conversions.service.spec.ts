@@ -188,7 +188,7 @@ describe('UnitConversionsService', () => {
     });
   });
 
-  it('resolves a legacy ISO validity-input to its UTC business day', async () => {
+  it('resolves legacy ISO validFrom and validTo inputs to UTC business days', async () => {
     const created = await fixture.conversions.createConversion({
       organizationId: fixture.organizationId,
       itemId: null,
@@ -198,10 +198,11 @@ describe('UnitConversionsService', () => {
       // This offset instant is still on January 1 locally, but its UTC day is
       // December 31. Compatibility follows the approved UTC-day policy.
       validFrom: '2026-01-01T00:15:00+03:30',
-      validTo: null,
+      validTo: '2026-02-01T00:15:00+03:30',
     });
 
     expect(created.validFrom).toBe(D('2025-12-31'));
+    expect(created.validTo).toBe(D('2026-01-31'));
   });
 
   it('keeps the factor as a decimal string with no floating-point drift', async () => {

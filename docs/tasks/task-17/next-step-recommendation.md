@@ -270,3 +270,11 @@ Keep a versioned decision record citing authoritative sources and named owner co
 Only `docs/tasks/task-17/reporting-sample-audit.md` and this file are revised; they remain the two untracked documentation additions relative to HEAD. No need to change `brief.md`, `docs/accounting/task-index.md` or `STATE.md`: their existing blocked status is still correct. Baseline/HEAD hash above identifies inspected code; it is not a new implementation commit. No commit or push is required for this documentation handoff.
 
 Checks: Git identity/status and repeated remote-main comparison; repeated workbook searches; static repository/schema/migration/dependency inspection; upstream license-text/README/API/release research; local Markdown path/required-section/scope/free-only checks; `git diff --check` plus untracked-file whitespace checks. Workbook inspection blocked by unavailable files. No backend tests, build, Prisma validation, package installation, dependency scanner or live database checks executed. No production implementation was performed. **No paid tool or dependency of any kind was added.**
+
+### Later date/time clarification (2026-10-09)
+
+The recommendation above predates accepted ADR-0042. Treat OQ-02 as a gate only
+for remaining language/numeral/broader localization and statutory presentation;
+generic BusinessDate calendar input/display and Instant zone/calendar behavior
+are now decided by ADR-0042. This clarification changes neither the proposed
+Accounting slice nor its other gates. See `docs/datetime.md`.

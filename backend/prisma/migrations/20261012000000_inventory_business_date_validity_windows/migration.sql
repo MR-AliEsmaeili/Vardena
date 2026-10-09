@@ -4,20 +4,26 @@
 -- OQ-73; do not silently choose an organization zone or preserve time-of-day.
 --
 -- Before altering data, rehearse the date-level history in a transaction and
--- refuse any conversion that cannot be represented without losing the
--- effective-dating invariants (same-day/negative windows, duplicate starts,
--- or overlaps). Non-midnight UTC endpoints are counted and emitted as a NOTICE
--- for deployment evidence; their discarded time is not reinterpreted as a
--- different day. See prisma/rehearsal/business-date-validity-windows/.
+-- refuse conversions that collapse/reverse windows, create duplicate starts or
+-- overlaps, or cannot be represented by the canonical four-digit API day and
+-- configured calendar. The representability preflight also checks the
+-- Inventory BusinessDates converted by migration 110; its historical values
+-- were not representability-gated before conversion. Non-midnight UTC
+-- endpoints are counted and emitted as a NOTICE for deployment evidence; their
+-- discarded time is not reinterpreted as a different day. See
+-- prisma/rehearsal/business-date-validity-windows/.
 
 DO $business_date_validity_preflight$
 DECLARE
   non_midnight_endpoints bigint;
   offending_table text;
   offending_id text;
+  offending_organization text;
+  offending_business_date date;
 BEGIN
   CREATE TEMPORARY TABLE "_inventory_business_date_validity_windows" (
     "source_table" text NOT NULL,
+    "organization_id" text NOT NULL,
     "scope_key" text NOT NULL,
     "row_id" text NOT NULL,
     "valid_from" date NOT NULL,
@@ -25,9 +31,10 @@ BEGIN
   );
 
   INSERT INTO "_inventory_business_date_validity_windows"
-    ("source_table", "scope_key", "row_id", "valid_from", "valid_to")
+    ("source_table", "organization_id", "scope_key", "row_id", "valid_from", "valid_to")
   SELECT
     'unit_conversions',
+    "organization_id",
     jsonb_build_array("organization_id", "from_unit_id", "to_unit_id")::text,
     "id",
     ("valid_from" AT TIME ZONE 'UTC')::date,
@@ -36,6 +43,7 @@ BEGIN
   UNION ALL
   SELECT
     'item_unit_conversions',
+    "organization_id",
     jsonb_build_array("item_id", "from_unit_id", "to_unit_id")::text,
     "id",
     ("valid_from" AT TIME ZONE 'UTC')::date,
@@ -44,11 +52,85 @@ BEGIN
   UNION ALL
   SELECT
     'item_valuation_methods',
+    "organization_id",
     jsonb_build_array("organization_id", "item_id")::text,
     "id",
     ("valid_from" AT TIME ZONE 'UTC')::date,
     ("valid_to" AT TIME ZONE 'UTC')::date
   FROM "inventory"."item_valuation_methods";
+
+  -- Compare both the proposed window conversions and the BusinessDate columns
+  -- already converted by migration 110 against the application/API range. A
+  -- PostgreSQL date can represent years the four-digit API cannot; Jalali
+  -- rendering has the additional bounded range used by kernel/datetime/jalali.
+  CREATE TEMPORARY TABLE "_inventory_business_date_representability" (
+    "source_table" text NOT NULL,
+    "row_id" text NOT NULL,
+    "organization_id" text NOT NULL,
+    "business_date" date NOT NULL
+  );
+
+  INSERT INTO "_inventory_business_date_representability"
+    ("source_table", "row_id", "organization_id", "business_date")
+  SELECT "source_table" || '.valid_from', "row_id", "organization_id", "valid_from"
+    FROM "_inventory_business_date_validity_windows"
+  UNION ALL
+  SELECT "source_table" || '.valid_to', "row_id", "organization_id", "valid_to"
+    FROM "_inventory_business_date_validity_windows"
+   WHERE "valid_to" IS NOT NULL
+  UNION ALL
+  SELECT 'inventory_movements.movement_date', "id", "organization_id", "movement_date"
+    FROM "inventory"."inventory_movements"
+  UNION ALL
+  SELECT 'inventory_business_documents.business_date', "id", "organization_id", "business_date"
+    FROM "inventory"."inventory_business_documents"
+  UNION ALL
+  SELECT 'inventory_accounting_posting_snapshots.document_date', "id", "organization_id", "document_date"
+    FROM "inventory"."inventory_accounting_posting_snapshots"
+  UNION ALL
+  SELECT 'inventory_pricing_runs.from_date', "id", "organization_id", "from_date"
+    FROM "inventory"."inventory_pricing_runs"
+   WHERE "from_date" IS NOT NULL
+  UNION ALL
+  SELECT 'inventory_pricing_runs.to_date', "id", "organization_id", "to_date"
+    FROM "inventory"."inventory_pricing_runs"
+  UNION ALL
+  SELECT 'inventory_valuation_runs.from_date', "id", "organization_id", "from_date"
+    FROM "inventory"."inventory_valuation_runs"
+   WHERE "from_date" IS NOT NULL
+  UNION ALL
+  SELECT 'inventory_balances.last_movement_date', "id", "organization_id", "last_movement_date"
+    FROM "inventory"."inventory_balances"
+   WHERE "last_movement_date" IS NOT NULL;
+
+  SELECT
+    business_dates."source_table",
+    business_dates."row_id",
+    business_dates."organization_id",
+    business_dates."business_date"
+    INTO offending_table, offending_id, offending_organization, offending_business_date
+    FROM "_inventory_business_date_representability" AS business_dates
+    LEFT JOIN "organization"."organizations" AS organizations
+      ON organizations."id" = business_dates."organization_id"
+   WHERE organizations."id" IS NULL
+      OR organizations."calendar_system" IS NULL
+      OR organizations."calendar_system" NOT IN ('GREGORIAN', 'JALALI')
+      OR business_dates."business_date" < DATE '0001-01-01'
+      OR business_dates."business_date" > DATE '9999-12-31'
+      OR (
+        (organizations."calendar_system" = 'JALALI'
+          OR business_dates."source_table" = 'inventory_business_documents.business_date')
+        AND (
+          business_dates."business_date" < DATE '0621-03-21'
+          OR business_dates."business_date" > DATE '3798-12-31'
+        )
+      )
+   LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION
+      'BusinessDate migration rejected: row % in % for organization % has day %, outside the supported BusinessDate/API/calendar rendering range.',
+      offending_id, offending_table, offending_organization, offending_business_date;
+  END IF;
 
   SELECT count(*)
     INTO non_midnight_endpoints
@@ -119,6 +201,7 @@ BEGIN
 END
 $business_date_validity_preflight$;
 
+DROP TABLE pg_temp."_inventory_business_date_representability";
 DROP TABLE pg_temp."_inventory_business_date_validity_windows";
 
 -- Effective-dated unit conversions: global and item-specific scopes.

@@ -234,10 +234,12 @@ const utc = (year: number, month: number, dayOfMonth: number): BusinessDate =>
   businessDate(
     `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(dayOfMonth).padStart(2, '0')}`,
   );
-const utcOffset = (days: number): BusinessDate =>
-  businessDate(
-    new Date(Date.UTC(2000, 0, 1 + days)).toISOString().slice(0, 10),
+const utcOffset = (days: number): BusinessDate => {
+  const date = new Date(Date.UTC(2000, 0, 1 + days));
+  return businessDate(
+    `${String(date.getUTCFullYear()).padStart(4, '0')}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`,
   );
+};
 
 describe('distinctBusinessDates', () => {
   it('is empty for no movements (an empty key reads no configuration)', () => {

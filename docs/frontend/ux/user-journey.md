@@ -330,7 +330,7 @@ When navigating to reports, the UX answers five essential questions for the acco
   - Selecting/changing `financialAreaId` automatically clears and re-fetches `fiscalYearId` and `accountingPeriodId`.
   - Selecting/changing `fiscalYearId` automatically clears and re-fetches `accountingPeriodId`.
   - Account Picker searches postable (leaf) accounts dynamically via `GET /accounts?isPostable=true&search=...` (debounced 300ms).
-- **Date Format Contract:** Strict ISO `YYYY-MM-DD` pattern matching backend regex `/^\d{4}-\d{2}-\d{2}$/`.
+- **Date Format Contract:** Date filters are canonical Gregorian BusinessDates (`YYYY-MM-DD`) in the URL/API and validate as real calendar days. The shared `DateInput` presents the organization-configured calendar (Jalali by default) and emits the canonical day; no filter is transported as a timestamp or UTC midnight. Jalali is explicitly declared for API request bodies that accept BusinessDate input; filters remain canonical Gregorian days (ADR-0042, `docs/datetime.md`).
 - **Apply Action:** User explicitly clicks `«نمایش گزارش»`. Validates inputs, resets table to page 1, and triggers data query.
 - **Reset Action:** User clicks `«پاک کردن فیلترها»`. Clears all inputs and unloads current query results.
 
@@ -608,7 +608,7 @@ anti-pattern OD-VAL-18 forbids.
 | :--- | :--- |
 | `/api/v1/inventory/valuation/*` (9 routes, 4 permissions) | `SUPPORTED` |
 | Warehouse Operations and Inventory Accounting routes, forms, worklist | `FUTURE UI` — candidate **C-57** in the roadmap register |
-| Jalali display of `movementDate` / `validFrom` | `FUTURE PRODUCT DECISION` (OQ-02) |
+| Jalali display of `movementDate` / `validFrom` | Required to use the accepted shared organization-calendar formatter (ADR-0042); any future Inventory UI must not add local conversion. The currently listed valuation-method configuration screen remains FUTURE UI. |
 | Returns, COGS posting, landed cost surfaces | Not a gap in the UI — **no backend contract exists and none is planned in this slice** (OQ-24 open, OD-VAL-19) |
 
 ---
@@ -617,7 +617,7 @@ anti-pattern OD-VAL-18 forbids.
 
 1. **Persisted UI Preferences:** User customization of table column order, density (Compact/Comfortable), and saved report filter presets (pending Customization module).
 2. **Report Export Workflows:** Seamless streaming export to Excel (XLSX) and printable PDF documents via backend reporting pipeline (ADR-0009 / ADR-0012).
-3. **Solar Hijri (Jalali) DatePicker:** Native Persian calendar picker integration (addressing OQ-01).
+3. **Optional Jalali calendar-grid picker:** a future presentation enhancement to the existing shared Jalali text field in `DateInput`; it does not reopen or change ADR-0042's accepted calendar contract and is not an OQ-01/OQ-02 blocker.
 4. **Batch Operations Grid:** Bulk document posting/reversal workflows with multi-row selection and batch progress indicators.
 
 ---

@@ -7,14 +7,7 @@ import { generateId } from '../../../kernel/ids/ulid.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { getPrincipal } from '../../../kernel/correlation/request-context.js';
-import {
-  toBusinessDate,
-  type BusinessDate,
-} from '../../../kernel/datetime/business-date.js';
-import {
-  parseBusinessDateInput,
-  type BusinessDateInput,
-} from '../../../kernel/datetime/business-date-input.js';
+import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
 import {
   toOffset,
   toPaginatedResult,
@@ -39,6 +32,7 @@ import { isPositiveDecimal } from '../domain/master-data.js';
 import { UNIT_CONVERSION_PERMISSIONS } from '../domain/inventory-permissions.js';
 import { UNIT_CONVERSION_CREATED_EVENT } from '../domain/inventory.events.js';
 import { publishEvent, resolveSort } from './master-data-support.js';
+import { requireBusinessDateInput } from './inventory-posting-support.js';
 import { UnitsService } from './units.service.js';
 import { ItemsService } from './items.service.js';
 
@@ -58,8 +52,8 @@ export interface ListConversionsQuery {
   itemId?: string | undefined;
   fromUnitId?: string | undefined;
   toUnitId?: string | undefined;
-  /** Only versions in force on this canonical Gregorian business date. */
-  activeAt?: string | undefined;
+  /** Only versions in force on this day; legacy instants resolve by UTC day. */
+  activeAt?: BusinessDateInput | undefined;
   page: number;
   pageSize: number;
   sort?: string | undefined;
@@ -83,8 +77,8 @@ export interface ResolveConversionInput {
   itemId?: string | null | undefined;
   fromUnitId: string;
   toUnitId: string;
-  /** Canonical Gregorian business date to interpret — never an instant. */
-  asOf: string;
+  /** BusinessDate input; legacy instants resolve by UTC calendar day. */
+  asOf: BusinessDateInput;
 }
 
 /**
@@ -135,12 +129,9 @@ export class UnitConversionsService {
       { validFrom: 'desc' },
     ]);
     const activeAt =
-      query.activeAt === undefined ? undefined : toBusinessDate(query.activeAt);
-    if (activeAt === null) {
-      throw AppException.badRequest(
-        'activeAt must be a valid canonical Gregorian business date (YYYY-MM-DD).',
-      );
-    }
+      query.activeAt === undefined
+        ? undefined
+        : requireBusinessDateInput(query.activeAt, 'activeAt');
 
     if (query.scope === 'item') {
       if (query.itemId === undefined) {
@@ -373,12 +364,7 @@ export class UnitConversionsService {
       UNIT_CONVERSION_PERMISSIONS.VIEW,
     ]);
     await this.organizations.assertOrganizationInScope(input.organizationId);
-    const asOf = toBusinessDate(input.asOf);
-    if (asOf === null) {
-      throw AppException.badRequest(
-        'asOf must be a valid canonical Gregorian business date (YYYY-MM-DD).',
-      );
-    }
+    const asOf = requireBusinessDateInput(input.asOf, 'asOf');
 
     if (input.itemId !== undefined && input.itemId !== null) {
       // The item determines which organization its conversions belong to:
@@ -409,26 +395,4 @@ export class UnitConversionsService {
     const globalMatch = resolveVersionAt(globalVersions, asOf);
     return globalMatch === null ? null : toUnitConversionDto(globalMatch);
   }
-}
-
-function requireBusinessDateInput(
-  value: BusinessDateInput,
-  field: string,
-): BusinessDate {
-  const parsed = parseBusinessDateInput(value);
-  if (!parsed.ok) {
-    throw AppException.validation([
-      {
-        field,
-        code: parsed.reason,
-        message:
-          parsed.reason === 'business_date_calendar'
-            ? 'That date does not exist in the declared calendar.'
-            : parsed.reason === 'business_date_declaration'
-              ? 'A declared business date must be exactly { calendar, value } with calendar GREGORIAN or JALALI and value YYYY-MM-DD.'
-              : 'Business date must be YYYY-MM-DD, a declared Jalali/Gregorian day, or a legacy ISO instant (resolved by UTC calendar day).',
-      },
-    ]);
-  }
-  return parsed.gregorian;
 }

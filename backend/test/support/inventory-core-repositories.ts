@@ -180,7 +180,7 @@ export function createInventoryCoreTables(): InventoryCoreTables {
       ['organizationId', 'warehouseId', 'itemId'],
     ]),
     valuationRuns: new InMemoryTable<InventoryValuationRun>(),
-    // One method version per item per start instant (effective dating).
+    // One method version per item per BusinessDate start (effective dating).
     valuationMethods: new InMemoryTable<ItemValuationMethodVersion>([
       ['organizationId', 'itemId', 'validFrom'],
     ]),

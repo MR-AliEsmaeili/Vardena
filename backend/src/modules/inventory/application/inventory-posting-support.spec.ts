@@ -6,6 +6,7 @@ import {
 import {
   buildRequestHash,
   canonicalClientBusinessDate,
+  resolveBusinessDate,
 } from './inventory-posting-support.js';
 
 /**
@@ -55,6 +56,31 @@ describe('canonicalClientBusinessDate', () => {
     expect(canonicalClientBusinessDate('2026-03-01T00:30:00+03:30')).toBe(
       '2026-02-28',
     );
+  });
+
+  it('resolves legacy instants to the UTC day across organization time zones', () => {
+    const timeZones = ['UTC', 'Asia/Tehran', 'America/Los_Angeles'];
+    const localMarchFirst = '2026-03-01T00:15:00+03:30';
+    const utcMarchFirst = '2026-03-01T00:15:00.000Z';
+
+    for (const timeZone of timeZones) {
+      // Tehran's local day is March 1 while the UTC day is February 28.
+      expect(
+        resolveBusinessDate({
+          field: 'businessDate',
+          value: localMarchFirst,
+          timeZone,
+        }),
+      ).toBe(toBusinessDate('2026-02-28'));
+      // Los Angeles' local day is February 28 while the UTC day is March 1.
+      expect(
+        resolveBusinessDate({
+          field: 'businessDate',
+          value: utcMarchFirst,
+          timeZone,
+        }),
+      ).toBe(toBusinessDate('2026-03-01'));
+    }
   });
 });
 

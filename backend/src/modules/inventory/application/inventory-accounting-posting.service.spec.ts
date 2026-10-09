@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { runWithRequestContext } from '../../../kernel/correlation/request-context.js';
-import { DEFAULT_DATE_TIME_SETTINGS } from '../../../kernel/datetime/date-time-settings.js';
 import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import type { DomainEventBus } from '../../../kernel/events/domain-event-bus.js';
@@ -718,7 +717,10 @@ function buildService(world: FakeWorld) {
     } as unknown as InventoryValuationService,
     {
       assertOrganizationInScope: async () => undefined,
-      getDateTimeSettings: async () => DEFAULT_DATE_TIME_SETTINGS,
+      getDateTimeSettings: async () => ({
+        calendarSystem: 'GREGORIAN',
+        timeZone: 'UTC',
+      }),
     } as unknown as OrganizationsService,
     {
       requireAllPermissions: async () => undefined,

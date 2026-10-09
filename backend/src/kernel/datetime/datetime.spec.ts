@@ -83,10 +83,22 @@ describe('Gregorian ↔ Jalali conversion', () => {
     expect(formatBusinessDate('2026-02-30', 'JALALI')).toBeNull();
   });
 
+  it('fails closed outside the four-digit Jalali rendering range', () => {
+    expect(gregorianToJalaliDay(560, 1, 1)).toBeNull();
+    expect(formatBusinessDate('0560-03-20', 'JALALI')).toBeNull();
+    expect(formatBusinessDate('0621-03-20', 'JALALI')).toBeNull();
+    expect(formatBusinessDate('0621-03-21', 'JALALI')).toBe('0000-01-01');
+    expect(formatBusinessDate('3799-01-01', 'JALALI')).toBeNull();
+  });
+
   it('round-trips a whole year without drift', () => {
     for (let offset = 0; offset < 366; offset += 1) {
       const day = new Date(Date.UTC(2026, 0, 1 + offset));
-      const gregorian = day.toISOString().slice(0, 10);
+      const gregorian = [
+        String(day.getUTCFullYear()).padStart(4, '0'),
+        String(day.getUTCMonth() + 1).padStart(2, '0'),
+        String(day.getUTCDate()).padStart(2, '0'),
+      ].join('-');
       const jalali = formatBusinessDate(gregorian, 'JALALI');
       expect(jalali).not.toBeNull();
       expect(parseBusinessDate(jalali as string, 'JALALI')?.gregorian).toBe(
@@ -112,6 +124,10 @@ describe('time zone handling', () => {
     expect(
       utcOffsetMinutesAt(new Date('2026-10-08T08:32:14.421Z'), 'UTC'),
     ).toBe(0);
+  });
+
+  it('does not remap years 0001–0099 when deriving an instant offset', () => {
+    expect(utcOffsetMinutesAt(new Date('0001-01-01T00:00:00Z'), 'UTC')).toBe(0);
   });
 
   it('applies the historical DST rule (Tehran observed +04:30 in 2022)', () => {
@@ -187,9 +203,38 @@ describe('business dates', () => {
     // The DB adapter pair is the ONLY place a Date object touches a business
     // date: Prisma maps `date` ⇔ a Date whose UTC components are the day.
     const carrier = businessDateToDbDate('2026-10-08');
-    expect(carrier?.toISOString()).toBe('2026-10-08T00:00:00.000Z');
-    expect(businessDateFromDbDate(carrier as Date)).toBe('2026-10-08');
+    if (carrier === null) throw new Error('Expected a date carrier.');
+    expect(carrier.getUTCHours()).toBe(0);
+    expect(carrier.getUTCMinutes()).toBe(0);
+    expect(carrier.getUTCSeconds()).toBe(0);
+    expect(carrier.getUTCMilliseconds()).toBe(0);
+    expect(businessDateFromDbDate(carrier)).toBe('2026-10-08');
     expect(businessDateToDbDate('2026-02-30')).toBeNull();
+  });
+
+  it('round-trips Gregorian years 0001–0099 without JavaScript Date.UTC remapping', () => {
+    for (const day of ['0001-01-01', '0050-12-31', '0099-03-01']) {
+      const carrier = businessDateToDbDate(day);
+      expect(isGregorianBusinessDate(day)).toBe(true);
+      if (carrier === null) throw new Error('Expected a date carrier.');
+      expect(carrier.getUTCFullYear()).toBe(Number(day.slice(0, 4)));
+      expect(carrier.getUTCMonth() + 1).toBe(Number(day.slice(5, 7)));
+      expect(carrier.getUTCDate()).toBe(Number(day.slice(8, 10)));
+      expect(businessDateFromDbDate(carrier)).toBe(day);
+    }
+    expect(isGregorianBusinessDate('0000-01-01')).toBe(false);
+    expect(businessDateToDbDate('0000-01-01')).toBeNull();
+  });
+
+  it('rejects invalid or noncanonical PostgreSQL DATE carriers', () => {
+    expect(() => businessDateFromDbDate(new Date(Number.NaN))).toThrow(
+      'Prisma returned an invalid carrier for a PostgreSQL date.',
+    );
+    const outsideCanonicalRange = new Date(0);
+    outsideCanonicalRange.setUTCFullYear(10_000, 0, 1);
+    expect(() => businessDateFromDbDate(outsideCanonicalRange)).toThrow(
+      'outside the canonical BusinessDate range',
+    );
   });
 
   it('keeps a BusinessDate identical in every time zone (OQ-73)', () => {
@@ -225,6 +270,7 @@ describe('business dates', () => {
     expect(businessDateFromUtcInstant(new Date('2026-10-08T21:00:00Z'))).toBe(
       '2026-10-08',
     );
+    expect(businessDateFromUtcInstant(new Date(Number.NaN))).toBeNull();
   });
 
   it('validates rather than coerces', () => {
@@ -279,8 +325,12 @@ describe('business-date input contract', () => {
     });
   });
 
-  it('rejects an impossible civil day inside a legacy ISO instant instead of Date-normalizing it', () => {
+  it('rejects impossible civil days and UTC days outside the BusinessDate range', () => {
     expect(parseBusinessDateInput('2026-02-30T23:30:00-08:00')).toEqual({
+      ok: false,
+      reason: 'business_date_calendar',
+    });
+    expect(parseBusinessDateInput('0000-01-01T00:00:00Z')).toEqual({
       ok: false,
       reason: 'business_date_calendar',
     });

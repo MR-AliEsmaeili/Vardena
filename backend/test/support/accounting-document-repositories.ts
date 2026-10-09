@@ -322,21 +322,15 @@ function matchesWhere(
   for (const [key, expected] of Object.entries(where)) {
     if (expected === undefined) continue;
     if (key === 'dateFrom') {
-      if (
-        !(record.documentDate instanceof Date) ||
-        record.documentDate < (expected as Date)
-      ) {
-        return false;
-      }
+      if (!(record.documentDate instanceof Date)) return false;
+      const documentDate = businessDateFromDbDate(record.documentDate);
+      if (documentDate < (expected as BusinessDate)) return false;
       continue;
     }
     if (key === 'dateTo') {
-      if (
-        !(record.documentDate instanceof Date) ||
-        record.documentDate > (expected as Date)
-      ) {
-        return false;
-      }
+      if (!(record.documentDate instanceof Date)) return false;
+      const documentDate = businessDateFromDbDate(record.documentDate);
+      if (documentDate > (expected as BusinessDate)) return false;
       continue;
     }
     if (key === 'search') {

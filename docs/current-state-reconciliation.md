@@ -401,3 +401,30 @@ work and authorizes no implementation. STATE.md §21 is the task record.
 The repository contains a materially broader current implementation than the pre-Task-30 roadmap snapshots: Task 30 added Account Nature/Type and a bounded Detail foundation, Task 32 added a real Dashboard, and PR #86—not PR #85—is the final merged Dashboard behavior. None of those facts closes the remaining OQs, promotes Proposed ADRs, admits Treasury/Purchasing to MVP, turns FaraPayam into architecture, supplies Base Chart content, or authorizes a new production task.
 
 **READY FOR REVIEW**
+
+## Later date/time audit addendum (2026-10-09)
+
+The 2026-09-29 findings above are retained as a dated snapshot. They predate
+Owner-accepted ADR-0042 and resolution of OQ-73 on 2026-10-09. Under the current
+contract, BusinessDates are canonical Gregorian PostgreSQL `date` values with
+organization-calendar user input/display (Jalali by default); Instants remain
+UTC `timestamptz` values rendered in the organization's valid IANA zone and
+calendar. Accordingly, the earlier OQ-02 row's wording about the calendar being
+undecided and the earlier future-decision bullet about Jalali/date policy are
+superseded only for this generic date/time contract. OQ-02 remains open for
+primary UI language, Persian-numeral preference, and broader localization.
+
+The current date/time audit traces the implementation paths in this change from
+the 2026-10-09 `main` baseline (`9438eb7`) through DTOs, domain, persistence,
+queries, API declarations and frontend consumers. Its non-test lint/typecheck/
+format evidence is reported with the delivery; tests and PostgreSQL rehearsal
+must be verified through GitHub CI on the exact final SHA. The aggregate-only,
+read-only migration report is
+`backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; it emits
+counts, not row IDs or business payloads. Neither fixture rehearsal nor code
+inspection establishes what values exist in a customer/production database.
+The migration-110 comment about verbatim instant storage is not supported by the
+inspected standard Inventory input/persistence path; migration 110 remains
+unmodified, and alternate writers plus actual historical data remain
+uninspected. See ADR-0042, `docs/datetime.md`, `docs/open-questions.md` OQ-73,
+and the date/time pull request for current scope and limitations.

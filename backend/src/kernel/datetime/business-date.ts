@@ -167,7 +167,13 @@ export function isBusinessDateInCalendar(
 export function businessDateToDbDate(gregorian: string): Date | null {
   if (!isGregorianBusinessDate(gregorian)) return null;
   const parts = splitDay(gregorian);
-  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  // Date.UTC treats years 0–99 as 1900–1999. Set the UTC calendar fields
+  // directly so valid four-digit PostgreSQL days such as year 0001 remain the
+  // day itself in Prisma's Date carrier.
+  const carrier = new Date(0);
+  carrier.setUTCHours(0, 0, 0, 0);
+  carrier.setUTCFullYear(parts.year, parts.month - 1, parts.day);
+  return carrier;
 }
 
 /**
@@ -180,7 +186,24 @@ export function businessDateToDbDate(gregorian: string): Date | null {
  * (ADR-0042 §2, OQ-73).
  */
 export function businessDateFromDbDate(value: Date): BusinessDate {
-  return value.toISOString().slice(0, 10) as BusinessDate;
+  if (Number.isNaN(value.getTime())) {
+    throw new Error(
+      'Prisma returned an invalid carrier for a PostgreSQL date.',
+    );
+  }
+  const year = value.getUTCFullYear();
+  const day = [
+    String(year).padStart(4, '0'),
+    String(value.getUTCMonth() + 1).padStart(2, '0'),
+    String(value.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+  const businessDate = toBusinessDate(day);
+  if (businessDate === null) {
+    throw new Error(
+      `PostgreSQL date carrier "${day}" is outside the canonical BusinessDate range.`,
+    );
+  }
+  return businessDate;
 }
 
 /**
@@ -204,10 +227,19 @@ export function businessDateFromInstant(
  * rather than the organization's display zone. This helper is intentionally
  * separate from {@link businessDateFromInstant}, which is used for "today"
  * defaults and renders a real instant in the organization's configured zone.
+ * Returns `null` for an invalid instant or a UTC day outside the canonical
+ * four-digit BusinessDate range.
  */
-export function businessDateFromUtcInstant(instant: Instant): BusinessDate {
-  const value = instant.toISOString().slice(0, 10);
-  return value as BusinessDate;
+export function businessDateFromUtcInstant(
+  instant: Instant,
+): BusinessDate | null {
+  if (Number.isNaN(instant.getTime())) return null;
+  const day = [
+    String(instant.getUTCFullYear()).padStart(4, '0'),
+    String(instant.getUTCMonth() + 1).padStart(2, '0'),
+    String(instant.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+  return toBusinessDate(day);
 }
 
 /** True when both days are the same calendar day (canonical form). */

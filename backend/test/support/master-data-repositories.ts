@@ -227,6 +227,10 @@ export function listPage<TRow extends Row, TWhere extends object>(
         }
         continue;
       }
+      // Effective-date predicates (e.g. `validFrom <= activeAt < validTo`)
+      // are evaluated by the repository-specific `extra` callback below; the
+      // query value is not a row column and must never be equality-compared.
+      if (key === 'activeAt') continue;
       if (record[key] !== expected) return false;
     }
     return extra(row, params.where);
