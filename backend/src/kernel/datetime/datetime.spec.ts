@@ -384,11 +384,21 @@ describe('business-date input contract', () => {
 });
 
 describe('standardized API representations', () => {
-  it('derives both calendars for one business date from one canonical value', () => {
+  it('keeps the canonical BusinessDate when the derived Jalali rendering is unavailable', () => {
     expect(toApiBusinessDate('2026-10-08')).toEqual({
       gregorian: '2026-10-08',
       jalali: '1405-07-16',
     });
+    expect(toApiBusinessDate('0600-01-01')).toEqual({
+      gregorian: '0600-01-01',
+      jalali: null,
+    });
+    expect(toApiBusinessDate('9999-12-31')).toEqual({
+      gregorian: '9999-12-31',
+      jalali: null,
+    });
+    expect(toApiBusinessDate('0000-01-01')).toBeNull();
+    expect(toApiBusinessDate('10000-01-01')).toBeNull();
     expect(toApiBusinessDate('2026-02-30')).toBeNull();
   });
 

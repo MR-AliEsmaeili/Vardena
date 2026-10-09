@@ -16,7 +16,7 @@ import { CALENDAR_SYSTEMS } from './calendar-system.js';
  * `toApiBusinessDate` / `toApiInstant`, never by hand.
  */
 
-/** `{ gregorian, jalali }` — a business day in both calendars. */
+/** `{ gregorian, jalali }` — canonical day and its nullable Jalali rendering. */
 export class ApiBusinessDateDto {
   @ApiProperty({
     format: 'date',
@@ -26,11 +26,14 @@ export class ApiBusinessDateDto {
   gregorian!: string;
 
   @ApiProperty({
+    type: String,
     format: 'date',
     example: '1405-07-16',
-    description: 'The same day in the Jalali calendar (derived for display).',
+    nullable: true,
+    description:
+      'The same day in the Jalali calendar when representable; null outside the supported Jalali rendering range.',
   })
-  jalali!: string;
+  jalali!: string | null;
 }
 
 /** `{ instant, timeZone, gregorian, jalali }` — an event timestamp. */

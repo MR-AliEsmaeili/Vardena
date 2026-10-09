@@ -275,6 +275,9 @@ describe('API mapping', () => {
     expect(
       readApiBusinessDate({ gregorian: '2026-10-08', jalali: '1405-07-16' }),
     ).toEqual({ gregorian: '2026-10-08', jalali: '1405-07-16' });
+    expect(
+      readApiBusinessDate({ gregorian: '0600-01-01', jalali: null }),
+    ).toEqual({ gregorian: '0600-01-01', jalali: null });
     expect(readApiBusinessDate({ gregorian: '2026-10-08' })).toBeNull();
     expect(readApiBusinessDate(null)).toBeNull();
 

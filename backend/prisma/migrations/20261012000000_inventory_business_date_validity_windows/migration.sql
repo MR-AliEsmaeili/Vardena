@@ -81,9 +81,11 @@ BEGIN
   FROM "inventory"."item_valuation_methods";
 
   -- Compare both the proposed window conversions and the BusinessDate columns
-  -- already converted by migration 110 against the application/API range. A
-  -- PostgreSQL date can represent years the four-digit API cannot; Jalali
-  -- rendering has the additional bounded range used by kernel/datetime/jalali.
+  -- already converted by migration 110 against the general API range. A
+  -- PostgreSQL date can represent years the four-digit API cannot; the Jalali
+  -- rendering envelope applies only to organizations configured for Jalali.
+  -- Gregorian organizations may retain a valid Gregorian day without a Jalali
+  -- rendering in the paired Inventory document response.
   CREATE TEMPORARY TABLE "_inventory_business_date_representability" (
     "source_table" text NOT NULL,
     "row_id" text NOT NULL,
@@ -139,8 +141,7 @@ BEGIN
       OR business_dates."business_date" < DATE '0001-01-01'
       OR business_dates."business_date" > DATE '9999-12-31'
       OR (
-        (organizations."calendar_system" = 'JALALI'
-          OR business_dates."source_table" = 'inventory_business_documents.business_date')
+        organizations."calendar_system" = 'JALALI'
         AND (
           business_dates."business_date" < DATE '0621-03-21'
           OR business_dates."business_date" > DATE '3798-12-31'

@@ -462,6 +462,35 @@ describe('C-58 guards and DTO', () => {
     );
   });
 
+  it('keeps an out-of-Jalali-range Gregorian date for a Gregorian organization', () => {
+    const outsideJalaliRange = {
+      ...receipt,
+      businessDate: toBusinessDate('0600-01-01')!,
+    };
+    const gregorianSettings = {
+      dateTimeSettings: {
+        ...DEFAULT_DATE_TIME_SETTINGS,
+        calendarSystem: 'GREGORIAN' as const,
+      },
+    };
+
+    expect(
+      toInventoryDocumentDto(outsideJalaliRange, true, gregorianSettings)
+        .businessDateCalendar,
+    ).toEqual({ gregorian: '0600-01-01', jalali: null });
+  });
+
+  it('fails closed when a Jalali organization cannot render a document date', () => {
+    const outsideJalaliRange = {
+      ...receipt,
+      businessDate: toBusinessDate('0600-01-01')!,
+    };
+
+    expect(() =>
+      toInventoryDocumentDto(outsideJalaliRange, true, SETTINGS),
+    ).toThrow('outside the supported calendar range');
+  });
+
   it('never advertises an action the lifecycle forbids', () => {
     const posted = toInventoryDocumentDto(
       { ...receipt, status: 'accounting_posted' },

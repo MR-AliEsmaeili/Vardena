@@ -16,7 +16,7 @@ JavaScript `Date`, UTC-midnight transport, browser-zone value, or timestamp.
 | Concept                | Meaning                                                           | Stored as                                   | On the wire                                                          |
 | ---------------------- | ----------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------- |
 | **Instant**            | a point in time ("when it happened")                              | `timestamptz` (UTC)                         | ISO-8601 UTC string, e.g. `2026-10-08T08:32:14.421Z`                 |
-| **Business date**      | the calendar DAY a document belongs to ("which day it counts as") | PostgreSQL `date` (canonical Gregorian day) | canonical Gregorian `YYYY-MM-DD` + `{ gregorian, jalali }` rendering |
+| **Business date**      | the calendar DAY a document belongs to ("which day it counts as") | PostgreSQL `date` (canonical Gregorian day) | canonical Gregorian `YYYY-MM-DD`; derived `{ gregorian, jalali }` with `jalali: null` when unrenderable |
 | **Local date-time**    | an instant expressed in a zone                                    | never stored                                | `YYYY-MM-DD HH:mm:ss` (+ the zone name)                              |
 | **Calendar rendering** | a day written in a calendar (`2026-10-08`, `1405/07/16`)          | never stored                                | derived per response                                                 |
 
@@ -176,10 +176,14 @@ Klass-level OpenAPI schemas: `kernel/datetime/api-date-time.dto.ts`
 (`ApiInstantDto`, `ApiBusinessDateDto`, `DeclaredBusinessDateInputDto`).
 
 **Business date** — `{ "gregorian": "2026-10-08", "jalali": "1405-07-16" }`, with
-the Gregorian member canonical. Canonical day fields (`documentDate`,
-`businessDate`, `movementDate`, `lastMovementDate`, run `fromDate`/`toDate`)
-are plain `YYYY-MM-DD` strings on the wire; where a paired rendering is exposed
-it is additive (`businessDateCalendar`).
+the Gregorian member canonical. `jalali` is derived and may be `null` when a
+valid canonical Gregorian day is outside the reversible Jalali rendering range.
+Inventory documents in a Gregorian organization retain the full general API
+range and expose that null; a Jalali organization rejects such dates on input
+and the migration/audit fail closed for its historical rows. Canonical day
+fields (`documentDate`, `businessDate`, `movementDate`, `lastMovementDate`, run
+`fromDate`/`toDate`) remain plain `YYYY-MM-DD` strings; where a paired rendering
+is exposed it is additive (`businessDateCalendar`).
 
 **Business-date input** — three accepted forms, one meaning:
 
@@ -206,14 +210,19 @@ organization's time zone.
 Frontend sends what the operator wrote: a Jalali organization sends the
 declared form, so the request carries the calendar the user worked in.
 
-The kernel and frontend use a reversible Jalali/API rendering envelope of
-Gregorian `0621-03-21` through `3798-12-31`, inclusive. The upstream algorithm
-can convert some later Jalali-year-3177 days into Gregorian 3799, but Vardena
-rejects those inputs in both converters because they fall outside the supported
-reverse-rendering range. The Inventory migration preflight uses these same
-bounds for Jalali-calendar rows (and for its always-paired business-document
-dates); a PostgreSQL `date` being storable does not by itself make it
-representable in the organization's configured calendar.
+The shared Jalali converter has a reversible rendering envelope of Gregorian
+`0621-03-21` through `3798-12-31`, inclusive. The upstream algorithm can convert
+some later Jalali-year-3177 days into Gregorian 3799, but those are rejected at
+declared-Jalali input boundaries because they fall outside the supported
+reverse-rendering range. Separately, a canonical Gregorian BusinessDate uses
+the general API envelope `0001-01-01` through `9999-12-31`. Owner-approved
+clarification for Inventory documents: in a Gregorian organization a valid day
+outside the Jalali envelope remains accepted and its paired
+`businessDateCalendar.jalali` value is `null`; in a Jalali organization the
+same unrenderable day is rejected. Migration 120 and its aggregate audit apply
+the Jalali bound only to rows whose organization uses Jalali, including document
+business dates. A PostgreSQL `date` outside the general API envelope remains
+invalid for either calendar.
 
 ## 4. Range and filter semantics
 
@@ -333,8 +342,8 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
   - `settings.ts` + `use-date-time-settings.ts` — the active organization's
     settings as an external store (components, form defaults and API mapping all
     read the same value);
-  - `api-mapping.ts` — the `{ gregorian, jalali }` / `{ instant, … }` boundary
-    and the declared-day request form.
+  - `api-mapping.ts` — the `{ gregorian, jalali|null }` / `{ instant, … }`
+    boundary and the declared-day request form.
 - **One** calendar-aware field: `src/ui/patterns/date-input.tsx`. It shows a
   native date input for a Gregorian organization and a Jalali text field
   (`1405/07/16`, Persian digits accepted) for a Jalali one, and always emits the
@@ -362,12 +371,15 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
 date-input.test.tsx` (round trips, leap years, typed Jalali input, Persian
   digits, canonical emission, organization defaults).
 - Backend tests cover the BusinessDate parser's legacy-instant UTC-day
-  compatibility (including organization-zone boundaries), invalid Gregorian
-  days, DTO declarations, and the Accounting/Inventory date consumers. Frontend
-  tests cover Jalali input conversion, canonical URL/filter values, impossible
-  Gregorian dates, and Instant rendering across UTC/local-day boundaries;
-  malformed, naive, and offset-bearing wire Instants are preserved/rejected by
-  the formatter, day, and offset helpers rather than browser-zone parsed.
+  compatibility (including organization-zone boundaries), valid and out-of-range
+  Jalali inputs, Gregorian document dates outside the Jalali envelope with a
+  nullable derived rendering, rejection outside the general API range, DTO
+  declarations, and the Accounting/Inventory date consumers. Frontend tests
+  cover nullable API mapping, Jalali input conversion, canonical URL/filter
+  values, impossible Gregorian dates, and Instant rendering across UTC/local-day
+  boundaries; malformed, naive, and offset-bearing wire Instants are
+  preserved/rejected by the formatter, day, and offset helpers rather than
+  browser-zone parsed.
 - PostgreSQL conversion rehearsal:
   `backend/prisma/rehearsal/business-date-validity-windows/rehearse.mjs` uses a
   local PostgreSQL server to create a uniquely named disposable database,

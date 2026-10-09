@@ -8,9 +8,9 @@ import { isTimeZone } from './time-zone';
  *
  * Two shapes cross the wire, and they are deliberately different:
  *
- *  - **Business date** — `{ gregorian, jalali }`: the same calendar DAY in
- *    both calendars. The Gregorian member is canonical; the Jalali member is
- *    a rendering, usable for display only, never for arithmetic.
+ *  - **Business date** — `{ gregorian, jalali }`: the same calendar DAY;
+ *    `gregorian` is canonical and `jalali` is a display-only rendering that is
+ *    `null` outside the supported conversion range.
  *  - **Instant** — `{ instant, timeZone, gregorian, jalali }`: the ISO-8601
  *    UTC instant is authoritative; the two renderings were resolved in
  *    `timeZone` by the backend and are display values.
@@ -25,7 +25,7 @@ import { isTimeZone } from './time-zone';
 
 export interface ApiBusinessDate {
   gregorian: string;
-  jalali: string;
+  jalali: string | null;
 }
 
 export interface ApiInstant {
@@ -61,13 +61,13 @@ export function toBusinessDateInput(
   return jalali === null ? day : { calendar: 'JALALI', value: jalali };
 }
 
-/** Narrow an unknown value that should be a `{ gregorian, jalali }` pair. */
+/** Narrow an unknown value with a canonical day and nullable Jalali rendering. */
 export function readApiBusinessDate(value: unknown): ApiBusinessDate | null {
   if (typeof value !== 'object' || value === null) return null;
   const candidate = value as Record<string, unknown>;
   if (
     typeof candidate.gregorian !== 'string' ||
-    typeof candidate.jalali !== 'string'
+    (candidate.jalali !== null && typeof candidate.jalali !== 'string')
   ) {
     return null;
   }

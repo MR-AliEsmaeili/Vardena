@@ -771,10 +771,12 @@ conversions, item-specific unit conversions, and item valuation methods have
 BusinessDate `valid_from`/`valid_to` bounds with half-open `[valid_from,
 valid_to)` semantics and a nullable open end; they are not event Instants. The
 new conversion migration is `20261012000000_inventory_business_date_validity_windows`.
-Its preflight rejects Jalali-calendar values outside the shared reversible range
-`0621-03-21` through `3798-12-31` (and applies that rendering bound to
-business-document dates); verify the kernel/frontend edge tests alongside it.
-Its aggregate-only target-data report is
+Its preflight rejects BusinessDates outside the shared reversible range
+`0621-03-21` through `3798-12-31` only for Jalali organizations. Gregorian
+organizations retain the general `0001-01-01` through `9999-12-31` API range;
+for an Inventory document outside the Jalali envelope, the derived
+`businessDateCalendar.jalali` is null. Verify the kernel/frontend edge tests
+alongside it. Its aggregate-only target-data report is
 `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; run it
 read-only after migration 110 and before migration 120, then retain the counts
 and migration NOTICE with a rehearsal against a fresh, restorable target-like

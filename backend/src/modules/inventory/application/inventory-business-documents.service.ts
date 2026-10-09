@@ -1149,8 +1149,8 @@ export class InventoryBusinessDocumentsService {
     includeCost: boolean,
   ): Promise<InventoryDocumentDto> {
     // C-63: the organization's date/time policy is read ONCE per response and
-    // handed to the mapper, which derives the Gregorian+Jalali renderings of
-    // this document's business date and event timestamps from it.
+    // handed to the mapper, which derives the canonical day, optional Jalali
+    // rendering, and event timestamp renderings from it.
     const dateTimeSettings = await this.organizations.getDateTimeSettings(
       document.organizationId,
     );
@@ -1192,19 +1192,24 @@ export class InventoryBusinessDocumentsService {
     organizationId: string;
     businessDate?: BusinessDateInput | undefined;
   }): Promise<BusinessDate> {
-    const { timeZone } = await this.organizations.getDateTimeSettings(
+    const dateTimeSettings = await this.organizations.getDateTimeSettings(
       input.organizationId,
     );
+    const { timeZone, calendarSystem } = dateTimeSettings;
     const businessDate = resolveBusinessDateInput({
       field: 'businessDate',
       value: input.businessDate,
       timeZone,
     });
-    // This Inventory response promises a paired Gregorian + Jalali day. Reject
-    // legacy/Gregorian dates that cannot satisfy that contract before any
-    // document write; otherwise createDraft could commit and then fail while
-    // mapping its response.
-    if (toApiBusinessDate(businessDate) === null) {
+    // Gregorian organizations accept the full canonical BusinessDate range;
+    // their derived Jalali member may be null. A Jalali organization must be
+    // able to render the day before any write, otherwise createDraft could
+    // commit and then fail while mapping its response.
+    const businessDateCalendar = toApiBusinessDate(businessDate);
+    if (
+      businessDateCalendar === null ||
+      (calendarSystem === 'JALALI' && businessDateCalendar.jalali === null)
+    ) {
       throw AppException.validation([
         {
           field: 'businessDate',

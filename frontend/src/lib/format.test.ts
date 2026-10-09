@@ -71,6 +71,7 @@ describe('date formatters', () => {
 
     setDateTimeSettings({ calendarSystem: 'GREGORIAN', timeZone: 'UTC' });
     expect(formatDateOnly('2026-03-21')).toBe('2026-03-21');
+    expect(formatDateOnly('0600-01-01')).toBe('0600-01-01');
     expect(formatDateOnlyWithCanonical('2026-03-21')).toBe('2026-03-21');
   });
 

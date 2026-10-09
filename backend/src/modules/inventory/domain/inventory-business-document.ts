@@ -657,9 +657,9 @@ export interface InventoryDocumentDto {
    */
   businessDate: string;
   /**
-   * C-63 §10: the SAME business day in both calendars, derived per response
-   * from the organization's settings. A derived field: nothing here is
-   * persisted, and a client that already reads `businessDate` is unaffected.
+   * C-63 §10: the canonical day and its derived Jalali rendering when
+   * representable. The Jalali member may be null for a Gregorian organization;
+   * nothing here is persisted, and `businessDate` remains authoritative.
    */
   businessDateCalendar: ApiBusinessDate;
   warehouseId: string | null;
@@ -744,7 +744,11 @@ export function toInventoryDocumentDto(
       : 'unpriced');
   const accountingEligible = isAccountingEligible(document, valuationState);
   const businessDateCalendar = toApiBusinessDate(document.businessDate);
-  if (businessDateCalendar === null) {
+  if (
+    businessDateCalendar === null ||
+    (options.dateTimeSettings.calendarSystem === 'JALALI' &&
+      businessDateCalendar.jalali === null)
+  ) {
     throw new Error(
       `Inventory document ${document.id} has a business date outside the supported calendar range.`,
     );

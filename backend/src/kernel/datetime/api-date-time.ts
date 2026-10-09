@@ -7,7 +7,7 @@
  *     { instant, timeZone, gregorian, jalali }
  *
  *   business dates   → {@link ApiBusinessDate}
- *     { gregorian, jalali }
+ *     { gregorian, jalali|null }
  *
  * Rules that hold for both:
  *
@@ -18,8 +18,9 @@
  *   * ASCII digits and fixed shapes only (`YYYY-MM-DD`, `YYYY-MM-DD HH:mm:ss`):
  *     numerals (۱۲۳) and locale formats are a frontend concern (C-63 §32),
  *     and an API value is machine-readable by contract;
- *   * a value that cannot be rendered faithfully is `null` — never a
- *     silently wrong calendar. Callers treat `null` as a data defect.
+ *   * an unavailable Jalali rendering is `null`, never a silently wrong
+ *     calendar. A Gregorian BusinessDate remains authoritative; Inventory
+ *     callers require a Jalali rendering when the organization uses Jalali.
  *
  * These are DERIVED fields, not a second truth: a response keeps its existing
  * canonical fields exactly as they are and adds the standardized object
@@ -36,12 +37,12 @@ import {
 } from './time-zone.js';
 import { gregorianToJalaliDay } from './jalali.js';
 
-/** A business day, in both calendars. `gregorian` is authoritative. */
+/** A canonical business day with its optional Jalali rendering. */
 export interface ApiBusinessDate {
   /** Canonical day, `YYYY-MM-DD`. */
   gregorian: string;
-  /** Derived Jalali day, `YYYY-MM-DD`. */
-  jalali: string;
+  /** Derived Jalali day, or `null` outside the supported rendering range. */
+  jalali: string | null;
 }
 
 /** An event timestamp, canonical + both local renderings. */
@@ -61,15 +62,17 @@ export const LOCAL_DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 
 /**
  * Build the standardized business-date representation of a canonical
- * Gregorian day. `null` when the day or its Jalali rendering is invalid.
+ * Gregorian day. `null` only when the canonical day is invalid; Jalali is null
+ * when that valid day cannot be rendered in the supported conversion range.
  */
 export function toApiBusinessDate(
   gregorianDay: string,
 ): ApiBusinessDate | null {
   if (formatBusinessDate(gregorianDay, 'GREGORIAN') === null) return null;
-  const jalali = formatBusinessDate(gregorianDay, 'JALALI');
-  if (jalali === null) return null;
-  return { gregorian: gregorianDay, jalali };
+  return {
+    gregorian: gregorianDay,
+    jalali: formatBusinessDate(gregorianDay, 'JALALI'),
+  };
 }
 
 /**

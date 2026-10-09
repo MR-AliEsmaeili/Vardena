@@ -466,7 +466,7 @@ export class InventoryDocumentResponseDto {
   @ApiProperty({
     type: ApiBusinessDateDto,
     description:
-      'C-63: the SAME business day in both calendars, derived from the organization settings. `businessDate` above stays the canonical value.',
+      'C-63: the same canonical business day with a derived Jalali rendering when representable. For a Gregorian organization, `jalali` is null outside the shared rendering range; `businessDate` above remains authoritative.',
   })
   businessDateCalendar!: ApiBusinessDate;
   @ApiProperty({ type: String, nullable: true })

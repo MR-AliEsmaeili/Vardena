@@ -276,11 +276,32 @@ async function applyMigrationWhileWriterWaits(client) {
   }
 }
 
-async function expectRejected(client, notices, { setupSql, message }) {
+async function expectRejected(
+  client,
+  notices,
+  { setupSql, message, auditExpectation },
+) {
   await client.query('BEGIN');
   let migrationError;
   try {
     await client.query(setupSql);
+    if (auditExpectation) {
+      const audit = await client.query(AUDIT_SQL);
+      const row = auditRow(
+        audit.rows,
+        'existing_business_date_column',
+        auditExpectation.sourceTable,
+      );
+      for (const [column, expected] of Object.entries(
+        auditExpectation.counts,
+      )) {
+        assert.equal(
+          auditCount(row, column),
+          expected,
+          `audit ${auditExpectation.sourceTable}.${column} should match preflight fixture`,
+        );
+      }
+    }
     await client.query(MIGRATION_TEST_BODY);
   } catch (error) {
     migrationError = error;
@@ -379,7 +400,8 @@ async function main() {
           VALUES ('movement-1', 'org-1', DATE '2026-10-08');
         INSERT INTO "inventory"."inventory_business_documents"
           ("id", "organization_id", "business_date")
-          VALUES ('document-1', 'org-1', DATE '2026-10-08');
+          VALUES ('document-1', 'org-1', DATE '2026-10-08'),
+                 ('document-gregorian-outside-jalali', 'org-gregorian', DATE '0600-01-01');
         INSERT INTO "inventory"."inventory_accounting_posting_snapshots"
           ("id", "organization_id", "document_date")
           VALUES ('snapshot-1', 'org-1', DATE '2026-10-08');
@@ -503,8 +525,18 @@ async function main() {
           'existing_business_date_column',
           table,
         );
-        assert.equal(auditCount(row, 'row_count'), 1);
+        assert.equal(
+          auditCount(row, 'row_count'),
+          table === 'inventory_business_documents.business_date' ? 2 : 1,
+        );
         assert.equal(auditCount(row, 'unrenderable_rows'), 0);
+        if (table === 'inventory_business_documents.business_date') {
+          assert.equal(auditCount(row, 'outside_gregorian_api_range_rows'), 0);
+          assert.equal(
+            auditCount(row, 'outside_jalali_rendering_range_rows'),
+            0,
+          );
+        }
       }
 
       const nonMidnightEndpoints = audit.rows
@@ -548,6 +580,15 @@ async function main() {
           VALUES ('legacy-jalali-out-of-range', 'org-1', DATE '0600-01-01')`,
         message:
           'outside the supported BusinessDate/API/calendar rendering range',
+        auditExpectation: {
+          sourceTable: 'inventory_business_documents.business_date',
+          counts: {
+            row_count: 3,
+            outside_gregorian_api_range_rows: 0,
+            outside_jalali_rendering_range_rows: 1,
+            unrenderable_rows: 1,
+          },
+        },
       });
 
       await expectRejected(client, notices, {
@@ -563,6 +604,14 @@ async function main() {
           ("id", "organization_id", "item_id", "from_unit_id", "to_unit_id", "valid_from", "valid_to", "created_at", "updated_at")
           VALUES ('collapsed-window', 'org-1', 'item-1', 'box', 'piece',
                   '2026-01-05 02:00:00+00', '2026-01-05 23:00:00+00', now(), now())`,
+        message: 'collapses to an empty or reversed UTC-day window',
+      });
+
+      await expectRejected(client, notices, {
+        setupSql: `INSERT INTO "inventory"."item_unit_conversions"
+          ("id", "organization_id", "item_id", "from_unit_id", "to_unit_id", "valid_from", "valid_to", "created_at", "updated_at")
+          VALUES ('reversed-window', 'org-1', 'item-1', 'box', 'piece',
+                  '2026-01-06 02:00:00+00', '2026-01-05 23:00:00+00', now(), now())`,
         message: 'collapses to an empty or reversed UTC-day window',
       });
 
@@ -586,6 +635,14 @@ async function main() {
       // Execute the explicit migration transaction as a deployment does, while
       // a second session proves writers stay blocked through the final commit.
       await applyMigrationWhileWriterWaits(client);
+      const gregorianDocument = await client.query(`
+        SELECT to_char("business_date", 'YYYY-MM-DD') AS business_date,
+               pg_typeof("business_date")::text AS carrier_type
+          FROM "inventory"."inventory_business_documents"
+         WHERE "id" = 'document-gregorian-outside-jalali'`);
+      assert.equal(gregorianDocument.rowCount, 1);
+      assert.equal(gregorianDocument.rows[0].business_date, '0600-01-01');
+      assert.equal(gregorianDocument.rows[0].carrier_type, 'date');
       const migrationNotices = [...notices];
       printNotices(notices);
 

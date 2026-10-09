@@ -233,6 +233,9 @@ business_date_sources(source_table) AS (
     ('inventory_valuation_runs.from_date'::text),
     ('inventory_balances.last_movement_date'::text)
 ),
+-- The Jalali envelope is a display constraint only for JALALI organizations.
+-- A GREGORIAN BusinessDate remains valid without a Jalali rendering; Inventory
+-- document responses carry that unavailable derived member as null.
 business_date_summary AS (
   SELECT
     sources.source_table,
@@ -248,10 +251,7 @@ business_date_summary AS (
          OR date_values.business_date > DATE '9999-12-31'
     ) AS outside_gregorian_api_range_rows,
     count(date_values.source_table) FILTER (
-      WHERE (
-        organizations.calendar_system = 'JALALI'
-        OR date_values.source_table = 'inventory_business_documents.business_date'
-      )
+      WHERE organizations.calendar_system = 'JALALI'
         AND (
           date_values.business_date < DATE '0621-03-21'
           OR date_values.business_date > DATE '3798-12-31'
@@ -265,8 +265,7 @@ business_date_summary AS (
          OR date_values.business_date < DATE '0001-01-01'
          OR date_values.business_date > DATE '9999-12-31'
          OR (
-           (organizations.calendar_system = 'JALALI'
-             OR date_values.source_table = 'inventory_business_documents.business_date')
+           organizations.calendar_system = 'JALALI'
            AND (
              date_values.business_date < DATE '0621-03-21'
              OR date_values.business_date > DATE '3798-12-31'

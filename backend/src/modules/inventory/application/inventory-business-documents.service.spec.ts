@@ -938,6 +938,7 @@ function fakeAccountingPosting(
 
 interface BuildOptions {
   canViewCost?: boolean;
+  calendarSystem?: 'GREGORIAN' | 'JALALI';
   backdated?: boolean;
   repricingFails?: boolean;
   noValuedStock?: boolean;
@@ -1081,7 +1082,13 @@ async function buildFixture(options: BuildOptions = {}) {
   );
 
   const organizationId = (
-    await organizations.createOrganization({ code: 'ORG-A', name: 'Org A' })
+    await organizations.createOrganization({
+      code: 'ORG-A',
+      name: 'Org A',
+      ...(options.calendarSystem === undefined
+        ? {}
+        : { calendarSystem: options.calendarSystem }),
+    })
   ).id;
   const otherOrganizationId = (
     await organizations.createOrganization({ code: 'ORG-B', name: 'Org B' })
@@ -1338,18 +1345,23 @@ describe('C-63 business dates and calendars', () => {
     expect(created.businessDate).toBe('2026-10-08');
   });
 
-  it('refuses a Gregorian day outside the paired calendar rendering range before writing', async () => {
-    const documentsBefore = fixture.world.documents.size;
-    const eventsBefore = fixture.published.length;
+  it('rejects an out-of-range Gregorian day for a Jalali organization before writing', async () => {
+    const jalaliFixture = await buildFixture({ calendarSystem: 'JALALI' });
+    const documentsBefore = jalaliFixture.world.documents.size;
+    const eventsBefore = jalaliFixture.published.length;
     await expect(
       asActor(() =>
-        fixture.service.createDraft({
-          organizationId: fixture.organizationId,
+        jalaliFixture.service.createDraft({
+          organizationId: jalaliFixture.organizationId,
           kind: 'receipt',
-          warehouseId: fixture.warehouseId,
+          warehouseId: jalaliFixture.warehouseId,
           businessDate: '0600-01-01',
           lines: [
-            { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
+            {
+              itemId: jalaliFixture.itemId,
+              quantity: '1',
+              unitId: jalaliFixture.unitId,
+            },
           ],
         }),
       ),
@@ -1357,8 +1369,93 @@ describe('C-63 business dates and calendars', () => {
       status: 400,
       details: [{ field: 'businessDate', code: 'business_date_calendar' }],
     });
-    expect(fixture.world.documents.size).toBe(documentsBefore);
-    expect(fixture.published).toHaveLength(eventsBefore);
+    expect(jalaliFixture.world.documents.size).toBe(documentsBefore);
+    expect(jalaliFixture.published).toHaveLength(eventsBefore);
+  });
+
+  it('accepts a Gregorian day outside the Jalali envelope for a Gregorian organization', async () => {
+    const gregorianFixture = await buildFixture({
+      calendarSystem: 'GREGORIAN',
+    });
+    const created = await asActor(() =>
+      gregorianFixture.service.createDraft({
+        organizationId: gregorianFixture.organizationId,
+        kind: 'receipt',
+        warehouseId: gregorianFixture.warehouseId,
+        businessDate: '0600-01-01',
+        lines: [
+          {
+            itemId: gregorianFixture.itemId,
+            quantity: '1',
+            unitId: gregorianFixture.unitId,
+          },
+        ],
+      }),
+    );
+
+    expect(created.businessDate).toBe('0600-01-01');
+    expect(created.businessDateCalendar).toEqual({
+      gregorian: '0600-01-01',
+      jalali: null,
+    });
+  });
+
+  it('rejects a declared Jalali day outside the reversible range before writing', async () => {
+    const jalaliFixture = await buildFixture({ calendarSystem: 'JALALI' });
+    const documentsBefore = jalaliFixture.world.documents.size;
+    const eventsBefore = jalaliFixture.published.length;
+    await expect(
+      asActor(() =>
+        jalaliFixture.service.createDraft({
+          organizationId: jalaliFixture.organizationId,
+          kind: 'receipt',
+          warehouseId: jalaliFixture.warehouseId,
+          businessDate: { calendar: 'JALALI', value: '3177-10-12' },
+          lines: [
+            {
+              itemId: jalaliFixture.itemId,
+              quantity: '1',
+              unitId: jalaliFixture.unitId,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      details: [{ field: 'businessDate', code: 'business_date_calendar' }],
+    });
+    expect(jalaliFixture.world.documents.size).toBe(documentsBefore);
+    expect(jalaliFixture.published).toHaveLength(eventsBefore);
+  });
+
+  it('rejects a Gregorian day outside the general API range before writing', async () => {
+    const gregorianFixture = await buildFixture({
+      calendarSystem: 'GREGORIAN',
+    });
+    const documentsBefore = gregorianFixture.world.documents.size;
+    const eventsBefore = gregorianFixture.published.length;
+    await expect(
+      asActor(() =>
+        gregorianFixture.service.createDraft({
+          organizationId: gregorianFixture.organizationId,
+          kind: 'receipt',
+          warehouseId: gregorianFixture.warehouseId,
+          businessDate: '0000-01-01',
+          lines: [
+            {
+              itemId: gregorianFixture.itemId,
+              quantity: '1',
+              unitId: gregorianFixture.unitId,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      details: [{ field: 'businessDate', code: 'business_date_calendar' }],
+    });
+    expect(gregorianFixture.world.documents.size).toBe(documentsBefore);
+    expect(gregorianFixture.published).toHaveLength(eventsBefore);
   });
 
   it('accepts a DECLARED Jalali day and stores the SAME day as the Gregorian form', async () => {

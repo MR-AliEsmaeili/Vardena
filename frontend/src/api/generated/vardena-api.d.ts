@@ -4147,6 +4147,7 @@ export interface components {
             /** @example 100 */
             pageSize: number;
         };
+        Object: Record<string, never>;
         ResolveUnitConversionResponseDto: {
             /** @description Null when no version covers `asOf`. Callers must not assume a 1:1 factor in that case. */
             conversion?: components["schemas"]["UnitConversionResponseDto"] | null;
@@ -5363,10 +5364,10 @@ export interface components {
             gregorian: string;
             /**
              * Format: date
-             * @description The same day in the Jalali calendar (derived for display).
+             * @description The same day in the Jalali calendar when representable; null outside the supported Jalali rendering range.
              * @example 1405-07-16
              */
-            jalali: string;
+            jalali: string | null;
         };
         ApiInstantDto: {
             /**
@@ -5434,7 +5435,7 @@ export interface components {
              * @example 2026-10-08
              */
             businessDate: string;
-            /** @description C-63: the SAME business day in both calendars, derived from the organization settings. `businessDate` above stays the canonical value. */
+            /** @description C-63: the same canonical business day with a derived Jalali rendering when representable. For a Gregorian organization, `jalali` is null outside the shared rendering range; `businessDate` above remains authoritative. */
             businessDateCalendar: components["schemas"]["ApiBusinessDateDto"];
             warehouseId: string | null;
             sourceWarehouseId: string | null;
@@ -11474,8 +11475,13 @@ export interface operations {
                 itemId?: string;
                 fromUnitId?: string;
                 toUnitId?: string;
-                /** @description Only versions in force on this Gregorian business date. */
-                activeAt?: string;
+                /** @description Only versions in force on this BusinessDate. Legacy ISO instants resolve by UTC calendar day; declared calendar input is converted once. */
+                activeAt?: components["schemas"]["Object"] & (string | {
+                    /** @enum {string} */
+                    calendar: "GREGORIAN" | "JALALI";
+                    /** @example 1405-07-16 */
+                    value: string;
+                });
             };
             header?: never;
             path?: never;
@@ -11573,8 +11579,13 @@ export interface operations {
                 itemId?: string;
                 fromUnitId: string;
                 toUnitId: string;
-                /** @description Canonical Gregorian business date. A past date returns the version that was effective then. */
-                asOf: string;
+                /** @description BusinessDate to resolve. Legacy ISO instants resolve by UTC calendar day; declared calendar input is converted once. */
+                asOf: components["schemas"]["Object"] & (string | {
+                    /** @enum {string} */
+                    calendar: "GREGORIAN" | "JALALI";
+                    /** @example 1405-07-16 */
+                    value: string;
+                });
             };
             header?: never;
             path?: never;
@@ -12767,8 +12778,13 @@ export interface operations {
                 sort?: string;
                 organizationId: string;
                 itemId?: string;
-                /** @description Only versions in force on this canonical Gregorian business date. */
-                activeAt?: string;
+                /** @description Only versions in force on this BusinessDate. Legacy ISO instants resolve by UTC calendar day; declared calendar input is converted once. */
+                activeAt?: components["schemas"]["Object"] & (string | {
+                    /** @enum {string} */
+                    calendar: "GREGORIAN" | "JALALI";
+                    /** @example 1405-07-16 */
+                    value: string;
+                });
             };
             header?: never;
             path?: never;
@@ -12863,8 +12879,13 @@ export interface operations {
             query: {
                 organizationId: string;
                 itemId: string;
-                /** @description Canonical Gregorian business date to resolve; defaults to today in the organization time zone. */
-                asOf?: string;
+                /** @description BusinessDate to resolve. Legacy ISO instants resolve by UTC calendar day; declared calendar input is converted once. If omitted, uses today in the organization time zone. */
+                asOf?: components["schemas"]["Object"] & (string | {
+                    /** @enum {string} */
+                    calendar: "GREGORIAN" | "JALALI";
+                    /** @example 1405-07-16 */
+                    value: string;
+                });
             };
             header?: never;
             path?: never;
