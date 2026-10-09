@@ -140,7 +140,10 @@ home of the deployment's date/time DISPLAY policy: `calendar_system`
 `Asia/Tehran`, numeric offsets rejected). They decide how BusinessDates are
 shown/authored and how Instants render (convert to the IANA zone first, then
 render the local day in the configured calendar) — never what is stored (Instants
-stay UTC, BusinessDates stay canonical Gregorian days). Cross-module readers call
+stay UTC, BusinessDates stay canonical Gregorian days). Shared backend/frontend
+Jalali conversion uses the reversible Gregorian range `0621-03-21` through
+`3798-12-31`; upstream-convertible dates beyond it are not API-renderable and
+must be refused at the declared-Jalali input boundary. Cross-module readers call
 `OrganizationsService.getDateTimeSettings(organizationId)` once per response;
 the contract is `docs/datetime.md`. No second settings store exists.
 
@@ -768,6 +771,9 @@ conversions, item-specific unit conversions, and item valuation methods have
 BusinessDate `valid_from`/`valid_to` bounds with half-open `[valid_from,
 valid_to)` semantics and a nullable open end; they are not event Instants. The
 new conversion migration is `20261012000000_inventory_business_date_validity_windows`.
+Its preflight rejects Jalali-calendar values outside the shared reversible range
+`0621-03-21` through `3798-12-31` (and applies that rendering bound to
+business-document dates); verify the kernel/frontend edge tests alongside it.
 Its aggregate-only target-data report is
 `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; run it
 read-only after migration 110 and before migration 120, then retain the counts
