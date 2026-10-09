@@ -749,13 +749,14 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
 
 **C-63 business dates.** A business document's `businessDate` is a calendar
 DAY, accepted in three forms (canonical Gregorian `YYYY-MM-DD`, a declared
-Jalali day `{ calendar, value }`, or a legacy ISO instant kept verbatim),
-normalized to the day's UTC-midnight instant, and returned with its
-`{ gregorian, jalali }` rendering; `createdAt`/`updatedAt` are event instants
-and are returned with `{ instant, timeZone, gregorian, jalali }`. A backdated
-document keeps its business day. Day filters (`dateFrom`/`dateTo`) are the
-day's UTC-midnight instant on both bounds — see `docs/datetime.md` §4/§7 and
-**OQ-73** for the still-open column-typing question.
+Jalali day `{ calendar, value }`, or a legacy ISO instant collapsed onto the
+day it falls on in the organization's zone), persisted as a PostgreSQL `date`
+(OQ-73, resolved — see migration `20261011000000_business_date_persistence`),
+and returned as the canonical day with its `{ gregorian, jalali }` rendering;
+`createdAt`/`updatedAt` are event instants and are returned with
+`{ instant, timeZone, gregorian, jalali }`. A backdated document keeps its
+business day. Day filters (`dateFrom`/`dateTo`) are true `date` comparisons on
+both inclusive bounds — see `docs/datetime.md` §4/§7 and ADR-0042 (Accepted).
 
 - **Status (corrected 2026-09-26 — `repository-documentation-audit.md`):**
   **both halves are implemented.** Master data (Task 6): schema `inventory` —
