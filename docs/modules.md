@@ -778,9 +778,15 @@ Its aggregate-only target-data report is
 `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; run it
 read-only after migration 110 and before migration 120, then retain the counts
 and migration NOTICE with a rehearsal against a fresh, restorable target-like
-copy. CI fixtures and code inspection do not establish production/customer data
-safety. Resolve preflight failures only through approved repairs and apply schema
-changes through Prisma migrations.
+copy. Migration 120 repeats its preflight under `SHARE ROW EXCLUSIVE` locks on
+all source tables, holds them through conversion/commit, and aborts if the
+10-second lock timeout is exceeded. Existing writes drain before preflight;
+subsequent writes wait, and `ALTER COLUMN TYPE` may also block reads, so an
+authorized maintenance window is required. CI's two-session rehearsal verifies
+both the pre-existing-writer and waiting-writer cases. CI fixtures and code
+inspection do not establish production/customer data safety. Resolve preflight
+failures only through approved repairs and apply schema changes through Prisma
+migrations.
 
 - **Status (corrected 2026-09-26 — `repository-documentation-audit.md`):**
   **both halves are implemented.** Master data (Task 6): schema `inventory` —

@@ -71,22 +71,66 @@ Three rules follow, and they are the ones reviewers check:
   adjacent versions may meet on the same business date without overlapping.
   The migration converts the UTC calendar day, reports discarded non-midnight
   UTC time components, and fails closed on collapsed/reversed windows,
-  duplicate starts, overlap, and unrepresentable values. Its aggregate-only,
-  read-only target report is
+  duplicate starts, overlap, and unrepresentable values. It opens an explicit
+  PostgreSQL transaction, sets a 10-second `lock_timeout`, and acquires
+  `SHARE ROW EXCLUSIVE` locks on every source table read by the preflight
+  (including organization calendar settings) before inspecting rows. Those
+  locks conflict with concurrent `INSERT`/`UPDATE`/`DELETE` and remain held
+  through all three type conversions and `COMMIT`: an existing writer finishes
+  before preflight begins, while later writers wait until the migration commits.
+  If a lock cannot be acquired within the timeout, the migration transaction
+  aborts rather than leave a partially converted schema. The subsequent
+  `ALTER TABLE ... TYPE date` statements require stronger table locks and may
+  also block reads; schedule an authorized maintenance window, do not treat
+  this as a zero-downtime migration, and do not raise the timeout without an
+  explicit operational review.
+
+  Its aggregate-only, read-only target report is
   `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; run it
   after migration `20261011000000_business_date_persistence` and before this
   migration using a read-only connection. It returns counts by table/column,
-  not IDs, organization keys, conversion factors, or business payloads.
-  Deployment gate: review and retain that report plus the migration NOTICE;
-  rehearse the exact migration on a fresh, restorable target-like copy; resolve
-  any nonzero invalid-range/collision/overlap/unrepresentable counts through an
-  explicitly approved data repair and rerun the audit/rehearsal; and verify a
-  recoverable backup before applying only through `prisma migrate deploy`.
-  Non-midnight UTC endpoint counts must be recorded and reviewed; they are not
-  automatically an error because the approved mapping preserves their UTC day.
-  The CI synthetic-fixture rehearsal is not evidence about any production or
-  customer database; no historical-data safety claim is made without
-  target-specific evidence.
+  not IDs, organization keys, conversion factors, or business payloads. The
+  audit is a point-in-time evidence report, not a lock or a guarantee against
+  later writes; the migration repeats its authoritative preflight while holding
+  the serialization locks. Deployment gate: review and retain that report plus
+  the migration NOTICE; rehearse the exact migration on a fresh, restorable
+  target-like copy; resolve any nonzero invalid-range/collision/overlap/
+  unrepresentable counts through an explicitly approved data repair and rerun
+  the audit/rehearsal; and verify a recoverable backup before applying only
+  through `prisma migrate deploy`. Before authorization, record the backup or
+  PITR recovery-point identity and timestamp, restore it to an isolated
+  target-like database, validate that restore, and retain its rehearsal/audit
+  evidence. If the migration aborts before commit, keep deployment paused and
+  verify all three validity columns remain `timestamptz`, no partial schema
+  change was committed, and Prisma migration state is failed. Under DBA/owner
+  authorization, mark it rolled back with Prisma's
+  `migrate resolve --rolled-back 20261012000000_inventory_business_date_validity_windows`
+  only after those checks; rerun the audit/rehearsal, resolve lock contention,
+  then retry deployment. Never blindly rerun or edit `_prisma_migrations`. If a
+  commit may have completed but deployment reports failure, inspect schema and
+  migration metadata before taking action; mark it applied only if the converted
+  schema and data are verified. For an incompatible committed result, recover
+  from the verified pre-migration backup/PITR point in an isolated restore or
+  use an explicitly approved forward repair; do not improvise a reverse cast.
+  No production/shared database was audited or migrated by this work.
+
+  The CI rehearsal proves the selected barrier with two PostgreSQL clients: it
+  holds an uncommitted collapsed-window writer and verifies migration waits
+  before preflight, then commits the bad row and verifies rejection leaves the
+  source column as `timestamptz`; on the success path it pauses the test copy
+  immediately before `COMMIT`, verifies a later writer is blocked, and verifies
+  that writer succeeds against the converted `date` schema after commit. The
+  exact standalone migration text is used for both lock-race cases and the
+  successful conversion path. The other negative fixtures use the identical
+  migration body with only `BEGIN`/`COMMIT` removed so they can run inside an
+  outer rollback transaction; the pre-existing-writer rejection still executes
+  the exact standalone SQL. Only the successful concurrency case inserts a
+  test-only pre-commit sleep. Non-midnight UTC endpoint counts must be recorded and reviewed; they
+  are not automatically an error because the approved mapping preserves their
+  UTC day. The CI synthetic-fixture rehearsal is not evidence about any
+  production or customer database; no historical-data safety claim is made
+  without target-specific evidence.
+
 - **No formatted dates** are ever persisted (no `'1405/07/16'` column), and no
   parallel Jalali column is added for a date that already exists: the calendar
   is a rendering, and duplicate columns would let the two disagree.

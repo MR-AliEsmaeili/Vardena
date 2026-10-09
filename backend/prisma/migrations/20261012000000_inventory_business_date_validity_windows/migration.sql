@@ -12,6 +12,27 @@
 -- endpoints are counted and emitted as a NOTICE for deployment evidence; their
 -- discarded time is not reinterpreted as a different day. See
 -- prisma/rehearsal/business-date-validity-windows/.
+--
+-- Serialize the entire preflight + conversion against every source table read
+-- below. SHARE ROW EXCLUSIVE conflicts with INSERT/UPDATE/DELETE table locks,
+-- while allowing ordinary reads. The explicit transaction retains these locks
+-- through COMMIT; a lock that cannot be acquired in 10 seconds aborts the
+-- transaction before any conversion is committed.
+BEGIN;
+SET LOCAL lock_timeout = '10s';
+
+LOCK TABLE
+  "inventory"."inventory_accounting_posting_snapshots",
+  "inventory"."inventory_balances",
+  "inventory"."inventory_business_documents",
+  "inventory"."inventory_movements",
+  "inventory"."inventory_pricing_runs",
+  "inventory"."inventory_valuation_runs",
+  "inventory"."item_unit_conversions",
+  "inventory"."item_valuation_methods",
+  "inventory"."unit_conversions",
+  "organization"."organizations"
+IN SHARE ROW EXCLUSIVE MODE;
 
 DO $business_date_validity_preflight$
 DECLARE
@@ -224,3 +245,6 @@ ALTER TABLE "inventory"."item_valuation_methods"
     USING ("valid_from" AT TIME ZONE 'UTC')::date,
   ALTER COLUMN "valid_to" TYPE date
     USING ("valid_to" AT TIME ZONE 'UTC')::date;
+
+-- Commit releases the serialization barrier only after every conversion.
+COMMIT;

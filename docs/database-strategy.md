@@ -119,11 +119,16 @@ Every entity table has:
   `20261012000000_inventory_business_date_validity_windows` maps existing values
   by UTC calendar day and preflights invalid/collapsed/overlapping histories.
   `backend/prisma/rehearsal/business-date-validity-windows/audit.sql` reports
-  aggregate counts without row IDs or business payloads. Fixture rehearsal is
-  not production data evidence; inspect target data and retain the audit counts,
-  migration NOTICE, backup/recovery evidence, and target-like rehearsal outcome
-  before deployment. Other modules'
-  fields named `valid_*` are not reclassified by this decision.
+  aggregate counts without row IDs or business payloads. Migration 120 repeats
+  its preflight while holding `SHARE ROW EXCLUSIVE` locks on all source tables
+  through conversion and commit; a 10-second lock timeout aborts the
+  transaction, and concurrent writers wait. Its type changes may block reads,
+  so deployment requires an authorized maintenance window. The two-session
+  PostgreSQL rehearsal verifies the barrier before and after preflight. Fixture
+  rehearsal is not production data evidence; inspect target data and retain the
+  audit counts, migration NOTICE, verified backup/restore evidence, and
+  target-like rehearsal outcome before deployment. Other modules' fields named
+  `valid_*` are not reclassified by this decision.
 - FKs to users are logical (enforced at the app level; DB FK to `users.users`
   only where the owning schema and dependency are clean — e.g. not for
   `created_by` on module tables to avoid cross-schema FK sprawl; documented

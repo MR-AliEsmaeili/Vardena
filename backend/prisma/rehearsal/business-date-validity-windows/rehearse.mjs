@@ -5,8 +5,10 @@
  * Uses a disposable PostgreSQL database with representative legacy
  * timestamptz rows. It verifies UTC-calendar-day conversion, preservation of
  * audit instants, and fail-closed guards for windows that collapse, duplicate
- * starts, or overlap after conversion. This fixture rehearsal is not a
- * substitute for running the preflight against a production data snapshot.
+ * starts, or overlap after conversion. Two-client checks prove a pre-existing
+ * writer completes before preflight and is then observed, and that later
+ * writers wait through conversion until COMMIT. This fixture rehearsal is not
+ * a substitute for running the preflight against a production data snapshot.
  *
  * Connection: VARDENA_REHEARSAL_ADMIN_URL (same local maintenance-database URL
  * used by the Task 11 migration rehearsal). This script refuses non-local hosts,
@@ -34,6 +36,21 @@ const MIGRATION_SQL = readFileSync(
   'utf8',
 );
 const AUDIT_SQL = readFileSync(join(HERE, 'audit.sql'), 'utf8');
+// Negative fixtures use this body inside an outer transaction so each failure
+// can be rolled back; lock-race and success paths execute MIGRATION_SQL intact.
+const MIGRATION_TEST_BODY = MIGRATION_SQL.replace(/\nBEGIN;\s*/, '\n').replace(
+  /\s*COMMIT;\s*$/,
+  '',
+);
+if (
+  MIGRATION_TEST_BODY === MIGRATION_SQL ||
+  /\nBEGIN;\s*/.test(MIGRATION_TEST_BODY) ||
+  /\nCOMMIT;\s*$/.test(MIGRATION_TEST_BODY)
+) {
+  throw new Error(
+    'Migration rehearsal requires explicit transaction boundaries.',
+  );
+}
 const ADMIN_URL =
   process.env['VARDENA_REHEARSAL_ADMIN_URL'] ??
   'postgresql://vardena:vardena_test_password@127.0.0.1:5432/postgres';
@@ -78,6 +95,25 @@ async function withClient(database, fn) {
   }
 }
 
+async function waitForActivity(observer, pid, predicate, description) {
+  const deadline = Date.now() + 15_000;
+  let lastActivity;
+  while (Date.now() < deadline) {
+    const result = await observer.query(
+      `SELECT state, wait_event_type, wait_event
+         FROM pg_stat_activity
+        WHERE pid = $1`,
+      [pid],
+    );
+    lastActivity = result.rows[0];
+    if (lastActivity && predicate(lastActivity)) return lastActivity;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(
+    `${description}; last PostgreSQL activity was ${JSON.stringify(lastActivity)}`,
+  );
+}
+
 function printNotices(notices) {
   for (const notice of notices) log(`    PostgreSQL NOTICE: ${notice}`);
   notices.length = 0;
@@ -97,12 +133,155 @@ function auditCount(row, column) {
   return Number(row[column]);
 }
 
+async function assertMigrationWaitsForExistingWriter(client) {
+  const rowId = 'migration-race-collapsed-window';
+  const writer = adminClient(REHEARSAL_DB);
+  const observer = adminClient(REHEARSAL_DB);
+  await writer.connect();
+  await observer.connect();
+  try {
+    await writer.query('BEGIN');
+    await writer.query(
+      `
+      INSERT INTO "inventory"."item_unit_conversions"
+        ("id", "organization_id", "item_id", "from_unit_id", "to_unit_id",
+         "valid_from", "valid_to", "created_at", "updated_at")
+      VALUES ($1, 'org-1', 'migration-race-item', 'box', 'piece',
+              '2026-05-10 04:00:00+00', '2026-05-10 21:00:00+00', now(), now())`,
+      [rowId],
+    );
+
+    const migrationPid = (await client.query('SELECT pg_backend_pid() AS pid'))
+      .rows[0].pid;
+    const migrationOutcome = client.query(MIGRATION_SQL).then(
+      (result) => ({ result }),
+      (error) => ({ error }),
+    );
+    await waitForActivity(
+      observer,
+      migrationPid,
+      (activity) => activity.wait_event_type === 'Lock',
+      'migration must wait for a pre-existing Inventory writer before preflight',
+    );
+
+    await writer.query('COMMIT');
+    const outcome = await migrationOutcome;
+    assert.ok(
+      outcome.error,
+      'migration must reject the committed collapsed window',
+    );
+    assert.match(
+      String(outcome.error.message),
+      /collapses to an empty or reversed UTC-day window/,
+    );
+    await client.query('ROLLBACK').catch(() => {});
+
+    const column = await client.query(`
+      SELECT data_type
+        FROM information_schema.columns
+       WHERE table_schema = 'inventory'
+         AND table_name = 'item_unit_conversions'
+         AND column_name = 'valid_from'`);
+    assert.equal(column.rows[0].data_type, 'timestamp with time zone');
+    log(
+      '    verified an in-flight writer drains before preflight and invalid committed history aborts without converting columns',
+    );
+  } finally {
+    await writer.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => {});
+    await client
+      .query(
+        'DELETE FROM "inventory"."item_unit_conversions" WHERE "id" = $1',
+        [rowId],
+      )
+      .catch(() => {});
+    await writer.end().catch(() => {});
+    await observer.end().catch(() => {});
+  }
+}
+
+async function applyMigrationWhileWriterWaits(client) {
+  const holdSql = MIGRATION_SQL.replace(
+    /\nCOMMIT;\s*$/,
+    '\nSELECT pg_sleep(5);\nCOMMIT;\n',
+  );
+  assert.notEqual(
+    holdSql,
+    MIGRATION_SQL,
+    'test must pause before migration commit',
+  );
+
+  const writer = adminClient(REHEARSAL_DB);
+  const observer = adminClient(REHEARSAL_DB);
+  await writer.connect();
+  await observer.connect();
+  try {
+    const migrationPid = (await client.query('SELECT pg_backend_pid() AS pid'))
+      .rows[0].pid;
+    const migrationOutcome = client.query(holdSql).then(
+      (result) => ({ result }),
+      (error) => ({ error }),
+    );
+    await waitForActivity(
+      observer,
+      migrationPid,
+      (activity) => activity.wait_event === 'PgSleep',
+      'migration must retain its table locks after conversion and before commit',
+    );
+
+    const writerPid = (await writer.query('SELECT pg_backend_pid() AS pid'))
+      .rows[0].pid;
+    const writerOutcome = writer
+      .query(
+        `
+        INSERT INTO "inventory"."item_unit_conversions"
+          ("id", "organization_id", "item_id", "from_unit_id", "to_unit_id",
+           "valid_from", "valid_to", "created_at", "updated_at")
+        VALUES ('post-migration-writer', 'org-1', 'post-migration-item', 'box', 'piece',
+                DATE '2026-12-01', NULL, now(), now())`,
+      )
+      .then(
+        (result) => ({ result }),
+        (error) => ({ error }),
+      );
+    await waitForActivity(
+      observer,
+      writerPid,
+      (activity) => activity.wait_event_type === 'Lock',
+      'a new writer must remain blocked until migration commits',
+    );
+
+    const migrationResult = await migrationOutcome;
+    assert.equal(
+      migrationResult.error,
+      undefined,
+      migrationResult.error?.message,
+    );
+    const writerResult = await writerOutcome;
+    assert.equal(writerResult.error, undefined, writerResult.error?.message);
+    assert.equal(writerResult.result.rowCount, 1);
+    const persisted = await client.query(`
+      SELECT to_char("valid_from", 'YYYY-MM-DD') AS valid_from,
+             pg_typeof("valid_from")::text AS carrier_type
+        FROM "inventory"."item_unit_conversions"
+       WHERE "id" = 'post-migration-writer'`);
+    assert.equal(persisted.rows[0].valid_from, '2026-12-01');
+    assert.equal(persisted.rows[0].carrier_type, 'date');
+    log(
+      '    verified a post-preflight writer blocks until COMMIT, then writes using the converted date schema',
+    );
+  } finally {
+    await writer.end().catch(() => {});
+    await observer.end().catch(() => {});
+  }
+}
+
 async function expectRejected(client, notices, { setupSql, message }) {
   await client.query('BEGIN');
   let migrationError;
   try {
     await client.query(setupSql);
-    await client.query(MIGRATION_SQL);
+    await client.query(MIGRATION_TEST_BODY);
   } catch (error) {
     migrationError = error;
   }
@@ -352,6 +531,8 @@ async function main() {
         `    synthetic fixture non-midnight UTC endpoints: ${nonMidnightEndpoints}`,
       );
 
+      await assertMigrationWaitsForExistingWriter(client);
+
       await expectRejected(client, notices, {
         setupSql: `INSERT INTO "inventory"."item_unit_conversions"
           ("id", "organization_id", "item_id", "from_unit_id", "to_unit_id", "valid_from", "valid_to", "created_at", "updated_at")
@@ -402,10 +583,9 @@ async function main() {
         message: 'effective windows overlap after UTC-day conversion',
       });
 
-      // Execute the migration text as a standalone deployment does. The
-      // temporary preflight table must not depend on the fixture's explicit
-      // rollback transaction for its lifetime.
-      await client.query(MIGRATION_SQL);
+      // Execute the explicit migration transaction as a deployment does, while
+      // a second session proves writers stay blocked through the final commit.
+      await applyMigrationWhileWriterWaits(client);
       const migrationNotices = [...notices];
       printNotices(notices);
 
