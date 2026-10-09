@@ -337,7 +337,7 @@ export type AccountBalanceListQuery =
 /** Inventory stock balance (`InventoryBalanceResponseDto`). */
 export type InventoryBalance = NullableString<
   Schemas['InventoryBalanceResponseDto'],
-  'lastMovementAt'
+  'lastMovementDate'
 >;
 export type InventoryBalanceListQuery =
   operations['InventoryBalancesController_list_v1']['parameters']['query'];
@@ -488,15 +488,30 @@ export type InventoryMovement = NullableString<
 export type InventoryMovementListQuery =
   operations['InventoryMovementsController_list_v1']['parameters']['query'];
 
-/** `POST /inventory/movements` body (`PostInventoryMovementDto`). */
-export type PostInventoryMovementInput = Schemas['PostInventoryMovementDto'];
+/**
+ * `POST /inventory/movements` body (`PostInventoryMovementDto`).
+ *
+ * OQ-73 refinement: `movementDate` is a business DAY — the backend accepts a
+ * canonical Gregorian day, a DECLARED Jalali day (`{ calendar, value }`) or a
+ * legacy ISO instant. The generated DTO types it as a plain string, so the
+ * field is restated with the contract's own input type.
+ */
+export type PostInventoryMovementInput = Omit<
+  Schemas['PostInventoryMovementDto'],
+  'movementDate'
+> & { movementDate?: BusinessDateInput };
 
 /** `POST /inventory/movements/:id/reverse` body. */
-export type ReverseInventoryMovementInput =
-  Schemas['ReverseInventoryMovementDto'];
+export type ReverseInventoryMovementInput = Omit<
+  Schemas['ReverseInventoryMovementDto'],
+  'movementDate'
+> & { movementDate?: BusinessDateInput };
 
 /** `POST /inventory/transfers` body (`PostInventoryTransferDto`). */
-export type PostInventoryTransferInput = Schemas['PostInventoryTransferDto'];
+export type PostInventoryTransferInput = Omit<
+  Schemas['PostInventoryTransferDto'],
+  'movementDate'
+> & { movementDate?: BusinessDateInput };
 
 /** `POST /inventory/transfers` result: the two legs share one transferId. */
 export type InventoryTransferResult = Schemas['InventoryTransferResponseDto'];

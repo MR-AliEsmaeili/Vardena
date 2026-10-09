@@ -122,7 +122,7 @@ function movementFixture(
     baseQuantity: '5',
     baseUnitId: 'unit-1',
     conversionFactor: '1',
-    movementDate: '2026-04-05T00:00:00.000Z',
+    movementDate: '2026-04-05',
     transferId: null,
     reversalOfMovementId: null,
     referenceType: null,

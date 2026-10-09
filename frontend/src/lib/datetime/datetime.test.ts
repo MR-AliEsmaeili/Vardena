@@ -15,11 +15,7 @@ import {
   resolveDayInput,
   toLatinDigits,
 } from './index';
-import {
-  businessDayFromInstantIso,
-  businessDayToInstantIso,
-  todayBusinessDay,
-} from './business-date';
+import { todayBusinessDay } from './business-date';
 import {
   formatInstant,
   instantDayInZone,
@@ -101,19 +97,24 @@ describe('calendar conversion', () => {
 });
 
 describe('business days', () => {
-  it('carries a day as its UTC-midnight instant, and reads it back', () => {
-    expect(businessDayToInstantIso('2026-10-08')).toBe(
-      '2026-10-08T00:00:00.000Z',
-    );
-    expect(businessDayFromInstantIso('2026-10-08T00:00:00.000Z')).toBe(
-      '2026-10-08',
-    );
-    // The day is the UTC day — a zone west of UTC must not shift it.
-    expect(businessDayFromInstantIso('2026-10-08T00:00:00.000Z')).toBe(
-      '2026-10-08',
-    );
-    expect(businessDayToInstantIso('')).toBe('');
+  it('treats a business day as a plain canonical day, never an instant', () => {
+    // OQ-73: the day travels as `YYYY-MM-DD` and is never reinterpreted as a
+    // UTC-midnight instant or shifted by a timezone.
+    expect(isBusinessDay('2026-10-08')).toBe(true);
     expect(isBusinessDay('2026-02-30')).toBe(false);
+    expect(isBusinessDay('2026-10-08T00:00:00.000Z')).toBe(false);
+  });
+
+  it('sends a declared Jalali day for Jalali organizations, canonical otherwise', () => {
+    // 2026-10-08 and 1405-07-16 are the SAME day; the declared form carries
+    // the calendar the operator wrote it in.
+    expect(toBusinessDateInput('2026-10-08', 'JALALI')).toEqual({
+      calendar: 'JALALI',
+      value: '1405-07-16',
+    });
+    expect(toBusinessDateInput('2026-10-08', 'GREGORIAN')).toBe('2026-10-08');
+    // A non-canonical day goes through unchanged — never invented.
+    expect(toBusinessDateInput('not-a-day', 'JALALI')).toBe('not-a-day');
   });
 
   it('takes "today" from the organization zone, not from the browser', () => {

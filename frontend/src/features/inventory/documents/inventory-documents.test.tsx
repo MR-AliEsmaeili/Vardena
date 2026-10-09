@@ -135,7 +135,7 @@ function documentFixture(
     valuationState: 'unpriced',
     accountingEligible: false,
     number: null,
-    businessDate: '2026-05-10T00:00:00.000Z',
+    businessDate: '2026-05-10',
     warehouseId: 'wh-1',
     sourceWarehouseId: null,
     destinationWarehouseId: null,

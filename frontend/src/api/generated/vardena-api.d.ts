@@ -4375,8 +4375,8 @@ export interface components {
              * @example 95
              */
             available: string;
-            /** Format: date-time */
-            lastMovementAt: Record<string, never> | null;
+            /** Format: date */
+            lastMovementDate: Record<string, never> | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */

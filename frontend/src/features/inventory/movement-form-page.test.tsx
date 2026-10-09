@@ -131,7 +131,7 @@ function movementFixture(
     baseQuantity: '5',
     baseUnitId: 'unit-1',
     conversionFactor: '1',
-    movementDate: '2026-04-05T00:00:00.000Z',
+    movementDate: '2026-04-05',
     transferId: null,
     reversalOfMovementId: null,
     referenceType: null,
@@ -161,7 +161,7 @@ async function mockReferences() {
   );
   vi.mocked(inventoryApi.checkInventoryBackdate).mockResolvedValue({
     backdated: false,
-    movementDate: '2026-04-05T00:00:00.000Z',
+    movementDate: '2026-04-05',
     latestMovementDate: null,
     affectedMovements: 0,
     affectedValuedMovements: 0,
@@ -239,7 +239,7 @@ describe('Movement form — cost is permission-gated and never required', () => 
       movementType: 'inbound',
       quantity: '5',
       unitId: 'unit-1',
-      movementDate: '2026-04-05T00:00:00.000Z',
+      movementDate: '2026-04-05',
     });
     expect('totalCost' in (body ?? {})).toBe(false);
     expect('backdateConfirmed' in (body ?? {})).toBe(false);
@@ -356,8 +356,8 @@ describe('Movement form — the two-step backdate decision (OD-VAL-10/11)', () =
   it('warns before posting, takes an explicit choice with no default, and resubmits with backdateConfirmed + repricing', async () => {
     vi.mocked(inventoryApi.checkInventoryBackdate).mockResolvedValue({
       backdated: true,
-      movementDate: '2026-03-01T00:00:00.000Z',
-      latestMovementDate: '2026-04-01T00:00:00.000Z',
+      movementDate: '2026-03-01',
+      latestMovementDate: '2026-04-01',
       affectedMovements: 3,
       affectedValuedMovements: 2,
       alreadyStale: false,
@@ -417,7 +417,7 @@ describe('Movement form — the two-step backdate decision (OD-VAL-10/11)', () =
     const [body] =
       vi.mocked(inventoryApi.postInventoryMovement).mock.calls[0] ?? [];
     expect(body).toMatchObject({
-      movementDate: '2026-03-01T00:00:00.000Z',
+      movementDate: '2026-03-01',
       backdateConfirmed: true,
       repricing: 'recalculate',
     });
@@ -427,8 +427,8 @@ describe('Movement form — the two-step backdate decision (OD-VAL-10/11)', () =
   it('keeps an honest stale notice after «انجام نشود» and lets a permitted session recalculate later', async () => {
     vi.mocked(inventoryApi.checkInventoryBackdate).mockResolvedValue({
       backdated: true,
-      movementDate: '2026-03-01T00:00:00.000Z',
-      latestMovementDate: '2026-04-01T00:00:00.000Z',
+      movementDate: '2026-03-01',
+      latestMovementDate: '2026-04-01',
       affectedMovements: 3,
       affectedValuedMovements: 2,
       alreadyStale: false,
@@ -564,8 +564,8 @@ describe('Movement form — the two-step backdate decision (OD-VAL-10/11)', () =
     });
     vi.mocked(inventoryApi.checkInventoryBackdate).mockResolvedValue({
       backdated: true,
-      movementDate: '2026-03-01T00:00:00.000Z',
-      latestMovementDate: '2026-04-01T00:00:00.000Z',
+      movementDate: '2026-03-01',
+      latestMovementDate: '2026-04-01',
       affectedMovements: 3,
       affectedValuedMovements: 2,
       alreadyStale: false,
@@ -621,8 +621,8 @@ describe('Movement form — the two-step backdate decision (OD-VAL-10/11)', () =
         status: 422,
         details: {
           code: 'inventory.backdated_document',
-          movementDate: '2026-03-01T00:00:00.000Z',
-          latestMovementDate: '2026-04-01T00:00:00.000Z',
+          movementDate: '2026-03-01',
+          latestMovementDate: '2026-04-01',
           affectedMovements: 3,
           affectedValuedMovements: 2,
           alreadyStale: false,

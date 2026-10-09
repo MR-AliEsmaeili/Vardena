@@ -7,7 +7,6 @@ import {
   formatDateOnlyCanonical,
 } from '@/lib/format';
 import { t } from '@/lib/i18n';
-import { businessDayFromInstantIso } from '@/lib/datetime';
 import { Badge } from '@/ui/badge';
 import type { InventoryReferences } from '../use-inventory-references';
 import {
@@ -60,20 +59,15 @@ export function inventoryDocumentsColumns(
       accessorKey: 'businessDate',
       header: t.inventoryDocuments.columnDate,
       cell: ({ row }) => (
-        // C-63 §11: the day is shown in the organization calendar, with the
-        // canonical Gregorian value on hover so the two can be reconciled.
+        // C-63 §11 / OQ-73: the day is shown in the organization calendar,
+        // with the canonical Gregorian value on hover so the two can be
+        // reconciled. The API returns the business day itself (no instant).
         <span
           className="num"
           dir="ltr"
-          title={formatDateOnlyCanonical(
-            businessDayFromInstantIso(row.original.businessDate) ??
-              row.original.businessDate,
-          )}
+          title={formatDateOnlyCanonical(row.original.businessDate)}
         >
-          {formatDateOnly(
-            businessDayFromInstantIso(row.original.businessDate) ??
-              row.original.businessDate,
-          )}
+          {formatDateOnly(row.original.businessDate)}
         </span>
       ),
       meta: { align: 'start' },

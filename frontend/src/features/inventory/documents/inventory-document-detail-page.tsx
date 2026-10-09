@@ -10,7 +10,6 @@ import {
   formatDateTime,
   formatQuantity,
 } from '@/lib/format';
-import { businessDayFromInstantIso } from '@/lib/datetime';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
@@ -165,21 +164,13 @@ function DocumentFacts({
         <Fact
           label={t.inventoryDocuments.columnDate}
           value={
-            // C-63 §11: the business day in the organization calendar PLUS the
-            // canonical Gregorian day, so a Jalali reader and an auditor see
-            // the same document.
+            // C-63 §11 / OQ-73: the business day in the organization calendar
+            // PLUS the canonical Gregorian day, so a Jalali reader and an
+            // auditor see the same document. The API returns the day itself.
             <span dir="ltr">
-              {formatDateOnly(
-                businessDayFromInstantIso(document.businessDate) ??
-                  document.businessDate,
-              )}{' '}
+              {formatDateOnly(document.businessDate)}{' '}
               <span className="text-slate-500">
-                (
-                {formatDateOnlyCanonical(
-                  businessDayFromInstantIso(document.businessDate) ??
-                    document.businessDate,
-                )}
-                )
+                ({formatDateOnlyCanonical(document.businessDate)})
               </span>
             </span>
           }

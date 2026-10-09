@@ -17,11 +17,7 @@ import type {
 } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
-import {
-  businessDayFromInstantIso,
-  getDateTimeSettings,
-  toBusinessDateInput,
-} from '@/lib/datetime';
+import { getDateTimeSettings, toBusinessDateInput } from '@/lib/datetime';
 import { Button } from '@/ui/button';
 import { Card } from '@/ui/card';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
@@ -106,9 +102,8 @@ export function InventoryDocumentFormPage(): ReactElement {
 function toFormValues(document: InventoryDocument): DocumentFormValues {
   return {
     kind: document.kind,
-    // C-63: the canonical Gregorian day of the stored business date (the
-    // ledger carries the day as its UTC-midnight instant).
-    businessDate: businessDayFromInstantIso(document.businessDate) ?? '',
+    // OQ-73: the API returns the business DAY itself (canonical Gregorian).
+    businessDate: document.businessDate,
     warehouseId: document.warehouseId ?? '',
     sourceWarehouseId: document.sourceWarehouseId ?? '',
     destinationWarehouseId: document.destinationWarehouseId ?? '',

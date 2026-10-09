@@ -212,7 +212,7 @@ export const testInventoryBalance: InventoryBalance = {
   onHand: '100',
   reserved: '5',
   available: '95',
-  lastMovementAt: null,
+  lastMovementDate: null,
   createdAt: '2026-04-01T08:00:00.000Z',
   updatedAt: '2026-04-01T08:00:00.000Z',
 } as InventoryBalance;

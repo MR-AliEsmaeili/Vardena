@@ -7,7 +7,7 @@ import { ArrowRight } from 'lucide-react';
 import { normalizeApiError } from '@/api/errors';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
-import { businessDayToInstantIso } from '@/lib/datetime';
+import { toBusinessDateInput, useCalendarSystem } from '@/lib/datetime';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -112,6 +112,7 @@ function TransferForm({
   organizationId: string;
   references: ReturnType<typeof useInventoryReferences>;
 }): ReactElement {
+  const calendarSystem = useCalendarSystem();
   const { showToast } = useToast();
   const form = useForm<TransferFormValues>({
     resolver: zodResolver(transferFormSchema),
@@ -158,7 +159,14 @@ function TransferForm({
           quantity: values.quantity,
           unitId: values.unitId,
           ...(values.movementDate !== ''
-            ? { movementDate: businessDayToInstantIso(values.movementDate) }
+            ? {
+                // OQ-73: send the business DAY — declared Jalali for a Jalali
+                // organization, canonical Gregorian otherwise.
+                movementDate: toBusinessDateInput(
+                  values.movementDate,
+                  calendarSystem,
+                ),
+              }
             : {}),
           ...(values.reason.trim() !== ''
             ? { reason: values.reason.trim() }
