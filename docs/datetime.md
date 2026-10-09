@@ -265,7 +265,16 @@ request. Read it **once per response** and derive every rendering from that one
 value, so a response cannot mix two settings versions.
 
 Changing the settings is a presentation change: it re-renders history, it never
-rewrites it.
+rewrites it. Before a GREGORIAN → JALALI change, Vardena checks existing
+Inventory business documents in the same transaction as the setting update. If
+any canonical date is outside the Jalali rendering envelope (`0621-03-21` through
+`3798-12-31`), the update is refused with a domain error and the organization
+remains GREGORIAN; no historical document is changed. The reverse transition
+remains permitted. The organization update returns HTTP 422 with detail code
+`organization.calendar.jalali_history_unrenderable`, the incompatible date, and
+the supported range. Inventory document creation and business-date edits lock
+and re-check the organization calendar in their write transaction; a stale
+validation returns 409 and commits no document changes.
 
 ## 6. Historical display policy (decided: A)
 

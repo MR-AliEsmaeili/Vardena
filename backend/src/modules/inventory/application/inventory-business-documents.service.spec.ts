@@ -1398,6 +1398,18 @@ describe('C-63 business dates and calendars', () => {
       gregorian: '0600-01-01',
       jalali: null,
     });
+
+    const readBack = await asActor(() =>
+      gregorianFixture.service.getDocument(
+        created.id,
+        gregorianFixture.organizationId,
+      ),
+    );
+    expect(readBack.businessDate).toBe('0600-01-01');
+    expect(readBack.businessDateCalendar).toEqual({
+      gregorian: '0600-01-01',
+      jalali: null,
+    });
   });
 
   it('rejects a declared Jalali day outside the reversible range before writing', async () => {

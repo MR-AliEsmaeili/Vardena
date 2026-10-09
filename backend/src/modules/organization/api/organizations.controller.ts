@@ -21,6 +21,7 @@ import {
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
+  ApiUnprocessableEntityResponse,
   getSchemaPath,
 } from '@nestjs/swagger';
 import { paginatedResponseOf } from '../../../kernel/pagination/paginated-result.js';
@@ -141,6 +142,10 @@ export class OrganizationsController {
   @ApiOkResponse({ type: OrganizationResponseDto })
   @ApiNotFoundResponse({ description: 'Organization does not exist.' })
   @ApiConflictResponse({ description: 'Organization code already exists.' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'A GREGORIAN organization cannot change to JALALI while Inventory history contains business dates outside the supported Jalali rendering range. Keep the calendar GREGORIAN; historical documents are not changed.',
+  })
   @DeploymentOrganizationRoot()
   async update(
     @Param('id') id: string,

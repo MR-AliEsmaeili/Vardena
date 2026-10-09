@@ -3635,7 +3635,7 @@ export interface components {
             code?: string;
             name?: string;
             /**
-             * @description C-63 display calendar of this organization. Changing it re-renders history; it rewrites nothing.
+             * @description C-63 display calendar of this organization. Changing it re-renders history; it rewrites nothing. GREGORIAN → JALALI is refused when existing Inventory business dates fall outside 0621-03-21 through 3798-12-31.
              * @enum {string}
              */
             calendarSystem?: "GREGORIAN" | "JALALI";
@@ -9195,6 +9195,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description A GREGORIAN organization cannot change to JALALI while Inventory history contains business dates outside the supported Jalali rendering range. Keep the calendar GREGORIAN; historical documents are not changed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     OrganizationsController_enable_v1: {
@@ -14038,6 +14045,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description The organization calendar changed after the business date was validated; no draft was written. Refresh and retry. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description A disabled or non-stockable reference, a same-warehouse transfer, a cost on an issue/transfer, or no unit conversion covering the business date. */
             422: {
                 headers: {
@@ -14178,6 +14192,13 @@ export interface operations {
             };
             /** @description The document does not exist. */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The organization calendar changed after the business date was validated; the document update was rolled back. Refresh and retry. */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

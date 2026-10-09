@@ -33,6 +33,7 @@ import {
   toOrganizationDto,
 } from '../domain/organization.js';
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
+import { JALALI_RENDERABLE_GREGORIAN_RANGE } from '../../../kernel/datetime/jalali.js';
 import { normalizeCode, normalizeName } from '../domain/master-data.js';
 import { ORGANIZATION_PERMISSIONS } from '../domain/organization-permissions.js';
 import { LicensingService } from '../../licensing/application/licensing.service.js';
@@ -366,8 +367,28 @@ export class OrganizationsService {
     }
     if (input.timeZone !== undefined) patch.timeZone = input.timeZone;
 
-    const updated = await this.repository.update(id, patch);
-    if (updated === null) throw AppException.notFound('Organization', id);
+    let updated: Organization | null;
+    if (input.calendarSystem === 'JALALI') {
+      const result = await this.repository.updateToJalali(id, patch);
+      if (result.kind === 'not_found') {
+        throw AppException.notFound('Organization', id);
+      }
+      if (result.kind === 'unrenderable_history') {
+        const { minimum, maximum } = JALALI_RENDERABLE_GREGORIAN_RANGE;
+        throw AppException.businessRule(
+          `Cannot change this organization to JALALI while an Inventory business document is dated ${result.businessDate}, outside the supported Jalali range ${minimum} through ${maximum}. Keep the organization GREGORIAN; historical documents were not changed.`,
+          {
+            code: 'organization.calendar.jalali_history_unrenderable',
+            businessDate: result.businessDate,
+            supportedGregorianRange: { minimum, maximum },
+          },
+        );
+      }
+      updated = result.organization;
+    } else {
+      updated = await this.repository.update(id, patch);
+      if (updated === null) throw AppException.notFound('Organization', id);
+    }
 
     await publishEvent(this.events, {
       type: ORGANIZATION_UPDATED_EVENT,

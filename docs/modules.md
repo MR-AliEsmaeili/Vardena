@@ -145,7 +145,11 @@ Jalali conversion uses the reversible Gregorian range `0621-03-21` through
 `3798-12-31`; upstream-convertible dates beyond it are not API-renderable and
 must be refused at the declared-Jalali input boundary. Cross-module readers call
 `OrganizationsService.getDateTimeSettings(organizationId)` once per response;
-the contract is `docs/datetime.md`. No second settings store exists.
+the contract is `docs/datetime.md`. No second settings store exists. A
+GREGORIAN → JALALI update is checked against Inventory business documents in a
+single locked transaction and is refused when any stored day lies outside the
+renderable range; the reverse transition remains allowed and history is never
+rewritten.
 
 - **Status:** implemented in Task 6 for the organizational-structure and party half
   (ADR-0020, ADR-0021). The _configuration_ half — fiscal calendar, numbering series,

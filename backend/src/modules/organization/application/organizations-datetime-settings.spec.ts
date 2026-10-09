@@ -10,6 +10,7 @@ import {
 import { createMasterDataStores } from '../../../../test/support/master-data-repositories.js';
 import { UNPINNED_APP_CONFIG } from '../../../../test/support/app-config.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import { ORGANIZATION_PERMISSIONS } from '../domain/organization-permissions.js';
 import { OrganizationsService } from './organizations.service.js';
 
@@ -177,6 +178,89 @@ describe('C-63 organization date/time settings', () => {
       calendarSystem: 'GREGORIAN',
       timeZone: 'Europe/Berlin',
     });
+  });
+
+  it('refuses GREGORIAN → JALALI when existing Inventory history is not renderable and preserves settings', async () => {
+    await asActor(ADMIN, () =>
+      fixture.service.updateOrganization(fixture.organizationId, {
+        calendarSystem: 'GREGORIAN',
+      }),
+    );
+    fixture.stores.raw.organizations.seedInventoryBusinessDocumentDate(
+      fixture.organizationId,
+      toBusinessDate('0600-01-01')!,
+    );
+
+    await expect(
+      asActor(ADMIN, () =>
+        fixture.service.updateOrganization(fixture.organizationId, {
+          calendarSystem: 'JALALI',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      status: 422,
+      code: 'BusinessRuleViolation',
+      details: {
+        code: 'organization.calendar.jalali_history_unrenderable',
+        businessDate: '0600-01-01',
+      },
+    });
+
+    await expect(
+      asActor(ADMIN, () =>
+        fixture.service.getDateTimeSettings(fixture.organizationId),
+      ),
+    ).resolves.toEqual({
+      calendarSystem: 'GREGORIAN',
+      timeZone: 'Asia/Tehran',
+    });
+  });
+
+  it('allows GREGORIAN → JALALI when all existing Inventory dates are renderable', async () => {
+    await asActor(ADMIN, () =>
+      fixture.service.updateOrganization(fixture.organizationId, {
+        calendarSystem: 'GREGORIAN',
+      }),
+    );
+    fixture.stores.raw.organizations.seedInventoryBusinessDocumentDate(
+      fixture.organizationId,
+      toBusinessDate('0621-03-21')!,
+    );
+    fixture.stores.raw.organizations.seedInventoryBusinessDocumentDate(
+      fixture.organizationId,
+      toBusinessDate('3798-12-31')!,
+    );
+
+    const updated = await asActor(ADMIN, () =>
+      fixture.service.updateOrganization(fixture.organizationId, {
+        calendarSystem: 'JALALI',
+      }),
+    );
+
+    expect(updated.calendarSystem).toBe('JALALI');
+    await expect(
+      asActor(ADMIN, () =>
+        fixture.service.getDateTimeSettings(fixture.organizationId),
+      ),
+    ).resolves.toEqual({
+      calendarSystem: 'JALALI',
+      timeZone: 'Asia/Tehran',
+    });
+  });
+
+  it('keeps the reverse JALALI → GREGORIAN transition unrestricted', async () => {
+    fixture.stores.raw.organizations.seedInventoryBusinessDocumentDate(
+      fixture.organizationId,
+      toBusinessDate('0600-01-01')!,
+    );
+
+    const updated = await asActor(ADMIN, () =>
+      fixture.service.updateOrganization(fixture.organizationId, {
+        calendarSystem: 'GREGORIAN',
+      }),
+    );
+
+    expect(updated.calendarSystem).toBe('GREGORIAN');
   });
 
   it('lets a caller state the settings at creation time', async () => {

@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import type { CalendarSystem } from '../../../kernel/datetime/calendar-system.js';
+import { OrganizationCalendarChangedDuringDocumentWriteError } from './inventory-business-document-errors.js';
 import {
   businessDateFromDbDate,
   businessDateToDbDate,
@@ -357,8 +359,14 @@ export class InventoryBusinessDocumentsRepository {
   async createDocument(input: {
     header: DocumentHeaderCreate;
     lines: DocumentLineCreate[];
+    validatedCalendarSystem: CalendarSystem;
   }): Promise<InventoryBusinessDocument> {
     return this.withTransaction(async (tx) => {
+      await lockOrganizationCalendarForBusinessDateWrite(
+        tx,
+        input.header.organizationId,
+        input.validatedCalendarSystem,
+      );
       await tx.inventoryBusinessDocument.create({
         data: toCreateData(input.header),
       });
@@ -400,7 +408,23 @@ export class InventoryBusinessDocumentsRepository {
     tx: DocTxClient,
     id: string,
     data: InventoryDocumentUpdate,
+    calendarPolicy?: {
+      organizationId: string;
+      validatedCalendarSystem: CalendarSystem;
+    },
   ): Promise<void> {
+    if (data.businessDate !== undefined) {
+      if (calendarPolicy === undefined) {
+        throw new Error(
+          'An organization calendar policy is required for a BusinessDate update.',
+        );
+      }
+      await lockOrganizationCalendarForBusinessDateWrite(
+        tx,
+        calendarPolicy.organizationId,
+        calendarPolicy.validatedCalendarSystem,
+      );
+    }
     await tx.inventoryBusinessDocument.update({
       where: { id },
       data: toUpdateData(data),
@@ -667,4 +691,29 @@ export function toDomain(
     destinationWarehouseId: null,
     cost: row.receiptCost === null ? null : decimalToString(row.receiptCost),
   };
+}
+
+/**
+ * Lock and re-check the display calendar used to validate a BusinessDate.
+ * Organization calendar updates take `FOR UPDATE` before checking history;
+ * this `FOR KEY SHARE` serializes inserts/date edits with that transition.
+ */
+async function lockOrganizationCalendarForBusinessDateWrite(
+  tx: DocTxClient,
+  organizationId: string,
+  validatedCalendarSystem: CalendarSystem,
+): Promise<void> {
+  const rows = await tx.$queryRaw<{ calendarSystem: string }>`
+    SELECT "calendar_system" AS "calendarSystem"
+      FROM "organization"."organizations"
+     WHERE "id" = ${organizationId}
+     FOR KEY SHARE
+  `;
+  const organization = rows[0];
+  if (
+    organization === undefined ||
+    organization.calendarSystem !== validatedCalendarSystem
+  ) {
+    throw new OrganizationCalendarChangedDuringDocumentWriteError();
+  }
 }

@@ -12,6 +12,7 @@ import {
   businessDateFromInstant,
   type BusinessDate,
 } from '../../../kernel/datetime/business-date.js';
+import type { CalendarSystem } from '../../../kernel/datetime/calendar-system.js';
 import { toApiBusinessDate } from '../../../kernel/datetime/api-date-time.js';
 import {
   toOffset,
@@ -33,6 +34,7 @@ import type {
   InventoryDocumentUpdate,
 } from '../data/inventory-business-document-rows.js';
 import { InsufficientStockError } from '../data/inventory-posting-errors.js';
+import { OrganizationCalendarChangedDuringDocumentWriteError } from '../data/inventory-business-document-errors.js';
 import { resolveEffectivePolicy } from '../domain/negative-stock-policy.js';
 import { movementSign, reversalTypeFor } from '../domain/movement-type.js';
 import { subtractDecimalStrings } from '../domain/quantities.js';
@@ -357,7 +359,8 @@ export class InventoryBusinessDocumentsService {
     const kind = requireKind(input.kind);
     await this.organizations.requireUsableOrganization(input.organizationId);
 
-    const businessDate = await this.resolveBusinessDate(input);
+    const resolvedDate = await this.resolveBusinessDate(input);
+    const { businessDate, calendarSystem } = resolvedDate;
     const header = this.normalizeHeader(kind, input);
     if (header.cost !== null) {
       await this.authorization.requireAllPermissions([
@@ -383,24 +386,30 @@ export class InventoryBusinessDocumentsService {
 
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
-    const document = await this.documents.createDocument({
-      header: {
-        id: generateId(),
-        organizationId: input.organizationId,
-        kind,
-        businessDate,
-        warehouseId: header.warehouseId,
-        sourceWarehouseId: header.sourceWarehouseId,
-        destinationWarehouseId: header.destinationWarehouseId,
-        receiptCost: header.cost,
-        status: 'draft',
-        description: header.description,
-        reference: header.reference,
-        actorId,
-        at: now,
-      },
-      lines: lines.map(toLineCreate),
-    });
+    let document: InventoryBusinessDocument;
+    try {
+      document = await this.documents.createDocument({
+        header: {
+          id: generateId(),
+          organizationId: input.organizationId,
+          kind,
+          businessDate,
+          warehouseId: header.warehouseId,
+          sourceWarehouseId: header.sourceWarehouseId,
+          destinationWarehouseId: header.destinationWarehouseId,
+          receiptCost: header.cost,
+          status: 'draft',
+          description: header.description,
+          reference: header.reference,
+          actorId,
+          at: now,
+        },
+        lines: lines.map(toLineCreate),
+        validatedCalendarSystem: calendarSystem,
+      });
+    } catch (error) {
+      throw this.translatePostingError(error, header);
+    }
     await this.publishDocumentEvent(
       INVENTORY_DOCUMENT_CREATED_EVENT,
       document,
@@ -461,13 +470,19 @@ export class InventoryBusinessDocumentsService {
     rethrowDomain(() => assertEditable(current));
 
     // 2. VALIDATE
-    const businessDate =
+    const resolvedDate =
       input.businessDate === undefined
-        ? current.businessDate
+        ? {
+            businessDate: current.businessDate,
+            calendarSystem: (
+              await this.organizations.getDateTimeSettings(organizationId)
+            ).calendarSystem,
+          }
         : await this.resolveBusinessDate({
             organizationId,
             businessDate: input.businessDate,
           });
+    const { businessDate, calendarSystem } = resolvedDate;
     const header = this.normalizeHeader(current.kind, {
       warehouseId:
         input.warehouseId === undefined
@@ -635,30 +650,38 @@ export class InventoryBusinessDocumentsService {
             resolved.map(toLineCreate),
           );
         }
-        await this.documents.updateHeader(tx, current.id, {
-          businessDate,
-          warehouseId: header.warehouseId,
-          sourceWarehouseId: header.sourceWarehouseId,
-          destinationWarehouseId: header.destinationWarehouseId,
-          receiptCost: header.cost,
-          description: header.description,
-          reference: header.reference,
-          ...(assessment.classification === 'material'
-            ? {
-                // Same reasoning as the finalize path: when a TRANSFER's
-                // effect is re-posted, the re-post itself (coupled replay or
-                // incremental pair) leaves both keys consistent, so the
-                // "did not reprice" flag would be a false alarm.
-                valuationStale:
-                  current.kind === 'transfer' &&
-                  assessment.requiresLedgerReconciliation
-                    ? false
-                    : repricing === 'skip',
-              }
-            : {}),
-          updatedAt: now,
-          updatedBy: actorId,
-        });
+        await this.documents.updateHeader(
+          tx,
+          current.id,
+          {
+            businessDate,
+            warehouseId: header.warehouseId,
+            sourceWarehouseId: header.sourceWarehouseId,
+            destinationWarehouseId: header.destinationWarehouseId,
+            receiptCost: header.cost,
+            description: header.description,
+            reference: header.reference,
+            ...(assessment.classification === 'material'
+              ? {
+                  // Same reasoning as the finalize path: when a TRANSFER's
+                  // effect is re-posted, the re-post itself (coupled replay or
+                  // incremental pair) leaves both keys consistent, so the
+                  // "did not reprice" flag would be a false alarm.
+                  valuationStale:
+                    current.kind === 'transfer' &&
+                    assessment.requiresLedgerReconciliation
+                      ? false
+                      : repricing === 'skip',
+                }
+              : {}),
+            updatedAt: now,
+            updatedBy: actorId,
+          },
+          {
+            organizationId,
+            validatedCalendarSystem: calendarSystem,
+          },
+        );
         if (assessment.requiresLedgerReconciliation) {
           const reposted = await this.postDocumentEffect(tx, {
             documentId: current.id,
@@ -1191,7 +1214,7 @@ export class InventoryBusinessDocumentsService {
   private async resolveBusinessDate(input: {
     organizationId: string;
     businessDate?: BusinessDateInput | undefined;
-  }): Promise<BusinessDate> {
+  }): Promise<{ businessDate: BusinessDate; calendarSystem: CalendarSystem }> {
     const dateTimeSettings = await this.organizations.getDateTimeSettings(
       input.organizationId,
     );
@@ -1219,7 +1242,7 @@ export class InventoryBusinessDocumentsService {
         },
       ]);
     }
-    return businessDate;
+    return { businessDate, calendarSystem };
   }
 
   private normalizeHeader(
@@ -2184,6 +2207,11 @@ export class InventoryBusinessDocumentsService {
     error: unknown,
     header: { warehouseId?: string | null; sourceWarehouseId?: string | null },
   ): unknown {
+    if (error instanceof OrganizationCalendarChangedDuringDocumentWriteError) {
+      return AppException.conflict(
+        'The organization calendar changed while this Inventory document was being prepared. No document changes were committed; refresh and retry the request.',
+      );
+    }
     if (error instanceof InsufficientStockError) {
       const warehouseId =
         header.sourceWarehouseId ?? header.warehouseId ?? null;

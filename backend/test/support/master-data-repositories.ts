@@ -38,7 +38,11 @@ import type { Unit } from '../../src/modules/inventory/domain/unit.js';
 import type { ItemGroup } from '../../src/modules/inventory/domain/item-group.js';
 import type { Item } from '../../src/modules/inventory/domain/item.js';
 import type { UnitConversion } from '../../src/modules/inventory/domain/unit-conversion.js';
-import { isGregorianBusinessDate } from '../../src/kernel/datetime/business-date.js';
+import {
+  isGregorianBusinessDate,
+  type BusinessDate,
+} from '../../src/kernel/datetime/business-date.js';
+import { JALALI_RENDERABLE_GREGORIAN_RANGE } from '../../src/kernel/datetime/jalali.js';
 import { planNewVersion } from '../../src/modules/inventory/domain/unit-conversion.js';
 import {
   ConversionPlanRejectedError,
@@ -46,7 +50,10 @@ import {
 } from '../../src/modules/inventory/data/unit-conversions.repository.js';
 import type { Warehouse } from '../../src/modules/inventory/domain/warehouse.js';
 import type { HierarchyEdge } from '../../src/modules/organization/domain/hierarchy.js';
-import type { OrganizationsRepository } from '../../src/modules/organization/data/organizations.repository.js';
+import type {
+  JalaliCalendarUpdateResult,
+  OrganizationsRepository,
+} from '../../src/modules/organization/data/organizations.repository.js';
 import type { LicensedAllocation } from '../../src/modules/licensing/application/licensing.service.js';
 import type { OrganizationMembershipsRepository } from '../../src/modules/organization/data/organization-memberships.repository.js';
 import type { OrganizationMembershipRow } from '../../src/modules/organization/data/organization-memberships.repository.js';
@@ -305,6 +312,16 @@ class ScopedCodeTable<TRow extends Row & { organizationId: string }> {
 export class InMemoryOrganizationsRepository {
   readonly table = new InMemoryTable<Organization>([['code']]);
   private allocationTail: Promise<void> = Promise.resolve();
+  private readonly inventoryBusinessDates = new Map<string, BusinessDate[]>();
+
+  seedInventoryBusinessDocumentDate(
+    organizationId: string,
+    businessDate: BusinessDate,
+  ): void {
+    const dates = this.inventoryBusinessDates.get(organizationId) ?? [];
+    dates.push(businessDate);
+    this.inventoryBusinessDates.set(organizationId, dates);
+  }
 
   async findById(id: string): Promise<Organization | null> {
     return this.table.findById(id);
@@ -367,6 +384,31 @@ export class InMemoryOrganizationsRepository {
 
   async update(id: string, patch: Patch): Promise<Organization | null> {
     return this.table.patch(id, patch);
+  }
+
+  async updateToJalali(
+    id: string,
+    patch: Patch,
+  ): Promise<JalaliCalendarUpdateResult> {
+    const current = this.table.findById(id);
+    if (current === null) return { kind: 'not_found' };
+    if (current.calendarSystem === 'GREGORIAN') {
+      const incompatible = (this.inventoryBusinessDates.get(id) ?? []).find(
+        (businessDate) =>
+          businessDate < JALALI_RENDERABLE_GREGORIAN_RANGE.minimum ||
+          businessDate > JALALI_RENDERABLE_GREGORIAN_RANGE.maximum,
+      );
+      if (incompatible !== undefined) {
+        return {
+          kind: 'unrenderable_history',
+          businessDate: incompatible,
+        };
+      }
+    }
+    const updated = this.table.patch(id, patch);
+    return updated === null
+      ? { kind: 'not_found' }
+      : { kind: 'updated', organization: updated };
   }
 }
 

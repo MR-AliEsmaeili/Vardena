@@ -56,6 +56,12 @@ export interface GregorianDay {
   day: number;
 }
 
+/** Inclusive canonical Gregorian envelope that the API can render as Jalali. */
+export const JALALI_RENDERABLE_GREGORIAN_RANGE = {
+  minimum: '0621-03-21',
+  maximum: '3798-12-31',
+} as const;
+
 /** True when the Jalali year is a leap year (366 days) and is supported. */
 export function isJalaliLeapYear(year: number): boolean {
   if (!isSupportedJalaliYear(year)) return false;
