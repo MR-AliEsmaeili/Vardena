@@ -680,13 +680,13 @@ describe.skipIf(DATABASE_URL === undefined)(
       // valued from the source position ON ITS DATE (5 × 100), and the
       // movements that follow it must be recomputed around the arriving
       // value.
-      await costedReceipt(whMainId, '10', '1000', '2026-01-10T00:00:00.000Z');
-      await costedReceipt(whSecondId, '20', '1000', '2026-01-05T00:00:00.000Z');
-      await costedReceipt(whMainId, '10', '3000', '2026-01-20T00:00:00.000Z');
+      await costedReceipt(whMainId, '10', '1000', '2026-01-10');
+      await costedReceipt(whSecondId, '20', '1000', '2026-01-05');
+      await costedReceipt(whMainId, '10', '3000', '2026-01-20');
       const issueDraft = await createDocument({
         kind: 'issue',
         warehouseId: whSecondId,
-        businessDate: '2026-02-01T00:00:00.000Z',
+        businessDate: '2026-02-01',
         lines: [{ itemId: itemCId, quantity: '12', unitId: unitAId }],
       });
       const issued = await finalize(issueDraft['id'] as string);
@@ -698,7 +698,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         kind: 'transfer',
         sourceWarehouseId: whMainId,
         destinationWarehouseId: whSecondId,
-        businessDate: '2026-01-15T00:00:00.000Z',
+        businessDate: '2026-01-15',
         lines: [{ itemId: itemCId, quantity: '5', unitId: unitAId }],
       });
       const draftId = draft['id'] as string;
@@ -715,11 +715,11 @@ describe.skipIf(DATABASE_URL === undefined)(
         keys: [
           {
             warehouseId: whMainId,
-            latestMovementDate: '2026-01-20T00:00:00.000Z',
+            latestMovementDate: '2026-01-20',
           },
           {
             warehouseId: whSecondId,
-            latestMovementDate: '2026-02-01T00:00:00.000Z',
+            latestMovementDate: '2026-02-01',
           },
         ],
       });
