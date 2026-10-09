@@ -5,15 +5,16 @@ import {
   isCalendarSystem,
 } from './calendar-system.js';
 import {
+  businessDateFromDbDate,
   businessDateFromInstant,
-  businessDateFromUtcMidnight,
-  businessDateRangeToUtcInterval,
-  businessDateToUtcMidnight,
+  businessDateToDbDate,
   compareBusinessDates,
   formatBusinessDate,
   isBusinessDateInCalendar,
   isGregorianBusinessDate,
+  isValidBusinessDateRange,
   parseBusinessDate,
+  toBusinessDate,
 } from './business-date.js';
 import { parseBusinessDateInput } from './business-date-input.js';
 import { gregorianToJalaliDay, isValidJalaliDay } from './jalali.js';
@@ -175,43 +176,76 @@ describe('business dates', () => {
     expect(isBusinessDateInCalendar('1405-13-30', 'GREGORIAN')).toBe(false);
   });
 
-  it('carries a business day as UTC midnight — the day is zone-independent', () => {
-    const instant = businessDateToUtcMidnight('2026-10-08');
-    expect(instant?.toISOString()).toBe('2026-10-08T00:00:00.000Z');
-    expect(businessDateFromUtcMidnight(instant as Date)).toBe('2026-10-08');
-    // …and a day derived from an instant uses the organization zone.
+  it('brands only real calendar days as BusinessDate values', () => {
+    expect(toBusinessDate('2026-10-08')).toBe('2026-10-08');
+    expect(toBusinessDate('2026-02-30')).toBeNull();
+    expect(toBusinessDate('2026-10-08T00:00:00.000Z')).toBeNull();
+  });
+
+  it('round-trips through the PostgreSQL DATE carrier without a zone', () => {
+    // The DB adapter pair is the ONLY place a Date object touches a business
+    // date: Prisma maps `date` ⇔ a Date whose UTC components are the day.
+    const carrier = businessDateToDbDate('2026-10-08');
+    expect(carrier?.toISOString()).toBe('2026-10-08T00:00:00.000Z');
+    expect(businessDateFromDbDate(carrier as Date)).toBe('2026-10-08');
+    expect(businessDateToDbDate('2026-02-30')).toBeNull();
+  });
+
+  it('keeps a BusinessDate identical in every time zone (OQ-73)', () => {
+    // A stored day has NO time-of-day and NO zone: whatever zone an
+    // organization configures, 2026-10-08 stays 2026-10-08 — no shift, no
+    // re-derivation. The carrier read uses UTC components by construction,
+    // so no zone even enters the computation.
+    const carrier = businessDateToDbDate('2026-10-08') as Date;
+    for (const timeZone of [
+      'Asia/Tehran',
+      'UTC',
+      'America/New_York',
+      'Europe/Berlin',
+    ]) {
+      expect(businessDateFromDbDate(carrier), timeZone).toBe('2026-10-08');
+      expect(
+        formatBusinessDate(businessDateFromDbDate(carrier), 'JALALI'),
+        timeZone,
+      ).toBe('1405-07-16');
+    }
+  });
+
+  it('derives a day from an instant ONLY through the organization zone', () => {
+    // Where a genuine moment exists (a legacy instant input, "today"), the
+    // day it names depends on the zone — that is an instant property, never
+    // applied to an already-stored business date.
     expect(
       businessDateFromInstant(new Date('2026-10-08T21:00:00Z'), 'Asia/Tehran'),
     ).toBe('2026-10-09');
+    expect(
+      businessDateFromInstant(new Date('2026-10-08T21:00:00Z'), 'UTC'),
+    ).toBe('2026-10-08');
   });
 
   it('validates rather than coerces', () => {
     expect(isGregorianBusinessDate('2026-10-08')).toBe(true);
     expect(isGregorianBusinessDate('2026-2-8')).toBe(false);
     expect(isGregorianBusinessDate('2026-10-08T00:00:00Z')).toBe(false);
-    expect(businessDateToUtcMidnight('2026-02-30')).toBeNull();
+    expect(businessDateToDbDate('2026-02-30')).toBeNull();
   });
 
-  it('compares days and converts an inclusive range to a half-open interval', () => {
+  it('compares days and validates inclusive ranges without instants', () => {
     expect(compareBusinessDates('2026-10-08', '2026-10-09')).toBeLessThan(0);
     expect(compareBusinessDates('2026-10-08', '2026-10-08')).toBe(0);
     expect(compareBusinessDates('2026-10-08', 'nonsense')).toBeNull();
-
-    const interval = businessDateRangeToUtcInterval({
-      startDate: '2026-10-01',
-      endDate: '2026-10-08',
-    });
-    // Inclusive days, half-open instants: no 23:59:59.999 anywhere.
-    expect(interval?.start.toISOString()).toBe('2026-10-01T00:00:00.000Z');
-    expect(interval?.endExclusive.toISOString()).toBe(
-      '2026-10-09T00:00:00.000Z',
-    );
     expect(
-      businessDateRangeToUtcInterval({
+      isValidBusinessDateRange({
+        startDate: '2026-10-01',
+        endDate: '2026-10-08',
+      }),
+    ).toBe(true);
+    expect(
+      isValidBusinessDateRange({
         startDate: '2026-10-08',
         endDate: '2026-10-01',
       }),
-    ).toBeNull();
+    ).toBe(false);
   });
 });
 

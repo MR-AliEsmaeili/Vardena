@@ -20,6 +20,7 @@ import {
   getSchemaPath,
 } from '@nestjs/swagger';
 import { paginatedResponseOf } from '../../../kernel/pagination/paginated-result.js';
+import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
 import { AuthGuard } from '../../identity/application/auth.guard.js';
 import { AuthorizationGuard } from '../../rbac/application/authorization.guard.js';
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
@@ -147,8 +148,10 @@ export class InventoryBalancesController {
         itemId: mismatch.itemId,
         expectedOnHand: mismatch.expectedOnHand,
         expectedReserved: mismatch.expectedReserved,
-        expectedLastMovementAt:
-          mismatch.expectedLastMovementAt?.toISOString() ?? null,
+        expectedLastMovementDate:
+          mismatch.expectedLastMovementDate === null
+            ? null
+            : businessDateFromDbDate(mismatch.expectedLastMovementDate),
         stored: mismatch.stored,
         matches: mismatch.matches,
       })),
@@ -184,8 +187,10 @@ export class InventoryBalancesController {
         itemId: correction.itemId,
         expectedOnHand: correction.expectedOnHand,
         expectedReserved: correction.expectedReserved,
-        expectedLastMovementAt:
-          correction.expectedLastMovementAt?.toISOString() ?? null,
+        expectedLastMovementDate:
+          correction.expectedLastMovementDate === null
+            ? null
+            : businessDateFromDbDate(correction.expectedLastMovementDate),
         storedBefore: correction.storedBefore,
         action: correction.action,
       })),

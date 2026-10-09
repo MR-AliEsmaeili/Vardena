@@ -37,12 +37,15 @@ import {
 import { VALUATION_PERMISSIONS } from '../domain/inventory-valuation-permissions.js';
 import {
   buildRequestHash,
-  canonicalClientDate,
+  canonicalClientBusinessDate,
   normalizeReference,
   normalizeReason,
   requireOperationKey,
+  resolveBusinessDateCarrier,
   resolveEnteredToBase,
 } from './inventory-posting-support.js';
+import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
+import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
 import {
   InsufficientStockError,
   RecalculationTooLargeError,
@@ -61,7 +64,13 @@ export interface PostTransferInput {
   itemId: string;
   quantity: string;
   unitId: string;
-  movementDate?: Date | undefined;
+  /**
+   * C-63 business-date INPUT (OQ-73): a canonical Gregorian day, a declared
+   * Jalali day (`{ calendar, value }`), or a legacy ISO instant resolved to
+   * the day it falls on in the organization zone. Omit for today's business
+   * day in the organization zone.
+   */
+  movementDate?: BusinessDateInput | undefined;
   reason?: string | null | undefined;
   referenceType?: string | null | undefined;
   referenceId?: string | null | undefined;
@@ -154,7 +163,16 @@ export class InventoryTransfersService {
       referenceType: input.referenceType,
       referenceId: input.referenceId,
     });
-    const movementDate = input.movementDate ?? new Date();
+    // OQ-73: the transfer's business DATE is a calendar day (PostgreSQL
+    // `date`), defaulted to today's business day in the organization zone.
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
+    );
+    const movementDate = resolveBusinessDateCarrier({
+      field: 'movementDate',
+      value: input.movementDate,
+      timeZone,
+    });
     const resolved = await resolveEnteredToBase({
       conversions: this.conversions,
       organizationId: input.organizationId,
@@ -172,10 +190,10 @@ export class InventoryTransfersService {
       itemId: input.itemId,
       quantity: resolved.quantity,
       unitId: input.unitId,
-      // Client date intent only: a defaulted `new Date()` must not enter the
-      // hash, or a dateless retry would hash differently and fail to replay
+      // Client day intent only: a defaulted today must not enter the hash,
+      // or a dateless retry would hash differently and fail to replay
       // (idempotency determinism, ADR-0022).
-      movementDate: canonicalClientDate(input.movementDate),
+      movementDate: canonicalClientBusinessDate(input.movementDate),
       reason,
       referenceType: reference.referenceType,
       referenceId: reference.referenceId,
@@ -472,10 +490,13 @@ export function requireTransferBackdateDecision(params: {
     }),
     {
       code: BACKDATE_CONFIRMATION_CODE,
-      movementDate: params.movementDate.toISOString(),
+      movementDate: businessDateFromDbDate(params.movementDate),
       keys: keys.map((key) => ({
         warehouseId: key.warehouseId,
-        latestMovementDate: key.latestMovementDate?.toISOString() ?? null,
+        latestMovementDate:
+          key.latestMovementDate === null
+            ? null
+            : businessDateFromDbDate(key.latestMovementDate),
       })),
       source: backdateSummary(params.source),
       destination: backdateSummary(params.destination),
@@ -504,10 +525,13 @@ export function translateTransferReplayError(
       }),
       {
         code: BACKDATE_CONFIRMATION_CODE,
-        movementDate: error.movementDate.toISOString(),
+        movementDate: businessDateFromDbDate(error.movementDate),
         keys: error.keys.map((key) => ({
           warehouseId: key.warehouseId,
-          latestMovementDate: key.latestMovementDate?.toISOString() ?? null,
+          latestMovementDate:
+            key.latestMovementDate === null
+              ? null
+              : businessDateFromDbDate(key.latestMovementDate),
         })),
       },
     );
@@ -549,8 +573,11 @@ function backdateSummary(
 ): Record<string, unknown> {
   return {
     backdated: assessment.backdated,
-    movementDate: assessment.movementDate.toISOString(),
-    latestMovementDate: assessment.latestMovementDate?.toISOString() ?? null,
+    movementDate: businessDateFromDbDate(assessment.movementDate),
+    latestMovementDate:
+      assessment.latestMovementDate === null
+        ? null
+        : businessDateFromDbDate(assessment.latestMovementDate),
     affectedMovements: assessment.affectedMovements,
     affectedValuedMovements: assessment.affectedValuedMovements,
     alreadyStale: assessment.alreadyStale,

@@ -5,9 +5,13 @@ import { readInventoryKardex } from '@/api/inventory.api';
 import type { InventoryKardexQuery, InventoryKardexRow } from '@/api/contracts';
 import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import { useOrganizationId } from '@/features/organization/use-organization';
-import { formatQuantity, formatDateTime } from '@/lib/format';
+import {
+  formatQuantity,
+  formatDateOnly,
+  formatDateOnlyCanonical,
+} from '@/lib/format';
 import { t } from '@/lib/i18n';
-import { businessDayToInstantIso, useCalendarSystem } from '@/lib/datetime';
+import { useCalendarSystem } from '@/lib/datetime';
 import { Button } from '@/ui/button';
 import { DataTable } from '@/ui/patterns/data-table';
 import { FormField } from '@/ui/patterns/form-field';
@@ -29,8 +33,14 @@ function buildKardexColumns(): ColumnDef<InventoryKardexRow, unknown>[] {
       accessorKey: 'movementDate',
       header: t.inventory.kardexColumnDate,
       cell: ({ row }) => (
-        <span className="num" title={row.original.movementDate}>
-          {formatDateTime(row.original.movementDate)}
+        // OQ-73: a ledger day is a business DATE — rendered in the org
+        // calendar, never shifted through an instant/timezone.
+        <span
+          className="num"
+          dir="ltr"
+          title={formatDateOnlyCanonical(row.original.movementDate)}
+        >
+          {formatDateOnly(row.original.movementDate)}
         </span>
       ),
     },
@@ -115,12 +125,10 @@ export function KardexPage() {
       warehouseId,
       page,
       pageSize: 50,
-      // C-63: a day filter is the day's UTC-midnight instant on both bounds
-      // (the ledger's day convention) — never hand-built in a component.
-      ...(dateFrom !== ''
-        ? { dateFrom: businessDayToInstantIso(dateFrom) }
-        : {}),
-      ...(dateTo !== '' ? { dateTo: businessDayToInstantIso(dateTo) } : {}),
+      // OQ-73: day filters are canonical Gregorian days — the backend
+      // compares them against the `date` column directly.
+      ...(dateFrom !== '' ? { dateFrom } : {}),
+      ...(dateTo !== '' ? { dateTo } : {}),
       ...(page > 1 && snapshot !== undefined ? { snapshot } : {}),
     };
   }, [

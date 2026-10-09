@@ -59,7 +59,7 @@ describe('InventoryKardexService', () => {
     const { service } = fixture();
     const result = await service.read({
       ...baseQuery,
-      dateFrom: new Date('2026-01-02T00:00:00Z'),
+      dateFrom: '2026-01-02',
     });
     expect(result).toMatchObject({
       opening: '100.0000',
@@ -85,8 +85,8 @@ describe('InventoryKardexService', () => {
     await expect(
       service.read({
         ...baseQuery,
-        dateFrom: new Date('2026-01-03T00:00:00Z'),
-        dateTo: new Date('2026-01-02T00:00:00Z'),
+        dateFrom: '2026-01-03',
+        dateTo: '2026-01-02',
       }),
     ).rejects.toMatchObject({ code: 'BadRequest' });
   });

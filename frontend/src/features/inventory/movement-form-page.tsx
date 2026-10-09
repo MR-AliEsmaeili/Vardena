@@ -12,7 +12,7 @@ import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { formatQuantity } from '@/lib/format';
 import { t } from '@/lib/i18n';
-import { businessDayToInstantIso } from '@/lib/datetime';
+import { toBusinessDateInput, useCalendarSystem } from '@/lib/datetime';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -159,6 +159,7 @@ function MovementForm({
   kind: MovementFormKind;
   references: ReturnType<typeof useInventoryReferences>;
 }): ReactElement {
+  const calendarSystem = useCalendarSystem();
   const { showToast } = useToast();
   const permissions = usePermissions();
   // Cost entry is gated by the backend's own permission (UX only — the API
@@ -233,7 +234,14 @@ function MovementForm({
       quantity: values.quantity,
       unitId: values.unitId,
       ...(values.movementDate !== ''
-        ? { movementDate: businessDayToInstantIso(values.movementDate) }
+        ? {
+            // OQ-73: send the business DAY — declared Jalali for a Jalali
+            // organization, canonical Gregorian otherwise.
+            movementDate: toBusinessDateInput(
+              values.movementDate,
+              calendarSystem,
+            ),
+          }
         : {}),
       ...(values.reason.trim() !== '' ? { reason: values.reason.trim() } : {}),
     };
@@ -349,7 +357,8 @@ function MovementForm({
           organizationId,
           warehouseId: values.warehouseId,
           itemId: values.itemId,
-          movementDate: businessDayToInstantIso(values.movementDate),
+          // The backdate-check filter takes a strict canonical day.
+          movementDate: values.movementDate,
         });
         if (check.backdated) {
           setBackdateAssessment({

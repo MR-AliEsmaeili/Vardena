@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildRequestHash,
-  canonicalClientDate,
+  canonicalClientBusinessDate,
 } from './inventory-posting-support.js';
 
 /**
  * Idempotency-hash determinism (ADR-0022, Task 9.6 finding: inventory
- * idempotency determinism defect).
+ * idempotency determinism defect; OQ-73: the date is now a business DAY).
  *
  * The request hash is the replay identity: two submissions of one logical
  * operation MUST hash identically, and any material difference in client
@@ -15,15 +15,40 @@ import {
  * clock on every attempt; that clock must never enter the hash, or a retried
  * request (the exact scenario idempotency keys exist for) hashes differently
  * and is rejected with 409 instead of replaying.
+ *
+ * `canonicalClientBusinessDate` hashes WHAT THE CLIENT SENT (OQ-73): the
+ * canonical Gregorian day for day inputs, the equivalent Gregorian day for a
+ * declared Jalali day (two spellings of one day hash identically), and the
+ * legacy instant string verbatim for pre-OQ-73 clients. It never consults a
+ * clock and never resolves "today".
  */
-describe('canonicalClientDate', () => {
+describe('canonicalClientBusinessDate', () => {
   it('turns an omitted date into an explicit null (never into now())', () => {
-    expect(canonicalClientDate(undefined)).toBeNull();
+    expect(canonicalClientBusinessDate(undefined)).toBeNull();
   });
 
-  it('renders a supplied date as its stable ISO instant', () => {
-    const date = new Date('2026-03-01T08:30:00.000Z');
-    expect(canonicalClientDate(date)).toBe('2026-03-01T08:30:00.000Z');
+  it('hashes a canonical Gregorian day verbatim', () => {
+    expect(canonicalClientBusinessDate('2026-03-01')).toBe('2026-03-01');
+  });
+
+  it('hashes a declared Jalali day as the same Gregorian day', () => {
+    // 1404-12-10 (Jalali) IS 2026-03-01 (Gregorian): one business day,
+    // one hash contribution, whatever the client's calendar system.
+    expect(
+      canonicalClientBusinessDate({ calendar: 'JALALI', value: '1404-12-10' }),
+    ).toBe('2026-03-01');
+    expect(
+      canonicalClientBusinessDate({
+        calendar: 'GREGORIAN',
+        value: '2026-03-01',
+      }),
+    ).toBe('2026-03-01');
+  });
+
+  it('keeps a legacy ISO instant string verbatim (no clock, no zone)', () => {
+    expect(canonicalClientBusinessDate('2026-03-01T08:30:00.000Z')).toBe(
+      '2026-03-01T08:30:00.000Z',
+    );
   });
 });
 
@@ -46,39 +71,56 @@ describe('buildRequestHash — dateless retry determinism', () => {
     // movementDate omitted.
     const first = buildRequestHash('movement_post', {
       ...payloadWithoutDate,
-      movementDate: canonicalClientDate(undefined),
+      movementDate: canonicalClientBusinessDate(undefined),
     });
     await new Promise((resolve) => setTimeout(resolve, 5));
     const retry = buildRequestHash('movement_post', {
       ...payloadWithoutDate,
-      movementDate: canonicalClientDate(undefined),
+      movementDate: canonicalClientBusinessDate(undefined),
     });
 
     expect(retry).toBe(first);
   });
 
-  it('hashes two attempts with the same explicit business date identically', () => {
-    const date = new Date('2026-03-01T00:00:00.000Z');
+  it('hashes two attempts with the same explicit business DAY identically', () => {
     const first = buildRequestHash('movement_post', {
       ...payloadWithoutDate,
-      movementDate: canonicalClientDate(date),
+      movementDate: canonicalClientBusinessDate('2026-03-01'),
     });
     const retry = buildRequestHash('movement_post', {
       ...payloadWithoutDate,
-      movementDate: canonicalClientDate(new Date(date.getTime())),
+      movementDate: canonicalClientBusinessDate('2026-03-01'),
     });
 
     expect(retry).toBe(first);
+  });
+
+  it('hashes the Gregorian and the Jalali spelling of one day identically', () => {
+    // 2026-03-01 and 1404-12-10 name the SAME business day: the hash must
+    // not change with the client's calendar system.
+    const gregorian = buildRequestHash('movement_post', {
+      ...payloadWithoutDate,
+      movementDate: canonicalClientBusinessDate('2026-03-01'),
+    });
+    const jalali = buildRequestHash('movement_post', {
+      ...payloadWithoutDate,
+      movementDate: canonicalClientBusinessDate({
+        calendar: 'JALALI',
+        value: '1404-12-10',
+      }),
+    });
+
+    expect(jalali).toBe(gregorian);
   });
 
   it('distinguishes two different explicit business dates', () => {
     const march = buildRequestHash('movement_post', {
       ...payloadWithoutDate,
-      movementDate: canonicalClientDate(new Date('2026-03-01T00:00:00.000Z')),
+      movementDate: canonicalClientBusinessDate('2026-03-01'),
     });
     const april = buildRequestHash('movement_post', {
       ...payloadWithoutDate,
-      movementDate: canonicalClientDate(new Date('2026-04-01T00:00:00.000Z')),
+      movementDate: canonicalClientBusinessDate('2026-04-01'),
     });
 
     expect(april).not.toBe(march);
@@ -87,11 +129,11 @@ describe('buildRequestHash — dateless retry determinism', () => {
   it('distinguishes an omitted date from a supplied date (different intent)', () => {
     const dateless = buildRequestHash('movement_post', {
       ...payloadWithoutDate,
-      movementDate: canonicalClientDate(undefined),
+      movementDate: canonicalClientBusinessDate(undefined),
     });
     const dated = buildRequestHash('movement_post', {
       ...payloadWithoutDate,
-      movementDate: canonicalClientDate(new Date('2026-03-01T00:00:00.000Z')),
+      movementDate: canonicalClientBusinessDate('2026-03-01'),
     });
 
     expect(dated).not.toBe(dateless);
@@ -100,16 +142,16 @@ describe('buildRequestHash — dateless retry determinism', () => {
   it('changes the hash when any material client field changes', () => {
     const baseline = buildRequestHash('movement_post', {
       ...payloadWithoutDate,
-      movementDate: canonicalClientDate(undefined),
+      movementDate: canonicalClientBusinessDate(undefined),
     });
     const differentQuantity = buildRequestHash('movement_post', {
       ...payloadWithoutDate,
       quantity: '6',
-      movementDate: canonicalClientDate(undefined),
+      movementDate: canonicalClientBusinessDate(undefined),
     });
     const differentOperation = buildRequestHash('transfer_post', {
       ...payloadWithoutDate,
-      movementDate: canonicalClientDate(undefined),
+      movementDate: canonicalClientBusinessDate(undefined),
     });
 
     expect(differentQuantity).not.toBe(baseline);

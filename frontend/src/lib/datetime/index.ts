@@ -33,8 +33,6 @@ export {
 } from './dayjs';
 export { DEFAULT_TIME_ZONE, UTC_TIME_ZONE, isTimeZone } from './time-zone';
 export {
-  businessDayFromInstantIso,
-  businessDayToInstantIso,
   formatBusinessDay,
   formatBusinessDayWithCanonical,
   isBusinessDay,

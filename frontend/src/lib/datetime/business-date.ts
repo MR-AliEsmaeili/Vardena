@@ -11,7 +11,7 @@ import { dayjs } from './dayjs';
 import { toLatinDigits } from './numerals';
 
 /**
- * Business dates (C-63 §9, ADR-0042 §D2).
+ * Business dates (C-63 §9, ADR-0042 §D2; persistence split by OQ-73).
  *
  * A business date is a CALENDAR DAY — the day a document belongs to
  * economically — not an instant. On the wire the canonical form is always the
@@ -19,36 +19,15 @@ import { toLatinDigits } from './numerals';
  * frontend only ever converts at the edges (this module), never inside a
  * component.
  *
- * The one convenience the ledger needs: modules that store their day in a
- * timestamp column carry it as the day's UTC-midnight instant
- * (`${day}T00:00:00.000Z`). That convention is defined ONCE here, so the
- * backend and the frontend cannot drift.
+ * OQ-73 removed the old "carry the day as a UTC-midnight instant" convention:
+ * business-day columns are PostgreSQL `date`, so the API returns and accepts
+ * the day itself. A day here is NEVER reinterpreted as an instant or shifted
+ * by the browser's timezone — it travels as a plain `YYYY-MM-DD` string.
  */
-
-const LEDGER_INSTANT_SUFFIX = 'T00:00:00.000Z';
 
 /** True when `value` is a real canonical (Gregorian) business day. */
 export function isBusinessDay(value: string): boolean {
   return isGregorianDay(value);
-}
-
-/**
- * The UTC-midnight instant of a business day — the value timestamp-backed
- * business-day columns (and their filters) already use.
- *
- * A timestamp column is the ledger's ordering axis, so its day is the UTC day
- * of the stored instant; deriving it in the organization's zone would shift
- * the day for zones west of UTC. Returns `''` for a day that is not canonical.
- */
-export function businessDayToInstantIso(day: string): string {
-  return isBusinessDay(day) ? `${day}${LEDGER_INSTANT_SUFFIX}` : '';
-}
-
-/** The business day a timestamp-backed value carries (its UTC day). */
-export function businessDayFromInstantIso(instant: string): string | null {
-  if (typeof instant !== 'string' || instant.length < 10) return null;
-  const day = instant.slice(0, 10);
-  return isBusinessDay(day) ? day : null;
 }
 
 /**

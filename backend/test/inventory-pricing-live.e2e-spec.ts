@@ -157,6 +157,27 @@ describe.skipIf(DATABASE_URL === undefined)(
       return `${prefix}-${suffix}-${operationSerial}`;
     }
 
+    /**
+     * Business-day string (`YYYY-MM-DD`, canonical Gregorian) on the
+     * organization's Asia/Tehran calendar. OQ-73: the pricing boundary is a
+     * business DAY, and a completed run advances it to its own toDate day.
+     * Every movement recorded here is dated today (the default business
+     * day), so any run that must extend an existing boundary must pass a
+     * DISTINCT later day — a same-day toDate collides with the boundary by
+     * design (`range_not_extending`).
+     */
+    const businessDayFormat = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Tehran',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    function businessDay(offsetDays: number): string {
+      return businessDayFormat.format(
+        new Date(Date.now() + offsetDays * 86_400_000),
+      );
+    }
+
     async function createDocument(
       body: Record<string, unknown>,
     ): Promise<Record<string, unknown>> {
@@ -209,7 +230,7 @@ describe.skipIf(DATABASE_URL === undefined)(
 
     async function runPricing(
       warehouseId: string,
-      toDate: Date,
+      toDate: string,
       expected = 201,
     ): Promise<Record<string, unknown>> {
       const response = await operator
@@ -225,7 +246,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             'purchase_return',
             'sales_return',
           ],
-          toDate: toDate.toISOString(),
+          toDate,
         })
         .expect(expected);
       return response.body as Record<string, unknown>;
@@ -322,7 +343,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(receiptMovement.valuationStatus).toBe('unvalued');
       await assignCost(receiptMovement.id, '1000', 'skip');
 
-      const run = await runPricing(warehouseId, new Date(Date.now() + 60_000));
+      const run = await runPricing(warehouseId, businessDay(0));
       expect(run['keysPriced']).toBe(1);
       expect(run['keysFailed']).toBe(0);
       for (const documentId of [issueA['id'], issueB['id']] as string[]) {
@@ -666,10 +687,7 @@ describe.skipIf(DATABASE_URL === undefined)(
 
       await assignCost(receiptMovement.id, '1000', 'skip');
 
-      const run = await runPricing(
-        privateWarehouses[0]!,
-        new Date(Date.now() + 60_000),
-      );
+      const run = await runPricing(privateWarehouses[0]!, businessDay(0));
       expect(run['keysExamined']).toBe(1);
       expect(run['keysPriced']).toBe(1);
       expect(run['keysFailed']).toBe(0);
@@ -713,10 +731,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       )[0]!;
       expect(unvaluedMovement.valuationStatus).toBe('unvalued');
 
-      const first = await runPricing(
-        privateWarehouses[1]!,
-        new Date(Date.now() + 60_000),
-      );
+      const first = await runPricing(privateWarehouses[1]!, businessDay(0));
       expect(first['keysExamined']).toBe(2);
       expect(first['keysPriced']).toBe(1);
       expect(first['keysFailed']).toBe(1);
@@ -736,19 +751,13 @@ describe.skipIf(DATABASE_URL === undefined)(
       // The failed run does NOT advance the from-date: the next run's
       // window still starts at the beginning of history (the axis-2
       // correction, against the real findLastRunForScope SQL).
-      const second = await runPricing(
-        privateWarehouses[1]!,
-        new Date(Date.now() + 120_000),
-      );
+      const second = await runPricing(privateWarehouses[1]!, businessDay(0));
       expect(second['fromDate']).toBeNull();
       expect(second['keysFailed']).toBe(1);
 
       // Fix the blocker: the receipt receives its cost; the run retries.
       await assignCost(unvaluedMovement.id, '120', 'skip');
-      const third = await runPricing(
-        privateWarehouses[1]!,
-        new Date(Date.now() + 180_000),
-      );
+      const third = await runPricing(privateWarehouses[1]!, businessDay(0));
       expect(third['keysPriced']).toBe(2);
       expect(third['keysFailed']).toBe(0);
       // The retried key is valued now, and its quantity never moved.
@@ -761,19 +770,16 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(await onHand(privateWarehouses[1]!, itemBId)).toBe(10);
 
       // NOW the boundary advances: a fully-completed run is the new edge.
-      const fourth = await runPricing(
-        privateWarehouses[1]!,
-        new Date(Date.now() + 240_000),
-      );
+      // OQ-73: the boundary is a business DAY, so extending it needs a
+      // distinct later day (a same-day toDate would collide by design).
+      const fourth = await runPricing(privateWarehouses[1]!, businessDay(1));
       expect(fourth['fromDate']).not.toBeNull();
-      expect(new Date(fourth['fromDate'] as string).getTime()).toBe(
-        new Date(third['toDate'] as string).getTime(),
-      );
+      expect(fourth['fromDate']).toBe(third['toDate']);
     });
 
     it('is idempotent per operation key and refuses a reused key with a different intent', async () => {
       await receiveStock(itemAId, '5', privateWarehouses[2]!, '50');
-      const toDate = new Date(Date.now() + 60_000).toISOString();
+      const toDate = businessDay(0);
       const key = nextOperationKey('price');
       const body = {
         organizationId: orgAId,
@@ -807,21 +813,21 @@ describe.skipIf(DATABASE_URL === undefined)(
         }),
       ).toBe(runsBefore);
 
+      // OQ-73: the request hash canonicalizes toDate to a business DAY, so
+      // a genuinely different intent needs a different DAY, not a later
+      // instant of the same day.
       const conflicting = await operator
         .post(`${pricingBase}/runs`)
         .send({
           ...body,
-          toDate: new Date(Date.now() + 120_000).toISOString(),
+          toDate: businessDay(1),
         })
         .expect(409);
       expect(conflicting.body['code']).toBe('Conflict');
     });
 
     it('never answers another organization\u2019s pricing run', async () => {
-      const own = await runPricing(
-        privateWarehouses[3]!,
-        new Date(Date.now() + 60_000),
-      );
+      const own = await runPricing(privateWarehouses[3]!, businessDay(0));
       const response = await operator
         .get(`${pricingBase}/runs/${own['id'] as string}`)
         .query({ organizationId: orgBId });
@@ -906,10 +912,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       const { run } = await pricedIssuesScenario(privateWarehouses[5]!);
       await reversePricing(run['id'] as string);
 
-      const next = await runPricing(
-        privateWarehouses[5]!,
-        new Date(Date.now() + 120_000),
-      );
+      const next = await runPricing(privateWarehouses[5]!, businessDay(0));
       // The reversed run no longer counts as completed: the window starts
       // at the beginning again, and the re-pricing restores the position.
       expect(next['fromDate']).toBeNull();
@@ -923,20 +926,18 @@ describe.skipIf(DATABASE_URL === undefined)(
       const { run } = await pricedIssuesScenario(privateWarehouses[6]!);
       // A newer valuation on the same key, through the front door: an issue
       // whose business date falls INSIDE the next run's window (after the
-      // first run's toDate — the automatic boundary makes now-dated
+      // first run's toDate day — the automatic boundary makes same-day
       // movements unreachable until then), priced by a second run whose
-      // whole-key replay re-derives the key.
+      // whole-key replay re-derives the key. OQ-73: the boundary is a
+      // business DAY, so "later" means an explicitly later day.
       const laterIssue = await createDocument({
         kind: 'issue',
         warehouseId: privateWarehouses[6]!,
-        businessDate: new Date(Date.now() + 90_000).toISOString(),
+        businessDate: businessDay(1),
         lines: [{ itemId: itemAId, quantity: '5', unitId: unitAId }],
       });
       await finalize(laterIssue['id'] as string);
-      const second = await runPricing(
-        privateWarehouses[6]!,
-        new Date(Date.now() + 120_000),
-      );
+      const second = await runPricing(privateWarehouses[6]!, businessDay(1));
       expect(second['keysExamined']).toBe(1);
       const refused = await reversePricing(run['id'] as string, 422);
       expect(refused['details']).toMatchObject({
@@ -1035,7 +1036,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       await receiveStock(itemBId, '80', privateWarehouses[10]!, '800');
       const issue = await issueStock(itemBId, '30', privateWarehouses[10]!);
 
-      const toDate = new Date(Date.now() + 300_000).toISOString();
+      const toDate = businessDay(0);
       const results = await Promise.all([
         operator.post(`${pricingBase}/runs`).send({
           organizationId: orgAId,
@@ -1115,7 +1116,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             'purchase_return',
             'sales_return',
           ],
-          toDate: new Date(Date.now() + 300_000).toISOString(),
+          toDate: businessDay(1),
         }),
       ]);
       const [reverseResult, pricingResult] = results;
@@ -1161,7 +1162,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         expect(stale.status).toBe('stale');
         const recovery = await runPricing(
           privateWarehouses[11]!,
-          new Date(Date.now() + 60_000),
+          businessDay(0),
         );
         expect(recovery['fromDate']).toBeNull();
         expect(recovery['keysPriced']).toBe(1);
@@ -1421,10 +1422,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       // A pricing run over every kind prices the whole history; the
       // transfer legs keep their posting-time values (source 'transfer'),
       // preserved — never re-derived — by the replay.
-      const run = await runPricing(
-        privateWarehouses[15]!,
-        new Date(Date.now() + 300_000),
-      );
+      const run = await runPricing(privateWarehouses[15]!, businessDay(0));
       expect(run['keysFailed']).toBe(0);
       const legsAfter = await movementsOfDocument(transfer['id'] as string);
       expect(legsAfter.every((leg) => leg.valuationSource === 'transfer')).toBe(

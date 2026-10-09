@@ -240,7 +240,7 @@ function ensureBalance(
     itemId: key.itemId,
     onHand: '0',
     reserved: '0',
-    lastMovementAt: null,
+    lastMovementDate: null,
     createdAt: now,
     updatedAt: now,
   });
@@ -1141,8 +1141,8 @@ export class InMemoryInventoryMovementsRepository {
       );
       this.tables.balances.patch(balance.id, {
         onHand: addDecimalStrings(balance.onHand, input.movement.baseQuantity),
-        lastMovementAt: maxDate(
-          balance.lastMovementAt,
+        lastMovementDate: maxDate(
+          balance.lastMovementDate,
           input.movement.movementDate,
         ),
         updatedAt: input.movement.updatedAt,
@@ -1254,8 +1254,8 @@ export class InMemoryInventoryMovementsRepository {
           sourceBalance.onHand,
           input.outLeg.baseQuantity,
         ),
-        lastMovementAt: maxDate(
-          sourceBalance.lastMovementAt,
+        lastMovementDate: maxDate(
+          sourceBalance.lastMovementDate,
           input.outLeg.movementDate,
         ),
         updatedAt: input.outLeg.updatedAt,
@@ -1265,8 +1265,8 @@ export class InMemoryInventoryMovementsRepository {
           destinationBalance.onHand,
           input.inLeg.baseQuantity,
         ),
-        lastMovementAt: maxDate(
-          destinationBalance.lastMovementAt,
+        lastMovementDate: maxDate(
+          destinationBalance.lastMovementDate,
           input.inLeg.movementDate,
         ),
         updatedAt: input.inLeg.updatedAt,
@@ -1324,8 +1324,8 @@ export class InMemoryInventoryMovementsRepository {
       );
       this.tables.balances.patch(balance.id, {
         onHand: addDecimalStrings(balance.onHand, input.movement.baseQuantity),
-        lastMovementAt: maxDate(
-          balance.lastMovementAt,
+        lastMovementDate: maxDate(
+          balance.lastMovementDate,
           input.movement.movementDate,
         ),
         updatedAt: input.movement.updatedAt,
@@ -1606,7 +1606,7 @@ export class InMemoryInventoryBalancesRepository {
       const factsExist =
         compareDecimalStrings(expected.expectedOnHand, '0') !== 0 ||
         compareDecimalStrings(expected.expectedReserved, '0') !== 0 ||
-        expected.expectedLastMovementAt !== null;
+        expected.expectedLastMovementDate !== null;
       const now = new Date();
 
       if (isNew) {
@@ -1617,7 +1617,7 @@ export class InMemoryInventoryBalancesRepository {
         this.tables.balances.patch(stored.id, {
           onHand: expected.expectedOnHand,
           reserved: expected.expectedReserved,
-          lastMovementAt: expected.expectedLastMovementAt,
+          lastMovementDate: expected.expectedLastMovementDate,
           updatedAt: now,
         });
         return { ...expected, storedBefore: null, action: 'created' };
@@ -1635,14 +1635,14 @@ export class InMemoryInventoryBalancesRepository {
         compareDecimalStrings(stored.onHand, expected.expectedOnHand) === 0 &&
         compareDecimalStrings(stored.reserved, expected.expectedReserved) ===
           0 &&
-        sameInstant(stored.lastMovementAt, expected.expectedLastMovementAt)
+        sameInstant(stored.lastMovementDate, expected.expectedLastMovementDate)
       ) {
         return { ...expected, storedBefore, action: 'noop' };
       }
       this.tables.balances.patch(stored.id, {
         onHand: expected.expectedOnHand,
         reserved: expected.expectedReserved,
-        lastMovementAt: expected.expectedLastMovementAt,
+        lastMovementDate: expected.expectedLastMovementDate,
         updatedAt: now,
       });
       return { ...expected, storedBefore, action: 'updated' };
@@ -1655,7 +1655,7 @@ export class InMemoryInventoryBalancesRepository {
     key: StockingKey,
   ): KeyExpectation {
     let expectedOnHand = '0';
-    let expectedLastMovementAt: Date | null = null;
+    let expectedLastMovementDate: Date | null = null;
     for (const row of this.tables.movements.findMany(
       (movement) =>
         movement.organizationId === organizationId &&
@@ -1664,10 +1664,10 @@ export class InMemoryInventoryBalancesRepository {
     )) {
       expectedOnHand = addDecimalStrings(expectedOnHand, row.baseQuantity);
       if (
-        expectedLastMovementAt === null ||
-        row.movementDate.getTime() > expectedLastMovementAt.getTime()
+        expectedLastMovementDate === null ||
+        row.movementDate.getTime() > expectedLastMovementDate.getTime()
       ) {
-        expectedLastMovementAt = row.movementDate;
+        expectedLastMovementDate = row.movementDate;
       }
     }
     let expectedReserved = '0';
@@ -1685,7 +1685,7 @@ export class InMemoryInventoryBalancesRepository {
       itemId: key.itemId,
       expectedOnHand,
       expectedReserved,
-      expectedLastMovementAt,
+      expectedLastMovementDate,
     };
   }
 }

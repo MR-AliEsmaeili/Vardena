@@ -415,8 +415,8 @@ export class InventoryMovementsRepository {
       balanceId: balance.id,
       onHandDelta: input.movement.baseQuantity,
       reservedDelta: '0',
-      lastMovementAt: maxDate(
-        balance.lastMovementAt,
+      lastMovementDate: maxDate(
+        balance.lastMovementDate,
         input.movement.movementDate,
       ),
       updatedAt: input.movement.updatedAt,
@@ -547,8 +547,8 @@ export class InventoryMovementsRepository {
       balanceId: outBalance.id,
       onHandDelta: input.outLeg.baseQuantity,
       reservedDelta: '0',
-      lastMovementAt: maxDate(
-        outBalance.lastMovementAt,
+      lastMovementDate: maxDate(
+        outBalance.lastMovementDate,
         input.outLeg.movementDate,
       ),
       updatedAt: input.outLeg.updatedAt,
@@ -558,8 +558,8 @@ export class InventoryMovementsRepository {
       balanceId: inBalance.id,
       onHandDelta: input.inLeg.baseQuantity,
       reservedDelta: '0',
-      lastMovementAt: maxDate(
-        inBalance.lastMovementAt,
+      lastMovementDate: maxDate(
+        inBalance.lastMovementDate,
         input.inLeg.movementDate,
       ),
       updatedAt: input.inLeg.updatedAt,
@@ -642,8 +642,8 @@ export class InventoryMovementsRepository {
       balanceId: balance.id,
       onHandDelta: input.movement.baseQuantity,
       reservedDelta: '0',
-      lastMovementAt: maxDate(
-        balance.lastMovementAt,
+      lastMovementDate: maxDate(
+        balance.lastMovementDate,
         input.movement.movementDate,
       ),
       updatedAt: input.movement.updatedAt,

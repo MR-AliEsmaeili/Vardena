@@ -1,6 +1,6 @@
 # ADR-0042: One Date/Time Model — UTC Instants, Calendar Days, a Configurable Calendar
 
-Status: Proposed
+Status: Accepted (PO-02, 2026-10-09 — OQ-73 resolved: business days persist as PostgreSQL `date`)
 Date: 2026-10-08
 
 ## Context
@@ -22,10 +22,15 @@ and every new module re-implements a conversion.
    wire, e.g. `2026-10-08T08:32:14.421Z`). Never local time, never a formatted
    string in storage.
 2. **A business date is a calendar DAY, not a timestamp.** It is persisted as
-   PG `date` where the column is a day (`accounting.document_date`); where a day
-   rides an existing index-ordered timestamp column it is the day's
-   **UTC-midnight instant** (`{YYYY-MM-DD}T00:00:00.000Z`), so the day is never
-   shifted by a zone (see OQ-73).
+   PostgreSQL `date` — canonical Gregorian, never Jalali, never a timestamp
+   (OQ-73, resolved): `accounting.document_date`,
+   `inventory.inventory_movements.movement_date`,
+   `inventory.inventory_business_documents.business_date`, valuation/pricing run
+   bounds, the posting-snapshot document date and the balance
+   `last_movement_date`. The interim "day riding a timestamp column as its
+   UTC-midnight instant" convention is retired; audit/event instants
+   (`*_at`, `valued_at`, `posting_timestamp`, validity windows) stay
+   `timestamptz`. Day columns filter with true date comparisons.
 3. **The derivation chain is one-way:** instant → IANA time zone → local
    date/time → calendar rendering. Rendering never feeds storage.
 4. **`CalendarSystem { GREGORIAN, JALALI }`** is a closed, code-defined
@@ -67,8 +72,15 @@ calendar_system` / `time_zone` (ADR-0020 boundary, values validated against
 - New modules have one place to ask "what day is this / what instant is this".
 - Migration defaults (`JALALI`, `Asia/Tehran`) change rendering only — no
   stored fact moves, so the migration is safe on populated data.
-- Follow-ups: OQ-02 keeps the numeral/localization decision open; OQ-73 records
-  the day-in-timestamp-column typing; `frontend/src/api/generated/
-vardena-api.d.ts` is committed and predates C-63/C-62, so `api/contracts.ts`
-  carries a documented refinement until the next `npm run api:types`.
+- **OQ-73 is resolved** by migration `20261011000000_business_date_persistence`:
+  every business-day column becomes `date` via the deterministic policy
+  `(column AT TIME ZONE 'UTC')::date` — byte-for-byte the day the previous
+  `timestamptz` read path returned, so no row changes its business date and no
+  data is lost; `last_movement_at` is renamed `last_movement_date`. Filtering a
+  day column is now a real date comparison (index-friendly, no row-side Jalali
+  conversion), and the ledger's Kardex order is (business day, entry time, id).
+- Follow-ups: OQ-02 keeps the numeral/localization decision open;
+  `frontend/src/api/generated/vardena-api.d.ts` is committed and hand-kept in
+  step with the backend, so `api/contracts.ts` carries a documented refinement
+  until the next `npm run api:types`.
 - Full contract: `docs/datetime.md`.

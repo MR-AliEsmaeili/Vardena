@@ -4,7 +4,6 @@ import {
   ArrayMinSize,
   IsArray,
   IsBoolean,
-  IsDateString,
   IsIn,
   IsOptional,
   IsString,
@@ -14,6 +13,7 @@ import {
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
 import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
+import { IsBusinessDay } from '../../../../kernel/http/is-business-day.decorator.js';
 import type {
   ApiBusinessDate,
   ApiInstant,
@@ -105,7 +105,7 @@ export class CreateInventoryDocumentDto {
       DECLARED_BUSINESS_DATE_SCHEMA,
     ],
     description:
-      'C-63 business date. A calendar DAY is canonical, and the calendar it is written in must be declared when it is Jalali: "2026-10-08" (Gregorian, the default), { "calendar": "JALALI", "value": "1405-07-16" }. A full ISO-8601 instant is accepted for backward compatibility and stored as given. A day is stored as its UTC-midnight instant. Omitted = now (historical behaviour; send an explicit day).',
+      'C-63 business date — a calendar DAY (OQ-73: stored as PostgreSQL date, no time-of-day, no time zone). The calendar a day is written in must be declared when it is Jalali: "2026-10-08" (Gregorian, the default), { "calendar": "JALALI", "value": "1405-07-16" }. A full ISO-8601 instant is accepted for backward compatibility and resolved to the day it falls on in the organization time zone. Omitted = today\'s business day in the organization time zone (send an explicit day).',
   })
   @IsOptional()
   @IsBusinessDate()
@@ -166,7 +166,7 @@ export class UpdateInventoryDocumentDto {
       DECLARED_BUSINESS_DATE_SCHEMA,
     ],
     description:
-      'C-63 business date. Same three accepted forms as create: a canonical Gregorian day, a declared Jalali day ({ calendar, value }), or a legacy ISO instant (kept as given). Omitted = the document keeps its current business date.',
+      'C-63 business date. Same three accepted forms as create: a canonical Gregorian day, a declared Jalali day ({ calendar, value }), or a legacy ISO instant (resolved to the day it falls on in the organization time zone). Omitted = the document keeps its current business date.',
   })
   @IsOptional()
   @IsBusinessDate()
@@ -384,14 +384,24 @@ export class ListInventoryDocumentsQueryDto extends PageQueryDto {
   @IsUlid()
   warehouseId?: string;
 
-  @ApiPropertyOptional({ format: 'date-time' })
+  @ApiPropertyOptional({
+    format: 'date',
+    example: '2026-10-08',
+    description:
+      'INCLUSIVE lower bound on the business day, canonical Gregorian YYYY-MM-DD. A Jalali day is converted to its canonical Gregorian day at the boundary and never filters the database as Jalali text.',
+  })
   @IsOptional()
-  @IsDateString()
+  @IsBusinessDay()
   dateFrom?: string;
 
-  @ApiPropertyOptional({ format: 'date-time' })
+  @ApiPropertyOptional({
+    format: 'date',
+    example: '2026-10-08',
+    description:
+      'INCLUSIVE upper bound on the business day, canonical Gregorian YYYY-MM-DD.',
+  })
   @IsOptional()
-  @IsDateString()
+  @IsBusinessDay()
   dateTo?: string;
 }
 
@@ -442,7 +452,13 @@ export class InventoryDocumentResponseDto {
     description: 'Allocated at finalize; null while draft. Never reused.',
   })
   number!: string | null;
-  @ApiProperty({ format: 'date-time' }) businessDate!: string;
+  @ApiProperty({
+    format: 'date',
+    example: '2026-10-08',
+    description:
+      'The document business day — canonical Gregorian YYYY-MM-DD (OQ-73: a calendar day, never an instant). The { gregorian, jalali } rendering is businessDateCalendar.',
+  })
+  businessDate!: string;
 
   @ApiProperty({
     type: ApiBusinessDateDto,

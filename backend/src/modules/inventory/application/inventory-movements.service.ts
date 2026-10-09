@@ -41,12 +41,15 @@ import { INVENTORY_MOVEMENT_POSTED_EVENT } from '../domain/inventory-core.events
 import { publishEvent, resolveSort } from './master-data-support.js';
 import {
   buildRequestHash,
-  canonicalClientDate,
+  canonicalClientBusinessDate,
   normalizeReference,
   normalizeReason,
   requireOperationKey,
+  resolveBusinessDateCarrier,
+  resolveBusinessDateFilter,
   resolveEnteredToBase,
 } from './inventory-posting-support.js';
+import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
 import {
   AlreadyReversedError,
   InsufficientStockError,
@@ -74,8 +77,13 @@ export interface ListMovementsQuery {
   itemId?: string | undefined;
   movementType?: string | undefined;
   transferId?: string | undefined;
-  dateFrom?: Date | undefined;
-  dateTo?: Date | undefined;
+  /**
+   * INCLUSIVE business-day bounds, canonical Gregorian `YYYY-MM-DD`
+   * (OQ-73: `movement_date` is PostgreSQL `date`; the filter is a true date
+   * comparison).
+   */
+  dateFrom?: string | undefined;
+  dateTo?: string | undefined;
   page: number;
   pageSize: number;
   sort?: string | undefined;
@@ -89,7 +97,13 @@ export interface PostMovementInput {
   movementType: string;
   quantity: string;
   unitId: string;
-  movementDate?: Date | undefined;
+  /**
+   * C-63 business-date INPUT (OQ-73): a canonical Gregorian day, a declared
+   * Jalali day (`{ calendar, value }`), or a legacy ISO instant resolved to
+   * the day it falls on in the organization zone. Omit for today's business
+   * day in the organization zone.
+   */
+  movementDate?: BusinessDateInput | undefined;
   reason?: string | null | undefined;
   referenceType?: string | null | undefined;
   referenceId?: string | null | undefined;
@@ -108,7 +122,8 @@ export interface PostMovementInput {
 
 export interface ReverseMovementInput {
   operationKey: string;
-  movementDate?: Date | undefined;
+  /** Same business-date INPUT contract as {@link PostMovementInput}. */
+  movementDate?: BusinessDateInput | undefined;
   /** Acknowledgement of the backdating warning (OD-VAL-10). */
   backdateConfirmed?: boolean | undefined;
   /** The SECOND explicit choice a backdated reversal needs (OD-VAL-11). */
@@ -161,8 +176,8 @@ export class InventoryMovementsService {
         itemId: query.itemId,
         movementType: query.movementType,
         transferId: query.transferId,
-        dateFrom: query.dateFrom,
-        dateTo: query.dateTo,
+        dateFrom: resolveBusinessDateFilter('dateFrom', query.dateFrom),
+        dateTo: resolveBusinessDateFilter('dateTo', query.dateTo),
       },
       orderBy: resolveSort(query.sort, SORTABLE_FIELDS, [
         { movementDate: 'desc' },
@@ -229,7 +244,18 @@ export class InventoryMovementsService {
       referenceType: input.referenceType,
       referenceId: input.referenceId,
     });
-    const movementDate = input.movementDate ?? new Date();
+    // OQ-73: the movement's business DATE is a calendar day (PostgreSQL
+    // `date`), resolved from the client's declared day — or today's business
+    // day in the organization zone when omitted. It is NOT `created_at`,
+    // which records the registration instant below.
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
+    );
+    const movementDate = resolveBusinessDateCarrier({
+      field: 'movementDate',
+      value: input.movementDate,
+      timeZone,
+    });
     const resolved = await resolveEnteredToBase({
       conversions: this.conversions,
       organizationId: input.organizationId,
@@ -272,11 +298,12 @@ export class InventoryMovementsService {
       movementType,
       quantity: resolved.quantity,
       unitId: input.unitId,
-      // Hash the client's date intent, not the effective clock: when the
-      // client omits the date it defaults to now() PER ATTEMPT, so including
-      // it would make a dateless retry hash differently and falsely 409
-      // instead of replaying (idempotency determinism, ADR-0022).
-      movementDate: canonicalClientDate(input.movementDate),
+      // Hash the client's day intent, not the effective default: when the
+      // client omits the date it defaults to today's business day PER
+      // ATTEMPT, so including the effective day would make a dateless retry
+      // hash differently and falsely 409 instead of replaying (idempotency
+      // determinism, ADR-0022).
+      movementDate: canonicalClientBusinessDate(input.movementDate),
       reason,
       referenceType: reference.referenceType,
       referenceId: reference.referenceId,
@@ -507,7 +534,16 @@ export class InventoryMovementsService {
       }
     }
 
-    const movementDate = input.movementDate ?? new Date();
+    // OQ-73: the reversal's business DATE is a calendar day, defaulted to
+    // today's business day in the organization zone when omitted.
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      original.organizationId,
+    );
+    const movementDate = resolveBusinessDateCarrier({
+      field: 'movementDate',
+      value: input.movementDate,
+      timeZone,
+    });
     if (movementDate.getTime() < original.movementDate.getTime()) {
       throw AppException.businessRule(
         'A reversal cannot be dated before the movement it reverses. Use a date on or after the original movement date.',
@@ -517,11 +553,11 @@ export class InventoryMovementsService {
     const repricing = parseRepricing(input.repricing);
     const requestHash = buildRequestHash('movement_reversal', {
       movementId: original.id,
-      // Same determinism rule as posting: hash the client date intent, never
-      // the server's defaulted clock (a dateless retry must replay). The
+      // Same determinism rule as posting: hash the client day intent, never
+      // the server's defaulted day (a dateless retry must replay). The
       // backdating answers are excluded for the same reason as plain postings:
       // they are decisions about this reversal, not a different reversal.
-      movementDate: canonicalClientDate(input.movementDate),
+      movementDate: canonicalClientBusinessDate(input.movementDate),
     });
     const replay = await this.replayOrReject(
       original.organizationId,

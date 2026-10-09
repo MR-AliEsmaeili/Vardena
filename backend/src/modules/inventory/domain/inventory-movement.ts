@@ -3,6 +3,7 @@ import type {
   MovementValuationStatus,
   ValuationSource,
 } from './inventory-valuation.js';
+import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
 
 /**
  * Inventory movement — one immutable ledger fact (D-04/D-05, ADR-0022).
@@ -41,6 +42,12 @@ export interface InventoryMovement {
   baseUnitId: string;
   /** Exact factor applied. Decimal string; '1' for same-unit postings. */
   conversionFactor: string;
+  /**
+   * Business DATE carrier (OQ-73): the PostgreSQL `date` value as Prisma
+   * materializes it — a `Date` whose UTC components are the calendar day of
+   * this movement. Distinct from `createdAt` (the registration instant).
+   * Never an instant: convert with `businessDateFromDbDate` at the boundary.
+   */
   movementDate: Date;
   transferId: string | null;
   reversalOfMovementId: string | null;
@@ -76,6 +83,7 @@ export interface InventoryMovementDto {
   baseQuantity: string;
   baseUnitId: string;
   conversionFactor: string;
+  /** Business day, canonical Gregorian `YYYY-MM-DD` (never an instant). */
   movementDate: string;
   transferId: string | null;
   reversalOfMovementId: string | null;
@@ -118,7 +126,7 @@ export function toInventoryMovementDto(
     baseQuantity: movement.baseQuantity,
     baseUnitId: movement.baseUnitId,
     conversionFactor: movement.conversionFactor,
-    movementDate: movement.movementDate.toISOString(),
+    movementDate: businessDateFromDbDate(movement.movementDate),
     transferId: movement.transferId,
     reversalOfMovementId: movement.reversalOfMovementId,
     referenceType: movement.referenceType,

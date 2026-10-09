@@ -1,23 +1,29 @@
 /**
- * Business dates (C-63 §3/§10, ADR-0042).
+ * Business dates (C-63 §3/§10, ADR-0042; OQ-73 resolution).
  *
  * A **business date** answers "which calendar day does this document belong
- * to?" — an inventory receipt's date, a voucher's date, a fiscal year's start.
- * It is NOT when something happened, and it must never be interchangeable
- * with an event timestamp:
+ * to?" — an inventory receipt's date, a voucher's date, a fiscal year's
+ * start. It is NOT when something happened, and it must never be
+ * interchangeable with an event timestamp:
  *
  *   documentDate = 1405-07-01   (business day — the reporting axis)
  *   createdAt    = 1405-07-16 12:32  (event instant — the audit axis)
  *
- * A backdated receipt is exactly this difference, so the two representations
- * are deliberately distinct types of value here.
+ * A backdated receipt is exactly this difference, so the two are DISTINCT
+ * TYPES here: {@link BusinessDate} (a calendar day) and {@link Instant} (an
+ * exact moment). A business date has NO time-of-day component and NO time
+ * zone — it is never carried as a UTC-midnight timestamp and no timezone may
+ * ever be applied to reinterpret it.
  *
  * Canonical representation (one, everywhere):
  *
- *   * persisted: the Gregorian calendar day (`date` in PostgreSQL, or a
- *     UTC-midnight instant in a module whose day column doubles as an
- *     ordering axis — see docs/datetime.md §Inventory);
- *   * over the API: `YYYY-MM-DD`, ASCII digits, no time part;
+ *   * persisted: the Gregorian calendar day in a PostgreSQL `date` column
+ *     (OQ-73: business dates are `date`, never `timestamptz`);
+ *   * in memory at the persistence boundary: Prisma maps `date` to a JS
+ *     `Date` whose UTC components ARE the day (see {@link businessDateToDbDate}
+ *     / {@link businessDateFromDbDate} — transport adapters only);
+ *   * over the API and inside the domain: `YYYY-MM-DD`, ASCII digits, no
+ *     time part;
  *   * Jalali is DERIVED for display, never stored as the authoritative value.
  *
  * Framework-free (AR-05/AR-06): plain string/number functions.
@@ -37,6 +43,32 @@ import { calendarDayInTimeZone } from './time-zone.js';
 
 /** The one canonical day shape: `YYYY-MM-DD` (Gregorian unless declared). */
 export const BUSINESS_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * An exact moment in time — `created_at`, `finalized_at`, an approval or
+ * posting timestamp. Persisted as PostgreSQL `timestamptz`, canonical on the
+ * wire as ISO-8601 UTC, rendered through an IANA time zone. A BusinessDate is
+ * NEVER an Instant and an Instant is NEVER a BusinessDate (ADR-0042 §2).
+ */
+export type Instant = Date;
+
+/**
+ * A calendar day — the BusinessDate of ADR-0042. Nominal type: a canonical
+ * Gregorian `YYYY-MM-DD` string that has been validated by
+ * {@link toBusinessDate}. It carries no time of day and no time zone; no
+ * function may shift it by an offset. Persisted as PostgreSQL `date`.
+ */
+export type BusinessDate = string & {
+  readonly __businessDateBrand: unique symbol;
+};
+
+/**
+ * Validate and brand a canonical Gregorian day. `null` when the value is not
+ * a real calendar day — callers report that instead of guessing.
+ */
+export function toBusinessDate(value: string): BusinessDate | null {
+  return isGregorianBusinessDate(value) ? (value as BusinessDate) : null;
+}
 
 /** Why a value was refused — machine-readable, never a user-facing message. */
 export type BusinessDateRejection = 'format' | 'calendar_date' | 'range';
@@ -122,41 +154,44 @@ export function isBusinessDateInCalendar(
 }
 
 /**
- * The instant a business day is carried by in a `timestamptz` day column:
- * UTC midnight of the canonical Gregorian day.
+ * The JS `Date` carrier a PostgreSQL `date` column is written with.
  *
- * This is the convention the existing Inventory ledger and the Accounting
- * `date` columns already use (a day has no time and no zone), so a day filter
- * and a stored day compare exactly. `null` for an invalid day.
+ * TRANSPORT ADAPTER ONLY — this does NOT make a business date an instant:
+ * Prisma represents a `date` value as a `Date` whose **UTC components are the
+ * day itself**, and serializes it back to `YYYY-MM-DD` from those UTC
+ * components. The value never crosses the API and must never be rendered or
+ * compared as a moment in time. `null` for an invalid day.
  */
-export function businessDateToUtcMidnight(gregorian: string): Date | null {
+export function businessDateToDbDate(gregorian: string): Date | null {
   if (!isGregorianBusinessDate(gregorian)) return null;
   const parts = splitDay(gregorian);
   return new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
 }
 
 /**
- * The business day a UTC-midnight-carried day column value names.
+ * The business day read back from a PostgreSQL `date` column.
  *
- * Uses the **UTC** day on purpose: a day carried as `D T00:00:00Z` names day
- * `D` in every organization, whatever its time zone. Resolving it in an
- * organization zone with a negative offset would shift it a day earlier and
- * silently re-date every document (see docs/datetime.md §Inventory).
+ * Reads the **UTC** components on purpose — that is how Prisma materializes a
+ * `date` value, and a day has no zone: resolving it in an organization zone
+ * with a negative offset would shift it a day earlier and silently re-date
+ * every document. The result is zone-independent by construction
+ * (ADR-0042 §2, OQ-73).
  */
-export function businessDateFromUtcMidnight(instant: Date): string {
-  return instant.toISOString().slice(0, 10);
+export function businessDateFromDbDate(value: Date): BusinessDate {
+  return value.toISOString().slice(0, 10) as BusinessDate;
 }
 
 /**
  * The business day an *instant* falls on in a time zone — the calendar-aware
- * "today". Used where a day is derived from a moment (defaults, period
- * resolution), never to re-derive a stored business day.
+ * "today". Used ONLY where a day is derived from a genuine moment (defaults,
+ * period resolution, a legacy instant input), never to re-derive a stored
+ * business date: a stored day is already a day and needs no zone.
  */
 export function businessDateFromInstant(
-  instant: Date,
+  instant: Instant,
   timeZone: string,
-): string {
-  return calendarDayInTimeZone(instant, timeZone);
+): BusinessDate {
+  return calendarDayInTimeZone(instant, timeZone) as BusinessDate;
 }
 
 /** True when both days are the same calendar day (canonical form). */
@@ -164,7 +199,11 @@ export function isSameBusinessDate(left: string, right: string): boolean {
   return left === right;
 }
 
-/** Chronological comparison of two canonical days; `null` when malformed. */
+/**
+ * Chronological comparison of two canonical days; `null` when malformed.
+ * Canonical `YYYY-MM-DD` strings compare lexically in chronological order —
+ * no instant is constructed to compare two days.
+ */
 export function compareBusinessDates(
   left: string,
   right: string,
@@ -172,10 +211,7 @@ export function compareBusinessDates(
   if (!isGregorianBusinessDate(left) || !isGregorianBusinessDate(right)) {
     return null;
   }
-  const leftTime = businessDateToUtcMidnight(left);
-  const rightTime = businessDateToUtcMidnight(right);
-  if (leftTime === null || rightTime === null) return null;
-  return leftTime.getTime() - rightTime.getTime();
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 /**
@@ -192,26 +228,6 @@ export interface BusinessDateRange {
 export function isValidBusinessDateRange(range: BusinessDateRange): boolean {
   const comparison = compareBusinessDates(range.startDate, range.endDate);
   return comparison !== null && comparison <= 0;
-}
-
-/**
- * The half-open instant interval an inclusive day range covers:
- * `[start 00:00:00Z, end + 1 day 00:00:00Z)`.
- *
- * Half-open is deliberate (C-63 §18): the upper bound is the START of the day
- * after the last requested day, so no `23:59:59.999` end-of-day value is ever
- * constructed, ranges never double-count a boundary day, and the comparison
- * stays an index-friendly `>= / <` pair. `null` when either day is invalid.
- */
-export function businessDateRangeToUtcInterval(
-  range: BusinessDateRange,
-): { start: Date; endExclusive: Date } | null {
-  if (!isValidBusinessDateRange(range)) return null;
-  const start = businessDateToUtcMidnight(range.startDate);
-  const end = businessDateToUtcMidnight(range.endDate);
-  if (start === null || end === null) return null;
-  end.setUTCDate(end.getUTCDate() + 1);
-  return { start, endExclusive: end };
 }
 
 /** `YYYY-MM-DD`, zero-padded, ASCII digits — the canonical day shape. */

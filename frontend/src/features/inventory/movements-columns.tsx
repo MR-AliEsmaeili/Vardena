@@ -1,6 +1,10 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import type { InventoryMovement } from '@/api/contracts';
-import { formatQuantity, formatDateTime } from '@/lib/format';
+import {
+  formatQuantity,
+  formatDateOnly,
+  formatDateOnlyCanonical,
+} from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { AmountCell } from '@/ui/patterns/amount-cell';
 import { Badge } from '@/ui/badge';
@@ -36,8 +40,14 @@ export function movementsColumns(
       accessorKey: 'movementDate',
       header: t.inventory.columnDate,
       cell: ({ row }) => (
-        <span className="num" title={row.original.movementDate}>
-          {formatDateTime(row.original.movementDate)}
+        // OQ-73: movementDate is a business DATE — rendered in the org
+        // calendar, never shifted through an instant/timezone.
+        <span
+          className="num"
+          dir="ltr"
+          title={formatDateOnlyCanonical(row.original.movementDate)}
+        >
+          {formatDateOnly(row.original.movementDate)}
         </span>
       ),
       meta: { align: 'start' },

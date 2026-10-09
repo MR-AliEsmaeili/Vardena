@@ -182,7 +182,7 @@ export type BalanceRow = {
   onHand: DecimalLike;
   /** Column `reserved_quantity`; the domain name is `reserved`. */
   reservedQuantity: DecimalLike;
-  lastMovementAt: Date | null;
+  lastMovementDate: Date | null;
 } & AuditColumns;
 
 export interface BalanceWhere {
@@ -205,7 +205,7 @@ export interface BalanceCreate {
   itemId: string;
   onHand: string;
   reservedQuantity: string;
-  lastMovementAt: Date | null;
+  lastMovementDate: Date | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;

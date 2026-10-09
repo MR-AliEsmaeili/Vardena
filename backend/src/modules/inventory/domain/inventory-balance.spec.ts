@@ -15,7 +15,7 @@ function balance(overrides: Partial<InventoryBalance> = {}): InventoryBalance {
     itemId: 'item',
     onHand: '10',
     reserved: '7',
-    lastMovementAt: null,
+    lastMovementDate: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     updatedAt: new Date('2026-01-02T00:00:00.000Z'),
     ...overrides,

@@ -123,7 +123,7 @@ function kardexRow(
 ): InventoryKardexRow {
   return {
     movementId: 'mv-1',
-    movementDate: '2026-04-05T00:00:00.000Z',
+    movementDate: '2026-04-05',
     createdAt: '2026-04-05T08:00:00.000Z',
     movementType: 'inbound',
     signedQuantity: '5',
@@ -239,7 +239,7 @@ describe('Transfer form — no cost, no pre-check, honest refusal', () => {
       destinationWarehouseId: 'wh-2',
       itemId: 'item-1',
       quantity: '5',
-      movementDate: '2026-03-01T00:00:00.000Z',
+      movementDate: '2026-03-01',
     });
     expect('totalCost' in (body ?? {})).toBe(false);
     expect('backdateConfirmed' in (body ?? {})).toBe(false);
@@ -283,15 +283,15 @@ describe('Transfer form — no cost, no pre-check, honest refusal', () => {
         status: 422,
         details: {
           code: 'inventory.backdated_document',
-          movementDate: '2020-01-01T00:00:00.000Z',
+          movementDate: '2020-01-01',
           keys: [
             {
               warehouseId: 'wh-1',
-              latestMovementDate: '2026-01-20T00:00:00.000Z',
+              latestMovementDate: '2026-01-20',
             },
             {
               warehouseId: 'wh-2',
-              latestMovementDate: '2026-02-01T00:00:00.000Z',
+              latestMovementDate: '2026-02-01',
             },
           ],
         },

@@ -1023,7 +1023,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             SELECT id, status, updated_at
             FROM "accounting"."accounting_periods"
             WHERE organization_id = ${bookA.organizationId}
-            ORDER BY sequence`) as Array<Record<string, unknown>>
+            ORDER BY sequence, id`) as Array<Record<string, unknown>>
         ).map((row) => ({
           id: row['id'],
           status: row['status'],

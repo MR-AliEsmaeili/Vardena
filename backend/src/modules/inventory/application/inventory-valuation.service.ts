@@ -78,8 +78,13 @@ import { canonicalizeMoney } from '../domain/money.js';
 import { publishEvent, resolveSort } from './master-data-support.js';
 import {
   buildRequestHash,
+  canonicalClientBusinessDate,
   requireOperationKey,
+  resolveBusinessDateCarrier,
+  resolveBusinessDateFilter,
 } from './inventory-posting-support.js';
+import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
+import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
 import { ItemsService } from './items.service.js';
 import { WarehousesService } from './warehouses.service.js';
 
@@ -113,7 +118,11 @@ export interface RecalculateCommand {
   itemId: string;
   operationKey: string;
   trigger?: string | undefined;
-  fromDate?: Date | undefined;
+  /**
+   * The business DAY the run is requested for — audit only, OQ-73 shape:
+   * a canonical Gregorian day, a declared Jalali day, or a legacy instant.
+   */
+  fromDate?: BusinessDateInput | undefined;
   reason?: string | null | undefined;
 }
 
@@ -521,7 +530,8 @@ export class InventoryValuationService {
     organizationId: string;
     warehouseId: string;
     itemId: string;
-    movementDate: Date;
+    /** The business DAY to check, canonical Gregorian `YYYY-MM-DD`. */
+    movementDate: string;
   }): Promise<{
     backdated: boolean;
     movementDate: string;
@@ -547,11 +557,24 @@ export class InventoryValuationService {
       params.organizationId,
       { allowInactive: true },
     );
-    const assessment = await this.valuation.assessBackdate(params);
+    // Defined input, so the filter resolver always yields the day carrier.
+    const movementDate = resolveBusinessDateFilter(
+      'movementDate',
+      params.movementDate,
+    ) as Date;
+    const assessment = await this.valuation.assessBackdate({
+      organizationId: params.organizationId,
+      warehouseId: params.warehouseId,
+      itemId: params.itemId,
+      movementDate,
+    });
     return {
       backdated: assessment.backdated,
-      movementDate: assessment.movementDate.toISOString(),
-      latestMovementDate: assessment.latestMovementDate?.toISOString() ?? null,
+      movementDate: businessDateFromDbDate(assessment.movementDate),
+      latestMovementDate:
+        assessment.latestMovementDate === null
+          ? null
+          : businessDateFromDbDate(assessment.latestMovementDate),
       affectedMovements: assessment.affectedMovements,
       affectedValuedMovements: assessment.affectedValuedMovements,
       alreadyStale: assessment.alreadyStale,
@@ -902,12 +925,28 @@ export class InventoryValuationService {
       { allowInactive: true },
     );
     const trigger = requireTrigger(input.trigger);
+    // OQ-73: the run's audit business DATE is a calendar day (PostgreSQL
+    // `date`), resolved once here; `null` when the caller supplied none.
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
+    );
+    const fromDate =
+      input.fromDate === undefined
+        ? null
+        : resolveBusinessDateCarrier({
+            field: 'fromDate',
+            value: input.fromDate,
+            timeZone,
+          });
 
     const requestHash = buildRequestHash('valuation_recalculation', {
       warehouseId: input.warehouseId,
       itemId: input.itemId,
       trigger,
-      fromDate: input.fromDate?.toISOString() ?? null,
+      // Client day intent only (a DATE is the stored intent, never an
+      // instant): the same day under either calendar representation hashes
+      // identically.
+      fromDate: canonicalClientBusinessDate(input.fromDate),
     });
     const replayed = await this.replayValuation(
       input.organizationId,
@@ -953,7 +992,7 @@ export class InventoryValuationService {
         },
         method: resolved.method,
         trigger,
-        fromDate: input.fromDate ?? null,
+        fromDate,
         reason: normalizeNote(input.reason),
         operation: {
           id: generateId(),
@@ -1140,8 +1179,11 @@ function backdateDetails(
 ): Record<string, unknown> {
   return {
     code,
-    movementDate: assessment.movementDate.toISOString(),
-    latestMovementDate: assessment.latestMovementDate?.toISOString() ?? null,
+    movementDate: businessDateFromDbDate(assessment.movementDate),
+    latestMovementDate:
+      assessment.latestMovementDate === null
+        ? null
+        : businessDateFromDbDate(assessment.latestMovementDate),
     affectedMovements: assessment.affectedMovements,
     affectedValuedMovements: assessment.affectedValuedMovements,
     alreadyStale: assessment.alreadyStale,

@@ -525,7 +525,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         movementType: 'inbound',
         quantity: '2',
         unitId: boxAId,
-        movementDate: new Date('2026-01-20T00:00:00.000Z'),
+        movementDate: '2026-01-20',
       });
       expect(posted.conversionFactor).toBe('12');
       expect(posted.baseQuantity).toBe('24');
@@ -555,7 +555,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         movementType: 'inbound',
         quantity: '2',
         unitId: boxAId,
-        movementDate: new Date('2026-03-01T00:00:00.000Z'),
+        movementDate: '2026-03-01',
       });
       expect(current.conversionFactor).toBe('24');
       expect(current.baseQuantity).toBe('48');
@@ -627,7 +627,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           movementType: 'inbound',
           quantity: '1',
           unitId: crateAId,
-          movementDate: new Date('2026-03-05T00:00:00.000Z'),
+          movementDate: '2026-03-05',
         }),
       ).rejects.toMatchObject({
         code: 'BusinessRuleViolation',

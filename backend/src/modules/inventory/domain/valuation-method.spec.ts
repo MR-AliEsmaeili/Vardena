@@ -183,7 +183,8 @@ describe('backdating gate', () => {
 
     expect(message).toContain('3 later movement(s)');
     expect(message).toContain('2 of them valued');
-    expect(message).toContain('2026-02-01T00:00:00.000Z');
+    // OQ-73: the confirmation message names the business DAY, not an instant.
+    expect(message).toContain('(2026-02-01)');
     expect(BACKDATE_CONFIRMATION_CODE).toBe('inventory.backdated_document');
   });
 

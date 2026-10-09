@@ -64,7 +64,7 @@ interface LockedBalanceRow {
   itemId: string;
   onHand: DecimalLike;
   reservedQuantity: DecimalLike;
-  lastMovementAt: Date | null;
+  lastMovementDate: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -91,7 +91,7 @@ export async function lockBalanceRow(
              "item_id" AS "itemId",
              "on_hand" AS "onHand",
              "reserved_quantity" AS "reservedQuantity",
-             "last_movement_at" AS "lastMovementAt",
+             "last_movement_date" AS "lastMovementDate",
              "created_at" AS "createdAt",
              "updated_at" AS "updatedAt"
         FROM "inventory"."inventory_balances"
@@ -110,7 +110,7 @@ export async function lockBalanceRow(
       itemId: key.itemId,
       onHand: '0',
       reservedQuantity: '0',
-      lastMovementAt: null,
+      lastMovementDate: null,
       createdAt: new Date(),
       updatedAt: new Date(),
       createdBy: actorId,
@@ -126,7 +126,7 @@ export async function lockBalanceRow(
           itemId: created.itemId,
           onHand: created.onHand,
           reservedQuantity: created.reservedQuantity,
-          lastMovementAt: created.lastMovementAt,
+          lastMovementDate: created.lastMovementDate,
           createdAt: created.createdAt,
           updatedAt: created.updatedAt,
         }),
@@ -143,7 +143,7 @@ export async function lockBalanceRow(
 }
 
 /**
- * Apply exact counter deltas to a LOCKED balance row. `lastMovementAt` is the
+ * Apply exact counter deltas to a LOCKED balance row. `lastMovementDate` is the
  * already-computed new maximum (or the unchanged value for reservation-only
  * operations) — the comparison happens in TypeScript, the write here.
  */
@@ -153,7 +153,7 @@ export async function adjustBalanceCounters(
     balanceId: string;
     onHandDelta: string;
     reservedDelta: string;
-    lastMovementAt: Date | null;
+    lastMovementDate: Date | null;
     updatedAt: Date;
     updatedBy: string | null;
   },
@@ -162,7 +162,7 @@ export async function adjustBalanceCounters(
     UPDATE "inventory"."inventory_balances"
        SET "on_hand" = "on_hand" + ${input.onHandDelta}::numeric,
            "reserved_quantity" = "reserved_quantity" + ${input.reservedDelta}::numeric,
-           "last_movement_at" = ${input.lastMovementAt}::timestamptz,
+           "last_movement_date" = ${input.lastMovementDate}::date,
            "updated_at" = ${input.updatedAt}::timestamptz,
            "updated_by" = ${input.updatedBy}
      WHERE "id" = ${input.balanceId}`;
@@ -179,7 +179,7 @@ export async function setBalanceAbsolute(
     balanceId: string;
     onHand: string;
     reserved: string;
-    lastMovementAt: Date | null;
+    lastMovementDate: Date | null;
     updatedAt: Date;
     updatedBy: string | null;
   },
@@ -188,7 +188,7 @@ export async function setBalanceAbsolute(
     UPDATE "inventory"."inventory_balances"
        SET "on_hand" = ${input.onHand}::numeric,
            "reserved_quantity" = ${input.reserved}::numeric,
-           "last_movement_at" = ${input.lastMovementAt}::timestamptz,
+           "last_movement_date" = ${input.lastMovementDate}::date,
            "updated_at" = ${input.updatedAt}::timestamptz,
            "updated_by" = ${input.updatedBy}
      WHERE "id" = ${input.balanceId}`;
@@ -308,7 +308,7 @@ function toBalance(row: LockedBalanceRow): InventoryBalance {
     itemId: row.itemId,
     onHand: decimalToString(row.onHand),
     reserved: decimalToString(row.reservedQuantity),
-    lastMovementAt: row.lastMovementAt,
+    lastMovementDate: row.lastMovementDate,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

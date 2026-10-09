@@ -170,7 +170,7 @@ export class InventoryReservationsRepository {
         balanceId: balance.id,
         onHandDelta: '0',
         reservedDelta: input.reservation.baseQuantity,
-        lastMovementAt: balance.lastMovementAt,
+        lastMovementDate: balance.lastMovementDate,
         updatedAt: input.reservation.updatedAt,
         updatedBy: input.actorId,
       });
@@ -233,7 +233,7 @@ export class InventoryReservationsRepository {
         balanceId: balance.id,
         onHandDelta: '0',
         reservedDelta: subtractDecimalStrings('0', locked.baseQuantity),
-        lastMovementAt: balance.lastMovementAt,
+        lastMovementDate: balance.lastMovementDate,
         updatedAt: input.releasedAt,
         updatedBy: input.actorId,
       });

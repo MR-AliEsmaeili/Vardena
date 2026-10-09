@@ -635,7 +635,7 @@ describe('Inventory valuation (e2e)', () => {
         organizationId: state.orgId,
         warehouseId: state.warehouseId,
         itemId: state.itemId,
-        movementDate: '2020-01-01T00:00:00.000Z',
+        movementDate: '2020-01-01',
       })
       .expect(200);
 
@@ -652,7 +652,7 @@ describe('Inventory valuation (e2e)', () => {
       movementType: 'inbound',
       quantity: '5',
       totalCost: '250.00',
-      movementDate: '2020-01-01T00:00:00.000Z',
+      movementDate: '2020-01-01',
     }).expect(422);
 
     expect(rejected.body.details.code).toBe('inventory.backdated_document');
@@ -667,7 +667,7 @@ describe('Inventory valuation (e2e)', () => {
       movementType: 'inbound',
       quantity: '5',
       totalCost: '250.00',
-      movementDate: '2020-01-01T00:00:00.000Z',
+      movementDate: '2020-01-01',
       backdateConfirmed: true,
     }).expect(422);
 
@@ -682,7 +682,7 @@ describe('Inventory valuation (e2e)', () => {
       movementType: 'inbound',
       quantity: '5',
       totalCost: '250.00',
-      movementDate: '2020-01-01T00:00:00.000Z',
+      movementDate: '2020-01-01',
       backdateConfirmed: true,
       repricing: 'whatever',
     }).expect(400);
@@ -694,7 +694,7 @@ describe('Inventory valuation (e2e)', () => {
       movementType: 'inbound',
       quantity: '5',
       totalCost: '250.00',
-      movementDate: '2020-01-01T00:00:00.000Z',
+      movementDate: '2020-01-01',
       backdateConfirmed: true,
       repricing: 'skip',
     }).expect(201);
@@ -726,7 +726,7 @@ describe('Inventory valuation (e2e)', () => {
       movementType: 'inbound',
       quantity: '10',
       totalCost: '1000.00',
-      movementDate: '2026-01-01T00:00:00.000Z',
+      movementDate: '2026-01-01',
     }).expect(201);
     expect(receipt.body.valuationStatus).toBe('valued');
 
@@ -735,7 +735,7 @@ describe('Inventory valuation (e2e)', () => {
       itemId: state.otherItemId,
       movementType: 'outbound',
       quantity: '2',
-      movementDate: '2026-02-01T00:00:00.000Z',
+      movementDate: '2026-02-01',
     }).expect(201);
     expect(issue.body.valuationSource).toBe('average_cost');
 
@@ -745,7 +745,7 @@ describe('Inventory valuation (e2e)', () => {
       movementType: 'inbound',
       quantity: '1',
       totalCost: '150.00',
-      movementDate: '2026-03-01T00:00:00.000Z',
+      movementDate: '2026-03-01',
     }).expect(201);
 
     const unconfirmed = await root
@@ -753,7 +753,7 @@ describe('Inventory valuation (e2e)', () => {
       .query({ organizationId: state.orgId })
       .send({
         operationKey: 'val-backdated-reversal-unconfirmed',
-        movementDate: '2026-02-15T00:00:00.000Z',
+        movementDate: '2026-02-15',
       })
       .expect(422);
     expect(unconfirmed.body.details.code).toBe('inventory.backdated_document');
@@ -763,7 +763,7 @@ describe('Inventory valuation (e2e)', () => {
       .query({ organizationId: state.orgId })
       .send({
         operationKey: 'val-backdated-reversal-nochoice',
-        movementDate: '2026-02-15T00:00:00.000Z',
+        movementDate: '2026-02-15',
         backdateConfirmed: true,
       })
       .expect(422);
@@ -776,7 +776,7 @@ describe('Inventory valuation (e2e)', () => {
       .query({ organizationId: state.orgId })
       .send({
         operationKey: 'val-backdated-reversal-skip',
-        movementDate: '2026-02-15T00:00:00.000Z',
+        movementDate: '2026-02-15',
         backdateConfirmed: true,
         repricing: 'skip',
       })
@@ -900,16 +900,8 @@ describe('Inventory valuation (e2e)', () => {
 
     // Two receipts in ascending date order: one in the earlier period, one in
     // the later period.
-    const early = await receipt(
-      'val-dated-1',
-      '2026-01-10T00:00:00.000Z',
-      '1000.00',
-    );
-    const late = await receipt(
-      'val-dated-2',
-      '2026-02-10T00:00:00.000Z',
-      '1200.00',
-    );
+    const early = await receipt('val-dated-1', '2026-01-10', '1000.00');
+    const late = await receipt('val-dated-2', '2026-02-10', '1200.00');
 
     // Both periods are Moving Weighted Average today, so the whole history is
     // executable and the recalculation succeeds.
@@ -1069,8 +1061,8 @@ describe('Inventory valuation (e2e)', () => {
     // [2026-01-15, 2026-02-15], so versions three and four cannot apply to
     // either of them.
     for (const [index, movementDate] of [
-      '2026-01-15T00:00:00.000Z',
-      '2026-02-15T00:00:00.000Z',
+      '2026-01-15',
+      '2026-02-15',
     ].entries()) {
       await root
         .post('/api/v1/inventory/movements')
@@ -1652,7 +1644,7 @@ describe('Inventory valuation (e2e)', () => {
       movementType: 'inbound',
       quantity: '10',
       totalCost: '1000.00',
-      movementDate: '2026-01-10T00:00:00.000Z',
+      movementDate: '2026-01-10',
     }).expect(201);
     await post({
       operationKey: 'val-replay-dst-1',
@@ -1661,7 +1653,7 @@ describe('Inventory valuation (e2e)', () => {
       movementType: 'inbound',
       quantity: '20',
       totalCost: '1000.00',
-      movementDate: '2026-01-05T00:00:00.000Z',
+      movementDate: '2026-01-05',
     }).expect(201);
     await post({
       operationKey: 'val-replay-src-2',
@@ -1669,7 +1661,7 @@ describe('Inventory valuation (e2e)', () => {
       movementType: 'inbound',
       quantity: '10',
       totalCost: '3000.00',
-      movementDate: '2026-01-20T00:00:00.000Z',
+      movementDate: '2026-01-20',
     }).expect(201);
     const issue = await post({
       operationKey: 'val-replay-dst-2',
@@ -1677,7 +1669,7 @@ describe('Inventory valuation (e2e)', () => {
       warehouseId: state.secondWarehouseId,
       movementType: 'outbound',
       quantity: '12',
-      movementDate: '2026-02-01T00:00:00.000Z',
+      movementDate: '2026-02-01',
     }).expect(201);
     state.replayDestinationIssueId = issue.body.id as string;
   }
@@ -1695,7 +1687,7 @@ describe('Inventory valuation (e2e)', () => {
         itemId: state.replayItemId,
         quantity: '5',
         unitId: state.unitId,
-        movementDate: '2026-01-15T00:00:00.000Z',
+        movementDate: '2026-01-15',
       })
       .expect(422);
 
@@ -1703,11 +1695,11 @@ describe('Inventory valuation (e2e)', () => {
     expect(rejected.body.details.keys).toEqual([
       {
         warehouseId: state.warehouseId,
-        latestMovementDate: '2026-01-20T00:00:00.000Z',
+        latestMovementDate: '2026-01-20',
       },
       {
         warehouseId: state.secondWarehouseId,
-        latestMovementDate: '2026-02-01T00:00:00.000Z',
+        latestMovementDate: '2026-02-01',
       },
     ]);
     // Nothing moved: the quantity ledger is exactly as seeded.
@@ -1729,7 +1721,7 @@ describe('Inventory valuation (e2e)', () => {
         itemId: state.replayItemId,
         quantity: '5',
         unitId: state.unitId,
-        movementDate: '2026-01-15T00:00:00.000Z',
+        movementDate: '2026-01-15',
         backdateConfirmed: true,
       })
       .expect(403);
@@ -1761,7 +1753,7 @@ describe('Inventory valuation (e2e)', () => {
         itemId: state.replayItemId,
         quantity: '5',
         unitId: state.unitId,
-        movementDate: '2026-01-15T00:00:00.000Z',
+        movementDate: '2026-01-15',
         backdateConfirmed: true,
       })
       .expect(201);
@@ -1825,7 +1817,7 @@ describe('Inventory valuation (e2e)', () => {
       movementType: 'inbound',
       quantity: '10',
       totalCost: '1000.00',
-      movementDate: '2025-12-30T00:00:00.000Z',
+      movementDate: '2025-12-30',
     }).expect(201);
     // Destination (WH2): 10 UNCOSTED units (Jan 1) …
     await post({
@@ -1834,7 +1826,7 @@ describe('Inventory valuation (e2e)', () => {
       warehouseId: state.secondWarehouseId,
       movementType: 'inbound',
       quantity: '10',
-      movementDate: '2026-01-01T00:00:00.000Z',
+      movementDate: '2026-01-01',
     }).expect(201);
     // … the unpaired leg of a DIFFERENT pair (Jan 10), posted unvalued
     // because that key held no valued stock at all …
@@ -1848,7 +1840,7 @@ describe('Inventory valuation (e2e)', () => {
         itemId: state.rollbackItemId,
         quantity: '5',
         unitId: state.unitId,
-        movementDate: '2026-01-10T00:00:00.000Z',
+        movementDate: '2026-01-10',
       })
       .expect(201);
     expect(unpaired.body.outLeg.valuationStatus).toBe('unvalued');
@@ -1858,7 +1850,7 @@ describe('Inventory valuation (e2e)', () => {
       warehouseId: state.secondWarehouseId,
       movementType: 'inbound',
       quantity: '20',
-      movementDate: '2026-01-20T00:00:00.000Z',
+      movementDate: '2026-01-20',
     }).expect(201);
     // … and a later-dated outbound (Jan 5) entered with an explicit "skip":
     // in the canonical order it drains the uncosted pool before the unpaired
@@ -1869,7 +1861,7 @@ describe('Inventory valuation (e2e)', () => {
       warehouseId: state.secondWarehouseId,
       movementType: 'outbound',
       quantity: '23',
-      movementDate: '2026-01-05T00:00:00.000Z',
+      movementDate: '2026-01-05',
       backdateConfirmed: true,
       repricing: 'skip',
     }).expect(201);
@@ -1902,7 +1894,7 @@ describe('Inventory valuation (e2e)', () => {
         itemId: state.rollbackItemId,
         quantity: '5',
         unitId: state.unitId,
-        movementDate: '2026-01-07T00:00:00.000Z',
+        movementDate: '2026-01-07',
         backdateConfirmed: true,
       })
       .expect(422);
@@ -2050,7 +2042,7 @@ describe('Inventory valuation (e2e)', () => {
         organizationId: state.orgId,
         warehouseId: state.warehouseId,
         itemId: state.itemId,
-        movementDate: '2020-01-01T00:00:00.000Z',
+        movementDate: '2020-01-01',
       })
       .expect(200);
 

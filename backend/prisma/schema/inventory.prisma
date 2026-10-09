@@ -357,10 +357,13 @@ model InventoryMovement {
   /// unit, the base unit and `movement_date` it reproduces the resolution, so
   /// no separate version reference is stored.
   conversionFactor Decimal @map("conversion_factor") @db.Decimal(18, 6)
-  /// Business date (drives period filters); distinct from `created_at`. Also
-  /// the as-of instant conversions are resolved at. No period validation
+  /// Business DATE — the calendar day this movement occurred on (OQ-73 /
+  /// ADR-0042: a day, not an instant; PostgreSQL `date`, never
+  /// `timestamptz`). Drives period filters; DISTINCT from `created_at`,
+  /// which is the registration instant. No time-of-day, no time zone. Also
+  /// the as-of value conversions are resolved at. No period validation
   /// exists yet — the fiscal calendar is OQ-23.
-  movementDate   DateTime @map("movement_date") @db.Timestamptz(6)
+  movementDate   DateTime @map("movement_date") @db.Date
   /// Shared by the two legs of one transfer; null otherwise.
   transferId     String?  @map("transfer_id")
   /// Set when this movement reverses another one. Unique (NULLs do not clash
@@ -465,8 +468,9 @@ model InventoryBalance {
   onHand         Decimal  @default(0) @map("on_hand") @db.Decimal(18, 4)
   reservedQuantity Decimal @default(0) @map("reserved_quantity") @db.Decimal(18, 4)
   /// Greatest `movement_date` posted to this key; maintained by postings and
-  /// by rebuilds. NULL only before the first movement.
-  lastMovementAt DateTime? @map("last_movement_at") @db.Timestamptz(6)
+  /// by rebuilds. NULL only before the first movement. A business DATE
+  /// projection (the day of the newest movement), never an instant (OQ-73).
+  lastMovementDate DateTime? @map("last_movement_date") @db.Date
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy      String?  @map("created_by")
@@ -752,8 +756,9 @@ model InventoryValuationRun {
   /// Operation batch) and `reverse_pricing` (a per-key compensating run
   /// written by Reverse Pricing).
   trigger        String   @db.VarChar(24)
-  /// The business date the run was requested for; audit only.
-  fromDate       DateTime? @map("from_date") @db.Timestamptz(6)
+  /// The business date the run was requested for; audit only. A calendar
+  /// day, PostgreSQL `date` (OQ-73) — never an instant.
+  fromDate       DateTime? @map("from_date") @db.Date
   /// How many ledger facts the replay examined, and how many ended with a
   /// different value than before.
   movementsExamined Int   @map("movements_examined")

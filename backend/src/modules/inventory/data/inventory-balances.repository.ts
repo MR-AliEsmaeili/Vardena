@@ -57,7 +57,7 @@ export interface KeyExpectation {
   itemId: string;
   expectedOnHand: string;
   expectedReserved: string;
-  expectedLastMovementAt: Date | null;
+  expectedLastMovementDate: Date | null;
 }
 
 export interface KeyComparison extends KeyExpectation {
@@ -255,7 +255,7 @@ export class InventoryBalancesRepository {
       const factsExist =
         compareDecimalStrings(expected.expectedOnHand, '0') !== 0 ||
         compareDecimalStrings(expected.expectedReserved, '0') !== 0 ||
-        expected.expectedLastMovementAt !== null;
+        expected.expectedLastMovementDate !== null;
       const now = new Date();
 
       if (isNew) {
@@ -267,7 +267,7 @@ export class InventoryBalancesRepository {
           balanceId: stored.id,
           onHand: expected.expectedOnHand,
           reserved: expected.expectedReserved,
-          lastMovementAt: expected.expectedLastMovementAt,
+          lastMovementDate: expected.expectedLastMovementDate,
           updatedAt: now,
           updatedBy: actorId,
         });
@@ -286,7 +286,10 @@ export class InventoryBalancesRepository {
         compareDecimalStrings(stored.onHand, expected.expectedOnHand) === 0 &&
         compareDecimalStrings(stored.reserved, expected.expectedReserved) ===
           0 &&
-        sameInstant(stored.lastMovementAt, expected.expectedLastMovementAt)
+        sameBusinessDate(
+          stored.lastMovementDate,
+          expected.expectedLastMovementDate,
+        )
       ) {
         return { ...expected, storedBefore, action: 'noop' };
       }
@@ -294,7 +297,7 @@ export class InventoryBalancesRepository {
         balanceId: stored.id,
         onHand: expected.expectedOnHand,
         reserved: expected.expectedReserved,
-        lastMovementAt: expected.expectedLastMovementAt,
+        lastMovementDate: expected.expectedLastMovementDate,
         updatedAt: now,
         updatedBy: actorId,
       });
@@ -335,7 +338,7 @@ export class InventoryBalancesRepository {
       itemId: key.itemId,
       expectedOnHand: decimalToString(movements._sum.baseQuantity ?? '0'),
       expectedReserved: decimalToString(reservations._sum.baseQuantity ?? '0'),
-      expectedLastMovementAt: movements._max.movementDate,
+      expectedLastMovementDate: movements._max.movementDate,
     };
   }
 }
@@ -363,18 +366,18 @@ async function lockExistingBalanceRow(
   id: string;
   onHand: string;
   reserved: string;
-  lastMovementAt: Date | null;
+  lastMovementDate: Date | null;
 } | null> {
   const rows = await tx.$queryRaw<{
     id: string;
     onHand: string;
     reservedQuantity: string;
-    lastMovementAt: Date | null;
+    lastMovementDate: Date | null;
   }>`
     SELECT "id",
            "on_hand" AS "onHand",
            "reserved_quantity" AS "reservedQuantity",
-           "last_movement_at" AS "lastMovementAt"
+           "last_movement_date" AS "lastMovementDate"
       FROM "inventory"."inventory_balances"
      WHERE "organization_id" = ${organizationId}
        AND "warehouse_id" = ${key.warehouseId}
@@ -386,11 +389,12 @@ async function lockExistingBalanceRow(
     id: row.id,
     onHand: decimalToString(row.onHand),
     reserved: decimalToString(row.reservedQuantity),
-    lastMovementAt: row.lastMovementAt,
+    lastMovementDate: row.lastMovementDate,
   };
 }
 
-function sameInstant(left: Date | null, right: Date | null): boolean {
+/** Day equality on `date` carriers (OQ-73): same UTC day components. */
+function sameBusinessDate(left: Date | null, right: Date | null): boolean {
   if (left === null || right === null) return left === right;
   return left.getTime() === right.getTime();
 }
@@ -404,7 +408,7 @@ function toDomain(row: BalanceRow): InventoryBalance {
     itemId: row.itemId,
     onHand: decimalToString(row.onHand),
     reserved: decimalToString(row.reservedQuantity),
-    lastMovementAt: row.lastMovementAt,
+    lastMovementDate: row.lastMovementDate,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
