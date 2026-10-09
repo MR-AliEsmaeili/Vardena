@@ -3,8 +3,9 @@ import { AppException } from '../../../kernel/errors/app-exception.js';
 import {
   BUSINESS_DATE_PATTERN,
   businessDateFromInstant,
-  businessDateToDbDate,
   parseBusinessDate,
+  toBusinessDate,
+  type BusinessDate,
 } from '../../../kernel/datetime/business-date.js';
 import {
   parseBusinessDateInput,
@@ -32,8 +33,8 @@ import { UnitConversionsRepository } from '../data/unit-conversions.repository.j
  * Quantity resolution is the reason this file exists. Every posting preserves
  * the entered quantity AND the base quantity (D-26): the entered magnitude as
  * typed, the base magnitude as `quantity × factor` in exact decimal
- * arithmetic, resolved against the conversion version in force at the
- * operation's business instant (D-21 — a backdated posting uses the backdated
+ * arithmetic, resolved against the conversion version in force on the
+ * operation's BusinessDate (D-21 — a backdated posting uses the backdated
  * conversion, never today's).
  */
 
@@ -162,7 +163,7 @@ export async function resolveEnteredToBase(input: {
   baseUnitId: string;
   unitId: string;
   quantity: string;
-  asOf: Date;
+  asOf: BusinessDate;
 }): Promise<ResolvedBaseQuantity> {
   const problem = validateEnteredQuantity(input.quantity);
   if (problem !== null) {
@@ -192,7 +193,7 @@ export async function resolveEnteredToBase(input: {
   if (version === null) {
     throw AppException.businessRule(
       'No unit conversion from the entered unit to the base unit covers ' +
-        `${input.asOf.toISOString()}. Configure the conversion (in the entered → base direction) before posting.`,
+        `${input.asOf}. Configure the conversion (in the entered → base direction) before posting.`,
     );
   }
   const baseQuantity = multiplyDecimalStrings(quantity, version.factor);
@@ -216,8 +217,8 @@ export async function resolveEnteredToBase(input: {
  *   * a declared day (`{ calendar, value }`) hashes as the canonical
  *     Gregorian day it resolves to, so `1405-07-16`/JALALI and `2026-10-08`
  *     are ONE intent;
- *   * a legacy ISO instant hashes as the string supplied (its day depends
- *     on the organization zone; the string itself is the stable intent);
+ *   * a legacy ISO instant hashes as its UTC calendar day, matching the
+ *     OQ-73 historical conversion policy;
  *   * an omitted date hashes as an explicit `null`.
  *
  * The omission MUST be hashed as `null`, never as the server's effective
@@ -232,7 +233,10 @@ export function canonicalClientBusinessDate(
   value: BusinessDateInput | undefined,
 ): string | null {
   if (value === undefined) return null;
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string') {
+    const parsed = parseBusinessDateInput(value);
+    return parsed.ok ? parsed.gregorian : value;
+  }
   const resolved = parseBusinessDate(value.value, value.calendar);
   return resolved === null
     ? `${value.calendar}:${value.value}`
@@ -240,34 +244,30 @@ export function canonicalClientBusinessDate(
 }
 
 /**
- * Resolve a client-supplied business-date INPUT into the PostgreSQL `date`
- * carrier stored on the column (OQ-73):
+ * Resolve a client-supplied business-date INPUT into the canonical day used
+ * by the application/domain (OQ-73):
  *
  *   * a canonical Gregorian day or a declared Jalali day converts ONCE to
  *     the canonical Gregorian day;
- *   * a legacy ISO instant resolves to the DAY it falls on in `timeZone`
- *     (the compatibility boundary — no time-of-day survives a `date`
- *     column);
+ *   * a legacy ISO instant resolves to its UTC calendar day, matching the
+ *     OQ-73 migration policy and ensuring resubmission does not re-date it;
  *   * an omitted date defaults to TODAY's business day in `timeZone` — the
  *     organization's "today", never the server's UTC day.
  *
- * The returned `Date` is the transport adapter Prisma writes as
- * `YYYY-MM-DD` (its UTC components ARE the day); it is never an instant the
- * caller may render, compare-with-time or zone-shift.
+ * Persistence repositories convert the returned `BusinessDate` to Prisma's
+ * `Date` carrier; no carrier escapes into application or domain code.
  */
-export function resolveBusinessDateCarrier(params: {
+export function resolveBusinessDate(params: {
   field: string;
   value: BusinessDateInput | undefined;
   timeZone: string;
   now?: Date;
-}): Date {
-  let day: string;
+}): BusinessDate {
+  let day: BusinessDate;
   if (params.value === undefined) {
     day = businessDateFromInstant(params.now ?? new Date(), params.timeZone);
   } else {
-    const parsed = parseBusinessDateInput(params.value, {
-      timeZone: params.timeZone,
-    });
+    const parsed = parseBusinessDateInput(params.value);
     if (!parsed.ok) {
       throw AppException.validation([
         {
@@ -284,8 +284,8 @@ export function resolveBusinessDateCarrier(params: {
     }
     day = parsed.gregorian;
   }
-  const carrier = businessDateToDbDate(day);
-  if (carrier === null) {
+  const businessDate = toBusinessDate(day);
+  if (businessDate === null) {
     throw AppException.validation([
       {
         field: params.field,
@@ -294,12 +294,12 @@ export function resolveBusinessDateCarrier(params: {
       },
     ]);
   }
-  return carrier;
+  return businessDate;
 }
 
 /**
- * A business-day LIST FILTER (`YYYY-MM-DD`) into its PostgreSQL `date`
- * carrier (OQ-73): strict canonical Gregorian day shape, calendar-validated,
+ * Validate a canonical Gregorian business-day LIST FILTER (`YYYY-MM-DD`)
+ * without constructing an instant or Prisma carrier (OQ-73): strict canonical Gregorian day shape, calendar-validated,
  * nothing else. Day filters are true date comparisons on the `date` column —
  * index-friendly, no instant arithmetic, no UTC-midnight convention. A Jalali
  * day entered by a user is converted to its canonical Gregorian day at the
@@ -308,10 +308,10 @@ export function resolveBusinessDateCarrier(params: {
 export function resolveBusinessDateFilter(
   field: string,
   value: string | undefined,
-): Date | undefined {
+): BusinessDate | undefined {
   if (value === undefined) return undefined;
-  const carrier = businessDateToDbDate(value);
-  if (carrier === null) {
+  const businessDate = toBusinessDate(value);
+  if (businessDate === null) {
     throw AppException.validation([
       {
         field,
@@ -322,7 +322,7 @@ export function resolveBusinessDateFilter(
       },
     ]);
   }
-  return carrier;
+  return businessDate;
 }
 
 /**

@@ -719,7 +719,10 @@ export const fa = {
       receipt: 'رسید انبار',
       issue: 'حواله انبار',
       transfer: 'انتقال انبار',
+      purchase_return: 'برگشت از خرید',
+      sales_return: 'برگشت از فروش',
     },
+    unsupportedEditKind: 'ویرایش این نوع سند در این فرم پشتیبانی نمی‌شود.',
     statuses: {
       draft: 'پیش‌نویس',
       operational: 'عملیاتی',
@@ -950,6 +953,8 @@ export const fa = {
       adjustment_out: 'تعدیل کاهش موجودی',
       reversal_in: 'معکوس رسید',
       reversal_out: 'معکوس صادره',
+      purchase_return: 'برگشت از خرید',
+      sales_return: 'برگشت از فروش',
     },
 
     // Per-movement valuation finality — the backend's own vocabulary

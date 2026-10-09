@@ -37,7 +37,7 @@
  * Framework-free (AR-05).
  */
 
-import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 
 /** The operator's answer to the repricing question. No default exists. */
 export const REPRICING_CHOICES = ['recalculate', 'skip'] as const;
@@ -54,13 +54,10 @@ export function isRepricingChoice(value: string): value is RepricingChoice {
  */
 export interface BackdateAssessment {
   backdated: boolean;
-  /** The proposed business date (a `date` carrier, not an instant). */
-  movementDate: Date;
-  /**
-   * Latest movement business day already on the key (`date` carrier);
-   * `null` when the key is empty.
-   */
-  latestMovementDate: Date | null;
+  /** The proposed business date, never a persistence carrier. */
+  movementDate: BusinessDate;
+  /** Latest movement business day on the key, or `null` when empty. */
+  latestMovementDate: BusinessDate | null;
   /** Movements on the key dated strictly after the proposed date. */
   affectedMovements: number;
   /** How many of those currently carry a value that could change. */
@@ -71,11 +68,11 @@ export interface BackdateAssessment {
 
 /** Strictly-before day comparison; the same business day is not backdated. */
 export function isBackdated(params: {
-  movementDate: Date;
-  latestMovementDate: Date | null;
+  movementDate: BusinessDate;
+  latestMovementDate: BusinessDate | null;
 }): boolean {
   if (params.latestMovementDate === null) return false;
-  return params.movementDate.getTime() < params.latestMovementDate.getTime();
+  return params.movementDate < params.latestMovementDate;
 }
 
 /**
@@ -90,10 +87,7 @@ export const REPRICING_CHOICE_CODE = 'inventory.repricing_choice_required';
 export function backdateConfirmationMessage(
   assessment: BackdateAssessment,
 ): string {
-  const latest =
-    assessment.latestMovementDate === null
-      ? 'unknown'
-      : businessDateFromDbDate(assessment.latestMovementDate);
+  const latest = assessment.latestMovementDate ?? 'unknown';
   return (
     `The document date is earlier than the latest movement on this item and warehouse (${latest}). ` +
     `${assessment.affectedMovements} later movement(s), ${assessment.affectedValuedMovements} of them valued, ` +
@@ -109,21 +103,21 @@ export function backdateConfirmationMessage(
  * coupled replay and the operator is entitled to see both.
  */
 export function transferBackdateConfirmationMessage(params: {
-  movementDate: Date;
+  movementDate: BusinessDate;
   keys: readonly {
     warehouseId: string;
-    latestMovementDate: Date | null;
+    latestMovementDate: BusinessDate | null;
   }[];
 }): string {
   const keys = params.keys
     .map(
       (key) =>
         `warehouse "${key.warehouseId}" (latest movement ` +
-        `${key.latestMovementDate === null ? 'none' : businessDateFromDbDate(key.latestMovementDate)})`,
+        `${key.latestMovementDate ?? 'none'})`,
     )
     .join(' and ');
   return (
-    `The transfer is dated ${businessDateFromDbDate(params.movementDate)}, earlier than the latest movement on ` +
+    `The transfer is dated ${params.movementDate}, earlier than the latest movement on ` +
     `${keys}. Valuing it correctly restates both warehouses from that date onward, so the backdated ` +
     'transfer must be explicitly confirmed. There is no per-warehouse repricing choice: the transfer ' +
     'pair is valued together, source first, and the destination receives exactly the source value.'

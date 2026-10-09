@@ -14,6 +14,15 @@ import { getDateTimeSettings, todayBusinessDay } from '@/lib/datetime';
 
 const QUANTITY_PATTERN = /^\d+(\.\d{1,4})?$/;
 const COST_PATTERN = /^\d+(\.\d{1,2})?$/;
+const FORM_DOCUMENT_KINDS = ['receipt', 'issue', 'transfer'] as const;
+
+export type DocumentFormKind = (typeof FORM_DOCUMENT_KINDS)[number];
+
+export function isDocumentFormKind(
+  kind: InventoryDocumentKind,
+): kind is DocumentFormKind {
+  return kind === 'receipt' || kind === 'issue' || kind === 'transfer';
+}
 
 export const documentLineSchema = z.object({
   itemId: z.string().min(1, t.inventoryDocuments.itemRequired),
@@ -30,7 +39,7 @@ export const documentLineSchema = z.object({
 
 export const documentFormSchema = z
   .object({
-    kind: z.enum(['receipt', 'issue', 'transfer']),
+    kind: z.enum(FORM_DOCUMENT_KINDS),
     businessDate: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, t.filters.invalidDate)
@@ -109,9 +118,7 @@ export const documentFormSchema = z
 export type DocumentFormValues = z.infer<typeof documentFormSchema>;
 
 /** A blank form for one kind, dated today (the backend's own default). */
-export function emptyDocumentForm(
-  kind: InventoryDocumentKind,
-): DocumentFormValues {
+export function emptyDocumentForm(kind: DocumentFormKind): DocumentFormValues {
   return {
     kind,
     // C-63: "today" is the business day of the ORGANIZATION's zone, not the

@@ -1,8 +1,9 @@
 import { useEffect, useMemo } from 'react';
-import type { UseFormReturn } from 'react-hook-form';
+import { Controller, type UseFormReturn } from 'react-hook-form';
 import { t } from '@/lib/i18n';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
+import { DateInput } from '@/ui/patterns/date-input';
 import { FormField } from '@/ui/patterns/form-field';
 import { AccountPicker } from './account-picker';
 import type { LedgerScopeValues } from './report-filters';
@@ -43,6 +44,7 @@ export function LedgerScopeFields({
   const yearsQuery = useFiscalYears(
     organizationId,
     financialAreaId === '' ? null : financialAreaId,
+    { enabled: financialAreaId !== '' },
   );
   const periodsQuery = useAccountingPeriods(
     organizationId,
@@ -67,10 +69,14 @@ export function LedgerScopeFields({
 
   useEffect(() => {
     const onlyYear = years.length === 1 ? years[0] : undefined;
-    if (onlyYear !== undefined && fiscalYearId === '') {
+    if (
+      financialAreaId !== '' &&
+      onlyYear !== undefined &&
+      fiscalYearId === ''
+    ) {
       setValue('fiscalYearId', onlyYear.id, { shouldDirty: false });
     }
-  }, [years, fiscalYearId, setValue]);
+  }, [financialAreaId, years, fiscalYearId, setValue]);
 
   return (
     <>
@@ -111,7 +117,9 @@ export function LedgerScopeFields({
             {...register('fiscalYearId', {
               onChange: () => setValue('accountingPeriodId', ''),
             })}
-            disabled={disabled || yearsQuery.isPending}
+            disabled={
+              disabled || financialAreaId === '' || yearsQuery.isPending
+            }
           >
             <option value="">{t.filters.select}</option>
             {years.map((year) => (
@@ -177,13 +185,17 @@ export function LedgerScopeFields({
         error={formState.errors.dateFrom?.message}
       >
         {(fieldProps) => (
-          <Input
-            {...fieldProps}
-            {...register('dateFrom')}
-            dir="ltr"
-            inputMode="numeric"
-            placeholder="YYYY-MM-DD"
-            disabled={disabled}
+          <Controller
+            control={form.control}
+            name="dateFrom"
+            render={({ field }) => (
+              <DateInput
+                {...fieldProps}
+                value={field.value}
+                onValueChange={field.onChange}
+                disabled={disabled}
+              />
+            )}
           />
         )}
       </FormField>
@@ -195,13 +207,17 @@ export function LedgerScopeFields({
         error={formState.errors.dateTo?.message}
       >
         {(fieldProps) => (
-          <Input
-            {...fieldProps}
-            {...register('dateTo')}
-            dir="ltr"
-            inputMode="numeric"
-            placeholder="YYYY-MM-DD"
-            disabled={disabled}
+          <Controller
+            control={form.control}
+            name="dateTo"
+            render={({ field }) => (
+              <DateInput
+                {...fieldProps}
+                value={field.value}
+                onValueChange={field.onChange}
+                disabled={disabled}
+              />
+            )}
           />
         )}
       </FormField>

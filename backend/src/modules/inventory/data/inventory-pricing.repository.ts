@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
   isPricingKeyOutcome,
   isPricingRunKind,
   type InventoryPricingRun,
@@ -151,7 +156,7 @@ export class InventoryPricingRepository {
     organizationId: string;
     warehouseId: string | null;
     documentKinds: readonly string[];
-  }): Promise<{ id: string; toDate: Date } | null> {
+  }): Promise<{ id: string; toDate: BusinessDate } | null> {
     const { inventoryPricingRun } = await this.client();
     // Bounded recent-window scan: the latest COMPLETED runs for the
     // warehouse, then the most recent one whose EXACT kind set matches —
@@ -176,7 +181,7 @@ export class InventoryPricingRepository {
     const requested = [...params.documentKinds].sort().join(',');
     for (const row of rows) {
       if ([...row.documentKinds].sort().join(',') === requested) {
-        return { id: row.id, toDate: row.toDate };
+        return { id: row.id, toDate: businessDateFromDbDate(row.toDate) };
       }
     }
     return null;
@@ -189,7 +194,9 @@ export class InventoryPricingRepository {
     tx: CoreTxClient,
     create: PricingRunCreate,
   ): Promise<InventoryPricingRun> {
-    const row = await tx.inventoryPricingRun.create({ data: create });
+    const row = await tx.inventoryPricingRun.create({
+      data: toCreateData(create),
+    });
     return toDomain(row, []);
   }
 
@@ -265,6 +272,24 @@ const MAX_KEY_OUTCOMES = 5_000;
 /** How many recent runs `findLastRunForScope` inspects for the exact kind set. */
 const SCOPE_HISTORY_WINDOW = 50;
 
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Inventory BusinessDate "${value}".`);
+  }
+  return carrier;
+}
+
+function toCreateData(
+  input: PricingRunCreate,
+): import('./inventory-core-rows.js').PricingRunCreateData {
+  return {
+    ...input,
+    fromDate: input.fromDate === null ? null : dbBusinessDate(input.fromDate),
+    toDate: dbBusinessDate(input.toDate),
+  };
+}
+
 function toOutcomeDomain(
   row: PricingRunKeyOutcomeRow,
 ): InventoryPricingRunKeyOutcome {
@@ -304,8 +329,9 @@ function toDomain(
     organizationId: row.organizationId,
     warehouseId: row.warehouseId,
     documentKinds: row.documentKinds,
-    fromDate: row.fromDate,
-    toDate: row.toDate,
+    fromDate:
+      row.fromDate === null ? null : businessDateFromDbDate(row.fromDate),
+    toDate: businessDateFromDbDate(row.toDate),
     kind: row.kind as PricingRunKind,
     reversesRunId: row.reversesRunId,
     reversedByRunId: row.reversedByRunId,

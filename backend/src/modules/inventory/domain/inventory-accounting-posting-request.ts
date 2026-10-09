@@ -6,7 +6,7 @@ import {
   divideToScale,
   UNIT_COST_DISPLAY_DIGITS,
 } from './money.js';
-import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import { ACCOUNTING_POST_ACTION } from './inventory-accounting-posting-operation.js';
 
 /**
@@ -87,7 +87,7 @@ export interface AccountingPostingCanonicalRequest {
   sourceDocumentId: string;
   sourceDocumentType: string;
   sourceDocumentNumber: string | null;
-  sourceDocumentDate: string;
+  sourceDocumentDate: BusinessDate;
   sourceDocumentVersion: string;
   warehouseId: string;
   postingMode: string;
@@ -155,8 +155,8 @@ export function buildAccountingPostingRequestHash(
  * builder and the snapshot reconstruction so both produce byte-equal strings
  * for the same day (the hash compares them verbatim).
  */
-export function toAccountingPostingDateOnly(value: Date): string {
-  return businessDateFromDbDate(value);
+export function toAccountingPostingDateOnly(value: BusinessDate): BusinessDate {
+  return value;
 }
 
 /**
@@ -176,7 +176,7 @@ export interface AccountingPostingSnapshotSource {
     documentType: string;
     documentNumber: string | null;
     documentVersion: string;
-    documentDate: Date;
+    documentDate: BusinessDate;
     branchId: string;
     warehouseId: string;
     valuationState: string;

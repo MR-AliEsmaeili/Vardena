@@ -72,6 +72,7 @@ const testWarehouseA = {
   name: 'انبار مرکزی',
   allowNegativeStock: false,
   reservationsReduceAvailable: false,
+  accountingPostingMode: 'direct_final' as const,
   isActive: true,
   createdAt: '2026-01-01T08:00:00.000Z',
   updatedAt: '2026-01-01T08:00:00.000Z',

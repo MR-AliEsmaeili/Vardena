@@ -73,6 +73,7 @@ const warehouses = [
     name: 'انبار مرکزی',
     allowNegativeStock: false,
     reservationsReduceAvailable: false,
+    accountingPostingMode: 'direct_final' as const,
     isActive: true,
     createdAt: '2026-01-01T08:00:00.000Z',
     updatedAt: '2026-01-01T08:00:00.000Z',
@@ -85,6 +86,7 @@ const warehouses = [
     name: 'انبار فرعی',
     allowNegativeStock: false,
     reservationsReduceAvailable: false,
+    accountingPostingMode: 'direct_final' as const,
     isActive: true,
     createdAt: '2026-01-01T08:00:00.000Z',
     updatedAt: '2026-01-01T08:00:00.000Z',
@@ -136,6 +138,7 @@ function documentFixture(
     accountingEligible: false,
     number: null,
     businessDate: '2026-05-10',
+    businessDateCalendar: { gregorian: '2026-05-10', jalali: '1405-02-20' },
     warehouseId: 'wh-1',
     sourceWarehouseId: null,
     destinationWarehouseId: null,
@@ -154,6 +157,7 @@ function documentFixture(
     finalizedBy: null,
     accountingPostedAt: null,
     accountingPostedBy: null,
+    accountingPostingState: 'not_posted',
     sealedAt: null,
     sealedBy: null,
     cancelledAt: null,
@@ -161,6 +165,18 @@ function documentFixture(
     cancellationReason: null,
     createdAt: '2026-05-10T08:00:00.000Z',
     updatedAt: '2026-05-10T08:00:00.000Z',
+    createdAtCalendar: {
+      instant: '2026-05-10T08:00:00.000Z',
+      timeZone: 'UTC',
+      gregorian: '2026-05-10 08:00:00',
+      jalali: '1405-02-20 08:00:00',
+    },
+    updatedAtCalendar: {
+      instant: '2026-05-10T08:00:00.000Z',
+      timeZone: 'UTC',
+      gregorian: '2026-05-10 08:00:00',
+      jalali: '1405-02-20 08:00:00',
+    },
     lines: [
       {
         id: 'line-1',
@@ -453,6 +469,20 @@ describe('Inventory document form', () => {
       await screen.findByText(t.inventoryDocuments.sameWarehouse),
     ).toBeInTheDocument();
     expect(inventoryApi.createInventoryDocument).not.toHaveBeenCalled();
+  });
+
+  it('shows the unsupported boundary instead of editing return documents in this form', async () => {
+    vi.mocked(inventoryApi.readInventoryDocument).mockResolvedValue(
+      documentFixture({ kind: 'purchase_return' }),
+    );
+    renderEditForm();
+
+    expect(
+      await screen.findByText(t.inventoryDocuments.unsupportedEditKind),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText(t.inventoryDocuments.lineQuantity),
+    ).not.toBeInTheDocument();
   });
 
   it('resubmits a material edit only with the acknowledgement AND an explicit repricing choice', async () => {

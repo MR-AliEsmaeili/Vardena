@@ -38,6 +38,7 @@ import type { Unit } from '../../src/modules/inventory/domain/unit.js';
 import type { ItemGroup } from '../../src/modules/inventory/domain/item-group.js';
 import type { Item } from '../../src/modules/inventory/domain/item.js';
 import type { UnitConversion } from '../../src/modules/inventory/domain/unit-conversion.js';
+import { isGregorianBusinessDate } from '../../src/kernel/datetime/business-date.js';
 import { planNewVersion } from '../../src/modules/inventory/domain/unit-conversion.js';
 import {
   ConversionPlanRejectedError,
@@ -603,11 +604,15 @@ function matchesConversionFilters(
   const toUnitId = where['toUnitId'];
   if (typeof toUnitId === 'string' && row.toUnitId !== toUnitId) return false;
   const activeAt = where['activeAt'];
-  if (activeAt instanceof Date) {
-    if (row.validFrom.getTime() > activeAt.getTime()) return false;
-    if (row.validTo !== null && row.validTo.getTime() <= activeAt.getTime()) {
-      return false;
-    }
+  if (activeAt !== undefined && !isGregorianBusinessDate(activeAt)) {
+    throw new Error('TEST DOUBLE: activeAt must be a canonical BusinessDate.');
+  }
+  if (
+    isGregorianBusinessDate(activeAt) &&
+    (row.validFrom > activeAt ||
+      (row.validTo !== null && row.validTo <= activeAt))
+  ) {
+    return false;
   }
   return true;
 }

@@ -1,9 +1,15 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { createFiscalYear } from '@/api/accounting.api';
+import type { CreateFiscalYearRequest } from '@/api/contracts';
 import { queryKeys } from '@/api/query-keys';
+import {
+  isBusinessDay,
+  toBusinessDateInput,
+  useCalendarSystem,
+} from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import {
@@ -14,13 +20,12 @@ import {
   CardTitle,
 } from '@/ui/card';
 import { Input } from '@/ui/input';
+import { DateInput } from '@/ui/patterns/date-input';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
 import { FormField } from '@/ui/patterns/form-field';
 
 const MAX_CODE_LENGTH = 64;
 const MAX_TITLE_LENGTH = 200;
-const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-
 const fiscalYearSchema = z
   .object({
     code: z
@@ -37,12 +42,12 @@ const fiscalYearSchema = z
       .string()
       .trim()
       .min(1, t.financialContext.startDateRequired)
-      .regex(DATE_ONLY, t.financialContext.dateFormat),
+      .refine(isBusinessDay, t.financialContext.dateFormat),
     endDate: z
       .string()
       .trim()
       .min(1, t.financialContext.endDateRequired)
-      .regex(DATE_ONLY, t.financialContext.dateFormat),
+      .refine(isBusinessDay, t.financialContext.dateFormat),
   })
   .refine((value) => value.startDate <= value.endDate, {
     message: t.financialContext.dateRange,
@@ -64,21 +69,24 @@ export function FiscalYearCreateForm({
   financialAreaId: string;
 }) {
   const queryClient = useQueryClient();
+  const calendarSystem = useCalendarSystem();
   const form = useForm<FiscalYearFormValues>({
     resolver: zodResolver(fiscalYearSchema),
     defaultValues: { code: '', title: '', startDate: '', endDate: '' },
     mode: 'onSubmit',
   });
   const mutation = useMutation({
-    mutationFn: (values: FiscalYearFormValues) =>
-      createFiscalYear({
+    mutationFn: (values: FiscalYearFormValues) => {
+      const body: CreateFiscalYearRequest = {
         organizationId,
         financialAreaId,
         code: values.code.trim(),
         title: values.title.trim(),
-        startDate: values.startDate.trim(),
-        endDate: values.endDate.trim(),
-      }),
+        startDate: toBusinessDateInput(values.startDate, calendarSystem),
+        endDate: toBusinessDateInput(values.endDate, calendarSystem),
+      };
+      return createFiscalYear(body);
+    },
     onSuccess: async () => {
       form.reset();
       await queryClient.invalidateQueries({
@@ -139,13 +147,17 @@ export function FiscalYearCreateForm({
               error={form.formState.errors.startDate?.message}
             >
               {(fieldProps) => (
-                <Input
-                  {...fieldProps}
-                  {...form.register('startDate')}
-                  dir="ltr"
-                  inputMode="numeric"
-                  placeholder="YYYY-MM-DD"
-                  disabled={mutation.isPending}
+                <Controller
+                  control={form.control}
+                  name="startDate"
+                  render={({ field }) => (
+                    <DateInput
+                      {...fieldProps}
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={mutation.isPending}
+                    />
+                  )}
                 />
               )}
             </FormField>
@@ -156,13 +168,17 @@ export function FiscalYearCreateForm({
               error={form.formState.errors.endDate?.message}
             >
               {(fieldProps) => (
-                <Input
-                  {...fieldProps}
-                  {...form.register('endDate')}
-                  dir="ltr"
-                  inputMode="numeric"
-                  placeholder="YYYY-MM-DD"
-                  disabled={mutation.isPending}
+                <Controller
+                  control={form.control}
+                  name="endDate"
+                  render={({ field }) => (
+                    <DateInput
+                      {...fieldProps}
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={mutation.isPending}
+                    />
+                  )}
                 />
               )}
             </FormField>

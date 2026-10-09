@@ -9,6 +9,10 @@ import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { getPrincipal } from '../../../kernel/correlation/request-context.js';
 import {
+  businessDateFromInstant,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
   toOffset,
   toPaginatedResult,
   type PaginatedResult,
@@ -76,7 +80,7 @@ import {
 import { publishEvent, resolveSort } from './master-data-support.js';
 import { resolveEnteredCost } from './inventory-cost-support.js';
 import {
-  resolveBusinessDateCarrier,
+  resolveBusinessDate as resolveBusinessDateInput,
   resolveBusinessDateFilter,
   resolveEnteredToBase,
 } from './inventory-posting-support.js';
@@ -133,10 +137,10 @@ export interface CreateDocumentInput {
   organizationId: string;
   kind: string;
   /**
-   * C-63: the business date in its API INPUT form — a canonical Gregorian day
-   * (`YYYY-MM-DD`), a declared Jalali day (`{ calendar, value }`), or (legacy)
-   * a full ISO instant, which is kept as given. Omit to keep the historical
-   * "now" behaviour.
+   * C-63: the BusinessDate in its API input form — a canonical Gregorian day
+   * (`YYYY-MM-DD`), a declared Jalali day (`{ calendar, value }`), or a legacy
+   * ISO instant whose UTC calendar day is used. Omit to default to today's
+   * business day in the organization zone.
    */
   businessDate?: BusinessDateInput | undefined;
   warehouseId?: string | null | undefined;
@@ -1176,35 +1180,21 @@ export class InventoryBusinessDocumentsService {
   }
 
   /**
-   * Resolve a business date INPUT into the PostgreSQL `date` value stored on
-   * the column (C-63 §16, ADR-0042; OQ-73).
+   * Resolve the document's canonical `business_date` (C-63 / OQ-73).
    *
-   * Three cases, each explicit:
-   *
-   *   * a calendar day (canonical Gregorian or a declared Jalali day) is
-   *     converted ONCE to the canonical Gregorian day — `1405-07-16` and
-   *     `2026-10-08` are the SAME stored `date`;
-   *   * a legacy ISO instant resolves to the DAY it falls on in the
-   *     organization's time zone — the compatibility boundary: the column is
-   *     a `date`, so no time-of-day can survive it (the instant itself is
-   *     never stored here; `created_at` records the registration moment);
-   *   * an omitted date defaults to TODAY's business day in the
-   *     organization's zone — the operator's "today", never the server's UTC
-   *     day and never a time-of-day (clients are still expected to send an
-   *     explicit day).
-   *
-   * The returned value is the DB carrier of the day (a `Date` whose UTC
-   * components ARE the day — see kernel/datetime/business-date.ts), which
-   * Prisma writes to the `date` column as `YYYY-MM-DD`.
+   * Gregorian and declared Jalali inputs become one canonical Gregorian
+   * BusinessDate. Legacy ISO instants resolve to their UTC calendar day per
+   * the owner-confirmed OQ-73 policy. Only an omitted date uses the
+   * organization's configured zone to choose today's business day.
    */
   private async resolveBusinessDate(input: {
     organizationId: string;
     businessDate?: BusinessDateInput | undefined;
-  }): Promise<Date> {
+  }): Promise<BusinessDate> {
     const { timeZone } = await this.organizations.getDateTimeSettings(
       input.organizationId,
     );
-    return resolveBusinessDateCarrier({
+    return resolveBusinessDateInput({
       field: 'businessDate',
       value: input.businessDate,
       timeZone,
@@ -1285,7 +1275,7 @@ export class InventoryBusinessDocumentsService {
       sourceWarehouseId: string | null;
       destinationWarehouseId: string | null;
     };
-    businessDate: Date;
+    businessDate: BusinessDate;
     lines: DocumentLineInput[];
     existingIds?: string[] | undefined;
   }): Promise<ResolvedLine[]> {
@@ -1468,7 +1458,7 @@ export class InventoryBusinessDocumentsService {
       /** The receipt's cost / the basis-linked sales return's amount. */
       cost: string | null;
     };
-    businessDate: Date;
+    businessDate: BusinessDate;
     lines: ResolvedLine[];
     backdateConfirmed: boolean;
     repricing: RepricingChoice | null;
@@ -1591,7 +1581,7 @@ export class InventoryBusinessDocumentsService {
         destinationWarehouseId: string | null;
         cost: string | null;
       };
-      businessDate: Date;
+      businessDate: BusinessDate;
       lines: ResolvedLine[];
       keyPrefix: string;
       actorId: string | null;
@@ -1606,6 +1596,10 @@ export class InventoryBusinessDocumentsService {
     },
   ): Promise<string[]> {
     const created: string[] = [];
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      params.organizationId,
+    );
+    const postingBusinessDate = businessDateFromInstant(params.at, timeZone);
     const reference = {
       referenceType: INVENTORY_DOCUMENT_REFERENCE_TYPE,
       referenceId: params.documentId,
@@ -1900,7 +1894,7 @@ export class InventoryBusinessDocumentsService {
             ...(forceUnvalued ? { forceUnvalued: true } : {}),
             // Backdating was decided before the transaction; the ledger only
             // needs to know whether this fact lands in the past.
-            backdated: isBefore(params.businessDate, params.at),
+            backdated: isBefore(params.businessDate, postingBusinessDate),
           },
         },
         tx,
@@ -1928,6 +1922,10 @@ export class InventoryBusinessDocumentsService {
     audit: { keyPrefix: string; actorId: string | null; at: Date },
   ): Promise<string[]> {
     const created: string[] = [];
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      document.organizationId,
+    );
+    const reversalBusinessDate = businessDateFromInstant(audit.at, timeZone);
     for (const line of document.lines) {
       const originals = [
         line.movementId,
@@ -1959,11 +1957,12 @@ export class InventoryBusinessDocumentsService {
           );
         const movementId = generateId();
         const operationKey = boundedKey(`${audit.keyPrefix}:${originalId}`);
-        // A reversal is never dated before the fact it mirrors.
+        // A reversal is never dated before the fact it mirrors. Compare
+        // BusinessDate values, not an instant against a day.
         const movementDate =
-          audit.at.getTime() < original.movementDate.getTime()
+          reversalBusinessDate < original.movementDate
             ? original.movementDate
-            : audit.at;
+            : reversalBusinessDate;
         await this.movements.postReversal(
           {
             originalMovementId: originalId,
@@ -2206,8 +2205,8 @@ function documentRequestHash(documentId: string, operationKey: string): string {
     .digest('hex');
 }
 
-function isBefore(candidate: Date, reference: Date): boolean {
-  return candidate.getTime() < reference.getTime();
+function isBefore(candidate: BusinessDate, reference: BusinessDate): boolean {
+  return candidate < reference;
 }
 
 /** The ledger type a document kind posts (C-59D: the return types). */

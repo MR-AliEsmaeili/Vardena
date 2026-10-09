@@ -7,7 +7,7 @@ import { t } from '@/lib/i18n';
 import {
   formatDateOnly,
   formatDateOnlyCanonical,
-  formatDateTime,
+  formatDateTimeWithZone,
   formatQuantity,
 } from '@/lib/format';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
@@ -217,25 +217,41 @@ function DocumentFacts({
         {document.finalizedAt !== null ? (
           <Fact
             label={t.inventoryDocuments.finalizedAt}
-            value={formatDateTime(document.finalizedAt)}
+            value={
+              <span title={document.finalizedAt}>
+                {formatDateTimeWithZone(document.finalizedAt)}
+              </span>
+            }
           />
         ) : null}
         {document.accountingPostedAt !== null ? (
           <Fact
             label={t.inventoryDocuments.accountingPostedAt}
-            value={formatDateTime(document.accountingPostedAt)}
+            value={
+              <span title={document.accountingPostedAt}>
+                {formatDateTimeWithZone(document.accountingPostedAt)}
+              </span>
+            }
           />
         ) : null}
         {document.sealedAt !== null ? (
           <Fact
             label={t.inventoryDocuments.sealedAt}
-            value={formatDateTime(document.sealedAt)}
+            value={
+              <span title={document.sealedAt}>
+                {formatDateTimeWithZone(document.sealedAt)}
+              </span>
+            }
           />
         ) : null}
         {document.cancelledAt !== null ? (
           <Fact
             label={t.inventoryDocuments.cancelledAt}
-            value={formatDateTime(document.cancelledAt)}
+            value={
+              <span title={document.cancelledAt}>
+                {formatDateTimeWithZone(document.cancelledAt)}
+              </span>
+            }
           />
         ) : null}
         {document.cancellationReason !== null ? (

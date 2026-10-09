@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/errors';
@@ -276,14 +276,12 @@ describe('financial workspace context gate', () => {
       screen.getByLabelText(t.financialContext.title),
       testFiscalYear.title,
     );
-    await user.type(
-      screen.getByLabelText(t.financialContext.startDate),
-      testFiscalYear.startDate,
-    );
-    await user.type(
-      screen.getByLabelText(t.financialContext.endDate),
-      testFiscalYear.endDate,
-    );
+    fireEvent.change(screen.getByLabelText(t.financialContext.startDate), {
+      target: { value: testFiscalYear.startDate },
+    });
+    fireEvent.change(screen.getByLabelText(t.financialContext.endDate), {
+      target: { value: testFiscalYear.endDate },
+    });
     await user.click(
       screen.getByRole('button', { name: t.financialContext.createFiscalYear }),
     );

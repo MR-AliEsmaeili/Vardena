@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import { compareDecimalStrings } from '../domain/quantities.js';
 import type { InventoryBalance } from '../domain/inventory-balance.js';
 import type {
@@ -57,7 +59,7 @@ export interface KeyExpectation {
   itemId: string;
   expectedOnHand: string;
   expectedReserved: string;
-  expectedLastMovementDate: Date | null;
+  expectedLastMovementDate: BusinessDate | null;
 }
 
 export interface KeyComparison extends KeyExpectation {
@@ -338,7 +340,10 @@ export class InventoryBalancesRepository {
       itemId: key.itemId,
       expectedOnHand: decimalToString(movements._sum.baseQuantity ?? '0'),
       expectedReserved: decimalToString(reservations._sum.baseQuantity ?? '0'),
-      expectedLastMovementDate: movements._max.movementDate,
+      expectedLastMovementDate:
+        movements._max.movementDate === null
+          ? null
+          : businessDateFromDbDate(movements._max.movementDate),
     };
   }
 }
@@ -366,7 +371,7 @@ async function lockExistingBalanceRow(
   id: string;
   onHand: string;
   reserved: string;
-  lastMovementDate: Date | null;
+  lastMovementDate: BusinessDate | null;
 } | null> {
   const rows = await tx.$queryRaw<{
     id: string;
@@ -389,14 +394,19 @@ async function lockExistingBalanceRow(
     id: row.id,
     onHand: decimalToString(row.onHand),
     reserved: decimalToString(row.reservedQuantity),
-    lastMovementDate: row.lastMovementDate,
+    lastMovementDate:
+      row.lastMovementDate === null
+        ? null
+        : businessDateFromDbDate(row.lastMovementDate),
   };
 }
 
-/** Day equality on `date` carriers (OQ-73): same UTC day components. */
-function sameBusinessDate(left: Date | null, right: Date | null): boolean {
-  if (left === null || right === null) return left === right;
-  return left.getTime() === right.getTime();
+/** Canonical business-day equality (no instant or zone semantics). */
+function sameBusinessDate(
+  left: BusinessDate | null,
+  right: BusinessDate | null,
+): boolean {
+  return left === right;
 }
 
 function toDomain(row: BalanceRow): InventoryBalance {
@@ -408,7 +418,10 @@ function toDomain(row: BalanceRow): InventoryBalance {
     itemId: row.itemId,
     onHand: decimalToString(row.onHand),
     reserved: decimalToString(row.reservedQuantity),
-    lastMovementDate: row.lastMovementDate,
+    lastMovementDate:
+      row.lastMovementDate === null
+        ? null
+        : businessDateFromDbDate(row.lastMovementDate),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

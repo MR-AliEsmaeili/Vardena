@@ -4,6 +4,8 @@ import {
   type DomainEventBus,
 } from '../../../kernel/events/domain-event-bus.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
+import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
+import { parseAccountingBusinessDateInput } from './accounting-date-support.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { getPrincipal } from '../../../kernel/correlation/request-context.js';
@@ -34,7 +36,6 @@ import {
   type AccountingPeriodStatus,
   type AccountingPeriodTransition,
 } from '../domain/accounting-period.js';
-import { parseDateOnly } from '../domain/date-range.js';
 import { normalizeTitle } from '../domain/master-data.js';
 import { ACCOUNTING_PERIOD_PERMISSIONS } from '../domain/accounting-permissions.js';
 import {
@@ -90,8 +91,8 @@ export interface CreateAccountingPeriodInput {
   sequence: number;
   title: string;
   /** Inclusive bounds, `YYYY-MM-DD`; must lie inside the year. */
-  startDate: string;
-  endDate: string;
+  startDate: BusinessDateInput;
+  endDate: BusinessDateInput;
 }
 
 export interface TransitionAccountingPeriodInput {
@@ -208,7 +209,7 @@ export class AccountingPeriodsService {
     assertTitle(title);
     const startDate = parseDateInput(input.startDate, 'startDate');
     const endDate = parseDateInput(input.endDate, 'endDate');
-    if (endDate.getTime() < startDate.getTime()) {
+    if (endDate < startDate) {
       throw AppException.businessRule(
         'The period end date must be on or after the start date.',
       );
@@ -411,15 +412,9 @@ export class AccountingPeriodsService {
   }
 }
 
-/** Parse a `YYYY-MM-DD` input or reject it as malformed (400). */
-function parseDateInput(value: string, field: string): Date {
-  const parsed = parseDateOnly(value.trim());
-  if (parsed === null) {
-    throw AppException.badRequest(
-      `${field} must be a valid calendar date (YYYY-MM-DD).`,
-    );
-  }
-  return parsed;
+/** Resolve an Accounting BusinessDate input through the shared kernel parser. */
+function parseDateInput(value: BusinessDateInput, field: string) {
+  return parseAccountingBusinessDateInput(value, field);
 }
 
 function transitionVerb(transition: AccountingPeriodTransition): string {

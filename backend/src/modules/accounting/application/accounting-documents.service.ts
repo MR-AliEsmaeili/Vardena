@@ -9,6 +9,7 @@ import {
   getPrincipal,
 } from '../../../kernel/correlation/request-context.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
+import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import {
   toOffset,
@@ -961,7 +962,7 @@ export interface CreateAccountingDocumentInput {
   organizationId: string;
   financialAreaId: string;
   /** `YYYY-MM-DD` business date (§12.3). */
-  documentDate: string;
+  documentDate: BusinessDateInput;
   description: string;
   branchId?: string | null | undefined;
   lines: readonly CreateAccountingDocumentLineInput[];
@@ -990,7 +991,7 @@ export interface CreateAccountingDocumentInput {
 }
 
 export interface UpdateAccountingDocumentInput {
-  documentDate?: string | undefined;
+  documentDate?: BusinessDateInput | undefined;
   description?: string | undefined;
   branchId?: string | null | undefined;
   /** The area may change only while the document is still a draft (AC-D-03). */
@@ -1008,7 +1009,7 @@ export interface ReverseDocumentInput {
   operationKey: string;
   reason: string;
   /** Optional business date of the reversal; defaults to the original date. */
-  documentDate?: string | undefined;
+  documentDate?: BusinessDateInput | undefined;
 }
 
 /** Assign server-owned line ids; `lineNo` was assigned by `normalizeLines`. */

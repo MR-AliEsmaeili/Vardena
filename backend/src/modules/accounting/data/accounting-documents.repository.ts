@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import type {
   AccountingDocument,
   AccountingDocumentOrigin,
@@ -144,8 +149,8 @@ export interface AccountingDocumentListFilter {
   branchId?: string | undefined;
   documentNumber?: string | undefined;
   /** Inclusive business-date bounds (`DATE` semantics, §12.3). */
-  dateFrom?: Date | undefined;
-  dateTo?: Date | undefined;
+  dateFrom?: BusinessDate | undefined;
+  dateTo?: BusinessDate | undefined;
   search?: string | undefined;
 }
 
@@ -165,7 +170,7 @@ export interface CreateAccountingDocumentInput {
   id: string;
   organizationId: string;
   financialAreaId: string;
-  documentDate: Date;
+  documentDate: BusinessDate;
   description: string;
   /** `draft` (no number) or `temporary` (issued at creation, §15.1). */
   state: AccountingDocumentPhase;
@@ -190,7 +195,7 @@ export interface UpdateAccountingDocumentInput {
   organizationId: string;
   /** The target scope — resolved from this area + date by the repository. */
   financialAreaId: string;
-  documentDate: Date;
+  documentDate: BusinessDate;
   description: string;
   branchId: string | null;
   lines: readonly AccountingDocumentLineWrite[];
@@ -227,7 +232,7 @@ export interface ReverseAccountingDocumentInput {
   organizationId: string;
   reversalId: string;
   documentNumber: string;
-  documentDate: Date;
+  documentDate: BusinessDate;
   description: string;
   reason: string;
   ledger: DocumentOperationRow;
@@ -344,7 +349,7 @@ export class AccountingDocumentsRepository {
           accountingPeriodId: scope.period.id,
           documentType: 'accounting_voucher',
           documentNumber: input.documentNumber,
-          documentDate: input.documentDate,
+          documentDate: dbBusinessDate(input.documentDate),
           description: input.description,
           state: input.state,
           origin: input.origin,
@@ -437,7 +442,7 @@ export class AccountingDocumentsRepository {
           financialAreaId: input.financialAreaId,
           fiscalYearId: target.year.id,
           accountingPeriodId: target.period.id,
-          documentDate: input.documentDate,
+          documentDate: dbBusinessDate(input.documentDate),
           description: input.description,
           branchId: input.branchId,
           updatedAt: input.updatedAt,
@@ -550,7 +555,7 @@ export class AccountingDocumentsRepository {
       const scope = await lockScopeInTx(tx, {
         organizationId: input.organizationId,
         financialAreaId: header.financialAreaId,
-        documentDate: header.documentDate,
+        documentDate: businessDateFromDbDate(header.documentDate),
       });
       // Task 14 — the accounting-period lifecycle gate, FIRST and fail-closed
       // (contract §7.2 rules 4/8, §15.5 step 1). The resolved year and period
@@ -861,7 +866,7 @@ export class AccountingDocumentsRepository {
           accountingPeriodId: scope.period.id,
           documentType: 'accounting_voucher',
           documentNumber: input.documentNumber,
-          documentDate: input.documentDate,
+          documentDate: dbBusinessDate(input.documentDate),
           description: input.description,
           state: 'final',
           origin: locked.origin,
@@ -980,10 +985,11 @@ async function lockScopeInTx(
   input: {
     organizationId: string;
     financialAreaId: string;
-    documentDate: Date;
+    documentDate: BusinessDate;
   },
 ): Promise<LockedScope> {
   const area = await lockFinancialAreaRow(tx, input.financialAreaId);
+  const documentDate = dbBusinessDate(input.documentDate);
   if (!area.isActive) {
     throw new AccountingDocumentScopeRejectedError('area', 'disabled');
   }
@@ -992,8 +998,8 @@ async function lockScopeInTx(
     where: {
       organizationId: input.organizationId,
       financialAreaId: input.financialAreaId,
-      startDate: { lte: input.documentDate },
-      endDate: { gte: input.documentDate },
+      startDate: { lte: documentDate },
+      endDate: { gte: documentDate },
     },
     orderBy: [{ startDate: 'asc' }],
     skip: 0,
@@ -1008,7 +1014,7 @@ async function lockScopeInTx(
   }
   if (years.length > 1) {
     throw new Error(
-      `The financial area "${input.financialAreaId}" has overlapping fiscal years covering ${input.documentDate.toISOString()}.`,
+      `The financial area "${input.financialAreaId}" has overlapping fiscal years covering ${input.documentDate}.`,
     );
   }
   const year = await lockFiscalYearRow(tx, resolvedYear.id);
@@ -1024,8 +1030,8 @@ async function lockScopeInTx(
   const periods = await tx.accountingPeriod.findMany({
     where: {
       fiscalYearId: year.id,
-      startDate: { lte: input.documentDate },
-      endDate: { gte: input.documentDate },
+      startDate: { lte: documentDate },
+      endDate: { gte: documentDate },
     },
     orderBy: [{ sequence: 'asc' }],
     skip: 0,
@@ -1059,7 +1065,7 @@ async function lockOpenScopeInTx(
   input: {
     organizationId: string;
     financialAreaId: string;
-    documentDate: Date;
+    documentDate: BusinessDate;
   },
 ): Promise<LockedScope> {
   const scope = await lockScopeInTx(tx, input);
@@ -1343,7 +1349,7 @@ function toLedgerEntryCreate(
     debitAmount: entry.debitAmount,
     creditAmount: entry.creditAmount,
     description: entry.description,
-    documentDate: entry.documentDate,
+    documentDate: dbBusinessDate(entry.documentDate),
     postingTimestamp: entry.postingTimestamp,
     branchId: entry.branchId,
     origin: entry.origin,
@@ -1381,8 +1387,9 @@ function toWhere(
   }
   if (filter.dateFrom !== undefined || filter.dateTo !== undefined) {
     const date: { gte?: Date; lte?: Date } = {};
-    if (filter.dateFrom !== undefined) date.gte = filter.dateFrom;
-    if (filter.dateTo !== undefined) date.lte = filter.dateTo;
+    if (filter.dateFrom !== undefined)
+      date.gte = dbBusinessDate(filter.dateFrom);
+    if (filter.dateTo !== undefined) date.lte = dbBusinessDate(filter.dateTo);
     where.documentDate = date;
   }
   if (filter.search !== undefined && filter.search !== '') {
@@ -1422,7 +1429,7 @@ function toDomain(
     accountingPeriodId: row.accountingPeriodId,
     documentType: row.documentType,
     documentNumber: row.documentNumber,
-    documentDate: row.documentDate,
+    documentDate: businessDateFromDbDate(row.documentDate),
     description: row.description,
     phase: row.state,
     origin: row.origin,
@@ -1490,4 +1497,12 @@ export function toAmountString(value: unknown): string {
   throw new Error(
     `Cannot map a document line amount of type "${typeof value}" to a decimal string without float semantics.`,
   );
+}
+
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Accounting BusinessDate "${value}".`);
+  }
+  return carrier;
 }

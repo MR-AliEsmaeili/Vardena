@@ -88,7 +88,7 @@ export class UnitConversionsController {
   @RequirePermission(UNIT_CONVERSION_PERMISSIONS.VIEW)
   @ApiOperation({
     summary:
-      'Resolve the conversion version in force at an instant: item-specific first, then global.',
+      'Resolve the conversion version effective on a business date: item-specific first, then global.',
   })
   @ApiOkResponse({ type: ResolveUnitConversionResponseDto })
   async resolve(

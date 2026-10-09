@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { resolveEnteredCost } from './inventory-cost-support.js';
 import {
@@ -143,7 +144,7 @@ describe('toInventoryMovementDto — value is permission-gated', () => {
     baseQuantity: '10',
     baseUnitId: 'unit-1',
     conversionFactor: '1',
-    movementDate: new Date('2026-03-01T00:00:00.000Z'),
+    movementDate: toBusinessDate('2026-03-01')!,
     transferId: null,
     reversalOfMovementId: null,
     referenceType: null,

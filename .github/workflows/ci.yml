@@ -132,6 +132,17 @@ jobs:
           VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
         run: npm run test:migration-rehearsal
 
+      # This fixture targets the three legacy Inventory effective-dating tables
+      # independently: UTC-day conversion, preserved audit instants, and
+      # fail-closed checks for collapsed, duplicate-start, and overlapping
+      # BusinessDate windows. It is not a substitute for production-snapshot
+      # evidence; the migration emits its own endpoint-time notice and guards.
+      - name: Migration rehearsal (Inventory BusinessDate validity windows)
+        working-directory: backend
+        env:
+          VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
+        run: npm run test:business-date-validity-rehearsal
+
       - name: E2E tests (incl. live-DB suites)
         working-directory: backend
         timeout-minutes: 10

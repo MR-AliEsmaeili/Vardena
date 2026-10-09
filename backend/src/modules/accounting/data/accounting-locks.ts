@@ -1,4 +1,8 @@
 import type { AccountingTxClient } from './accounting-rows.js';
+import {
+  businessDateFromDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 
 /**
  * Row locking for the Accounting guard transactions (Task 10.2 calendar
@@ -54,8 +58,8 @@ export interface LockedFiscalYear {
   financialAreaId: string;
   status: string;
   isActive: boolean;
-  startDate: Date;
-  endDate: Date;
+  startDate: BusinessDate;
+  endDate: BusinessDate;
 }
 
 /**
@@ -135,7 +139,15 @@ export async function lockFiscalYearRow(
   tx: AccountingTxClient,
   fiscalYearId: string,
 ): Promise<LockedFiscalYear> {
-  const rows = await tx.$queryRaw<LockedFiscalYear>`
+  const rows = await tx.$queryRaw<{
+    id: string;
+    organizationId: string;
+    financialAreaId: string;
+    status: string;
+    isActive: boolean;
+    startDate: Date;
+    endDate: Date;
+  }>`
     SELECT "id",
            "organization_id"   AS "organizationId",
            "financial_area_id" AS "financialAreaId",
@@ -150,7 +162,11 @@ export async function lockFiscalYearRow(
   if (row === undefined) {
     throw new Error(`Fiscal year "${fiscalYearId}" no longer exists.`);
   }
-  return row;
+  return {
+    ...row,
+    startDate: businessDateFromDbDate(row.startDate),
+    endDate: businessDateFromDbDate(row.endDate),
+  };
 }
 
 /**
@@ -600,7 +616,7 @@ export interface LockedAccountingDocument {
   accountingPeriodId: string;
   documentType: string;
   documentNumber: string | null;
-  documentDate: Date;
+  documentDate: BusinessDate;
   description: string;
   state: string;
   origin: string;
@@ -631,7 +647,9 @@ export async function lockAccountingDocumentRow(
   tx: AccountingTxClient,
   documentId: string,
 ): Promise<LockedAccountingDocument | null> {
-  const rows = await tx.$queryRaw<LockedAccountingDocument>`
+  const rows = await tx.$queryRaw<
+    Omit<LockedAccountingDocument, 'documentDate'> & { documentDate: Date }
+  >`
     SELECT "id"                   AS "id",
            "organization_id"      AS "organizationId",
            "financial_area_id"    AS "financialAreaId",
@@ -652,7 +670,9 @@ export async function lockAccountingDocumentRow(
      WHERE "id" = ${documentId}
      FOR UPDATE`;
   const [row] = rows;
-  return row ?? null;
+  return row === undefined
+    ? null
+    : { ...row, documentDate: businessDateFromDbDate(row.documentDate) };
 }
 
 /** A locked account row: the usability the line guard re-evaluates. */

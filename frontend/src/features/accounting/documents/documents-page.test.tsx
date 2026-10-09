@@ -1,9 +1,10 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/errors';
 import type { AccountingDocument } from '@/api/contracts';
+import { resetDateTimeSettings, setDateTimeSettings } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import {
@@ -99,6 +100,11 @@ function mockPermissions(permissions: string[]) {
 }
 
 beforeEach(() => {
+  resetDateTimeSettings();
+  setDateTimeSettings({
+    calendarSystem: testOrganization.calendarSystem,
+    timeZone: testOrganization.timeZone,
+  });
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   mockPermissions(allAccountingPermissions);
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
@@ -235,6 +241,64 @@ describe('Documents list — URL-owned filters', () => {
         expect.any(AbortSignal),
       ),
     );
+  });
+
+  it('renders Jalali BusinessDate filters but sends canonical Gregorian URL/API values', async () => {
+    vi.mocked(accountingApi.listAccountingDocuments).mockResolvedValue(
+      paginated([]),
+    );
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <DocumentsPage />
+        <HistoryControls />
+      </>,
+      { initialEntries: ['/app/accounting/documents'] },
+    );
+    await waitFor(() =>
+      expect(accountingApi.listAccountingDocuments).toHaveBeenCalled(),
+    );
+    act(() => {
+      setDateTimeSettings({
+        calendarSystem: 'JALALI',
+        timeZone: 'Asia/Tehran',
+      });
+    });
+
+    const dateFrom = screen.getByLabelText(t.filters.dateFrom);
+    expect(dateFrom).toHaveAttribute('data-calendar', 'JALALI');
+    await user.type(dateFrom, '1405/01/01');
+    await user.click(screen.getByRole('button', { name: t.documents.apply }));
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('location-search')).toHaveTextContent(
+        'dateFrom=2026-03-21',
+      ),
+    );
+    await waitFor(() => {
+      const query = vi
+        .mocked(accountingApi.listAccountingDocuments)
+        .mock.calls.at(-1)?.[0];
+      expect(query).toMatchObject({ dateFrom: '2026-03-21' });
+    });
+  });
+
+  it('does not forward an impossible Gregorian day from an untrusted URL', async () => {
+    vi.mocked(accountingApi.listAccountingDocuments).mockResolvedValue(
+      paginated([]),
+    );
+    renderWithProviders(<DocumentsPage />, {
+      initialEntries: ['/app/accounting/documents?dateFrom=2026-02-30'],
+    });
+
+    await waitFor(() =>
+      expect(accountingApi.listAccountingDocuments).toHaveBeenCalled(),
+    );
+    expect(screen.getByLabelText(t.filters.dateFrom)).toHaveValue('');
+    const query = vi
+      .mocked(accountingApi.listAccountingDocuments)
+      .mock.calls.at(-1)?.[0];
+    expect(query).not.toHaveProperty('dateFrom');
   });
 
   it('applies a filter through the filter bar and reflects it in the URL', async () => {

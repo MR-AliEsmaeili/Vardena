@@ -4,7 +4,7 @@ import { useOrganizationId } from '@/features/organization/use-organization';
 import { PermissionGate } from '@/features/permissions/permission-gate';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTimeWithZone } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
@@ -146,10 +146,14 @@ function DepartmentDetailView({
           <ActiveBadge active={department.isActive} />
         </Definition>
         <Definition label={t.orgAdmin.createdAt}>
-          <span className="num">{formatDateTime(department.createdAt)}</span>
+          <span className="num" title={department.createdAt}>
+            {formatDateTimeWithZone(department.createdAt)}
+          </span>
         </Definition>
         <Definition label={t.orgAdmin.updatedAt}>
-          <span className="num">{formatDateTime(department.updatedAt)}</span>
+          <span className="num" title={department.updatedAt}>
+            {formatDateTimeWithZone(department.updatedAt)}
+          </span>
         </Definition>
       </DefinitionList>
 

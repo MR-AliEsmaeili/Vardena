@@ -2,7 +2,12 @@ import { createHash } from 'node:crypto';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import type { DomainEventBus } from '../../../kernel/events/domain-event-bus.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
-import { parseDateOnly } from '../domain/date-range.js';
+import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
+import {
+  parseAccountingBusinessDateInput,
+  parseAccountingBusinessDayFilter,
+} from './accounting-date-support.js';
 import { canonicalizeAmount, validateEnteredAmount } from '../domain/money.js';
 import {
   assignLineNumbers,
@@ -124,34 +129,18 @@ export function normalizeSourceLineReference(
   return reference;
 }
 
-/**
- * Parse the business date. `YYYY-MM-DD` only (§12.3): the module stores
- * date-only values and no path in it accepts an instant, so a datetime string
- * is a bad request rather than a silently truncated timestamp.
- */
-export function parseDocumentDate(value: string): Date {
-  const parsed = parseDateOnly(value.trim());
-  if (parsed === null) {
-    throw AppException.badRequest(
-      'documentDate must be a valid calendar date (YYYY-MM-DD).',
-    );
-  }
-  return parsed;
+/** Resolve a body BusinessDate input through the shared kernel parser. */
+export function parseDocumentDate(value: BusinessDateInput): BusinessDate {
+  return parseAccountingBusinessDateInput(value, 'documentDate');
 }
 
-/** Optional `YYYY-MM-DD` bound (list filters). */
+/** Optional canonical Gregorian `YYYY-MM-DD` bound (URL/list filter). */
 export function parseOptionalDocumentDate(
   value: string | undefined,
   field: string,
-): Date | undefined {
+): BusinessDate | undefined {
   if (value === undefined) return undefined;
-  const parsed = parseDateOnly(value.trim());
-  if (parsed === null) {
-    throw AppException.badRequest(
-      `${field} must be a valid calendar date (YYYY-MM-DD).`,
-    );
-  }
-  return parsed;
+  return parseAccountingBusinessDayFilter(value, field);
 }
 
 /** One submitted line, before the server assigns its ordinal. */

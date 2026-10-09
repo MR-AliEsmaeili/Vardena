@@ -505,7 +505,7 @@ export function assertPostedLedger(
       entry.creditAmount === line.creditAmount &&
       entry.description === line.description;
     const evidenceMatches =
-      entry.documentDate.getTime() === document.documentDate.getTime() &&
+      entry.documentDate === document.documentDate &&
       entry.postingTimestamp.getTime() === document.finalizedAt.getTime() &&
       entry.finalizedBy === document.finalizedBy &&
       entry.correlationId === document.correlationId &&

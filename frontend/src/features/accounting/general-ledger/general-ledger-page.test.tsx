@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/errors';
+import { resetDateTimeSettings, setDateTimeSettings } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
@@ -46,6 +47,11 @@ const organizationApi = await import('@/api/organization.api');
 const accountingApi = await import('@/api/accounting.api');
 
 beforeEach(() => {
+  resetDateTimeSettings();
+  setDateTimeSettings({
+    calendarSystem: testOrganization.calendarSystem,
+    timeZone: testOrganization.timeZone,
+  });
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
     userId: testUser.id,
@@ -106,6 +112,43 @@ describe('General Ledger page', () => {
     });
   });
 
+  it('accepts a Jalali filter day and queries with its canonical Gregorian day', async () => {
+    vi.mocked(accountingApi.listGeneralLedger).mockResolvedValue(paginated([]));
+    vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
+      {
+        ...testOrganization,
+        calendarSystem: 'JALALI',
+        timeZone: 'Asia/Tehran',
+      },
+    ]);
+    setDateTimeSettings({
+      calendarSystem: 'JALALI',
+      timeZone: 'Asia/Tehran',
+    });
+    const user = userEvent.setup();
+    renderWithProviders(<GeneralLedgerPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText<HTMLSelectElement>(t.filters.financialArea).value,
+      ).toBe('area-1');
+      expect(
+        screen.getByLabelText<HTMLSelectElement>(t.filters.fiscalYear).value,
+      ).toBe('year-1');
+    });
+    const dateFrom = screen.getByLabelText(t.filters.dateFrom);
+    expect(dateFrom).toHaveAttribute('data-calendar', 'JALALI');
+    await user.type(dateFrom, '1405/01/01');
+    await applyFilters(user);
+
+    await waitFor(() => {
+      const query = vi
+        .mocked(accountingApi.listGeneralLedger)
+        .mock.calls.at(-1)?.[0];
+      expect(query).toMatchObject({ dateFrom: '2026-03-21' });
+    });
+  });
+
   it('renders the exact decimal amounts returned by the API', async () => {
     vi.mocked(accountingApi.listGeneralLedger).mockResolvedValue(
       paginated([generalLedgerRow]),
@@ -119,6 +162,9 @@ describe('General Ledger page', () => {
     expect(within(table).getAllByText('1,500,000.00')).toHaveLength(2);
     expect(within(table).getByText('1010')).toBeInTheDocument();
     expect(within(table).getByText('2026-04-01')).toBeInTheDocument();
+    expect(
+      within(table).getByText('2026-04-01 10:15:00 UTC (UTC+00:00)'),
+    ).toHaveAttribute('title', generalLedgerRow.postingTimestamp);
   });
 
   it('shows the empty state when the server returns no rows', async () => {

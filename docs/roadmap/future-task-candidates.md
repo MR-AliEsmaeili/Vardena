@@ -160,7 +160,7 @@
 | C-42 Pin-divergence repair (existing rows) | Repair/flag legacy organizations whose pins disagree (ODR-1 rejects writes only) | — | **OQ-62, OQ-63** | — | NO (deliberately not repaired) | **BLOCKED BY OQ** |
 | C-43 Treasury (cash/bank/payment/receipt/cheque/settlement) | Any Treasury capability | explicit future task + Owner Decision | — | — | NO | **DEFERRED — OUT OF MVP** |
 | C-44 MVP acceptance thresholds ratification | Ratify/waive the proposed final-gate numbers | — | **OQ-60** | — | n/a | **BLOCKED BY OQ** (needed for Phase 8) |
-| C-45 UI language / calendar decision | Persian/Jalali display decision (isolated in frontend `lib/`) | — | **OQ-02** | — | i18n dictionary + formatters exist | **BLOCKED BY OQ** (frontend/print labels) |
+| C-45 Remaining localization decision | Primary UI language details, Persian-numeral preference and broader localization only; organization calendar/zone are accepted and implemented under ADR-0042, so this candidate must not reopen or duplicate that contract | — | **OQ-02 (remaining scope)** | ADR-0042 Accepted (PO-02, 2026-10-09) | Shared date input/formatters and organization settings exist; no calendar-decision task is needed | **BLOCKED BY REMAINING OQ** (language/numerals/print labels; statutory outputs also require OQ-43) |
 
 ---
 

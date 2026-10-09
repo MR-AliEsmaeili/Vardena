@@ -12,7 +12,6 @@ import { ArrowRight } from 'lucide-react';
 import type {
   CreateInventoryDocumentInput,
   InventoryDocument,
-  InventoryDocumentKind,
   UpdateInventoryDocumentInput,
 } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
@@ -39,6 +38,8 @@ import { documentKindLabel } from './inventory-document-labels';
 import {
   documentFormSchema,
   emptyDocumentForm,
+  isDocumentFormKind,
+  type DocumentFormKind,
   type DocumentFormValues,
 } from './inventory-document-form-schema';
 import {
@@ -47,13 +48,23 @@ import {
 } from './inventory-document-mutations';
 import { useDocumentDetail } from './use-inventory-documents';
 
+type EditableInventoryDocument = Omit<InventoryDocument, 'kind'> & {
+  kind: DocumentFormKind;
+};
+
+function isEditableInventoryDocument(
+  document: InventoryDocument,
+): document is EditableInventoryDocument {
+  return isDocumentFormKind(document.kind);
+}
+
 /** Create a draft, or edit a document that is not yet accounting-posted. */
 export function InventoryDocumentFormPage(): ReactElement {
   const organizationId = useOrganizationId();
   const { documentId } = useParams<{ documentId: string }>();
   const [params] = useSearchParams();
   const kindParam = params.get('kind');
-  const kind: InventoryDocumentKind =
+  const kind: DocumentFormKind =
     kindParam === 'issue' || kindParam === 'transfer' ? kindParam : 'receipt';
 
   const references = useInventoryReferences(organizationId);
@@ -87,19 +98,28 @@ export function InventoryDocumentFormPage(): ReactElement {
     );
   }
 
+  const document = detailQuery.data;
+  if (document !== undefined && !isEditableInventoryDocument(document)) {
+    return (
+      <ApiErrorAlert
+        error={new Error(t.inventoryDocuments.unsupportedEditKind)}
+        title={t.inventoryDocuments.editTitle}
+        description={t.inventoryDocuments.unsupportedEditKind}
+      />
+    );
+  }
+
   return (
     <DocumentForm
       organizationId={organizationId}
       references={references}
-      kind={detailQuery.data?.kind ?? kind}
-      {...(detailQuery.data !== undefined
-        ? { document: detailQuery.data }
-        : {})}
+      kind={document?.kind ?? kind}
+      {...(document !== undefined ? { document } : {})}
     />
   );
 }
 
-function toFormValues(document: InventoryDocument): DocumentFormValues {
+function toFormValues(document: EditableInventoryDocument): DocumentFormValues {
   return {
     kind: document.kind,
     // OQ-73: the API returns the business DAY itself (canonical Gregorian).
@@ -188,8 +208,8 @@ function DocumentForm({
 }: {
   organizationId: string;
   references: ReturnType<typeof useInventoryReferences>;
-  kind: InventoryDocumentKind;
-  document?: InventoryDocument;
+  kind: DocumentFormKind;
+  document?: EditableInventoryDocument;
 }): ReactElement {
   const navigate = useNavigate();
   const { showToast } = useToast();

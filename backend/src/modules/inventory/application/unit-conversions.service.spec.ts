@@ -1,6 +1,10 @@
 import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  toBusinessDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
   DomainEventBus,
   type DomainEvent,
 } from '../../../kernel/events/domain-event-bus.js';
@@ -24,14 +28,18 @@ import { UNIT_CONVERSION_CREATED_EVENT } from '../domain/inventory.events.js';
  * - a change is a NEW version; nothing is edited in place, and the previous
  *   open-ended version is closed atomically with the new one;
  * - the factor travels as a decimal string, never a JSON number;
- * - resolution honours the instant, so a past date yields the old factor;
- * - no conversion is ever invented when none covers the instant.
+ * - resolution honours the business date, so a past date yields the old factor;
+ * - no conversion is ever invented when none covers the business date.
  */
 
-const D = (iso: string): Date => new Date(iso);
-const JAN = D('2026-01-01T00:00:00Z');
-const FEB = D('2026-02-01T00:00:00Z');
-const MAR = D('2026-03-01T00:00:00Z');
+const D = (iso: string): BusinessDate => {
+  const value = toBusinessDate(iso);
+  if (value === null) throw new Error(`Invalid test BusinessDate: ${iso}`);
+  return value;
+};
+const JAN = D('2026-01-01');
+const FEB = D('2026-02-01');
+const MAR = D('2026-03-01');
 
 function loggerStub(): JsonLogger {
   return {
@@ -180,6 +188,22 @@ describe('UnitConversionsService', () => {
     });
   });
 
+  it('resolves a legacy ISO validity-input to its UTC business day', async () => {
+    const created = await fixture.conversions.createConversion({
+      organizationId: fixture.organizationId,
+      itemId: null,
+      fromUnitId: fixture.boxId,
+      toUnitId: fixture.pcsId,
+      factor: '12',
+      // This offset instant is still on January 1 locally, but its UTC day is
+      // December 31. Compatibility follows the approved UTC-day policy.
+      validFrom: '2026-01-01T00:15:00+03:30',
+      validTo: null,
+    });
+
+    expect(created.validFrom).toBe(D('2025-12-31'));
+  });
+
   it('keeps the factor as a decimal string with no floating-point drift', async () => {
     const created = await fixture.conversions.createConversion({
       organizationId: fixture.organizationId,
@@ -264,7 +288,7 @@ describe('UnitConversionsService', () => {
       fixture.organizationId,
       first.id,
     );
-    expect(closed.validTo).toBe(FEB.toISOString());
+    expect(closed.validTo).toBe(FEB);
     expect(closed.factor).toBe('12');
 
     expect(second.validTo).toBe(null);
@@ -298,7 +322,7 @@ describe('UnitConversionsService', () => {
     ).rejects.toMatchObject({ code: 'BusinessRuleViolation' });
   });
 
-  it('resolves the version in force at an instant, historically', async () => {
+  it('resolves the version in force on a business date, historically', async () => {
     await fixture.conversions.createConversion({
       organizationId: fixture.organizationId,
       itemId: null,
@@ -323,7 +347,7 @@ describe('UnitConversionsService', () => {
       itemId: null,
       fromUnitId: fixture.boxId,
       toUnitId: fixture.pcsId,
-      asOf: D('2026-01-15T00:00:00Z'),
+      asOf: D('2026-01-15'),
     });
     expect(january?.factor).toBe('12');
 
@@ -332,7 +356,7 @@ describe('UnitConversionsService', () => {
       itemId: null,
       fromUnitId: fixture.boxId,
       toUnitId: fixture.pcsId,
-      asOf: D('2026-06-01T00:00:00Z'),
+      asOf: D('2026-06-01'),
     });
     expect(current?.factor).toBe('24');
   });
@@ -570,7 +594,7 @@ describe('UnitConversionsService', () => {
       first.id,
     );
     expect(historical.factor).toBe('12');
-    expect(historical.validTo).toBe(FEB.toISOString());
+    expect(historical.validTo).toBe(FEB);
   });
 
   it('reads an item-scoped conversion by id', async () => {
@@ -599,12 +623,11 @@ describe('UnitConversionsService', () => {
     ).rejects.toMatchObject({ code: 'EntityNotFound' });
   });
 
-  it('treats validFrom as inclusive and validTo as exclusive at the boundary instant', async () => {
+  it('treats validFrom as inclusive and validTo as exclusive at the boundary business date', async () => {
     // A bounded first version, then the open-ended one starting exactly where
-    // the first ends. The instant FEB must resolve to the NEW factor (the old
+    // the first ends. BusinessDate FEB must resolve to the NEW factor (the old
     // window excludes its end; the new window includes its start) — one
-    // unambiguous owner per instant, so a business-dated posting can never be
-    // factor-dependent on rounding an instant.
+    // unambiguous owner per business date, without time-of-day rounding.
     await fixture.conversions.createConversion({
       organizationId: fixture.organizationId,
       itemId: null,
@@ -629,7 +652,7 @@ describe('UnitConversionsService', () => {
       itemId: null,
       fromUnitId: fixture.boxId,
       toUnitId: fixture.pcsId,
-      asOf: D('2026-01-31T23:59:59.999Z'),
+      asOf: D('2026-01-31'),
     });
     expect(beforeBoundary?.factor).toBe('12');
 

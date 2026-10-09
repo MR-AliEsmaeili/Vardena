@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import { DEFAULT_DATE_TIME_SETTINGS } from '../../../kernel/datetime/date-time-settings.js';
 import {
   assertCancellable,
@@ -52,7 +53,7 @@ const receipt: InventoryReceipt = {
   id: 'doc-1',
   organizationId: 'org-1',
   number: null,
-  businessDate: new Date('2026-10-01T00:00:00.000Z'),
+  businessDate: toBusinessDate('2026-10-01')!,
   warehouseId: 'wh-1',
   sourceWarehouseId: null,
   destinationWarehouseId: null,
@@ -299,7 +300,7 @@ describe('C-58 document validation', () => {
 
 describe('C-58 side-effect classification (ADR-0040 §3)', () => {
   const before = {
-    businessDate: new Date('2026-10-01T00:00:00.000Z'),
+    businessDate: toBusinessDate('2026-10-01')!,
     warehouseId: 'wh-1',
     sourceWarehouseId: null,
     destinationWarehouseId: null,
@@ -381,7 +382,7 @@ describe('C-58 side-effect classification (ADR-0040 §3)', () => {
       classifyDocumentEdit({
         hasPostedEffect: true,
         before,
-        after: { ...before, businessDate: new Date('2026-09-01T00:00:00Z') },
+        after: { ...before, businessDate: toBusinessDate('2026-09-01')! },
       }).reasons,
     ).toContain('inventory.document.change.business_date');
     expect(

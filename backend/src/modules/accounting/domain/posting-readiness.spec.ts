@@ -33,11 +33,11 @@ const DEBIT_ACCOUNT = '01ACCOUNTAAAAAAAAAAAAAAAAA01';
 const CREDIT_ACCOUNT = '01ACCOUNTAAAAAAAAAAAAAAAAA02';
 const DOCUMENT_ID = '01VOUCHERAAAAAAAAAAAAAAAA01';
 
-const DOCUMENT_DATE = parseDateOnly('2026-04-05') as Date;
-const YEAR_START = parseDateOnly('2026-01-01') as Date;
-const YEAR_END = parseDateOnly('2026-12-31') as Date;
-const PERIOD_START = parseDateOnly('2026-04-01') as Date;
-const PERIOD_END = parseDateOnly('2026-04-30') as Date;
+const DOCUMENT_DATE = parseDateOnly('2026-04-05')!;
+const YEAR_START = parseDateOnly('2026-01-01')!;
+const YEAR_END = parseDateOnly('2026-12-31')!;
+const PERIOD_START = parseDateOnly('2026-04-01')!;
+const PERIOD_END = parseDateOnly('2026-04-30')!;
 
 /** A stored FINAL voucher that satisfies every book invariant (§15.5). */
 function finalVoucher(
@@ -463,8 +463,8 @@ describe('posting readiness — calendar scope (§6.2 rule 4, AC-I-02/14)', () =
             id: YEAR,
             organizationId: ORG,
             financialAreaId: AREA,
-            startDate: parseDateOnly('2027-01-01') as Date,
-            endDate: parseDateOnly('2027-12-31') as Date,
+            startDate: parseDateOnly('2027-01-01')!,
+            endDate: parseDateOnly('2027-12-31')!,
           },
         },
       }),
@@ -540,8 +540,8 @@ describe('posting readiness — calendar scope (§6.2 rule 4, AC-I-02/14)', () =
           accountingPeriod: {
             id: PERIOD,
             fiscalYearId: YEAR,
-            startDate: parseDateOnly('2026-05-01') as Date,
-            endDate: parseDateOnly('2026-05-31') as Date,
+            startDate: parseDateOnly('2026-05-01')!,
+            endDate: parseDateOnly('2026-05-31')!,
           },
         },
       }),

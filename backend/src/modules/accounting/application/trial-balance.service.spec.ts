@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { TRIAL_BALANCE_PERMISSIONS } from '../domain/accounting-permissions.js';
+import { parseDateOnly } from '../domain/date-range.js';
 import { TrialBalanceService } from './trial-balance.service.js';
 
 const ORG = '01H0000000000000000000001';
@@ -20,8 +21,8 @@ function makeService(overrides: Record<string, unknown> = {}) {
       financialAreaId: AREA,
       code: '2026',
       title: '2026',
-      startDate: new Date('2026-01-01T00:00:00.000Z'),
-      endDate: new Date('2026-12-31T00:00:00.000Z'),
+      startDate: parseDateOnly('2026-01-01')!,
+      endDate: parseDateOnly('2026-12-31')!,
       status: 'open',
     })),
     findPeriod: vi.fn(async () => null),

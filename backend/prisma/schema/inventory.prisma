@@ -82,8 +82,8 @@ model UnitConversion {
   toUnitId       String    @map("to_unit_id")
   /// Ratio, `numeric(18,6)` per docs/database-strategy.md §6 (rates/ratios).
   factor         Decimal   @db.Decimal(18, 6)
-  validFrom      DateTime  @map("valid_from") @db.Timestamptz(6)
-  validTo        DateTime? @map("valid_to") @db.Timestamptz(6)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy      String?   @map("created_by")
@@ -110,8 +110,8 @@ model ItemUnitConversion {
   fromUnitId     String    @map("from_unit_id")
   toUnitId       String    @map("to_unit_id")
   factor         Decimal   @db.Decimal(18, 6)
-  validFrom      DateTime  @map("valid_from") @db.Timestamptz(6)
-  validTo        DateTime? @map("valid_to") @db.Timestamptz(6)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy      String?   @map("created_by")
@@ -624,7 +624,7 @@ model InventoryOperation {
 /// strategies so the architecture does not have to be reshaped later, and
 /// the application rejects configuring any of them (AR-24 fail-closed).
 ///
-/// A key with no row at a given instant resolves to the code-defined MVP
+/// A key with no row at a given business date resolves to the code-defined MVP
 /// default (`moving_weighted_average`) — no per-organization default row is
 /// invented, and no EAV/JSONB configuration table exists.
 model ItemValuationMethod {
@@ -632,8 +632,8 @@ model ItemValuationMethod {
   organizationId String    @map("organization_id")
   itemId         String    @map("item_id")
   method         String    @db.VarChar(32)
-  validFrom      DateTime  @map("valid_from") @db.Timestamptz(6)
-  validTo        DateTime? @map("valid_to") @db.Timestamptz(6)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
   /// Why this method applies from this date (audit metadata; free text, no
   /// invented reason-code vocabulary).
   note           String?   @db.VarChar(500)

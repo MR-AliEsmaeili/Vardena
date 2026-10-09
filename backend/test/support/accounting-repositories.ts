@@ -29,6 +29,7 @@
  * database) and `search` mirrors the repositories' case-insensitive
  * `contains` clauses on code/title.
  */
+import type { BusinessDate } from '../../src/kernel/datetime/business-date.js';
 import type { FinancialArea } from '../../src/modules/accounting/domain/financial-area.js';
 import type { FiscalYear } from '../../src/modules/accounting/domain/fiscal-year.js';
 import { checkFiscalYearRange } from '../../src/modules/accounting/domain/fiscal-year.js';
@@ -325,8 +326,8 @@ export class InMemoryFiscalYearsRepository {
     financialAreaId: string;
     code: string;
     title: string;
-    startDate: Date;
-    endDate: Date;
+    startDate: BusinessDate;
+    endDate: BusinessDate;
     priorYearId: string | null;
     createdAt: Date;
     updatedAt: Date;
@@ -367,8 +368,8 @@ export class InMemoryFiscalYearsRepository {
     id: string;
     code?: string | undefined;
     title?: string | undefined;
-    startDate?: Date | undefined;
-    endDate?: Date | undefined;
+    startDate?: BusinessDate | undefined;
+    endDate?: BusinessDate | undefined;
     isActive?: boolean | undefined;
     priorYearId?: string | null | undefined;
     updatedAt: Date;
@@ -534,8 +535,8 @@ export class InMemoryAccountingPeriodsRepository {
     fiscalYearId: string;
     sequence: number;
     title: string;
-    startDate: Date;
-    endDate: Date;
+    startDate: BusinessDate;
+    endDate: BusinessDate;
     createdAt: Date;
     updatedAt: Date;
     createdBy: string | null;

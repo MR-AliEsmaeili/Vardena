@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isBusinessDay } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { createReportUrlCodec } from './use-report-query-state';
 
@@ -9,17 +10,15 @@ import { createReportUrlCodec } from './use-report-query-state';
  * validation pipe rejects unknown query parameters with 400, so an invented
  * filter would be a runtime error, not a feature. The date pattern is the
  * backend's own date-only contract
- * (`backend/src/modules/accounting/domain/date-range.ts`:
- * `/^\d{4}-\d{2}-\d{2}$/`); no calendar conversion happens in the UI.
+ * (`backend/src/modules/accounting/domain/date-range.ts`). The shared
+ * `DateInput` presents the organization calendar while the form and URL retain
+ * a validated canonical Gregorian BusinessDate.
  */
-
-/** `YYYY-MM-DD`, exactly as the API accepts it. */
-export const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const optionalDate = z
   .string()
   .trim()
-  .refine((value) => value === '' || DATE_ONLY_PATTERN.test(value), {
+  .refine((value) => value === '' || isBusinessDay(value), {
     message: t.filters.invalidDate,
   });
 

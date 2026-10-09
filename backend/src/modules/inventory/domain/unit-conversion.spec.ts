@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  toBusinessDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
   planNewVersion,
   resolveVersionAt,
   windowsOverlap,
@@ -11,18 +15,22 @@ import {
  *
  * The rule under test is "used configuration is never edited in place": a
  * change is a NEW effective-dated version, and the only rewrite allowed is
- * closing an open-ended version at the moment the next one starts.
+ * closing an open-ended version at the business date the next one starts.
  */
 
-const D = (iso: string): Date => new Date(iso);
-const JAN = D('2026-01-01T00:00:00Z');
-const FEB = D('2026-02-01T00:00:00Z');
-const MAR = D('2026-03-01T00:00:00Z');
-const APR = D('2026-04-01T00:00:00Z');
+const D = (iso: string): BusinessDate => {
+  const date = toBusinessDate(iso);
+  if (date === null) throw new Error(`Invalid test BusinessDate: ${iso}`);
+  return date;
+};
+const JAN = D('2026-01-01');
+const FEB = D('2026-02-01');
+const MAR = D('2026-03-01');
+const APR = D('2026-04-01');
 
 function window(
-  validFrom: Date,
-  validTo: Date | null = null,
+  validFrom: BusinessDate,
+  validTo: BusinessDate | null = null,
 ): ConversionWindow {
   return { validFrom, validTo };
 }
@@ -159,13 +167,9 @@ describe('resolveVersionAt', () => {
     { id: 'v3', validFrom: MAR, validTo: null },
   ];
 
-  it('returns the version in force at the instant', () => {
-    expect(resolveVersionAt(versions, D('2026-02-15T00:00:00Z'))?.id).toBe(
-      'v2',
-    );
-    expect(resolveVersionAt(versions, D('2027-01-01T00:00:00Z'))?.id).toBe(
-      'v3',
-    );
+  it('returns the version in force on the business date', () => {
+    expect(resolveVersionAt(versions, D('2026-02-15'))?.id).toBe('v2');
+    expect(resolveVersionAt(versions, D('2027-01-01'))?.id).toBe('v3');
   });
 
   it('treats validFrom as inclusive', () => {
@@ -180,14 +184,12 @@ describe('resolveVersionAt', () => {
   it('returns the historical version for a past date, not the current one', () => {
     // This is the whole point of effective dating: a document dated in January
     // must resolve January's factor.
-    expect(resolveVersionAt(versions, D('2026-01-20T00:00:00Z'))?.id).toBe(
-      'v1',
-    );
+    expect(resolveVersionAt(versions, D('2026-01-20'))?.id).toBe('v1');
   });
 
-  it('returns null when no version covers the instant', () => {
+  it('returns null when no version covers the business date', () => {
     // Never a silent 1:1 — that would be an invented conversion rule.
-    expect(resolveVersionAt(versions, D('2025-01-01T00:00:00Z'))).toBe(null);
+    expect(resolveVersionAt(versions, D('2025-01-01'))).toBe(null);
   });
 
   it('returns null for an empty history', () => {

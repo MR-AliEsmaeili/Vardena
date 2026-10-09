@@ -1,5 +1,7 @@
 import { convertDay, type CalendarSystem } from './calendar';
 import { isBusinessDay } from './business-date';
+import { isInstant } from './instant';
+import { isTimeZone } from './time-zone';
 
 /**
  * The API boundary of the C-63 date/time model (ADR-0042 §D8).
@@ -82,9 +84,8 @@ export function readApiInstant(value: unknown): ApiInstant | null {
   if (typeof value !== 'object' || value === null) return null;
   const candidate = value as Record<string, unknown>;
   if (
-    typeof candidate.instant !== 'string' ||
-    candidate.instant === '' ||
-    typeof candidate.timeZone !== 'string' ||
+    !isInstant(candidate.instant) ||
+    !isTimeZone(candidate.timeZone) ||
     typeof candidate.gregorian !== 'string' ||
     typeof candidate.jalali !== 'string'
   ) {

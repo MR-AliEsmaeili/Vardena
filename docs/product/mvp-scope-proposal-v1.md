@@ -209,7 +209,7 @@ no method is invented.
 | D-03 | Report Builder depth | **OQ-49 — DECIDED 2026-10-05:** standard reports + controlled customization (filters, date ranges, permitted columns, sorting, limited grouping, saved configurations, Excel export); no unrestricted designer | Decided scope; implementation still gated |
 | D-04 | Accounting / legal output layout | **OQ-25/OQ-43** | Required MVP capability; exact Iranian legal facts and formats require validation, not invention |
 | D-05 | Document cancel/edit posture for sales/inventory | **OQ-54 — DECIDED 2026-10-05 (Option B):** edit until Accounting Post, then cancel/correct only; side-effect transparency; negative-inventory hard block (OD-54-01…11, ADR-0040 Proposed) | Decided policy; state-machine implementation still gated (OQ-13/OQ-26 approval coupling open) |
-| D-06 | UI language/calendar | **OQ-02** | i18n dictionary + formatters built; display defaults follow the decision |
+| D-06 | Remaining UI language/numeral localization | **OQ-02 (remaining scope)**; organization calendar/zone are accepted by ADR-0042 (PO-02, 2026-10-09) | Shared formatters and the organization-configured calendar/zone are implemented; Persian numerals remain Latin and broader localization waits for the remaining OQ-02 decision |
 | D-07 | Tax fields on sales documents | **OQ-30** | Snapshot fields reserved, no rates invented |
 | D-08 | Backup targets & restore self-service | **OQ-52/OQ-53** | Foundation behavior per database-strategy §14; targets displayed when ratified |
 | D-09 | License record semantics | **ADR-0030 ratification** | None — feature does not start until ratified (no assumption-based implementation) |

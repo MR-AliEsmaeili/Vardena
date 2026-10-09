@@ -36,6 +36,7 @@ export function useFinancialAreas(organizationId: string | null) {
 export function useFiscalYears(
   organizationId: string | null,
   financialAreaId: string | null,
+  options: { enabled?: boolean } = {},
 ) {
   const permissions = usePermissions();
   return useQuery({
@@ -52,6 +53,7 @@ export function useFiscalYears(
         signal,
       ),
     enabled:
+      options.enabled !== false &&
       organizationId !== null &&
       permissions.loaded &&
       permissions.has(PERMISSIONS.accounting.fiscalYearView),

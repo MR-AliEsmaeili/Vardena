@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Account } from '@/api/contracts';
+import { isBusinessDay } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
-import { DATE_ONLY_PATTERN } from '../shared/report-filters';
 
 /**
  * Compose/edit form schema (React Hook Form + Zod, standards.md §9).
@@ -132,7 +132,7 @@ export function documentFormSchema(
         .string()
         .trim()
         .min(1, t.documents.validation.dateRequired)
-        .regex(DATE_ONLY_PATTERN, t.documents.validation.dateInvalid),
+        .refine(isBusinessDay, t.documents.validation.dateInvalid),
       description: z
         .string()
         .trim()

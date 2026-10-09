@@ -27,6 +27,7 @@ import {
   InsufficientStockError,
   RecalculationTooLargeError,
 } from '../data/inventory-posting-errors.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { negateMoney } from '../domain/money.js';
 import {
@@ -92,7 +93,7 @@ interface DocRow {
   organizationId: string;
   kind: string;
   number: string | null;
-  businessDate: Date;
+  businessDate: BusinessDate;
   warehouseId: string | null;
   sourceWarehouseId: string | null;
   destinationWarehouseId: string | null;
@@ -157,7 +158,7 @@ interface MovementRow {
   baseQuantity: string;
   baseUnitId: string;
   conversionFactor: string;
-  movementDate: Date;
+  movementDate: BusinessDate;
   transferId: string | null;
   reversalOfMovementId: string | null;
   referenceType: string | null;
@@ -418,7 +419,7 @@ function fakeDocumentsRepository(
         id: string;
         organizationId: string;
         kind: string;
-        businessDate: Date;
+        businessDate: BusinessDate;
         warehouseId: string | null;
         sourceWarehouseId: string | null;
         destinationWarehouseId: string | null;
@@ -589,7 +590,7 @@ function fakeMovementsRepository(
       baseQuantity: movement['baseQuantity'] as string,
       baseUnitId: movement['baseUnitId'] as string,
       conversionFactor: movement['conversionFactor'] as string,
-      movementDate: movement['movementDate'] as Date,
+      movementDate: movement['movementDate'] as BusinessDate,
       transferId: (movement['transferId'] as string | null) ?? null,
       reversalOfMovementId:
         (movement['reversalOfMovementId'] as string | null) ?? null,
@@ -633,8 +634,10 @@ function fakeMovementsRepository(
             row.warehouseId === warehouseId &&
             row.itemId === itemId,
         )
-        .map((row) => row.movementDate.getTime());
-      return dates.length === 0 ? null : new Date(Math.max(...dates));
+        .map((row) => row.movementDate);
+      return dates.length === 0
+        ? null
+        : dates.reduce((latest, date) => (date > latest ? date : latest));
     },
     async postMovement(input: Record<string, unknown>) {
       const operation = input['operation'] as {
@@ -770,7 +773,7 @@ function fakeValuation(
     async resolveMethodForPosting() {
       return { method: 'moving_weighted_average', source: 'default' };
     },
-    async assessBackdateImpact(params: { movementDate: Date }) {
+    async assessBackdateImpact(params: { movementDate: BusinessDate }) {
       return {
         backdated: options.backdated === true,
         movementDate: params.movementDate,
@@ -1320,7 +1323,7 @@ describe('C-63 business dates and calendars', () => {
     fixture = await buildFixture();
   });
 
-  it('accepts a canonical Gregorian day and stores it as the day instant', async () => {
+  it('accepts a canonical Gregorian day and stores the BusinessDate', async () => {
     const created = await asActor(() =>
       fixture.service.createDraft({
         organizationId: fixture.organizationId,
@@ -1410,10 +1413,9 @@ describe('C-63 business dates and calendars', () => {
     });
   });
 
-  it('collapses a legacy ISO instant onto the day it falls on in the organization zone', async () => {
-    // OQ-73: no time-of-day survives the `date` column. A legacy instant is
-    // resolved to the organization's business day it falls on (13:45 UTC is
-    // 17:15 in Asia/Tehran — still 2026-10-08 there).
+  it('collapses a legacy ISO instant onto its UTC calendar day', async () => {
+    // OQ-73 migration and compatibility policy preserve the UTC calendar day.
+    // This instant's organization-local rendering is not consulted.
     const instant = '2026-10-08T13:45:12.000Z';
     const created = await asActor(() =>
       fixture.service.createDraft({
@@ -1431,9 +1433,9 @@ describe('C-63 business dates and calendars', () => {
     expect(created.businessDateCalendar.jalali).toBe('1405-07-16');
   });
 
-  it('rolls a late-evening UTC instant onto the NEXT Tehran day', async () => {
-    // 21:30 UTC = 01:00 the next morning in Asia/Tehran: the zone-aware
-    // day resolution must not leak the UTC day.
+  it('keeps a legacy instant on its UTC day even when the organization day differs', async () => {
+    // 21:30 UTC is 01:00 the next Tehran day, but the compatibility path is
+    // UTC-calendar-day preserving per the approved OQ-73 policy.
     const created = await asActor(() =>
       fixture.service.createDraft({
         organizationId: fixture.organizationId,
@@ -1445,8 +1447,9 @@ describe('C-63 business dates and calendars', () => {
         ],
       }),
     );
-    expect(created.businessDate).toBe('2026-10-09');
-    expect(created.businessDateCalendar.gregorian).toBe('2026-10-09');
+    expect(created.businessDate).toBe('2026-10-08');
+    expect(created.businessDateCalendar.gregorian).toBe('2026-10-08');
+    expect(created.businessDateCalendar.jalali).toBe('1405-07-16');
   });
 
   it('edits a document to another day without touching its event instants', async () => {

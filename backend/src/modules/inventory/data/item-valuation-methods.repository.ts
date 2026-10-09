@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import type { ConversionVersionProblem } from '../domain/unit-conversion.js';
 import { planNewVersion } from '../domain/unit-conversion.js';
 import type { ItemValuationMethodVersion } from '../domain/valuation-method.js';
@@ -54,8 +59,8 @@ export interface PlannedMethodWrite {
 export interface ValuationMethodFilter {
   organizationId: string;
   itemId?: string | undefined;
-  /** Only versions in force at this instant. */
-  activeAt?: Date | undefined;
+  /** Only versions in force on this business date. */
+  activeAt?: BusinessDate | undefined;
 }
 
 type RawExecute = (
@@ -79,14 +84,14 @@ export class ItemValuationMethodsRepository {
   // ---- reads --------------------------------------------------------------
 
   /**
-   * The ONE version in force for an item at an instant, or `null` when none
+   * The ONE version in force for an item on a business date, or `null` when none
    * is (the caller then applies the code-defined default).
    *
    * Bounded by construction: the window predicate is evaluated by
    * PostgreSQL and only the version in force is transferred. Both read paths
    * map their result through the single domain function
    * `resolveValuationMethodFrom`, so they cannot disagree, and both refuse
-   * to resolve an instant covered by more than one version.
+   * to resolve a business date covered by more than one version.
    *
    * This replaces a full-series read: resolving one date never needed the
    * whole configuration history, and the posting path runs this query on
@@ -95,12 +100,12 @@ export class ItemValuationMethodsRepository {
   async findEffectiveVersionAt(
     organizationId: string,
     itemId: string,
-    asOf: Date,
+    asOf: BusinessDate,
   ): Promise<ItemValuationMethodVersion | null> {
     const { itemValuationMethod } = await this.client();
     // Two rows, not one: asking for a single row would silently pick a
-    // winner if stored data ever held two versions in force at the same
-    // instant. Reading one more makes that visible, so this path fails
+    // winner if stored data ever held two versions in force on the same
+    // business date. Reading one more makes that visible, so this path fails
     // closed exactly like the replay does instead of preferring whichever
     // version sorted first.
     const rows = await itemValuationMethod.findMany({
@@ -175,7 +180,7 @@ export class ItemValuationMethodsRepository {
       // `planNewVersion` decides by testing the candidate against EVERY
       // existing window (`overlapping = existing.filter(windowsOverlap)`); a
       // truncated series would make it miss an overlap and admit two
-      // versions covering the same instant, which would make historical
+      // versions covering the same business date, which would make historical
       // resolution ambiguous forever. The set is one (organization, item)
       // pair's configuration history — created only by explicit
       // `POST /inventory/valuation/methods` calls, never by data volume or
@@ -205,14 +210,16 @@ export class ItemValuationMethodsRepository {
         await scoped.itemValuationMethod.update({
           where: { id: plan.supersededId },
           data: {
-            validTo: input.create.validFrom,
+            validTo: dbBusinessDate(input.create.validFrom),
             updatedAt: input.closeAudit.updatedAt,
             updatedBy: input.closeAudit.updatedBy,
           },
         });
       }
       const version = toDomain(
-        await scoped.itemValuationMethod.create({ data: input.create }),
+        await scoped.itemValuationMethod.create({
+          data: toCreateData(input.create),
+        }),
       );
       return { version, supersededVersionId: plan.supersededId };
     });
@@ -225,8 +232,9 @@ function toWhere(filter: ValuationMethodFilter): ItemValuationMethodWhere {
   };
   if (filter.itemId !== undefined) where.itemId = filter.itemId;
   if (filter.activeAt !== undefined) {
-    where.validFrom = { lte: filter.activeAt };
-    where.OR = [{ validTo: null }, { validTo: { gt: filter.activeAt } }];
+    const activeAt = dbBusinessDate(filter.activeAt);
+    where.validFrom = { lte: activeAt };
+    where.OR = [{ validTo: null }, { validTo: { gt: activeAt } }];
   }
   return where;
 }
@@ -242,10 +250,28 @@ function toDomain(row: ItemValuationMethodRow): ItemValuationMethodVersion {
     organizationId: row.organizationId,
     itemId: row.itemId,
     method: row.method,
-    validFrom: row.validFrom,
-    validTo: row.validTo,
+    validFrom: businessDateFromDbDate(row.validFrom),
+    validTo: row.validTo === null ? null : businessDateFromDbDate(row.validTo),
     note: row.note,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+  };
+}
+
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Inventory BusinessDate "${value}".`);
+  }
+  return carrier;
+}
+
+function toCreateData(
+  input: ItemValuationMethodCreate,
+): import('./inventory-core-rows.js').ItemValuationMethodCreateData {
+  return {
+    ...input,
+    validFrom: dbBusinessDate(input.validFrom),
+    validTo: input.validTo === null ? null : dbBusinessDate(input.validTo),
   };
 }

@@ -80,11 +80,14 @@ import {
   buildRequestHash,
   canonicalClientBusinessDate,
   requireOperationKey,
-  resolveBusinessDateCarrier,
+  resolveBusinessDate as resolveBusinessDateInput,
   resolveBusinessDateFilter,
 } from './inventory-posting-support.js';
 import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
-import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
+import {
+  businessDateFromInstant,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import { ItemsService } from './items.service.js';
 import { WarehousesService } from './warehouses.service.js';
 
@@ -154,7 +157,7 @@ export class InventoryValuationService {
   async listMethods(query: {
     organizationId: string;
     itemId?: string | undefined;
-    activeAt?: Date | undefined;
+    activeAt?: string | undefined;
     page: number;
     pageSize: number;
     sort?: string | undefined;
@@ -164,11 +167,12 @@ export class InventoryValuationService {
     ]);
     await this.organizations.assertOrganizationInScope(query.organizationId);
     const { skip, take } = toOffset(query.page, query.pageSize);
+    const activeAt = resolveBusinessDateFilter('activeAt', query.activeAt);
     const { items, total } = await this.methods.list({
       where: {
         organizationId: query.organizationId,
         itemId: query.itemId,
-        activeAt: query.activeAt,
+        activeAt,
       },
       orderBy: resolveSort(
         query.sort,
@@ -187,8 +191,8 @@ export class InventoryValuationService {
   }
 
   /**
-   * Which method governs an item at an instant, and where that answer came
-   * from (`configured` vs the code-defined `default`).
+   * Which method governs an item on a business date, and where that answer
+   * came from (`configured` vs the code-defined `default`).
    *
    * Exposed as its own endpoint because "why is this stock valued this way?"
    * must be answerable without reading the configuration table by eye — and
@@ -198,7 +202,7 @@ export class InventoryValuationService {
   async resolveMethod(params: {
     organizationId: string;
     itemId: string;
-    asOf: Date;
+    asOf?: string | undefined;
   }): Promise<{
     organizationId: string;
     itemId: string;
@@ -219,16 +223,36 @@ export class InventoryValuationService {
       params.organizationId,
       { allowInactive: true },
     );
-    const resolved = await this.resolveMethodForPosting(params);
+    const asOf =
+      params.asOf === undefined
+        ? businessDateFromInstant(
+            new Date(),
+            (
+              await this.organizations.getDateTimeSettings(
+                params.organizationId,
+              )
+            ).timeZone,
+          )
+        : resolveBusinessDateFilter('asOf', params.asOf);
+    if (asOf === undefined) {
+      throw AppException.badRequest(
+        'asOf must be a valid Gregorian business date.',
+      );
+    }
+    const resolved = await this.resolveMethodForPosting({
+      organizationId: params.organizationId,
+      itemId: params.itemId,
+      asOf,
+    });
     return {
       organizationId: params.organizationId,
       itemId: params.itemId,
-      asOf: params.asOf.toISOString(),
+      asOf,
       method: resolved.method,
       source: resolved.source,
       configurationId: resolved.configurationId,
-      validFrom: resolved.validFrom?.toISOString() ?? null,
-      validTo: resolved.validTo?.toISOString() ?? null,
+      validFrom: resolved.validFrom,
+      validTo: resolved.validTo,
       active: isActiveValuationMethod(resolved.method),
     };
   }
@@ -245,7 +269,7 @@ export class InventoryValuationService {
   async resolveMethodForPosting(params: {
     organizationId: string;
     itemId: string;
-    asOf: Date;
+    asOf: BusinessDate;
   }): Promise<ResolvedValuationMethod> {
     // One row, chosen by the database: the version whose window covers
     // `asOf`. Reading the item's whole configuration history to pick one
@@ -267,7 +291,7 @@ export class InventoryValuationService {
   }
 
   /**
-   * Configure the method for an item from a given instant.
+   * Configure the method for an item from a given business date.
    *
    * Effective-dated, never in place: the previous open-ended version is
    * closed at the new `validFrom`, so a recalculation of an earlier period
@@ -277,8 +301,8 @@ export class InventoryValuationService {
     organizationId: string;
     itemId: string;
     method: string;
-    validFrom?: Date | undefined;
-    validTo?: Date | null | undefined;
+    validFrom?: BusinessDateInput | undefined;
+    validTo?: BusinessDateInput | null | undefined;
     note?: string | null | undefined;
   }): Promise<ItemValuationMethodDto> {
     await this.authorization.requireAllPermissions([
@@ -307,9 +331,25 @@ export class InventoryValuationService {
       });
     }
 
-    const validFrom = input.validFrom ?? new Date();
-    const validTo = input.validTo ?? null;
-    if (validTo !== null && validTo.getTime() <= validFrom.getTime()) {
+    const now = new Date();
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
+    );
+    const validFrom = resolveBusinessDateInput({
+      field: 'validFrom',
+      value: input.validFrom,
+      timeZone,
+      now,
+    });
+    const validTo =
+      input.validTo === undefined || input.validTo === null
+        ? null
+        : resolveBusinessDateInput({
+            field: 'validTo',
+            value: input.validTo,
+            timeZone,
+          });
+    if (validTo !== null && validTo <= validFrom) {
       throw AppException.validation([
         {
           field: 'validTo',
@@ -319,7 +359,6 @@ export class InventoryValuationService {
       ]);
     }
 
-    const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
     try {
       const { version, supersededVersionId } = await this.methods.createVersion(
@@ -512,7 +551,7 @@ export class InventoryValuationService {
     organizationId: string;
     warehouseId: string;
     itemId: string;
-    movementDate: Date;
+    movementDate: BusinessDate;
   }): Promise<BackdateAssessment> {
     return this.valuation.assessBackdate(params);
   }
@@ -557,11 +596,13 @@ export class InventoryValuationService {
       params.organizationId,
       { allowInactive: true },
     );
-    // Defined input, so the filter resolver always yields the day carrier.
     const movementDate = resolveBusinessDateFilter(
       'movementDate',
       params.movementDate,
-    ) as Date;
+    );
+    if (movementDate === undefined) {
+      throw AppException.badRequest('movementDate is required.');
+    }
     const assessment = await this.valuation.assessBackdate({
       organizationId: params.organizationId,
       warehouseId: params.warehouseId,
@@ -570,11 +611,8 @@ export class InventoryValuationService {
     });
     return {
       backdated: assessment.backdated,
-      movementDate: businessDateFromDbDate(assessment.movementDate),
-      latestMovementDate:
-        assessment.latestMovementDate === null
-          ? null
-          : businessDateFromDbDate(assessment.latestMovementDate),
+      movementDate: assessment.movementDate,
+      latestMovementDate: assessment.latestMovementDate,
       affectedMovements: assessment.affectedMovements,
       affectedValuedMovements: assessment.affectedValuedMovements,
       alreadyStale: assessment.alreadyStale,
@@ -598,8 +636,8 @@ export class InventoryValuationService {
     organizationId: string;
     warehouseId: string;
     itemId: string;
-    movementDate: Date;
-    latestMovementDate: Date | null;
+    movementDate: BusinessDate;
+    latestMovementDate: BusinessDate | null;
     backdateConfirmed: boolean;
     repricing: RepricingChoice | null;
   }): Promise<{ backdated: boolean; repricing: RepricingChoice | null }> {
@@ -933,7 +971,7 @@ export class InventoryValuationService {
     const fromDate =
       input.fromDate === undefined
         ? null
-        : resolveBusinessDateCarrier({
+        : resolveBusinessDateInput({
             field: 'fromDate',
             value: input.fromDate,
             timeZone,
@@ -972,12 +1010,12 @@ export class InventoryValuationService {
     // under a different configured method is never silently restated under
     // today's one. Resolving it here also keeps the command fail-closed when
     // the CURRENT method is one this build cannot execute.
+    const now = new Date();
     const resolved = await this.resolveMethodForPosting({
       organizationId: input.organizationId,
       itemId: item.id,
-      asOf: new Date(),
+      asOf: businessDateFromInstant(now, timeZone),
     });
-    const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
     const runId = generateId();
     return {
@@ -1179,11 +1217,8 @@ function backdateDetails(
 ): Record<string, unknown> {
   return {
     code,
-    movementDate: businessDateFromDbDate(assessment.movementDate),
-    latestMovementDate:
-      assessment.latestMovementDate === null
-        ? null
-        : businessDateFromDbDate(assessment.latestMovementDate),
+    movementDate: assessment.movementDate,
+    latestMovementDate: assessment.latestMovementDate,
     affectedMovements: assessment.affectedMovements,
     affectedValuedMovements: assessment.affectedValuedMovements,
     alreadyStale: assessment.alreadyStale,

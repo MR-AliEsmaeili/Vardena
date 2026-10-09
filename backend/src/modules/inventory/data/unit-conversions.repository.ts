@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import type {
   ConversionVersionProblem,
   UnitConversion,
@@ -74,14 +79,23 @@ interface GlobalCreate {
   fromUnitId: string;
   toUnitId: string;
   factor: string;
-  validFrom: Date;
-  validTo: Date | null;
+  validFrom: BusinessDate;
+  validTo: BusinessDate | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
 }
 
+interface GlobalCreateData extends Omit<GlobalCreate, 'validFrom' | 'validTo'> {
+  validFrom: Date;
+  validTo: Date | null;
+}
+
 interface ItemCreate extends GlobalCreate {
+  itemId: string;
+}
+
+interface ItemCreateData extends GlobalCreateData {
   itemId: string;
 }
 
@@ -101,7 +115,7 @@ type GlobalDelegate = {
     take: number;
   }): Promise<ConversionRow[]>;
   count(args: { where: GlobalWhere }): Promise<number>;
-  create(args: { data: GlobalCreate }): Promise<ConversionRow>;
+  create(args: { data: GlobalCreateData }): Promise<ConversionRow>;
   update(args: {
     where: { id: string };
     data: CloseUpdate;
@@ -119,7 +133,7 @@ type ItemDelegate = {
     take: number;
   }): Promise<ItemConversionRow[]>;
   count(args: { where: ItemWhere }): Promise<number>;
-  create(args: { data: ItemCreate }): Promise<ItemConversionRow>;
+  create(args: { data: ItemCreateData }): Promise<ItemConversionRow>;
   update(args: {
     where: { id: string };
     data: CloseUpdate;
@@ -177,8 +191,8 @@ export interface ConversionVersionFilter {
   organizationId: string;
   fromUnitId?: string | undefined;
   toUnitId?: string | undefined;
-  /** Only versions in force at this instant. */
-  activeAt?: Date | undefined;
+  /** Only versions in force on this business date. */
+  activeAt?: BusinessDate | undefined;
 }
 
 export interface ItemConversionVersionFilter extends ConversionVersionFilter {
@@ -351,14 +365,16 @@ export class UnitConversionsRepository {
         await scoped.unitConversion.update({
           where: { id: plan.supersededId },
           data: {
-            validTo: input.create.validFrom,
+            validTo: dbBusinessDate(input.create.validFrom),
             updatedAt: input.closeAudit.updatedAt,
             updatedBy: input.closeAudit.updatedBy,
           },
         });
       }
       const conversion = toGlobalDomain(
-        await scoped.unitConversion.create({ data: input.create }),
+        await scoped.unitConversion.create({
+          data: toGlobalCreateData(input.create),
+        }),
       );
       return { conversion, supersededConversionId: plan.supersededId };
     });
@@ -408,14 +424,16 @@ export class UnitConversionsRepository {
         await scoped.itemUnitConversion.update({
           where: { id: plan.supersededId },
           data: {
-            validTo: input.create.validFrom,
+            validTo: dbBusinessDate(input.create.validFrom),
             updatedAt: input.closeAudit.updatedAt,
             updatedBy: input.closeAudit.updatedBy,
           },
         });
       }
       const conversion = toItemDomain(
-        await scoped.itemUnitConversion.create({ data: input.create }),
+        await scoped.itemUnitConversion.create({
+          data: toItemCreateData(input.create),
+        }),
       );
       return { conversion, supersededConversionId: plan.supersededId };
     });
@@ -424,14 +442,37 @@ export class UnitConversionsRepository {
 
 // ---- Internal helpers ----
 
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Inventory BusinessDate "${value}".`);
+  }
+  return carrier;
+}
+
+function toGlobalCreateData(input: GlobalCreate): GlobalCreateData {
+  return {
+    ...input,
+    validFrom: dbBusinessDate(input.validFrom),
+    validTo: input.validTo === null ? null : dbBusinessDate(input.validTo),
+  };
+}
+
+function toItemCreateData(input: ItemCreate): ItemCreateData {
+  return { ...toGlobalCreateData(input), itemId: input.itemId };
+}
+
 function toGlobalWhere(filter: ConversionVersionFilter): GlobalWhere {
   const where: GlobalWhere = { organizationId: filter.organizationId };
   if (filter.fromUnitId !== undefined) where.fromUnitId = filter.fromUnitId;
   if (filter.toUnitId !== undefined) where.toUnitId = filter.toUnitId;
   if (filter.activeAt !== undefined) {
     const activeAt: ActiveAtFilter = {
-      validFrom: { lte: filter.activeAt },
-      OR: [{ validTo: null }, { validTo: { gt: filter.activeAt } }],
+      validFrom: { lte: dbBusinessDate(filter.activeAt) },
+      OR: [
+        { validTo: null },
+        { validTo: { gt: dbBusinessDate(filter.activeAt) } },
+      ],
     };
     where.validFrom = activeAt.validFrom;
     where.OR = activeAt.OR;
@@ -447,8 +488,8 @@ function toGlobalDomain(row: ConversionRow): UnitConversion {
     fromUnitId: row.fromUnitId,
     toUnitId: row.toUnitId,
     factor: String(row.factor),
-    validFrom: row.validFrom,
-    validTo: row.validTo,
+    validFrom: businessDateFromDbDate(row.validFrom),
+    validTo: row.validTo === null ? null : businessDateFromDbDate(row.validTo),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

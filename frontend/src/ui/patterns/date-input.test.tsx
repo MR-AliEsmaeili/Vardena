@@ -1,10 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { resetDateTimeSettings, setDateTimeSettings } from '@/lib/datetime';
 import { DateInput } from './date-input';
 
-afterEach(() => {
+beforeEach(() => {
   resetDateTimeSettings();
 });
 

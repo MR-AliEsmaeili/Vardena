@@ -3,6 +3,10 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { APP_CONFIG, loadAppConfig } from '../src/kernel/config/app-config.js';
 import { generateId } from '../src/kernel/ids/ulid.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
+import {
+  toBusinessDate,
+  type BusinessDate,
+} from '../src/kernel/datetime/business-date.js';
 import { NumberingService } from '../src/modules/documents/application/numbering.service.js';
 import { NumberingSeriesService } from '../src/modules/documents/application/numbering-series.service.js';
 import { OrganizationsService } from '../src/modules/organization/application/organizations.service.js';
@@ -134,7 +138,7 @@ describe.skipIf(DATABASE_URL === undefined)(
     const postVoucher = async (
       book: Book,
       input: {
-        documentDate: Date;
+        documentDate: BusinessDate;
         description: string;
         lines: AccountingDocumentLineWrite[];
         /** Compose but never post (draft / temporary fixtures). */
@@ -275,8 +279,10 @@ describe.skipIf(DATABASE_URL === undefined)(
     };
 
     /** Business dates of the org-A fixture (deliberately non-ascending posts). */
-    const day = (year: number, month: number, date: number): Date =>
-      new Date(Date.UTC(year, month, date));
+    const day = (year: number, month: number, date: number): BusinessDate =>
+      toBusinessDate(
+        `${String(year).padStart(4, '0')}-${String(month + 1).padStart(2, '0')}-${String(date).padStart(2, '0')}`,
+      )!;
 
     const posted = {
       /** Posted LAST but dated first — proves the order is the business order. */

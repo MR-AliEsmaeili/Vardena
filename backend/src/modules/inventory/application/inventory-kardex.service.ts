@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../../kernel/errors/app-exception.js';
-import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import { resolveBusinessDateFilter } from './inventory-posting-support.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
@@ -85,10 +85,15 @@ export class InventoryKardexService {
       displayUnitId,
       item.baseUnitId,
     );
-    const convert = (value: string, asOf: Date): string => {
+    const convert = (value: string, asOf: BusinessDate | undefined): string => {
       const formattedBase = formatQuantity(value);
       if (formattedBase === '0.0000' || formattedBase === '-0.0000')
         return '0.0000';
+      if (asOf === undefined) {
+        throw AppException.businessRule(
+          'A non-zero Kardex quantity has no movement date to resolve its display unit.',
+        );
+      }
       const converted = baseToDisplayExact(value, factorAt(asOf));
       if (converted === null) {
         throw AppException.businessRule(
@@ -97,16 +102,16 @@ export class InventoryKardexService {
       }
       return formatQuantity(converted);
     };
-    // The unit-conversion resolver works on the day carriers (instants in
-    // the validity-window sense), exactly as the ledger stores them.
-    const openingAt = dateFrom ?? new Date(0);
-    const closingAt =
-      dateTo ?? page.closingMovementDate ?? dateFrom ?? new Date(0);
+    // A non-zero ledger quantity implies at least one movement date; zero
+    // values short-circuit before a conversion lookup. Use a bound when one
+    // was supplied, otherwise the latest ledger day for the snapshot.
+    const closingAt = dateTo ?? page.closingMovementDate ?? dateFrom;
+    const openingAt = dateFrom ?? closingAt;
 
     return {
       items: page.items.map((movement) => ({
         movementId: movement.movementId,
-        movementDate: businessDateFromDbDate(movement.movementDate),
+        movementDate: movement.movementDate,
         createdAt: movement.createdAt.toISOString(),
         movementType: movement.movementType,
         signedQuantity: convert(
@@ -149,7 +154,7 @@ export class InventoryKardexService {
     itemId: string,
     displayUnitId: string,
     baseUnitId: string,
-  ): Promise<(asOf: Date) => string> {
+  ): Promise<(asOf: BusinessDate) => string> {
     if (displayUnitId === baseUnitId) return () => '1';
     const [itemVersions, globalVersions] = await Promise.all([
       this.conversions.findItemVersions(itemId, displayUnitId, baseUnitId),
@@ -159,13 +164,13 @@ export class InventoryKardexService {
         baseUnitId,
       ),
     ]);
-    return (asOf: Date): string => {
+    return (asOf: BusinessDate): string => {
       const match =
         resolveVersionAt<UnitConversion>(itemVersions, asOf) ??
         resolveVersionAt<UnitConversion>(globalVersions, asOf);
       if (match === null) {
         throw AppException.businessRule(
-          'No display-unit to base-unit conversion is effective at the quantity business instant.',
+          'No display-unit to base-unit conversion is effective on the quantity business date.',
         );
       }
       return match.factor;

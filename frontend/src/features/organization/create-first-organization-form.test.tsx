@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/errors';
+import type { Organization } from '@/api/contracts';
 import { t } from '@/lib/i18n';
 import { CreateFirstOrganizationForm } from './create-first-organization-form';
 
@@ -55,11 +56,13 @@ describe('CreateFirstOrganizationForm', () => {
 
   it('creates the organization, grants the acting user membership, and only then reports success', async () => {
     const onCreated = vi.fn();
-    const createdOrganization = {
+    const createdOrganization: Organization = {
       id: 'org-new',
       code: 'MAIN',
       name: 'سازمان اصلی',
       isActive: true,
+      calendarSystem: 'JALALI',
+      timeZone: 'Asia/Tehran',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
     };
@@ -134,9 +137,11 @@ describe('CreateFirstOrganizationForm', () => {
       code: 'MAIN',
       name: 'سازمان اصلی',
       isActive: true,
+      calendarSystem: 'JALALI',
+      timeZone: 'Asia/Tehran',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
-    });
+    } satisfies Organization);
     vi.mocked(organizationApi.grantMembership).mockRejectedValue(
       new ApiError({
         code: 'PermissionDenied',

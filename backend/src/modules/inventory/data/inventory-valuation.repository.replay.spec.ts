@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import type { MovementRow } from './inventory-core-rows.js';
 import { buildReplayFacts } from './inventory-valuation.repository.js';
 import { replay, valuationChanged } from '../domain/valuation-replay.js';
@@ -18,7 +19,7 @@ import type { ItemValuationMethodVersion } from '../domain/valuation-method.js';
 const MWA = 'moving_weighted_average' as const;
 
 function at(day: number): Date {
-  return new Date(Date.UTC(2026, 5, day, 8, 0, 0));
+  return new Date(Date.UTC(2026, 5, day));
 }
 
 const VERSIONS: ItemValuationMethodVersion[] = [
@@ -27,7 +28,7 @@ const VERSIONS: ItemValuationMethodVersion[] = [
     organizationId: 'org-1',
     itemId: 'item-1',
     method: MWA,
-    validFrom: new Date('2026-01-01T00:00:00.000Z'),
+    validFrom: toBusinessDate('2026-01-01')!,
     validTo: null,
     note: null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -63,8 +64,8 @@ function row(
     valuationSource: null,
     valuedAt: null,
     valuationRunId: null,
-    createdAt: columns.movementDate,
-    updatedAt: columns.movementDate,
+    createdAt: new Date(`${columns.movementDate}T08:00:00.000Z`),
+    updatedAt: new Date(`${columns.movementDate}T08:00:00.000Z`),
     createdBy: null,
     updatedBy: null,
     ...columns,

@@ -1,3 +1,4 @@
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import {
   dateOnlyRangesOverlap,
   dateOnlyRangeWithin,
@@ -54,8 +55,8 @@ export interface AccountingPeriod {
   /** 1-based ordinal inside the year; unique per year. */
   sequence: number;
   title: string;
-  startDate: Date;
-  endDate: Date;
+  startDate: BusinessDate;
+  endDate: BusinessDate;
   status: AccountingPeriodStatus;
   periodKind: AccountingPeriodKind;
   createdAt: Date;

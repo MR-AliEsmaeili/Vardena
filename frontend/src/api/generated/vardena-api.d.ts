@@ -994,7 +994,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Resolve the conversion version in force at an instant: item-specific first, then global. */
+        /** Resolve the conversion version effective on a business date: item-specific first, then global. */
         get: operations["UnitConversionsController_resolve_v1"];
         put?: never;
         post?: never;
@@ -1324,7 +1324,7 @@ export interface paths {
         /** List the effective-dated valuation-method versions configured for items. */
         get: operations["InventoryValuationController_listMethods_v1"];
         put?: never;
-        /** Configure the valuation method of an item from an instant. The previous open-ended version is closed, never edited. */
+        /** Configure the valuation method of an item from a business date. The previous open-ended version is closed, never edited. */
         post: operations["InventoryValuationController_configureMethod_v1"];
         delete?: never;
         options?: never;
@@ -1339,7 +1339,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Resolve which valuation method governs one item at one instant, and whether it came from configuration or the default. */
+        /** Resolve which valuation method governs one item on one business date, and whether it came from configuration or the default. */
         get: operations["InventoryValuationController_resolveMethod_v1"];
         put?: never;
         post?: never;
@@ -1671,6 +1671,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inventory/business-documents/{id}/accounting-posting": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the durable C-62 Accounting posting operations of one document, newest first. The only place a refusal or failure reason is visible: the document keeps its own standing, so why a posting did not cross the boundary is a fact about the OPERATION. */
+        get: operations["InventoryBusinessDocumentsController_listAccountingPostings_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inventory/business-documents/{id}/accounting-post": {
         parameters: {
             query?: never;
@@ -1680,8 +1697,25 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cross the Accounting Post boundary (OD-54-01/02): after this the document cannot be edited, deleted or cancelled. This command records the boundary on the Inventory document; it creates no journal entry (Inventory→GL posting is outside C-58). */
+        /** Cross the Accounting Post boundary (C-62): ask Accounting to post this document's authoritative value. A `direct_final` warehouse produces a FINAL Accounting voucher and the document becomes Accounting Posted; a `draft` warehouse produces an Accounting-owned DRAFT and the document does NOT. The same operation key replays the same answer. */
         post: operations["InventoryBusinessDocumentsController_accountingPost_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/business-documents/{id}/accounting-post/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel the Accounting DRAFT a posting created (C62-OD-02). The draft belongs to Accounting, so it is discarded through the same contract and the document returns to its normal accounting-eligible lifecycle state. A FINAL voucher is never cancellable here. */
+        post: operations["InventoryBusinessDocumentsController_cancelAccountingPost_v1"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1716,6 +1750,58 @@ export interface paths {
         put?: never;
         /** Cancel before Accounting Post. An operational document has its own movements reversed atomically; the number is kept and never reused, and the document stays visible (OD-54-07/08/09). */
         post: operations["InventoryBusinessDocumentsController_cancel_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/pricing/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List pricing runs (both kinds) with their per-key outcomes. Filterable by warehouse and kind. */
+        get: operations["InventoryPricingController_listRuns_v1"];
+        put?: never;
+        /** Run the Periodic Pricing Operation: an explicit, transactional batch repricing over a scope (warehouse(s), document kinds, date range). The range start is automatic; runs per scope are contiguous and non-overlapping. */
+        post: operations["InventoryPricingController_runPricing_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/pricing/runs/reverse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Reverse ONE named pricing run with a compensating run. Value-preserving: quantities never change, the run’s movements become unvalued and the affected keys require repricing. Blocked fail-closed while any affected document is accounting-posted. */
+        post: operations["InventoryPricingController_reversePricing_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inventory/pricing/runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one pricing run with its full per-key outcome report. */
+        get: operations["InventoryPricingController_getRun_v1"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1860,326 +1946,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/definitions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List the workflow definitions of one organization. */
-        get: operations["WorkflowDefinitionsController_list_v1"];
-        put?: never;
-        /** Create a workflow definition in an organization. */
-        post: operations["WorkflowDefinitionsController_create_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/definitions/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get one workflow definition. */
-        get: operations["WorkflowDefinitionsController_get_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Edit a workflow definition. */
-        patch: operations["WorkflowDefinitionsController_update_v1"];
-        trace?: never;
-    };
-    "/api/v1/workflow/definitions/{definitionId}/versions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List the versions of one workflow definition. */
-        get: operations["WorkflowVersionsController_list_v1"];
-        put?: never;
-        /** Create a draft workflow version. */
-        post: operations["WorkflowVersionsController_create_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/versions/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get one workflow version. */
-        get: operations["WorkflowVersionsController_get_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/versions/{id}/publish": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Validate and publish a draft workflow version, superseding the previously active version. */
-        post: operations["WorkflowVersionsController_publish_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/versions/{versionId}/states": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List the states of one workflow version. */
-        get: operations["WorkflowStatesController_list_v1"];
-        put?: never;
-        /** Create a state in a draft workflow version. */
-        post: operations["WorkflowStatesController_create_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/states/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get one workflow state. */
-        get: operations["WorkflowStatesController_get_v1"];
-        put?: never;
-        post?: never;
-        /** Delete a state of a draft workflow version. States referenced by a transition cannot be deleted. */
-        delete: operations["WorkflowStatesController_remove_v1"];
-        options?: never;
-        head?: never;
-        /** Edit a state of a draft workflow version. */
-        patch: operations["WorkflowStatesController_update_v1"];
-        trace?: never;
-    };
-    "/api/v1/workflow/versions/{versionId}/transitions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List the transitions of one workflow version. */
-        get: operations["WorkflowTransitionsController_list_v1"];
-        put?: never;
-        /** Create a transition in a draft workflow version. */
-        post: operations["WorkflowTransitionsController_create_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/transitions/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get one workflow transition. */
-        get: operations["WorkflowTransitionsController_get_v1"];
-        put?: never;
-        post?: never;
-        /** Delete a transition of a draft workflow version, with its draft automation bindings. */
-        delete: operations["WorkflowTransitionsController_remove_v1"];
-        options?: never;
-        head?: never;
-        /** Edit a transition of a draft workflow version. */
-        patch: operations["WorkflowTransitionsController_update_v1"];
-        trace?: never;
-    };
-    "/api/v1/workflow/instances": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List the workflow bindings of one organization. */
-        get: operations["WorkflowInstancesController_list_v1"];
-        put?: never;
-        /** Bind a business entity to a workflow version. The binding pins the version forever. */
-        post: operations["WorkflowInstancesController_bind_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/instances/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get one workflow binding with its current state. */
-        get: operations["WorkflowInstancesController_get_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/instances/{id}/available-transitions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List the enabled outgoing transitions of the current state, with the caller’s permission preview. */
-        get: operations["WorkflowInstancesController_available_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/instances/{id}/transitions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Execute a workflow transition. The caller must also hold the transition’s own permission. */
-        post: operations["WorkflowInstancesController_execute_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/instances/{id}/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List the append-only transition history of one binding. */
-        get: operations["WorkflowInstancesController_history_v1"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/instances/{instanceId}/approvals": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List the approvals of one workflow binding. */
-        get: operations["WorkflowApprovalsController_list_v1"];
-        put?: never;
-        /** Request an approval for an approval-gated transition. */
-        post: operations["WorkflowApprovalsController_request_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/approvals/{approvalId}/decide": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Approve or reject a pending approval. */
-        post: operations["WorkflowApprovalsController_decide_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/transitions/{transitionId}/automations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List the automation bindings of one transition. */
-        get: operations["WorkflowAutomationsController_list_v1"];
-        put?: never;
-        /** Bind a registered automation action to a draft transition. */
-        post: operations["WorkflowAutomationsController_create_v1"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/workflow/automations/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get one automation binding. */
-        get: operations["WorkflowAutomationsController_get_v1"];
-        put?: never;
-        post?: never;
-        /** Delete an automation binding of a draft version. */
-        delete: operations["WorkflowAutomationsController_remove_v1"];
-        options?: never;
-        head?: never;
-        /** Edit an automation binding of a draft version. */
-        patch: operations["WorkflowAutomationsController_update_v1"];
         trace?: never;
     };
     "/api/v1/financial-areas": {
@@ -3305,6 +3071,326 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/workflow/definitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the workflow definitions of one organization. */
+        get: operations["WorkflowDefinitionsController_list_v1"];
+        put?: never;
+        /** Create a workflow definition in an organization. */
+        post: operations["WorkflowDefinitionsController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/definitions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one workflow definition. */
+        get: operations["WorkflowDefinitionsController_get_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Edit a workflow definition. */
+        patch: operations["WorkflowDefinitionsController_update_v1"];
+        trace?: never;
+    };
+    "/api/v1/workflow/definitions/{definitionId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the versions of one workflow definition. */
+        get: operations["WorkflowVersionsController_list_v1"];
+        put?: never;
+        /** Create a draft workflow version. */
+        post: operations["WorkflowVersionsController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/versions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one workflow version. */
+        get: operations["WorkflowVersionsController_get_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/versions/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Validate and publish a draft workflow version, superseding the previously active version. */
+        post: operations["WorkflowVersionsController_publish_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/versions/{versionId}/states": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the states of one workflow version. */
+        get: operations["WorkflowStatesController_list_v1"];
+        put?: never;
+        /** Create a state in a draft workflow version. */
+        post: operations["WorkflowStatesController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/states/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one workflow state. */
+        get: operations["WorkflowStatesController_get_v1"];
+        put?: never;
+        post?: never;
+        /** Delete a state of a draft workflow version. States referenced by a transition cannot be deleted. */
+        delete: operations["WorkflowStatesController_remove_v1"];
+        options?: never;
+        head?: never;
+        /** Edit a state of a draft workflow version. */
+        patch: operations["WorkflowStatesController_update_v1"];
+        trace?: never;
+    };
+    "/api/v1/workflow/versions/{versionId}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the transitions of one workflow version. */
+        get: operations["WorkflowTransitionsController_list_v1"];
+        put?: never;
+        /** Create a transition in a draft workflow version. */
+        post: operations["WorkflowTransitionsController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/transitions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one workflow transition. */
+        get: operations["WorkflowTransitionsController_get_v1"];
+        put?: never;
+        post?: never;
+        /** Delete a transition of a draft workflow version, with its draft automation bindings. */
+        delete: operations["WorkflowTransitionsController_remove_v1"];
+        options?: never;
+        head?: never;
+        /** Edit a transition of a draft workflow version. */
+        patch: operations["WorkflowTransitionsController_update_v1"];
+        trace?: never;
+    };
+    "/api/v1/workflow/instances": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the workflow bindings of one organization. */
+        get: operations["WorkflowInstancesController_list_v1"];
+        put?: never;
+        /** Bind a business entity to a workflow version. The binding pins the version forever. */
+        post: operations["WorkflowInstancesController_bind_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/instances/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one workflow binding with its current state. */
+        get: operations["WorkflowInstancesController_get_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/instances/{id}/available-transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the enabled outgoing transitions of the current state, with the caller’s permission preview. */
+        get: operations["WorkflowInstancesController_available_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/instances/{id}/transitions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Execute a workflow transition. The caller must also hold the transition’s own permission. */
+        post: operations["WorkflowInstancesController_execute_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/instances/{id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the append-only transition history of one binding. */
+        get: operations["WorkflowInstancesController_history_v1"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/instances/{instanceId}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the approvals of one workflow binding. */
+        get: operations["WorkflowApprovalsController_list_v1"];
+        put?: never;
+        /** Request an approval for an approval-gated transition. */
+        post: operations["WorkflowApprovalsController_request_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/approvals/{approvalId}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approve or reject a pending approval. */
+        post: operations["WorkflowApprovalsController_decide_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/transitions/{transitionId}/automations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the automation bindings of one transition. */
+        get: operations["WorkflowAutomationsController_list_v1"];
+        put?: never;
+        /** Bind a registered automation action to a draft transition. */
+        post: operations["WorkflowAutomationsController_create_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/workflow/automations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get one automation binding. */
+        get: operations["WorkflowAutomationsController_get_v1"];
+        put?: never;
+        post?: never;
+        /** Delete an automation binding of a draft version. */
+        delete: operations["WorkflowAutomationsController_remove_v1"];
+        options?: never;
+        head?: never;
+        /** Edit an automation binding of a draft version. */
+        patch: operations["WorkflowAutomationsController_update_v1"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3369,8 +3455,8 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
-        PaginatedResponseClass: {
-            items: components["schemas"]["DetailResponseDto"][];
+        PaginatedUserResponseDto: {
+            items: components["schemas"]["UserResponseDto"][];
             /** @example 42 */
             total: number;
             /** @example 1 */
@@ -3408,6 +3494,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedRoleDto: {
+            items: components["schemas"]["RoleDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         PermissionDto: {
             /**
@@ -3466,6 +3561,15 @@ export interface components {
              */
             userId: string;
         };
+        PaginatedPermissionDto: {
+            items: components["schemas"]["PermissionDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         EffectivePermissionsDto: {
             /** Format: ulid */
             userId: string;
@@ -3487,20 +3591,59 @@ export interface components {
             name: string;
             /** @description False while disabled. A disabled organization blocks the creation of new organization-scoped records but keeps existing ones readable. */
             isActive: boolean;
+            /**
+             * @description C-63 display calendar. Instants are always stored and exchanged in UTC; a business date is always stored Gregorian. This value decides how days are SHOWN and authored.
+             * @enum {string}
+             */
+            calendarSystem: "GREGORIAN" | "JALALI";
+            /**
+             * @description C-63 IANA time zone used to turn an instant into a local date-time for this organization.
+             * @example Asia/Tehran
+             */
+            timeZone: string;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedOrganizationResponseDto: {
+            items: components["schemas"]["OrganizationResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CreateOrganizationDto: {
             /** @example ACME */
             code: string;
             /** @example Acme Trading Co. */
             name: string;
+            /**
+             * @description C-63 display calendar. Omit for the deployment default (JALALI). A rendering/authoring setting: it never changes what is stored.
+             * @enum {string}
+             */
+            calendarSystem?: "GREGORIAN" | "JALALI";
+            /**
+             * @description C-63 IANA time zone used for local date-times. Omit for the deployment default (Asia/Tehran). A fixed offset is rejected.
+             * @example Asia/Tehran
+             */
+            timeZone?: string;
         };
         UpdateOrganizationDto: {
             code?: string;
             name?: string;
+            /**
+             * @description C-63 display calendar of this organization. Changing it re-renders history; it rewrites nothing.
+             * @enum {string}
+             */
+            calendarSystem?: "GREGORIAN" | "JALALI";
+            /**
+             * @description C-63 IANA time zone of this organization. Changing it re-renders history; it rewrites nothing.
+             * @example Asia/Tehran
+             */
+            timeZone?: string;
         };
         BranchResponseDto: {
             /** Format: ulid */
@@ -3516,6 +3659,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedBranchResponseDto: {
+            items: components["schemas"]["BranchResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CreateBranchDto: {
             /**
@@ -3548,6 +3700,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedDepartmentResponseDto: {
+            items: components["schemas"]["DepartmentResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CreateDepartmentDto: {
             /**
@@ -3594,6 +3755,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedEmployeeResponseDto: {
+            items: components["schemas"]["EmployeeResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CreateEmployeeDto: {
             /**
@@ -3648,6 +3818,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedPartyResponseDto: {
+            items: components["schemas"]["PartyResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CreatePartyDto: {
             /**
@@ -3707,6 +3886,15 @@ export interface components {
              */
             createdAt: string;
         };
+        PaginatedOrganizationMembershipResponseDto: {
+            items: components["schemas"]["OrganizationMembershipResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         GrantMembershipDto: {
             /**
              * Format: ulid
@@ -3730,6 +3918,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedUnitResponseDto: {
+            items: components["schemas"]["UnitResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CreateUnitDto: {
             /**
@@ -3765,6 +3962,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedItemGroupResponseDto: {
+            items: components["schemas"]["ItemGroupResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CreateItemGroupDto: {
             /**
@@ -3822,6 +4028,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedItemResponseDto: {
+            items: components["schemas"]["ItemResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CreateItemDto: {
             /**
@@ -3911,10 +4126,10 @@ export interface components {
              * @example 12
              */
             factor: string;
-            /** Format: date-time */
+            /** Format: date */
             validFrom: string;
             /**
-             * Format: date-time
+             * Format: date
              * @description Null while this is the current version; set when a later version superseded it.
              */
             validTo: Record<string, never> | null;
@@ -3922,6 +4137,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedUnitConversionResponseDto: {
+            items: components["schemas"]["UnitConversionResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         ResolveUnitConversionResponseDto: {
             /** @description Null when no version covers `asOf`. Callers must not assume a 1:1 factor in that case. */
@@ -3953,16 +4177,20 @@ export interface components {
              * @example 12
              */
             factor: string;
-            /**
-             * Format: date-time
-             * @description Instant from which this version applies.
-             */
-            validFrom: string;
-            /**
-             * Format: date-time
-             * @description Usually omitted (open-ended). A new open-ended version closes the previous one automatically.
-             */
-            validTo?: string;
+            /** @description Business date on which this version becomes effective. Gregorian dates use YYYY-MM-DD; declare { calendar, value } for a Jalali date. A legacy ISO instant resolves to its UTC calendar day. */
+            validFrom: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
+            /** @description Exclusive business-date end (open-ended when omitted); legacy ISO instants resolve by UTC calendar day. A new open-ended version closes the previous one automatically. */
+            validTo?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
         };
         WarehouseResponseDto: {
             /** Format: ulid */
@@ -3979,11 +4207,25 @@ export interface components {
             allowNegativeStock: boolean;
             /** @description Whether ACTIVE reservations reduce the read-time "available" figure for this warehouse (C-50 §3.7). Reservations never change on-hand stock regardless of this setting. */
             reservationsReduceAvailable: boolean;
+            /**
+             * @description C-62 Accounting posting mode for this warehouse: "direct_final" or "draft".
+             * @enum {string}
+             */
+            accountingPostingMode: "direct_final" | "draft";
             isActive: boolean;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedWarehouseResponseDto: {
+            items: components["schemas"]["WarehouseResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CreateWarehouseDto: {
             /**
@@ -4010,6 +4252,12 @@ export interface components {
              * @default true
              */
             reservationsReduceAvailable: boolean;
+            /**
+             * @description C-62 Accounting posting mode for this warehouse: "direct_final" posts a final Accounting voucher in one command; "draft" creates an Accounting-owned draft an accountant registers or cancels later.
+             * @default direct_final
+             * @enum {string}
+             */
+            accountingPostingMode: "direct_final" | "draft";
         };
         UpdateWarehouseDto: {
             /**
@@ -4023,6 +4271,11 @@ export interface components {
             allowNegativeStock?: boolean;
             /** @description Whether ACTIVE reservations reduce the read-time "available" figure for this warehouse (C-50 §3.7). */
             reservationsReduceAvailable?: boolean;
+            /**
+             * @description C-62 Accounting posting mode for this warehouse: "direct_final" or "draft". Never defaulted - omitting it keeps the stored mode.
+             * @enum {string}
+             */
+            accountingPostingMode?: "direct_final" | "draft";
         };
         InventoryMovementResponseDto: {
             /** Format: ulid */
@@ -4036,7 +4289,7 @@ export interface components {
             /** Format: ulid */
             itemId: string;
             /** @enum {string} */
-            movementType: "inbound" | "outbound" | "transfer_in" | "transfer_out" | "adjustment_in" | "adjustment_out" | "reversal_in" | "reversal_out";
+            movementType: "inbound" | "outbound" | "transfer_in" | "transfer_out" | "adjustment_in" | "adjustment_out" | "reversal_in" | "reversal_out" | "purchase_return" | "sales_return";
             /**
              * @description Entered magnitude. Decimal string.
              * @example 25.5
@@ -4056,7 +4309,11 @@ export interface components {
              * @example 1
              */
             conversionFactor: string;
-            /** Format: date-time */
+            /**
+             * Format: date
+             * @description Business DAY of the movement — canonical Gregorian YYYY-MM-DD (OQ-73: a calendar day, never an instant). The registration instant is createdAt.
+             * @example 2026-10-08
+             */
             movementDate: string;
             /**
              * Format: ulid
@@ -4087,7 +4344,7 @@ export interface components {
              * @description Where the value came from. Everything except average_cost is preserved verbatim by a recalculation.
              * @enum {string|null}
              */
-            valuationSource: "entered" | "average_cost" | "transfer" | "reversal" | null;
+            valuationSource: "entered" | "average_cost" | "transfer" | "reversal" | "return_basis" | null;
             /** Format: date-time */
             valuedAt: Record<string, never> | null;
             /**
@@ -4099,6 +4356,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedInventoryMovementResponseDto: {
+            items: components["schemas"]["InventoryMovementResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         PostInventoryMovementDto: {
             /**
@@ -4127,11 +4393,13 @@ export interface components {
              * @description Unit the quantity is entered in. A conversion to the item base unit must cover the movement date (or be the base unit itself).
              */
             unitId: string;
-            /**
-             * Format: date-time
-             * @description Business date of the movement; defaults to now. A backdated posting resolves the conversion version in force then, not today.
-             */
-            movementDate?: string;
+            /** @description Business DATE of the movement — a calendar DAY, not an instant (OQ-73). Canonical Gregorian "2026-10-08", a declared Jalali day { calendar, value }, or a legacy ISO instant resolved to its UTC calendar day. Defaults to today's business day in the organization zone. A backdated posting resolves the conversion version in force then, not today. */
+            movementDate?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
             /** @description Free-text reason. Required for adjustments; an optional note for receipts and issues. */
             reason?: string;
             /** @description Opaque source-document type (e.g. a future purchase invoice). Must be set together with referenceId; stored, never dereferenced. */
@@ -4159,11 +4427,13 @@ export interface components {
         ReverseInventoryMovementDto: {
             /** @description Idempotency key for this reversal. A key that already reversed this movement replays the original reversal row. */
             operationKey: string;
-            /**
-             * Format: date-time
-             * @description Business date of the reversal movement; defaults to now. If this date precedes later movements on the same item and warehouse, the reversal requires the same explicit backdating acknowledgement and repricing choice as a normal posting.
-             */
-            movementDate?: string;
+            /** @description Business DATE of the reversal movement — a calendar DAY, not an instant (OQ-73). Same accepted forms as posting. Defaults to today's business day in the organization zone. If this day precedes later movements on the same item and warehouse, the reversal requires the same explicit backdating acknowledgement and repricing choice as a normal posting. */
+            movementDate?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
             /** @description Acknowledges that the reversal is dated before the latest movement on this item and warehouse. A backdated reversal is rejected (422 inventory.backdated_document) until this is true. */
             backdateConfirmed?: boolean;
             /**
@@ -4175,12 +4445,15 @@ export interface components {
         InventoryKardexRowDto: {
             /** Format: ulid */
             movementId: string;
-            /** Format: date-time */
+            /**
+             * Format: date
+             * @example 2026-10-08
+             */
             movementDate: string;
             /** Format: date-time */
             createdAt: string;
             /** @enum {string} */
-            movementType: "inbound" | "outbound" | "transfer_in" | "transfer_out" | "adjustment_in" | "adjustment_out" | "reversal_in" | "reversal_out";
+            movementType: "inbound" | "outbound" | "transfer_in" | "transfer_out" | "adjustment_in" | "adjustment_out" | "reversal_in" | "reversal_out" | "purchase_return" | "sales_return";
             /** @example -20.0000 */
             signedQuantity: string;
             /** Format: ulid */
@@ -4201,9 +4474,9 @@ export interface components {
             itemId: string;
             /** Format: ulid */
             warehouseId: string;
-            /** Format: date-time */
+            /** Format: date */
             dateFrom: Record<string, never> | null;
-            /** Format: date-time */
+            /** Format: date */
             dateTo: Record<string, never> | null;
             /** Format: ulid */
             baseUnitId: string;
@@ -4249,11 +4522,13 @@ export interface components {
             quantity: string;
             /** Format: ulid */
             unitId: string;
-            /**
-             * Format: date-time
-             * @description Business date of both legs; defaults to now.
-             */
-            movementDate?: string;
+            /** @description Business DATE of both legs — a calendar DAY, not an instant (OQ-73). Same accepted forms as posting. Defaults to today's business day in the organization zone. */
+            movementDate?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
             /** @description Optional note, stored on both legs. */
             reason?: string;
             /** @description Opaque source reference, stored on both legs. Both-or-neither with referenceId. */
@@ -4319,6 +4594,15 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        PaginatedInventoryReservationResponseDto: {
+            items: components["schemas"]["InventoryReservationResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         CreateInventoryReservationDto: {
             /**
              * Format: ulid
@@ -4375,12 +4659,25 @@ export interface components {
              * @example 95
              */
             available: string;
-            /** Format: date */
+            /**
+             * Format: date
+             * @description The newest movement BUSINESS DAY posted to this key — canonical Gregorian YYYY-MM-DD (OQ-73: a calendar day projection of movement_date, never an instant). Null before the first movement.
+             * @example 2026-10-08
+             */
             lastMovementDate: Record<string, never> | null;
             /** Format: date-time */
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedInventoryBalanceResponseDto: {
+            items: components["schemas"]["InventoryBalanceResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         InventoryAvailabilityResponseDto: {
             /** Format: ulid */
@@ -4488,8 +4785,8 @@ export interface components {
              * @example 5
              */
             expectedReserved: string;
-            /** Format: date-time */
-            expectedLastMovementAt: Record<string, never> | null;
+            /** Format: date */
+            expectedLastMovementDate: Record<string, never> | null;
             /** @description Stored projection; null when no row exists for the key. */
             stored: components["schemas"]["ReconciliationQuantitiesDto"] | null;
             matches: boolean;
@@ -4532,8 +4829,8 @@ export interface components {
              * @example 5
              */
             expectedReserved: string;
-            /** Format: date-time */
-            expectedLastMovementAt: Record<string, never> | null;
+            /** Format: date */
+            expectedLastMovementDate: Record<string, never> | null;
             /** @description Stored projection before the rebuild; null when no row existed. */
             storedBefore: components["schemas"]["ReconciliationQuantitiesDto"] | null;
             /**
@@ -4556,9 +4853,9 @@ export interface components {
             itemId: string;
             /** @enum {string} */
             method: "moving_weighted_average" | "fifo" | "lifo" | "specific_identification";
-            /** Format: date-time */
+            /** Format: date */
             validFrom: string;
-            /** Format: date-time */
+            /** Format: date */
             validTo: Record<string, never> | null;
             note: Record<string, never> | null;
             /** Format: date-time */
@@ -4566,25 +4863,34 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        PaginatedItemValuationMethodResponseDto: {
+            items: components["schemas"]["ItemValuationMethodResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         ResolvedValuationMethodResponseDto: {
             /** Format: ulid */
             organizationId: string;
             /** Format: ulid */
             itemId: string;
-            /** Format: date-time */
+            /** Format: date */
             asOf: string;
             /** @enum {string} */
             method: "moving_weighted_average" | "fifo" | "lifo" | "specific_identification";
             /**
-             * @description "default" means no configuration row covers this instant and the code-defined MVP default applies — not that a row exists saying so.
+             * @description "default" means no configuration row covers this business date and the code-defined MVP default applies — not that a row exists saying so.
              * @enum {string}
              */
             source: "configured" | "default";
             /** Format: ulid */
             configurationId: Record<string, never> | null;
-            /** Format: date-time */
+            /** Format: date */
             validFrom: Record<string, never> | null;
-            /** Format: date-time */
+            /** Format: date */
             validTo: Record<string, never> | null;
             /** @description Whether this method is actually implemented in this MVP. */
             active: boolean;
@@ -4599,16 +4905,20 @@ export interface components {
              * @enum {string}
              */
             method: "moving_weighted_average" | "fifo" | "lifo" | "specific_identification";
-            /**
-             * Format: date-time
-             * @description Start of the validity window; defaults to now. The previous open-ended version is closed at this instant (effective dating, D-21).
-             */
-            validFrom?: string;
-            /**
-             * Format: date-time
-             * @description Optional end of the window; must be after validFrom.
-             */
-            validTo?: string;
+            /** @description Start of the business-date validity window; defaults to today in the organization time zone. Declare { calendar, value } for Jalali input. A legacy ISO instant resolves to its UTC calendar day. */
+            validFrom?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
+            /** @description Optional exclusive end business date; must be later than validFrom. A legacy ISO instant resolves to its UTC calendar day. */
+            validTo?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
             note?: string;
         };
         InventoryValuationStateResponseDto: {
@@ -4665,14 +4975,26 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        PaginatedInventoryValuationStateResponseDto: {
+            items: components["schemas"]["InventoryValuationStateResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         BackdateCheckResponseDto: {
-            /** @description True when movementDate is strictly before the latest movement on this key. Equal instants are NOT backdating. */
+            /** @description True when movementDate is strictly before the latest movement business day on this key. The same business day is NOT backdating. */
             backdated: boolean;
-            /** Format: date-time */
+            /**
+             * Format: date
+             * @example 2026-10-08
+             */
             movementDate: string;
-            /** Format: date-time */
+            /** Format: date */
             latestMovementDate: Record<string, never> | null;
-            /** @description Movements dated strictly after movementDate. */
+            /** @description Movements dated strictly after the movementDate day. */
             affectedMovements: number;
             /** @description How many of those currently carry a value that a recalculation could change. */
             affectedValuedMovements: number;
@@ -4716,8 +5038,8 @@ export interface components {
             /** @enum {string} */
             method: "moving_weighted_average" | "fifo" | "lifo" | "specific_identification";
             /** @enum {string} */
-            trigger: "backdated_document" | "cost_assignment" | "manual";
-            /** Format: date-time */
+            trigger: "backdated_document" | "cost_assignment" | "manual" | "pricing_operation" | "reverse_pricing";
+            /** Format: date */
             fromDate: Record<string, never> | null;
             /** @description How many movements the replay read. */
             movementsExamined: number;
@@ -4749,6 +5071,15 @@ export interface components {
             /** @description The recalculation that ran, or null when the operator chose "skip" — in which case the key is now stale on purpose. */
             run: components["schemas"]["InventoryValuationRunResponseDto"] | null;
         };
+        PaginatedInventoryValuationRunResponseDto: {
+            items: components["schemas"]["InventoryValuationRunResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         RecalculateValuationDto: {
             /** Format: ulid */
             organizationId: string;
@@ -4765,12 +5096,14 @@ export interface components {
              * @description Why the recalculation was requested; defaults to "manual".
              * @enum {string}
              */
-            trigger?: "backdated_document" | "cost_assignment" | "manual";
-            /**
-             * Format: date-time
-             * @description Recorded on the run for audit. The replay always covers the whole key: a partial replay cannot produce a deterministic average.
-             */
-            fromDate?: string;
+            trigger?: "backdated_document" | "cost_assignment" | "manual" | "pricing_operation" | "reverse_pricing";
+            /** @description The business day the run was requested for, recorded on the run for audit. A legacy ISO instant resolves to its UTC calendar day. The replay always covers the whole key: a partial replay cannot produce a deterministic average. */
+            fromDate?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
             reason?: string;
         };
         RecalculationResponseDto: {
@@ -4827,6 +5160,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedMaterialRequestResponseDto: {
+            items: components["schemas"]["MaterialRequestResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         MaterialRequestLineResponseDto: {
             /** Format: ulid */
@@ -5012,6 +5354,43 @@ export interface components {
              */
             quantity: string;
         };
+        ApiBusinessDateDto: {
+            /**
+             * Format: date
+             * @description Canonical business day (Gregorian). Authoritative.
+             * @example 2026-10-08
+             */
+            gregorian: string;
+            /**
+             * Format: date
+             * @description The same day in the Jalali calendar (derived for display).
+             * @example 1405-07-16
+             */
+            jalali: string;
+        };
+        ApiInstantDto: {
+            /**
+             * Format: date-time
+             * @description The authoritative instant, ISO-8601 UTC. Never derived.
+             * @example 2026-10-08T08:32:14.421Z
+             */
+            instant: string;
+            /**
+             * @description IANA zone the two renderings below were resolved in.
+             * @example Asia/Tehran
+             */
+            timeZone: string;
+            /**
+             * @description Local Gregorian rendering, `YYYY-MM-DD HH:mm:ss`.
+             * @example 2026-10-08 12:02:14
+             */
+            gregorian: string;
+            /**
+             * @description Local Jalali rendering, `YYYY-MM-DD HH:mm:ss` (derived).
+             * @example 1405-07-16 12:02:14
+             */
+            jalali: string;
+        };
         InventoryDocumentLineResponseDto: {
             /** Format: ulid */
             id: string;
@@ -5039,18 +5418,24 @@ export interface components {
             /** Format: ulid */
             organizationId: string;
             /** @enum {string} */
-            kind: "receipt" | "issue" | "transfer";
+            kind: "receipt" | "issue" | "transfer" | "purchase_return" | "sales_return";
             /**
              * @description OD-PRC-12 valuation completeness, independent from lifecycle. C-59A supplies it for Receipt; null for document kinds owned by later slices.
              * @enum {string|null}
              */
-            valuationState: "unpriced" | "partially_priced" | "priced";
+            valuationState: "unpriced" | "partially_priced" | "priced" | null;
             /** @description True only when lifecycle and authoritative movement valuation permit crossing the Accounting boundary. Permission is separate. */
             accountingEligible: boolean;
             /** @description Allocated at finalize; null while draft. Never reused. */
             number: string | null;
-            /** Format: date-time */
+            /**
+             * Format: date
+             * @description The document business day — canonical Gregorian YYYY-MM-DD (OQ-73: a calendar day, never an instant). The { gregorian, jalali } rendering is businessDateCalendar.
+             * @example 2026-10-08
+             */
             businessDate: string;
+            /** @description C-63: the SAME business day in both calendars, derived from the organization settings. `businessDate` above stays the canonical value. */
+            businessDateCalendar: components["schemas"]["ApiBusinessDateDto"];
             warehouseId: string | null;
             sourceWarehouseId: string | null;
             destinationWarehouseId: string | null;
@@ -5073,6 +5458,25 @@ export interface components {
             finalizedBy: string | null;
             accountingPostedAt: string | null;
             accountingPostedBy: string | null;
+            /**
+             * @description C-62 Accounting standing: `not_posted` | `draft_created` | `final_posted` | `draft_cancelled`. A draft is NOT Accounting Posted; only a final Accounting voucher is.
+             * @enum {string}
+             */
+            accountingPostingState: "not_posted" | "draft_created" | "final_posted" | "draft_cancelled";
+            /**
+             * Format: ulid
+             * @description The durable C-62 posting operation behind the standing above. The authoritative record; this is its reference.
+             */
+            accountingPostingOperationId?: Record<string, never>;
+            /** @description The Accounting-owned document reference, when one exists. */
+            accountingDocumentId?: Record<string, never>;
+            /** @description The Accounting document serial. `null` while the document is still a draft, because numbers allocate at issuance. */
+            accountingDocumentNumber?: Record<string, never>;
+            /**
+             * @description The Accounting document phase, as Accounting reported it.
+             * @enum {string}
+             */
+            accountingDocumentPhase?: "draft" | "temporary" | "final";
             sealedAt: string | null;
             sealedBy: string | null;
             cancelledAt: string | null;
@@ -5082,7 +5486,20 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            /** @description C-63: the creation EVENT timestamp in both calendars, plus the zone it was resolved in. `createdAt` above stays the authoritative instant. */
+            createdAtCalendar: components["schemas"]["ApiInstantDto"];
+            /** @description C-63: the last-update EVENT timestamp in both calendars. */
+            updatedAtCalendar: components["schemas"]["ApiInstantDto"];
             lines: components["schemas"]["InventoryDocumentLineResponseDto"][];
+        };
+        PaginatedInventoryDocumentResponseDto: {
+            items: components["schemas"]["InventoryDocumentResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         InventoryDocumentLineInputDto: {
             /** Format: ulid */
@@ -5094,6 +5511,11 @@ export interface components {
             quantity: string;
             /** Format: ulid */
             unitId: string;
+            /**
+             * Format: ulid
+             * @description RETURNS ONLY: the movement this return is issued against — the receipt movement for a purchase return (its value is mirrored pro-rata), the issue movement for a sales return (required when a commercial amount is entered). Refused for non-return kinds.
+             */
+            basisMovementId?: string;
         };
         CreateInventoryDocumentDto: {
             /**
@@ -5102,12 +5524,14 @@ export interface components {
              */
             organizationId: string;
             /** @enum {string} */
-            kind: "receipt" | "issue" | "transfer";
-            /**
-             * Format: date-time
-             * @description Business date. Defaults to now when omitted.
-             */
-            businessDate?: string;
+            kind: "receipt" | "issue" | "transfer" | "purchase_return" | "sales_return";
+            /** @description C-63 business date — a calendar DAY (OQ-73: stored as PostgreSQL date, no time-of-day, no time zone). The calendar a day is written in must be declared when it is Jalali: "2026-10-08" (Gregorian, the default), { "calendar": "JALALI", "value": "1405-07-16" }. A full ISO-8601 instant is accepted for backward compatibility and resolved to its UTC calendar day (not the organization display zone). Omitted = today's business day in the organization time zone (send an explicit day). */
+            businessDate?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
             /**
              * Format: ulid
              * @description Receipt/Issue warehouse. Required for those kinds.
@@ -5133,8 +5557,13 @@ export interface components {
             lines: components["schemas"]["InventoryDocumentLineInputDto"][];
         };
         UpdateInventoryDocumentDto: {
-            /** Format: date-time */
-            businessDate?: string;
+            /** @description C-63 business date. Same three accepted forms as create: a canonical Gregorian day, a declared Jalali day ({ calendar, value }), or a legacy ISO instant (resolved to its UTC calendar day). Omitted = the document keeps its current business date. */
+            businessDate?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
             /** Format: ulid */
             warehouseId?: string;
             /** Format: ulid */
@@ -5161,8 +5590,188 @@ export interface components {
             /** @enum {string} */
             repricing?: "recalculate" | "skip";
         };
+        InventoryAccountingPostingOperationResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            documentId: string;
+            /** @enum {string} */
+            action: "accounting_post" | "accounting_post:cancel";
+            /** @description The idempotency key this operation is keyed by (C62-OD-06). The same key replays the same answer; a different request under it conflicts. */
+            operationKey: string;
+            /** @description sha256 over the canonical request payload, so a replay can prove it asks for exactly the same thing. */
+            requestHash: string;
+            /** @description The document revision the request was built from. */
+            documentVersion: string;
+            /** @enum {string} */
+            postingMode: "direct_final" | "draft";
+            /**
+             * @description REQUESTED/PENDING mean Accounting has not answered yet — re-query, never infer failure (C62-OD-06).
+             * @enum {string}
+             */
+            state: "REQUESTED" | "PENDING" | "DRAFT_CREATED" | "POSTED" | "REFUSED" | "FAILED" | "CANCELLED";
+            refusalCode: string | null;
+            refusalReason: string | null;
+            accountingDocumentId: string | null;
+            /** @description The Accounting document serial. `null` while it is still a draft, because numbers allocate at issuance. */
+            accountingDocumentNumber: string | null;
+            /** @enum {string|null} */
+            accountingDocumentPhase: "draft" | "temporary" | "final" | null;
+            accountingOperationKey: string | null;
+            /** @description True once a FINAL Accounting voucher exists, i.e. the GL effect is real. */
+            glPosted: boolean;
+            /** @description True when this answer replayed an earlier identical request. */
+            replayed: boolean;
+            actorUserId: string | null;
+            /** @description The Inventory permission the initiating human held (C62-OD-03) — the authority this operation ran under. */
+            actorPermission: string;
+            /** Format: date-time */
+            requestedAt: string;
+            /** Format: date-time */
+            completedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        AccountingPostInventoryDocumentDto: {
+            /** @description Idempotency key (C62-OD-06). Omit it and one is derived from the document, so a UI retry still replays the same durable operation instead of creating a second one. The same key with a different request conflicts (409). */
+            operationKey?: string;
+            /** @description The document revision the caller read. When supplied, the request is refused (409) if the document changed since. */
+            expectedDocumentRevision?: string;
+        };
         CancelInventoryDocumentDto: {
             reason?: string;
+        };
+        RunPricingDto: {
+            /** Format: ulid */
+            organizationId: string;
+            /** @description Idempotency key for the WHOLE batch; a retry replays the stored run report. */
+            operationKey: string;
+            /**
+             * Format: ulid
+             * @description One warehouse, or omit for ALL warehouses (OD-PRC-06). The all-warehouses scope and any single-warehouse scope are separate run histories.
+             */
+            warehouseId?: string | null;
+            /** @description Which inventory document kinds the run prices. Part of the scope identity: a different kind set is a different run history. */
+            documentKinds: ("receipt" | "issue" | "transfer" | "purchase_return" | "sales_return")[];
+            /** @description Inclusive range END, a movement BUSINESS DAY (OQ-73) — the operator’s only range choice. Canonical Gregorian day, declared Jalali day, or a legacy ISO instant resolved to its UTC calendar day. The start is automatic: the day after the last completed run for the same scope (OD-PDP-01). */
+            toDate: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
+            reason?: string;
+        };
+        PricingRunKeyOutcomeResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            pricingRunId: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            warehouseId: string;
+            /** Format: ulid */
+            itemId: string;
+            /** @enum {string} */
+            outcome: "priced" | "failed" | "reversed";
+            /** @description Stable reason code when the outcome is "failed"; null otherwise. */
+            reason: Record<string, never> | null;
+            /** @description The movements that made a failed key fail (OD-PRC-07: name the offenders). */
+            failedMovementIds: string[];
+            /**
+             * Format: ulid
+             * @description The per-key inventory_valuation_runs row this outcome produced (the replay for a priced key, the compensation for a reversed key).
+             */
+            valuationRunId: Record<string, never> | null;
+            /** @description Movements the per-key replay read. */
+            movementsExamined: number;
+            /** @description Movements the per-key replay changed (for a reversed key: the movements un-valued). */
+            movementsRevalued: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PricingRunResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /**
+             * Format: ulid
+             * @description NULL = the all-warehouses scope (OD-PRC-06).
+             */
+            warehouseId: Record<string, never> | null;
+            documentKinds: string[];
+            /**
+             * Format: date
+             * @description The run’s automatic range start, a movement BUSINESS DAY (exclusive): the `to_date` of the previous COMPLETED run for the same scope (every key priced, not reversed since), or null when no run of this scope has fully completed yet. A run with failed keys does not advance the boundary — the next run re-covers its window so the failed key is retried, never skipped.
+             */
+            fromDate: Record<string, never> | null;
+            /** Format: date */
+            toDate: string;
+            /** @enum {string} */
+            kind: "pricing_operation" | "reverse_pricing";
+            /**
+             * Format: ulid
+             * @description Set on a compensating run: the run it reverses (OD-RVP-01).
+             */
+            reversesRunId: Record<string, never> | null;
+            /**
+             * Format: ulid
+             * @description Set when THIS run has been reversed. The row is retained forever (OD-RVP-05).
+             */
+            reversedByRunId: Record<string, never> | null;
+            /** Format: date-time */
+            reversedAt: Record<string, never> | null;
+            /** @description Stocking keys the run covered. */
+            keysExamined: number;
+            /** @description Keys replayed successfully. */
+            keysPriced: number;
+            /** @description Keys that failed with a named reason (OD-PDP-03: their facts are untouched). */
+            keysFailed: number;
+            /** @description Sum of the per-key replays’ examined counts. */
+            movementsExamined: number;
+            /** @description Sum of the per-key replays’ revalued counts. */
+            movementsRevalued: number;
+            reason: Record<string, never> | null;
+            /** @description The batch idempotency key. */
+            operationKey: string;
+            /** Format: ulid */
+            executedBy: Record<string, never> | null;
+            /** Format: date-time */
+            executedAt: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            keyOutcomes: components["schemas"]["PricingRunKeyOutcomeResponseDto"][];
+        };
+        ReversePricingDto: {
+            /** Format: ulid */
+            organizationId: string;
+            /**
+             * Format: ulid
+             * @description The run being reversed — explicitly named, never "the latest" (OD-RVP-01).
+             */
+            pricingRunId: string;
+            /** @description Idempotency key; a retry replays the compensating run. */
+            operationKey: string;
+            reason?: string;
+        };
+        PaginatedPricingRunResponseDto: {
+            items: components["schemas"]["PricingRunResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         DocumentTypeResponseDto: {
             /** @example inventory_receipt */
@@ -5183,6 +5792,15 @@ export interface components {
             draftRequired: boolean;
             /** @description Whether the organization has configured this type. */
             configured: boolean;
+        };
+        PaginatedDocumentTypeResponseDto: {
+            items: components["schemas"]["DocumentTypeResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         ConfigureDocumentTypeDto: {
             /** @description Whether documents of this type enter the draft phase before issuance (Task 8 §8). */
@@ -5215,6 +5833,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedNumberingSeriesResponseDto: {
+            items: components["schemas"]["NumberingSeriesResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CreateNumberingSeriesDto: {
             /** Format: ulid */
@@ -5271,6 +5898,15 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        PaginatedNumberingAllocationResponseDto: {
+            items: components["schemas"]["NumberingAllocationResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         DocumentEndpointResponseDto: {
             /** @example sales */
             module: string;
@@ -5296,6 +5932,15 @@ export interface components {
             /** Format: date-time */
             createdAt: string;
         };
+        PaginatedDocumentRelationResponseDto: {
+            items: components["schemas"]["DocumentRelationResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         DocumentEndpointDto: {
             /** @example sales */
             module: string;
@@ -5316,423 +5961,6 @@ export interface components {
             /** @description Base-unit quantity. Required for `fulfill`, forbidden for every other kind. */
             quantity?: string;
         };
-        WorkflowDefinitionResponseDto: {
-            /** Format: ulid */
-            id: string;
-            /** Format: ulid */
-            organizationId: string;
-            /** @example inventory_receipt */
-            code: string;
-            /** @example Inventory receipt */
-            name: string;
-            description: Record<string, never> | null;
-            isActive: boolean;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        CreateWorkflowDefinitionDto: {
-            /**
-             * Format: ulid
-             * @description Owning organization.
-             */
-            organizationId: string;
-            /**
-             * @description Stable snake_case business key, unique per organization.
-             * @example inventory_receipt
-             */
-            code: string;
-            /** @example Inventory receipt */
-            name: string;
-            description?: Record<string, never>;
-        };
-        UpdateWorkflowDefinitionDto: {
-            name?: string;
-            /** @description Null clears the description. */
-            description?: Record<string, never>;
-            /** @description Disabling blocks new bindings and new version activations; in-flight instances keep transitioning. */
-            isActive?: boolean;
-        };
-        WorkflowVersionResponseDto: {
-            /** Format: ulid */
-            id: string;
-            /** Format: ulid */
-            organizationId: string;
-            /** Format: ulid */
-            definitionId: string;
-            /**
-             * @description 1-based per definition.
-             * @example 1
-             */
-            versionNumber: number;
-            /** @enum {string} */
-            status: "draft" | "active" | "superseded";
-            /** Format: date-time */
-            effectiveFrom: Record<string, never> | null;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        CreateWorkflowVersionDto: {
-            /**
-             * Format: date-time
-             * @description Informational effective metadata. v1 has no scheduled activation: publishing is the explicit act.
-             */
-            effectiveFrom?: Record<string, never> | null;
-        };
-        WorkflowStateResponseDto: {
-            /** Format: ulid */
-            id: string;
-            /** Format: ulid */
-            organizationId: string;
-            /** Format: ulid */
-            versionId: string;
-            /** @example pending_approval */
-            code: string;
-            /** @example Pending approval */
-            name: string;
-            description: Record<string, never> | null;
-            isInitial: boolean;
-            isTerminal: boolean;
-            isActive: boolean;
-            sortOrder: number;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        CreateWorkflowStateDto: {
-            /**
-             * @description Stable snake_case code, unique per version.
-             * @example pending_approval
-             */
-            code: string;
-            /** @example Pending approval */
-            name: string;
-            description?: Record<string, never>;
-            /**
-             * @description The deterministic bind target. Exactly one per publishable version.
-             * @default false
-             */
-            isInitial: boolean;
-            /**
-             * @description Terminal states accept no outgoing transitions.
-             * @default false
-             */
-            isTerminal: boolean;
-            /** @default true */
-            isActive: boolean;
-            /** @default 0 */
-            sortOrder: number;
-        };
-        UpdateWorkflowStateDto: {
-            name?: string;
-            /** @description Null clears the description. */
-            description?: Record<string, never>;
-            isInitial?: boolean;
-            isTerminal?: boolean;
-            isActive?: boolean;
-            sortOrder?: number;
-        };
-        WorkflowTransitionResponseDto: {
-            /** Format: ulid */
-            id: string;
-            /** Format: ulid */
-            organizationId: string;
-            /** Format: ulid */
-            versionId: string;
-            /** @example submit_for_approval */
-            code: string;
-            /** @example Submit for approval */
-            name: string;
-            description: Record<string, never> | null;
-            /** Format: ulid */
-            sourceStateId: string;
-            /** Format: ulid */
-            targetStateId: string;
-            /** @example Inventory.Receipt.Submit */
-            requiredPermission: string;
-            requiresApproval: boolean;
-            approvalPermission: Record<string, never> | null;
-            /** @description The explicit approval permission, or the transition permission. */
-            effectiveApprovalPermission: string;
-            requiresComment: boolean;
-            requireDifferentActor: boolean;
-            isActive: boolean;
-            sortOrder: number;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        CreateWorkflowTransitionDto: {
-            /**
-             * @description Stable snake_case code, unique per version.
-             * @example submit_for_approval
-             */
-            code: string;
-            /** @example Submit for approval */
-            name: string;
-            description?: Record<string, never>;
-            /**
-             * Format: ulid
-             * @description Source state of the same version.
-             */
-            sourceStateId: string;
-            /**
-             * Format: ulid
-             * @description Target state of the same version.
-             */
-            targetStateId: string;
-            /**
-             * @description Registered RBAC code the transition actor must hold.
-             * @example Inventory.Receipt.Submit
-             */
-            requiredPermission: string;
-            /** @default false */
-            requiresApproval: boolean;
-            /** @description Registered RBAC code an approver must hold. Null = the transition permission. */
-            approvalPermission?: Record<string, never> | null;
-            /** @default false */
-            requiresComment: boolean;
-            /**
-             * @description Separation of duties: the actor must differ from the binding creator.
-             * @default false
-             */
-            requireDifferentActor: boolean;
-            /** @default true */
-            isActive: boolean;
-            /** @default 0 */
-            sortOrder: number;
-        };
-        UpdateWorkflowTransitionDto: {
-            name?: string;
-            /** @description Null clears the description. */
-            description?: Record<string, never>;
-            requiredPermission?: string;
-            requiresApproval?: boolean;
-            /** @description Null = the transition permission. */
-            approvalPermission?: Record<string, never> | null;
-            requiresComment?: boolean;
-            requireDifferentActor?: boolean;
-            isActive?: boolean;
-            sortOrder?: number;
-        };
-        WorkflowInstanceResponseDto: {
-            /** Format: ulid */
-            id: string;
-            /** Format: ulid */
-            organizationId: string;
-            /** Format: ulid */
-            definitionId: string;
-            /** Format: ulid */
-            versionId: string;
-            /** @example inventory */
-            entityModule: string;
-            /** @example inventory_receipt */
-            entityType: string;
-            entityId: string;
-            /** Format: ulid */
-            currentStateId: string;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        BindWorkflowInstanceDto: {
-            /**
-             * Format: ulid
-             * @description Owning organization.
-             */
-            organizationId: string;
-            /** Format: ulid */
-            definitionId: string;
-            /**
-             * Format: ulid
-             * @description Explicit version (must be active). Omitted = the definition’s active version.
-             */
-            versionId?: Record<string, never> | null;
-            /** @example inventory */
-            entityModule: string;
-            /** @example inventory_receipt */
-            entityType: string;
-            /** Format: ulid */
-            entityId: string;
-        };
-        AvailableWorkflowTransitionDto: {
-            /** Format: ulid */
-            id: string;
-            /** Format: ulid */
-            organizationId: string;
-            /** Format: ulid */
-            versionId: string;
-            /** @example submit_for_approval */
-            code: string;
-            /** @example Submit for approval */
-            name: string;
-            description: Record<string, never> | null;
-            /** Format: ulid */
-            sourceStateId: string;
-            /** Format: ulid */
-            targetStateId: string;
-            /** @example Inventory.Receipt.Submit */
-            requiredPermission: string;
-            requiresApproval: boolean;
-            approvalPermission: Record<string, never> | null;
-            /** @description The explicit approval permission, or the transition permission. */
-            effectiveApprovalPermission: string;
-            requiresComment: boolean;
-            requireDifferentActor: boolean;
-            isActive: boolean;
-            sortOrder: number;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-            /** @description Whether the caller holds the transition’s required permission. */
-            permitted: boolean;
-        };
-        AvailableTransitionsResponseDto: {
-            instance: components["schemas"]["WorkflowInstanceResponseDto"];
-            currentState: components["schemas"]["WorkflowStateResponseDto"];
-            /** @description Terminal states have no outgoing transitions. */
-            isTerminal: boolean;
-            transitions: components["schemas"]["AvailableWorkflowTransitionDto"][];
-        };
-        ExecuteWorkflowTransitionDto: {
-            /**
-             * Format: ulid
-             * @description The transition to execute.
-             */
-            transitionId: string;
-            /** @description Required when the transition requires a comment. */
-            comment?: Record<string, never>;
-            /**
-             * Format: ulid
-             * @description The completed approval, when the transition requires approval.
-             */
-            approvalId?: Record<string, never> | null;
-        };
-        WorkflowTransitionHistoryResponseDto: {
-            /** Format: ulid */
-            id: string;
-            /** Format: ulid */
-            organizationId: string;
-            /** Format: ulid */
-            instanceId: string;
-            /** Format: ulid */
-            versionId: string;
-            /** Format: ulid */
-            transitionId: string;
-            /** Format: ulid */
-            fromStateId: string;
-            /** Format: ulid */
-            toStateId: string;
-            /**
-             * @description 1-based per instance.
-             * @example 1
-             */
-            sequence: number;
-            /** Format: ulid */
-            actorId: Record<string, never> | null;
-            comment: Record<string, never> | null;
-            /** Format: ulid */
-            approvalId: Record<string, never> | null;
-            correlationId: Record<string, never> | null;
-            /** Format: date-time */
-            occurredAt: string;
-            /** Format: date-time */
-            createdAt: string;
-        };
-        ExecuteTransitionResponseDto: {
-            instance: components["schemas"]["WorkflowInstanceResponseDto"];
-            history: components["schemas"]["WorkflowTransitionHistoryResponseDto"];
-            transition: components["schemas"]["WorkflowTransitionResponseDto"];
-        };
-        WorkflowApprovalResponseDto: {
-            /** Format: ulid */
-            id: string;
-            /** Format: ulid */
-            organizationId: string;
-            /** Format: ulid */
-            instanceId: string;
-            /** Format: ulid */
-            versionId: string;
-            /** Format: ulid */
-            transitionId: string;
-            /** @enum {string} */
-            status: "pending" | "approved" | "rejected";
-            /** Format: ulid */
-            requestedBy: Record<string, never> | null;
-            /** Format: date-time */
-            requestedAt: string;
-            /** Format: ulid */
-            decidedBy: Record<string, never> | null;
-            /** Format: date-time */
-            decidedAt: Record<string, never> | null;
-            comment: Record<string, never> | null;
-            /** @description History length at request time. A decision or execution is stale when the instance moved since. */
-            baseSequence: number;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        RequestWorkflowApprovalDto: {
-            /**
-             * Format: ulid
-             * @description The approval-gated transition of the same version.
-             */
-            transitionId: string;
-            comment?: Record<string, never>;
-        };
-        DecideWorkflowApprovalDto: {
-            /** @enum {string} */
-            decision: "approved" | "rejected";
-            comment?: Record<string, never>;
-        };
-        WorkflowAutomationResponseDto: {
-            /** Format: ulid */
-            id: string;
-            /** Format: ulid */
-            organizationId: string;
-            /** Format: ulid */
-            versionId: string;
-            /** Format: ulid */
-            transitionId: string;
-            /** @example notify */
-            action: string;
-            parameters: {
-                [key: string]: unknown;
-            } | null;
-            sortOrder: number;
-            isActive: boolean;
-            /** Format: date-time */
-            createdAt: string;
-            /** Format: date-time */
-            updatedAt: string;
-        };
-        CreateWorkflowAutomationDto: {
-            /**
-             * @description A registered automation action.
-             * @example notify
-             */
-            action: string;
-            /** @description Flat JSON object (at most 50 keys) with string, number, boolean or null values. */
-            parameters?: {
-                [key: string]: unknown;
-            };
-            /** @default 0 */
-            sortOrder: number;
-            /** @default true */
-            isActive: boolean;
-        };
-        UpdateWorkflowAutomationDto: {
-            sortOrder?: number;
-            isActive?: boolean;
-        };
         FinancialAreaResponseDto: {
             /** Format: ulid */
             id: string;
@@ -5749,6 +5977,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedFinancialAreaResponseDto: {
+            items: components["schemas"]["FinancialAreaResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CreateFinancialAreaDto: {
             /**
@@ -5801,6 +6038,15 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        PaginatedFiscalYearResponseDto: {
+            items: components["schemas"]["FiscalYearResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         CreateFiscalYearDto: {
             /**
              * Format: ulid
@@ -5819,16 +6065,20 @@ export interface components {
             code: string;
             /** @example Fiscal year 1405 */
             title: string;
-            /**
-             * @description Inclusive start date (YYYY-MM-DD).
-             * @example 2026-03-21
-             */
-            startDate: string;
-            /**
-             * @description Inclusive end date (YYYY-MM-DD).
-             * @example 2027-03-20
-             */
-            endDate: string;
+            /** @description Inclusive start business date. A Jalali day is declared as { calendar, value }; legacy ISO instants resolve to their UTC calendar day. */
+            startDate: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
+            /** @description Inclusive end business date. A Jalali day is declared as { calendar, value }; legacy ISO instants resolve to their UTC calendar day. */
+            endDate: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
             /**
              * Format: ulid
              * @description Previous year of the same financial area (the transition chain).
@@ -5838,10 +6088,20 @@ export interface components {
         UpdateFiscalYearDto: {
             code?: string;
             title?: string;
-            /** @description Inclusive start date (YYYY-MM-DD). */
-            startDate?: string;
-            /** @description Inclusive end date (YYYY-MM-DD). */
-            endDate?: string;
+            /** @description Inclusive start business date; Jalali input must be declared; legacy ISO instants resolve by UTC day. */
+            startDate?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
+            /** @description Inclusive end business date; Jalali input must be declared; legacy ISO instants resolve by UTC day. */
+            endDate?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
             isActive?: boolean;
             /**
              * Format: ulid
@@ -5888,6 +6148,15 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        PaginatedAccountingPeriodResponseDto: {
+            items: components["schemas"]["AccountingPeriodResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         CreateAccountingPeriodDto: {
             /**
              * Format: ulid
@@ -5906,16 +6175,20 @@ export interface components {
             sequence: number;
             /** @example Farvardin */
             title: string;
-            /**
-             * @description Inclusive start date (YYYY-MM-DD), inside the year.
-             * @example 2026-03-21
-             */
-            startDate: string;
-            /**
-             * @description Inclusive end date (YYYY-MM-DD), inside the year.
-             * @example 2026-04-20
-             */
-            endDate: string;
+            /** @description Inclusive start business date inside the year; Jalali input must be declared and legacy instants resolve by UTC day. */
+            startDate: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
+            /** @description Inclusive end business date inside the year; Jalali input must be declared and legacy instants resolve by UTC day. */
+            endDate: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
         };
         TransitionAccountingPeriodDto: {
             /** @description Mandatory reason for the lifecycle operation (audit evidence). */
@@ -5954,6 +6227,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedCodingStructureVersionResponseDto: {
+            items: components["schemas"]["CodingStructureVersionResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CodingStructureLevelInputDto: {
             /**
@@ -6075,6 +6357,15 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        PaginatedAccountingConfigurationResponseDto: {
+            items: components["schemas"]["AccountingConfigurationResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         AccountingConfigurationLevelInputDto: {
             /**
              * @description 1-based ordinal inside the version; must cover 1..maxDepth.
@@ -6157,6 +6448,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedAccountResponseDto: {
+            items: components["schemas"]["AccountResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         CreateAccountDto: {
             /**
@@ -6306,6 +6606,15 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        PaginatedAccountingDocumentResponseDto: {
+            items: components["schemas"]["AccountingDocumentResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         AccountingDocumentLineInputDto: {
             /**
              * Format: ulid
@@ -6341,11 +6650,13 @@ export interface components {
              * @description Financial area the document is booked in. It is resolved into the fiscal year and accounting period of the document date, and it is the numbering series scope (§18).
              */
             financialAreaId: string;
-            /**
-             * @description Business/occurrence date (date-only). Drives the fiscal-year and period resolution and chronological reporting (§12.3); never an instant.
-             * @example 2026-04-05
-             */
-            documentDate: string;
+            /** @description Business/occurrence date. Bare YYYY-MM-DD is Gregorian; declare { calendar, value } for Jalali. Legacy ISO instants resolve to their UTC calendar day. Drives fiscal-year/period resolution and reporting (§12.3). */
+            documentDate: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
             /** @description Header narration. Required and non-blank (§12.2). */
             description: string;
             /**
@@ -6359,11 +6670,13 @@ export interface components {
             operationKey: string;
         };
         UpdateAccountingDocumentDto: {
-            /**
-             * @description New business date. Re-resolves the fiscal year and period, which must still be open (a closed period refuses documents dated in it, §7.2 rule 4).
-             * @example 2026-04-05
-             */
-            documentDate?: string;
+            /** @description New business date; Jalali input must be declared and a legacy ISO instant resolves by UTC day. Re-resolves the fiscal year and period, which must still be open (§7.2 rule 4). */
+            documentDate?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
             description?: string;
             /** Format: ulid */
             branchId?: Record<string, never> | null;
@@ -6384,11 +6697,13 @@ export interface components {
             operationKey: string;
             /** @description Mandatory reason for the reversal (AC-D-22). */
             reason: string;
-            /**
-             * @description Business date of the reversal. Defaults to the original document date. Must resolve to an open period.
-             * @example 2026-04-05
-             */
-            documentDate?: string;
+            /** @description Business date of the reversal. Jalali input must be declared; legacy ISO instants resolve by UTC day. Defaults to the original document date and must resolve to an open period. */
+            documentDate?: string | {
+                /** @enum {string} */
+                calendar: "GREGORIAN" | "JALALI";
+                /** @example 1405-07-16 */
+                value: string;
+            };
         };
         BalanceDto: {
             /** Format: ulid */
@@ -6435,6 +6750,15 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        PaginatedBalanceDto: {
+            items: components["schemas"]["BalanceDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         ReconciliationItemDto: {
             /** Format: ulid */
             organizationId: string;
@@ -6454,6 +6778,15 @@ export interface components {
             ledgerCreditAmount?: Record<string, never> | null;
             projectionDebitAmount?: Record<string, never> | null;
             projectionCreditAmount?: Record<string, never> | null;
+        };
+        PaginatedReconciliationItemDto: {
+            items: components["schemas"]["ReconciliationItemDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         RebuildBalancesDto: {
             /**
@@ -6554,6 +6887,15 @@ export interface components {
             sourceEntityId?: Record<string, never> | null;
             /** @description System origin only. */
             sourceOperation?: Record<string, never> | null;
+        };
+        PaginatedLedgerMovementResponseDto: {
+            items: components["schemas"]["LedgerMovementResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         AccountStatementScopeDto: {
             /** @description Organization the statement belongs to. */
@@ -6668,6 +7010,15 @@ export interface components {
             sourceEntityId?: Record<string, never> | null;
             sourceOperation?: Record<string, never> | null;
         };
+        PaginatedGeneralLedgerResponseDto: {
+            items: components["schemas"]["GeneralLedgerResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         TrialBalanceResponseDto: {
             /** Format: ulid */
             accountId: string;
@@ -6700,6 +7051,15 @@ export interface components {
              * @example -0.1
              */
             closing: string;
+        };
+        PaginatedTrialBalanceResponseDto: {
+            items: components["schemas"]["TrialBalanceResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         ChartTreeNodeDto: {
             /**
@@ -6753,6 +7113,15 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        PaginatedChartTreeNodeDto: {
+            items: components["schemas"]["ChartTreeNodeDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         BaseChartTemplateResponseDto: {
             /** Format: ulid */
             id: string;
@@ -6762,6 +7131,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedBaseChartTemplateResponseDto: {
+            items: components["schemas"]["BaseChartTemplateResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         BaseChartLevelInputDto: {
             /**
@@ -6883,6 +7261,15 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        PaginatedBaseChartTemplateVersionResponseDto: {
+            items: components["schemas"]["BaseChartTemplateVersionResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         CreateBaseChartVersionDto: {
             /**
              * Format: ulid
@@ -6971,6 +7358,15 @@ export interface components {
             finalNodeCount: number;
             finalSet: components["schemas"]["BaseChartPlannedNodeDto"][];
         };
+        PaginatedBaseChartAdoptionResponseDto: {
+            items: components["schemas"]["BaseChartAdoptionResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         DetailStructureLevelResponseDto: {
             /** Format: ulid */
             id: string;
@@ -6999,6 +7395,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        PaginatedDetailStructureVersionResponseDto: {
+            items: components["schemas"]["DetailStructureVersionResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
         };
         DetailStructureLevelInputDto: {
             /**
@@ -7084,6 +7489,15 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        PaginatedDetailResponseDto: {
+            items: components["schemas"]["DetailResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
         CreateDetailDto: {
             /**
              * Format: ulid
@@ -7117,6 +7531,495 @@ export interface components {
              * @description Re-parent the detail record.
              */
             parentId?: Record<string, never> | null;
+        };
+        WorkflowDefinitionResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** @example inventory_receipt */
+            code: string;
+            /** @example Inventory receipt */
+            name: string;
+            description: Record<string, never> | null;
+            isActive: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PaginatedWorkflowDefinitionResponseDto: {
+            items: components["schemas"]["WorkflowDefinitionResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
+        CreateWorkflowDefinitionDto: {
+            /**
+             * Format: ulid
+             * @description Owning organization.
+             */
+            organizationId: string;
+            /**
+             * @description Stable snake_case business key, unique per organization.
+             * @example inventory_receipt
+             */
+            code: string;
+            /** @example Inventory receipt */
+            name: string;
+            description?: Record<string, never>;
+        };
+        UpdateWorkflowDefinitionDto: {
+            name?: string;
+            /** @description Null clears the description. */
+            description?: Record<string, never>;
+            /** @description Disabling blocks new bindings and new version activations; in-flight instances keep transitioning. */
+            isActive?: boolean;
+        };
+        WorkflowVersionResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            definitionId: string;
+            /**
+             * @description 1-based per definition.
+             * @example 1
+             */
+            versionNumber: number;
+            /** @enum {string} */
+            status: "draft" | "active" | "superseded";
+            /** Format: date-time */
+            effectiveFrom: Record<string, never> | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PaginatedWorkflowVersionResponseDto: {
+            items: components["schemas"]["WorkflowVersionResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
+        CreateWorkflowVersionDto: {
+            /**
+             * Format: date-time
+             * @description Informational effective metadata. v1 has no scheduled activation: publishing is the explicit act.
+             */
+            effectiveFrom?: Record<string, never> | null;
+        };
+        WorkflowStateResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            versionId: string;
+            /** @example pending_approval */
+            code: string;
+            /** @example Pending approval */
+            name: string;
+            description: Record<string, never> | null;
+            isInitial: boolean;
+            isTerminal: boolean;
+            isActive: boolean;
+            sortOrder: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PaginatedWorkflowStateResponseDto: {
+            items: components["schemas"]["WorkflowStateResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
+        CreateWorkflowStateDto: {
+            /**
+             * @description Stable snake_case code, unique per version.
+             * @example pending_approval
+             */
+            code: string;
+            /** @example Pending approval */
+            name: string;
+            description?: Record<string, never>;
+            /**
+             * @description The deterministic bind target. Exactly one per publishable version.
+             * @default false
+             */
+            isInitial: boolean;
+            /**
+             * @description Terminal states accept no outgoing transitions.
+             * @default false
+             */
+            isTerminal: boolean;
+            /** @default true */
+            isActive: boolean;
+            /** @default 0 */
+            sortOrder: number;
+        };
+        UpdateWorkflowStateDto: {
+            name?: string;
+            /** @description Null clears the description. */
+            description?: Record<string, never>;
+            isInitial?: boolean;
+            isTerminal?: boolean;
+            isActive?: boolean;
+            sortOrder?: number;
+        };
+        WorkflowTransitionResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            versionId: string;
+            /** @example submit_for_approval */
+            code: string;
+            /** @example Submit for approval */
+            name: string;
+            description: Record<string, never> | null;
+            /** Format: ulid */
+            sourceStateId: string;
+            /** Format: ulid */
+            targetStateId: string;
+            /** @example Inventory.Receipt.Submit */
+            requiredPermission: string;
+            requiresApproval: boolean;
+            approvalPermission: Record<string, never> | null;
+            /** @description The explicit approval permission, or the transition permission. */
+            effectiveApprovalPermission: string;
+            requiresComment: boolean;
+            requireDifferentActor: boolean;
+            isActive: boolean;
+            sortOrder: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PaginatedWorkflowTransitionResponseDto: {
+            items: components["schemas"]["WorkflowTransitionResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
+        CreateWorkflowTransitionDto: {
+            /**
+             * @description Stable snake_case code, unique per version.
+             * @example submit_for_approval
+             */
+            code: string;
+            /** @example Submit for approval */
+            name: string;
+            description?: Record<string, never>;
+            /**
+             * Format: ulid
+             * @description Source state of the same version.
+             */
+            sourceStateId: string;
+            /**
+             * Format: ulid
+             * @description Target state of the same version.
+             */
+            targetStateId: string;
+            /**
+             * @description Registered RBAC code the transition actor must hold.
+             * @example Inventory.Receipt.Submit
+             */
+            requiredPermission: string;
+            /** @default false */
+            requiresApproval: boolean;
+            /** @description Registered RBAC code an approver must hold. Null = the transition permission. */
+            approvalPermission?: Record<string, never> | null;
+            /** @default false */
+            requiresComment: boolean;
+            /**
+             * @description Separation of duties: the actor must differ from the binding creator.
+             * @default false
+             */
+            requireDifferentActor: boolean;
+            /** @default true */
+            isActive: boolean;
+            /** @default 0 */
+            sortOrder: number;
+        };
+        UpdateWorkflowTransitionDto: {
+            name?: string;
+            /** @description Null clears the description. */
+            description?: Record<string, never>;
+            requiredPermission?: string;
+            requiresApproval?: boolean;
+            /** @description Null = the transition permission. */
+            approvalPermission?: Record<string, never> | null;
+            requiresComment?: boolean;
+            requireDifferentActor?: boolean;
+            isActive?: boolean;
+            sortOrder?: number;
+        };
+        WorkflowInstanceResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            definitionId: string;
+            /** Format: ulid */
+            versionId: string;
+            /** @example inventory */
+            entityModule: string;
+            /** @example inventory_receipt */
+            entityType: string;
+            entityId: string;
+            /** Format: ulid */
+            currentStateId: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PaginatedWorkflowInstanceResponseDto: {
+            items: components["schemas"]["WorkflowInstanceResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
+        BindWorkflowInstanceDto: {
+            /**
+             * Format: ulid
+             * @description Owning organization.
+             */
+            organizationId: string;
+            /** Format: ulid */
+            definitionId: string;
+            /**
+             * Format: ulid
+             * @description Explicit version (must be active). Omitted = the definition’s active version.
+             */
+            versionId?: Record<string, never> | null;
+            /** @example inventory */
+            entityModule: string;
+            /** @example inventory_receipt */
+            entityType: string;
+            /** Format: ulid */
+            entityId: string;
+        };
+        AvailableWorkflowTransitionDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            versionId: string;
+            /** @example submit_for_approval */
+            code: string;
+            /** @example Submit for approval */
+            name: string;
+            description: Record<string, never> | null;
+            /** Format: ulid */
+            sourceStateId: string;
+            /** Format: ulid */
+            targetStateId: string;
+            /** @example Inventory.Receipt.Submit */
+            requiredPermission: string;
+            requiresApproval: boolean;
+            approvalPermission: Record<string, never> | null;
+            /** @description The explicit approval permission, or the transition permission. */
+            effectiveApprovalPermission: string;
+            requiresComment: boolean;
+            requireDifferentActor: boolean;
+            isActive: boolean;
+            sortOrder: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** @description Whether the caller holds the transition’s required permission. */
+            permitted: boolean;
+        };
+        AvailableTransitionsResponseDto: {
+            instance: components["schemas"]["WorkflowInstanceResponseDto"];
+            currentState: components["schemas"]["WorkflowStateResponseDto"];
+            /** @description Terminal states have no outgoing transitions. */
+            isTerminal: boolean;
+            transitions: components["schemas"]["AvailableWorkflowTransitionDto"][];
+        };
+        ExecuteWorkflowTransitionDto: {
+            /**
+             * Format: ulid
+             * @description The transition to execute.
+             */
+            transitionId: string;
+            /** @description Required when the transition requires a comment. */
+            comment?: Record<string, never>;
+            /**
+             * Format: ulid
+             * @description The completed approval, when the transition requires approval.
+             */
+            approvalId?: Record<string, never> | null;
+        };
+        WorkflowTransitionHistoryResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            instanceId: string;
+            /** Format: ulid */
+            versionId: string;
+            /** Format: ulid */
+            transitionId: string;
+            /** Format: ulid */
+            fromStateId: string;
+            /** Format: ulid */
+            toStateId: string;
+            /**
+             * @description 1-based per instance.
+             * @example 1
+             */
+            sequence: number;
+            /** Format: ulid */
+            actorId: Record<string, never> | null;
+            comment: Record<string, never> | null;
+            /** Format: ulid */
+            approvalId: Record<string, never> | null;
+            correlationId: Record<string, never> | null;
+            /** Format: date-time */
+            occurredAt: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        ExecuteTransitionResponseDto: {
+            instance: components["schemas"]["WorkflowInstanceResponseDto"];
+            history: components["schemas"]["WorkflowTransitionHistoryResponseDto"];
+            transition: components["schemas"]["WorkflowTransitionResponseDto"];
+        };
+        PaginatedWorkflowTransitionHistoryResponseDto: {
+            items: components["schemas"]["WorkflowTransitionHistoryResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
+        WorkflowApprovalResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            instanceId: string;
+            /** Format: ulid */
+            versionId: string;
+            /** Format: ulid */
+            transitionId: string;
+            /** @enum {string} */
+            status: "pending" | "approved" | "rejected";
+            /** Format: ulid */
+            requestedBy: Record<string, never> | null;
+            /** Format: date-time */
+            requestedAt: string;
+            /** Format: ulid */
+            decidedBy: Record<string, never> | null;
+            /** Format: date-time */
+            decidedAt: Record<string, never> | null;
+            comment: Record<string, never> | null;
+            /** @description History length at request time. A decision or execution is stale when the instance moved since. */
+            baseSequence: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PaginatedWorkflowApprovalResponseDto: {
+            items: components["schemas"]["WorkflowApprovalResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
+        RequestWorkflowApprovalDto: {
+            /**
+             * Format: ulid
+             * @description The approval-gated transition of the same version.
+             */
+            transitionId: string;
+            comment?: Record<string, never>;
+        };
+        DecideWorkflowApprovalDto: {
+            /** @enum {string} */
+            decision: "approved" | "rejected";
+            comment?: Record<string, never>;
+        };
+        WorkflowAutomationResponseDto: {
+            /** Format: ulid */
+            id: string;
+            /** Format: ulid */
+            organizationId: string;
+            /** Format: ulid */
+            versionId: string;
+            /** Format: ulid */
+            transitionId: string;
+            /** @example notify */
+            action: string;
+            parameters: {
+                [key: string]: unknown;
+            } | null;
+            sortOrder: number;
+            isActive: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        PaginatedWorkflowAutomationResponseDto: {
+            items: components["schemas"]["WorkflowAutomationResponseDto"][];
+            /** @example 42 */
+            total: number;
+            /** @example 1 */
+            page: number;
+            /** @example 100 */
+            pageSize: number;
+        };
+        CreateWorkflowAutomationDto: {
+            /**
+             * @description A registered automation action.
+             * @example notify
+             */
+            action: string;
+            /** @description Flat JSON object (at most 50 keys) with string, number, boolean or null values. */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            /** @default 0 */
+            sortOrder: number;
+            /** @default true */
+            isActive: boolean;
+        };
+        UpdateWorkflowAutomationDto: {
+            sortOrder?: number;
+            isActive?: boolean;
         };
     };
     responses: never;
@@ -7342,7 +8245,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedUserResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -7655,7 +8558,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedRoleDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -8027,7 +8930,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedPermissionDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -8095,7 +8998,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedOrganizationResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -8400,7 +9303,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedBranchResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -8686,7 +9589,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedDepartmentResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -8972,7 +9875,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedEmployeeResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -9261,7 +10164,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedPartyResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -9543,7 +10446,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedOrganizationMembershipResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -9693,7 +10596,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedUnitResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -9979,7 +10882,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedItemGroupResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -10282,7 +11185,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedItemResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -10571,7 +11474,7 @@ export interface operations {
                 itemId?: string;
                 fromUnitId?: string;
                 toUnitId?: string;
-                /** @description Only versions in force at this instant. */
+                /** @description Only versions in force on this Gregorian business date. */
                 activeAt?: string;
             };
             header?: never;
@@ -10585,7 +11488,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedUnitConversionResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -10670,7 +11573,7 @@ export interface operations {
                 itemId?: string;
                 fromUnitId: string;
                 toUnitId: string;
-                /** @description The instant to resolve at. A past date returns the version that was in force then. */
+                /** @description Canonical Gregorian business date. A past date returns the version that was effective then. */
                 asOf: string;
             };
             header?: never;
@@ -10772,7 +11675,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedWarehouseResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -11052,12 +11955,12 @@ export interface operations {
                 branchId?: string;
                 warehouseId?: string;
                 itemId?: string;
-                movementType?: "inbound" | "outbound" | "transfer_in" | "transfer_out" | "adjustment_in" | "adjustment_out" | "reversal_in" | "reversal_out";
+                movementType?: "inbound" | "outbound" | "transfer_in" | "transfer_out" | "adjustment_in" | "adjustment_out" | "reversal_in" | "reversal_out" | "purchase_return" | "sales_return";
                 /** @description Both legs of one transfer share this id. */
                 transferId?: string;
-                /** @description Inclusive lower bound on the movement date. */
+                /** @description Inclusive lower bound on the movement BUSINESS DAY, canonical Gregorian YYYY-MM-DD (OQ-73: movement_date is a PostgreSQL date). A Jalali day is converted to its canonical Gregorian day at the boundary. */
                 dateFrom?: string;
-                /** @description Inclusive upper bound on the movement date. */
+                /** @description Inclusive upper bound on the movement BUSINESS DAY, canonical Gregorian YYYY-MM-DD. */
                 dateTo?: string;
             };
             header?: never;
@@ -11071,7 +11974,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedInventoryMovementResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -11280,9 +12183,9 @@ export interface operations {
                 organizationId: string;
                 itemId: string;
                 warehouseId: string;
-                /** @description Inclusive. */
+                /** @description Inclusive lower bound on the movement BUSINESS DAY, canonical Gregorian YYYY-MM-DD (OQ-73). */
                 dateFrom?: string;
-                /** @description Inclusive. */
+                /** @description Inclusive upper bound on the movement BUSINESS DAY, canonical Gregorian YYYY-MM-DD (OQ-73). */
                 dateTo?: string;
                 /** @description Unit used for presentation. Omit for the item base unit. */
                 displayUnitId?: string;
@@ -11422,7 +12325,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedInventoryReservationResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -11645,7 +12548,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedInventoryBalanceResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -11864,7 +12767,7 @@ export interface operations {
                 sort?: string;
                 organizationId: string;
                 itemId?: string;
-                /** @description Only the version in force at this instant. */
+                /** @description Only versions in force on this canonical Gregorian business date. */
                 activeAt?: string;
             };
             header?: never;
@@ -11878,7 +12781,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedItemValuationMethodResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -11960,7 +12863,7 @@ export interface operations {
             query: {
                 organizationId: string;
                 itemId: string;
-                /** @description The instant to resolve at; defaults to now. A past instant resolves the version that was in force then, not today. */
+                /** @description Canonical Gregorian business date to resolve; defaults to today in the organization time zone. */
                 asOf?: string;
             };
             header?: never;
@@ -12032,7 +12935,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedInventoryValuationStateResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -12101,7 +13004,7 @@ export interface operations {
                 organizationId: string;
                 warehouseId: string;
                 itemId: string;
-                /** @description The business date the operator intends to post with. */
+                /** @description The business DAY the operator intends to post with — canonical Gregorian YYYY-MM-DD (OQ-73). A Jalali day is converted to its canonical Gregorian day at the boundary. */
                 movementDate: string;
             };
             header?: never;
@@ -12218,7 +13121,7 @@ export interface operations {
                 organizationId: string;
                 warehouseId?: string;
                 itemId?: string;
-                trigger?: "backdated_document" | "cost_assignment" | "manual";
+                trigger?: "backdated_document" | "cost_assignment" | "manual" | "pricing_operation" | "reverse_pricing";
             };
             header?: never;
             path?: never;
@@ -12231,7 +13134,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedInventoryValuationRunResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -12339,7 +13242,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedMaterialRequestResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -13027,10 +13930,12 @@ export interface operations {
                 sort?: string;
                 /** @description Owning organization. */
                 organizationId: string;
-                kind?: "receipt" | "issue" | "transfer";
+                kind?: "receipt" | "issue" | "transfer" | "purchase_return" | "sales_return";
                 status?: "draft" | "operational" | "accounting_posted" | "immutable" | "cancelled";
                 warehouseId?: string;
+                /** @description INCLUSIVE lower bound on the business day, canonical Gregorian YYYY-MM-DD. A Jalali day is converted to its canonical Gregorian day at the boundary and never filters the database as Jalali text. */
                 dateFrom?: string;
+                /** @description INCLUSIVE upper bound on the business day, canonical Gregorian YYYY-MM-DD. */
                 dateTo?: string;
             };
             header?: never;
@@ -13044,7 +13949,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedInventoryDocumentResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -13329,7 +14234,7 @@ export interface operations {
             };
         };
     };
-    InventoryBusinessDocumentsController_accountingPost_v1: {
+    InventoryBusinessDocumentsController_listAccountingPostings_v1: {
         parameters: {
             query: {
                 /** @description Owning organization. */
@@ -13342,6 +14247,55 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryAccountingPostingOperationResponseDto"][];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryBusinessDocumentsController_accountingPost_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingPostInventoryDocumentDto"];
+            };
+        };
         responses: {
             200: {
                 headers: {
@@ -13372,7 +14326,77 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The document is not operational. */
+            /** @description The operation key was already used for a different request, or the document is already Accounting Posted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is not accounting eligible: not operational, not fully priced, or its valuation is stale. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryBusinessDocumentsController_cancelAccountingPost_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountingPostInventoryDocumentDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InventoryDocumentResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Accounting no longer holds a cancellable draft for this operation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document has no Accounting draft to cancel: it was never posted in draft mode, was already cancelled, or is finally posted. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -13489,6 +14513,245 @@ export interface operations {
             };
         };
     };
+    InventoryPricingController_listRuns_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                organizationId: string;
+                warehouseId?: string;
+                /** @description Filter by run kind: "pricing_operation" (a batch) or "reverse_pricing" (a compensation). */
+                kind?: "pricing_operation" | "reverse_pricing";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedPricingRunResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A domain rule refused the command (stable code in details). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryPricingController_runPricing_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunPricingDto"];
+            };
+        };
+        responses: {
+            /** @description The run report: per-key outcomes with named failing movements (OD-PRC-07). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRunResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The operationKey was reused with a different request, or the scope’s run history does not extend (range_not_extending). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A domain rule refused the command (stable code in details). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryPricingController_reversePricing_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReversePricingDto"];
+            };
+        };
+        responses: {
+            /** @description The compensating run report (kind = reverse_pricing). */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRunResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The run does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The run was already reversed, or the operationKey was reused with a different request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A domain rule refused the command (stable code in details). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    InventoryPricingController_getRun_v1: {
+        parameters: {
+            query: {
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PricingRunResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The run does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A domain rule refused the command (stable code in details). */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     DocumentTypesController_list_v1: {
         parameters: {
             query: {
@@ -13512,7 +14775,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedDocumentTypeResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -13655,7 +14918,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedNumberingSeriesResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -13847,7 +15110,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedNumberingAllocationResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -13901,7 +15164,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedDocumentRelationResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -14054,1653 +15317,6 @@ export interface operations {
             };
         };
     };
-    WorkflowDefinitionsController_list_v1: {
-        parameters: {
-            query: {
-                page?: number;
-                pageSize?: number;
-                /** @description Comma-separated field:(asc|desc) entries. */
-                sort?: string;
-                organizationId: string;
-                isActive?: boolean;
-                /** @description Case-insensitive substring match on code or name. */
-                search?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowDefinitionsController_create_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateWorkflowDefinitionDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowDefinitionResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Definition code already exists in this organization. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowDefinitionsController_get_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowDefinitionResponseDto"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow definition does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowDefinitionsController_update_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateWorkflowDefinitionDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowDefinitionResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow definition does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowVersionsController_list_v1: {
-        parameters: {
-            query: {
-                page?: number;
-                pageSize?: number;
-                /** @description Comma-separated field:(asc|desc) entries. */
-                sort?: string;
-                /** @description Owning organization. */
-                organizationId: string;
-                status?: "draft" | "active" | "superseded";
-            };
-            header?: never;
-            path: {
-                definitionId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow definition does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowVersionsController_create_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                definitionId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateWorkflowVersionDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowVersionResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow definition does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description A version was created concurrently; retry the request. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowVersionsController_get_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowVersionResponseDto"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow version does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowVersionsController_publish_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowVersionResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow version does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowStatesController_list_v1: {
-        parameters: {
-            query: {
-                page?: number;
-                pageSize?: number;
-                /** @description Comma-separated field:(asc|desc) entries. */
-                sort?: string;
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                versionId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow version does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowStatesController_create_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                versionId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateWorkflowStateDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowStateResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow version does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description State code already exists in this version. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowStatesController_get_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowStateResponseDto"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow state does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowStatesController_remove_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Deleted. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow state does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowStatesController_update_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateWorkflowStateDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowStateResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow state does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowTransitionsController_list_v1: {
-        parameters: {
-            query: {
-                page?: number;
-                pageSize?: number;
-                /** @description Comma-separated field:(asc|desc) entries. */
-                sort?: string;
-                /** @description Owning organization. */
-                organizationId: string;
-                /** @description Filter by source state. */
-                sourceStateId?: string;
-                isActive?: boolean;
-            };
-            header?: never;
-            path: {
-                versionId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow version does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowTransitionsController_create_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                versionId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateWorkflowTransitionDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowTransitionResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow version or state does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Transition code already exists in this version. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowTransitionsController_get_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowTransitionResponseDto"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow transition does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowTransitionsController_remove_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Deleted. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow transition does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowTransitionsController_update_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateWorkflowTransitionDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowTransitionResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow transition does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowInstancesController_list_v1: {
-        parameters: {
-            query: {
-                page?: number;
-                pageSize?: number;
-                /** @description Comma-separated field:(asc|desc) entries. */
-                sort?: string;
-                /** @description Owning organization. */
-                organizationId: string;
-                definitionId?: string;
-                versionId?: string;
-                currentStateId?: string;
-                entityModule?: string;
-                entityType?: string;
-                entityId?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowInstancesController_bind_v1: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["BindWorkflowInstanceDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowInstanceResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The entity is already bound. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowInstancesController_get_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowInstanceResponseDto"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow instance does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowInstancesController_available_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AvailableTransitionsResponseDto"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow instance does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowInstancesController_execute_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ExecuteWorkflowTransitionDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ExecuteTransitionResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow instance or transition does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The workflow moved while the request was in flight. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowInstancesController_history_v1: {
-        parameters: {
-            query: {
-                page?: number;
-                pageSize?: number;
-                /** @description Comma-separated field:(asc|desc) entries. */
-                sort?: string;
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow instance does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowApprovalsController_list_v1: {
-        parameters: {
-            query: {
-                page?: number;
-                pageSize?: number;
-                /** @description Comma-separated field:(asc|desc) entries. */
-                sort?: string;
-                /** @description Owning organization. */
-                organizationId: string;
-                status?: "pending" | "approved" | "rejected";
-            };
-            header?: never;
-            path: {
-                instanceId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow instance does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowApprovalsController_request_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                instanceId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["RequestWorkflowApprovalDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowApprovalResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow instance or transition does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description A pending approval already exists for this transition. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowApprovalsController_decide_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                approvalId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["DecideWorkflowApprovalDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowApprovalResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow approval does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowAutomationsController_list_v1: {
-        parameters: {
-            query: {
-                page?: number;
-                pageSize?: number;
-                /** @description Comma-separated field:(asc|desc) entries. */
-                sort?: string;
-                /** @description Owning organization. */
-                organizationId: string;
-                isActive?: boolean;
-            };
-            header?: never;
-            path: {
-                transitionId: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow transition does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowAutomationsController_create_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                transitionId: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CreateWorkflowAutomationDto"];
-            };
-        };
-        responses: {
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowAutomationResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow transition does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The action is already bound to this transition. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowAutomationsController_get_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowAutomationResponseDto"];
-                };
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow automation does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowAutomationsController_remove_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Deleted. */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow automation does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
-    WorkflowAutomationsController_update_v1: {
-        parameters: {
-            query: {
-                /** @description Owning organization. */
-                organizationId: string;
-            };
-            header?: never;
-            path: {
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["UpdateWorkflowAutomationDto"];
-            };
-        };
-        responses: {
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WorkflowAutomationResponseDto"];
-                };
-            };
-            /** @description Validation failed. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Not authenticated. */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Authenticated but missing the required permission. */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Workflow automation does not exist. */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-        };
-    };
     FinancialAreasController_list_v1: {
         parameters: {
             query: {
@@ -15725,7 +15341,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedFinancialAreaResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -16011,7 +15627,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedFiscalYearResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -16430,7 +16046,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedAccountingPeriodResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -16738,7 +16354,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedCodingStructureVersionResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -17043,7 +16659,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedAccountingConfigurationResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -17397,7 +17013,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedAccountResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -17768,7 +17384,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedAccountingDocumentResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -18223,7 +17839,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedBalanceDto"];
                 };
             };
             /** @description Invalid sort, page, or pageSize. */
@@ -18282,7 +17898,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedReconciliationItemDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -18327,7 +17943,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedBalanceDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -18434,7 +18050,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedLedgerMovementResponseDto"];
                 };
             };
             /** @description Invalid filter (malformed id or date), page/pageSize, or a sort field outside the whitelist. */
@@ -18580,7 +18196,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedGeneralLedgerResponseDto"];
                 };
             };
             /** @description Invalid paging/date/filter value, unsupported query parameter, or sort field outside the documented allow-list. */
@@ -18652,7 +18268,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedTrialBalanceResponseDto"];
                 };
             };
             /** @description Invalid paging/date/filter value, unsupported query parameter, or sort field outside the documented allow-list. */
@@ -18713,7 +18329,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedChartTreeNodeDto"];
                 };
             };
             /** @description Invalid paging value, unsupported query parameter, or an explicit sort (the order is fixed). */
@@ -18835,7 +18451,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedBaseChartTemplateResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -19025,7 +18641,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedBaseChartTemplateVersionResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -19471,7 +19087,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedBaseChartAdoptionResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -19556,7 +19172,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedDetailStructureVersionResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -19849,7 +19465,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PaginatedResponseClass"];
+                    "application/json": components["schemas"]["PaginatedDetailResponseDto"];
                 };
             };
             /** @description Not authenticated. */
@@ -20116,6 +19732,1653 @@ export interface operations {
                 content?: never;
             };
             /** @description Detail record does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowDefinitionsController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                organizationId: string;
+                isActive?: boolean;
+                /** @description Case-insensitive substring match on code or name. */
+                search?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedWorkflowDefinitionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowDefinitionsController_create_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkflowDefinitionDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Definition code already exists in this organization. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowDefinitionsController_get_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow definition does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowDefinitionsController_update_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWorkflowDefinitionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowDefinitionResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow definition does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowVersionsController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                /** @description Owning organization. */
+                organizationId: string;
+                status?: "draft" | "active" | "superseded";
+            };
+            header?: never;
+            path: {
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedWorkflowVersionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow definition does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowVersionsController_create_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                definitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkflowVersionDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersionResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow definition does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A version was created concurrently; retry the request. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowVersionsController_get_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowVersionsController_publish_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowVersionResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowStatesController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedWorkflowStateResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowStatesController_create_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkflowStateDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowStateResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description State code already exists in this version. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowStatesController_get_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowStateResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow state does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowStatesController_remove_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow state does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowStatesController_update_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWorkflowStateDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowStateResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow state does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowTransitionsController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                /** @description Owning organization. */
+                organizationId: string;
+                /** @description Filter by source state. */
+                sourceStateId?: string;
+                isActive?: boolean;
+            };
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedWorkflowTransitionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow version does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowTransitionsController_create_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                versionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkflowTransitionDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowTransitionResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow version or state does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Transition code already exists in this version. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowTransitionsController_get_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowTransitionResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow transition does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowTransitionsController_remove_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow transition does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowTransitionsController_update_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWorkflowTransitionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowTransitionResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow transition does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowInstancesController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                /** @description Owning organization. */
+                organizationId: string;
+                definitionId?: string;
+                versionId?: string;
+                currentStateId?: string;
+                entityModule?: string;
+                entityType?: string;
+                entityId?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedWorkflowInstanceResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowInstancesController_bind_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BindWorkflowInstanceDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowInstanceResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The entity is already bound. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowInstancesController_get_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowInstanceResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow instance does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowInstancesController_available_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableTransitionsResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow instance does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowInstancesController_execute_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExecuteWorkflowTransitionDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExecuteTransitionResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow instance or transition does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The workflow moved while the request was in flight. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowInstancesController_history_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedWorkflowTransitionHistoryResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow instance does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowApprovalsController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                /** @description Owning organization. */
+                organizationId: string;
+                status?: "pending" | "approved" | "rejected";
+            };
+            header?: never;
+            path: {
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedWorkflowApprovalResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow instance does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowApprovalsController_request_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                instanceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RequestWorkflowApprovalDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowApprovalResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow instance or transition does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A pending approval already exists for this transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowApprovalsController_decide_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                approvalId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideWorkflowApprovalDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowApprovalResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow approval does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowAutomationsController_list_v1: {
+        parameters: {
+            query: {
+                page?: number;
+                pageSize?: number;
+                /** @description Comma-separated field:(asc|desc) entries. */
+                sort?: string;
+                /** @description Owning organization. */
+                organizationId: string;
+                isActive?: boolean;
+            };
+            header?: never;
+            path: {
+                transitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedWorkflowAutomationResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow transition does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowAutomationsController_create_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                transitionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkflowAutomationDto"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowAutomationResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow transition does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The action is already bound to this transition. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowAutomationsController_get_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowAutomationResponseDto"];
+                };
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow automation does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowAutomationsController_remove_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow automation does not exist. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    WorkflowAutomationsController_update_v1: {
+        parameters: {
+            query: {
+                /** @description Owning organization. */
+                organizationId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateWorkflowAutomationDto"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowAutomationResponseDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Workflow automation does not exist. */
             404: {
                 headers: {
                     [name: string]: unknown;

@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import { isMovementType } from '../domain/movement-type.js';
 import type { MovementType } from '../domain/movement-type.js';
 import {
@@ -83,8 +88,8 @@ export interface MovementListFilter {
   itemId?: string | undefined;
   movementType?: string | undefined;
   transferId?: string | undefined;
-  dateFrom?: Date | undefined;
-  dateTo?: Date | undefined;
+  dateFrom?: BusinessDate | undefined;
+  dateTo?: BusinessDate | undefined;
 }
 
 /**
@@ -249,14 +254,16 @@ export class InventoryMovementsRepository {
     organizationId: string,
     warehouseId: string,
     itemId: string,
-  ): Promise<Date | null> {
+  ): Promise<BusinessDate | null> {
     const { inventoryMovement } = await this.client();
     const result = await inventoryMovement.aggregate({
       where: { organizationId, warehouseId, itemId },
       _sum: { baseQuantity: true },
       _max: { movementDate: true },
     });
-    return result._max.movementDate;
+    return result._max.movementDate === null
+      ? null
+      : businessDateFromDbDate(result._max.movementDate);
   }
 
   /**
@@ -268,7 +275,10 @@ export class InventoryMovementsRepository {
    */
   async listScopedToDocuments(
     organizationId: string,
-    window: { fromDateExclusive: Date | null; toDateInclusive: Date },
+    window: {
+      fromDateExclusive: BusinessDate | null;
+      toDateInclusive: BusinessDate;
+    },
   ): Promise<InventoryMovement[]> {
     const { inventoryMovement } = await this.client();
     const rows = await inventoryMovement.findMany({
@@ -278,8 +288,8 @@ export class InventoryMovementsRepository {
         movementDate: {
           ...(window.fromDateExclusive === null
             ? {}
-            : { gt: window.fromDateExclusive }),
-          lte: window.toDateInclusive,
+            : { gt: dbBusinessDate(window.fromDateExclusive) }),
+          lte: dbBusinessDate(window.toDateInclusive),
         },
       },
       orderBy: [{ movementDate: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
@@ -408,7 +418,11 @@ export class InventoryMovementsRepository {
     });
     const movement = toDomain(
       await tx.inventoryMovement.create({
-        data: { ...input.movement, ...columns },
+        data: {
+          ...input.movement,
+          movementDate: dbBusinessDate(input.movement.movementDate),
+          ...columns,
+        },
       }),
     );
     await adjustBalanceCounters(tx, {
@@ -533,12 +547,20 @@ export class InventoryMovementsRepository {
 
     const outLeg = toDomain(
       await tx.inventoryMovement.create({
-        data: { ...input.outLeg, ...legColumns.out },
+        data: {
+          ...input.outLeg,
+          movementDate: dbBusinessDate(input.outLeg.movementDate),
+          ...legColumns.out,
+        },
       }),
     );
     const inLeg = toDomain(
       await tx.inventoryMovement.create({
-        data: { ...input.inLeg, ...legColumns.in },
+        data: {
+          ...input.inLeg,
+          movementDate: dbBusinessDate(input.inLeg.movementDate),
+          ...legColumns.in,
+        },
       }),
     );
     const outBalance = first.role === 'out' ? firstBalance : secondBalance;
@@ -635,7 +657,11 @@ export class InventoryMovementsRepository {
     });
     const movement = toDomain(
       await tx.inventoryMovement.create({
-        data: { ...input.movement, ...columns },
+        data: {
+          ...input.movement,
+          movementDate: dbBusinessDate(input.movement.movementDate),
+          ...columns,
+        },
       }),
     );
     await adjustBalanceCounters(tx, {
@@ -662,6 +688,14 @@ export class InventoryMovementsRepository {
 
 // ---- Internal helpers ----
 
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Inventory BusinessDate "${value}".`);
+  }
+  return carrier;
+}
+
 function movementKey(movement: MovementCreate): BalanceKey {
   return {
     organizationId: movement.organizationId,
@@ -684,7 +718,7 @@ async function isBackdatedTransfer(
   return keys.some(
     (key) =>
       key.latestMovementDate !== null &&
-      input.outLeg.movementDate.getTime() < key.latestMovementDate.getTime(),
+      input.outLeg.movementDate < key.latestMovementDate,
   );
 }
 
@@ -692,12 +726,20 @@ async function isBackdatedTransfer(
 async function transferKeyLatestMovementDates(
   tx: CoreTxClient,
   input: PostTransferInput,
-): Promise<{ warehouseId: string; latestMovementDate: Date | null }[]> {
+): Promise<
+  {
+    warehouseId: string;
+    latestMovementDate: BusinessDate | null;
+  }[]
+> {
   const keys = [
     { warehouseId: input.outLeg.warehouseId },
     { warehouseId: input.inLeg.warehouseId },
   ];
-  const rows: { warehouseId: string; latestMovementDate: Date | null }[] = [];
+  const rows: {
+    warehouseId: string;
+    latestMovementDate: BusinessDate | null;
+  }[] = [];
   for (const key of keys) {
     const aggregate = await tx.inventoryMovement.aggregate({
       where: {
@@ -710,7 +752,10 @@ async function transferKeyLatestMovementDates(
     });
     rows.push({
       warehouseId: key.warehouseId,
-      latestMovementDate: aggregate._max.movementDate,
+      latestMovementDate:
+        aggregate._max.movementDate === null
+          ? null
+          : businessDateFromDbDate(aggregate._max.movementDate),
     });
   }
   return rows;
@@ -762,11 +807,11 @@ function assertSufficient(
   }
 }
 
-function maxDate(current: Date | null, candidate: Date): Date {
-  if (current === null || candidate.getTime() > current.getTime()) {
-    return candidate;
-  }
-  return current;
+function maxDate(
+  current: BusinessDate | null,
+  candidate: BusinessDate,
+): BusinessDate {
+  return current === null || candidate > current ? candidate : current;
 }
 
 function toWhere(filter: MovementListFilter): MovementWhere {
@@ -779,8 +824,12 @@ function toWhere(filter: MovementListFilter): MovementWhere {
   if (filter.transferId !== undefined) where.transferId = filter.transferId;
   if (filter.dateFrom !== undefined || filter.dateTo !== undefined) {
     where.movementDate = {
-      ...(filter.dateFrom === undefined ? {} : { gte: filter.dateFrom }),
-      ...(filter.dateTo === undefined ? {} : { lte: filter.dateTo }),
+      ...(filter.dateFrom === undefined
+        ? {}
+        : { gte: dbBusinessDate(filter.dateFrom) }),
+      ...(filter.dateTo === undefined
+        ? {}
+        : { lte: dbBusinessDate(filter.dateTo) }),
     };
   }
   return where;
@@ -804,7 +853,7 @@ function toDomain(row: MovementRow): InventoryMovement {
     baseQuantity: decimalToString(row.baseQuantity),
     baseUnitId: row.baseUnitId,
     conversionFactor: decimalToString(row.conversionFactor),
-    movementDate: row.movementDate,
+    movementDate: businessDateFromDbDate(row.movementDate),
     transferId: row.transferId,
     reversalOfMovementId: row.reversalOfMovementId,
     referenceType: row.referenceType,

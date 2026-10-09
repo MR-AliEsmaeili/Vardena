@@ -1,5 +1,13 @@
-import { formatBusinessDay } from '@/lib/datetime/business-date';
-import { formatInstant } from '@/lib/datetime/instant';
+import {
+  formatBusinessDay,
+  formatBusinessDayWithCanonical,
+} from '@/lib/datetime/business-date';
+import {
+  formatInstant,
+  formatInstantWithSeconds,
+  instantTimeZoneLabel,
+  isInstant,
+} from '@/lib/datetime/instant';
 import { getDateTimeSettings } from '@/lib/datetime/settings';
 
 /**
@@ -77,6 +85,20 @@ export function formatDateOnlyCanonical(
 }
 
 /**
+ * A business day rendered in the organization's calendar and, for Jalali
+ * displays, paired with its canonical Gregorian day for audit reconciliation.
+ */
+export function formatDateOnlyWithCanonical(
+  value: string | null | undefined,
+): string {
+  if (!value) return '';
+  return formatBusinessDayWithCanonical(
+    value,
+    getDateTimeSettings().calendarSystem,
+  );
+}
+
+/**
  * An ISO timestamp, rendered in the organization's IANA zone with a fixed,
  * unambiguous shape. Reading the zone from the settings is what makes the same
  * instant render identically for every user of an organization — previously it
@@ -84,7 +106,33 @@ export function formatDateOnlyCanonical(
  */
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return '';
-  return formatInstant(value, getDateTimeSettings().timeZone);
+  const settings = getDateTimeSettings();
+  return formatInstant(
+    value,
+    settings.timeZone,
+    undefined,
+    settings.calendarSystem,
+  );
+}
+
+/**
+ * Detail/audit rendering of an instant: organization-local calendar day,
+ * seconds, and the resolved IANA zone/offset. The caller should retain the raw
+ * ISO instant in a title or adjacent audit value when exact reconciliation is
+ * needed.
+ */
+export function formatDateTimeWithZone(
+  value: string | null | undefined,
+): string {
+  if (!value) return '';
+  if (!isInstant(value)) return value;
+  const settings = getDateTimeSettings();
+  const rendered = formatInstantWithSeconds(
+    value,
+    settings.timeZone,
+    settings.calendarSystem,
+  );
+  return `${rendered} ${instantTimeZoneLabel(value, settings.timeZone)}`;
 }
 
 /** Plain integer display (counts, page numbers) — never money. */

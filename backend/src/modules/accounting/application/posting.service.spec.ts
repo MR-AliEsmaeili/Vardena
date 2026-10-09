@@ -30,6 +30,7 @@ import { LedgerEntriesRepository } from '../data/ledger-entries.repository.js';
 import type { AccountingDocument } from '../domain/accounting-document.js';
 import { ACCOUNTING_DOCUMENT_FINALIZED_EVENT } from '../domain/accounting.events.js';
 import { parseDateOnly } from '../domain/date-range.js';
+import { businessDateToDbDate } from '../../../kernel/datetime/business-date.js';
 import type { LedgerEntry } from '../domain/ledger-entry.js';
 import { checkPostingInput } from '../domain/posting.js';
 import { buildRequestHash } from './accounting-document-support.js';
@@ -92,7 +93,7 @@ const LEGACY_ACCOUNT = '01ACCOUNTAAAAAAAAAAAAAAAAA03';
 const CONFIGURATION = '01CONFIGAAAAAAAAAAAAAAAAAA01';
 const LEGACY_CONFIGURATION = '01CONFIGAAAAAAAAAAAAAAAAAA02';
 
-const DOCUMENT_DATE = parseDateOnly('2026-04-05') as Date;
+const DOCUMENT_DATE = parseDateOnly('2026-04-05')!;
 
 function loggerStub(): JsonLogger {
   return {
@@ -195,8 +196,8 @@ function seedScope(fx: Fixture): void {
     financialAreaId: AREA,
     code: 'Y1405',
     title: 'Year 1405',
-    startDate: parseDateOnly('2026-01-01') as Date,
-    endDate: parseDateOnly('2026-12-31') as Date,
+    startDate: parseDateOnly('2026-01-01')!,
+    endDate: parseDateOnly('2026-12-31')!,
     status: 'open',
     isActive: true,
     priorYearId: null,
@@ -210,8 +211,8 @@ function seedScope(fx: Fixture): void {
     fiscalYearId: YEAR,
     sequence: 1,
     title: 'April',
-    startDate: parseDateOnly('2026-04-01') as Date,
-    endDate: parseDateOnly('2026-04-30') as Date,
+    startDate: parseDateOnly('2026-04-01')!,
+    endDate: parseDateOnly('2026-04-30')!,
     status: 'open',
     periodKind: 'normal',
     createdAt: now,
@@ -429,7 +430,7 @@ function handWrittenEntry(input: {
     debitAmount: '0.10',
     creditAmount: '0',
     description: null,
-    documentDate: DOCUMENT_DATE,
+    documentDate: businessDateToDbDate(DOCUMENT_DATE)!,
     postingTimestamp: now,
     branchId: null,
     origin: 'manual',
@@ -803,8 +804,8 @@ describe('PostingService (Task 10.8 seam)', () => {
     // are editable while it is open, so a stored resolution can go stale. The
     // seam must not hand back a posting result the readiness contract refuses.
     fixture.accounting.raw.state.years.patch(YEAR, {
-      startDate: parseDateOnly('2027-01-01') as Date,
-      endDate: parseDateOnly('2027-12-31') as Date,
+      startDate: parseDateOnly('2027-01-01')!,
+      endDate: parseDateOnly('2027-12-31')!,
     });
     const before = snapshotStores(fixture);
 
@@ -1041,9 +1042,7 @@ describe('PostingService (Task 10.8 seam)', () => {
       expect(entry.accountId).toBe(line?.accountId);
       expect(entry.debitAmount).toBe(line?.debitAmount);
       expect(entry.creditAmount).toBe(line?.creditAmount);
-      expect(entry.documentDate.toISOString()).toBe(
-        voucher.documentDate.toISOString(),
-      );
+      expect(entry.documentDate).toBe(voucher.documentDate);
       // The finalization evidence is the outcome's (the pre-posting aggregate
       // carried none): the posting timestamp IS `finalizedAt` (§15.5, Class C3).
       expect(entry.postingTimestamp.toISOString()).toBe(

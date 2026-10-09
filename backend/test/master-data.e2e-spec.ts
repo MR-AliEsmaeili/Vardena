@@ -557,7 +557,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
         factor: '12',
-        validFrom: '2026-01-01T00:00:00.000Z',
+        validFrom: '2026-01-01',
       })
       .expect(201);
     expect(first.body).toMatchObject({
@@ -574,7 +574,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
         factor: '24',
-        validFrom: '2026-02-01T00:00:00.000Z',
+        validFrom: '2026-02-01',
       })
       .expect(201);
 
@@ -584,7 +584,7 @@ describe('Organization + Inventory master data (e2e)', () => {
       .query({ organizationId: state.orgId })
       .expect(200);
     expect(historical.body.factor).toBe('12');
-    expect(historical.body.validTo).toBe('2026-02-01T00:00:00.000Z');
+    expect(historical.body.validTo).toBe('2026-02-01');
     expect(second.body.validTo).toBe(null);
   });
 
@@ -597,14 +597,14 @@ describe('Organization + Inventory master data (e2e)', () => {
       .expect(404);
   });
 
-  it('journey 2: resolves the version in force at an instant, historically', async () => {
+  it('journey 2: resolves the version in force on a business date, historically', async () => {
     const january = await root
       .get('/api/v1/inventory/unit-conversions/resolve')
       .query({
         organizationId: state.orgId,
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
-        asOf: '2026-01-15T00:00:00.000Z',
+        asOf: '2026-01-15',
       })
       .expect(200);
     expect(january.body.conversion.factor).toBe('12');
@@ -615,7 +615,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         organizationId: state.orgId,
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
-        asOf: '2026-06-01T00:00:00.000Z',
+        asOf: '2026-06-01',
       })
       .expect(200);
     expect(current.body.conversion.factor).toBe('24');
@@ -628,7 +628,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         organizationId: state.orgId,
         fromUnitId: state.unitPcsId,
         toUnitId: state.unitBoxId,
-        asOf: '2026-01-15T00:00:00.000Z',
+        asOf: '2026-01-15',
       })
       .expect(200);
     expect(res.body.conversion).toBe(null);
@@ -643,7 +643,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
         factor: '0.000001',
-        validFrom: '2026-01-01T00:00:00.000Z',
+        validFrom: '2026-01-01',
       })
       .expect(201);
     expect(res.body.factor).toBe('0.000001');
@@ -657,7 +657,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         itemId: state.itemId,
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
-        asOf: '2026-06-01T00:00:00.000Z',
+        asOf: '2026-06-01',
       })
       .expect(200);
     expect(resolved.body.conversion.factor).toBe('0.000001');
@@ -671,7 +671,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
         factor: '0',
-        validFrom: '2026-01-01T00:00:00.000Z',
+        validFrom: '2026-01-01',
       })
       .expect(400);
     expect(res.body.code).toBe('BadRequest');
@@ -795,8 +795,8 @@ describe('Organization + Inventory master data (e2e)', () => {
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
         factor: '30',
-        validFrom: '2026-01-15T00:00:00.000Z',
-        validTo: '2026-02-15T00:00:00.000Z',
+        validFrom: '2026-01-15',
+        validTo: '2026-02-15',
       })
       .expect(422);
     expect(overlapping.body.code).toBe('BusinessRuleViolation');
@@ -808,7 +808,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         organizationId: state.orgId,
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
-        asOf: '2026-01-20T00:00:00.000Z',
+        asOf: '2026-01-20',
       })
       .expect(200);
     expect(january.body.conversion.factor).toBe('12');
@@ -834,7 +834,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         itemId: state.itemId,
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
-        asOf: '2026-03-01T00:00:00.000Z',
+        asOf: '2026-03-01',
       })
       .expect(404);
     expect(res.body.code).toBe('EntityNotFound');

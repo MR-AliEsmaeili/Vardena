@@ -7,7 +7,12 @@ import { ArrowRight } from 'lucide-react';
 import { normalizeApiError } from '@/api/errors';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
-import { toBusinessDateInput, useCalendarSystem } from '@/lib/datetime';
+import {
+  todayBusinessDay,
+  toBusinessDateInput,
+  useCalendarSystem,
+  useTimeZone,
+} from '@/lib/datetime';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -113,6 +118,7 @@ function TransferForm({
   references: ReturnType<typeof useInventoryReferences>;
 }): ReactElement {
   const calendarSystem = useCalendarSystem();
+  const timeZone = useTimeZone();
   const { showToast } = useToast();
   const form = useForm<TransferFormValues>({
     resolver: zodResolver(transferFormSchema),
@@ -123,7 +129,7 @@ function TransferForm({
       itemId: '',
       quantity: '',
       unitId: '',
-      movementDate: new Date().toLocaleDateString('en-CA'),
+      movementDate: todayBusinessDay(timeZone),
       reason: '',
     },
   });

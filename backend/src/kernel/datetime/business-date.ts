@@ -76,7 +76,7 @@ export type BusinessDateRejection = 'format' | 'calendar_date' | 'range';
 /** A parsed day: always canonical Gregorian, whatever was submitted. */
 export interface ParsedBusinessDate {
   /** Canonical Gregorian day (`YYYY-MM-DD`) — persist and return this. */
-  gregorian: string;
+  gregorian: BusinessDate;
   /** The calendar the caller expressed the day in. */
   calendar: CalendarSystem;
 }
@@ -102,12 +102,14 @@ export function parseBusinessDate(
 
   if (calendar === 'GREGORIAN') {
     if (!isRealGregorianDay(year, month, day)) return null;
-    return { gregorian: value, calendar };
+    const gregorian = toBusinessDate(value);
+    return gregorian === null ? null : { gregorian, calendar };
   }
 
-  const gregorian = jalaliToGregorianDay(year, month, day);
-  if (gregorian === null) return null;
-  return { gregorian: toDayString(gregorian), calendar };
+  const jalali = jalaliToGregorianDay(year, month, day);
+  if (jalali === null) return null;
+  const gregorian = toBusinessDate(toDayString(jalali));
+  return gregorian === null ? null : { gregorian, calendar };
 }
 
 /**
@@ -135,7 +137,7 @@ export function formatBusinessDate(
 }
 
 /** True when `value` is a real Gregorian calendar day (`YYYY-MM-DD`). */
-export function isGregorianBusinessDate(value: unknown): value is string {
+export function isGregorianBusinessDate(value: unknown): value is BusinessDate {
   if (typeof value !== 'string' || !BUSINESS_DATE_PATTERN.test(value)) {
     return false;
   }
@@ -194,6 +196,20 @@ export function businessDateFromInstant(
   return calendarDayInTimeZone(instant, timeZone) as BusinessDate;
 }
 
+/**
+ * The UTC calendar day of a legacy instant supplied to a BusinessDate field.
+ *
+ * OQ-73 migration semantics are UTC-day preserving, so the compatibility
+ * parser must resolve equivalent legacy inputs using the same UTC calendar
+ * rather than the organization's display zone. This helper is intentionally
+ * separate from {@link businessDateFromInstant}, which is used for "today"
+ * defaults and renders a real instant in the organization's configured zone.
+ */
+export function businessDateFromUtcInstant(instant: Instant): BusinessDate {
+  const value = instant.toISOString().slice(0, 10);
+  return value as BusinessDate;
+}
+
 /** True when both days are the same calendar day (canonical form). */
 export function isSameBusinessDate(left: string, right: string): boolean {
   return left === right;
@@ -220,8 +236,8 @@ export function compareBusinessDates(
  * §6.1). Both ends are canonical Gregorian days.
  */
 export interface BusinessDateRange {
-  startDate: string;
-  endDate: string;
+  startDate: BusinessDate;
+  endDate: BusinessDate;
 }
 
 /** True when the range is well-formed: `endDate` on or after `startDate`. */

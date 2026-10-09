@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { APP_CONFIG, loadAppConfig } from '../src/kernel/config/app-config.js';
 import { generateId } from '../src/kernel/ids/ulid.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
+import { toBusinessDate } from '../src/kernel/datetime/business-date.js';
 import { InventoryKardexRepository } from '../src/modules/inventory/data/inventory-kardex.repository.js';
 import { createTestApp } from './support/test-app.js';
 
@@ -193,8 +194,8 @@ describe.skipIf(DATABASE_URL === undefined)(
         organizationId: ids.org,
         itemId: ids.item,
         warehouseId: ids.warehouse,
-        dateFrom: new Date('2026-01-05T00:00:00Z'),
-        dateTo: new Date('2026-01-10T00:00:00Z'),
+        dateFrom: toBusinessDate('2026-01-05')!,
+        dateTo: toBusinessDate('2026-01-10')!,
         page: 1,
         pageSize: 2,
       };

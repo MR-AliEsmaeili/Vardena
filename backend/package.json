@@ -26,6 +26,7 @@
     "test:cov": "vitest run --config ./vitest.config.ts --coverage",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "test:migration-rehearsal": "node prisma/rehearsal/task-11-configuration-foundation/rehearse.mjs",
+    "test:business-date-validity-rehearsal": "node prisma/rehearsal/business-date-validity-windows/rehearse.mjs",
     "test:operational-freeze-rehearsal": "node prisma/rehearsal/task-13-operational-freeze/rehearse.mjs && node prisma/rehearsal/task-13-operational-freeze/backfill-repair-probe.mjs",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",

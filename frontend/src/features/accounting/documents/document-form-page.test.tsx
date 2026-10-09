@@ -1,9 +1,16 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/api/errors';
 import type { Account, AccountingDocument } from '@/api/contracts';
+import { resetDateTimeSettings, setDateTimeSettings } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import {
   allAccountingPermissions,
@@ -161,6 +168,11 @@ function renderEdit(documentId = 'doc-1') {
 }
 
 beforeEach(() => {
+  resetDateTimeSettings();
+  setDateTimeSettings({
+    calendarSystem: testOrganization.calendarSystem,
+    timeZone: testOrganization.timeZone,
+  });
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
     userId: testUser.id,
@@ -233,6 +245,10 @@ describe('Document create — validation', () => {
     const user = userEvent.setup();
     renderCreate();
 
+    const documentDate = await screen.findByLabelText(t.documents.fieldDate);
+    fireEvent.change(documentDate, {
+      target: { value: '2026-04-05' },
+    });
     await selectFinancialArea(user);
     await user.type(
       screen.getByLabelText(t.documents.fieldDescription),
@@ -262,6 +278,10 @@ describe('Document create — submission', () => {
     const user = userEvent.setup();
     renderCreate();
 
+    const documentDate = await screen.findByLabelText(t.documents.fieldDate);
+    fireEvent.change(documentDate, {
+      target: { value: '2026-04-05' },
+    });
     await selectFinancialArea(user);
     await user.type(
       screen.getByLabelText(t.documents.fieldDescription),
@@ -280,6 +300,7 @@ describe('Document create — submission', () => {
     expect(body).toMatchObject({
       organizationId: 'org-1',
       financialAreaId: 'area-1',
+      documentDate: '2026-04-05',
       description: 'شرح سند آزمایشی',
       lines: [
         expect.objectContaining({
@@ -303,6 +324,43 @@ describe('Document create — submission', () => {
         '/app/accounting/documents/doc-new',
       ),
     );
+  });
+
+  it('sends a Jalali document date as a declared BusinessDate input', async () => {
+    vi.mocked(accountingApi.createAccountingDocument).mockResolvedValue(
+      documentFixture({ id: 'doc-jalali', state: 'draft' }),
+    );
+    const user = userEvent.setup();
+    renderCreate();
+
+    await screen.findByLabelText(t.documents.fieldArea);
+    act(() => {
+      setDateTimeSettings({
+        calendarSystem: 'JALALI',
+        timeZone: 'Asia/Tehran',
+      });
+    });
+    const dateField = screen.getByLabelText(t.documents.fieldDate);
+    expect(dateField).toHaveAttribute('data-calendar', 'JALALI');
+    await user.clear(dateField);
+    await user.type(dateField, '1405/01/01');
+
+    await selectFinancialArea(user);
+    await user.type(
+      screen.getByLabelText(t.documents.fieldDescription),
+      'شرح سند جلالی',
+    );
+    await fillLine(user, 0, 'acc-2', 'debit', '1000');
+    await fillLine(user, 1, 'acc-3', 'credit', '1000');
+    await user.click(screen.getByRole('button', { name: t.documents.save }));
+
+    await waitFor(() => {
+      expect(accountingApi.createAccountingDocument).toHaveBeenCalledWith(
+        expect.objectContaining({
+          documentDate: { calendar: 'JALALI', value: '1405-01-01' },
+        }),
+      );
+    });
   });
 
   it('maps a server validation failure onto the form banner (never the raw backend message)', async () => {

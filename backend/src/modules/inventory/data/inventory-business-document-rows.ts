@@ -1,3 +1,4 @@
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import type { AuditColumns, OrderBy } from './master-data-rows.js';
 import type {
   CoreClient,
@@ -91,7 +92,7 @@ export interface InventoryDocumentCreate {
 
 export interface InventoryDocumentUpdate {
   number?: string | null;
-  businessDate?: Date;
+  businessDate?: BusinessDate;
   warehouseId?: string | null;
   sourceWarehouseId?: string | null;
   destinationWarehouseId?: string | null;
@@ -135,7 +136,7 @@ export interface InventoryDocumentDelegate {
   }): Promise<InventoryDocumentRow>;
   update(args: {
     where: { id: string };
-    data: InventoryDocumentUpdate;
+    data: InventoryDocumentUpdateData;
   }): Promise<InventoryDocumentRow>;
   delete(args: { where: { id: string } }): Promise<InventoryDocumentRow>;
 }
@@ -185,6 +186,13 @@ export interface InventoryDocumentLineCreate {
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
+}
+
+export interface InventoryDocumentUpdateData extends Omit<
+  InventoryDocumentUpdate,
+  'businessDate'
+> {
+  businessDate?: Date;
 }
 
 export interface InventoryDocumentLineUpdate {

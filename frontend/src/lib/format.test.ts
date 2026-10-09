@@ -4,7 +4,9 @@ import {
   formatCount,
   formatDateOnly,
   formatDateOnlyCanonical,
+  formatDateOnlyWithCanonical,
   formatDateTime,
+  formatDateTimeWithZone,
   isNegativeAmount,
 } from './format';
 import { resetDateTimeSettings, setDateTimeSettings } from './datetime';
@@ -62,20 +64,30 @@ describe('date formatters', () => {
     // The product default is Jalali; the canonical value stays available.
     expect(formatDateOnly('2026-03-21')).toBe('1405/01/01');
     expect(formatDateOnlyCanonical('2026-03-21')).toBe('2026-03-21');
+    expect(formatDateOnlyWithCanonical('2026-03-21')).toBe(
+      '1405/01/01 (2026-03-21)',
+    );
     expect(formatDateOnly(null)).toBe('');
 
     setDateTimeSettings({ calendarSystem: 'GREGORIAN', timeZone: 'UTC' });
     expect(formatDateOnly('2026-03-21')).toBe('2026-03-21');
+    expect(formatDateOnlyWithCanonical('2026-03-21')).toBe('2026-03-21');
   });
 
-  it('formats an ISO timestamp in the organization zone', () => {
+  it('formats an ISO instant in the organization zone and calendar', () => {
     setDateTimeSettings({ calendarSystem: 'JALALI', timeZone: 'UTC' });
-    expect(formatDateTime('2026-03-21T08:30:00.000Z')).toBe('2026-03-21 08:30');
+    expect(formatDateTime('2026-03-21T08:30:00.000Z')).toBe('1405/01/01 08:30');
 
     setDateTimeSettings({ calendarSystem: 'JALALI', timeZone: 'Asia/Tehran' });
-    expect(formatDateTime('2026-03-21T08:30:00.000Z')).toBe('2026-03-21 12:00');
-    // An unexpected value is shown as-is, never blanked.
+    expect(formatDateTime('2026-03-21T08:30:00.000Z')).toBe('1405/01/01 12:00');
+    // Convert the local day after applying the zone, not the UTC date.
+    expect(formatDateTime('2026-10-08T21:00:00.000Z')).toBe('1405/07/17 00:30');
+    expect(formatDateTimeWithZone('2026-10-08T21:00:00.000Z')).toBe(
+      '1405/07/17 00:30:00 Asia/Tehran (UTC+03:30)',
+    );
+    // An unexpected value is shown as-is, never blanked or given a fake zone.
     expect(formatDateTime('not-a-date')).toBe('not-a-date');
+    expect(formatDateTimeWithZone('not-a-date')).toBe('not-a-date');
   });
 });
 

@@ -50,7 +50,7 @@ import {
 } from './money.js';
 import { addDecimalStrings } from './quantities.js';
 import type { ValuationMethod } from './valuation-method.js';
-import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 
 /**
  * Per-movement valuation marker stored on the ledger row. It states
@@ -250,8 +250,8 @@ export interface InventoryValuationRun {
   itemId: string;
   method: ValuationMethod;
   trigger: ValuationRunTrigger;
-  /** Informational lower bound the caller asked for; `null` = whole key. */
-  fromDate: Date | null;
+  /** Informational lower business-day bound; `null` = whole key. */
+  fromDate: BusinessDate | null;
   movementsExamined: number;
   movementsRevalued: number;
   resultingValuedQuantity: string;
@@ -298,8 +298,7 @@ export function toInventoryValuationRunDto(
     itemId: run.itemId,
     method: run.method,
     trigger: run.trigger,
-    fromDate:
-      run.fromDate === null ? null : businessDateFromDbDate(run.fromDate),
+    fromDate: run.fromDate,
     movementsExamined: run.movementsExamined,
     movementsRevalued: run.movementsRevalued,
     resultingValuedQuantity: run.resultingValuedQuantity,
@@ -383,9 +382,9 @@ export interface InventoryPricingRun {
   /** Half-open range lower bound (exclusive); NULL = from the beginning of
    *  history. AUTOMATIC: immediately after the last completed run for the
    *  same scope (OD-PDP-01) — the operator never chooses it. */
-  fromDate: Date | null;
+  fromDate: BusinessDate | null;
   /** Range upper bound (inclusive); the operator's choice (OD-PDP-01). */
-  toDate: Date;
+  toDate: BusinessDate;
   kind: PricingRunKind;
   /** Set on a compensating run: the run it reverses (OD-RVP-01/05). */
   reversesRunId: string | null;
@@ -475,9 +474,8 @@ export function toInventoryPricingRunDto(
     organizationId: run.organizationId,
     warehouseId: run.warehouseId,
     documentKinds: [...run.documentKinds],
-    fromDate:
-      run.fromDate === null ? null : businessDateFromDbDate(run.fromDate),
-    toDate: businessDateFromDbDate(run.toDate),
+    fromDate: run.fromDate,
+    toDate: run.toDate,
     kind: run.kind,
     reversesRunId: run.reversesRunId,
     reversedByRunId: run.reversedByRunId,

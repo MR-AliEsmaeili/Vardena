@@ -15,7 +15,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
       items: [
         {
           movementId: '01ARZ3NDEKTSV4RRFFQ69G5FAY',
-          movementDate: new Date('2026-01-05T00:00:00Z'),
+          movementDate: '2026-01-05',
           createdAt: new Date('2026-01-05T01:00:00Z'),
           movementType: 'outbound',
           signedBaseQuantity: '-30.0000',

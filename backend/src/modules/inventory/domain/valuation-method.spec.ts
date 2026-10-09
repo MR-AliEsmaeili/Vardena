@@ -1,18 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import {
+  toBusinessDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
   ACTIVE_VALUATION_METHODS,
   DEFAULT_VALUATION_METHOD,
   VALUATION_METHODS,
   inactiveMethodMessage,
   isActiveValuationMethod,
   isValuationMethod,
-  distinctInstants,
-  findAmbiguousInstant,
+  distinctBusinessDates,
+  findAmbiguousBusinessDate,
   resolveValuationMethodAt,
   resolveValuationMethodFrom,
   toItemValuationMethodDto,
-  versionCoversAnyInstant,
-  versionCoversInstant,
+  versionCoversAnyBusinessDate,
+  versionCoversBusinessDate,
   type ItemValuationMethodVersion,
 } from './valuation-method.js';
 import {
@@ -35,7 +39,7 @@ function version(
     organizationId: 'org-1',
     itemId: 'item-1',
     method: 'moving_weighted_average',
-    validFrom: new Date('2026-01-01T00:00:00.000Z'),
+    validFrom: day('2026-01-01'),
     validTo: null,
     note: null,
     createdAt: now,
@@ -68,33 +72,30 @@ describe('valuation method vocabulary', () => {
 
 describe('resolveValuationMethodAt — effective dating (D-21)', () => {
   it('falls back to the code-defined default and SAYS it is a default', () => {
-    const resolved = resolveValuationMethodAt([], new Date());
+    const resolved = resolveValuationMethodAt([], day('2026-01-01'));
 
     expect(resolved.method).toBe(DEFAULT_VALUATION_METHOD);
     expect(resolved.source).toBe('default');
     expect(resolved.configurationId).toBeNull();
   });
 
-  it('resolves the version in force at the instant, not the newest one', () => {
+  it('resolves the version in force on the business date, not the newest one', () => {
     const versions = [
       version({
         id: 'old',
-        validFrom: new Date('2025-01-01T00:00:00.000Z'),
-        validTo: new Date('2026-01-01T00:00:00.000Z'),
+        validFrom: businessDate('2025-01-01'),
+        validTo: businessDate('2026-01-01'),
       }),
       version({
         id: 'current',
-        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validFrom: day('2026-01-01'),
       }),
     ];
 
-    const past = resolveValuationMethodAt(
-      versions,
-      new Date('2025-06-01T00:00:00.000Z'),
-    );
+    const past = resolveValuationMethodAt(versions, businessDate('2025-06-01'));
     const present = resolveValuationMethodAt(
       versions,
-      new Date('2026-06-01T00:00:00.000Z'),
+      businessDate('2026-06-01'),
     );
 
     expect(past.configurationId).toBe('old');
@@ -105,15 +106,15 @@ describe('resolveValuationMethodAt — effective dating (D-21)', () => {
     const versions = [
       version({
         id: 'closed',
-        validFrom: new Date('2025-01-01T00:00:00.000Z'),
-        validTo: new Date('2026-01-01T00:00:00.000Z'),
+        validFrom: businessDate('2025-01-01'),
+        validTo: businessDate('2026-01-01'),
       }),
-      version({ id: 'open', validFrom: new Date('2026-01-01T00:00:00.000Z') }),
+      version({ id: 'open', validFrom: businessDate('2026-01-01') }),
     ];
 
     const boundary = resolveValuationMethodAt(
       versions,
-      new Date('2026-01-01T00:00:00.000Z'),
+      businessDate('2026-01-01'),
     );
 
     expect(boundary.configurationId).toBe('open');
@@ -121,8 +122,8 @@ describe('resolveValuationMethodAt — effective dating (D-21)', () => {
 
   it('resolves a method BEFORE any configuration exists to the default', () => {
     const resolved = resolveValuationMethodAt(
-      [version({ validFrom: new Date('2026-01-01T00:00:00.000Z') })],
-      new Date('2025-01-01T00:00:00.000Z'),
+      [version({ validFrom: businessDate('2026-01-01') })],
+      businessDate('2025-01-01'),
     );
 
     expect(resolved.source).toBe('default');
@@ -131,9 +132,9 @@ describe('resolveValuationMethodAt — effective dating (D-21)', () => {
 });
 
 describe('toItemValuationMethodDto', () => {
-  it('renders instants as ISO strings and keeps the open end open', () => {
+  it('renders business dates as canonical days and keeps the open end open', () => {
     const dto = toItemValuationMethodDto(version());
-    expect(dto.validFrom).toBe('2026-01-01T00:00:00.000Z');
+    expect(dto.validFrom).toBe('2026-01-01');
     expect(dto.validTo).toBeNull();
   });
 });
@@ -141,8 +142,8 @@ describe('toItemValuationMethodDto', () => {
 describe('backdating gate', () => {
   const assessment: BackdateAssessment = {
     backdated: true,
-    movementDate: new Date('2026-01-10T00:00:00.000Z'),
-    latestMovementDate: new Date('2026-02-01T00:00:00.000Z'),
+    movementDate: businessDate('2026-01-10'),
+    latestMovementDate: businessDate('2026-02-01'),
     affectedMovements: 3,
     affectedValuedMovements: 2,
     alreadyStale: false,
@@ -151,22 +152,25 @@ describe('backdating gate', () => {
   it('treats a strictly earlier date as backdated', () => {
     expect(
       isBackdated({
-        movementDate: new Date('2026-01-10T00:00:00.000Z'),
-        latestMovementDate: new Date('2026-02-01T00:00:00.000Z'),
+        movementDate: businessDate('2026-01-10'),
+        latestMovementDate: businessDate('2026-02-01'),
       }),
     ).toBe(true);
   });
 
-  it('does NOT treat an equal instant as backdated (the ledger order decides)', () => {
-    const instant = new Date('2026-02-01T00:00:00.000Z');
-    expect(
-      isBackdated({ movementDate: instant, latestMovementDate: instant }),
-    ).toBe(false);
+  it('does NOT treat an equal business day as backdated (the ledger order decides)', () => {
+    const date = businessDate('2026-02-01');
+    expect(isBackdated({ movementDate: date, latestMovementDate: date })).toBe(
+      false,
+    );
   });
 
   it('is never backdated on an empty key', () => {
     expect(
-      isBackdated({ movementDate: new Date(), latestMovementDate: null }),
+      isBackdated({
+        movementDate: day('2026-10-09'),
+        latestMovementDate: null,
+      }),
     ).toBe(false);
   });
 
@@ -209,22 +213,35 @@ describe('backdating gate', () => {
 /** Exactly what the database read returns, modelled in memory. */
 function readFor(
   series: readonly ItemValuationMethodVersion[],
-  movementDates: readonly Date[],
+  movementDates: readonly BusinessDate[],
 ): ItemValuationMethodVersion[] {
-  const instants = distinctInstants(movementDates);
-  return instants.length === 0
+  const dates = distinctBusinessDates(movementDates);
+  return dates.length === 0
     ? []
     : series.filter((candidate) =>
-        versionCoversAnyInstant(candidate, instants),
+        versionCoversAnyBusinessDate(candidate, dates),
       );
 }
 
-const utc = (year: number, month: number, day: number): Date =>
-  new Date(Date.UTC(year, month - 1, day));
+function businessDate(value: string): BusinessDate {
+  const parsed = toBusinessDate(value);
+  if (parsed === null) throw new Error(`Invalid test BusinessDate: ${value}`);
+  return parsed;
+}
 
-describe('distinctInstants', () => {
+const day = businessDate;
+const utc = (year: number, month: number, dayOfMonth: number): BusinessDate =>
+  businessDate(
+    `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(dayOfMonth).padStart(2, '0')}`,
+  );
+const utcOffset = (days: number): BusinessDate =>
+  businessDate(
+    new Date(Date.UTC(2000, 0, 1 + days)).toISOString().slice(0, 10),
+  );
+
+describe('distinctBusinessDates', () => {
   it('is empty for no movements (an empty key reads no configuration)', () => {
-    expect(distinctInstants([])).toEqual([]);
+    expect(distinctBusinessDates([])).toEqual([]);
   });
 
   it('collapses repeated movement dates and sorts ascending', () => {
@@ -235,17 +252,18 @@ describe('distinctInstants', () => {
       utc(2026, 2, 1),
       utc(2026, 1, 1),
     ];
-    expect(distinctInstants(dates).map((d) => d.toISOString())).toEqual([
-      '2026-01-01T00:00:00.000Z',
-      '2026-02-01T00:00:00.000Z',
-      '2026-03-01T00:00:00.000Z',
+    expect(distinctBusinessDates(dates)).toEqual([
+      utc(2026, 1, 1),
+      utc(2026, 2, 1),
+      utc(2026, 3, 1),
     ]);
   });
 
-  it('keeps instants that differ only by time of day', () => {
-    const morning = new Date('2026-01-01T08:00:00.000Z');
-    const evening = new Date('2026-01-01T20:00:00.000Z');
-    expect(distinctInstants([morning, evening, morning])).toHaveLength(2);
+  it('collapses repeated movements from the same business day', () => {
+    const movementDay = businessDate('2026-01-01');
+    expect(
+      distinctBusinessDates([movementDay, movementDay, movementDay]),
+    ).toHaveLength(1);
   });
 });
 
@@ -284,10 +302,12 @@ describe('sparse movements across dense configuration history', () => {
       );
     }
     expect(
-      resolveValuationMethodAt(read, movements[0] as Date).configurationId,
+      resolveValuationMethodAt(read, movements[0] as BusinessDate)
+        .configurationId,
     ).toBe('m1');
     expect(
-      resolveValuationMethodAt(read, movements[1] as Date).configurationId,
+      resolveValuationMethodAt(read, movements[1] as BusinessDate)
+        .configurationId,
     ).toBe('m12');
   });
 
@@ -298,11 +318,8 @@ describe('sparse movements across dense configuration history', () => {
       (_, index) =>
         version({
           id: `d${index}`,
-          validFrom: new Date(Date.UTC(2000, 0, 1 + index * 15)),
-          validTo:
-            index === 599
-              ? null
-              : new Date(Date.UTC(2000, 0, 1 + (index + 1) * 15)),
+          validFrom: utcOffset(index * 15),
+          validTo: index === 599 ? null : utcOffset((index + 1) * 15),
         }),
     );
     const movements = [utc(2005, 6, 7), utc(2020, 11, 30)];
@@ -325,10 +342,10 @@ describe('sparse movements across dense configuration history', () => {
     ];
     const hundredMovements = Array.from(
       { length: 100 },
-      (_, index) => fiveDates[index % 5] as Date,
+      (_, index) => fiveDates[index % 5] as BusinessDate,
     );
 
-    expect(distinctInstants(hundredMovements)).toHaveLength(5);
+    expect(distinctBusinessDates(hundredMovements)).toHaveLength(5);
     // All five dates fall inside February's single version.
     expect(readFor(monthly, hundredMovements)).toHaveLength(1);
     expect(readFor(monthly, hundredMovements)[0]?.id).toBe('m2');
@@ -337,13 +354,13 @@ describe('sparse movements across dense configuration history', () => {
   it('never returns a version that governs none of the replayed movements', () => {
     const movements = [utc(2025, 1, 1), utc(2025, 12, 29)];
     for (const candidate of readFor(monthly, movements)) {
-      expect(versionCoversAnyInstant(candidate, movements)).toBe(true);
+      expect(versionCoversAnyBusinessDate(candidate, movements)).toBe(true);
     }
     for (const skipped of monthly.filter(
       (candidate) => !readFor(monthly, movements).includes(candidate),
     )) {
       for (const movementDate of movements) {
-        expect(versionCoversInstant(skipped, movementDate)).toBe(false);
+        expect(versionCoversBusinessDate(skipped, movementDate)).toBe(false);
       }
     }
   });
@@ -459,21 +476,16 @@ describe('effective dating across the replayed dates', () => {
       version({ id: 'b', validFrom: utc(2025, 9, 23), validTo: null }),
     ];
 
-    // The instant a window closes belongs to the NEXT version, not this one.
+    // The validTo business day belongs to the NEXT version, not this one.
     expect(
       resolveValuationMethodAt(series, utc(2025, 9, 23)).configurationId,
     ).toBe('b');
     expect(
-      resolveValuationMethodAt(series, new Date(utc(2025, 9, 23).getTime() - 1))
-        .configurationId,
+      resolveValuationMethodAt(series, utc(2025, 9, 22)).configurationId,
     ).toBe('a');
     // ...and the read agrees on both sides of the edge.
     expect(readFor(series, [utc(2025, 9, 23)]).map((v) => v.id)).toEqual(['b']);
-    expect(
-      readFor(series, [new Date(utc(2025, 9, 23).getTime() - 1)]).map(
-        (v) => v.id,
-      ),
-    ).toEqual(['a']);
+    expect(readFor(series, [utc(2025, 9, 22)]).map((v) => v.id)).toEqual(['a']);
   });
 });
 
@@ -481,33 +493,33 @@ describe('resolveValuationMethodFrom — the single-row lookup path', () => {
   const series = [
     version({
       id: 'v1',
-      validFrom: new Date('2025-03-21T00:00:00.000Z'),
-      validTo: new Date('2026-03-21T00:00:00.000Z'),
+      validFrom: businessDate('2025-03-21'),
+      validTo: businessDate('2026-03-21'),
     }),
     version({
       id: 'v2',
       method: 'fifo',
-      validFrom: new Date('2026-03-21T00:00:00.000Z'),
+      validFrom: businessDate('2026-03-21'),
       validTo: null,
     }),
   ];
 
   /** What `findEffectiveVersionAt` asks the database for. */
-  const pickEffective = (asOf: Date) =>
+  const pickEffective = (asOf: BusinessDate) =>
     series
-      .filter((candidate) => versionCoversInstant(candidate, asOf))
-      .sort((a, b) => b.validFrom.getTime() - a.validFrom.getTime())[0] ?? null;
+      .filter((candidate) => versionCoversBusinessDate(candidate, asOf))
+      .sort((a, b) => b.validFrom.localeCompare(a.validFrom))[0] ?? null;
 
-  it('agrees with the list-based resolution on every probed instant', () => {
-    for (const iso of [
-      '2024-01-01T00:00:00.000Z',
-      '2025-03-21T00:00:00.000Z',
-      '2025-12-31T23:59:59.000Z',
-      '2026-03-20T23:59:59.999Z',
-      '2026-03-21T00:00:00.000Z',
-      '2027-06-01T00:00:00.000Z',
+  it('agrees with the list-based resolution on every probed business day', () => {
+    for (const dayValue of [
+      '2024-01-01',
+      '2025-03-21',
+      '2025-12-31',
+      '2026-03-20',
+      '2026-03-21',
+      '2027-06-01',
     ]) {
-      const asOf = new Date(iso);
+      const asOf = businessDate(dayValue);
       expect(resolveValuationMethodFrom(pickEffective(asOf))).toEqual(
         resolveValuationMethodAt(series, asOf),
       );
@@ -529,7 +541,7 @@ describe('resolveValuationMethodFrom — the single-row lookup path', () => {
 // Per-date ambiguity (overlapping configuration in stored data)
 // ---------------------------------------------------------------------------
 
-describe('findAmbiguousInstant', () => {
+describe('findAmbiguousBusinessDate', () => {
   const d1 = utc(2025, 3, 15);
   const d2 = utc(2025, 9, 20);
 
@@ -542,7 +554,7 @@ describe('findAmbiguousInstant', () => {
       }),
       version({ id: 'b', validFrom: utc(2025, 7, 1), validTo: null }),
     ];
-    expect(findAmbiguousInstant(series, [d1, d2])).toBeNull();
+    expect(findAmbiguousBusinessDate(series, [d1, d2])).toBeNull();
     expect(resolveValuationMethodAt(series, d1).configurationId).toBe('a');
     expect(resolveValuationMethodAt(series, d2).configurationId).toBe('b');
   });
@@ -561,8 +573,8 @@ describe('findAmbiguousInstant', () => {
       }),
       version({ id: 'c', validFrom: utc(2025, 7, 1), validTo: null }),
     ];
-    expect(findAmbiguousInstant(series, [d1, d2])).toEqual({
-      instant: d1,
+    expect(findAmbiguousBusinessDate(series, [d1, d2])).toEqual({
+      businessDate: d1,
       versionIds: ['a', 'b'],
     });
   });
@@ -571,7 +583,7 @@ describe('findAmbiguousInstant', () => {
    * THE REGRESSION CASE. Two versions are in force on the first date and
    * none on the second, so the read returns exactly as many rows as there
    * are dates. The count comparison this detector replaced
-   * (`rows.length > instants.length`) sees 2 and 2 and waves it through,
+   * (`rows.length > dates.length`) sees 2 and 2 and waves it through,
    * while the first date resolves ambiguously.
    */
   it('flags an overlap even when the row count equals the date count', () => {
@@ -587,18 +599,18 @@ describe('findAmbiguousInstant', () => {
         validTo: utc(2025, 6, 1),
       }),
     ];
-    const instants = [d1, d2];
+    const dates = [d1, d2];
     const inForceSomewhere = series.filter((candidate) =>
-      versionCoversAnyInstant(candidate, instants),
+      versionCoversAnyBusinessDate(candidate, dates),
     );
 
     // Precondition: the discarded global check could not have caught this.
     expect(inForceSomewhere).toHaveLength(2);
-    expect(instants).toHaveLength(2);
-    expect(inForceSomewhere.length > instants.length).toBe(false);
+    expect(dates).toHaveLength(2);
+    expect(inForceSomewhere.length > dates.length).toBe(false);
 
-    expect(findAmbiguousInstant(inForceSomewhere, instants)).toEqual({
-      instant: d1,
+    expect(findAmbiguousBusinessDate(inForceSomewhere, dates)).toEqual({
+      businessDate: d1,
       versionIds: ['a', 'b'],
     });
   });
@@ -608,7 +620,9 @@ describe('findAmbiguousInstant', () => {
       version({ id: 'a', validFrom: utc(2025, 1, 1), validTo: null }),
       version({ id: 'b', validFrom: utc(2025, 1, 1), validTo: null }),
     ];
-    expect(findAmbiguousInstant(series, [d2, d1])?.instant).toEqual(d1);
+    expect(findAmbiguousBusinessDate(series, [d2, d1])?.businessDate).toEqual(
+      d1,
+    );
   });
 
   it('does not treat adjacent windows as ambiguous (half-open boundary)', () => {
@@ -617,7 +631,7 @@ describe('findAmbiguousInstant', () => {
       version({ id: 'a', validFrom: utc(2025, 1, 1), validTo: boundary }),
       version({ id: 'b', validFrom: boundary, validTo: null }),
     ];
-    expect(findAmbiguousInstant(series, [boundary])).toBeNull();
+    expect(findAmbiguousBusinessDate(series, [boundary])).toBeNull();
     expect(resolveValuationMethodAt(series, boundary).configurationId).toBe(
       'b',
     );
@@ -627,7 +641,7 @@ describe('findAmbiguousInstant', () => {
     const series = [
       version({ id: 'a', validFrom: utc(2025, 6, 1), validTo: null }),
     ];
-    expect(findAmbiguousInstant(series, [utc(2025, 1, 1)])).toBeNull();
+    expect(findAmbiguousBusinessDate(series, [utc(2025, 1, 1)])).toBeNull();
     expect(resolveValuationMethodAt(series, utc(2025, 1, 1)).source).toBe(
       'default',
     );
@@ -648,7 +662,7 @@ describe('findAmbiguousInstant', () => {
       version({ id: 'c', validFrom: utc(2025, 1, 1), validTo: null }),
     ];
     // 2024 is corrupt, but no movement is dated there.
-    expect(findAmbiguousInstant(series, [d1, d2])).toBeNull();
+    expect(findAmbiguousBusinessDate(series, [d1, d2])).toBeNull();
   });
 
   it('is unaffected by repeated movement dates', () => {
@@ -656,6 +670,8 @@ describe('findAmbiguousInstant', () => {
       version({ id: 'a', validFrom: utc(2025, 1, 1), validTo: null }),
     ];
     const repeated = [d1, d1, d1, d2, d2];
-    expect(findAmbiguousInstant(series, distinctInstants(repeated))).toBeNull();
+    expect(
+      findAmbiguousBusinessDate(series, distinctBusinessDates(repeated)),
+    ).toBeNull();
   });
 });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import {
   dateOnlyRangeWithin,
   dateOnlyRangesOverlap,
@@ -7,20 +8,19 @@ import {
   parseDateOnly,
 } from './date-range.js';
 
-function mustParse(value: string): Date {
+function mustParse(value: string): BusinessDate {
   const parsed = parseDateOnly(value);
   if (parsed === null) throw new Error(`Test bug: ${value} must parse.`);
   return parsed;
 }
 
 describe('parseDateOnly', () => {
-  it('parses a calendar date to a UTC-midnight instant', () => {
-    expect(parseDateOnly('2026-03-21')).toEqual(
-      new Date(Date.UTC(2026, 2, 21)),
-    );
+  it('returns a canonical business-day string, not an instant', () => {
+    expect(parseDateOnly('2026-03-21')).toBe('2026-03-21');
+    expect(typeof mustParse('2026-03-21')).toBe('string');
   });
 
-  it('rejects non-date shapes', () => {
+  it('rejects time-bearing, localized and malformed values', () => {
     expect(parseDateOnly('2026-03-21T00:00:00Z')).toBeNull();
     expect(parseDateOnly('21.03.2026')).toBeNull();
     expect(parseDateOnly('2026-3-1')).toBeNull();
@@ -28,7 +28,7 @@ describe('parseDateOnly', () => {
     expect(parseDateOnly('not-a-date')).toBeNull();
   });
 
-  it('rejects impossible calendar dates without rolling over', () => {
+  it('rejects impossible Gregorian dates without rolling over', () => {
     expect(parseDateOnly('2026-02-30')).toBeNull();
     expect(parseDateOnly('2026-13-01')).toBeNull();
     expect(parseDateOnly('2026-00-10')).toBeNull();
@@ -42,12 +42,8 @@ describe('parseDateOnly', () => {
 });
 
 describe('formatDateOnly', () => {
-  it('renders the UTC day regardless of the local timezone', () => {
-    // Noon UTC on the 21st is still the 21st in UTC — but midnight local
-    // in a behind-UTC zone would render the 20th through local accessors.
-    expect(formatDateOnly(new Date(Date.UTC(2026, 2, 21, 12)))).toBe(
-      '2026-03-21',
-    );
+  it('returns the canonical day without constructing an instant', () => {
+    expect(formatDateOnly(mustParse('2026-03-21'))).toBe('2026-03-21');
   });
 
   it('round-trips through parseDateOnly', () => {

@@ -12,7 +12,11 @@ import { queryKeys } from '@/api/query-keys';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
-import { formatAmount, formatDateTime, formatQuantity } from '@/lib/format';
+import {
+  formatAmount,
+  formatDateTimeWithZone,
+  formatQuantity,
+} from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
@@ -389,8 +393,8 @@ function ValuationStateStatusBadge({
     <span className="inline-flex items-center gap-1">
       <Badge variant={variant}>{valuationStateStatusLabel(state.status)}</Badge>
       {state.status === 'stale' && state.staleSince !== null && (
-        <span className="text-xs text-slate-500">
-          {t.inventory.staleSince} {formatDateTime(state.staleSince)}
+        <span className="text-xs text-slate-500" title={state.staleSince}>
+          {t.inventory.staleSince} {formatDateTimeWithZone(state.staleSince)}
         </span>
       )}
     </span>

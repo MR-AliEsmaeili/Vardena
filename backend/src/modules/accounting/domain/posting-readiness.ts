@@ -97,6 +97,7 @@ import { dateOnlyRangeWithin } from './date-range.js';
 import type { FinancialArea } from './financial-area.js';
 import type { FiscalYear } from './fiscal-year.js';
 import type { VoucherLineProblem } from './voucher-lines.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import { checkVoucherLines } from './voucher-lines.js';
 
 // ---------------------------------------------------------------------------
@@ -354,7 +355,7 @@ function scopeReasons(
 }
 
 /** Inclusive date containment, through the one date-only range rule (§6.1). */
-function dateWithin(date: Date, range: DateOnlyRange): boolean {
+function dateWithin(date: BusinessDate, range: DateOnlyRange): boolean {
   // A single day is a zero-length range; `dateOnlyRangeWithin` is inclusive
   // on both bounds, which is exactly [start_date, end_date] containment.
   return dateOnlyRangeWithin({ startDate: date, endDate: date }, range);

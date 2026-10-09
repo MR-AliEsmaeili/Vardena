@@ -31,7 +31,8 @@ import {
   type FiscalYearStatus,
   type FiscalYearTransition,
 } from '../domain/fiscal-year.js';
-import { parseDateOnly } from '../domain/date-range.js';
+import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
+import { parseAccountingBusinessDateInput } from './accounting-date-support.js';
 import { normalizeCode, normalizeTitle } from '../domain/master-data.js';
 import { FISCAL_YEAR_PERMISSIONS } from '../domain/accounting-permissions.js';
 import {
@@ -94,9 +95,9 @@ export interface CreateFiscalYearInput {
   financialAreaId: string;
   code: string;
   title: string;
-  /** Inclusive bounds, `YYYY-MM-DD`. */
-  startDate: string;
-  endDate: string;
+  /** Inclusive business-date bounds (canonical, declared Jalali or legacy instant). */
+  startDate: BusinessDateInput;
+  endDate: BusinessDateInput;
   /** Optional link to the previous year of the same (organization, area). */
   priorYearId?: string | null | undefined;
 }
@@ -105,8 +106,8 @@ export interface UpdateFiscalYearInput {
   code?: string | undefined;
   title?: string | undefined;
   /** Date edits require the year to be open (fail closed). */
-  startDate?: string | undefined;
-  endDate?: string | undefined;
+  startDate?: BusinessDateInput | undefined;
+  endDate?: BusinessDateInput | undefined;
   isActive?: boolean | undefined;
   /** Set, replace, or (`null`) clear the prior-year link. */
   priorYearId?: string | null | undefined;
@@ -211,7 +212,7 @@ export class FiscalYearsService {
     assertCodeAndTitle(code, title);
     const startDate = parseDateInput(input.startDate, 'startDate');
     const endDate = parseDateInput(input.endDate, 'endDate');
-    if (endDate.getTime() < startDate.getTime()) {
+    if (endDate < startDate) {
       throw AppException.businessRule(
         'The fiscal year end date must be on or after the start date.',
       );
@@ -332,7 +333,7 @@ export class FiscalYearsService {
         : parseDateInput(input.endDate, 'endDate');
     const effectiveStart = startDate ?? current.startDate;
     const effectiveEnd = endDate ?? current.endDate;
-    if (effectiveEnd.getTime() < effectiveStart.getTime()) {
+    if (effectiveEnd < effectiveStart) {
       throw AppException.businessRule(
         'The fiscal year end date must be on or after the start date.',
       );
@@ -614,15 +615,9 @@ export class FiscalYearsService {
   }
 }
 
-/** Parse a `YYYY-MM-DD` input or reject it as malformed (400). */
-function parseDateInput(value: string, field: string): Date {
-  const parsed = parseDateOnly(value.trim());
-  if (parsed === null) {
-    throw AppException.badRequest(
-      `${field} must be a valid calendar date (YYYY-MM-DD).`,
-    );
-  }
-  return parsed;
+/** Resolve an Accounting BusinessDate input through the shared kernel parser. */
+function parseDateInput(value: BusinessDateInput, field: string) {
+  return parseAccountingBusinessDateInput(value, field);
 }
 
 function transitionVerb(transition: FiscalYearTransition): string {

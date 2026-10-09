@@ -1,6 +1,6 @@
 # Vardena — Database Strategy
 
-Status: Accepted (foundation) · Updated: 2026-09-11
+Status: Accepted (foundation) · Updated: 2026-10-09 (date/time data conventions reconciled; the remaining foundation sections retain their earlier scope)
 ADR-0008 (single DB, schemas per module) · ADR-0004 (outbox) · ADR-0005 (domain events)
 
 ## 1. Engine & Topology
@@ -97,9 +97,30 @@ Every entity table has:
 | `created_by` | `text(26) NULL` | user id; NULL for system events |
 | `updated_by` | `text(26) NULL` | same |
 
-- **Timestamps are always `timestamptz` stored in UTC.** Display conversion
-  (timezone/Jalali) is a frontend concern (OQ-02); no business logic uses
-  wall-clock date parts without an explicit timezone rule.
+- **Instants are always `timestamptz` stored in UTC.** Display is not a raw
+  timestamp or browser-zone conversion: use the shared frontend date-time layer,
+  resolve the organization's valid IANA zone, then render the resulting local
+  date/time in its configured calendar. Detail/audit views include seconds and
+  the resolved zone and offset. OQ-02 remains open for numeral rendering and
+  broader localization, not the organization calendar/zone contract.
+- **BusinessDates are PostgreSQL `date` values, canonical Gregorian.** They are
+  days, not JavaScript `Date` domain values, UTC-midnight transports, or
+  `timestamptz` values. Prisma exposes a PG `date` through a `DateTime` carrier;
+  convert only inside the owning persistence adapter with the shared
+  `businessDateToDbDate` / `businessDateFromDbDate` functions, never through
+  application DTOs or domain services. User-facing entry/display follows the
+  organization's configured calendar (Jalali by default); use the shared
+  date-input and conversion APIs. Never infer a BusinessDate from an event
+  Instant inside domain logic.
+- **Inventory effective-dated windows have an explicit BusinessDate axis**
+  (Owner decision, 2026-10-09): global and item-specific unit-conversion windows
+  and item-valuation-method windows use half-open `[valid_from, valid_to)`
+  ranges (`NULL` end is open), persisted as PostgreSQL `date`. Migration
+  `20261012000000_inventory_business_date_validity_windows` maps existing values
+  by UTC calendar day and preflights invalid/collapsed/overlapping histories.
+  Fixture rehearsal is not production data evidence; inspect target data and
+  retain the migration preflight outcome before deployment. Other modules'
+  fields named `valid_*` are not reclassified by this decision.
 - FKs to users are logical (enforced at the app level; DB FK to `users.users`
   only where the owning schema and dependency are clean — e.g. not for
   `created_by` on module tables to avoid cross-schema FK sprawl; documented

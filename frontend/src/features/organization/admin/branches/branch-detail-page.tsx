@@ -3,7 +3,7 @@ import { useOrganizationId } from '@/features/organization/use-organization';
 import { PermissionGate } from '@/features/permissions/permission-gate';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTimeWithZone } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
@@ -103,10 +103,14 @@ export function BranchDetailPage() {
           <span className="code">{branch.id}</span>
         </Definition>
         <Definition label={t.orgAdmin.createdAt}>
-          <span className="num">{formatDateTime(branch.createdAt)}</span>
+          <span className="num" title={branch.createdAt}>
+            {formatDateTimeWithZone(branch.createdAt)}
+          </span>
         </Definition>
         <Definition label={t.orgAdmin.updatedAt}>
-          <span className="num">{formatDateTime(branch.updatedAt)}</span>
+          <span className="num" title={branch.updatedAt}>
+            {formatDateTimeWithZone(branch.updatedAt)}
+          </span>
         </Definition>
       </DefinitionList>
 

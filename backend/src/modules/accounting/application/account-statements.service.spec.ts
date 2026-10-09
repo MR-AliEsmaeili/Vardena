@@ -11,6 +11,7 @@ import type {
 import type { LedgerEntry } from '../domain/ledger-entry.js';
 import { ACCOUNT_STATEMENT_PERMISSIONS } from '../domain/accounting-permissions.js';
 import { AccountStatementsService } from './account-statements.service.js';
+import { parseDateOnly } from '../domain/date-range.js';
 
 /**
  * AccountStatementsService — the statement's application boundary (Task 17B,
@@ -49,7 +50,7 @@ function makeEntry(overrides: Partial<LedgerEntry> = {}): LedgerEntry {
     debitAmount: '0',
     creditAmount: '0',
     description: null,
-    documentDate: new Date(Date.UTC(2026, 3, 5)),
+    documentDate: parseDateOnly('2026-04-05')!,
     postingTimestamp: new Date('2026-04-05T10:00:00.000Z'),
     branchId: null,
     origin: 'manual',
@@ -74,24 +75,24 @@ const YEAR_REF: StatementYearRef = {
   financialAreaId: AREA,
   code: '1404',
   title: 'سال ۱۴۰۴',
-  startDate: new Date(Date.UTC(2026, 2, 21)),
-  endDate: new Date(Date.UTC(2027, 2, 20)),
+  startDate: parseDateOnly('2026-03-21')!,
+  endDate: parseDateOnly('2027-03-20')!,
   status: 'open',
 };
 const PERIOD_REF: StatementPeriodRef = {
   id: PERIOD,
   sequence: 2,
   title: 'اردیبهشت',
-  startDate: new Date(Date.UTC(2026, 3, 21)),
-  endDate: new Date(Date.UTC(2026, 4, 21)),
+  startDate: parseDateOnly('2026-04-21')!,
+  endDate: parseDateOnly('2026-05-21')!,
   status: 'closed',
 };
 const PERIOD_REF_PRIOR: StatementPeriodRef = {
   id: PERIOD_PRIOR,
   sequence: 1,
   title: 'فروردین',
-  startDate: new Date(Date.UTC(2026, 2, 21)),
-  endDate: new Date(Date.UTC(2026, 3, 20)),
+  startDate: parseDateOnly('2026-03-21')!,
+  endDate: parseDateOnly('2026-04-20')!,
   status: 'sealed',
 };
 

@@ -3,7 +3,10 @@ import { Link, useParams } from 'react-router-dom';
 import { normalizeApiError } from '@/api/errors';
 import type { AccountingDocument } from '@/api/contracts';
 import { t } from '@/lib/i18n';
-import { formatDateTime } from '@/lib/format';
+import {
+  formatDateOnlyWithCanonical,
+  formatDateTimeWithZone,
+} from '@/lib/format';
 import {
   useOrganization,
   useOrganizationId,
@@ -357,7 +360,9 @@ function DocumentFacts({
           )}
         </Definition>
         <Definition label={t.documents.date}>
-          <span className="code">{document.documentDate}</span>
+          <span className="code">
+            {formatDateOnlyWithCanonical(document.documentDate)}
+          </span>
         </Definition>
         <Definition label={t.documents.documentType}>
           {t.documents.documentTypeVoucher}
@@ -402,8 +407,10 @@ function DocumentFacts({
         <Definition label={t.documents.lineDescription}>
           {document.description}
         </Definition>
-        <Definition label={t.statement.postingTimestamp}>
-          <span className="code">{formatDateTime(document.createdAt)}</span>
+        <Definition label={t.orgAdmin.createdAt}>
+          <span className="code" title={document.createdAt}>
+            {formatDateTimeWithZone(document.createdAt)}
+          </span>
         </Definition>
       </DefinitionList>
 

@@ -98,3 +98,16 @@ export const DECLARED_BUSINESS_DATE_SCHEMA = {
   required: ['calendar', 'value'],
   additionalProperties: false as const,
 };
+
+/**
+ * Legacy timestamp form accepted only for compatibility on BusinessDate
+ * inputs. The parser resolves this value to its UTC calendar day, matching
+ * the OQ-73 migration policy; it is never stored as an Instant.
+ */
+export const LEGACY_BUSINESS_DATE_INSTANT_SCHEMA = {
+  type: 'string' as const,
+  format: 'date-time' as const,
+  example: '2026-10-08T21:30:00.000Z',
+  description:
+    'Legacy ISO-8601 instant accepted for compatibility; its UTC calendar day is used as the BusinessDate.',
+};

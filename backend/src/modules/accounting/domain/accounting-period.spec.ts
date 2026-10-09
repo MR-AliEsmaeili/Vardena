@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import {
   checkAccountingPeriodRange,
   isAccountingPeriodStatus,
@@ -7,7 +8,7 @@ import {
 } from './accounting-period.js';
 import { parseDateOnly } from './date-range.js';
 
-function mustParse(value: string): Date {
+function mustParse(value: string): BusinessDate {
   const parsed = parseDateOnly(value);
   if (parsed === null) throw new Error(`Test bug: ${value} must parse.`);
   return parsed;
@@ -22,7 +23,7 @@ function sibling(
   id: string,
   start: string,
   end: string,
-): { id: string; startDate: Date; endDate: Date } {
+): { id: string; startDate: BusinessDate; endDate: BusinessDate } {
   return { id, startDate: mustParse(start), endDate: mustParse(end) };
 }
 

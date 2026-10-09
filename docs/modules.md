@@ -1,7 +1,10 @@
 # Vardena — Module Catalog
 
-Status: Accepted (foundation) · Current-state reconciliation: 2026-09-29
-(`main` `34dddfd`; full matrix: `current-state-reconciliation.md`)
+Status: Accepted (foundation) · Module-matrix reconciliation: 2026-09-29
+(`main` `34dddfd`; full matrix: `current-state-reconciliation.md`). The date/time
+policy section below was separately reconciled against the current `main` baseline
+`9438eb7` (including merged PRs #133 and #134) on 2026-10-09; the rest of the
+module matrix has not been re-audited by that date/time review.
 
 > **Domain foundation:** the domain model, configurability and workflow architecture
 > are specified in [`architecture/domain/`](./architecture/domain/README.md)
@@ -134,9 +137,10 @@ Disable|ResetPassword`. There is no delete permission because there is no
 **C-63 date/time policy (ADR-0042).** The organization row is also the single
 home of the deployment's date/time DISPLAY policy: `calendar_system`
 (`GREGORIAN` | `JALALI`, default `JALALI`) and `time_zone` (IANA id, default
-`Asia/Tehran`, numeric offsets rejected). They decide how days are shown and
-authored — never what is stored (instants stay UTC, business days stay
-Gregorian). Cross-module readers call
+`Asia/Tehran`, numeric offsets rejected). They decide how BusinessDates are
+shown/authored and how Instants render (convert to the IANA zone first, then
+render the local day in the configured calendar) — never what is stored (Instants
+stay UTC, BusinessDates stay canonical Gregorian days). Cross-module readers call
 `OrganizationsService.getDateTimeSettings(organizationId)` once per response;
 the contract is `docs/datetime.md`. No second settings store exists.
 
@@ -747,16 +751,26 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
 
 ## Inventory (v1 core — implemented)
 
-**C-63 business dates.** A business document's `businessDate` is a calendar
-DAY, accepted in three forms (canonical Gregorian `YYYY-MM-DD`, a declared
-Jalali day `{ calendar, value }`, or a legacy ISO instant collapsed onto the
-day it falls on in the organization's zone), persisted as a PostgreSQL `date`
-(OQ-73, resolved — see migration `20261011000000_business_date_persistence`),
-and returned as the canonical day with its `{ gregorian, jalali }` rendering;
-`createdAt`/`updatedAt` are event instants and are returned with
-`{ instant, timeZone, gregorian, jalali }`. A backdated document keeps its
-business day. Day filters (`dateFrom`/`dateTo`) are true `date` comparisons on
-both inclusive bounds — see `docs/datetime.md` §4/§7 and ADR-0042 (Accepted).
+**C-63 date/time contract (ADR-0042 Accepted).** A business document's
+`businessDate` is a BusinessDate, persisted as PostgreSQL `date` (OQ-73, resolved
+— migration `20261011000000_business_date_persistence`). Input accepts canonical
+Gregorian `YYYY-MM-DD`, a declared Jalali day `{ calendar, value }`, or the
+owner-approved legacy ISO-instant compatibility form resolved to the instant's
+**UTC calendar day** (not the organization's display-zone day). User-facing day
+input/display follows the organization's configured calendar (Jalali by default).
+`createdAt`/`updatedAt` remain event Instants (`timestamptz`); format them by
+converting to the organization's IANA zone first and then applying its calendar.
+A backdated document keeps its BusinessDate. Day filters (`dateFrom`/`dateTo`)
+are true `date` comparisons on inclusive bounds — see `docs/datetime.md` §3–§7.
+
+**Inventory validity windows (Owner decision, 2026-10-09).** Global unit
+conversions, item-specific unit conversions, and item valuation methods have
+BusinessDate `valid_from`/`valid_to` bounds with half-open `[valid_from,
+valid_to)` semantics and a nullable open end; they are not event Instants. The
+new conversion migration is `20261012000000_inventory_business_date_validity_windows`.
+Its fixture rehearsal and preflight guards do not establish the contents of a
+production/customer database; run and retain target-data evidence before
+migration deployment.
 
 - **Status (corrected 2026-09-26 — `repository-documentation-audit.md`):**
   **both halves are implemented.** Master data (Task 6): schema `inventory` —
@@ -849,7 +863,8 @@ states/current,backdate-check,movements/:id/cost,recalculations}`. Events:
 - **API (implemented):** `/api/v1/inventory/{items,item-groups,units,unit-conversions,warehouses}`.
   Unit conversions are the exception: **no PATCH and no enable/disable**, because
   effective-dated configuration is never edited in place — a change is a new version
-  (`GET .../unit-conversions/resolve` answers "which version applies at instant X").
+  (`GET .../unit-conversions/resolve` answers which version is effective on a
+  canonical BusinessDate, under the Owner decision dated 2026-10-09).
   Conversion version writes are the module's second concurrency-critical raw-SQL
   path (`data/unit-conversions.repository.ts`, AR-11): each create takes a
   pair-scoped `pg_advisory_xact_lock(hashtextextended(<pair key>, 0))` inside its

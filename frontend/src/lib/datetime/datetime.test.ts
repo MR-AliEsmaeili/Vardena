@@ -157,7 +157,18 @@ describe('event timestamps', () => {
     expect(formatInstant(instant, 'UTC')).toBe('2026-10-08 08:32');
     expect(isInstant(instant)).toBe(true);
     expect(isInstant('nope')).toBe(false);
+    expect(isInstant('2026-10-08T08:32:14')).toBe(false);
+    expect(isInstant('2026-10-08')).toBe(false);
+    expect(isInstant('2026-02-30T08:32:14.000Z')).toBe(false);
+    expect(isInstant('2026-10-08T08:32:14.000+03:30')).toBe(false);
     expect(formatInstant('nope', 'UTC')).toBe('nope');
+    expect(formatInstant('2026-10-08T08:32:14', 'Asia/Tehran')).toBe(
+      '2026-10-08T08:32:14',
+    );
+    expect(formatInstant('2026-10-08T08:32:14.000+03:30', 'Asia/Tehran')).toBe(
+      '2026-10-08T08:32:14.000+03:30',
+    );
+    expect(formatInstant(instant, 'not/a-zone')).toBe(instant);
   });
 
   it('resolves the zone offset for the instant, not from a constant', () => {
@@ -172,6 +183,10 @@ describe('event timestamps', () => {
     expect(instantOffsetLabel('2026-06-01T00:00:00.000Z', 'UTC')).toBe(
       'UTC+00:00',
     );
+    expect(instantOffsetLabel('2026-06-01T00:00:00', 'Asia/Tehran')).toBeNull();
+    expect(
+      instantOffsetLabel('2026-06-01T00:00:00+03:30', 'Asia/Tehran'),
+    ).toBeNull();
   });
 
   it('derives the calendar day of an instant in the zone', () => {
@@ -181,6 +196,10 @@ describe('event timestamps', () => {
     expect(instantDayInZone('2026-10-08T21:30:00.000Z', 'UTC')).toBe(
       '2026-10-08',
     );
+    expect(instantDayInZone('2026-10-08T21:30:00', 'Asia/Tehran')).toBeNull();
+    expect(
+      instantDayInZone('2026-10-08T21:30:00+03:30', 'Asia/Tehran'),
+    ).toBeNull();
   });
 
   it('accepts only IANA zones, never a fixed offset', () => {
@@ -254,5 +273,21 @@ describe('API mapping', () => {
       }),
     ).toMatchObject({ instant: '2026-10-08T08:32:14.421Z' });
     expect(readApiInstant({ instant: '', timeZone: 'Asia/Tehran' })).toBeNull();
+    expect(
+      readApiInstant({
+        instant: '2026-10-08T08:32:14',
+        timeZone: 'Asia/Tehran',
+        gregorian: '2026-10-08 12:02:14',
+        jalali: '1405-07-16 12:02:14',
+      }),
+    ).toBeNull();
+    expect(
+      readApiInstant({
+        instant: '2026-10-08T08:32:14.421Z',
+        timeZone: '+03:30',
+        gregorian: '2026-10-08 12:02:14',
+        jalali: '1405-07-16 12:02:14',
+      }),
+    ).toBeNull();
   });
 });

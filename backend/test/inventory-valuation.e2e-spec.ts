@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
+import { toBusinessDate } from '../src/kernel/datetime/business-date.js';
 import { RECALCULATION_MOVEMENT_LIMIT } from '../src/modules/inventory/data/inventory-valuation.repository.js';
 import { UsersRepository } from '../src/modules/users/data/users.repository.js';
 import { UsersService } from '../src/modules/users/application/users.service.js';
@@ -565,12 +566,12 @@ describe('Inventory valuation (e2e)', () => {
         organizationId: state.orgId,
         itemId: state.itemId,
         method: 'moving_weighted_average',
-        validFrom: '2026-01-01T00:00:00.000Z',
+        validFrom: '2026-01-01',
         note: 'MVP policy',
       })
       .expect(201);
 
-    expect(created.body.validFrom).toBe('2026-01-01T00:00:00.000Z');
+    expect(created.body.validFrom).toBe('2026-01-01');
     expect(created.body.validTo).toBeNull();
 
     const inForce = await root
@@ -578,7 +579,7 @@ describe('Inventory valuation (e2e)', () => {
       .query({
         organizationId: state.orgId,
         itemId: state.itemId,
-        asOf: '2026-06-01T00:00:00.000Z',
+        asOf: '2026-06-01',
       })
       .expect(200);
     expect(inForce.body.source).toBe('configured');
@@ -591,7 +592,7 @@ describe('Inventory valuation (e2e)', () => {
       .query({
         organizationId: state.orgId,
         itemId: state.itemId,
-        asOf: '2025-06-01T00:00:00.000Z',
+        asOf: '2025-06-01',
       })
       .expect(200);
     expect(before.body.source).toBe('default');
@@ -604,7 +605,7 @@ describe('Inventory valuation (e2e)', () => {
         organizationId: state.orgId,
         itemId: state.itemId,
         method: 'moving_weighted_average',
-        validFrom: '2027-01-01T00:00:00.000Z',
+        validFrom: '2027-01-01',
       })
       .expect(201);
 
@@ -620,10 +621,9 @@ describe('Inventory valuation (e2e)', () => {
 
     expect(versions.body.total).toBe(2);
     const closed = versions.body.items.find(
-      (version: { validFrom: string }) =>
-        version.validFrom === '2026-01-01T00:00:00.000Z',
+      (version: { validFrom: string }) => version.validFrom === '2026-01-01',
     );
-    expect(closed.validTo).toBe('2027-01-01T00:00:00.000Z');
+    expect(closed.validTo).toBe('2027-01-01');
   });
 
   // ---- 3. backdating -------------------------------------------------------
@@ -926,14 +926,14 @@ describe('Inventory valuation (e2e)', () => {
       organizationId: state.orgId,
       itemId: state.datedItemId,
       method: 'fifo',
-      validFrom: new Date('2026-02-01T00:00:00.000Z'),
-      validTo: new Date('2026-03-01T00:00:00.000Z'),
+      validFrom: toBusinessDate('2026-02-01')!,
+      validTo: toBusinessDate('2026-03-01')!,
       note: 'Seeded by the test: a period configured with a method the MVP cannot execute.',
       createdAt: new Date('2026-02-01T00:00:00.000Z'),
       updatedAt: new Date('2026-02-01T00:00:00.000Z'),
     });
 
-    // The method in force TODAY is still the default Moving Weighted Average,
+    // The method in force on the later test BusinessDate is still the default Moving Weighted Average,
     // so a run that resolved one method for the whole history would happily
     // revalue the February movement with it. It must not: that movement's own
     // date falls in the FIFO window.
@@ -942,7 +942,7 @@ describe('Inventory valuation (e2e)', () => {
       .query({
         organizationId: state.orgId,
         itemId: state.datedItemId,
-        asOf: new Date().toISOString(),
+        asOf: '2026-10-09',
       })
       .expect(200);
     expect(resolvedNow.body.method).toBe('moving_weighted_average');
@@ -972,8 +972,8 @@ describe('Inventory valuation (e2e)', () => {
     // Narrow the FIFO window to a period that holds no movement: every fact
     // resolves to an executable method again and the replay runs.
     core.tables.valuationMethods.patch('seeded-fifo-window', {
-      validFrom: new Date('2026-05-01T00:00:00.000Z'),
-      validTo: new Date('2026-06-01T00:00:00.000Z'),
+      validFrom: toBusinessDate('2026-05-01')!,
+      validTo: toBusinessDate('2026-06-01')!,
     });
     const recovered = await root
       .post('/api/v1/inventory/valuation/recalculations')
@@ -1102,7 +1102,11 @@ describe('Inventory valuation (e2e)', () => {
     // still the executable one — the separate, pre-existing rule that a key
     // whose method in force today is unimplemented cannot be recalculated at
     // all stays untouched and is not what this case probes.
-    const futureFrom = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    const futureFrom = toBusinessDate(
+      new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 10),
+    )!;
     core.tables.valuationMethods.patch(versionIds[3] as string, {
       validTo: futureFrom,
     });
@@ -1139,11 +1143,11 @@ describe('Inventory valuation (e2e)', () => {
     // changed is whether a replayed movement falls in the unsupported
     // period.
     core.tables.valuationMethods.patch(versionIds[1] as string, {
-      validTo: new Date('2026-02-10T00:00:00.000Z'),
+      validTo: toBusinessDate('2026-02-10')!,
     });
     core.tables.valuationMethods.patch('seeded-future-fifo', {
-      validFrom: new Date('2026-02-10T00:00:00.000Z'),
-      validTo: new Date('2026-03-01T00:00:00.000Z'),
+      validFrom: toBusinessDate('2026-02-10')!,
+      validTo: toBusinessDate('2026-03-01')!,
     });
     const refused = await root
       .post('/api/v1/inventory/valuation/recalculations')
@@ -1168,8 +1172,8 @@ describe('Inventory valuation (e2e)', () => {
       warehouseId: state.warehouseId,
       itemId: state.denseItemId,
     };
-    const iso = (month: number, day: number) =>
-      new Date(Date.UTC(2025, month - 1, day)).toISOString();
+    const businessDate = (month: number, day: number) =>
+      `2025-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
     for (let month = 1; month <= 12; month += 1) {
       await root
@@ -1178,7 +1182,7 @@ describe('Inventory valuation (e2e)', () => {
           organizationId: state.orgId,
           itemId: state.denseItemId,
           method: 'moving_weighted_average',
-          validFrom: iso(month, 1),
+          validFrom: businessDate(month, 1),
           note: `Policy for 2025-${String(month).padStart(2, '0')}`,
         })
         .expect(201);
@@ -1195,7 +1199,10 @@ describe('Inventory valuation (e2e)', () => {
     expect(configured.body.total).toBe(12);
 
     // Only two movements, eleven months apart.
-    for (const [index, movementDate] of [iso(1, 1), iso(12, 29)].entries()) {
+    for (const [index, movementDate] of [
+      businessDate(1, 1),
+      businessDate(12, 29),
+    ].entries()) {
       await root
         .post('/api/v1/inventory/movements')
         .send({
@@ -1243,9 +1250,7 @@ describe('Inventory valuation (e2e)', () => {
         organizationId: state.orgId,
         itemId: state.denseItemId,
         method: 'moving_weighted_average',
-        validFrom: new Date(
-          Date.now() + 365 * 24 * 60 * 60 * 1000,
-        ).toISOString(),
+        validFrom: '2030-01-01',
         note: 'Future policy.',
       })
       .expect(201);
@@ -1271,8 +1276,8 @@ describe('Inventory valuation (e2e)', () => {
       warehouseId: state.warehouseId,
       itemId: state.denserThanLimitItemId,
     };
-    const yearStart = Date.UTC(2025, 0, 1);
-    const lastMovement = Date.UTC(2025, 11, 29);
+    const yearStart = Date.UTC(1990, 0, 1);
+    const lastMovement = Date.UTC(2026, 5, 1);
     const versionCount = RECALCULATION_MOVEMENT_LIMIT + 1;
     // Every window opens on or before the LAST movement, so all of them are
     // in force somewhere inside the replayed period. That is what makes this
@@ -1285,7 +1290,10 @@ describe('Inventory valuation (e2e)', () => {
     // this fixture is deliberately large; the windows are distinct by
     // construction, so the guard has nothing to catch.
     for (let index = 0; index < versionCount; index += 1) {
-      const validFrom = new Date(yearStart + index * step);
+      const versionAuditInstant = new Date(yearStart + index * step);
+      const validFrom = toBusinessDate(
+        versionAuditInstant.toISOString().slice(0, 10),
+      )!;
       core.tables.valuationMethods.seed({
         id: `dense-${index}`,
         organizationId: state.orgId,
@@ -1295,16 +1303,20 @@ describe('Inventory valuation (e2e)', () => {
         validTo:
           index === versionCount - 1
             ? null
-            : new Date(yearStart + (index + 1) * step),
+            : toBusinessDate(
+                new Date(yearStart + (index + 1) * step)
+                  .toISOString()
+                  .slice(0, 10),
+              )!,
         note: null,
-        createdAt: validFrom,
-        updatedAt: validFrom,
+        createdAt: versionAuditInstant,
+        updatedAt: versionAuditInstant,
       });
     }
 
     for (const [index, movementDate] of [
-      new Date(Date.UTC(2025, 0, 1)).toISOString(),
-      new Date(Date.UTC(2025, 11, 29)).toISOString(),
+      new Date(yearStart).toISOString().slice(0, 10),
+      new Date(lastMovement).toISOString().slice(0, 10),
     ].entries()) {
       await root
         .post('/api/v1/inventory/movements')
@@ -1370,7 +1382,7 @@ describe('Inventory valuation (e2e)', () => {
         baseQuantity: '1',
         baseUnitId: state.unitId,
         conversionFactor: '1',
-        movementDate: new Date(base + index * 1000),
+        movementDate: toBusinessDate('2025-01-01')!,
         transferId: null,
         reversalOfMovementId: null,
         referenceType: null,
@@ -1410,8 +1422,8 @@ describe('Inventory valuation (e2e)', () => {
       warehouseId: state.warehouseId,
       itemId: state.overlapItemId,
     };
-    const firstDate = new Date(Date.UTC(2025, 2, 15));
-    const secondDate = new Date(Date.UTC(2025, 10, 20));
+    const firstDate = '2025-03-15';
+    const secondDate = '2025-11-20';
 
     for (const [index, movementDate] of [firstDate, secondDate].entries()) {
       await root
@@ -1423,7 +1435,7 @@ describe('Inventory valuation (e2e)', () => {
           movementType: 'inbound',
           quantity: '2',
           totalCost: '40.00',
-          movementDate: movementDate.toISOString(),
+          movementDate,
           backdateConfirmed: true,
           repricing: 'skip',
         })
@@ -1440,8 +1452,8 @@ describe('Inventory valuation (e2e)', () => {
       organizationId: state.orgId,
       itemId: state.overlapItemId,
       method: 'moving_weighted_average',
-      validFrom: new Date(Date.UTC(2025, 0, 1)),
-      validTo: new Date(Date.UTC(2025, 6, 1)),
+      validFrom: toBusinessDate('2025-01-01')!,
+      validTo: toBusinessDate('2025-07-01')!,
       note: 'Seeded: first of two conflicting windows.',
       createdAt: new Date(Date.UTC(2025, 0, 1)),
       updatedAt: new Date(Date.UTC(2025, 0, 1)),
@@ -1451,8 +1463,8 @@ describe('Inventory valuation (e2e)', () => {
       organizationId: state.orgId,
       itemId: state.overlapItemId,
       method: 'moving_weighted_average',
-      validFrom: new Date(Date.UTC(2025, 1, 1)),
-      validTo: new Date(Date.UTC(2025, 5, 1)),
+      validFrom: toBusinessDate('2025-02-01')!,
+      validTo: toBusinessDate('2025-06-01')!,
       note: 'Seeded: second of two conflicting windows.',
       createdAt: new Date(Date.UTC(2025, 1, 1)),
       updatedAt: new Date(Date.UTC(2025, 1, 1)),
@@ -1476,14 +1488,14 @@ describe('Inventory valuation (e2e)', () => {
       .expect(200);
     expect(after.body.items[0]?.totalValue).toBe(valueBefore);
 
-    // The same ambiguity is refused by the single-instant resolver too,
+    // The same ambiguity is refused by the single-date resolver too,
     // rather than silently preferring the later window.
     await root
       .get('/api/v1/inventory/valuation/methods/resolve')
       .query({
         organizationId: state.orgId,
         itemId: state.overlapItemId,
-        asOf: firstDate.toISOString(),
+        asOf: firstDate,
       })
       .expect(500);
 
@@ -1511,8 +1523,8 @@ describe('Inventory valuation (e2e)', () => {
         organizationId: state.orgId,
         itemId: state.overlapItemId,
         method: 'moving_weighted_average',
-        validFrom: new Date(Date.UTC(2025, 3, 1)).toISOString(),
-        validTo: new Date(Date.UTC(2025, 4, 1)).toISOString(),
+        validFrom: '2025-04-01',
+        validTo: '2025-05-01',
         note: 'Inside the window seeded above.',
       })
       .expect(422);

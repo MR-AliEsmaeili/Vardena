@@ -36,6 +36,7 @@
  * methods, so the same input always produces the same output.
  */
 
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import type { MovementType } from './movement-type.js';
 import type {
   MovementValuationStatus,
@@ -72,7 +73,7 @@ export type ValuationStrategy = (
  * failure.
  */
 /**
- * More than one valuation method version is in force at one movement date.
+ * More than one valuation method version is in force on one movement date.
  *
  * Unmapped by the API on purpose: unlike the errors beside it, this is not
  * something a user did — the write path forbids overlapping windows, so
@@ -85,17 +86,21 @@ export type ValuationStrategy = (
  */
 export class AmbiguousValuationMethodError extends Error {
   readonly itemId: string;
-  readonly instant: Date;
+  readonly businessDate: BusinessDate;
   readonly versionIds: readonly string[];
 
-  constructor(itemId: string, instant: Date, versionIds: readonly string[]) {
+  constructor(
+    itemId: string,
+    businessDate: BusinessDate,
+    versionIds: readonly string[],
+  ) {
     super(
-      `Item "${itemId}" has ${versionIds.length} valuation method versions in force at ${instant.toISOString()} ` +
+      `Item "${itemId}" has ${versionIds.length} valuation method versions in force on ${businessDate} ` +
         `(${versionIds.join(', ')}). Historical resolution for that date is ambiguous, so the replay was refused.`,
     );
     this.name = 'AmbiguousValuationMethodError';
     this.itemId = itemId;
-    this.instant = instant;
+    this.businessDate = businessDate;
     this.versionIds = versionIds;
   }
 }

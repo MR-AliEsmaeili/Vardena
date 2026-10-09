@@ -6,6 +6,7 @@
 - **Owner source:** [`task-17c-prompt.md`](../tasks/task-17/task-17c-prompt.md) Q9/Q10/Q11, Q14 (Decision D), Q22 (Decision B), §8. Canonical register of Q1–Q22, I-1…I-3 and the implementation discrepancies (incl. **D-6**, **D-13**): [`owner-decision-baseline.md`](../accounting/owner-decision-baseline.md) — referenced here, never restated.
 - **Why a new ADR:** the repository had no authoritative equivalent — contract §2.3 (C1–C7) records *reported* Iranian legal inputs as OQ-43 material, ADR-0009 + [`reporting-strategy.md`](../reporting-strategy.md) decide the reporting *access* pattern, and layer 4 of the four-layer boundary ("legal/statutory report profile") existed only as a proposal in [`task-17b-investigation.md`](../tasks/task-17/task-17b-investigation.md) §8.1. This ADR adopts that layer as architecture; it does not restate the envelope design.
 - **Builds on:** ADR-0026/0009/0003/0033; contract §2.3, §12.3, §19.1/§19.2/§19.4, AC-D-30; OQ-43 (legal facts), OQ-02, OQ-03, OQ-12/OQ-17/OQ-27.
+- **Later date/time clarification (ADR-0042, Accepted 2026-10-09):** references in this 2026-09-25 proposal to Jalali calendar choice remaining in OQ-02, or to there being no frontend, are historical. Generic BusinessDate input/display and Instant zone/calendar behavior are now governed by ADR-0042 and organization settings. OQ-02 remains open for Persian numerals and broader localization; statutory language, layout, currency, and filing decisions remain with the Legal Profile and OQ-43/OQ-03.
 
 ## Context
 
@@ -45,7 +46,7 @@ Nothing listed in **Implements** above exists or is scaffolded — no legal prof
 - **No legal claim is made.** No compliance, statutory-correctness, e-ledger or filing claim is made by this ADR or may be derived from it; every legal fact stays with OQ-43 (LEGAL VALIDATION REQUIRED).
 - A profile is additive, not a rewrite: the Core already guarantees immutable Final documents (AC-I-05/06), an insert-only ledger, stored year/period resolution, both date axes and freeze-over-delete (contract §2.3 C1–C7).
 - Risk recorded: implementing a 4/6/8-column trial balance, a legal-book layout or a Toman/Rial statutory rule inside the Accounting module violates §2 and must be rejected in review (AG-07/AR-29), however urgent the request.
-- Q11's Persian-primary decision does **not** close OQ-02 (UI language, Jalali calendar, digit rendering) and authorizes no frontend localization change — no frontend exists yet.
+- Q11's Persian-primary decision does not settle Persian-digit preference or broad UI language localization (OQ-02), and it authorizes no statutory-format implementation. Generic calendar/zone input and display are covered by the later accepted ADR-0042; this Legal Profile ADR remains Proposed and does not alter that contract.
 
 ## Links
 

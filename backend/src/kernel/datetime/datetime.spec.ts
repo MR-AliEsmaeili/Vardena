@@ -7,6 +7,7 @@ import {
 import {
   businessDateFromDbDate,
   businessDateFromInstant,
+  businessDateFromUtcInstant,
   businessDateToDbDate,
   compareBusinessDates,
   formatBusinessDate,
@@ -211,16 +212,19 @@ describe('business dates', () => {
     }
   });
 
-  it('derives a day from an instant ONLY through the organization zone', () => {
-    // Where a genuine moment exists (a legacy instant input, "today"), the
-    // day it names depends on the zone — that is an instant property, never
-    // applied to an already-stored business date.
+  it('uses the organization zone only for a real instant-day rule such as today', () => {
+    // Defaults ask for the organization's current day; stored BusinessDates
+    // never pass through this function.
     expect(
       businessDateFromInstant(new Date('2026-10-08T21:00:00Z'), 'Asia/Tehran'),
     ).toBe('2026-10-09');
     expect(
       businessDateFromInstant(new Date('2026-10-08T21:00:00Z'), 'UTC'),
     ).toBe('2026-10-08');
+    // Legacy business-date instants use OQ-73's UTC calendar-day policy.
+    expect(businessDateFromUtcInstant(new Date('2026-10-08T21:00:00Z'))).toBe(
+      '2026-10-08',
+    );
   });
 
   it('validates rather than coerces', () => {
@@ -236,14 +240,14 @@ describe('business dates', () => {
     expect(compareBusinessDates('2026-10-08', 'nonsense')).toBeNull();
     expect(
       isValidBusinessDateRange({
-        startDate: '2026-10-01',
-        endDate: '2026-10-08',
+        startDate: toBusinessDate('2026-10-01')!,
+        endDate: toBusinessDate('2026-10-08')!,
       }),
     ).toBe(true);
     expect(
       isValidBusinessDateRange({
-        startDate: '2026-10-08',
-        endDate: '2026-10-01',
+        startDate: toBusinessDate('2026-10-08')!,
+        endDate: toBusinessDate('2026-10-01')!,
       }),
     ).toBe(false);
   });
@@ -259,17 +263,27 @@ describe('business-date input contract', () => {
     });
   });
 
-  it('accepts a legacy ISO instant and resolves its day in the zone', () => {
+  it('resolves a legacy ISO instant to its UTC day, matching OQ-73 migration semantics', () => {
     expect(parseBusinessDateInput('2026-10-08T00:00:00.000Z')).toMatchObject({
       ok: true,
       gregorian: '2026-10-08',
       source: 'instant',
     });
-    expect(
-      parseBusinessDateInput('2026-10-08T21:00:00.000Z', {
-        timeZone: 'Asia/Tehran',
-      }),
-    ).toMatchObject({ ok: true, gregorian: '2026-10-09' });
+    expect(parseBusinessDateInput('2026-10-08T21:00:00.000Z')).toMatchObject({
+      ok: true,
+      gregorian: '2026-10-08',
+    });
+    expect(parseBusinessDateInput('2026-10-09T00:15:00+03:30')).toMatchObject({
+      ok: true,
+      gregorian: '2026-10-08',
+    });
+  });
+
+  it('rejects an impossible civil day inside a legacy ISO instant instead of Date-normalizing it', () => {
+    expect(parseBusinessDateInput('2026-02-30T23:30:00-08:00')).toEqual({
+      ok: false,
+      reason: 'business_date_calendar',
+    });
   });
 
   it('refuses an undated or declared-invalid value with a stable reason', () => {

@@ -4,6 +4,13 @@ The single contract for what a date, a timestamp and a calendar day mean in
 Vardena, where each is stored, how each crosses the API, and how each is shown.
 Every module follows it; no module invents its own conversion.
 
+**Permanent rule:** `BusinessDate` is a canonical Gregorian PostgreSQL `date`;
+user-facing input and display follow the organization's configured calendar
+(Jalali by default). `Instant` is a UTC PostgreSQL `timestamptz`; display follows
+the organization's configured valid IANA time zone and calendar. Use the shared
+kernel/frontend date-time abstractions; do not reinterpret a business day as a
+JavaScript `Date`, UTC-midnight transport, browser-zone value, or timestamp.
+
 ## 1. The model
 
 | Concept                | Meaning                                                           | Stored as                                   | On the wire                                                          |
@@ -25,7 +32,10 @@ Three rules follow, and they are the ones reviewers check:
 
 1. A **business date is never derived from an instant inside a business rule**.
    If a document is dated 1405-07-16, that is what is stored — independent of
-   when the row was written.
+   when the row was written. The sole compatibility exception is an explicitly
+   accepted legacy ISO-instant BusinessDate input at the API boundary; it
+   resolves to that instant's UTC calendar day (§3), never the organization-zone
+   day.
 2. An **instant is never overwritten by a rendering**. Local time is derived on
    the way out, in the zone the organization had at render time (§6), and is
    never written back.
@@ -37,9 +47,9 @@ Three rules follow, and they are the ones reviewers check:
 
 - Timestamps: `@db.Timestamptz(6)`, UTC, columns named `*_at` (`created_at`,
   `updated_at`, `finalized_at`, `approved_at`, `cancelled_at`, `posted_at`).
-  Audit/event semantics — including `valued_at`, `executed_at`,
-  `posting_timestamp`, validity windows (`valid_from`/`valid_to`) and the
-  valuation `as_of` — stay instants.
+  Audit/event semantics — including `valued_at`, `executed_at` and
+  `posting_timestamp` — stay instants. Inventory `asOf` query parameters resolve
+  a canonical BusinessDate; valuation-run `from_date` is also a BusinessDate.
 - Business days: `@db.Date` — PostgreSQL `date`, canonical Gregorian
   (`inventory.inventory_movements.movement_date`,
   `inventory.inventory_business_documents.business_date`,
@@ -50,16 +60,39 @@ Three rules follow, and they are the ones reviewers check:
   `inventory.inventory_balances.last_movement_date`). OQ-73 made this the only
   business-day carrier: the earlier "day riding a timestamptz column as its UTC
   midnight" convention is retired.
+- **Inventory validity windows (Owner decision, 2026-10-09):**
+  `unit_conversions.valid_from/valid_to`,
+  `item_unit_conversions.valid_from/valid_to`, and
+  `item_valuation_methods.valid_from/valid_to` are BusinessDate range bounds,
+  not instants. They become PostgreSQL `date` in migration
+  `20261012000000_inventory_business_date_validity_windows`; this decision does
+  not reclassify other timestamp fields named `valid_*` in other domains.
+  Their range is half-open `[valid_from, valid_to)` (`NULL` end is open), so
+  adjacent versions may meet on the same business date without overlapping.
+  The migration converts the UTC calendar day, reports discarded non-midnight
+  UTC time components, and fails closed on collapsed/reversed windows,
+  duplicate starts, or overlap. The CI fixture rehearsal is not evidence about
+  any production or customer database; target-data evidence remains a separate
+  deployment requirement.
 - **No formatted dates** are ever persisted (no `'1405/07/16'` column), and no
   parallel Jalali column is added for a date that already exists: the calendar
   is a rendering, and duplicate columns would let the two disagree.
 - **Legacy normalization (migration `20261011000000_business_date_persistence`)**:
-  every pre-OQ-73 day value was stored as a day's UTC-midnight instant, so the
-  deterministic conversion policy is `(column AT TIME ZONE 'UTC')::date` — the
-  stored UTC calendar day. That is byte-for-byte the day the old read path
-  returned, so no row changes its business date, nothing is lost, and the
-  migration is a pure type change plus the `last_movement_at` →
-  `last_movement_date` rename (indexes rebuilt alongside).
+  the conversion policy is `(column AT TIME ZONE 'UTC')::date`, which preserves
+  the UTC calendar day the old read path exposed for each value actually stored
+  and deliberately discards time-of-day. A separate baseline-path check found
+  that the former legacy ISO-input parser first resolved the submitted Instant
+  in the organization zone, then the standard Inventory write helper converted
+  the resulting BusinessDate to a UTC-day carrier before persistence. That
+  standard path does **not** substantiate migration 110's comment that ISO
+  instants were stored verbatim. The current owner-approved compatibility input
+  policy is UTC-day (2026-10-09); its behavior change is distinct from the
+  migration's conversion of stored values. Do not edit the merged migration;
+  alternate/raw writers and the actual historical dataset remain uninspected.
+  This audit therefore does not claim customer-data safety. Retain evidence from
+  a rehearsal/preflight against the target's actual history before deployment.
+  The migration also renames `last_movement_at` to `last_movement_date`; indexes
+  are rebuilt alongside the type changes.
 - Migrations that introduce settings carry **safe defaults** for existing rows
   (`JALALI`, `Asia/Tehran`): defaults affect rendering only, so no stored fact
   moves (`prisma/migrations/20261010000000_organization_datetime_settings`).
@@ -96,9 +129,15 @@ it is additive (`businessDateCalendar`).
 ```jsonc
 "2026-10-08"                                       // canonical Gregorian day (bare = Gregorian by contract)
 { "calendar": "JALALI", "value": "1405-07-16" }    // a DECLARED Jalali day
-"2026-10-08T08:30:00.000Z"                         // legacy ISO instant → collapses onto the day it falls on
-                                                   //   in the organization's time zone
+"2026-10-08T08:30:00.000Z"                         // legacy ISO instant → UTC calendar day, for compatibility only
 ```
+
+The legacy `date-time` branch resolves to the UTC calendar day, regardless of
+the offset written in the instant or the organization's display zone. This is
+the owner-approved compatibility rule (2026-10-09), matching OQ-73's UTC-day
+migration policy. The input's time-of-day is not written into the BusinessDate
+column. If the request also contains a real event timestamp, that remains a
+separate Instant field.
 
 `YYYY-MM-DD` is the same SHAPE in both calendars, which is exactly why a Jalali
 value must be declared: without `calendar`, `1405-12-30` would have to be
@@ -112,9 +151,16 @@ declared form, so the request carries the calendar the user worked in.
 
 ## 4. Range and filter semantics
 
-- **Business-date ranges: inclusive `[startDate, endDate]`** — a single-day
+- **BusinessDate filters: inclusive `[startDate, endDate]`** — a single-day
   filter is `startDate == endDate`. This matches Accounting's existing
-  `date-range.ts` contract and needs no end-of-day arithmetic.
+  `date-range.ts` contract and needs no end-of-day arithmetic. This filter
+  convention does not change effective-dated configuration windows.
+- **Inventory validity windows: half-open `[valid_from, valid_to)`** — for
+  `unit_conversions`, `item_unit_conversions`, and `item_valuation_methods`;
+  `NULL` `valid_to` is open-ended. Adjacent versions may meet at the same date.
+  They are BusinessDate ranges by the Owner decision (2026-10-09), not instant
+  ranges. See §2 and migration
+  `20261012000000_inventory_business_date_validity_windows`.
 - **Instant ranges: half-open `[startInstant, endInstant)`** — a day's worth of
   instants is `[D 00:00, D+1 00:00)`; the `23:59:59.999` convention is banned
   (it silently drops the last second of a day).
@@ -168,10 +214,18 @@ the rendering onto the record — **Vardena uses (A)**:
   moved to the write time (verified by unit tests, not by inspection). The day
   and the creation instant are separate columns and never conflated (OQ-73).
 - Day input resolves to a PostgreSQL `date` carrier: a canonical Gregorian day
-  or a declared Jalali day converts once; a legacy ISO instant collapses onto
-  the day it falls on in the organization's time zone; an omitted day defaults
-  to today in that zone. The carrier is a transport detail of the Prisma
-  boundary — it is never rendered, zone-shifted or compared with time-of-day.
+  or a declared Jalali day converts once; the explicitly accepted legacy ISO
+  instant compatibility branch resolves to its UTC calendar day (Owner decision,
+  2026-10-09), never the organization-zone day; an omitted day defaults to today
+  in the organization's time zone. The carrier is a transport detail of the
+  Prisma boundary — it is never rendered, zone-shifted or compared with
+  time-of-day.
+- **Effective-dated configuration** uses BusinessDate ranges for Inventory unit
+  conversions (global and item-specific) and item valuation methods. Each row is
+  effective on `valid_from` and ceases at the exclusive `valid_to`; a null end
+  is open. Replay resolves a method/conversion against the movement's business
+  date, not an Instant. Other modules' validity axes remain governed by their
+  own accepted contracts.
 - Documents carry the day's ledger value as `movement_date` (`date`), and the
   balance projection keeps `last_movement_date` (`date`) — the rename from
   `last_movement_at` is part of the OQ-73 migration.
@@ -200,8 +254,13 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
   - `numerals.ts` — digit conversion, deliberately separate from calendars
     (Persian-numeral rendering is a pending preference, OQ-02);
   - `dayjs.ts` — the ONE Day.js configuration (plugins registered once);
-  - `time-zone.ts` / `instant.ts` — zone validity, and instant → local renderings
-    (with the zone label);
+  - `time-zone.ts` / `instant.ts` — valid IANA-zone handling and Instant →
+    organization-zone local rendering followed by organization-calendar
+    rendering. Wire Instants must be valid UTC `Z` values; naive, malformed, or
+    offset-bearing values are not parsed in the browser zone: display formatters
+    preserve them raw, while day/offset helpers reject them. Detail/audit
+    formatting includes seconds and the resolved IANA zone plus that instant's
+    UTC offset;
   - `business-date.ts` — canonical days, today in the organization's zone, day
     input resolution; a business day is NEVER reinterpreted as an instant or
     shifted by the browser's timezone (OQ-73);
@@ -214,8 +273,15 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
   native date input for a Gregorian organization and a Jalali text field
   (`1405/07/16`, Persian digits accepted) for a Jalali one, and always emits the
   canonical Gregorian day. No screen builds its own Jalali picker.
-- Formatters live in `lib/format.ts` (`formatDateOnly`/`formatDateTime`) and
-  delegate to the layer; a component never imports `dayjs` or the Jalali library.
+- Formatters live in `lib/format.ts` (`formatDateOnly`, `formatDateTime`, and
+  the explicit-zone detail/audit formatter) and delegate to the shared layer; a
+  component never imports `dayjs` or a Jalali conversion library. For an
+  Instant, convert to the organization's IANA zone first, then render that
+  local day in the organization's configured calendar; never format the UTC or
+  browser-local day as a shortcut.
+- Detail/audit Instant views show seconds and an explicit resolved IANA zone and
+  offset. Where helpful, raw ISO timestamps and canonical Gregorian dates remain
+  available as tooltips for reconciliation.
 - Panels that show Jalali days pair them with the canonical Gregorian value for
   reconciliation.
 
@@ -229,24 +295,52 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
 - Frontend: `lib/datetime/datetime.test.ts` and `ui/patterns/
 date-input.test.tsx` (round trips, leap years, typed Jalali input, Persian
   digits, canonical emission, organization defaults).
-- Persistence coverage — business-day `date` columns, true date filtering, the
-  backdated/replay/Kardex flows, and the accounting-posting day — runs in the
-  live-database suites in CI only (`.github/workflows/ci.yml`), including the
-  `20261011000000_business_date_persistence` migration; no local database,
-  migration rehearsal or full suite is required to verify this slice.
+- Backend tests cover the BusinessDate parser's legacy-instant UTC-day
+  compatibility (including organization-zone boundaries), invalid Gregorian
+  days, DTO declarations, and the Accounting/Inventory date consumers. Frontend
+  tests cover Jalali input conversion, canonical URL/filter values, impossible
+  Gregorian dates, and Instant rendering across UTC/local-day boundaries;
+  malformed, naive, and offset-bearing wire Instants are preserved/rejected by
+  the formatter, day, and offset helpers rather than browser-zone parsed.
+- PostgreSQL conversion rehearsal:
+  `backend/prisma/rehearsal/business-date-validity-windows/rehearse.mjs` creates
+  a disposable real PostgreSQL database, applies the validity-window migration
+  to representative fixtures, verifies UTC-day conversion and unchanged audit
+  Instants, and expects collapsed/reversed, duplicate-start, and overlap cases
+  to fail. CI runs it against its PostgreSQL 16 service
+  (`.github/workflows/ci.yml`). This fixture is not a customer/production
+  snapshot and does not prove a target dataset is safe; retain target-specific
+  preflight/rehearsal evidence before deployment.
 
 ## 11. Open items
 
-- **OQ-02** — numeral rendering and the rest of localization stay open; the
-  calendar default is now implementation-recorded (Jalali primary).
+- **OQ-02** — Persian-numeral rendering, primary UI language(s), and broader
+  localization remain open. The BusinessDate/Instant distinction, organization
+  calendar default, and IANA-zone behavior are accepted in ADR-0042; Jalali is
+  the organization default, not a per-screen assumption.
 - ~~**OQ-73**~~ — **resolved**: every business-day column is PostgreSQL `date`
   (canonical Gregorian), instants stay `timestamptz`, and the legacy
-  UTC-midnight-on-a-timestamp convention is retired. See ADR-0042 (status
-  Accepted) and migration `20261011000000_business_date_persistence`.
-- `frontend/src/api/generated/vardena-api.d.ts` is committed and is hand-kept
-  in step with the backend OpenAPI; regenerate with `npm run api:types` against
-  a running API to re-sync. Until then, `src/api/contracts.ts` carries
-  documented refinements where the generated types lag the contract.
-- Other modules (accounting document filters, reporting surfaces) adopt this
-  layer as they are touched; this slice wires the organization settings, the
-  Inventory business-document date, and the Inventory date fields.
+  UTC-midnight-on-a-timestamp convention is retired. See ADR-0042 (Accepted),
+  migration `20261011000000_business_date_persistence`, and the 2026-10-09
+  Owner decision/migration `20261012000000_inventory_business_date_validity_windows`
+  for Inventory conversion and valuation validity ranges. The latter migration's
+  fixture rehearsal is not customer-data evidence.
+- `frontend/src/api/generated/vardena-api.d.ts` is generated from the Nest
+  Swagger `/api/docs-json` document with `npm run api:types`; this audit
+  refreshed it from the built backend's actual `SwaggerModule` output (192
+  paths, 260 schemas) and reviewed the date-related DTO/query declarations
+  against their controllers. The audit confirmed that reusing
+  `PaginatedResponseClass` had caused last-writer-wins item schemas across list
+  operations; `paginatedResponseOf()` now assigns a model-specific schema name,
+  and a regression test verifies distinct item references. There is no longer a
+  pagination-schema collision in the generated document. `src/api/contracts.ts`
+  retains only documented refinements for Swagger type-introspection omissions;
+  its BusinessDate aliases match the generated unions. Swagger bootstrap logged
+  that Prisma Client was not generated and skipped permission-registry sync;
+  this output therefore verifies DTO/schema generation, not database behavior.
+- The implemented paths include Organization settings, Accounting BusinessDate
+  inputs/filters/reports, Inventory movement/document/valuation/configuration
+  date paths, and shared frontend date inputs/formatters. This is not permission
+  to assume an unaudited future DTO or consumer is correct: date/time changes
+  must use the checklist in `.vardena/agent-rules.md` AG-20 and verify the
+  complete execution path.

@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { runWithRequestContext } from '../../../kernel/correlation/request-context.js';
+import { DEFAULT_DATE_TIME_SETTINGS } from '../../../kernel/datetime/date-time-settings.js';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import type { DomainEventBus } from '../../../kernel/events/domain-event-bus.js';
 import type { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
@@ -621,6 +623,7 @@ function seedReceipt(world: FakeWorld, options: SeedOptions = {}) {
   const documentId = `doc-${++world.serial}`;
   const movementId = `mv-${world.serial}`;
   const at = new Date('2026-10-08T00:00:00.000Z');
+  const businessDay = toBusinessDate('2026-10-08')!;
   world.movements.set(movementId, {
     id: movementId,
     organizationId: ORG,
@@ -634,7 +637,7 @@ function seedReceipt(world: FakeWorld, options: SeedOptions = {}) {
     baseQuantity: quantity,
     baseUnitId: 'unit-1',
     conversionFactor: '1.0000',
-    movementDate: at,
+    movementDate: businessDay,
     transferId: null,
     reversalOfMovementId: null,
     referenceType: null,
@@ -654,7 +657,7 @@ function seedReceipt(world: FakeWorld, options: SeedOptions = {}) {
     organizationId: ORG,
     kind: 'receipt',
     number: 'R-0001',
-    businessDate: at,
+    businessDate: businessDay,
     lines: [
       {
         id: 'line-1',
@@ -715,6 +718,7 @@ function buildService(world: FakeWorld) {
     } as unknown as InventoryValuationService,
     {
       assertOrganizationInScope: async () => undefined,
+      getDateTimeSettings: async () => DEFAULT_DATE_TIME_SETTINGS,
     } as unknown as OrganizationsService,
     {
       requireAllPermissions: async () => undefined,

@@ -205,9 +205,11 @@ Vardena/
 > Task 22 slice and the Task 32 Dashboard corrected by PR #86 (login/session,
 > license and organization gates, Financial Area → Fiscal Year workspace context,
 > RTL app shell, permission-aware navigation, Accounting read surfaces and bounded Dashboard reads). Everything else —
-> other feature slices, grid-state persistence via the customization module,
-> the localization decision (OQ-02) — is still target state. Setup, scripts and
-> the file layout are documented in [`frontend/README.md`](../frontend/README.md).
+> other feature slices and grid-state persistence via the customization module
+> — are still target state. The organization-scoped date/time slice is implemented
+> under ADR-0042; OQ-02 remains open for numeral preference and broader
+> localization. Setup, scripts and the file layout are documented in
+> [`frontend/README.md`](../frontend/README.md).
 
 - **Feature slices mirror backend modules** (`features/inventory`, `features/sales`,
   ...) — the same mental model on both sides (AR-27).
@@ -218,18 +220,20 @@ Vardena/
   e.g. `['inventory','receipts', …]`); **React Hook Form + Zod** for forms (Zod
   schemas mirror the API contract); **TanStack Table** for grids (column
   visibility/order and saved filters persist via the customization module);
-  **Day.js** for all date handling; **React Router** for routing; Tailwind +
-  shadcn/ui for UI.
+  **Day.js through `frontend/src/lib/datetime/` only** for date/time handling;
+  **React Router** for routing; Tailwind + shadcn/ui for UI. Date/Instant and
+  calendar/zone rules are binding in [ADR-0042](adr/0042-datetime-calendar-architecture.md)
+  and [the date/time contract](datetime.md).
 - Frontend authorization (hiding buttons/menus by permission) is **UX only** —
   the backend enforces everything (AR-21). The scoped workspace selection is
   `Organization → Financial Area → Fiscal Year`; it is ephemeral browser state,
   clears descendants on each parent transition, and never substitutes for
   server-side organization/parent-chain validation. See
   [`frontend/financial-context.md`](frontend/financial-context.md).
-- Localization (UI language, Jalali calendar, number formatting) is **OQ-02**;
-  the architecture requirement is that all user-facing strings live in one i18n
-  dictionary and all date/number display goes through `lib/` formatters so the
-  decision can be made in one place.
+- Localization remains an open product area under OQ-02 (UI language, Persian
+  numeral preference and broader number formatting). The calendar default and
+  organization-scoped IANA time zone are already decided/implemented by ADR-0042;
+  all date and number display still goes through shared `lib/` formatters.
 
 ## 8. Event Model (overview)
 

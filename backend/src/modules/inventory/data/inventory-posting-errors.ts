@@ -1,3 +1,5 @@
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
+
 /**
  * Posting failures that can only be detected INSIDE the ledger transaction
  * (Task 7, ADR-0022).
@@ -127,17 +129,17 @@ export class RecalculationTooLargeError extends Error {
  * movement dates so a retry can carry the confirmation.
  */
 export class TransferBackdateConfirmationRequiredError extends Error {
-  readonly movementDate: Date;
+  readonly movementDate: BusinessDate;
   readonly keys: readonly {
     warehouseId: string;
-    latestMovementDate: Date | null;
+    latestMovementDate: BusinessDate | null;
   }[];
 
   constructor(input: {
-    movementDate: Date;
+    movementDate: BusinessDate;
     keys: readonly {
       warehouseId: string;
-      latestMovementDate: Date | null;
+      latestMovementDate: BusinessDate | null;
     }[];
   }) {
     super(

@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { setDateTimeSettings } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import {
   accountStatement,
@@ -45,6 +46,10 @@ const organizationApi = await import('@/api/organization.api');
 const accountingApi = await import('@/api/accounting.api');
 
 beforeEach(() => {
+  setDateTimeSettings({
+    calendarSystem: testOrganization.calendarSystem,
+    timeZone: testOrganization.timeZone,
+  });
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
     userId: testUser.id,
@@ -140,6 +145,12 @@ describe('Account statement page', () => {
     const table = await screen.findByRole('table');
     // debit, net and running balance all carry the same exact value.
     expect(within(table).getAllByText('1,500,000.00')).toHaveLength(3);
+    expect(
+      within(table).getByText('2026-04-01 10:15:00 UTC (UTC+00:00)'),
+    ).toHaveAttribute(
+      'title',
+      accountStatement.movements.items[0]!.postingTimestamp,
+    );
     expect(screen.getByText('debit-positive')).toBeInTheDocument();
     expect(screen.getByText('intra-fiscal-year')).toBeInTheDocument();
   });

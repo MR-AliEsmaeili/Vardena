@@ -47,6 +47,7 @@
  * produces the same numbers.
  */
 
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import type {
   MovementValuation,
   ValuationPosition,
@@ -70,7 +71,7 @@ export type CoupledReplaySide = 'source' | 'destination';
  */
 export interface CoupledReplayEntry {
   side: CoupledReplaySide;
-  movementDate: Date;
+  movementDate: BusinessDate;
   createdAt: Date;
   id: string;
   fact: ReplayFact;
@@ -91,7 +92,7 @@ export interface CoupledReplayEntry {
  * equal, and the leg that must sort before its own partner.
  */
 export interface CoupledTransferAnchor {
-  movementDate: Date;
+  movementDate: BusinessDate;
   createdAt: Date;
   id: string;
   /** Positive base-unit magnitude moved. */
@@ -120,10 +121,10 @@ export interface CoupledTransferReplayResult {
 
 /** The canonical ledger total order: business date, creation instant, id. */
 export function compareCanonicalMovementOrder(
-  left: { movementDate: Date; createdAt: Date; id: string },
-  right: { movementDate: Date; createdAt: Date; id: string },
+  left: { movementDate: BusinessDate; createdAt: Date; id: string },
+  right: { movementDate: BusinessDate; createdAt: Date; id: string },
 ): number {
-  const byDate = left.movementDate.getTime() - right.movementDate.getTime();
+  const byDate = left.movementDate.localeCompare(right.movementDate);
   if (byDate !== 0) return byDate;
   const byCreatedAt = left.createdAt.getTime() - right.createdAt.getTime();
   if (byCreatedAt !== 0) return byCreatedAt;

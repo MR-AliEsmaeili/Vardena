@@ -8,6 +8,10 @@ import {
 } from '../src/kernel/events/domain-event-bus.js';
 import { generateId } from '../src/kernel/ids/ulid.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
+import {
+  toBusinessDate,
+  type BusinessDate,
+} from '../src/kernel/datetime/business-date.js';
 import { OrganizationsService } from '../src/modules/organization/application/organizations.service.js';
 import { AccountingPeriodsService } from '../src/modules/accounting/application/accounting-periods.service.js';
 import { FiscalYearsService } from '../src/modules/accounting/application/fiscal-years.service.js';
@@ -278,7 +282,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       yearId: string;
       periodId: string;
       /** A business date that resolves to the period. */
-      documentDate: Date;
+      documentDate: BusinessDate;
     }
 
     const seedCalendar = async (): Promise<Calendar> => {
@@ -302,7 +306,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       return {
         yearId,
         periodId,
-        documentDate: new Date(Date.UTC(startYear, 0, 31)),
+        documentDate: toBusinessDate(`${startYear}-01-31`)!,
       };
     };
 
@@ -912,8 +916,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           fiscalYearId: otherYearId,
           sequence: 2,
           title: 'Foreign year period',
-          startDate: new Date(Date.UTC(2099, 0, 1)),
-          endDate: new Date(Date.UTC(2099, 5, 30)),
+          startDate: toBusinessDate('2099-01-01')!,
+          endDate: toBusinessDate('2099-06-30')!,
           createdAt: new Date(),
           updatedAt: new Date(),
           createdBy: null,

@@ -1,3 +1,5 @@
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
+
 /**
  * Unit conversion — effective-dated configuration (D-26, D-21,
  * master-data-strategy.md §3.4/§7.7, OQ-29).
@@ -28,8 +30,8 @@
 
 /** Half-open validity window `[validFrom, validTo)`; `null` = open-ended. */
 export interface ConversionWindow {
-  validFrom: Date;
-  validTo: Date | null;
+  validFrom: BusinessDate;
+  validTo: BusinessDate | null;
 }
 
 export interface UnitConversion extends ConversionWindow {
@@ -68,8 +70,8 @@ export function toUnitConversionDto(
     fromUnitId: conversion.fromUnitId,
     toUnitId: conversion.toUnitId,
     factor: conversion.factor,
-    validFrom: conversion.validFrom.toISOString(),
-    validTo: conversion.validTo?.toISOString() ?? null,
+    validFrom: conversion.validFrom,
+    validTo: conversion.validTo,
     createdAt: conversion.createdAt.toISOString(),
     updatedAt: conversion.updatedAt.toISOString(),
   };
@@ -115,10 +117,7 @@ export function planNewVersion(params: {
   existing: ReadonlyArray<{ id: string } & ConversionWindow>;
 }): NewVersionPlan {
   const { candidate, existing } = params;
-  if (
-    candidate.validTo !== null &&
-    candidate.validTo.getTime() <= candidate.validFrom.getTime()
-  ) {
+  if (candidate.validTo !== null && candidate.validTo <= candidate.validFrom) {
     return { problem: 'invalid_window', supersededId: null };
   }
 
@@ -134,7 +133,7 @@ export function planNewVersion(params: {
     only !== undefined &&
     only.validTo === null &&
     candidate.validTo === null &&
-    only.validFrom.getTime() < candidate.validFrom.getTime()
+    only.validFrom < candidate.validFrom
   ) {
     return { problem: null, supersededId: only.id };
   }
@@ -146,13 +145,14 @@ export function windowsOverlap(
   a: ConversionWindow,
   b: ConversionWindow,
 ): boolean {
-  const aEnd = a.validTo?.getTime() ?? Number.POSITIVE_INFINITY;
-  const bEnd = b.validTo?.getTime() ?? Number.POSITIVE_INFINITY;
-  return a.validFrom.getTime() < bEnd && b.validFrom.getTime() < aEnd;
+  return (
+    (a.validTo === null || b.validFrom < a.validTo) &&
+    (b.validTo === null || a.validFrom < b.validTo)
+  );
 }
 
 /**
- * The version in force at `asOf`, or `null` when none is.
+ * The version in force on business date `asOf`, or `null` when none is.
  *
  * This is the read path that preserves historical meaning: a document dated in
  * the past resolves the version that was valid then, not the current one. When
@@ -161,16 +161,15 @@ export function windowsOverlap(
  */
 export function resolveVersionAt<T extends ConversionWindow>(
   versions: readonly T[],
-  asOf: Date,
+  asOf: BusinessDate,
 ): T | null {
-  const time = asOf.getTime();
   const matching = versions.filter(
     (version) =>
-      version.validFrom.getTime() <= time &&
-      (version.validTo === null || time < version.validTo.getTime()),
+      version.validFrom <= asOf &&
+      (version.validTo === null || asOf < version.validTo),
   );
   if (matching.length === 0) return null;
   return matching.reduce((latest, version) =>
-    version.validFrom.getTime() > latest.validFrom.getTime() ? version : latest,
+    version.validFrom > latest.validFrom ? version : latest,
   );
 }

@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { getPrincipal } from '../../../kernel/correlation/request-context.js';
+import {
+  businessDateFromInstant,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import {
@@ -223,10 +227,14 @@ export class MaterialRequestsService {
     const description = normalizeDescription(input.description);
     const actorId = this.requireActorId();
     const now = new Date();
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
+    );
+    const businessDate = businessDateFromInstant(now, timeZone);
     const lines = await this.resolveLines(
       input.organizationId,
       input.lines,
-      now,
+      businessDate,
     );
     const created = await this.repository.createDraft(
       {
@@ -269,7 +277,13 @@ export class MaterialRequestsService {
           'A Material Request must have at least one line.',
         );
       }
-      lines = await this.resolveLines(organizationId, input.lines, now);
+      const { timeZone } =
+        await this.organizations.getDateTimeSettings(organizationId);
+      lines = await this.resolveLines(
+        organizationId,
+        input.lines,
+        businessDateFromInstant(now, timeZone),
+      );
     }
     const actorId = this.requireActorId();
     try {
@@ -874,7 +888,7 @@ export class MaterialRequestsService {
   private async resolveLines(
     organizationId: string,
     inputs: CreateMaterialRequestLineInput[],
-    asOf: Date,
+    asOf: BusinessDate,
   ): Promise<DraftLineInput[]> {
     const resolved: DraftLineInput[] = [];
     let lineNumber = 1;

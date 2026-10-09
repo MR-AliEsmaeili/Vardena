@@ -28,7 +28,7 @@ import {
   toApiBusinessDate,
   toApiInstant,
 } from '../../../kernel/datetime/api-date-time.js';
-import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import type { DateTimeSettings } from '../../../kernel/datetime/date-time-settings.js';
 import type { InventoryDocumentAccountingPostingState } from './inventory-accounting-posting-operation.js';
 
@@ -149,13 +149,8 @@ export type InventoryDocumentBase = {
   organizationId: string;
   /** Allocated by the Documents Foundation at finalize; null while draft. */
   number: string | null;
-  /**
-   * Business DATE carrier (OQ-73): the PostgreSQL `date` value as Prisma
-   * materializes it — a `Date` whose UTC components are the calendar day.
-   * Never an instant: never render, compare-with-time or zone-shift it;
-   * convert with `businessDateFromDbDate` at the boundary.
-   */
-  businessDate: Date;
+  /** Canonical Gregorian business day; never a timestamp or Prisma carrier. */
+  businessDate: BusinessDate;
   lines: readonly InventoryDocumentLine[];
   description: string | null;
   reference: string | null;
@@ -537,7 +532,7 @@ export interface DocumentSideEffectAssessment {
 }
 
 type EffectShape = {
-  businessDate: Date;
+  businessDate: BusinessDate;
   warehouseId: string | null;
   sourceWarehouseId: string | null;
   destinationWarehouseId: string | null;
@@ -584,9 +579,7 @@ export function classifyDocumentEdit(params: {
   after: EffectShape;
 }): DocumentSideEffectAssessment {
   const reasons: string[] = [];
-  if (
-    params.before.businessDate.getTime() !== params.after.businessDate.getTime()
-  ) {
+  if (params.before.businessDate !== params.after.businessDate) {
     reasons.push('inventory.document.change.business_date');
   }
   if (params.before.warehouseId !== params.after.warehouseId) {
@@ -750,9 +743,7 @@ export function toInventoryDocumentDto(
       ? 'priced'
       : 'unpriced');
   const accountingEligible = isAccountingEligible(document, valuationState);
-  const businessDateCalendar = toApiBusinessDate(
-    businessDateFromDbDate(document.businessDate),
-  );
+  const businessDateCalendar = toApiBusinessDate(document.businessDate);
   if (businessDateCalendar === null) {
     throw new Error(
       `Inventory document ${document.id} has a business date outside the supported calendar range.`,
@@ -778,7 +769,7 @@ export function toInventoryDocumentDto(
     valuationState,
     accountingEligible,
     number: document.number,
-    businessDate: businessDateFromDbDate(document.businessDate),
+    businessDate: document.businessDate,
     businessDateCalendar,
     warehouseId: document.warehouseId,
     sourceWarehouseId: document.sourceWarehouseId,

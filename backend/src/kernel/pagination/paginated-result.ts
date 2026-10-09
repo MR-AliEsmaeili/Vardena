@@ -56,6 +56,9 @@ export function parseSort(sort: string | undefined): SortField[] {
 
 /**
  * OpenAPI helper for paginated endpoints (ADR-0014: DTOs are the contract).
+ * Each generated DTO gets a schema name derived from its item model; reusing
+ * the same local class name for every call would make Nest Swagger register
+ * one last-writer-wins `PaginatedResponseClass` schema for all endpoints.
  * Usage in a controller:
  *
  *   const PaginatedWidget = paginatedResponseOf(WidgetDto);
@@ -78,5 +81,8 @@ export function paginatedResponseOf<TModel extends Type<unknown>>(
     @ApiProperty({ example: 100 })
     pageSize: number;
   }
+  Object.defineProperty(PaginatedResponseClass, 'name', {
+    value: `Paginated${model.name}`,
+  });
   return PaginatedResponseClass;
 }

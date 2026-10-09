@@ -1,6 +1,7 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import type { FiscalYear } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
+import { formatDateOnly, formatDateOnlyCanonical } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { DataTable } from '@/ui/patterns/data-table';
 import { PageHeader } from '@/ui/patterns/page-header';
@@ -19,12 +20,20 @@ const columns: ColumnDef<FiscalYear, unknown>[] = [
   {
     accessorKey: 'startDate',
     header: t.masterData.startDate,
-    cell: ({ row }) => <span dir="ltr">{row.original.startDate}</span>,
+    cell: ({ row }) => (
+      <span dir="ltr" title={formatDateOnlyCanonical(row.original.startDate)}>
+        {formatDateOnly(row.original.startDate)}
+      </span>
+    ),
   },
   {
     accessorKey: 'endDate',
     header: t.masterData.endDate,
-    cell: ({ row }) => <span dir="ltr">{row.original.endDate}</span>,
+    cell: ({ row }) => (
+      <span dir="ltr" title={formatDateOnlyCanonical(row.original.endDate)}>
+        {formatDateOnly(row.original.endDate)}
+      </span>
+    ),
   },
   {
     accessorKey: 'status',

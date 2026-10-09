@@ -1167,7 +1167,7 @@ describe('Accounting documents (e2e)', () => {
     expect(lineIds).not.toContain(credit?.id);
     // Business date + posting timestamp: the business date is the voucher's,
     // the posting timestamp is the finalization evidence (§15.5, Class C3).
-    expect(debit?.documentDate.toISOString().slice(0, 10)).toBe('2026-04-05');
+    expect(debit?.documentDate).toBe('2026-04-05');
     expect(debit?.postingTimestamp.toISOString()).toBe(
       finalized.body.finalizedAt as string,
     );

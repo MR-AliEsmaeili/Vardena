@@ -1,3 +1,4 @@
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import type { AuditColumns, OrderBy } from './master-data-rows.js';
 
 /**
@@ -82,7 +83,7 @@ export interface MovementCreate {
   baseQuantity: string;
   baseUnitId: string;
   conversionFactor: string;
-  movementDate: Date;
+  movementDate: BusinessDate;
   transferId: string | null;
   reversalOfMovementId: string | null;
   referenceType: string | null;
@@ -118,6 +119,13 @@ export interface MovementCreate {
  * no caller can reach `quantity`, `movement_date` or `movement_type` through
  * it.
  */
+export interface MovementCreateData extends Omit<
+  MovementCreate,
+  'movementDate'
+> {
+  movementDate: Date;
+}
+
 export interface MovementValuationUpdate {
   totalCost: string | null;
   valuationStatus: string;
@@ -151,7 +159,7 @@ export interface MovementDelegate {
     by: Array<'warehouseId' | 'itemId'>;
     where: MovementWhere;
   }): Promise<Array<{ warehouseId: string; itemId: string }>>;
-  create(args: { data: MovementCreate }): Promise<MovementRow>;
+  create(args: { data: MovementCreateData }): Promise<MovementRow>;
   /** Valuation-only rewrite; see `MovementValuationUpdate`. */
   update(args: {
     where: { id: string };
@@ -417,8 +425,8 @@ export interface ItemValuationMethodCreate {
   organizationId: string;
   itemId: string;
   method: string;
-  validFrom: Date;
-  validTo: Date | null;
+  validFrom: BusinessDate;
+  validTo: BusinessDate | null;
   note: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -426,6 +434,14 @@ export interface ItemValuationMethodCreate {
 }
 
 /** The only shape a configuration version is updated with: close its window. */
+export interface ItemValuationMethodCreateData extends Omit<
+  ItemValuationMethodCreate,
+  'validFrom' | 'validTo'
+> {
+  validFrom: Date;
+  validTo: Date | null;
+}
+
 export interface ItemValuationMethodCloseUpdate {
   validTo: Date;
   updatedAt: Date;
@@ -444,7 +460,7 @@ export interface ItemValuationMethodDelegate {
   }): Promise<ItemValuationMethodRow[]>;
   count(args: { where: ItemValuationMethodWhere }): Promise<number>;
   create(args: {
-    data: ItemValuationMethodCreate;
+    data: ItemValuationMethodCreateData;
   }): Promise<ItemValuationMethodRow>;
   update(args: {
     where: { id: string };
@@ -679,8 +695,8 @@ export interface PricingRunCreate {
   organizationId: string;
   warehouseId: string | null;
   documentKinds: string[];
-  fromDate: Date | null;
-  toDate: Date;
+  fromDate: BusinessDate | null;
+  toDate: BusinessDate;
   kind: string;
   reversesRunId: string | null;
   keysExamined: number;
@@ -695,6 +711,14 @@ export interface PricingRunCreate {
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
+}
+
+export interface PricingRunCreateData extends Omit<
+  PricingRunCreate,
+  'fromDate' | 'toDate'
+> {
+  fromDate: Date | null;
+  toDate: Date;
 }
 
 export interface PricingRunUpdate {
@@ -740,7 +764,7 @@ export interface PricingRunDelegate {
     take: number;
   }): Promise<PricingRunRow[]>;
   count(args: { where: PricingRunWhere }): Promise<number>;
-  create(args: { data: PricingRunCreate }): Promise<PricingRunRow>;
+  create(args: { data: PricingRunCreateData }): Promise<PricingRunRow>;
   update(args: {
     where: { id: string };
     data: PricingRunUpdate;

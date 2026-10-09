@@ -109,7 +109,7 @@ export class InventoryValuationController {
   @RequirePermission(VALUATION_PERMISSIONS.VIEW)
   @ApiOperation({
     summary:
-      'Resolve which valuation method governs one item at one instant, and whether it came from configuration or the default.',
+      'Resolve which valuation method governs one item on one business date, and whether it came from configuration or the default.',
   })
   @ApiOkResponse({ type: ResolvedValuationMethodResponseDto })
   @ApiNotFoundResponse({ description: 'Organization or item does not exist.' })
@@ -123,7 +123,7 @@ export class InventoryValuationController {
     return this.valuation.resolveMethod({
       organizationId: query.organizationId,
       itemId: query.itemId,
-      asOf: query.asOf ?? new Date(),
+      asOf: query.asOf,
     });
   }
 
@@ -132,7 +132,7 @@ export class InventoryValuationController {
   @RequirePermission(VALUATION_PERMISSIONS.CONFIGURE)
   @ApiOperation({
     summary:
-      'Configure the valuation method of an item from an instant. The previous open-ended version is closed, never edited.',
+      'Configure the valuation method of an item from a business date. The previous open-ended version is closed, never edited.',
   })
   @ApiCreatedResponse({ type: ItemValuationMethodResponseDto })
   @ApiConflictResponse({

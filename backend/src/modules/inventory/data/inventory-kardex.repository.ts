@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 
 export interface KardexReadInput {
   organizationId: string;
   itemId: string;
   warehouseId: string;
-  dateFrom?: Date | undefined;
-  dateTo?: Date | undefined;
+  dateFrom?: BusinessDate | undefined;
+  dateTo?: BusinessDate | undefined;
   page: number;
   pageSize: number;
   snapshot?: string | undefined;
@@ -14,7 +16,7 @@ export interface KardexReadInput {
 
 export interface KardexLedgerRow {
   movementId: string;
-  movementDate: Date;
+  movementDate: BusinessDate;
   createdAt: Date;
   movementType: string;
   signedBaseQuantity: string;
@@ -32,7 +34,7 @@ export interface KardexLedgerPage {
   openingBaseQuantity: string;
   closingBaseQuantity: string;
   baseUnitId: string | null;
-  closingMovementDate: Date | null;
+  closingMovementDate: BusinessDate | null;
   snapshot: string;
 }
 
@@ -108,7 +110,7 @@ export class InventoryKardexRepository {
             .filter((row) => row.movementId !== null)
             .map((row) => ({
               movementId: row.movementId!,
-              movementDate: row.movementDate!,
+              movementDate: businessDateFromDbDate(row.movementDate!),
               createdAt: row.createdAt!,
               movementType: row.movementType!,
               signedBaseQuantity: String(row.signedBaseQuantity),
@@ -123,7 +125,10 @@ export class InventoryKardexRepository {
           openingBaseQuantity: String(meta.openingBaseQuantity),
           closingBaseQuantity: String(meta.closingBaseQuantity),
           baseUnitId: meta.baseUnitId,
-          closingMovementDate: meta.closingMovementDate,
+          closingMovementDate:
+            meta.closingMovementDate === null
+              ? null
+              : businessDateFromDbDate(meta.closingMovementDate),
           snapshot,
         };
       },

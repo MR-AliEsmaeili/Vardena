@@ -38,6 +38,7 @@
  * tests live in the opt-in live suite, not in the e2e journey.
  */
 import { generateId } from '../../src/kernel/ids/ulid.js';
+import type { BusinessDate } from '../../src/kernel/datetime/business-date.js';
 import {
   addDecimalStrings,
   compareDecimalStrings,
@@ -67,12 +68,12 @@ import {
   TransferBackdateConfirmationRequiredError,
 } from '../../src/modules/inventory/data/inventory-posting-errors.js';
 import {
-  distinctInstants,
-  findAmbiguousInstant,
+  distinctBusinessDates,
+  findAmbiguousBusinessDate,
   isValuationMethod,
   resolveValuationMethodAt,
-  versionCoversAnyInstant,
-  versionCoversInstant,
+  versionCoversAnyBusinessDate,
+  versionCoversBusinessDate,
   type ItemValuationMethodVersion,
   type ValuationMethod,
 } from '../../src/modules/inventory/domain/valuation-method.js';
@@ -262,8 +263,11 @@ function assertSufficient(
   }
 }
 
-function maxDate(current: Date | null, candidate: Date): Date {
-  if (current === null || candidate.getTime() > current.getTime()) {
+function maxBusinessDate(
+  current: BusinessDate | null,
+  candidate: BusinessDate,
+): BusinessDate {
+  if (current === null || candidate > current) {
     return candidate;
   }
   return current;
@@ -538,7 +542,7 @@ function valueMovementInMemory(
 function latestMovementDatesInMemory(
   tables: InventoryCoreTables,
   input: PostTransferInput,
-): { warehouseId: string; latestMovementDate: Date | null }[] {
+): { warehouseId: string; latestMovementDate: BusinessDate | null }[] {
   return [input.outLeg.warehouseId, input.inLeg.warehouseId].map(
     (warehouseId) => ({
       warehouseId,
@@ -557,15 +561,15 @@ function maxMovementDateInMemory(
   organizationId: string,
   warehouseId: string,
   itemId: string,
-): Date | null {
-  let max: Date | null = null;
+): BusinessDate | null {
+  let max: BusinessDate | null = null;
   for (const row of tables.movements.findMany(
     (movement) =>
       movement.organizationId === organizationId &&
       movement.warehouseId === warehouseId &&
       movement.itemId === itemId,
   )) {
-    max = maxDate(max, row.movementDate);
+    max = maxBusinessDate(max, row.movementDate);
   }
   return max;
 }
@@ -597,7 +601,7 @@ function replayedKeyEntries(
   key: BalanceKey,
   rows: readonly InventoryMovement[],
 ): CoupledReplayEntry[] {
-  const instants = distinctInstants(rows.map((row) => row.movementDate));
+  const instants = distinctBusinessDates(rows.map((row) => row.movementDate));
   const versions =
     instants.length === 0
       ? []
@@ -605,13 +609,13 @@ function replayedKeyEntries(
           (version) =>
             version.organizationId === key.organizationId &&
             version.itemId === key.itemId &&
-            versionCoversAnyInstant(version, instants),
+            versionCoversAnyBusinessDate(version, instants),
         );
-  const ambiguous = findAmbiguousInstant(versions, instants);
+  const ambiguous = findAmbiguousBusinessDate(versions, instants);
   if (ambiguous !== null) {
     throw new AmbiguousValuationMethodError(
       key.itemId,
-      ambiguous.instant,
+      ambiguous.businessDate,
       ambiguous.versionIds,
     );
   }
@@ -721,7 +725,7 @@ function persistCoupledSide(
       method: ValuationMethod;
       at: Date;
       /** The pair's business date — the run's informational lower bound. */
-      fromDate: Date;
+      fromDate: BusinessDate;
       operationKey: string;
       reason: string | null;
     };
@@ -772,7 +776,7 @@ function insertRunRow(
     input: {
       method: ValuationMethod;
       at: Date;
-      fromDate: Date;
+      fromDate: BusinessDate;
       operationKey: string;
       reason: string | null;
     };
@@ -864,7 +868,7 @@ function applyReplayInMemory(
     key: BalanceKey;
     method: ValuationMethod;
     trigger: InventoryValuationRun['trigger'];
-    fromDate: Date | null;
+    fromDate: BusinessDate | null;
     reason: string | null;
     operationKey: string;
     at: Date;
@@ -888,7 +892,7 @@ function applyReplayInMemory(
   // has been reconfigured — and the method is then resolved PER MOVEMENT at
   // that movement's own business date (OD-VAL-14), never one method for the
   // whole history.
-  const instants = distinctInstants(rows.map((row) => row.movementDate));
+  const instants = distinctBusinessDates(rows.map((row) => row.movementDate));
   const versions =
     instants.length === 0
       ? []
@@ -896,15 +900,15 @@ function applyReplayInMemory(
           (version) =>
             version.organizationId === input.key.organizationId &&
             version.itemId === input.key.itemId &&
-            versionCoversAnyInstant(version, instants),
+            versionCoversAnyBusinessDate(version, instants),
         );
   // Ambiguity is checked PER DATE, exactly like production: a global row
   // count cannot see two versions on one date and none on another.
-  const ambiguous = findAmbiguousInstant(versions, instants);
+  const ambiguous = findAmbiguousBusinessDate(versions, instants);
   if (ambiguous !== null) {
     throw new AmbiguousValuationMethodError(
       input.key.itemId,
-      ambiguous.instant,
+      ambiguous.businessDate,
       ambiguous.versionIds,
     );
   }
@@ -992,7 +996,7 @@ function compareLedgerOrder(
   left: InventoryMovement,
   right: InventoryMovement,
 ): number {
-  const byDate = left.movementDate.getTime() - right.movementDate.getTime();
+  const byDate = left.movementDate.localeCompare(right.movementDate);
   if (byDate !== 0) return byDate;
   const byCreated = left.createdAt.getTime() - right.createdAt.getTime();
   if (byCreated !== 0) return byCreated;
@@ -1022,7 +1026,7 @@ export class InMemoryInventoryMovementsRepository {
   async findByTransferId(transferId: string): Promise<InventoryMovement[]> {
     return this.tables.movements
       .findMany((row) => row.transferId === transferId)
-      .sort((a, b) => a.movementDate.getTime() - b.movementDate.getTime())
+      .sort((a, b) => a.movementDate.localeCompare(b.movementDate))
       .slice(0, 10);
   }
 
@@ -1044,16 +1048,10 @@ export class InMemoryInventoryMovementsRepository {
         take: params.take,
       },
       (row) => {
-        if (
-          dateFrom !== undefined &&
-          row.movementDate.getTime() < dateFrom.getTime()
-        ) {
+        if (dateFrom !== undefined && row.movementDate < dateFrom) {
           return false;
         }
-        if (
-          dateTo !== undefined &&
-          row.movementDate.getTime() > dateTo.getTime()
-        ) {
+        if (dateTo !== undefined && row.movementDate > dateTo) {
           return false;
         }
         return true;
@@ -1082,15 +1080,15 @@ export class InMemoryInventoryMovementsRepository {
     organizationId: string,
     warehouseId: string,
     itemId: string,
-  ): Promise<Date | null> {
-    let max: Date | null = null;
+  ): Promise<BusinessDate | null> {
+    let max: BusinessDate | null = null;
     for (const row of this.tables.movements.findMany(
       (movement) =>
         movement.organizationId === organizationId &&
         movement.warehouseId === warehouseId &&
         movement.itemId === itemId,
     )) {
-      if (max === null || row.movementDate.getTime() > max.getTime()) {
+      if (max === null || row.movementDate > max) {
         max = row.movementDate;
       }
     }
@@ -1141,7 +1139,7 @@ export class InMemoryInventoryMovementsRepository {
       );
       this.tables.balances.patch(balance.id, {
         onHand: addDecimalStrings(balance.onHand, input.movement.baseQuantity),
-        lastMovementDate: maxDate(
+        lastMovementDate: maxBusinessDate(
           balance.lastMovementDate,
           input.movement.movementDate,
         ),
@@ -1190,8 +1188,7 @@ export class InMemoryInventoryMovementsRepository {
       const backdated = latestMovementDatesInMemory(this.tables, input).some(
         (key) =>
           key.latestMovementDate !== null &&
-          input.outLeg.movementDate.getTime() <
-            key.latestMovementDate.getTime(),
+          input.outLeg.movementDate < key.latestMovementDate,
       );
       if (backdated && input.backdateConfirmed !== true) {
         throw new TransferBackdateConfirmationRequiredError({
@@ -1254,7 +1251,7 @@ export class InMemoryInventoryMovementsRepository {
           sourceBalance.onHand,
           input.outLeg.baseQuantity,
         ),
-        lastMovementDate: maxDate(
+        lastMovementDate: maxBusinessDate(
           sourceBalance.lastMovementDate,
           input.outLeg.movementDate,
         ),
@@ -1265,7 +1262,7 @@ export class InMemoryInventoryMovementsRepository {
           destinationBalance.onHand,
           input.inLeg.baseQuantity,
         ),
-        lastMovementDate: maxDate(
+        lastMovementDate: maxBusinessDate(
           destinationBalance.lastMovementDate,
           input.inLeg.movementDate,
         ),
@@ -1324,7 +1321,7 @@ export class InMemoryInventoryMovementsRepository {
       );
       this.tables.balances.patch(balance.id, {
         onHand: addDecimalStrings(balance.onHand, input.movement.baseQuantity),
-        lastMovementDate: maxDate(
+        lastMovementDate: maxBusinessDate(
           balance.lastMovementDate,
           input.movement.movementDate,
         ),
@@ -1635,7 +1632,10 @@ export class InMemoryInventoryBalancesRepository {
         compareDecimalStrings(stored.onHand, expected.expectedOnHand) === 0 &&
         compareDecimalStrings(stored.reserved, expected.expectedReserved) ===
           0 &&
-        sameInstant(stored.lastMovementDate, expected.expectedLastMovementDate)
+        sameBusinessDate(
+          stored.lastMovementDate,
+          expected.expectedLastMovementDate,
+        )
       ) {
         return { ...expected, storedBefore, action: 'noop' };
       }
@@ -1655,7 +1655,7 @@ export class InMemoryInventoryBalancesRepository {
     key: StockingKey,
   ): KeyExpectation {
     let expectedOnHand = '0';
-    let expectedLastMovementDate: Date | null = null;
+    let expectedLastMovementDate: BusinessDate | null = null;
     for (const row of this.tables.movements.findMany(
       (movement) =>
         movement.organizationId === organizationId &&
@@ -1665,7 +1665,7 @@ export class InMemoryInventoryBalancesRepository {
       expectedOnHand = addDecimalStrings(expectedOnHand, row.baseQuantity);
       if (
         expectedLastMovementDate === null ||
-        row.movementDate.getTime() > expectedLastMovementDate.getTime()
+        row.movementDate > expectedLastMovementDate
       ) {
         expectedLastMovementDate = row.movementDate;
       }
@@ -1690,9 +1690,11 @@ export class InMemoryInventoryBalancesRepository {
   }
 }
 
-function sameInstant(left: Date | null, right: Date | null): boolean {
-  if (left === null || right === null) return left === right;
-  return left.getTime() === right.getTime();
+function sameBusinessDate(
+  left: BusinessDate | null,
+  right: BusinessDate | null,
+): boolean {
+  return left === right;
 }
 
 // ---------------------------------------------------------------------------
@@ -1760,7 +1762,7 @@ export class InMemoryInventoryValuationRepository {
     organizationId: string;
     warehouseId: string;
     itemId: string;
-    movementDate: Date;
+    movementDate: BusinessDate;
   }): Promise<BackdateAssessment> {
     const rows = this.tables.movements.findMany(
       (row) =>
@@ -1768,13 +1770,16 @@ export class InMemoryInventoryValuationRepository {
         row.warehouseId === params.warehouseId &&
         row.itemId === params.itemId,
     );
-    let latestMovementDate: Date | null = null;
+    let latestMovementDate: BusinessDate | null = null;
     let affectedMovements = 0;
     let affectedValuedMovements = 0;
     for (const row of rows) {
-      latestMovementDate = maxDate(latestMovementDate, row.movementDate);
+      latestMovementDate = maxBusinessDate(
+        latestMovementDate,
+        row.movementDate,
+      );
       // Strictly later, exactly like the SQL `movementDate: { gt }`.
-      if (row.movementDate.getTime() > params.movementDate.getTime()) {
+      if (row.movementDate > params.movementDate) {
         affectedMovements += 1;
         if (row.valuationStatus !== 'unvalued') affectedValuedMovements += 1;
       }
@@ -1782,8 +1787,7 @@ export class InMemoryInventoryValuationRepository {
     const state = await this.findState(params);
     return {
       backdated:
-        latestMovementDate !== null &&
-        params.movementDate.getTime() < latestMovementDate.getTime(),
+        latestMovementDate !== null && params.movementDate < latestMovementDate,
       movementDate: params.movementDate,
       latestMovementDate,
       affectedMovements,
@@ -1881,16 +1885,16 @@ export class InMemoryItemValuationMethodsRepository {
   async findEffectiveVersionAt(
     organizationId: string,
     itemId: string,
-    asOf: Date,
+    asOf: BusinessDate,
   ): Promise<ItemValuationMethodVersion | null> {
     const matching = this.tables.valuationMethods
       .findMany(
         (row) =>
           row.organizationId === organizationId &&
           row.itemId === itemId &&
-          versionCoversInstant(row, asOf),
+          versionCoversBusinessDate(row, asOf),
       )
-      .sort((a, b) => b.validFrom.getTime() - a.validFrom.getTime());
+      .sort((a, b) => b.validFrom.localeCompare(a.validFrom));
     if (matching.length > 1) {
       throw new AmbiguousValuationMethodError(
         itemId,
@@ -1913,11 +1917,8 @@ export class InMemoryItemValuationMethodsRepository {
   }): Promise<{ items: ItemValuationMethodVersion[]; total: number }> {
     return listPage(this.tables.valuationMethods, params, (row, where) => {
       if (where.activeAt === undefined) return true;
-      const at = where.activeAt.getTime();
-      return (
-        row.validFrom.getTime() <= at &&
-        (row.validTo === null || row.validTo.getTime() > at)
-      );
+      const at = where.activeAt;
+      return row.validFrom <= at && (row.validTo === null || row.validTo > at);
     });
   }
 
@@ -1934,7 +1935,7 @@ export class InMemoryItemValuationMethodsRepository {
             row.organizationId === input.create.organizationId &&
             row.itemId === input.create.itemId,
         )
-        .sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
+        .sort((a, b) => a.validFrom.localeCompare(b.validFrom));
       // The REAL planner, so window rules are proven here, not re-stated.
       const plan = planNewVersion({
         candidate: {

@@ -1,3 +1,4 @@
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import {
   dateOnlyRangesOverlap,
   formatDateOnly,
@@ -38,8 +39,8 @@ export interface FiscalYear {
   financialAreaId: string;
   code: string;
   title: string;
-  startDate: Date;
-  endDate: Date;
+  startDate: BusinessDate;
+  endDate: BusinessDate;
   status: FiscalYearStatus;
   isActive: boolean;
   priorYearId: string | null;

@@ -42,6 +42,9 @@ describe('report filter schemas', () => {
       ledgerScopeSchema.safeParse({ ...base, dateFrom: '1405/01/12' }).success,
     ).toBe(false);
     expect(
+      ledgerScopeSchema.safeParse({ ...base, dateFrom: '2026-02-30' }).success,
+    ).toBe(false);
+    expect(
       ledgerScopeSchema.safeParse({ ...base, dateTo: '2026-4-1' }).success,
     ).toBe(false);
   });

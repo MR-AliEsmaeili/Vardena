@@ -129,6 +129,8 @@ export class OrganizationsController {
     return this.organizations.createOrganization({
       code: body.code,
       name: body.name,
+      calendarSystem: body.calendarSystem,
+      timeZone: body.timeZone,
     });
   }
 
@@ -147,6 +149,8 @@ export class OrganizationsController {
     return this.organizations.updateOrganization(id, {
       code: body.code,
       name: body.name,
+      calendarSystem: body.calendarSystem,
+      timeZone: body.timeZone,
     });
   }
 

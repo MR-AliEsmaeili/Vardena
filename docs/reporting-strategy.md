@@ -69,7 +69,12 @@ request (reportId, filters, sort, groupBy, page, pageSize)
 
 - **Filter model:** `{ column, op, value }` with per-column operator
   whitelist: `eq, ne, gt, gte, lt, lte, between, in, like, notLike, isNull,
-  notNull`. Dates always timestamptz-UTC in, converted per OQ-02 at display.
+  notNull`. Temporal columns keep their explicit type: `BusinessDate` is a
+  canonical Gregorian day (`date`), while an event `Instant` is UTC
+  `timestamptz`. Display follows ADR-0042: days use the organization's
+  configured calendar; Instants resolve the organization's IANA zone before
+  calendar rendering. OQ-02 concerns numeral and broader localization policy,
+  not this date/time distinction.
 - **Sorting:** single or multi-column, direction whitelisted per column.
 - **Counting:** `COUNT(*)` with the same WHERE (for `total`); expensive
   sources may declare `countStrategy: estimate` later (extension).

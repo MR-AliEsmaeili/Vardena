@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import { isAccountingDocumentOrigin } from '../domain/accounting-document.js';
 import { canonicalizeAmount } from '../domain/money.js';
 import type { LedgerEntry } from '../domain/ledger-entry.js';
@@ -65,8 +70,8 @@ export interface LedgerMovementFilter {
   accountId?: string | undefined;
   voucherId?: string | undefined;
   voucherNumber?: string | undefined;
-  dateFrom?: Date | undefined;
-  dateTo?: Date | undefined;
+  dateFrom?: BusinessDate | undefined;
+  dateTo?: BusinessDate | undefined;
 }
 
 @Injectable()
@@ -163,8 +168,12 @@ function toMovementWhere(filter: LedgerMovementFilter): LedgerEntryWhere {
   }
   if (filter.dateFrom !== undefined || filter.dateTo !== undefined) {
     const documentDate: { gte?: Date; lte?: Date } = {};
-    if (filter.dateFrom !== undefined) documentDate.gte = filter.dateFrom;
-    if (filter.dateTo !== undefined) documentDate.lte = filter.dateTo;
+    if (filter.dateFrom !== undefined) {
+      documentDate.gte = dbBusinessDate(filter.dateFrom);
+    }
+    if (filter.dateTo !== undefined) {
+      documentDate.lte = dbBusinessDate(filter.dateTo);
+    }
     where.documentDate = documentDate;
   }
   return where;
@@ -223,7 +232,7 @@ export function toLedgerEntryFromRow(row: LedgerEntryRow): LedgerEntry {
     debitAmount: canonicalizeAmount(storedAmountToString(row.debitAmount)),
     creditAmount: canonicalizeAmount(storedAmountToString(row.creditAmount)),
     description: row.description,
-    documentDate: row.documentDate,
+    documentDate: businessDateFromDbDate(row.documentDate),
     postingTimestamp: row.postingTimestamp,
     branchId: row.branchId,
     origin: row.origin,
@@ -281,4 +290,12 @@ export async function countPostedLedgerEntriesInTx(
   accountId: string,
 ): Promise<number> {
   return tx.ledgerEntry.count({ where: { accountId } });
+}
+
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Accounting BusinessDate "${value}".`);
+  }
+  return carrier;
 }

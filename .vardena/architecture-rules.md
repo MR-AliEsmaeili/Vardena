@@ -138,6 +138,23 @@ without an accepted ADR that supersedes it is a defect, not a style choice.
 - **AR-31 — No invented business rules.** Where behavior is unspecified, register
   an OQ in `docs/open-questions.md` and ask. Do not guess numbering, tax, ledger,
   approval, retention, or policy behavior.
+- **AR-32 — BusinessDate and Instant are distinct, permanent concepts.** A
+  `BusinessDate` is a calendar day persisted as canonical Gregorian PostgreSQL
+  `date`; user-facing input/display follows the organization's configured
+  calendar (Jalali by default). An `Instant` is a UTC PostgreSQL `timestamptz`;
+  wire Instants must be valid ISO UTC `Z` values, never naive local date-times
+  or offset-bearing strings parsed in the browser. Render each valid Instant by
+  resolving the organization's valid IANA zone first, then its configured
+  calendar. Detail/audit Instant displays include seconds, the resolved zone
+  and that instant's offset; keep the raw UTC ISO value available for evidence.
+  Reuse the shared kernel/frontend date-time abstractions; never treat a
+  business day as a JavaScript `Date`, UTC-midnight transport, browser-zone day,
+  or timestamp, and never use hard-coded offsets or local calendar conversions.
+  Jalali API input must be explicitly declared. The owner-approved legacy
+  ISO-instant BusinessDate compatibility branch resolves to the UTC calendar
+  day. Follow `docs/datetime.md` for range semantics and Inventory
+  validity-window exceptions; do not extrapolate policy to other `valid_*`
+  fields.
 
 ## F. Frontend Conventions (summary)
 
@@ -147,6 +164,9 @@ without an accepted ADR that supersedes it is a defect, not a style choice.
 - React Hook Form + Zod for forms; Zod schemas mirror the API contract.
 - TanStack Table for data grids; column visibility/order persist via the
   customization module (preference category `ui.table`).
-- Day.js for all date handling; display localization (e.g. Jalali) is OQ-02.
+- Day.js is used only through `frontend/src/lib/datetime/` for date-time handling;
+  BusinessDate and Instant rendering follows AR-32 and ADR-0042. Calendar/zone
+  behavior is organization-configured, and Persian numeral preference remains
+  open under OQ-02.
 - UI text must come from a central i18n dictionary, not inline literals
   (language decision OQ-02).

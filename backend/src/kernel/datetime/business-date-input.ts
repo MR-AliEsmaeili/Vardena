@@ -13,10 +13,9 @@
  * every existing client keeps working unchanged; a Jalali day must be
  * DECLARED. A full ISO-8601 instant is also accepted for backward
  * compatibility, because event timestamps arrived on these fields before the
- * calendar model existed; when one is given, the DAY it names is resolved in
- * the organization's time zone and that day becomes the business date (OQ-73:
- * the persisted column is a PostgreSQL `date`, so no time-of-day can survive
- * the boundary).
+ * calendar model existed; when one is given, its UTC calendar day becomes the
+ * business date. This matches OQ-73's historical conversion policy, so a
+ * resubmitted legacy instant resolves to the same day as its migrated value.
  *
  * Rejections are machine-readable codes ({@link BusinessDateInputRejection});
  * the Persian wording belongs to the caller (the frontend owns user text).
@@ -27,10 +26,10 @@
 import { isCalendarSystem, type CalendarSystem } from './calendar-system.js';
 import {
   BUSINESS_DATE_PATTERN,
-  businessDateFromInstant,
+  businessDateFromUtcInstant,
   parseBusinessDate,
+  type BusinessDate,
 } from './business-date.js';
-import { DEFAULT_TIME_ZONE } from './time-zone.js';
 
 /**
  * A day whose calendar the caller declares explicitly.
@@ -57,7 +56,7 @@ export type BusinessDateInputResult =
   | {
       ok: true;
       /** Canonical Gregorian day — the value to persist/return. */
-      gregorian: string;
+      gregorian: BusinessDate;
       /** Which calendar the caller used (informational/audit). */
       calendar: CalendarSystem;
       /** The caller stated a calendar day (canonical or declared). */
@@ -65,8 +64,8 @@ export type BusinessDateInputResult =
     }
   | {
       ok: true;
-      /** The calendar day that instant falls on in the resolved zone. */
-      gregorian: string;
+      /** UTC calendar day of the legacy instant. */
+      gregorian: BusinessDate;
       calendar: CalendarSystem;
       /**
        * A legacy ISO instant was supplied. The DAY is the value to persist
@@ -114,15 +113,12 @@ export function isBusinessDateInput(
 }
 
 /**
- * Resolve any accepted input into the canonical Gregorian day.
- *
- * `timeZone` is only consulted for a full instant (the day it names is
- * resolved there, because "which day was that, for this organization?" is the
- * business question); a day value needs no zone at all.
+ * Resolve any accepted input into the canonical Gregorian day. Calendar-day
+ * input needs no zone; a legacy instant is deliberately collapsed by UTC day
+ * to match the accepted OQ-73 historical migration policy.
  */
 export function parseBusinessDateInput(
   value: BusinessDateInput,
-  options: { timeZone?: string } = {},
 ): BusinessDateInputResult {
   if (typeof value === 'string') {
     if (BUSINESS_DATE_PATTERN.test(value)) {
@@ -137,16 +133,20 @@ export function parseBusinessDateInput(
       };
     }
     if (ISO_INSTANT_PATTERN.test(value)) {
+      // Date.parse normalizes some impossible civil dates (for example,
+      // February 30) into the following month. Reject the day component
+      // before constructing an Instant so a malformed compatibility input
+      // can never silently change its UTC BusinessDate.
+      if (parseBusinessDate(value.slice(0, 10), 'GREGORIAN') === null) {
+        return { ok: false, reason: 'business_date_calendar' };
+      }
       const instant = new Date(value);
       if (Number.isNaN(instant.getTime())) {
         return { ok: false, reason: 'business_date_format' };
       }
       return {
         ok: true,
-        gregorian: businessDateFromInstant(
-          instant,
-          options.timeZone ?? DEFAULT_TIME_ZONE,
-        ),
+        gregorian: businessDateFromUtcInstant(instant),
         calendar: 'GREGORIAN',
         source: 'instant',
         instant,
