@@ -83,6 +83,19 @@ describe('Gregorian ↔ Jalali conversion', () => {
     expect(formatBusinessDate('2026-02-30', 'JALALI')).toBeNull();
   });
 
+  it('keeps Jalali input within the reversible Gregorian rendering range', () => {
+    expect(parseBusinessDate('0000-01-01', 'JALALI')?.gregorian).toBe(
+      '0621-03-21',
+    );
+    expect(parseBusinessDate('3177-10-11', 'JALALI')?.gregorian).toBe(
+      '3798-12-31',
+    );
+    // jalaali-js can map this day to 3799-01-01, but the kernel/API and
+    // migration rendering envelope stops at 3798-12-31.
+    expect(parseBusinessDate('3177-10-12', 'JALALI')).toBeNull();
+    expect(formatBusinessDate('3798-12-31', 'JALALI')).toBe('3177-10-11');
+  });
+
   it('fails closed outside the four-digit Jalali rendering range', () => {
     expect(gregorianToJalaliDay(560, 1, 1)).toBeNull();
     expect(formatBusinessDate('0560-03-20', 'JALALI')).toBeNull();

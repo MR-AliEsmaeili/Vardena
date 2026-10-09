@@ -119,6 +119,10 @@ export function jalaliToGregorianDay(
 ): GregorianDay | null {
   if (!isValidJalaliDay(year, month, day)) return null;
   const converted = toGregorian(year, month, day);
+  // The upstream algorithm supports some Jalaali 3177 dates that fall in
+  // Gregorian 3799, but the kernel's reverse-rendering/API envelope ends at
+  // Gregorian year 3798. Do not accept a day that cannot be rendered back.
+  if (!isSupportedGregorianYear(converted.gy)) return null;
   return { year: converted.gy, month: converted.gm, day: converted.gd };
 }
 

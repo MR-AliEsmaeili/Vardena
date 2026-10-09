@@ -162,6 +162,15 @@ organization's time zone.
 Frontend sends what the operator wrote: a Jalali organization sends the
 declared form, so the request carries the calendar the user worked in.
 
+The kernel's reversible Jalali/API rendering envelope is Gregorian
+`0621-03-21` through `3798-12-31`, inclusive. The upstream algorithm can
+convert some later Jalali-year-3177 days into Gregorian 3799, but Vardena
+rejects those inputs because they fall outside the kernel's supported reverse
+rendering range. The Inventory migration preflight uses these same bounds for
+Jalali-calendar rows (and for its always-paired business-document dates); a
+PostgreSQL `date` being storable does not by itself make it representable in
+the organization's configured calendar.
+
 ## 4. Range and filter semantics
 
 - **BusinessDate filters: inclusive `[startDate, endDate]`** — a single-day
