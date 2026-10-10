@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { GENERAL_LEDGER_PERMISSIONS } from '../domain/accounting-permissions.js';
+import { parseDateOnly } from '../domain/date-range.js';
 import { GeneralLedgerService } from './general-ledger.service.js';
 
 const ORG = '01H0000000000000000000001';
@@ -15,16 +16,16 @@ const year = {
   financialAreaId: AREA,
   code: '2026',
   title: '2026',
-  startDate: new Date('2026-01-01T00:00:00.000Z'),
-  endDate: new Date('2026-12-31T00:00:00.000Z'),
+  startDate: parseDateOnly('2026-01-01')!,
+  endDate: parseDateOnly('2026-12-31')!,
   status: 'sealed',
 };
 const period = {
   id: PERIOD,
   sequence: 1,
   title: 'January',
-  startDate: new Date('2026-01-01T00:00:00.000Z'),
-  endDate: new Date('2026-01-31T00:00:00.000Z'),
+  startDate: parseDateOnly('2026-01-01')!,
+  endDate: parseDateOnly('2026-01-31')!,
   status: 'closed',
 };
 

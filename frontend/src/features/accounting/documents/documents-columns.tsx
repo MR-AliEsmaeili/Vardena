@@ -1,7 +1,7 @@
 import type { ColumnDef } from '@tanstack/react-table';
 import { Link } from 'react-router-dom';
 import type { AccountingDocument, FinancialArea } from '@/api/contracts';
-import { formatDateOnly } from '@/lib/format';
+import { formatDateOnly, formatDateOnlyCanonical } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
 import { AmountCell } from '@/ui/patterns/amount-cell';
@@ -46,7 +46,10 @@ export function buildDocumentsColumns(
       header: t.documents.colDate,
       enableSorting: true,
       cell: ({ row }) => (
-        <span className="code">
+        <span
+          className="code"
+          title={formatDateOnlyCanonical(row.original.documentDate)}
+        >
           {formatDateOnly(row.original.documentDate)}
         </span>
       ),

@@ -82,8 +82,8 @@ model UnitConversion {
   toUnitId       String    @map("to_unit_id")
   /// Ratio, `numeric(18,6)` per docs/database-strategy.md §6 (rates/ratios).
   factor         Decimal   @db.Decimal(18, 6)
-  validFrom      DateTime  @map("valid_from") @db.Timestamptz(6)
-  validTo        DateTime? @map("valid_to") @db.Timestamptz(6)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy      String?   @map("created_by")
@@ -95,6 +95,8 @@ model UnitConversion {
 
   @@unique([organizationId, fromUnitId, toUnitId, validFrom], map: "uq_unit_conversions_pair_valid_from")
   @@index([organizationId, fromUnitId, toUnitId], map: "idx_unit_conversions_pair")
+  @@index([organizationId, validFrom], map: "idx_unit_conversions_org_valid_from")
+  @@index([organizationId, validTo], map: "idx_unit_conversions_org_valid_to")
   @@index([toUnitId], map: "idx_unit_conversions_to_unit_id")
   @@map("unit_conversions")
   @@schema("inventory")
@@ -110,8 +112,8 @@ model ItemUnitConversion {
   fromUnitId     String    @map("from_unit_id")
   toUnitId       String    @map("to_unit_id")
   factor         Decimal   @db.Decimal(18, 6)
-  validFrom      DateTime  @map("valid_from") @db.Timestamptz(6)
-  validTo        DateTime? @map("valid_to") @db.Timestamptz(6)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
   createdBy      String?   @map("created_by")
@@ -124,6 +126,8 @@ model ItemUnitConversion {
 
   @@unique([itemId, fromUnitId, toUnitId, validFrom], map: "uq_item_unit_conversions_pair_valid_from")
   @@index([organizationId, itemId, fromUnitId, toUnitId], map: "idx_item_unit_conversions_item_pair")
+  @@index([organizationId, validFrom], map: "idx_item_unit_conversions_org_valid_from")
+  @@index([organizationId, validTo], map: "idx_item_unit_conversions_org_valid_to")
   @@index([toUnitId], map: "idx_item_unit_conversions_to_unit_id")
   @@map("item_unit_conversions")
   @@schema("inventory")
@@ -440,6 +444,7 @@ model InventoryMovement {
 
   @@unique([reversalOfMovementId], map: "uq_movements_reversal_of_movement_id")
   @@index([organizationId, warehouseId, itemId, movementDate], map: "idx_movements_org_warehouse_item_date")
+  @@index([organizationId, movementDate], map: "idx_movements_org_business_date")
   @@index([organizationId, itemId, movementDate], map: "idx_movements_org_item_date")
   @@index([organizationId, branchId, movementDate], map: "idx_movements_org_branch_date")
   @@index([transferId], map: "idx_movements_transfer_id")
@@ -624,7 +629,7 @@ model InventoryOperation {
 /// strategies so the architecture does not have to be reshaped later, and
 /// the application rejects configuring any of them (AR-24 fail-closed).
 ///
-/// A key with no row at a given instant resolves to the code-defined MVP
+/// A key with no row at a given business date resolves to the code-defined MVP
 /// default (`moving_weighted_average`) — no per-organization default row is
 /// invented, and no EAV/JSONB configuration table exists.
 model ItemValuationMethod {
@@ -632,8 +637,8 @@ model ItemValuationMethod {
   organizationId String    @map("organization_id")
   itemId         String    @map("item_id")
   method         String    @db.VarChar(32)
-  validFrom      DateTime  @map("valid_from") @db.Timestamptz(6)
-  validTo        DateTime? @map("valid_to") @db.Timestamptz(6)
+  validFrom      DateTime  @map("valid_from") @db.Date
+  validTo        DateTime? @map("valid_to") @db.Date
   /// Why this method applies from this date (audit metadata; free text, no
   /// invented reason-code vocabulary).
   note           String?   @db.VarChar(500)
@@ -647,6 +652,8 @@ model ItemValuationMethod {
 
   @@unique([organizationId, itemId, validFrom], map: "uq_item_valuation_methods_item_valid_from")
   @@index([organizationId, itemId], map: "idx_item_valuation_methods_org_item")
+  @@index([organizationId, validFrom], map: "idx_item_valuation_methods_org_valid_from")
+  @@index([organizationId, validTo], map: "idx_item_valuation_methods_org_valid_to")
   @@map("item_valuation_methods")
   @@schema("inventory")
 }

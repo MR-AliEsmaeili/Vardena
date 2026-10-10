@@ -595,8 +595,7 @@ export const fa = {
     validation: {
       areaRequired: 'حوزه مالی الزامی است.',
       dateRequired: 'تاریخ سند الزامی است.',
-      dateInvalid:
-        'تاریخ سند معتبر نیست. تاریخ را با قالب YYYY-MM-DD وارد کنید.',
+      dateInvalid: 'تاریخ سند معتبر نیست.',
       descriptionRequired: 'شرح سند الزامی است.',
       descriptionTooLong: 'شرح سند حداکثر می‌تواند ۵۰۰ نویسه باشد.',
       minLines: 'حداقل دو ردیف برای سند لازم است.',
@@ -719,7 +718,10 @@ export const fa = {
       receipt: 'رسید انبار',
       issue: 'حواله انبار',
       transfer: 'انتقال انبار',
+      purchase_return: 'برگشت از خرید',
+      sales_return: 'برگشت از فروش',
     },
+    unsupportedEditKind: 'ویرایش این نوع سند در این فرم پشتیبانی نمی‌شود.',
     statuses: {
       draft: 'پیش‌نویس',
       operational: 'عملیاتی',
@@ -950,6 +952,8 @@ export const fa = {
       adjustment_out: 'تعدیل کاهش موجودی',
       reversal_in: 'معکوس رسید',
       reversal_out: 'معکوس صادره',
+      purchase_return: 'برگشت از خرید',
+      sales_return: 'برگشت از فروش',
     },
 
     // Per-movement valuation finality — the backend's own vocabulary
@@ -1173,12 +1177,11 @@ export const fa = {
     title: 'نام',
     startDate: 'تاریخ شروع',
     endDate: 'تاریخ پایان',
-    dateHint: 'قالب تاریخ: YYYY-MM-DD',
     codeRequired: 'کد الزامی است.',
     titleRequired: 'نام الزامی است.',
     startDateRequired: 'تاریخ شروع الزامی است.',
     endDateRequired: 'تاریخ پایان الزامی است.',
-    dateFormat: 'تاریخ باید به قالب YYYY-MM-DD باشد.',
+    dateFormat: 'تاریخ معتبر نیست.',
     dateRange: 'تاریخ پایان باید برابر یا پس از تاریخ شروع باشد.',
     areaSwitcher: 'تغییر حوزه مالی',
     fiscalYearSwitcher: 'تغییر سال مالی',
@@ -1202,7 +1205,7 @@ export const fa = {
     reset: 'پاک کردن فیلترها',
     dateFormatHint: 'قالب تاریخ: YYYY-MM-DD (مطابق قرارداد API)',
     dateFormatHintJalali: 'قالب تاریخ: YYYY/MM/DD (تقویم هجری شمسی)',
-    invalidDate: 'تاریخ باید به قالب YYYY-MM-DD باشد.',
+    invalidDate: 'تاریخ معتبر نیست.',
     requiredField: 'این فیلد الزامی است.',
     postableOnly: 'فقط حساب‌های قابل ثبت (برگ) قابل انتخاب هستند.',
     referencesLoading: 'در حال دریافت اطلاعات پایه…',

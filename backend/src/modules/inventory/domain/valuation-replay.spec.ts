@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import {
   replay,
   toReplayFact,
@@ -350,8 +351,8 @@ describe('effective-dated resolution — the 1404/1405 case', () => {
       organizationId: 'org-1',
       itemId: 'item-1',
       method: MWA,
-      validFrom: new Date('2025-03-21T00:00:00.000Z'),
-      validTo: new Date('2026-03-21T00:00:00.000Z'),
+      validFrom: toBusinessDate('2025-03-21')!,
+      validTo: toBusinessDate('2026-03-21')!,
       note: null,
       createdAt: new Date('2025-03-21T00:00:00.000Z'),
       updatedAt: new Date('2025-03-21T00:00:00.000Z'),
@@ -361,7 +362,7 @@ describe('effective-dated resolution — the 1404/1405 case', () => {
       organizationId: 'org-1',
       itemId: 'item-1',
       method: 'fifo',
-      validFrom: new Date('2026-03-21T00:00:00.000Z'),
+      validFrom: toBusinessDate('2026-03-21')!,
       validTo: null,
       note: null,
       createdAt: new Date('2026-03-21T00:00:00.000Z'),
@@ -380,7 +381,10 @@ describe('effective-dated resolution — the 1404/1405 case', () => {
         valuationStatus: 'valued',
         valuationSource: 'entered',
       },
-      resolveValuationMethodAt(versions, new Date(movementDate)).method,
+      resolveValuationMethodAt(
+        versions,
+        toBusinessDate(movementDate.slice(0, 10))!,
+      ).method,
     );
 
   it('builds each fact with the method in force at that movement date', () => {

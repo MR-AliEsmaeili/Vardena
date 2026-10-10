@@ -73,9 +73,17 @@ describe('calendar conversion', () => {
     expect(isGregorianDay('not-a-day')).toBe(false);
   });
 
-  it('never throws for a day outside the library range', () => {
+  it('never throws for a day outside the library or wire-rendering range', () => {
     expect(gregorianDayToJalaliDay('9999-12-31')).toBeNull();
     expect(convertDay('9999-12-31', 'GREGORIAN', 'JALALI')).toBeNull();
+    expect(gregorianDayToJalaliDay('0560-03-20')).toBeNull();
+    expect(gregorianDayToJalaliDay('0621-03-20')).toBeNull();
+    expect(gregorianDayToJalaliDay('0621-03-21')).toBe('0000-01-01');
+    expect(gregorianDayToJalaliDay('3798-12-31')).toBe('3177-10-11');
+    expect(gregorianDayToJalaliDay('3799-01-01')).toBeNull();
+    expect(jalaliDayToGregorianDay('3177-10-11')).toBe('3798-12-31');
+    expect(jalaliDayToGregorianDay('3177-10-12')).toBeNull();
+    expect(resolveDayInput('3177/10/12', 'JALALI')).toBeNull();
   });
 
   it('parses and formats day parts', () => {
@@ -103,18 +111,21 @@ describe('business days', () => {
     expect(isBusinessDay('2026-10-08')).toBe(true);
     expect(isBusinessDay('2026-02-30')).toBe(false);
     expect(isBusinessDay('2026-10-08T00:00:00.000Z')).toBe(false);
+    expect(isBusinessDay('0001-01-01')).toBe(true);
+    expect(isBusinessDay('0000-01-01')).toBe(false);
   });
 
-  it('sends a declared Jalali day for Jalali organizations, canonical otherwise', () => {
-    // 2026-10-08 and 1405-07-16 are the SAME day; the declared form carries
-    // the calendar the operator wrote it in.
-    expect(toBusinessDateInput('2026-10-08', 'JALALI')).toEqual({
+  it('sends a declared Jalali day and preserves canonical fallback values', () => {
+    // 2026-10-08 and 1405-07-16 are the SAME day; the fixed UI emits the
+    // Jalali form when the canonical date is inside the renderer's envelope.
+    expect(toBusinessDateInput('2026-10-08')).toEqual({
       calendar: 'JALALI',
       value: '1405-07-16',
     });
-    expect(toBusinessDateInput('2026-10-08', 'GREGORIAN')).toBe('2026-10-08');
+    // Historical dates outside that envelope remain Gregorian API values.
+    expect(toBusinessDateInput('0600-01-01')).toBe('0600-01-01');
     // A non-canonical day goes through unchanged — never invented.
-    expect(toBusinessDateInput('not-a-day', 'JALALI')).toBe('not-a-day');
+    expect(toBusinessDateInput('not-a-day')).toBe('not-a-day');
   });
 
   it('takes "today" from the organization zone, not from the browser', () => {
@@ -126,6 +137,8 @@ describe('business days', () => {
   it('renders a day in the active calendar and keeps the canonical value', () => {
     expect(formatBusinessDay('2026-10-08', 'JALALI')).toBe('1405/07/16');
     expect(formatBusinessDay('2026-10-08', 'GREGORIAN')).toBe('2026-10-08');
+    // Unsupported legacy years remain visible as their canonical source day.
+    expect(formatBusinessDay('0600-01-01', 'JALALI')).toBe('0600-01-01');
     // An unexpected value stays visible instead of being mangled.
     expect(formatBusinessDay('2026-10-08T13:00:00.000Z', 'JALALI')).toBe(
       '2026-10-08T13:00:00.000Z',
@@ -153,11 +166,24 @@ describe('business days', () => {
 describe('event timestamps', () => {
   it('renders an instant in the organization zone', () => {
     const instant = '2026-10-08T08:32:14.421Z';
-    expect(formatInstant(instant, 'Asia/Tehran')).toBe('2026-10-08 12:02');
-    expect(formatInstant(instant, 'UTC')).toBe('2026-10-08 08:32');
+    expect(formatInstant(instant, 'Asia/Tehran')).toBe('1405/07/16 12:02');
+    expect(formatInstant(instant, 'UTC')).toBe('1405/07/16 08:32');
     expect(isInstant(instant)).toBe(true);
     expect(isInstant('nope')).toBe(false);
+    expect(isInstant('2026-10-08T08:32:14')).toBe(false);
+    expect(isInstant('2026-10-08')).toBe(false);
+    expect(isInstant('2026-02-30T08:32:14.000Z')).toBe(false);
+    // This wire contract is canonical UTC-Z; an offset-bearing ISO timestamp
+    // is not silently reparsed in the browser or substituted for the API form.
+    expect(isInstant('2026-10-08T08:32:14.000+03:30')).toBe(false);
     expect(formatInstant('nope', 'UTC')).toBe('nope');
+    expect(formatInstant('2026-10-08T08:32:14', 'Asia/Tehran')).toBe(
+      '2026-10-08T08:32:14',
+    );
+    expect(formatInstant('2026-10-08T08:32:14.000+03:30', 'Asia/Tehran')).toBe(
+      '2026-10-08T08:32:14.000+03:30',
+    );
+    expect(formatInstant(instant, 'not/a-zone')).toBe(instant);
   });
 
   it('resolves the zone offset for the instant, not from a constant', () => {
@@ -172,6 +198,10 @@ describe('event timestamps', () => {
     expect(instantOffsetLabel('2026-06-01T00:00:00.000Z', 'UTC')).toBe(
       'UTC+00:00',
     );
+    expect(instantOffsetLabel('2026-06-01T00:00:00', 'Asia/Tehran')).toBeNull();
+    expect(
+      instantOffsetLabel('2026-06-01T00:00:00+03:30', 'Asia/Tehran'),
+    ).toBeNull();
   });
 
   it('derives the calendar day of an instant in the zone', () => {
@@ -181,6 +211,10 @@ describe('event timestamps', () => {
     expect(instantDayInZone('2026-10-08T21:30:00.000Z', 'UTC')).toBe(
       '2026-10-08',
     );
+    expect(instantDayInZone('2026-10-08T21:30:00', 'Asia/Tehran')).toBeNull();
+    expect(
+      instantDayInZone('2026-10-08T21:30:00+03:30', 'Asia/Tehran'),
+    ).toBeNull();
   });
 
   it('accepts only IANA zones, never a fixed offset', () => {
@@ -193,36 +227,30 @@ describe('event timestamps', () => {
 });
 
 describe('settings store', () => {
-  it('starts on the product defaults and follows the organization', () => {
+  it('follows the organization time zone but ignores legacy calendar settings', () => {
     expect(getDateTimeSettings()).toEqual(DEFAULT_DATE_TIME_SETTINGS);
 
     setDateTimeSettings({
       calendarSystem: 'GREGORIAN',
       timeZone: 'Europe/Berlin',
     });
-    expect(getDateTimeSettings()).toEqual({
-      calendarSystem: 'GREGORIAN',
-      timeZone: 'Europe/Berlin',
-    });
+    expect(getDateTimeSettings()).toEqual({ timeZone: 'Europe/Berlin' });
 
     resetDateTimeSettings();
     expect(getDateTimeSettings()).toEqual(DEFAULT_DATE_TIME_SETTINGS);
   });
 
-  it('falls back per field, so one bad value cannot poison the other', () => {
+  it('validates only the organization IANA time zone', () => {
     expect(
       resolveDateTimeSettings({ calendarSystem: 'HIJRI', timeZone: '+03:30' }),
     ).toEqual(DEFAULT_DATE_TIME_SETTINGS);
     expect(
       resolveDateTimeSettings({
         calendarSystem: 'GREGORIAN',
-        timeZone: '+03:30',
+        timeZone: 'Europe/Berlin',
       }),
-    ).toEqual({
-      calendarSystem: 'GREGORIAN',
-      timeZone: DEFAULT_DATE_TIME_SETTINGS.timeZone,
-    });
-    // A deployment that has not sent the fields keeps the defaults.
+    ).toEqual({ timeZone: 'Europe/Berlin' });
+    // A deployment that has not sent a zone keeps the product default.
     expect(resolveDateTimeSettings(undefined)).toEqual(
       DEFAULT_DATE_TIME_SETTINGS,
     );
@@ -230,18 +258,13 @@ describe('settings store', () => {
 });
 
 describe('API mapping', () => {
-  it('sends a declared Jalali day for a Jalali organization', () => {
-    expect(toBusinessDateInput('2026-10-08', 'JALALI')).toEqual({
-      calendar: 'JALALI',
-      value: '1405-07-16',
-    });
-    expect(toBusinessDateInput('2026-10-08', 'GREGORIAN')).toBe('2026-10-08');
-  });
-
   it('accepts only complete API date/time blocks', () => {
     expect(
       readApiBusinessDate({ gregorian: '2026-10-08', jalali: '1405-07-16' }),
     ).toEqual({ gregorian: '2026-10-08', jalali: '1405-07-16' });
+    expect(
+      readApiBusinessDate({ gregorian: '0600-01-01', jalali: null }),
+    ).toEqual({ gregorian: '0600-01-01', jalali: null });
     expect(readApiBusinessDate({ gregorian: '2026-10-08' })).toBeNull();
     expect(readApiBusinessDate(null)).toBeNull();
 
@@ -253,6 +276,30 @@ describe('API mapping', () => {
         jalali: '1405-07-16 12:02:14',
       }),
     ).toMatchObject({ instant: '2026-10-08T08:32:14.421Z' });
+    expect(
+      readApiInstant({
+        instant: '0600-01-01T08:32:14.421Z',
+        timeZone: 'Asia/Tehran',
+        gregorian: '0600-01-01 12:02:14',
+        jalali: null,
+      }),
+    ).toMatchObject({ jalali: null });
     expect(readApiInstant({ instant: '', timeZone: 'Asia/Tehran' })).toBeNull();
+    expect(
+      readApiInstant({
+        instant: '2026-10-08T08:32:14',
+        timeZone: 'Asia/Tehran',
+        gregorian: '2026-10-08 12:02:14',
+        jalali: '1405-07-16 12:02:14',
+      }),
+    ).toBeNull();
+    expect(
+      readApiInstant({
+        instant: '2026-10-08T08:32:14.421Z',
+        timeZone: '+03:30',
+        gregorian: '2026-10-08 12:02:14',
+        jalali: '1405-07-16 12:02:14',
+      }),
+    ).toBeNull();
   });
 });

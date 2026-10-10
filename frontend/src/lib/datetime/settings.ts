@@ -1,55 +1,36 @@
-import {
-  DEFAULT_CALENDAR_SYSTEM,
-  isCalendarSystem,
-  type CalendarSystem,
-} from './calendar';
 import { DEFAULT_TIME_ZONE, isTimeZone } from './time-zone';
 
 /**
- * The active date/time settings (C-63 §17, ADR-0042 §D5).
+ * The active date/time settings. The organization owns its IANA time zone;
+ * Jalali is a fixed MVP presentation policy, not mutable configuration.
  *
- * The organization owns two values — `calendarSystem` and `timeZone` — and the
- * whole UI renders through them. They live in ONE external store rather than a
- * React context because the consumers are not only components: the API mapping
- * (`./api-mapping`) and the form defaults also need the current settings, and
- * threading a context through them would force every helper to take a
- * parameter it must never invent. `OrganizationContext` publishes the selected
- * organization's settings here once per change; everything else reads.
- *
- * The store NEVER invents a calendar for a known organization: a value the
- * backend did not send (an older deployment) leaves the previous value in
- * place, and only an explicit `null`/`undefined` reset falls back to the
- * product defaults (JALALI / Asia/Tehran).
+ * The external store remains useful to components, formatters, form defaults
+ * and API mapping, all of which need one coherent organization zone. A legacy
+ * `calendarSystem` response property is deliberately ignored so stale server
+ * data cannot change the fixed Jalali-first experience.
  */
 
 export interface DateTimeSettings {
-  /** The calendar the UI renders and accepts input in. */
-  calendarSystem: CalendarSystem;
   /** The IANA zone event timestamps are rendered in. */
   timeZone: string;
 }
 
 /** Product defaults, mirrored from the backend kernel. */
 export const DEFAULT_DATE_TIME_SETTINGS: DateTimeSettings = {
-  calendarSystem: DEFAULT_CALENDAR_SYSTEM,
   timeZone: DEFAULT_TIME_ZONE,
 };
 
-/**
- * Read a partial/untrusted settings shape (an API response, a test fixture)
- * into complete settings, falling back per FIELD: an unknown calendar or zone
- * never poisons the other value, and never reaches a formatter.
- */
+type DateTimeSettingsSource =
+  { calendarSystem?: unknown; timeZone?: unknown } | null | undefined;
+
+/** Resolve the organization zone; any obsolete calendar field is ignored. */
 export function resolveDateTimeSettings(
-  source: { calendarSystem?: unknown; timeZone?: unknown } | null | undefined,
+  source: DateTimeSettingsSource,
 ): DateTimeSettings {
-  const calendarSystem = isCalendarSystem(source?.calendarSystem)
-    ? source.calendarSystem
-    : DEFAULT_DATE_TIME_SETTINGS.calendarSystem;
   const timeZone = isTimeZone(source?.timeZone)
     ? source.timeZone
     : DEFAULT_DATE_TIME_SETTINGS.timeZone;
-  return { calendarSystem, timeZone };
+  return { timeZone };
 }
 
 let current: DateTimeSettings = DEFAULT_DATE_TIME_SETTINGS;
@@ -69,19 +50,12 @@ export function subscribeDateTimeSettings(listener: () => void): () => void {
   };
 }
 
-/**
- * Publish the active organization's settings. Accepts a partial shape (the
- * API may omit either field) and is a NO-OP when the resolved settings equal
- * the current ones, so an unrelated re-render cannot churn every consumer.
- */
+/** Publish the selected organization's zone, ignoring legacy calendar data. */
 export function setDateTimeSettings(
-  source: { calendarSystem?: unknown; timeZone?: unknown } | null | undefined,
+  source: DateTimeSettingsSource,
 ): DateTimeSettings {
   const resolved = resolveDateTimeSettings(source);
-  if (
-    resolved.calendarSystem !== current.calendarSystem ||
-    resolved.timeZone !== current.timeZone
-  ) {
+  if (resolved.timeZone !== current.timeZone) {
     current = resolved;
     for (const listener of [...listeners]) listener();
   }

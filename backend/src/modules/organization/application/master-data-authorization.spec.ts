@@ -6,6 +6,7 @@ import {
 } from '../../../kernel/events/domain-event-bus.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { runWithRequestContext } from '../../../kernel/correlation/request-context.js';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import { createInMemoryStores } from '../../../../test/support/in-memory-repositories.js';
 import { createMasterDataStores } from '../../../../test/support/master-data-repositories.js';
 import { UNPINNED_APP_CONFIG } from '../../../../test/support/app-config.js';
@@ -1033,7 +1034,7 @@ describe('Inventory item-master authorization & cross-organization IDOR', () => 
           organizationId: orgA,
           fromUnitId: boxA,
           toUnitId: unitA,
-          asOf: new Date(),
+          asOf: toBusinessDate('2026-01-01')!,
         }),
       ),
     ).rejects.toMatchObject({ code: 'Unauthorized' });
@@ -1128,7 +1129,7 @@ describe('Inventory item-master authorization & cross-organization IDOR', () => 
         fromUnitId: boxA,
         toUnitId: unitA,
         factor: '12',
-        validFrom: new Date('2026-01-01T00:00:00Z'),
+        validFrom: toBusinessDate('2026-01-01')!,
         validTo: null,
       }),
     ).catch((error: { code?: string }) =>
@@ -1141,7 +1142,7 @@ describe('Inventory item-master authorization & cross-organization IDOR', () => 
         organizationId: orgA,
         fromUnitId: boxA,
         toUnitId: unitA,
-        asOf: new Date('2026-06-01T00:00:00Z'),
+        asOf: toBusinessDate('2026-06-01')!,
       }),
     );
     expect(resolved).toBe(null);
@@ -1185,7 +1186,7 @@ describe('Inventory item-master authorization & cross-organization IDOR', () => 
         fromUnitId: boxB,
         toUnitId: unitB,
         factor: '6',
-        validFrom: new Date('2026-01-01T00:00:00Z'),
+        validFrom: toBusinessDate('2026-01-01')!,
         validTo: null,
       }),
     );
@@ -1203,7 +1204,7 @@ describe('Inventory item-master authorization & cross-organization IDOR', () => 
           itemId: itemB,
           fromUnitId: boxB,
           toUnitId: unitB,
-          asOf: new Date('2026-02-01T00:00:00Z'),
+          asOf: toBusinessDate('2026-02-01')!,
         }),
       ),
     ).rejects.toMatchObject({ code: 'EntityNotFound' });
@@ -1219,7 +1220,7 @@ describe('Inventory item-master authorization & cross-organization IDOR', () => 
           itemId: itemB,
           fromUnitId: boxB,
           toUnitId: unitB,
-          asOf: new Date('2026-02-01T00:00:00Z'),
+          asOf: toBusinessDate('2026-02-01')!,
         }),
       ),
     ).rejects.toMatchObject({ code: 'EntityNotFound' });

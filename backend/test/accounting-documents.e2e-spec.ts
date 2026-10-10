@@ -714,11 +714,17 @@ describe('Accounting documents (e2e)', () => {
         }),
       )
       .expect(400);
-    // An instant is not a business date (§12.3).
-    await composer
+  });
+
+  it('resolves a legacy ISO-instant document date to its UTC business day', async () => {
+    const created = await composer
       .post('/api/v1/accounting-documents')
-      .send(draft({ documentDate: '2026-04-05T00:00:00Z' }))
-      .expect(400);
+      .send(draft({ documentDate: '2026-04-05T00:15:00+03:30' }))
+      .expect(201);
+
+    // The instant is April 5 in its stated offset but April 4 in UTC. OQ-73
+    // compatibility uses the UTC calendar day, never the organization zone.
+    expect(created.body.documentDate).toBe('2026-04-04');
   });
 
   it('refuses a non-postable account with 422 and a foreign account with 404', async () => {
@@ -1167,7 +1173,7 @@ describe('Accounting documents (e2e)', () => {
     expect(lineIds).not.toContain(credit?.id);
     // Business date + posting timestamp: the business date is the voucher's,
     // the posting timestamp is the finalization evidence (§15.5, Class C3).
-    expect(debit?.documentDate.toISOString().slice(0, 10)).toBe('2026-04-05');
+    expect(debit?.documentDate).toBe('2026-04-05');
     expect(debit?.postingTimestamp.toISOString()).toBe(
       finalized.body.finalizedAt as string,
     );

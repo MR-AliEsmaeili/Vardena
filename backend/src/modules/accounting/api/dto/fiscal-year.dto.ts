@@ -5,19 +5,20 @@ import {
   IsIn,
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { parseQueryBoolean } from '../../../../kernel/http/parse-query-boolean.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
+import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
+import { DECLARED_BUSINESS_DATE_SCHEMA } from '../../../../kernel/datetime/api-date-time.dto.js';
+import type { BusinessDateInput } from '../../../../kernel/datetime/business-date-input.js';
 import {
   MAX_CODE_LENGTH,
   MAX_REASON_LENGTH,
   MAX_TITLE_LENGTH,
 } from '../../domain/master-data.js';
-import { DATE_ONLY_PATTERN } from '../../domain/date-range.js';
 import {
   FISCAL_YEAR_STATUSES,
   type FiscalYearStatus,
@@ -26,10 +27,10 @@ import {
 /**
  * Fiscal year API contracts (contract §6).
  *
- * Dates are date-only `YYYY-MM-DD` strings (inclusive bounds). The DTO
- * validates the SHAPE; calendar validity (`2026-02-30` does not exist) and
- * range meaning (end on/after start, no overlap) are validated by the
- * service and domain layers.
+ * Dates are BusinessDate inputs: canonical Gregorian, explicitly declared
+ * Jalali, or a legacy ISO instant for UTC-day compatibility. The application
+ * resolves them once to the shared canonical Gregorian BusinessDate; range
+ * meaning (end on/after start, no overlap) stays in the service/domain layers.
  */
 
 export class CreateFiscalYearDto {
@@ -61,26 +62,36 @@ export class CreateFiscalYearDto {
   title!: string;
 
   @ApiProperty({
-    example: '2026-03-21',
-    description: 'Inclusive start date (YYYY-MM-DD).',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-03-21' },
+      {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-03-21T08:30:00.000Z',
+      },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'Inclusive start business date. A Jalali day is declared as { calendar, value }; legacy ISO instants resolve to their UTC calendar day.',
   })
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'startDate must be a valid calendar date (YYYY-MM-DD).',
-  })
-  @MaxLength(10)
-  startDate!: string;
+  @IsBusinessDate()
+  startDate!: BusinessDateInput;
 
   @ApiProperty({
-    example: '2027-03-20',
-    description: 'Inclusive end date (YYYY-MM-DD).',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2027-03-20' },
+      {
+        type: 'string',
+        format: 'date-time',
+        example: '2027-03-20T08:30:00.000Z',
+      },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'Inclusive end business date. A Jalali day is declared as { calendar, value }; legacy ISO instants resolve to their UTC calendar day.',
   })
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'endDate must be a valid calendar date (YYYY-MM-DD).',
-  })
-  @MaxLength(10)
-  endDate!: string;
+  @IsBusinessDate()
+  endDate!: BusinessDateInput;
 
   @ApiPropertyOptional({
     format: 'ulid',
@@ -108,23 +119,39 @@ export class UpdateFiscalYearDto {
   @MaxLength(MAX_TITLE_LENGTH)
   title?: string;
 
-  @ApiPropertyOptional({ description: 'Inclusive start date (YYYY-MM-DD).' })
-  @IsOptional()
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'startDate must be a valid calendar date (YYYY-MM-DD).',
+  @ApiPropertyOptional({
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-03-21' },
+      {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-03-21T08:30:00.000Z',
+      },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'Inclusive start business date; Jalali input must be declared; legacy ISO instants resolve by UTC day.',
   })
-  @MaxLength(10)
-  startDate?: string;
+  @IsOptional()
+  @IsBusinessDate()
+  startDate?: BusinessDateInput;
 
-  @ApiPropertyOptional({ description: 'Inclusive end date (YYYY-MM-DD).' })
-  @IsOptional()
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'endDate must be a valid calendar date (YYYY-MM-DD).',
+  @ApiPropertyOptional({
+    oneOf: [
+      { type: 'string', format: 'date', example: '2027-03-20' },
+      {
+        type: 'string',
+        format: 'date-time',
+        example: '2027-03-20T08:30:00.000Z',
+      },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'Inclusive end business date; Jalali input must be declared; legacy ISO instants resolve by UTC day.',
   })
-  @MaxLength(10)
-  endDate?: string;
+  @IsOptional()
+  @IsBusinessDate()
+  endDate?: BusinessDateInput;
 
   @ApiPropertyOptional({ type: Boolean })
   @IsOptional()

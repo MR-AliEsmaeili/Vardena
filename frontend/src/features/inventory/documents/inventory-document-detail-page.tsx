@@ -5,9 +5,8 @@ import type { InventoryDocument } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
 import {
-  formatDateOnly,
-  formatDateOnlyCanonical,
-  formatDateTime,
+  formatDateOnlyWithCanonical,
+  formatDateTimeWithZone,
   formatQuantity,
 } from '@/lib/format';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
@@ -164,14 +163,10 @@ function DocumentFacts({
         <Fact
           label={t.inventoryDocuments.columnDate}
           value={
-            // C-63 §11 / OQ-73: the business day in the organization calendar
-            // PLUS the canonical Gregorian day, so a Jalali reader and an
-            // auditor see the same document. The API returns the day itself.
+            // Jalali-first with a canonical Gregorian fallback outside the
+            // shared converter range; the underlying API value is still a day.
             <span dir="ltr">
-              {formatDateOnly(document.businessDate)}{' '}
-              <span className="text-slate-500">
-                ({formatDateOnlyCanonical(document.businessDate)})
-              </span>
+              {formatDateOnlyWithCanonical(document.businessDate)}
             </span>
           }
         />
@@ -217,25 +212,41 @@ function DocumentFacts({
         {document.finalizedAt !== null ? (
           <Fact
             label={t.inventoryDocuments.finalizedAt}
-            value={formatDateTime(document.finalizedAt)}
+            value={
+              <span title={document.finalizedAt}>
+                {formatDateTimeWithZone(document.finalizedAt)}
+              </span>
+            }
           />
         ) : null}
         {document.accountingPostedAt !== null ? (
           <Fact
             label={t.inventoryDocuments.accountingPostedAt}
-            value={formatDateTime(document.accountingPostedAt)}
+            value={
+              <span title={document.accountingPostedAt}>
+                {formatDateTimeWithZone(document.accountingPostedAt)}
+              </span>
+            }
           />
         ) : null}
         {document.sealedAt !== null ? (
           <Fact
             label={t.inventoryDocuments.sealedAt}
-            value={formatDateTime(document.sealedAt)}
+            value={
+              <span title={document.sealedAt}>
+                {formatDateTimeWithZone(document.sealedAt)}
+              </span>
+            }
           />
         ) : null}
         {document.cancelledAt !== null ? (
           <Fact
             label={t.inventoryDocuments.cancelledAt}
-            value={formatDateTime(document.cancelledAt)}
+            value={
+              <span title={document.cancelledAt}>
+                {formatDateTimeWithZone(document.cancelledAt)}
+              </span>
+            }
           />
         ) : null}
         {document.cancellationReason !== null ? (

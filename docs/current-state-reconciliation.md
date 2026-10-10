@@ -401,3 +401,41 @@ work and authorizes no implementation. STATE.md §21 is the task record.
 The repository contains a materially broader current implementation than the pre-Task-30 roadmap snapshots: Task 30 added Account Nature/Type and a bounded Detail foundation, Task 32 added a real Dashboard, and PR #86—not PR #85—is the final merged Dashboard behavior. None of those facts closes the remaining OQs, promotes Proposed ADRs, admits Treasury/Purchasing to MVP, turns FaraPayam into architecture, supplies Base Chart content, or authorizes a new production task.
 
 **READY FOR REVIEW**
+
+## Later date/time and Jalali-first policy addendum (2026-10-10)
+
+The 2026-09-29 findings and the 2026-10-09 date/time note are retained as
+dated snapshots. ADR-0042 remains the BusinessDate/Instant foundation and OQ-73
+resolution: BusinessDates are canonical Gregorian PostgreSQL `date` values;
+Instants remain `timestamptz` and use an organization's valid IANA zone for
+local rendering. Accepted ADR-0044 fixes Jalali-first presentation for the MVP:
+there is no user, Organization, or Inventory calendar selector or transition.
+Gregorian API/integration inputs and historical days remain supported, with a
+canonical Gregorian display fallback outside the Jalali conversion range.
+OQ-02 remains open for primary UI language, Persian-numeral preference, and
+broader localization.
+
+The PR #135 audit traces the affected DTO, domain, persistence, query, generated
+OpenAPI and frontend input/display/filter surfaces from the 2026-10-09 `main`
+baseline (`9438eb7`). This is scoped to the related BusinessDate/Instant
+surfaces, not a claim that every frontend screen was audited. The aggregate-only,
+read-only migration report is
+`backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; it emits
+counts, not row IDs or business payloads. Neither fixture rehearsal nor code
+inspection establishes what values exist in a customer/shared database. The
+baseline check found the PR-head migration-110 comment about verbatim instant
+storage was not supported by the standard Inventory input/persistence path.
+The remediation restores migration 110 byte-for-byte to `main`; alternate
+writers and actual historical data remain uninspected, so no customer-data
+safety claim is made.
+
+The remediation removes migration 120's `organization.calendar_system` and
+Jalali-renderability preflight while preserving the general BusinessDate/API
+range and window-integrity checks. Migration 130 retains indexes with current
+Inventory query consumers and drops indexes on informational date fields with no
+current filter/order consumer. Both migrations are exercised only against
+throwaway PostgreSQL in CI/rehearsal. Their apply/checksum state in shared
+environments is still unknown and must be established independently before
+deployment; neither synthetic fixtures nor CI answer that question. See
+ADR-0042, ADR-0044, `docs/datetime.md`, `docs/database-strategy.md`, and OQ-73
+for current scope and limitations.

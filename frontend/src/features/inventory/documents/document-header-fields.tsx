@@ -3,7 +3,6 @@ import type { InventoryDocumentKind } from '@/api/contracts';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { t } from '@/lib/i18n';
-import { useCalendarSystem } from '@/lib/datetime';
 import { Input } from '@/ui/input';
 import { DateInput } from '@/ui/patterns/date-input';
 import { Select } from '@/ui/select';
@@ -35,7 +34,6 @@ export function DocumentHeaderFields({
 }) {
   const permissions = usePermissions();
   const { register, formState, watch } = form;
-  const calendarSystem = useCalendarSystem();
   const errors = formState.errors;
   const lineCount = watch('lines').length;
   const mayAssignCost = permissions.has(
@@ -55,11 +53,7 @@ export function DocumentHeaderFields({
         id="document-business-date"
         label={t.inventoryDocuments.businessDate}
         error={errors.businessDate?.message}
-        hint={
-          calendarSystem === 'JALALI'
-            ? t.filters.dateFormatHintJalali
-            : t.filters.dateFormatHint
-        }
+        hint={t.filters.dateFormatHintJalali}
       >
         {(fieldProps) => (
           <Controller

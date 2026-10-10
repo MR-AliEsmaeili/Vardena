@@ -330,7 +330,7 @@ When navigating to reports, the UX answers five essential questions for the acco
   - Selecting/changing `financialAreaId` automatically clears and re-fetches `fiscalYearId` and `accountingPeriodId`.
   - Selecting/changing `fiscalYearId` automatically clears and re-fetches `accountingPeriodId`.
   - Account Picker searches postable (leaf) accounts dynamically via `GET /accounts?isPostable=true&search=...` (debounced 300ms).
-- **Date Format Contract:** Strict ISO `YYYY-MM-DD` pattern matching backend regex `/^\d{4}-\d{2}-\d{2}$/`.
+- **Date Format Contract (ADR-0044):** Date filters remain canonical Gregorian BusinessDates (`YYYY-MM-DD`) in the URL/API and validate as real calendar days. The shared `DateInput` presents Jalali in the fixed MVP experience and emits the canonical day; a valid historical day outside the Jalali converter range uses an automatic Gregorian fallback. No filter is transported as a timestamp or UTC midnight. New Jalali entries are explicitly declared in API request bodies; existing Gregorian API/integration contracts remain valid, while URL filters stay canonical Gregorian.
 - **Apply Action:** User explicitly clicks `«نمایش گزارش»`. Validates inputs, resets table to page 1, and triggers data query.
 - **Reset Action:** User clicks `«پاک کردن فیلترها»`. Clears all inputs and unloads current query results.
 
@@ -608,7 +608,7 @@ anti-pattern OD-VAL-18 forbids.
 | :--- | :--- |
 | `/api/v1/inventory/valuation/*` (9 routes, 4 permissions) | `SUPPORTED` |
 | Warehouse Operations and Inventory Accounting routes, forms, worklist | `FUTURE UI` — candidate **C-57** in the roadmap register |
-| Jalali display of `movementDate` / `validFrom` | `FUTURE PRODUCT DECISION` (OQ-02) |
+| Jalali display of `movementDate` / `validFrom` | Required to use the shared Jalali-first formatter fixed by ADR-0044 (on the ADR-0042 BusinessDate foundation); future Inventory UI must not add local conversion or a calendar selector. The currently listed valuation-method configuration screen remains FUTURE UI. |
 | Returns, COGS posting, landed cost surfaces | Not a gap in the UI — **no backend contract exists and none is planned in this slice** (OQ-24 open, OD-VAL-19) |
 
 ---
@@ -617,7 +617,7 @@ anti-pattern OD-VAL-18 forbids.
 
 1. **Persisted UI Preferences:** User customization of table column order, density (Compact/Comfortable), and saved report filter presets (pending Customization module).
 2. **Report Export Workflows:** Seamless streaming export to Excel (XLSX) and printable PDF documents via backend reporting pipeline (ADR-0009 / ADR-0012).
-3. **Solar Hijri (Jalali) DatePicker:** Native Persian calendar picker integration (addressing OQ-01).
+3. **Optional Jalali calendar-grid picker:** a future presentation enhancement to the shared Jalali text field in `DateInput`; it remains Jalali-only under ADR-0044 and does not add a calendar selector or reopen the date contract. It is not an OQ-01/OQ-02 blocker.
 4. **Batch Operations Grid:** Bulk document posting/reversal workflows with multi-row selection and batch progress indicators.
 
 ---

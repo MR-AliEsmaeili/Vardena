@@ -1,4 +1,4 @@
-# Vardena Frontend Standards — نسخه ۲.۲
+# Vardena Frontend Standards — نسخه ۲.۳
 
 **وضعیت:** ACTIVE — مرجع رسمی قواعد UI
 
@@ -116,7 +116,7 @@ Optimistic update برای عملیات مالی ممنوع (Posting، Reversal�
 formatMoney(value: string) · formatQuantity · formatPercent — ورودی number برای مبلغ = خطا (قرارداد Decimal).
 تنظیمات کاربر: ارقام فارسی/لاتین، اعشار per-entity، جداکننده.
 tabular-nums · راست‌چین سلول مبلغ · منفی قرمز · جمع bold · گردکردن فقط نمایشی.
-بکند ISO؛ نمایش شمسی (کتابخانه: OQ-1)؛ محتوای LTR داخل RTL با span dir="ltr".
+**قاعدۀ دائمی تاریخ و زمان (پایه در ADR-0042، سیاست MVP در ADR-0044؛ جزئیات و چک‌لیست در `docs/datetime.md`):** `BusinessDate` یک روز تقویمی canonical از نوع Gregorian و ذخیرۀ PostgreSQL `date` است؛ تجربۀ کاربری MVP ثابت و Jalali-first است و فقط از `ui/patterns/date-input.tsx` و `lib/datetime/` مشترک استفاده می‌کند. اگر یک تاریخ تاریخی معتبر در بازۀ تبدیل Jalali نباشد، مقدار canonical Gregorian بدون رد یا بازنویسی به‌صورت fallback نمایش داده می‌شود؛ این حالت انتخاب تقویم نیست. قراردادهای Gregorian برای API و integration حفظ می‌شوند. `BusinessDate` هرگز `Date` جاوااسکریپت، timestamp نیمه‌شب UTC، روزِ منطقه‌زمانی مرورگر یا تبدیل محلی هر صفحه نیست. `Instant` مقدار واقعی UTC در `timestamptz` است؛ ابتدا با `organization.timeZone` معتبر IANA به زمان محلی تبدیل و سپس Jalali-first نمایش داده می‌شود. هیچ تنظیم انتخاب تقویم برای Organization یا Inventory وجود ندارد. جزئیات/ممیزی باید ثانیه و نام zone به‌همراه offset همان instant را نشان دهد؛ مقدار خام ISO برای تطبیق در دسترس بماند. OQ-02 فقط برای ترجیح ارقام فارسی و بقیۀ بومی‌سازی باز است. محتوای LTR داخل RTL با span dir="ltr" نمایش داده شود.
 ۸) DataTable
 پایه: TanStack Table + wrapper واحد.
 
@@ -201,7 +201,7 @@ grepهای بخش ۱۷ خالی · import/no-cycle پاک
 typecheck + lint + test + build سبز
 قالب PR کامل (لینک تسک، شواهد، self-review انجام شد)
 ۲۱) Open Questions — نیازمند تصمیم مالک (→ ADR)
-DatePicker شمسی: react-multi-date-picker یا جایگزین
+افزودن calendar-grid picker شمسی (جزئیات اختیاری UI؛ سیاست تقویم Jalali در ADR-0042 پذیرفته شده): react-multi-date-picker یا جایگزین
 Dark mode: بله/خیر/سیستم
 Density پیش‌فرض: comfortable یا compact
 ابزار تولید تایپ OpenAPI: orval یا openapi-typescript
@@ -212,6 +212,7 @@ Token transport: httpOnly cookie یا جایگزین (تصمیم مشترک با
 React Compiler: زمان فعال‌سازی پس از پایداری
 ## Changelog
 
+- **۲.۳** — ثبت قاعدۀ دائمی ADR-0042 برای جدایی BusinessDate از Instant، تقویم/منطقۀ زمانی سازمان، ورودی مشترک و نمایش جزئیات ممیزی؛ تقویم/منطقۀ زمانی از OQ-02 بومی‌سازی جدا شد.
 - **۲.۲** — جایگزینی ممنوعیت Redux/Zustand با سیاست technology-neutral مبتنی بر مالکیت state؛ تثبیت TanStack Query برای server state، React state برای تعامل محلی، Context برای dependency محدود، و امکان انتخاب یک global client-state library در صورت اثبات نیاز. حذف متن دستوریِ ناخواسته از انتهای سند.
 - **۲.۱** — افزودن روش ساخت: React craft (بخش ۳)، انضباط TypeScript و DocStatus/ID برندگذاری‌شده (۴)، colocation و state hygiene (۵)، Race/Abort/debounce و ممنوعیت auto-retry mutation (۶)، امنیت فرانت (۱۵)، Testing Trophy و data-testid (۱۶)، Rule-as-Code و gateهای CI (۱۷)، Git/PR و self-review (۱۸)، اصول ۱۱ و ۱۲، OQ-8 و OQ-9، ارتقای DoD.
 - **۲.۰** — نگارش کامل اولیه.

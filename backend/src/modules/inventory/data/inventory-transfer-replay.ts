@@ -46,6 +46,11 @@
 
 import { generateId } from '../../../kernel/ids/ulid.js';
 import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
   MOVEMENT_VALUATION_STATUSES,
   resolveValuationStatus,
   VALUATION_SOURCES,
@@ -92,11 +97,19 @@ import { writeValuationState } from './inventory-valuation-writes.js';
  */
 export const TRANSFER_REPLAY_TRIGGER = 'backdated_document';
 
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Inventory BusinessDate "${value}".`);
+  }
+  return carrier;
+}
+
 export interface CoupledTransferLegInput {
   id: string;
   key: BalanceKey;
   /** Both legs share the transfer's business date. */
-  movementDate: Date;
+  movementDate: BusinessDate;
   /** Both legs share the command's creation instant. */
   createdAt: Date;
   /** SIGNED base-unit effect (`transfer_out` is negative). */
@@ -203,12 +216,12 @@ async function toEntries(
   const versions = await readMethodVersions(
     tx,
     key,
-    rows.map((row) => row.movementDate),
+    rows.map((row) => businessDateFromDbDate(row.movementDate)),
   );
   const facts = buildReplayFacts(rows, versions);
   return rows.map((row, index) => ({
     side,
-    movementDate: row.movementDate,
+    movementDate: businessDateFromDbDate(row.movementDate),
     createdAt: row.createdAt,
     id: row.id,
     fact: facts[index] as ReplayFact,
@@ -266,7 +279,7 @@ async function persistSide(
       trigger: TRANSFER_REPLAY_TRIGGER,
       // Informational lower bound: the transfer's business date is what the
       // operator asked to value; the replay itself always covers the key.
-      fromDate: input.outLeg.movementDate,
+      fromDate: dbBusinessDate(input.outLeg.movementDate),
       movementsExamined: side.rows.length,
       movementsRevalued: changes.length,
       resultingValuedQuantity: side.position.valuedQuantity,

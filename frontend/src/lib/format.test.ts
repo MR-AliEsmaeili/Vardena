@@ -4,7 +4,9 @@ import {
   formatCount,
   formatDateOnly,
   formatDateOnlyCanonical,
+  formatDateOnlyWithCanonical,
   formatDateTime,
+  formatDateTimeWithZone,
   isNegativeAmount,
 } from './format';
 import { resetDateTimeSettings, setDateTimeSettings } from './datetime';
@@ -58,24 +60,35 @@ describe('date formatters', () => {
     resetDateTimeSettings();
   });
 
-  it('renders a business day in the organization calendar (C-63)', () => {
-    // The product default is Jalali; the canonical value stays available.
+  it('renders BusinessDates Jalali-first with canonical fallback for history', () => {
     expect(formatDateOnly('2026-03-21')).toBe('1405/01/01');
     expect(formatDateOnlyCanonical('2026-03-21')).toBe('2026-03-21');
+    expect(formatDateOnlyWithCanonical('2026-03-21')).toBe(
+      '1405/01/01 (2026-03-21)',
+    );
     expect(formatDateOnly(null)).toBe('');
 
+    // A stale legacy organization value cannot switch the fixed MVP display.
     setDateTimeSettings({ calendarSystem: 'GREGORIAN', timeZone: 'UTC' });
-    expect(formatDateOnly('2026-03-21')).toBe('2026-03-21');
+    expect(formatDateOnly('2026-03-21')).toBe('1405/01/01');
+    expect(formatDateOnly('0600-01-01')).toBe('0600-01-01');
+    expect(formatDateOnlyWithCanonical('0600-01-01')).toBe('0600-01-01');
   });
 
-  it('formats an ISO timestamp in the organization zone', () => {
-    setDateTimeSettings({ calendarSystem: 'JALALI', timeZone: 'UTC' });
-    expect(formatDateTime('2026-03-21T08:30:00.000Z')).toBe('2026-03-21 08:30');
+  it('formats an ISO instant in the organization zone and fixed Jalali calendar', () => {
+    setDateTimeSettings({ timeZone: 'UTC' });
+    expect(formatDateTime('2026-03-21T08:30:00.000Z')).toBe('1405/01/01 08:30');
 
-    setDateTimeSettings({ calendarSystem: 'JALALI', timeZone: 'Asia/Tehran' });
-    expect(formatDateTime('2026-03-21T08:30:00.000Z')).toBe('2026-03-21 12:00');
-    // An unexpected value is shown as-is, never blanked.
+    setDateTimeSettings({ timeZone: 'Asia/Tehran' });
+    expect(formatDateTime('2026-03-21T08:30:00.000Z')).toBe('1405/01/01 12:00');
+    // Convert the local day after applying the zone, not the UTC date.
+    expect(formatDateTime('2026-10-08T21:00:00.000Z')).toBe('1405/07/17 00:30');
+    expect(formatDateTimeWithZone('2026-10-08T21:00:00.000Z')).toBe(
+      '1405/07/17 00:30:00 Asia/Tehran (UTC+03:30)',
+    );
+    // An unexpected value is shown as-is, never blanked or given a fake zone.
     expect(formatDateTime('not-a-date')).toBe('not-a-date');
+    expect(formatDateTimeWithZone('not-a-date')).toBe('not-a-date');
   });
 });
 

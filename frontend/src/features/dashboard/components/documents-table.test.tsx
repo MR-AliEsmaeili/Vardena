@@ -7,11 +7,10 @@ import { testAccountingDocument } from '@/test/fixtures';
 import { resetDateTimeSettings, setDateTimeSettings } from '@/lib/datetime';
 import { DocumentsTable } from './documents-table';
 
-// C-63: this component renders through the shared date formatter, so the
-// calendar has to be part of the arrangement — the product default is Jalali,
-// while this suite asserts canonical Gregorian days.
+// BusinessDate presentation is fixed Jalali-first; only the organization's
+// IANA time zone is supplied by the test arrangement.
 beforeEach(() => {
-  setDateTimeSettings({ calendarSystem: 'GREGORIAN', timeZone: 'UTC' });
+  setDateTimeSettings({ timeZone: 'UTC' });
 });
 
 afterEach(() => {
@@ -42,7 +41,7 @@ describe('dashboard documents table', () => {
     expect(screen.getByText('1,250,000.00')).toBeInTheDocument();
     expect(screen.getByText(t.dashboard.stateFinal)).toBeInTheDocument();
     expect(screen.getByText('1001')).toBeInTheDocument();
-    expect(screen.getByText('2026-04-05')).toBeInTheDocument();
+    expect(screen.getByText('1405/01/16')).toBeInTheDocument();
   });
 
   it('delegates pagination to the callback instead of slicing local data', () => {

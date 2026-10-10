@@ -6,6 +6,7 @@ import { listInventoryMovements } from '@/api/inventory.api';
 import type { InventoryMovementListQuery, MovementType } from '@/api/contracts';
 import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import { sortingFromParam } from '@/lib/sort-param';
+import { isBusinessDay } from '@/lib/datetime';
 import { MOVEMENT_TYPE_LABELS } from './inventory-labels';
 
 /**
@@ -57,6 +58,10 @@ function parseMovementType(value: string | null): MovementType | '' {
     : '';
 }
 
+function parseBusinessDate(value: string | null): string {
+  return value !== null && isBusinessDay(value) ? value : '';
+}
+
 /** Normalize the URL into the state the UI renders (untrusted input). */
 export function parseMovementsUrlState(
   params: URLSearchParams,
@@ -77,8 +82,6 @@ export function parseMovementsUrlState(
       ? `${sorting[0]?.id ?? 'movementDate'}:${sorting[0]?.desc ? 'desc' : 'asc'}`
       : MOVEMENTS_DEFAULT_SORT;
 
-  const dateFrom = params.get('dateFrom') ?? '';
-  const dateTo = params.get('dateTo') ?? '';
   return {
     page,
     pageSize,
@@ -86,8 +89,8 @@ export function parseMovementsUrlState(
     warehouseId: params.get('warehouseId') ?? '',
     itemId: params.get('itemId') ?? '',
     movementType: parseMovementType(params.get('movementType')),
-    dateFrom: /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ? dateFrom : '',
-    dateTo: /^\d{4}-\d{2}-\d{2}$/.test(dateTo) ? dateTo : '',
+    dateFrom: parseBusinessDate(params.get('dateFrom')),
+    dateTo: parseBusinessDate(params.get('dateTo')),
   };
 }
 

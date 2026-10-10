@@ -6,8 +6,8 @@
  * start. It is NOT when something happened, and it must never be
  * interchangeable with an event timestamp:
  *
- *   documentDate = 1405-07-01   (business day — the reporting axis)
- *   createdAt    = 1405-07-16 12:32  (event instant — the audit axis)
+ *   documentDate = 2026-10-08 (canonical Gregorian BusinessDate; displayed Jalali-first)
+ *   createdAt    = 2026-10-08T08:32:14.421Z (event Instant; rendered in the organization's zone)
  *
  * A backdated receipt is exactly this difference, so the two are DISTINCT
  * TYPES here: {@link BusinessDate} (a calendar day) and {@link Instant} (an
@@ -76,7 +76,7 @@ export type BusinessDateRejection = 'format' | 'calendar_date' | 'range';
 /** A parsed day: always canonical Gregorian, whatever was submitted. */
 export interface ParsedBusinessDate {
   /** Canonical Gregorian day (`YYYY-MM-DD`) — persist and return this. */
-  gregorian: string;
+  gregorian: BusinessDate;
   /** The calendar the caller expressed the day in. */
   calendar: CalendarSystem;
 }
@@ -102,12 +102,14 @@ export function parseBusinessDate(
 
   if (calendar === 'GREGORIAN') {
     if (!isRealGregorianDay(year, month, day)) return null;
-    return { gregorian: value, calendar };
+    const gregorian = toBusinessDate(value);
+    return gregorian === null ? null : { gregorian, calendar };
   }
 
-  const gregorian = jalaliToGregorianDay(year, month, day);
-  if (gregorian === null) return null;
-  return { gregorian: toDayString(gregorian), calendar };
+  const jalali = jalaliToGregorianDay(year, month, day);
+  if (jalali === null) return null;
+  const gregorian = toBusinessDate(toDayString(jalali));
+  return gregorian === null ? null : { gregorian, calendar };
 }
 
 /**
@@ -135,7 +137,7 @@ export function formatBusinessDate(
 }
 
 /** True when `value` is a real Gregorian calendar day (`YYYY-MM-DD`). */
-export function isGregorianBusinessDate(value: unknown): value is string {
+export function isGregorianBusinessDate(value: unknown): value is BusinessDate {
   if (typeof value !== 'string' || !BUSINESS_DATE_PATTERN.test(value)) {
     return false;
   }
@@ -165,7 +167,13 @@ export function isBusinessDateInCalendar(
 export function businessDateToDbDate(gregorian: string): Date | null {
   if (!isGregorianBusinessDate(gregorian)) return null;
   const parts = splitDay(gregorian);
-  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
+  // Date.UTC treats years 0–99 as 1900–1999. Set the UTC calendar fields
+  // directly so valid four-digit PostgreSQL days such as year 0001 remain the
+  // day itself in Prisma's Date carrier.
+  const carrier = new Date(0);
+  carrier.setUTCHours(0, 0, 0, 0);
+  carrier.setUTCFullYear(parts.year, parts.month - 1, parts.day);
+  return carrier;
 }
 
 /**
@@ -178,20 +186,62 @@ export function businessDateToDbDate(gregorian: string): Date | null {
  * (ADR-0042 §2, OQ-73).
  */
 export function businessDateFromDbDate(value: Date): BusinessDate {
-  return value.toISOString().slice(0, 10) as BusinessDate;
+  if (Number.isNaN(value.getTime())) {
+    throw new Error(
+      'Prisma returned an invalid carrier for a PostgreSQL date.',
+    );
+  }
+  const year = value.getUTCFullYear();
+  const day = [
+    String(year).padStart(4, '0'),
+    String(value.getUTCMonth() + 1).padStart(2, '0'),
+    String(value.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+  const businessDate = toBusinessDate(day);
+  if (businessDate === null) {
+    throw new Error(
+      `PostgreSQL date carrier "${day}" is outside the canonical BusinessDate range.`,
+    );
+  }
+  return businessDate;
 }
 
 /**
  * The business day an *instant* falls on in a time zone — the calendar-aware
  * "today". Used ONLY where a day is derived from a genuine moment (defaults,
- * period resolution, a legacy instant input), never to re-derive a stored
- * business date: a stored day is already a day and needs no zone.
+ * period resolution, or another explicitly zone-based rule), never to
+ * re-derive a stored business date: a stored day is already a day and needs no
+ * zone.
  */
 export function businessDateFromInstant(
   instant: Instant,
   timeZone: string,
 ): BusinessDate {
   return calendarDayInTimeZone(instant, timeZone) as BusinessDate;
+}
+
+/**
+ * The UTC calendar day of a legacy instant supplied to a BusinessDate field.
+ *
+ * The owner-approved legacy ISO BusinessDate input rule uses UTC day rather
+ * than the organization display zone. This aligns with migration 110's
+ * conversion of stored UTC timestamp carriers, but intentionally differs from
+ * the pre-cutover API parser's organization-zone request behavior. This helper
+ * is separate from {@link businessDateFromInstant}, which is used for "today"
+ * defaults and other explicitly zone-based rules. Returns `null` for an
+ * invalid instant or a UTC day outside the canonical four-digit BusinessDate
+ * range.
+ */
+export function businessDateFromUtcInstant(
+  instant: Instant,
+): BusinessDate | null {
+  if (Number.isNaN(instant.getTime())) return null;
+  const day = [
+    String(instant.getUTCFullYear()).padStart(4, '0'),
+    String(instant.getUTCMonth() + 1).padStart(2, '0'),
+    String(instant.getUTCDate()).padStart(2, '0'),
+  ].join('-');
+  return toBusinessDate(day);
 }
 
 /** True when both days are the same calendar day (canonical form). */
@@ -220,8 +270,8 @@ export function compareBusinessDates(
  * §6.1). Both ends are canonical Gregorian days.
  */
 export interface BusinessDateRange {
-  startDate: string;
-  endDate: string;
+  startDate: BusinessDate;
+  endDate: BusinessDate;
 }
 
 /** True when the range is well-formed: `endDate` on or after `startDate`. */

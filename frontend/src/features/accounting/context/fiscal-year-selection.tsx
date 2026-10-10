@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { CalendarDays } from 'lucide-react';
+import { formatDateOnly, formatDateOnlyCanonical } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
@@ -71,8 +72,12 @@ export function FiscalYearSelection({ invalid }: { invalid: boolean }) {
                     <span className="block font-medium text-slate-900">
                       {year.title}
                     </span>
-                    <span className="code block text-xs text-slate-500">
-                      {year.code} · {year.startDate} — {year.endDate}
+                    <span
+                      className="code block text-xs text-slate-500"
+                      title={`${formatDateOnlyCanonical(year.startDate)} — ${formatDateOnlyCanonical(year.endDate)}`}
+                    >
+                      {year.code} · {formatDateOnly(year.startDate)} —{' '}
+                      {formatDateOnly(year.endDate)}
                     </span>
                   </span>
                 </label>

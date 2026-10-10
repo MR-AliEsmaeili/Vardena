@@ -1,6 +1,10 @@
 import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  toBusinessDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
   runWithRequestContext,
   type AuthenticatedPrincipal,
 } from '../../../kernel/correlation/request-context.js';
@@ -110,8 +114,8 @@ interface PricingRunRow {
   organizationId: string;
   warehouseId: string | null;
   documentKinds: string[];
-  fromDate: Date | null;
-  toDate: Date;
+  fromDate: BusinessDate | null;
+  toDate: BusinessDate;
   kind: 'pricing_operation' | 'reverse_pricing';
   reversesRunId: string | null;
   reversedByRunId: string | null;
@@ -190,7 +194,7 @@ interface DocHeaderRow {
 interface RecalculationCall {
   keyId: string;
   runId: string;
-  fromDate: Date | null;
+  fromDate: BusinessDate | null;
 }
 
 interface ReverseCall {
@@ -265,7 +269,7 @@ class PricingWorld {
       )
       .sort(
         (left, right) =>
-          left.movementDate.getTime() - right.movementDate.getTime() ||
+          left.movementDate.localeCompare(right.movementDate) ||
           left.createdAt.getTime() - right.createdAt.getTime() ||
           left.id.localeCompare(right.id),
       );
@@ -632,7 +636,7 @@ function fakeValuationRepository(
       input: {
         key: BalanceKey;
         runId: string;
-        fromDate: Date | null;
+        fromDate: BusinessDate | null;
         at: Date;
       },
     ) {
@@ -847,7 +851,10 @@ function fakeMovementsRepository(
   return {
     async listScopedToDocuments(
       organizationId: string,
-      window: { fromDateExclusive: Date | null; toDateInclusive: Date },
+      window: {
+        fromDateExclusive: BusinessDate | null;
+        toDateInclusive: BusinessDate;
+      },
     ) {
       return [...world.movements.values()]
         .filter(
@@ -855,13 +862,12 @@ function fakeMovementsRepository(
             movement.organizationId === organizationId &&
             movement.referenceType === 'inventory_business_document' &&
             (window.fromDateExclusive === null ||
-              movement.movementDate.getTime() >
-                window.fromDateExclusive.getTime()) &&
-            movement.movementDate.getTime() <= window.toDateInclusive.getTime(),
+              movement.movementDate > window.fromDateExclusive) &&
+            movement.movementDate <= window.toDateInclusive,
         )
         .sort(
           (left, right) =>
-            left.movementDate.getTime() - right.movementDate.getTime() ||
+            left.movementDate.localeCompare(right.movementDate) ||
             left.createdAt.getTime() - right.createdAt.getTime() ||
             left.id.localeCompare(right.id),
         );
@@ -869,17 +875,15 @@ function fakeMovementsRepository(
     async findByValuationRun(valuationRunId: string) {
       return [...world.movements.values()]
         .filter((movement) => movement.valuationRunId === valuationRunId)
-        .sort(
-          (left, right) =>
-            left.movementDate.getTime() - right.movementDate.getTime(),
+        .sort((left, right) =>
+          left.movementDate.localeCompare(right.movementDate),
         );
     },
     async findByTransferId(transferId: string) {
       return [...world.movements.values()]
         .filter((movement) => movement.transferId === transferId)
-        .sort(
-          (left, right) =>
-            left.movementDate.getTime() - right.movementDate.getTime(),
+        .sort((left, right) =>
+          left.movementDate.localeCompare(right.movementDate),
         );
     },
   } as unknown as InventoryMovementsRepository;
@@ -1144,7 +1148,7 @@ function seedMovement(
     itemId?: string;
     movementType: InventoryMovement['movementType'];
     baseQuantity: string;
-    movementDate: Date;
+    movementDate: BusinessDate;
     totalCost?: string | null;
     valuationStatus?: InventoryMovement['valuationStatus'];
     valuationRunId?: string | null;
@@ -1193,8 +1197,8 @@ function seedMovement(
     valuationSource: null,
     valuedAt: null,
     valuationRunId: input.valuationRunId ?? null,
-    createdAt: new Date(input.movementDate.getTime() + 1000),
-    updatedAt: new Date(input.movementDate.getTime() + 1000),
+    createdAt: new Date(`${input.movementDate}T00:00:01.000Z`),
+    updatedAt: new Date(`${input.movementDate}T00:00:01.000Z`),
   };
   fixture.world.movements.set(movement.id, movement);
   return movement;
@@ -1262,14 +1266,14 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     const receipt = seedMovement(fixture, {
       movementType: 'inbound',
       baseQuantity: '100',
-      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-05')!,
       totalCost: '1000',
       valuationStatus: 'valued',
     });
     seedMovement(fixture, {
       movementType: 'outbound',
       baseQuantity: '-40',
-      movementDate: new Date('2026-01-10T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-10')!,
     });
 
     const run = await asActor(() =>
@@ -1343,14 +1347,14 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     seedMovement(fixture, {
       movementType: 'inbound',
       baseQuantity: '100',
-      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-05')!,
       totalCost: '1000',
       valuationStatus: 'valued',
     });
     seedMovement(fixture, {
       movementType: 'outbound',
       baseQuantity: '-40',
-      movementDate: new Date('2026-01-10T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-10')!,
     });
     const first = await asActor(() =>
       fixture.service.runPricing(runInput(fixture, { toDate: '2026-01-31' })),
@@ -1381,7 +1385,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     seedMovement(fixture, {
       movementType: 'inbound',
       baseQuantity: '100',
-      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-05')!,
       totalCost: '500',
       valuationStatus: 'valued',
     });
@@ -1389,7 +1393,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
       itemId: fixture.otherItemId,
       movementType: 'inbound',
       baseQuantity: '10',
-      movementDate: new Date('2026-01-06T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-06')!,
       valuationStatus: 'unvalued',
     });
 
@@ -1455,7 +1459,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     seedMovement(fixture, {
       movementType: 'inbound',
       baseQuantity: '50',
-      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-05')!,
       totalCost: '250',
       valuationStatus: 'valued',
     });
@@ -1488,7 +1492,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     seedMovement(fixture, {
       movementType: 'inbound',
       baseQuantity: '10',
-      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-05')!,
       totalCost: '100',
       valuationStatus: 'valued',
     });
@@ -1497,14 +1501,14 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
       warehouseId: fixture.otherWarehouseId,
       movementType: 'outbound',
       baseQuantity: '-2',
-      movementDate: new Date('2026-01-06T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-06')!,
     });
     // Another org's movement — invisible.
     seedMovement(fixture, {
       organizationId: fixture.otherOrganizationId,
       movementType: 'inbound',
       baseQuantity: '99',
-      movementDate: new Date('2026-01-07T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-07')!,
       totalCost: '990',
       valuationStatus: 'valued',
     });
@@ -1531,7 +1535,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     seedMovement(fixture, {
       movementType: 'inbound',
       baseQuantity: '100',
-      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-05')!,
       totalCost: '1000',
       valuationStatus: 'valued',
     });
@@ -1541,7 +1545,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     seedMovement(fixture, {
       movementType: 'transfer_out',
       baseQuantity: '-30',
-      movementDate: new Date('2026-01-10T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-10')!,
       totalCost: '-300',
       valuationStatus: 'valued',
       transferId: 'trf-1',
@@ -1550,7 +1554,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
       warehouseId: fixture.otherWarehouseId,
       movementType: 'transfer_in',
       baseQuantity: '30',
-      movementDate: new Date('2026-01-10T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-10')!,
       totalCost: '300',
       valuationStatus: 'valued',
       transferId: 'trf-1',
@@ -1595,7 +1599,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
       itemId: fixture.itemId,
       movementType: 'inbound',
       baseQuantity: '20',
-      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-05')!,
       totalCost: '200',
       valuationStatus: 'valued',
     });
@@ -1603,7 +1607,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
       itemId: fixture.otherItemId,
       movementType: 'inbound',
       baseQuantity: '10',
-      movementDate: new Date('2026-01-06T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-06')!,
       totalCost: '100',
       valuationStatus: 'valued',
     });
@@ -1641,7 +1645,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
         itemId: `item-bulk-${index}`,
         movementType: 'inbound',
         baseQuantity: '1',
-        movementDate: new Date('2026-01-05T00:00:00.000Z'),
+        movementDate: toBusinessDate('2026-01-05')!,
       });
     }
     await expectBusinessError(
@@ -1655,7 +1659,7 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     seedMovement(fixture, {
       movementType: 'inbound',
       baseQuantity: '5',
-      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-05')!,
       referenceId: 'doc-missing',
       registerHeader: false,
     });
@@ -1695,14 +1699,14 @@ describe('InventoryPricingService.runPricing (OD-PDP-01…05)', () => {
     seedMovement(fixture, {
       movementType: 'inbound',
       baseQuantity: '33.75',
-      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-05')!,
       totalCost: '675',
       valuationStatus: 'valued',
     });
     seedMovement(fixture, {
       movementType: 'outbound',
       baseQuantity: '-12.5',
-      movementDate: new Date('2026-01-10T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-10')!,
     });
     const before = [...fixture.world.movements.values()].map((movement) => ({
       id: movement.id,
@@ -1733,19 +1737,19 @@ describe('InventoryPricingService.reversePricing (OD-RVP-01…08)', () => {
     const receipt = seedMovement(fixture, {
       movementType: 'inbound',
       baseQuantity: '100',
-      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-05')!,
       totalCost: '1000',
       valuationStatus: 'valued',
     });
     const issueA = seedMovement(fixture, {
       movementType: 'outbound',
       baseQuantity: '-40',
-      movementDate: new Date('2026-01-10T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-10')!,
     });
     const issueB = seedMovement(fixture, {
       movementType: 'outbound',
       baseQuantity: '-10',
-      movementDate: new Date('2026-01-15T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-15')!,
     });
     const run = await asActor(() =>
       fixture.service.runPricing(runInput(fixture)),
@@ -1854,14 +1858,14 @@ describe('InventoryPricingService.reversePricing (OD-RVP-01…08)', () => {
     seedMovement(fixture, {
       movementType: 'inbound',
       baseQuantity: '100',
-      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-05')!,
       totalCost: '1000',
       valuationStatus: 'valued',
     });
     const issue = seedMovement(fixture, {
       movementType: 'outbound',
       baseQuantity: '-40',
-      movementDate: new Date('2026-01-10T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-10')!,
       headerStatus: 'accounting_posted',
     });
     const run = await asActor(() =>
@@ -1952,21 +1956,21 @@ describe('InventoryPricingService.reversePricing (OD-RVP-01…08)', () => {
     seedMovement(fixture, {
       movementType: 'inbound',
       baseQuantity: '100',
-      movementDate: new Date('2026-01-05T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-05')!,
       totalCost: '1000',
       valuationStatus: 'valued',
     });
     seedMovement(fixture, {
       movementType: 'transfer_out',
       baseQuantity: '-30',
-      movementDate: new Date('2026-01-10T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-10')!,
       transferId: 'trf-7',
     });
     seedMovement(fixture, {
       warehouseId: fixture.otherWarehouseId,
       movementType: 'transfer_in',
       baseQuantity: '30',
-      movementDate: new Date('2026-01-10T00:00:00.000Z'),
+      movementDate: toBusinessDate('2026-01-10')!,
       transferId: 'trf-7',
     });
 

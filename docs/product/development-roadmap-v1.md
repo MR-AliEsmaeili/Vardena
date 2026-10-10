@@ -64,8 +64,7 @@ ROADMAP).
 **Exit criteria.**
 1. PB-BASELINE, MVP-SCOPE, ROADMAP marked Accepted by the owner (or amended
    then accepted).
-2. OQ-49, OQ-60 resolved (Record → decision). OQ-45, OQ-54, OQ-02 resolved or
-   given recorded interim owner choices where they gate Stage 1–4 builds.
+2. OQ-49, OQ-60 resolved (Record → decision). OQ-45, OQ-54, and the remaining OQ-02 localization scope resolved or given recorded interim owner choices where they gate Stage 1–4 builds. The generic BusinessDate calendar and Instant zone/calendar are already accepted by ADR-0042 and must not be reopened under OQ-02.
 3. ADR-0029, ADR-0030 status = Accepted (or superseded by amended versions).
 4. Accounting task-index §8 follow-ups scheduled as named tasks (not silently
    absorbed).
@@ -76,8 +75,7 @@ single consolidated session using the OQ questions sections as the agenda.
 **Explicit non-goals.** No implementation tasks authorized by Stage 0 itself;
 no re-opening decided matters; no marketplace/SaaS/consolidation decisions.
 
-**Required OQ/ADR decisions.** OQ-49, OQ-60 (gates); OQ-45, OQ-54, OQ-02
-(interim or full); ADR-0029, ADR-0030 ratification.
+**Required OQ/ADR decisions.** OQ-49, OQ-60 (gates); OQ-45, OQ-54, and OQ-02's remaining UI-language/numeral/localization scope (interim or full; the accepted calendar/zone contract is not reopened); ADR-0029, ADR-0030 ratification.
 
 ---
 

@@ -53,6 +53,7 @@ import {
   type DocumentLifecycleProblem,
 } from '../../documents/domain/document-lifecycle.js';
 import { formatDateOnly } from './date-range.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import { canonicalizeAmount, sumAmounts } from './money.js';
 import type { AccountingDocumentLine } from './voucher-lines.js';
 import type { AccountingCorrectionKind } from './document-reversal.js';
@@ -355,8 +356,8 @@ export interface AccountingDocument {
   documentType: string;
   /** Numeric-only serial; `null` until issuance (§18). */
   documentNumber: string | null;
-  /** Business date, date-only (UTC midnight instant). */
-  documentDate: Date;
+  /** Business date (`date`-only); no time or zone. */
+  documentDate: BusinessDate;
   description: string;
   phase: AccountingDocumentPhase;
   origin: AccountingDocumentOrigin;

@@ -38,7 +38,7 @@ const DOCUMENT_ID = '01VOUCHERAAAAAAAAAAAAAAAA01';
 const OPERATION_KEY = '01OPERATIONKEYAAAAAAAAAAAAAA01';
 const REQUEST_HASH = 'a'.repeat(64);
 
-const DOCUMENT_DATE = parseDateOnly('2026-04-05') as Date;
+const DOCUMENT_DATE = parseDateOnly('2026-04-05')!;
 const FINALIZED_AT = new Date('2026-04-05T08:00:00Z');
 
 function finalDocument(
@@ -271,7 +271,7 @@ describe('posting input contract — immutability (task §22)', () => {
   it('does not mutate source voucher', () => {
     const doc = finalDocument();
     const originalLines = structuredClone(doc.lines);
-    const originalDate = doc.documentDate.getTime();
+    const originalDate = doc.documentDate;
     const input = toPostingInput({
       document: doc,
       operationKey: OPERATION_KEY,
@@ -282,14 +282,14 @@ describe('posting input contract — immutability (task §22)', () => {
     (input as any).voucherNumber = '9999';
     (input as any).description = 'Hacked';
     (input.lines[0] as any).debitAmount = '999999';
-    input.documentDate.setFullYear(2000);
+    (input as any).documentDate = '2000-01-01';
     input.finalizedAt.setFullYear(2000);
 
     // Source document must be unchanged
     expect(doc.documentNumber).toBe('0001');
     expect(doc.description).toBe('Opening entry');
     expect(doc.lines).toEqual(originalLines);
-    expect(doc.documentDate.getTime()).toBe(originalDate);
+    expect(doc.documentDate).toBe(originalDate);
   });
 
   it('ledger entries do not mutate posting input', () => {

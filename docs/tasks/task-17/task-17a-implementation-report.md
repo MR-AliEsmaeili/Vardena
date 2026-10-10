@@ -557,3 +557,15 @@ recorded rather than smoothed over:
 3. the recommendation's **"no executable endpoint / no permissions as dormant
    scaffolding"** is deviated from because the instruction required the endpoint and its
    enforced permission; the deviation and its owner decision are recorded in §1.3 and §12.
+
+## Later date/time clarification (2026-10-09)
+
+This report describes the Task 17A Accounting API and display state when it was
+implemented in September 2026. Its `YYYY-MM-DD` presentation and UTC date-only
+carrier descriptions are historical implementation evidence; they do not define
+the current user-facing calendar contract. Owner-accepted ADR-0042 later
+established canonical Gregorian BusinessDates persisted as PostgreSQL `date`
+with organization-calendar input/display (Jalali by default), distinct from UTC
+Instants rendered in the configured valid IANA zone and calendar. The current
+frontend and backend paths were audited separately; this note does not imply
+that Task 17A implemented them. See ADR-0042 and `docs/datetime.md`.

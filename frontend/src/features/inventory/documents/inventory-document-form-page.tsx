@@ -12,12 +12,11 @@ import { ArrowRight } from 'lucide-react';
 import type {
   CreateInventoryDocumentInput,
   InventoryDocument,
-  InventoryDocumentKind,
   UpdateInventoryDocumentInput,
 } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
-import { getDateTimeSettings, toBusinessDateInput } from '@/lib/datetime';
+import { toBusinessDateInput } from '@/lib/datetime';
 import { Button } from '@/ui/button';
 import { Card } from '@/ui/card';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
@@ -39,6 +38,8 @@ import { documentKindLabel } from './inventory-document-labels';
 import {
   documentFormSchema,
   emptyDocumentForm,
+  isDocumentFormKind,
+  type DocumentFormKind,
   type DocumentFormValues,
 } from './inventory-document-form-schema';
 import {
@@ -47,13 +48,23 @@ import {
 } from './inventory-document-mutations';
 import { useDocumentDetail } from './use-inventory-documents';
 
+type EditableInventoryDocument = Omit<InventoryDocument, 'kind'> & {
+  kind: DocumentFormKind;
+};
+
+function isEditableInventoryDocument(
+  document: InventoryDocument,
+): document is EditableInventoryDocument {
+  return isDocumentFormKind(document.kind);
+}
+
 /** Create a draft, or edit a document that is not yet accounting-posted. */
 export function InventoryDocumentFormPage(): ReactElement {
   const organizationId = useOrganizationId();
   const { documentId } = useParams<{ documentId: string }>();
   const [params] = useSearchParams();
   const kindParam = params.get('kind');
-  const kind: InventoryDocumentKind =
+  const kind: DocumentFormKind =
     kindParam === 'issue' || kindParam === 'transfer' ? kindParam : 'receipt';
 
   const references = useInventoryReferences(organizationId);
@@ -87,19 +98,28 @@ export function InventoryDocumentFormPage(): ReactElement {
     );
   }
 
+  const document = detailQuery.data;
+  if (document !== undefined && !isEditableInventoryDocument(document)) {
+    return (
+      <ApiErrorAlert
+        error={new Error(t.inventoryDocuments.unsupportedEditKind)}
+        title={t.inventoryDocuments.editTitle}
+        description={t.inventoryDocuments.unsupportedEditKind}
+      />
+    );
+  }
+
   return (
     <DocumentForm
       organizationId={organizationId}
       references={references}
-      kind={detailQuery.data?.kind ?? kind}
-      {...(detailQuery.data !== undefined
-        ? { document: detailQuery.data }
-        : {})}
+      kind={document?.kind ?? kind}
+      {...(document !== undefined ? { document } : {})}
     />
   );
 }
 
-function toFormValues(document: InventoryDocument): DocumentFormValues {
+function toFormValues(document: EditableInventoryDocument): DocumentFormValues {
   return {
     kind: document.kind,
     // OQ-73: the API returns the business DAY itself (canonical Gregorian).
@@ -119,21 +139,17 @@ function toFormValues(document: InventoryDocument): DocumentFormValues {
 }
 
 /**
- * C-63: the business date travels as what the operator authored — a declared
- * Jalali day for a Jalali organization, the canonical Gregorian day otherwise.
- * The backend resolves both to the SAME stored day (a declared `1405-07-16`
- * and a canonical `2026-10-08` are one day), so the request says which calendar
- * the user worked in without the UI ever inventing a day.
+ * ADR-0044: the fixed Jalali-first UI emits a declared Jalali day when it is
+ * renderable; an existing historical Gregorian day outside that range remains
+ * a canonical Gregorian string. Both resolve to the same canonical BusinessDate
+ * at the API boundary, without changing the stored day.
  */
 function businessDateBody(
   businessDate: string,
 ): Pick<CreateInventoryDocumentInput, 'businessDate'> {
   if (businessDate === '') return {};
   return {
-    businessDate: toBusinessDateInput(
-      businessDate,
-      getDateTimeSettings().calendarSystem,
-    ),
+    businessDate: toBusinessDateInput(businessDate),
   };
 }
 
@@ -188,8 +204,8 @@ function DocumentForm({
 }: {
   organizationId: string;
   references: ReturnType<typeof useInventoryReferences>;
-  kind: InventoryDocumentKind;
-  document?: InventoryDocument;
+  kind: DocumentFormKind;
+  document?: EditableInventoryDocument;
 }): ReactElement {
   const navigate = useNavigate();
   const { showToast } = useToast();

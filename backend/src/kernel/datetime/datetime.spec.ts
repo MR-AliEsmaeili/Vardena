@@ -7,6 +7,7 @@ import {
 import {
   businessDateFromDbDate,
   businessDateFromInstant,
+  businessDateFromUtcInstant,
   businessDateToDbDate,
   compareBusinessDates,
   formatBusinessDate,
@@ -34,7 +35,7 @@ import {
 } from './api-date-time.js';
 
 describe('calendar system', () => {
-  it('defaults to the Jalali calendar for Vardena but stays configurable', () => {
+  it('uses fixed Jalali-first display while retaining both explicit API calendars', () => {
     expect(DEFAULT_CALENDAR_SYSTEM).toBe('JALALI');
     expect(CALENDAR_SYSTEMS).toEqual(['GREGORIAN', 'JALALI']);
     expect(isCalendarSystem('JALALI')).toBe(true);
@@ -82,10 +83,35 @@ describe('Gregorian ↔ Jalali conversion', () => {
     expect(formatBusinessDate('2026-02-30', 'JALALI')).toBeNull();
   });
 
+  it('keeps Jalali input within the reversible Gregorian rendering range', () => {
+    expect(parseBusinessDate('0000-01-01', 'JALALI')?.gregorian).toBe(
+      '0621-03-21',
+    );
+    expect(parseBusinessDate('3177-10-11', 'JALALI')?.gregorian).toBe(
+      '3798-12-31',
+    );
+    // jalaali-js can map this day to 3799-01-01, but the kernel/API and
+    // migration rendering envelope stops at 3798-12-31.
+    expect(parseBusinessDate('3177-10-12', 'JALALI')).toBeNull();
+    expect(formatBusinessDate('3798-12-31', 'JALALI')).toBe('3177-10-11');
+  });
+
+  it('fails closed outside the four-digit Jalali rendering range', () => {
+    expect(gregorianToJalaliDay(560, 1, 1)).toBeNull();
+    expect(formatBusinessDate('0560-03-20', 'JALALI')).toBeNull();
+    expect(formatBusinessDate('0621-03-20', 'JALALI')).toBeNull();
+    expect(formatBusinessDate('0621-03-21', 'JALALI')).toBe('0000-01-01');
+    expect(formatBusinessDate('3799-01-01', 'JALALI')).toBeNull();
+  });
+
   it('round-trips a whole year without drift', () => {
     for (let offset = 0; offset < 366; offset += 1) {
       const day = new Date(Date.UTC(2026, 0, 1 + offset));
-      const gregorian = day.toISOString().slice(0, 10);
+      const gregorian = [
+        String(day.getUTCFullYear()).padStart(4, '0'),
+        String(day.getUTCMonth() + 1).padStart(2, '0'),
+        String(day.getUTCDate()).padStart(2, '0'),
+      ].join('-');
       const jalali = formatBusinessDate(gregorian, 'JALALI');
       expect(jalali).not.toBeNull();
       expect(parseBusinessDate(jalali as string, 'JALALI')?.gregorian).toBe(
@@ -111,6 +137,10 @@ describe('time zone handling', () => {
     expect(
       utcOffsetMinutesAt(new Date('2026-10-08T08:32:14.421Z'), 'UTC'),
     ).toBe(0);
+  });
+
+  it('does not remap years 0001–0099 when deriving an instant offset', () => {
+    expect(utcOffsetMinutesAt(new Date('0001-01-01T00:00:00Z'), 'UTC')).toBe(0);
   });
 
   it('applies the historical DST rule (Tehran observed +04:30 in 2022)', () => {
@@ -186,9 +216,38 @@ describe('business dates', () => {
     // The DB adapter pair is the ONLY place a Date object touches a business
     // date: Prisma maps `date` ⇔ a Date whose UTC components are the day.
     const carrier = businessDateToDbDate('2026-10-08');
-    expect(carrier?.toISOString()).toBe('2026-10-08T00:00:00.000Z');
-    expect(businessDateFromDbDate(carrier as Date)).toBe('2026-10-08');
+    if (carrier === null) throw new Error('Expected a date carrier.');
+    expect(carrier.getUTCHours()).toBe(0);
+    expect(carrier.getUTCMinutes()).toBe(0);
+    expect(carrier.getUTCSeconds()).toBe(0);
+    expect(carrier.getUTCMilliseconds()).toBe(0);
+    expect(businessDateFromDbDate(carrier)).toBe('2026-10-08');
     expect(businessDateToDbDate('2026-02-30')).toBeNull();
+  });
+
+  it('round-trips Gregorian years 0001–0099 without JavaScript Date.UTC remapping', () => {
+    for (const day of ['0001-01-01', '0050-12-31', '0099-03-01']) {
+      const carrier = businessDateToDbDate(day);
+      expect(isGregorianBusinessDate(day)).toBe(true);
+      if (carrier === null) throw new Error('Expected a date carrier.');
+      expect(carrier.getUTCFullYear()).toBe(Number(day.slice(0, 4)));
+      expect(carrier.getUTCMonth() + 1).toBe(Number(day.slice(5, 7)));
+      expect(carrier.getUTCDate()).toBe(Number(day.slice(8, 10)));
+      expect(businessDateFromDbDate(carrier)).toBe(day);
+    }
+    expect(isGregorianBusinessDate('0000-01-01')).toBe(false);
+    expect(businessDateToDbDate('0000-01-01')).toBeNull();
+  });
+
+  it('rejects invalid or noncanonical PostgreSQL DATE carriers', () => {
+    expect(() => businessDateFromDbDate(new Date(Number.NaN))).toThrow(
+      'Prisma returned an invalid carrier for a PostgreSQL date.',
+    );
+    const outsideCanonicalRange = new Date(0);
+    outsideCanonicalRange.setUTCFullYear(10_000, 0, 1);
+    expect(() => businessDateFromDbDate(outsideCanonicalRange)).toThrow(
+      'outside the canonical BusinessDate range',
+    );
   });
 
   it('keeps a BusinessDate identical in every time zone (OQ-73)', () => {
@@ -211,16 +270,20 @@ describe('business dates', () => {
     }
   });
 
-  it('derives a day from an instant ONLY through the organization zone', () => {
-    // Where a genuine moment exists (a legacy instant input, "today"), the
-    // day it names depends on the zone — that is an instant property, never
-    // applied to an already-stored business date.
+  it('uses the organization zone only for a real instant-day rule such as today', () => {
+    // Defaults ask for the organization's current day; stored BusinessDates
+    // never pass through this function.
     expect(
       businessDateFromInstant(new Date('2026-10-08T21:00:00Z'), 'Asia/Tehran'),
     ).toBe('2026-10-09');
     expect(
       businessDateFromInstant(new Date('2026-10-08T21:00:00Z'), 'UTC'),
     ).toBe('2026-10-08');
+    // Legacy business-date instants use OQ-73's UTC calendar-day policy.
+    expect(businessDateFromUtcInstant(new Date('2026-10-08T21:00:00Z'))).toBe(
+      '2026-10-08',
+    );
+    expect(businessDateFromUtcInstant(new Date(Number.NaN))).toBeNull();
   });
 
   it('validates rather than coerces', () => {
@@ -236,14 +299,14 @@ describe('business dates', () => {
     expect(compareBusinessDates('2026-10-08', 'nonsense')).toBeNull();
     expect(
       isValidBusinessDateRange({
-        startDate: '2026-10-01',
-        endDate: '2026-10-08',
+        startDate: toBusinessDate('2026-10-01')!,
+        endDate: toBusinessDate('2026-10-08')!,
       }),
     ).toBe(true);
     expect(
       isValidBusinessDateRange({
-        startDate: '2026-10-08',
-        endDate: '2026-10-01',
+        startDate: toBusinessDate('2026-10-08')!,
+        endDate: toBusinessDate('2026-10-01')!,
       }),
     ).toBe(false);
   });
@@ -259,17 +322,39 @@ describe('business-date input contract', () => {
     });
   });
 
-  it('accepts a legacy ISO instant and resolves its day in the zone', () => {
+  it('resolves a legacy ISO instant by UTC day under the owner-approved input rule', () => {
+    // Unlike the pre-cutover API parser, the compatibility input rule is now
+    // intentionally UTC-day based even when this instant is the next local day.
+    expect(
+      businessDateFromInstant(
+        new Date('2026-10-08T21:00:00.000Z'),
+        'Asia/Tehran',
+      ),
+    ).toBe('2026-10-09');
     expect(parseBusinessDateInput('2026-10-08T00:00:00.000Z')).toMatchObject({
       ok: true,
       gregorian: '2026-10-08',
       source: 'instant',
     });
-    expect(
-      parseBusinessDateInput('2026-10-08T21:00:00.000Z', {
-        timeZone: 'Asia/Tehran',
-      }),
-    ).toMatchObject({ ok: true, gregorian: '2026-10-09' });
+    expect(parseBusinessDateInput('2026-10-08T21:00:00.000Z')).toMatchObject({
+      ok: true,
+      gregorian: '2026-10-08',
+    });
+    expect(parseBusinessDateInput('2026-10-09T00:15:00+03:30')).toMatchObject({
+      ok: true,
+      gregorian: '2026-10-08',
+    });
+  });
+
+  it('rejects impossible civil days and UTC days outside the BusinessDate range', () => {
+    expect(parseBusinessDateInput('2026-02-30T23:30:00-08:00')).toEqual({
+      ok: false,
+      reason: 'business_date_calendar',
+    });
+    expect(parseBusinessDateInput('0000-01-01T00:00:00Z')).toEqual({
+      ok: false,
+      reason: 'business_date_calendar',
+    });
   });
 
   it('refuses an undated or declared-invalid value with a stable reason', () => {
@@ -307,11 +392,21 @@ describe('business-date input contract', () => {
 });
 
 describe('standardized API representations', () => {
-  it('derives both calendars for one business date from one canonical value', () => {
+  it('keeps the canonical BusinessDate when the derived Jalali rendering is unavailable', () => {
     expect(toApiBusinessDate('2026-10-08')).toEqual({
       gregorian: '2026-10-08',
       jalali: '1405-07-16',
     });
+    expect(toApiBusinessDate('0600-01-01')).toEqual({
+      gregorian: '0600-01-01',
+      jalali: null,
+    });
+    expect(toApiBusinessDate('9999-12-31')).toEqual({
+      gregorian: '9999-12-31',
+      jalali: null,
+    });
+    expect(toApiBusinessDate('0000-01-01')).toBeNull();
+    expect(toApiBusinessDate('10000-01-01')).toBeNull();
     expect(toApiBusinessDate('2026-02-30')).toBeNull();
   });
 
@@ -330,6 +425,15 @@ describe('standardized API representations', () => {
     expect(utc?.instant).toBe('2026-10-08T08:32:14.421Z');
     expect(utc?.gregorian).toBe('2026-10-08 08:32:14');
     expect(utc?.jalali).toBe('1405-07-16 08:32:14');
+  });
+
+  it('keeps a historical canonical instant when Jalali cannot render it', () => {
+    expect(toApiInstant(new Date('0600-01-01T00:00:00.000Z'), 'UTC')).toEqual({
+      instant: '0600-01-01T00:00:00.000Z',
+      timeZone: 'UTC',
+      gregorian: '0600-01-01 00:00:00',
+      jalali: null,
+    });
   });
 
   it('refuses to invent a rendering for an unknown zone or an invalid instant', () => {

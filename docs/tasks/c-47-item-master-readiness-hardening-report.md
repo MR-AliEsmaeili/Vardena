@@ -1,5 +1,14 @@
 # C-47 — Inventory Item Master: Readiness, Regression Hardening & Decision Preparation (Implementation Report)
 
+> **Current date-axis clarification (2026-10-09):** This historical report's
+> conversion tests originally described instant-backed validity windows. The
+> Product Owner has since classified Inventory unit-conversion and item-
+> valuation validity bounds as BusinessDate ranges `[valid_from, valid_to)`;
+> migration `20261012000000_inventory_business_date_validity_windows` converts
+> those columns to PostgreSQL `date` after a fail-closed preflight. See
+> [`docs/datetime.md`](../datetime.md) and ADR-0042 for the current contract.
+> Fixture rehearsal is not evidence about target historical rows.
+>
 > Companion to, and a direct execution of,
 > [`c-47-item-master-preflight-investigation.md`](./c-47-item-master-preflight-investigation.md)
 > (PR #106), whose proposed bounded slice §7 this work realizes: **retain the
@@ -81,8 +90,8 @@ either *known-decision-pending* (§6/§7) or *already-tested current behavior*.
 - `docs/modules.md` §Inventory — the advisory-lock path documented (AR-11).
 
 Hermetic behavior/messages are unchanged by construction: single-threaded
-overlap still 422 `BusinessRuleViolation`, same-instant race resolved by the
-index still 409 `Conflict` — the live suite proves the pair-invariant end
+overlap still 422 `BusinessRuleViolation`, same-business-date start race
+resolved by the unique index still 409 `Conflict` — the live suite proves the pair-invariant end
 state (§5).
 
 ### Fix 2 — resolve-path organization enforcement
@@ -122,14 +131,14 @@ pipeline (backend job: unit tests hermetically; e2e incl. live-DB suites via
 | G-2 | `units.service.ts` (all of it) | **None** (no spec file) | hermetic (added `units.service.spec.ts` 12 cases) | now yes | Any units regression (shape, uniqueness, normalization, lifecycle) invisible | No |
 | G-3 | `item-groups.service.ts` hierarchy (self-parent, cycle, cross-org parent, disabled-parent new-usage) | **None** at service level (departments analog existed in `organization` module; group HTTP cases existed but not the tree rules) | hermetic (added `item-groups.service.spec.ts` 14 cases) | now yes | Introducing a cross-org parent silently allowing ancestor cycles or disabled anchors | No |
 | G-4 | `resolveEnteredToBase` (`inventory-posting-support.ts`) | **None directly** (only hash/clock helpers) | hermetic (added 8 cases) | now yes | Number-math regressions in the conversion boundary every posting crosses | No (interim rule documented; OQ-29 in §6) |
-| G-5 | Conversion window boundary (`validFrom` inclusive, `validTo` exclusive) | domain `resolveVersionAt` covered; service+HTTP not | hermetic service (added 1 case) + HTTP keeps it | now yes | Off-by-one instant flipping a factor at the boundary (a posting dated exactly at a change) | No |
+| G-5 | Conversion BusinessDate boundary (`validFrom` inclusive, `validTo` exclusive) | domain `resolveVersionAt` covered; service+HTTP not | hermetic service (added 1 case) + HTTP keeps it | now yes | Off-by-one day flipping a factor at the boundary (a posting dated exactly at a change) | No |
 | G-6 | `resolveConversion` org isolation (item path) | **None** — and the code leaked | hermetic service + authorization + HTTP + live (4 layers added, Fix 2) | now yes | Foreign factor disclosure (Fix 2) | No |
 | G-7 | Conversion create + supersession over HTTP with state intact | single-stylized supersession journey only | hermetic HTTP (added overlap 422 case + historical resolve intact) | now yes | Regression of the pair-invariant at transport level | No |
 | G-8 | Item/unit code uniqueness over HTTP (409 + same-code-other-org) | warehouses only | hermetic HTTP (added: item, unit) | now yes | Accidental removal of pre-check or scope in the conflict path | No |
 | G-9 | Cross-org item get/update/enable/disable over HTTP (404 + untouched row) | warehouses only | hermetic HTTP (added) | now yes | Item IDOR at transport level | No |
 | G-10 | Item code uniqueness under concurrent writes | warehouses only (live) | **live-PG** (added live case 1) | now yes (CI backend job) | DB-index authority drifting from service pre-check | No |
-| G-11 | Conversion same-instant race | **none** | **live-PG** (added live case 3) | now yes (CI) | Double-open-ended wedge under concurrency | No (Fix 1) |
-| G-12 | Conversion supersession race (distinct instants) | **none** | **live-PG** (added live case 4: chain consistency + exactly-one-open-ended) | now yes (CI) | Fix-1 regression fundamentally unprovable hermetically (fake is single-threaded) | No |
+| G-11 | Conversion same-business-date-start race | **none** | **live-PG** (added live case 3) | now yes (CI) | Duplicate-start or double-open-ended wedge under concurrency | No (Fix 1) |
+| G-12 | Conversion supersession race (distinct BusinessDate starts) | **none** | **live-PG** (added live case 4: chain consistency + exactly-one-open-ended) | now yes (CI) | Fix-1 regression fundamentally unprovable hermetically (fake is single-threaded) | No |
 | G-13 | Backdated posting factor snapshot (D-21) on real rows | hermetic characterization only | **live-PG** (added live case 5) | now yes (CI) | History reinterpretation | No (subject to OQ-29 confirmation §6) |
 | G-14 | No-conversion posting rejected (no 1:1, no reverse-pair division, nothing recorded) | hermetic (added G-4) | hermetic (G-4) + **live-PG** (live case 6) | now yes | Silent invented conversions | No |
 | G-15 | >4dp product rejection (fail-closed, OQ-29 interim) | domain `fitsQuantity` unit | hermetic G-4 + **live-PG** (live case 7) | now yes | Accidental silent rounding before Owner decision | **Yes — OQ-29** (behavior kept unchanged) |
@@ -158,7 +167,7 @@ float-drift properties of `quantities.ts` (44 existing domain cases).
 - `backend/src/modules/inventory/application/items.service.spec.ts` — +**9 cases**
   (new `ItemsService freeze guards (guards firing)` describe).
 - `backend/src/modules/inventory/application/unit-conversions.service.spec.ts` — +**3 cases**
-  (boundary instant; Fix-2 foreign-item resolve 404; disabled-item resolvable history).
+  (BusinessDate boundary; Fix-2 foreign-item resolve 404; disabled-item resolvable history).
 - `backend/src/modules/inventory/application/inventory-posting-support.spec.ts` — +**8 cases**
   (new `resolveEnteredToBase` describe).
 - `backend/src/modules/organization/application/master-data-authorization.spec.ts` — +**5 cases**

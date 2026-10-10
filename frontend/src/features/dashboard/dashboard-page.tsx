@@ -7,6 +7,7 @@ import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { useQuery } from '@tanstack/react-query';
 import { listAccountingPeriods } from '@/api/accounting.api';
 import { queryKeys } from '@/api/query-keys';
+import { todayBusinessDay, useTimeZone } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { sortingFromParam, sortingToParam } from '@/lib/sort-param';
 import { ApiErrorAlert } from '@/ui/patterns/api-error-alert';
@@ -44,6 +45,7 @@ const PAGE_SIZE_OPTIONS = [9, 25, 50];
 
 export function DashboardPage(): ReactElement {
   const organizationId = useOrganizationId();
+  const timeZone = useTimeZone();
   const permissions = usePermissions();
   const {
     scope,
@@ -128,13 +130,11 @@ export function DashboardPage(): ReactElement {
     isPeriodsPermitted;
 
   const periods = periodsQuery.data?.items ?? [];
-  const today = new Date();
+  const today = todayBusinessDay(timeZone);
   const currentPeriod =
-    periods.find((period) => {
-      const start = new Date(period.startDate);
-      const end = new Date(period.endDate);
-      return today >= start && today <= end;
-    }) ?? periods[0];
+    periods.find(
+      (period) => today >= period.startDate && today <= period.endDate,
+    ) ?? periods[0];
 
   // The reference's Alt+D / Alt+N concept lands on real routes: Alt+D goes to
   // the dashboard (its own page), Alt+N is intentionally NOT bound because no

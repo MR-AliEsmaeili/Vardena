@@ -14,7 +14,10 @@ import {
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
 import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
-import { DECLARED_BUSINESS_DATE_SCHEMA } from '../../../../kernel/datetime/api-date-time.dto.js';
+import {
+  DECLARED_BUSINESS_DATE_SCHEMA,
+  LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+} from '../../../../kernel/datetime/api-date-time.dto.js';
 import { CALENDAR_SYSTEMS } from '../../../../kernel/datetime/calendar-system.js';
 import { MAX_OPERATION_KEY_LENGTH } from '../../application/inventory-posting-support.js';
 import { INVENTORY_DOCUMENT_KINDS } from '../../domain/inventory-business-document.js';
@@ -78,10 +81,11 @@ export class RunPricingDto {
   @ApiProperty({
     oneOf: [
       { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
       DECLARED_BUSINESS_DATE_SCHEMA,
     ],
     description:
-      'Inclusive range END, a movement BUSINESS DAY (OQ-73) — the operator\u2019s only range choice. Canonical Gregorian day, declared Jalali day, or legacy ISO instant. The start is automatic: the day after the last completed run for the same scope (OD-PDP-01).',
+      'Inclusive range END, a movement BUSINESS DAY (OQ-73) — the operator\u2019s only range choice. Canonical Gregorian day, declared Jalali day, or a legacy ISO instant resolved to its UTC calendar day. The start is automatic: the day after the last completed run for the same scope (OD-PDP-01).',
   })
   @IsBusinessDate()
   toDate!: BusinessDateInputDto;

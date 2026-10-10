@@ -59,9 +59,8 @@ export function inventoryDocumentsColumns(
       accessorKey: 'businessDate',
       header: t.inventoryDocuments.columnDate,
       cell: ({ row }) => (
-        // C-63 §11 / OQ-73: the day is shown in the organization calendar,
-        // with the canonical Gregorian value on hover so the two can be
-        // reconciled. The API returns the business day itself (no instant).
+        // ADR-0044 / OQ-73: render Jalali-first, retaining the canonical
+        // Gregorian value on hover. The API returns a BusinessDate, not an instant.
         <span
           className="num"
           dir="ltr"

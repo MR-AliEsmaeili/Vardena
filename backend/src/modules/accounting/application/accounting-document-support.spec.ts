@@ -72,16 +72,21 @@ describe('accounting document input normalization (§12/§13)', () => {
     );
   });
 
-  it('accepts date-only business dates and refuses instants (§12.3)', () => {
-    const parsed = parseDocumentDate(' 2026-04-05 ');
-    expect(parsed.toISOString()).toBe('2026-04-05T00:00:00.000Z');
+  it('accepts canonical and declared business dates and preserves a legacy instant UTC day', () => {
+    expect(parseDocumentDate(' 2026-04-05 ')).toBe('2026-04-05');
+    expect(parseDocumentDate({ calendar: 'JALALI', value: '1405-01-16' })).toBe(
+      '2026-04-05',
+    );
+    // The legacy compatibility policy is UTC calendar-day preservation, not
+    // conversion through the organization's local zone.
+    expect(parseDocumentDate('2026-04-05T23:30:00-07:00')).toBe('2026-04-06');
     for (const value of [
-      '2026-04-05T00:00:00Z',
       '2026-4-5',
       '2026-02-30',
       '05/04/2026',
       '',
-    ]) {
+      { calendar: 'JALALI', value: '1405-12-30' },
+    ] as const) {
       expect(() => parseDocumentDate(value)).toThrow(AppException);
     }
     expect(parseOptionalDocumentDate(undefined, 'dateFrom')).toBeUndefined();
@@ -286,7 +291,9 @@ describe('guard-error mapping (§25, AC-I-01/16)', () => {
         'account_not_postable',
       ),
       new AccountingDocumentAccountRejectedError('acct', 'account_disabled'),
-      new AccountingDocumentDateUnresolvableError(new Date()),
+      new AccountingDocumentDateUnresolvableError(
+        parseDocumentDate('2026-04-05'),
+      ),
       new AccountingDocumentScopeRejectedError('period', 'sealed'),
       new AccountingDocumentScopeRejectedError('year', 'closed'),
       new AccountingDocumentScopeRejectedError('area', 'disabled'),

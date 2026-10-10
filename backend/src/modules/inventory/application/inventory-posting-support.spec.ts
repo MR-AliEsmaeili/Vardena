@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  toBusinessDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
   buildRequestHash,
   canonicalClientBusinessDate,
+  resolveBusinessDate,
 } from './inventory-posting-support.js';
 
 /**
@@ -45,10 +50,37 @@ describe('canonicalClientBusinessDate', () => {
     ).toBe('2026-03-01');
   });
 
-  it('keeps a legacy ISO instant string verbatim (no clock, no zone)', () => {
-    expect(canonicalClientBusinessDate('2026-03-01T08:30:00.000Z')).toBe(
-      '2026-03-01T08:30:00.000Z',
+  it('hashes a legacy ISO instant by its UTC calendar day', () => {
+    // The local offset crosses back into the previous UTC day; compatibility
+    // follows the stored/migrated UTC day, not the organization's zone.
+    expect(canonicalClientBusinessDate('2026-03-01T00:30:00+03:30')).toBe(
+      '2026-02-28',
     );
+  });
+
+  it('resolves legacy instants to the UTC day across organization time zones', () => {
+    const timeZones = ['UTC', 'Asia/Tehran', 'America/Los_Angeles'];
+    const localMarchFirst = '2026-03-01T00:15:00+03:30';
+    const utcMarchFirst = '2026-03-01T00:15:00.000Z';
+
+    for (const timeZone of timeZones) {
+      // Tehran's local day is March 1 while the UTC day is February 28.
+      expect(
+        resolveBusinessDate({
+          field: 'businessDate',
+          value: localMarchFirst,
+          timeZone,
+        }),
+      ).toBe(toBusinessDate('2026-02-28'));
+      // Los Angeles' local day is February 28 while the UTC day is March 1.
+      expect(
+        resolveBusinessDate({
+          field: 'businessDate',
+          value: utcMarchFirst,
+          timeZone,
+        }),
+      ).toBe(toBusinessDate('2026-03-01'));
+    }
   });
 });
 
@@ -167,7 +199,7 @@ import type { UnitConversion } from '../domain/unit-conversion.js';
  * Entered → base quantity resolution (D-21/D-26, ADR-0022).
  *
  * This is the conversion boundary every posting crosses: the exact decimal
- * product, the version in force at the BUSINESS instant (a backdated posting
+ * product, the version in force on the BUSINESS DATE (a backdated posting
  * uses the backdated factor, never today's), item-specific precedence, and
  * the fail-closed rules — no conversion means rejection, never an invented
  * 1:1; a product that does not fit `numeric(18,4)` exactly is rejected, never
@@ -178,8 +210,8 @@ describe('resolveEnteredToBase', () => {
   const ITEM = '01ITEM00000000000000000001';
   const PCS = '01UNITPCSA0000000000000000';
   const BOX = '01UNITBOXA0000000000000000';
-  const JAN = new Date('2026-01-01T00:00:00Z');
-  const FEB = new Date('2026-02-01T00:00:00Z');
+  const JAN = toBusinessDate('2026-01-01')!;
+  const FEB = toBusinessDate('2026-02-01')!;
 
   let seq = 0;
   function conversion(parts: Partial<UnitConversion>): UnitConversion {
@@ -223,7 +255,7 @@ describe('resolveEnteredToBase', () => {
     baseUnitId?: string;
     unitId?: string;
     quantity?: string;
-    asOf?: Date;
+    asOf?: BusinessDate;
   }
 
   function resolveWith(
@@ -288,7 +320,7 @@ describe('resolveEnteredToBase', () => {
         conversion({ factor: '12', validFrom: JAN, validTo: FEB }),
         conversion({ factor: '24', validFrom: FEB, validTo: null }),
       ],
-      { asOf: new Date('2026-01-20T00:00:00Z') },
+      { asOf: toBusinessDate('2026-01-20')! },
     );
     expect(resolved.conversionFactor).toBe('12');
     expect(resolved.baseQuantity).toBe('24');

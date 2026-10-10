@@ -313,6 +313,11 @@ export class InventoryBalancesService {
    * Rebuild stored balances from the ledger for every key in the scope.
    * Maintenance only (`Reconciliation.Execute`): every correction is returned
    * in the report AND logged, so a rebuild is never a silent repair.
+   *
+   * Each key remains its own short Inventory transaction and is re-read under
+   * its balance row lock, so concurrent postings are either included before
+   * the recomputation or applied after it. Earlier per-key commits remain
+   * valid if a later key fails; rerunning the same scope is safe.
    */
   async rebuild(scope: ReconciliationScope): Promise<RebuildReport> {
     await this.authorization.requireAllPermissions([
@@ -322,6 +327,7 @@ export class InventoryBalancesService {
     const keys = await this.balances.listStockingKeys(scope);
     const branches = new Map<string, string>();
     const corrections: KeyRebuild[] = [];
+    let completedKeys = 0;
     for (const key of keys) {
       // A rebuild only CREATES a row for a key the ledger knows; the branch
       // comes from the live warehouse row (warehouses cannot move branches
@@ -337,14 +343,35 @@ export class InventoryBalancesService {
         branchId = warehouse.branchId;
         branches.set(key.warehouseId, branchId);
       }
-      const rebuild = await this.balances.rebuildKey(
-        scope.organizationId,
-        branchId,
-        key,
-        getPrincipal()?.userId ?? null,
-      );
-      if (rebuild.action !== 'noop') corrections.push(rebuild);
+
+      try {
+        const rebuild = await this.balances.rebuildKey(
+          scope.organizationId,
+          branchId,
+          key,
+          getPrincipal()?.userId ?? null,
+        );
+        completedKeys += 1;
+        if (rebuild.action !== 'noop') corrections.push(rebuild);
+      } catch (error) {
+        this.logger.warn(
+          'Inventory balance rebuild encountered an error during a per-key transaction',
+          {
+            organizationId: scope.organizationId,
+            warehouseId: key.warehouseId,
+            itemId: key.itemId,
+            completedKeys,
+            totalKeys: keys.length,
+            currentKeyCommitOutcome: 'unknown',
+            corrections,
+            errorName: error instanceof Error ? error.name : typeof error,
+          },
+          InventoryBalancesService.name,
+        );
+        throw error;
+      }
     }
+
     this.logger.log(
       'Inventory balances rebuilt',
       {

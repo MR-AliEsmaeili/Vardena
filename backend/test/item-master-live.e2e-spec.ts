@@ -2,6 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { APP_CONFIG, loadAppConfig } from '../src/kernel/config/app-config.js';
 import { generateId } from '../src/kernel/ids/ulid.js';
+import { toBusinessDate } from '../src/kernel/datetime/business-date.js';
 import { AppException } from '../src/kernel/errors/app-exception.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
 import { OrganizationsService } from '../src/modules/organization/application/organizations.service.js';
@@ -86,8 +87,8 @@ describe.skipIf(DATABASE_URL === undefined)(
     let crateAId = '';
     let warehouseAId = '';
 
-    const JAN = new Date('2026-01-01T00:00:00.000Z');
-    const FEB = new Date('2026-02-01T00:00:00.000Z');
+    const JAN = toBusinessDate('2026-01-01')!;
+    const FEB = toBusinessDate('2026-02-01')!;
 
     beforeAll(async () => {
       const built = await createTestApp({
@@ -344,7 +345,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).rejects.toMatchObject({ code: 'EntityNotFound' });
     });
 
-    it('serializes concurrent same-instant conversion creates: exactly one version, the rest get the stable overlap rejection', async () => {
+    it('serializes concurrent same-BusinessDate conversion creates: exactly one version, the rest get the stable overlap rejection', async () => {
       const itemPair = await items.createItem({
         organizationId: orgAId,
         code: `ITM-CVP-${suffix}`,
@@ -360,7 +361,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             fromUnitId: boxAId,
             toUnitId: pcsAId,
             factor: '12',
-            validFrom: new Date('2026-03-01T00:00:00.000Z'),
+            validFrom: toBusinessDate('2026-03-01')!,
             validTo: null,
           }),
         ),
@@ -373,9 +374,9 @@ describe.skipIf(DATABASE_URL === undefined)(
         (attempt) => attempt.status === 'rejected',
       );
       // Advisory-lock serialization turns the race into sequential creates:
-      // exactly one version starts at that instant, and every loser gets the
-      // SAME stable error a single-threaded overlapping create gets — the
-      // pair can never carry two versions sharing a start instant.
+      // exactly one version starts on that BusinessDate, and every loser gets
+      // the SAME stable error a single-threaded overlapping create gets — the
+      // pair can never carry two versions sharing a date start.
       expect(fulfilled).toHaveLength(1);
       expect(rejected).toHaveLength(7);
       for (const loser of rejected) {
@@ -409,13 +410,19 @@ describe.skipIf(DATABASE_URL === undefined)(
         itemKind: 'goods',
         baseUnitId: pcsAId,
       });
-      // Eight racers at distinct instants, minutes apart.
-      const instants = Array.from(
-        { length: 8 },
-        (_, index) => new Date(Date.UTC(2026, 3, 1, 0, index)),
-      );
+      // Eight racers at distinct consecutive business days.
+      const validFromDates = [
+        '2026-04-01',
+        '2026-04-02',
+        '2026-04-03',
+        '2026-04-04',
+        '2026-04-05',
+        '2026-04-06',
+        '2026-04-07',
+        '2026-04-08',
+      ].map((value) => toBusinessDate(value)!);
       const attempts = await Promise.allSettled(
-        instants.map((validFrom) =>
+        validFromDates.map((validFrom) =>
           conversions.createConversion({
             organizationId: orgAId,
             itemId: itemPair.id,
@@ -502,7 +509,7 @@ describe.skipIf(DATABASE_URL === undefined)(
 
       // The closure actually landed in the real table (supersession).
       const closed = await conversions.getConversion(orgAId, first.id);
-      expect(closed.validTo).toBe(FEB.toISOString());
+      expect(closed.validTo).toBe(FEB);
       expect(closed.factor).toBe('12');
 
       const january = await conversions.resolveConversion({
@@ -510,7 +517,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         itemId: null,
         fromUnitId: boxAId,
         toUnitId: pcsAId,
-        asOf: new Date('2026-01-15T00:00:00.000Z'),
+        asOf: toBusinessDate('2026-01-15')!,
       });
       expect(january?.factor).toBe('12');
 

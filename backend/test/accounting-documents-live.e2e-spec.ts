@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { APP_CONFIG, loadAppConfig } from '../src/kernel/config/app-config.js';
 import { generateId } from '../src/kernel/ids/ulid.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
+import { toBusinessDate } from '../src/kernel/datetime/business-date.js';
 import { DocumentTypeRegistry } from '../src/modules/documents/application/document-type-registry.js';
 import { NumberingService } from '../src/modules/documents/application/numbering.service.js';
 import { NumberingSeriesService } from '../src/modules/documents/application/numbering-series.service.js';
@@ -149,7 +150,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       id: generateId(),
       organizationId,
       financialAreaId,
-      documentDate: new Date(Date.UTC(2026, 3, 5)),
+      documentDate: toBusinessDate('2026-04-05')!,
       description: 'Live entry',
       state: 'draft',
       origin: 'manual',
@@ -634,7 +635,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           id: created.id,
           organizationId,
           financialAreaId,
-          documentDate: new Date(Date.UTC(2026, 3, 5)),
+          documentDate: toBusinessDate('2026-04-05')!,
           description: 'Too late',
           branchId: null,
           lines: [
@@ -938,7 +939,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           organizationId,
           reversalId,
           documentNumber,
-          documentDate: new Date(Date.UTC(2026, 3, 5)),
+          documentDate: toBusinessDate('2026-04-05')!,
           description: `Reversal ${label}`,
           reason: `race-${label}`,
           ledger: {

@@ -3,7 +3,7 @@ import { useOrganizationId } from '@/features/organization/use-organization';
 import { PermissionGate } from '@/features/permissions/permission-gate';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTimeWithZone } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
 import { Button } from '@/ui/button';
@@ -138,7 +138,9 @@ export function PartyDetailPage() {
           )}
         </Definition>
         <Definition label={t.orgAdmin.updatedAt}>
-          <span className="num">{formatDateTime(party.updatedAt)}</span>
+          <span className="num" title={party.updatedAt}>
+            {formatDateTimeWithZone(party.updatedAt)}
+          </span>
         </Definition>
       </DefinitionList>
 

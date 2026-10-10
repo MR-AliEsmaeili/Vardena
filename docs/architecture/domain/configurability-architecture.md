@@ -161,7 +161,7 @@ just the column.
 | Category | Nature | Implementation | Configurable? |
 |---|---|---|---|
 | **Domain invariants** | Meaning of the data (balanced entries, immutability, positive quantities where required) | Code + DB constraints | No |
-| **Organization configuration** | Values (calendar, policies, defaults, feature switches) | Configuration tables + Organization service | Yes |
+| **Organization configuration** | Values (fiscal calendar, policies, defaults, feature switches; not the fixed Jalali-first display calendar) | Configuration tables + Organization service | Yes |
 | **Workflow rules** | Which enabled transitions require what | Workflow definition versions | Yes |
 | **Validation rules** | Field/DTO validation, capability constraints, required-ness | DTO/domain code + required-field policy | Partly (required-ness over code-supported fields) |
 | **Automation rules** | Reactions to transitions/events | Action catalogue (code) + bindings (config) | Yes (within catalogue) |

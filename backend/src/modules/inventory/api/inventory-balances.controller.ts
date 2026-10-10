@@ -20,7 +20,6 @@ import {
   getSchemaPath,
 } from '@nestjs/swagger';
 import { paginatedResponseOf } from '../../../kernel/pagination/paginated-result.js';
-import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
 import { AuthGuard } from '../../identity/application/auth.guard.js';
 import { AuthorizationGuard } from '../../rbac/application/authorization.guard.js';
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
@@ -151,7 +150,7 @@ export class InventoryBalancesController {
         expectedLastMovementDate:
           mismatch.expectedLastMovementDate === null
             ? null
-            : businessDateFromDbDate(mismatch.expectedLastMovementDate),
+            : mismatch.expectedLastMovementDate,
         stored: mismatch.stored,
         matches: mismatch.matches,
       })),
@@ -164,7 +163,7 @@ export class InventoryBalancesController {
   @RequirePermission(RECONCILIATION_PERMISSIONS.EXECUTE)
   @ApiOperation({
     summary:
-      'Rebuild stored balances from the ledger and open reservations. Maintenance operation: every correction is returned in the report.',
+      'Rebuild stored balances from the ledger and open reservations. Each key uses its own short transaction and row lock; a repeated rebuild safely resumes reconciliation.',
   })
   @ApiOkResponse({ type: RebuildReportDto })
   @ApiNotFoundResponse({
@@ -190,7 +189,7 @@ export class InventoryBalancesController {
         expectedLastMovementDate:
           correction.expectedLastMovementDate === null
             ? null
-            : businessDateFromDbDate(correction.expectedLastMovementDate),
+            : correction.expectedLastMovementDate,
         storedBefore: correction.storedBefore,
         action: correction.action,
       })),

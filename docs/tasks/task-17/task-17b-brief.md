@@ -177,3 +177,13 @@ Derived one-to-one from the investigation's unresolved questions (§15):
 - 2026-09-25 — created together with `task-17b-investigation.md` (Task 17B,
   INVESTIGATION + CONTRACT DESIGN ONLY). No production, schema, migration,
   dependency, permission, ADR, or OQ change.
+
+### Later date/time clarification (2026-10-09)
+
+This brief is a historical Task 17B scope snapshot from before ADR-0042 was
+accepted. Its OQ-02 references continue to apply to broader text/numeral and
+statutory print/localization questions, but generic BusinessDate input/display
+and Instant zone/calendar rendering were later decided by ADR-0042 (Jalali
+calendar default and organization-configured valid IANA zone). The decision
+does not authorize statutory rendering or widen this task's scope. See ADR-0042
+and `docs/datetime.md`.

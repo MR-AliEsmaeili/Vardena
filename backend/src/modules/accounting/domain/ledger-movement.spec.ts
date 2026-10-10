@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { toLedgerMovementDto } from './ledger-movement.js';
 import type { LedgerEntry } from './ledger-entry.js';
+import { parseDateOnly } from './date-range.js';
 
 /**
  * The Task 17A movement projection (contract §19.1/§19.2 AC-D-30, §13).
@@ -24,7 +25,7 @@ const entry = (overrides: Partial<LedgerEntry> = {}): LedgerEntry => ({
   debitAmount: '0',
   creditAmount: '1250.5',
   description: 'Rent for Farvardin',
-  documentDate: new Date(Date.UTC(2026, 3, 5)),
+  documentDate: parseDateOnly('2026-04-05')!,
   postingTimestamp: new Date('2026-04-05T09:31:07.123Z'),
   branchId: null,
   origin: 'manual',
@@ -65,7 +66,7 @@ describe('toLedgerMovementDto', () => {
 
   it('renders the business date as a date-only value (never an instant, §12.3)', () => {
     const dto = toLedgerMovementDto(
-      entry({ documentDate: new Date(Date.UTC(2026, 0, 1)) }),
+      entry({ documentDate: parseDateOnly('2026-01-01')! }),
     );
     expect(dto.documentDate).toBe('2026-01-01');
     expect(dto.documentDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
@@ -74,7 +75,7 @@ describe('toLedgerMovementDto', () => {
   it('keeps the posting timestamp distinct from the business date (§15.5)', () => {
     const dto = toLedgerMovementDto(
       entry({
-        documentDate: new Date(Date.UTC(2026, 3, 5)),
+        documentDate: parseDateOnly('2026-04-05')!,
         postingTimestamp: new Date('2026-04-09T22:05:00.000Z'),
       }),
     );

@@ -48,6 +48,7 @@
  * result is canonical (`12.50` → `12.5`, `-0` → `0`).
  */
 
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import { formatDateOnly } from './date-range.js';
 import { canonicalizeAmount, subtractAmounts, sumAmounts } from './money.js';
 import type { LedgerEntry } from './ledger-entry.js';
@@ -323,8 +324,8 @@ export function renderYearRef(year: {
   id: string;
   code: string;
   title: string;
-  startDate: Date;
-  endDate: Date;
+  startDate: BusinessDate;
+  endDate: BusinessDate;
   status: string;
 }): AccountStatementYearRef {
   return {
@@ -341,8 +342,8 @@ export function renderPeriodRef(period: {
   id: string;
   sequence: number;
   title: string;
-  startDate: Date;
-  endDate: Date;
+  startDate: BusinessDate;
+  endDate: BusinessDate;
   status: string;
 }): AccountStatementPeriodRef {
   return {

@@ -22,6 +22,10 @@
  * immutable ledger — from one coherent in-memory "database", just as the real
  * transaction does.
  */
+import {
+  businessDateFromDbDate,
+  type BusinessDate,
+} from '../../src/kernel/datetime/business-date.js';
 import type {
   AccountStatementLedgerFacts,
   StatementAccountRef,
@@ -229,8 +233,8 @@ function toPeriodRef(
   row: {
     id: string;
     title: string;
-    startDate: Date;
-    endDate: Date;
+    startDate: BusinessDate;
+    endDate: BusinessDate;
     status: string;
   },
 ): StatementPeriodRef {
@@ -264,7 +268,7 @@ function toLedgerEntry(record: LedgerEntryRecord): LedgerEntry {
     debitAmount: canonicalizeAmount(record.debitAmount),
     creditAmount: canonicalizeAmount(record.creditAmount),
     description: record.description,
-    documentDate: record.documentDate,
+    documentDate: businessDateFromDbDate(record.documentDate),
     postingTimestamp: record.postingTimestamp,
     branchId: record.branchId,
     origin: record.origin,

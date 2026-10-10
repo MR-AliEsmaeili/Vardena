@@ -483,8 +483,19 @@ describe.skipIf(DATABASE_URL === undefined)(
         await client.inventoryBalance.deleteMany({
           where: { organizationId: { in: orgIds } },
         });
+        // Reversal movements are children in this same table and the self-FK
+        // is ON DELETE RESTRICT, so cleanup must remove them first.
         await client.inventoryMovement.deleteMany({
-          where: { organizationId: { in: orgIds } },
+          where: {
+            organizationId: { in: orgIds },
+            reversalOfMovementId: { not: null },
+          },
+        });
+        await client.inventoryMovement.deleteMany({
+          where: {
+            organizationId: { in: orgIds },
+            reversalOfMovementId: null,
+          },
         });
         await client.inventoryValuationState.deleteMany({
           where: { organizationId: { in: orgIds } },

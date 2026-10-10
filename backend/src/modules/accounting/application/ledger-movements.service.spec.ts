@@ -6,6 +6,7 @@ import type { OrderBy } from '../data/accounting-rows.js';
 import type { LedgerEntry } from '../domain/ledger-entry.js';
 import { LEDGER_MOVEMENT_PERMISSIONS } from '../domain/accounting-permissions.js';
 import { LedgerMovementsService } from './ledger-movements.service.js';
+import { parseDateOnly } from '../domain/date-range.js';
 
 /**
  * LedgerMovementsService — the Task 17A read source's application boundary.
@@ -39,7 +40,7 @@ function makeLedgerEntry(overrides: Partial<LedgerEntry> = {}): LedgerEntry {
     debitAmount: '1250.5',
     creditAmount: '0',
     description: 'Rent',
-    documentDate: new Date(Date.UTC(2026, 3, 5)),
+    documentDate: parseDateOnly('2026-04-05')!,
     postingTimestamp: new Date('2026-04-05T10:00:00.000Z'),
     branchId: null,
     origin: 'manual',
@@ -198,8 +199,8 @@ describe('LedgerMovementsService', () => {
       voucherNumber: '00007',
       // Inclusive date-only bounds, parsed to UTC midnight — no timezone,
       // no date arithmetic (§12.3, AC-I-03).
-      dateFrom: new Date(Date.UTC(2026, 3, 1)),
-      dateTo: new Date(Date.UTC(2026, 3, 30)),
+      dateFrom: parseDateOnly('2026-04-01')!,
+      dateTo: parseDateOnly('2026-04-30')!,
     });
     expect(call.skip).toBe(25);
     expect(call.take).toBe(25);

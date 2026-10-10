@@ -1,6 +1,6 @@
 import type { AccountStatement } from '@/api/contracts';
 import { AmountCell } from '@/features/accounting/shared/amount-cell';
-import { formatDateOnly } from '@/lib/format';
+import { formatDateOnly, formatDateOnlyCanonical } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Badge } from '@/ui/badge';
 import { Card, CardContent } from '@/ui/card';
@@ -50,11 +50,17 @@ export function AccountStatementSummary({
           <span>
             <span className="text-slate-500">{t.filters.fiscalYear}: </span>
             <span className="code">{scope.fiscalYear.code}</span> (
-            <span className="code">
+            <span
+              className="code"
+              title={formatDateOnlyCanonical(scope.fiscalYear.startDate)}
+            >
               {formatDateOnly(scope.fiscalYear.startDate)}
             </span>{' '}
             …{' '}
-            <span className="code">
+            <span
+              className="code"
+              title={formatDateOnlyCanonical(scope.fiscalYear.endDate)}
+            >
               {formatDateOnly(scope.fiscalYear.endDate)}
             </span>
             )

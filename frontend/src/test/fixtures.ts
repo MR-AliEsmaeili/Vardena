@@ -51,20 +51,18 @@ export const allAccountingPermissions: string[] = [
 /**
  * The organization every suite renders with.
  *
- * C-63: the date/time policy is stated EXPLICITLY (Gregorian, UTC) rather than
- * left to the product default (Jalali, Asia/Tehran). These suites assert
- * canonical `YYYY-MM-DD` days and UTC instants, so the calendar has to be part
- * of the fixture, exactly as it is part of the API response. The Jalali path —
- * which is what a real Jalali organization sees — has its own coverage in
- * `src/lib/datetime/datetime.test.ts` and
- * `src/ui/patterns/date-input.test.tsx`.
+ * Its IANA time zone is explicit because timestamp tests require UTC. The
+ * read-only `calendarSystem` response field is the fixed MVP value; the UI
+ * ignores it and always renders BusinessDates Jalali-first. API date assertions
+ * remain canonical Gregorian, with dedicated Jalali display/input coverage in
+ * `src/lib/datetime/datetime.test.ts` and `src/ui/patterns/date-input.test.tsx`.
  */
 export const testOrganization: Organization = {
   id: 'org-1',
   code: 'ORG-1',
   name: 'سازمان نمونه',
   isActive: true,
-  calendarSystem: 'GREGORIAN',
+  calendarSystem: 'JALALI',
   timeZone: 'UTC',
   createdAt: '2026-01-01T08:00:00.000Z',
   updatedAt: '2026-01-01T08:00:00.000Z',

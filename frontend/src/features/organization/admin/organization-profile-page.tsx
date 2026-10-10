@@ -6,7 +6,7 @@ import { normalizeApiError } from '@/api/errors';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTimeWithZone } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Button } from '@/ui/button';
@@ -174,10 +174,14 @@ function OrganizationProfileView({
           <span className="code">{organization.id}</span>
         </Definition>
         <Definition label={t.orgAdmin.createdAt}>
-          <span className="num">{formatDateTime(organization.createdAt)}</span>
+          <span className="num" title={organization.createdAt}>
+            {formatDateTimeWithZone(organization.createdAt)}
+          </span>
         </Definition>
         <Definition label={t.orgAdmin.updatedAt}>
-          <span className="num">{formatDateTime(organization.updatedAt)}</span>
+          <span className="num" title={organization.updatedAt}>
+            {formatDateTimeWithZone(organization.updatedAt)}
+          </span>
         </Definition>
       </DefinitionList>
 

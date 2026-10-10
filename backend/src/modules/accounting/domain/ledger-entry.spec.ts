@@ -9,7 +9,7 @@ const PERIOD = '01PERIODAAAAAAAAAAAAAAAAAAA01';
 const ACCOUNT = '01ACCOUNTAAAAAAAAAAAAAAAAA01';
 const VOUCHER_ID = '01VOUCHERAAAAAAAAAAAAAAAA01';
 const VOUCHER_LINE_ID = '01LINEAAAAAAAAAAAAAAAAAAAA01';
-const DOCUMENT_DATE = parseDateOnly('2026-04-05') as Date;
+const DOCUMENT_DATE = parseDateOnly('2026-04-05')!;
 const POSTING_TIMESTAMP = new Date('2026-04-05T08:00:00Z');
 
 function validEntry(overrides: Partial<LedgerEntry> = {}): LedgerEntry {

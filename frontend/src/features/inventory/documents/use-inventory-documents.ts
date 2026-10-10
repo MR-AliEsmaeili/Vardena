@@ -13,6 +13,7 @@ import type {
 } from '@/api/contracts';
 import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import { sortingFromParam } from '@/lib/sort-param';
+import { isBusinessDay } from '@/lib/datetime';
 import { DOCUMENT_KINDS, DOCUMENT_STATUSES } from './inventory-document-labels';
 
 /**
@@ -72,6 +73,10 @@ function parseStatus(value: string | null): InventoryDocumentStatus | '' {
     : '';
 }
 
+function parseBusinessDate(value: string | null): string {
+  return value !== null && isBusinessDay(value) ? value : '';
+}
+
 /** Normalize the URL into the state the UI renders (untrusted input). */
 export function parseDocumentsUrlState(
   params: URLSearchParams,
@@ -93,8 +98,6 @@ export function parseDocumentsUrlState(
       ? DOCUMENTS_DEFAULT_SORT
       : `${first.id}:${first.desc ? 'desc' : 'asc'}`;
 
-  const dateFrom = params.get('dateFrom') ?? '';
-  const dateTo = params.get('dateTo') ?? '';
   return {
     page,
     pageSize,
@@ -102,8 +105,8 @@ export function parseDocumentsUrlState(
     kind: parseKind(params.get('kind')),
     status: parseStatus(params.get('status')),
     warehouseId: params.get('warehouseId') ?? '',
-    dateFrom: /^\d{4}-\d{2}-\d{2}$/.test(dateFrom) ? dateFrom : '',
-    dateTo: /^\d{4}-\d{2}-\d{2}$/.test(dateTo) ? dateTo : '',
+    dateFrom: parseBusinessDate(params.get('dateFrom')),
+    dateTo: parseBusinessDate(params.get('dateTo')),
   };
 }
 

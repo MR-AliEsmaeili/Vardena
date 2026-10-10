@@ -7,6 +7,7 @@ import { generateId } from '../../../kernel/ids/ulid.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { getPrincipal } from '../../../kernel/correlation/request-context.js';
+import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
 import {
   toOffset,
   toPaginatedResult,
@@ -31,6 +32,7 @@ import { isPositiveDecimal } from '../domain/master-data.js';
 import { UNIT_CONVERSION_PERMISSIONS } from '../domain/inventory-permissions.js';
 import { UNIT_CONVERSION_CREATED_EVENT } from '../domain/inventory.events.js';
 import { publishEvent, resolveSort } from './master-data-support.js';
+import { requireBusinessDateInput } from './inventory-posting-support.js';
 import { UnitsService } from './units.service.js';
 import { ItemsService } from './items.service.js';
 
@@ -50,8 +52,8 @@ export interface ListConversionsQuery {
   itemId?: string | undefined;
   fromUnitId?: string | undefined;
   toUnitId?: string | undefined;
-  /** Only versions in force at this instant. */
-  activeAt?: Date | undefined;
+  /** Only versions in force on this day; legacy instants resolve by UTC day. */
+  activeAt?: BusinessDateInput | undefined;
   page: number;
   pageSize: number;
   sort?: string | undefined;
@@ -65,8 +67,8 @@ export interface CreateConversionInput {
   toUnitId: string;
   /** Decimal string, must be > 0. */
   factor: string;
-  validFrom: Date;
-  validTo?: Date | null | undefined;
+  validFrom: BusinessDateInput;
+  validTo?: BusinessDateInput | null | undefined;
 }
 
 export interface ResolveConversionInput {
@@ -75,8 +77,8 @@ export interface ResolveConversionInput {
   itemId?: string | null | undefined;
   fromUnitId: string;
   toUnitId: string;
-  /** The instant to interpret — a document date, not "now". */
-  asOf: Date;
+  /** BusinessDate input; legacy instants resolve by UTC calendar day. */
+  asOf: BusinessDateInput;
 }
 
 /**
@@ -87,12 +89,12 @@ export interface ResolveConversionInput {
  * edited in place. Creating a later version inserts a row and *closes* the
  * previous open-ended version at the new `validFrom`, producing exactly:
  *
- *   Version A: [T1, T2)   factor 10
- *   Version B: [T2, ∞)    factor 12
+ *   Version A: [D1, D2)   factor 10
+ *   Version B: [D2, ∞)    factor 12
  *
  * Version A is not rewritten (only its `valid_to` is set), so a quantity
- * recorded against it keeps the factor that was in force then, and
- * `resolveConversion(…, asOf: T1.5)` still returns A. That is how "conversion
+ * recorded against it keeps the factor that was in force then, and a
+ * `resolveConversion(…, asOf: D1)` inside A's range still returns A. That is how "conversion
  * changes never reinterpret recorded quantities" (D-26) is implemented.
  *
  * Item-specific conversions exist so that `1 BOX = 10 PCS` for item A and
@@ -126,6 +128,10 @@ export class UnitConversionsService {
     const orderBy = resolveSort(query.sort, SORTABLE_FIELDS, [
       { validFrom: 'desc' },
     ]);
+    const activeAt =
+      query.activeAt === undefined
+        ? undefined
+        : requireBusinessDateInput(query.activeAt, 'activeAt');
 
     if (query.scope === 'item') {
       if (query.itemId === undefined) {
@@ -139,7 +145,7 @@ export class UnitConversionsService {
           itemId: query.itemId,
           fromUnitId: query.fromUnitId,
           toUnitId: query.toUnitId,
-          activeAt: query.activeAt,
+          activeAt,
         },
         orderBy,
         skip,
@@ -158,7 +164,7 @@ export class UnitConversionsService {
         organizationId: query.organizationId,
         fromUnitId: query.fromUnitId,
         toUnitId: query.toUnitId,
-        activeAt: query.activeAt,
+        activeAt,
       },
       orderBy,
       skip,
@@ -212,7 +218,7 @@ export class UnitConversionsService {
    * @throws `BusinessRuleViolation` for an invalid window or an overlap that is
    *   not a clean supersession (single-threaded and concurrent alike).
    * @throws `Conflict` when the database unique index fires (two versions
-   *   starting at the identical instant for one pair — a genuine race).
+   *   starting on the same business date for one pair — a genuine race).
    */
   async createConversion(
     input: CreateConversionInput,
@@ -251,12 +257,14 @@ export class UnitConversionsService {
       );
     }
 
-    const validFrom = input.validFrom;
-    const validTo = input.validTo ?? null;
-
+    const validFrom = requireBusinessDateInput(input.validFrom, 'validFrom');
+    const validTo =
+      input.validTo === undefined || input.validTo === null
+        ? null
+        : requireBusinessDateInput(input.validTo, 'validTo');
     // Fail-fast validation of the pure window rule (also enforced — and this
     // is the authoritative check — inside the repository transaction).
-    if (validTo !== null && validTo.getTime() <= validFrom.getTime()) {
+    if (validTo !== null && validTo <= validFrom) {
       throw AppException.businessRule('validTo must be later than validFrom.');
     }
 
@@ -283,10 +291,7 @@ export class UnitConversionsService {
     try {
       write =
         itemId === null
-          ? await this.repository.createGlobalVersion({
-              create,
-              closeAudit,
-            })
+          ? await this.repository.createGlobalVersion({ create, closeAudit })
           : await this.repository.createItemVersion({
               create: { ...create, itemId },
               closeAudit,
@@ -304,7 +309,7 @@ export class UnitConversionsService {
       }
       if (isUniqueViolation(error)) {
         throw AppException.conflict(
-          'A conversion version already starts at that instant for this unit pair.',
+          'A conversion version already starts on that business date for this unit pair.',
         );
       }
       throw error;
@@ -322,7 +327,7 @@ export class UnitConversionsService {
         fromUnitId: created.fromUnitId,
         toUnitId: created.toUnitId,
         factor: created.factor,
-        validFrom: created.validFrom.toISOString(),
+        validFrom: created.validFrom,
         supersededConversionId: write.supersededConversionId,
       },
     });
@@ -340,13 +345,13 @@ export class UnitConversionsService {
   }
 
   /**
-   * The conversion in force at `asOf` — item-specific first, then global.
+   * The conversion in force on business date `asOf` — item-specific first, then global.
    *
    * This is the read path future document lines will use, and it is the reason
    * effective dating matters: passing a past date returns the version that was
-   * valid then, never the current one. Returns `null` when no version covers
-   * the instant (callers must not silently assume a 1:1 factor — that would be
-   * an invented conversion rule).
+   *   valid then, never the current one. Returns `null` when no version covers
+   *   the business date (callers must not silently assume a 1:1 factor — that
+   *   would be an invented conversion rule).
    */
   async resolveConversion(
     input: ResolveConversionInput,
@@ -355,6 +360,7 @@ export class UnitConversionsService {
       UNIT_CONVERSION_PERMISSIONS.VIEW,
     ]);
     await this.organizations.assertOrganizationInScope(input.organizationId);
+    const asOf = requireBusinessDateInput(input.asOf, 'asOf');
 
     if (input.itemId !== undefined && input.itemId !== null) {
       // The item determines which organization its conversions belong to:
@@ -373,7 +379,7 @@ export class UnitConversionsService {
         input.fromUnitId,
         input.toUnitId,
       );
-      const itemMatch = resolveVersionAt(itemVersions, input.asOf);
+      const itemMatch = resolveVersionAt(itemVersions, asOf);
       if (itemMatch !== null) return toUnitConversionDto(itemMatch);
     }
 
@@ -382,7 +388,7 @@ export class UnitConversionsService {
       input.fromUnitId,
       input.toUnitId,
     );
-    const globalMatch = resolveVersionAt(globalVersions, input.asOf);
+    const globalMatch = resolveVersionAt(globalVersions, asOf);
     return globalMatch === null ? null : toUnitConversionDto(globalMatch);
   }
 }

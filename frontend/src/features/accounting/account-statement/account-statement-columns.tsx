@@ -2,7 +2,11 @@ import type { ColumnDef } from '@tanstack/react-table';
 import { Link } from 'react-router-dom';
 import type { AccountStatementEntry } from '@/api/contracts';
 import { AmountCell } from '@/features/accounting/shared/amount-cell';
-import { formatDateOnly, formatDateTime } from '@/lib/format';
+import {
+  formatDateOnly,
+  formatDateOnlyCanonical,
+  formatDateTimeWithZone,
+} from '@/lib/format';
 import { t } from '@/lib/i18n';
 
 /**
@@ -29,7 +33,10 @@ export function buildAccountStatementColumns(
       header: t.statement.documentDate,
       enableSorting: false,
       cell: ({ row }) => (
-        <span className="code">
+        <span
+          className="code"
+          title={formatDateOnlyCanonical(row.original.documentDate)}
+        >
           {formatDateOnly(row.original.documentDate)}
         </span>
       ),
@@ -119,8 +126,8 @@ export function buildAccountStatementColumns(
       header: t.statement.postingTimestamp,
       enableSorting: false,
       cell: ({ row }) => (
-        <span className="code">
-          {formatDateTime(row.original.postingTimestamp)}
+        <span className="code" title={row.original.postingTimestamp}>
+          {formatDateTimeWithZone(row.original.postingTimestamp)}
         </span>
       ),
     },

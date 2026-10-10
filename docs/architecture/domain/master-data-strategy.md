@@ -280,6 +280,11 @@ master record.*
 7. **Effective dating:** entities whose change alters interpretation
    (tax rates, conversions, price lists, mappings, workflow versions) are
    **versioned rows** with `valid_from`/`valid_to`; updates create a new version.
+   The axis is domain-specific, not implied by these column names: by the
+   2026-10-09 Owner decision, Inventory unit-conversion and item-valuation
+   method windows are BusinessDate ranges (PostgreSQL `date`, half-open); see
+   ADR-0042 and `docs/datetime.md`. Do not generalize that choice to other
+   domains or unimplemented settings.
 8. **Referential integrity:** documents keep both the FK (to the master row) and the
    **snapshot values** they used (unit, unit price, tax rate, conversion factor,
    account mapping version). Reports use the snapshot for historical truth and the FK

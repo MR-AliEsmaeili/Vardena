@@ -45,7 +45,7 @@ import {
   normalizeReference,
   normalizeReason,
   requireOperationKey,
-  resolveBusinessDateCarrier,
+  resolveBusinessDate as resolveBusinessDateInput,
   resolveBusinessDateFilter,
   resolveEnteredToBase,
 } from './inventory-posting-support.js';
@@ -98,10 +98,10 @@ export interface PostMovementInput {
   quantity: string;
   unitId: string;
   /**
-   * C-63 business-date INPUT (OQ-73): a canonical Gregorian day, a declared
+   * C-63 BusinessDate input (OQ-73): a canonical Gregorian day, a declared
    * Jalali day (`{ calendar, value }`), or a legacy ISO instant resolved to
-   * the day it falls on in the organization zone. Omit for today's business
-   * day in the organization zone.
+   * its UTC calendar day. Omit for today's business day in the organization
+   * zone.
    */
   movementDate?: BusinessDateInput | undefined;
   reason?: string | null | undefined;
@@ -244,14 +244,14 @@ export class InventoryMovementsService {
       referenceType: input.referenceType,
       referenceId: input.referenceId,
     });
-    // OQ-73: the movement's business DATE is a calendar day (PostgreSQL
-    // `date`), resolved from the client's declared day — or today's business
-    // day in the organization zone when omitted. It is NOT `created_at`,
+    // OQ-73: the movement's BusinessDate is a calendar day (PostgreSQL
+    // `date`), resolved from the client's day input (legacy instants use UTC),
+    // or today's business day in the organization zone when omitted. It is NOT `created_at`,
     // which records the registration instant below.
     const { timeZone } = await this.organizations.getDateTimeSettings(
       input.organizationId,
     );
-    const movementDate = resolveBusinessDateCarrier({
+    const movementDate = resolveBusinessDateInput({
       field: 'movementDate',
       value: input.movementDate,
       timeZone,
@@ -504,6 +504,16 @@ export class InventoryMovementsService {
     if (original === null || original.organizationId !== organizationId) {
       throw AppException.notFound('Movement', id);
     }
+    if (original.transferId !== null) {
+      throw AppException.conflict(
+        'Transfer legs cannot be reversed individually. A transfer must be reversed as a mirror pair; document-backed transfers can be cancelled through their owning document.',
+        {
+          code: 'inventory.transfer.reverse_pair_required',
+          transferId: original.transferId,
+          movementId: original.id,
+        },
+      );
+    }
 
     // OD-REV-07 (C-59D): no reversal after Accounting Post. A movement that
     // belongs to a business document is reversed through that document
@@ -539,12 +549,12 @@ export class InventoryMovementsService {
     const { timeZone } = await this.organizations.getDateTimeSettings(
       original.organizationId,
     );
-    const movementDate = resolveBusinessDateCarrier({
+    const movementDate = resolveBusinessDateInput({
       field: 'movementDate',
       value: input.movementDate,
       timeZone,
     });
-    if (movementDate.getTime() < original.movementDate.getTime()) {
+    if (movementDate < original.movementDate) {
       throw AppException.businessRule(
         'A reversal cannot be dated before the movement it reverses. Use a date on or after the original movement date.',
         { code: 'inventory.reversal_date_before_original' },

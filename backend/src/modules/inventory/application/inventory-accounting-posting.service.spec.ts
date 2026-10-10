@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { runWithRequestContext } from '../../../kernel/correlation/request-context.js';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import type { DomainEventBus } from '../../../kernel/events/domain-event-bus.js';
 import type { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
@@ -621,6 +622,7 @@ function seedReceipt(world: FakeWorld, options: SeedOptions = {}) {
   const documentId = `doc-${++world.serial}`;
   const movementId = `mv-${world.serial}`;
   const at = new Date('2026-10-08T00:00:00.000Z');
+  const businessDay = toBusinessDate('2026-10-08')!;
   world.movements.set(movementId, {
     id: movementId,
     organizationId: ORG,
@@ -634,7 +636,7 @@ function seedReceipt(world: FakeWorld, options: SeedOptions = {}) {
     baseQuantity: quantity,
     baseUnitId: 'unit-1',
     conversionFactor: '1.0000',
-    movementDate: at,
+    movementDate: businessDay,
     transferId: null,
     reversalOfMovementId: null,
     referenceType: null,
@@ -654,7 +656,7 @@ function seedReceipt(world: FakeWorld, options: SeedOptions = {}) {
     organizationId: ORG,
     kind: 'receipt',
     number: 'R-0001',
-    businessDate: at,
+    businessDate: businessDay,
     lines: [
       {
         id: 'line-1',
@@ -715,6 +717,7 @@ function buildService(world: FakeWorld) {
     } as unknown as InventoryValuationService,
     {
       assertOrganizationInScope: async () => undefined,
+      getDateTimeSettings: async () => ({ timeZone: 'UTC' }),
     } as unknown as OrganizationsService,
     {
       requireAllPermissions: async () => undefined,
@@ -830,6 +833,24 @@ async function expectBusinessRule(
 // ---- idempotency ------------------------------------------------------------
 
 describe('C-62 OD-06 idempotency (hermetic)', () => {
+  it('keeps a historical canonical Gregorian date in the durable accounting snapshot', async () => {
+    const world = createWorld();
+    const service = buildService(world);
+    const { documentId } = seedReceipt(world);
+    documentOf(world, documentId).businessDate = toBusinessDate('0600-01-01')!;
+
+    await asUser(() =>
+      service.requestAccountingPosting(documentId, ORG, {
+        operationKey: 'historical-accounting-date',
+      }),
+    );
+
+    const operation = operationOf(world, documentId);
+    const snapshot = world.snapshots.get(operation.id);
+    expect(snapshot?.documentDate).toBe('0600-01-01');
+    expect(world.accountingCalls).toHaveLength(1);
+  });
+
   it('replays the same key + same request instead of a second effect', async () => {
     const world = createWorld();
     const service = buildService(world);

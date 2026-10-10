@@ -1,6 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Controller, useForm } from 'react-hook-form';
 import { z } from 'zod';
+import { isBusinessDay } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import { FormField } from '@/ui/patterns/form-field';
@@ -21,11 +22,11 @@ import type { MovementsUrlState } from './use-inventory-movements';
 const optionalDate = z
   .string()
   .trim()
-  .refine((value) => value === '' || /^\d{4}-\d{2}-\d{2}$/.test(value), {
+  .refine((value) => value === '' || isBusinessDay(value), {
     message: t.filters.invalidDate,
   });
 
-const movementsFilterSchema = z.object({
+export const movementsFilterSchema = z.object({
   warehouseId: z.string(),
   itemId: z.string(),
   movementType: z.string(),

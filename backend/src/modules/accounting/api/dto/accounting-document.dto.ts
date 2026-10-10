@@ -13,12 +13,15 @@ import {
 } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
+import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
+import { IsBusinessDay } from '../../../../kernel/http/is-business-day.decorator.js';
+import { DECLARED_BUSINESS_DATE_SCHEMA } from '../../../../kernel/datetime/api-date-time.dto.js';
+import type { BusinessDateInput } from '../../../../kernel/datetime/business-date-input.js';
 import { MAX_OPERATION_KEY_LENGTH } from '../../domain/accounting-posting-operation.js';
 import {
   ACCOUNTING_DOCUMENT_ORIGINS,
   ACCOUNTING_DOCUMENT_PHASES,
 } from '../../domain/accounting-document.js';
-import { DATE_ONLY_PATTERN } from '../../domain/date-range.js';
 import { MONEY_INPUT_PATTERN } from '../../domain/money.js';
 import { MIN_ACCOUNTING_DOCUMENT_LINES } from '../../domain/voucher-lines.js';
 import {
@@ -100,16 +103,20 @@ export class CreateAccountingDocumentDto {
   financialAreaId!: string;
 
   @ApiProperty({
-    example: '2026-04-05',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-04-05' },
+      {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-04-05T08:30:00.000Z',
+      },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'Business/occurrence date (date-only). Drives the fiscal-year and period resolution and chronological reporting (§12.3); never an instant.',
+      'Business/occurrence date. Bare YYYY-MM-DD is Gregorian; declare { calendar, value } for Jalali. Legacy ISO instants resolve to their UTC calendar day. Drives fiscal-year/period resolution and reporting (§12.3).',
   })
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'documentDate must be a valid calendar date (YYYY-MM-DD).',
-  })
-  @MaxLength(10)
-  documentDate!: string;
+  @IsBusinessDate()
+  documentDate!: BusinessDateInput;
 
   @ApiProperty({
     maxLength: MAX_DESCRIPTION_LENGTH,
@@ -155,17 +162,21 @@ export class CreateAccountingDocumentDto {
 
 export class UpdateAccountingDocumentDto {
   @ApiPropertyOptional({
-    example: '2026-04-05',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-04-05' },
+      {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-04-05T08:30:00.000Z',
+      },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'New business date. Re-resolves the fiscal year and period, which must still be open (a closed period refuses documents dated in it, §7.2 rule 4).',
+      'New business date; Jalali input must be declared and a legacy ISO instant resolves by UTC day. Re-resolves the fiscal year and period, which must still be open (§7.2 rule 4).',
   })
   @IsOptional()
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'documentDate must be a valid calendar date (YYYY-MM-DD).',
-  })
-  @MaxLength(10)
-  documentDate?: string;
+  @IsBusinessDate()
+  documentDate?: BusinessDateInput;
 
   @ApiPropertyOptional({ maxLength: MAX_DESCRIPTION_LENGTH })
   @IsOptional()
@@ -223,17 +234,21 @@ export class ReverseAccountingDocumentDto {
   reason!: string;
 
   @ApiPropertyOptional({
-    example: '2026-04-05',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-04-05' },
+      {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-04-05T08:30:00.000Z',
+      },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'Business date of the reversal. Defaults to the original document date. Must resolve to an open period.',
+      'Business date of the reversal. Jalali input must be declared; legacy ISO instants resolve by UTC day. Defaults to the original document date and must resolve to an open period.',
   })
   @IsOptional()
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'documentDate must be a valid calendar date (YYYY-MM-DD).',
-  })
-  @MaxLength(10)
-  documentDate?: string;
+  @IsBusinessDate()
+  documentDate?: BusinessDateInput;
 }
 
 export class DocumentTransitionDto {
@@ -289,22 +304,14 @@ export class ListAccountingDocumentsQueryDto extends PageQueryDto {
   @MaxLength(32)
   documentNumber?: string;
 
-  @ApiPropertyOptional({ example: '2026-04-01' })
+  @ApiPropertyOptional({ format: 'date', example: '2026-04-01' })
   @IsOptional()
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'dateFrom must be a valid calendar date (YYYY-MM-DD).',
-  })
-  @MaxLength(10)
+  @IsBusinessDay()
   dateFrom?: string;
 
-  @ApiPropertyOptional({ example: '2026-04-30' })
+  @ApiPropertyOptional({ format: 'date', example: '2026-04-30' })
   @IsOptional()
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'dateTo must be a valid calendar date (YYYY-MM-DD).',
-  })
-  @MaxLength(10)
+  @IsBusinessDay()
   dateTo?: string;
 
   @ApiPropertyOptional({

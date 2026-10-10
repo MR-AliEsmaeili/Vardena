@@ -1,3 +1,4 @@
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import { formatDateOnly } from './date-range.js';
 import { canonicalizeAmount, subtractAmounts } from './money.js';
 import type { GeneralLedgerReadRow } from '../data/accounting-read-query.repository.js';
@@ -12,7 +13,7 @@ import type { GeneralLedgerReadRow } from '../data/accounting-read-query.reposit
  */
 export interface GeneralLedgerRow {
   organizationId: string;
-  documentDate: string;
+  documentDate: BusinessDate;
   postingTimestamp: string;
   documentType: string;
   documentId: string;
@@ -78,6 +79,6 @@ export function toGeneralLedgerRow(
 }
 
 /** Framework-free date rendering helper for scope-aware tests and adapters. */
-export function renderGeneralLedgerDate(date: Date): string {
+export function renderGeneralLedgerDate(date: BusinessDate): string {
   return formatDateOnly(date);
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LedgerEntry } from './ledger-entry.js';
+import { parseDateOnly } from './date-range.js';
 import {
   ACCOUNT_STATEMENT_OPENING_BASIS,
   ACCOUNT_STATEMENT_ORDER_BASIS,
@@ -48,7 +49,7 @@ function makeEntry(overrides: Partial<LedgerEntry> = {}): LedgerEntry {
     debitAmount: '0',
     creditAmount: '0',
     description: null,
-    documentDate: new Date(Date.UTC(2026, 3, 5)),
+    documentDate: parseDateOnly('2026-04-05')!,
     postingTimestamp: new Date('2026-04-05T10:00:00.000Z'),
     branchId: null,
     origin: 'manual',
@@ -67,8 +68,8 @@ const SCOPE: AccountStatementScope = {
     id: YEAR,
     code: '1404',
     title: 'سال ۱۴۰۴',
-    startDate: new Date(Date.UTC(2026, 2, 21)),
-    endDate: new Date(Date.UTC(2027, 2, 20)),
+    startDate: parseDateOnly('2026-03-21')!,
+    endDate: parseDateOnly('2027-03-20')!,
     status: 'open',
   }),
   account: renderAccountRef({
@@ -80,8 +81,8 @@ const SCOPE: AccountStatementScope = {
     id: PERIOD,
     sequence: 2,
     title: 'اردیبهشت',
-    startDate: new Date(Date.UTC(2026, 3, 21)),
-    endDate: new Date(Date.UTC(2026, 4, 21)),
+    startDate: parseDateOnly('2026-04-21')!,
+    endDate: parseDateOnly('2026-05-21')!,
     status: 'closed',
   }),
 };
@@ -362,8 +363,8 @@ describe('scope rendering', () => {
       id: YEAR,
       code: '1404',
       title: 'سال ۱۴۰۴',
-      startDate: new Date(Date.UTC(2026, 2, 21)),
-      endDate: new Date(Date.UTC(2027, 2, 20)),
+      startDate: parseDateOnly('2026-03-21')!,
+      endDate: parseDateOnly('2027-03-20')!,
       status: 'sealed',
     });
     expect(year).toEqual({
@@ -378,8 +379,8 @@ describe('scope rendering', () => {
       id: PERIOD,
       sequence: 1,
       title: 'فروردین',
-      startDate: new Date(Date.UTC(2026, 2, 21)),
-      endDate: new Date(Date.UTC(2026, 3, 20)),
+      startDate: parseDateOnly('2026-03-21')!,
+      endDate: parseDateOnly('2026-04-20')!,
       status: 'closed',
     });
     expect(period.startDate).toBe('2026-03-21');

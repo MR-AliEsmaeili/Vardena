@@ -9,6 +9,7 @@ import {
 import type { AccountingDocumentListQuery } from '@/api/contracts';
 import { isOtherOrganizationScope, queryKeys } from '@/api/query-keys';
 import { sortingFromParam } from '@/lib/sort-param';
+import { isBusinessDay } from '@/lib/datetime';
 import {
   DOCUMENT_ORIGINS,
   DOCUMENT_STATES,
@@ -76,6 +77,10 @@ function parseEnum<T extends string>(
   return (allowed as readonly string[]).includes(value) ? (value as T) : '';
 }
 
+function parseBusinessDate(value: string | null): string {
+  return value !== null && isBusinessDay(value) ? value : '';
+}
+
 /** Normalize the URL into the state the UI renders (untrusted input). */
 export function parseDocumentsUrlState(
   params: URLSearchParams,
@@ -110,8 +115,8 @@ export function parseDocumentsUrlState(
     fiscalYearId: params.get('fiscalYearId') ?? '',
     accountingPeriodId: params.get('accountingPeriodId') ?? '',
     documentNumber: params.get('documentNumber') ?? '',
-    dateFrom: params.get('dateFrom') ?? '',
-    dateTo: params.get('dateTo') ?? '',
+    dateFrom: parseBusinessDate(params.get('dateFrom')),
+    dateTo: parseBusinessDate(params.get('dateTo')),
   };
 }
 

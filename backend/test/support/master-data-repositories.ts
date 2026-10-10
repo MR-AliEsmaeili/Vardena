@@ -38,6 +38,7 @@ import type { Unit } from '../../src/modules/inventory/domain/unit.js';
 import type { ItemGroup } from '../../src/modules/inventory/domain/item-group.js';
 import type { Item } from '../../src/modules/inventory/domain/item.js';
 import type { UnitConversion } from '../../src/modules/inventory/domain/unit-conversion.js';
+import { isGregorianBusinessDate } from '../../src/kernel/datetime/business-date.js';
 import { planNewVersion } from '../../src/modules/inventory/domain/unit-conversion.js';
 import {
   ConversionPlanRejectedError,
@@ -226,6 +227,10 @@ export function listPage<TRow extends Row, TWhere extends object>(
         }
         continue;
       }
+      // Effective-date predicates (e.g. `validFrom <= activeAt < validTo`)
+      // are evaluated by the repository-specific `extra` callback below; the
+      // query value is not a row column and must never be equality-compared.
+      if (key === 'activeAt') continue;
       if (record[key] !== expected) return false;
     }
     return extra(row, params.where);
@@ -603,11 +608,15 @@ function matchesConversionFilters(
   const toUnitId = where['toUnitId'];
   if (typeof toUnitId === 'string' && row.toUnitId !== toUnitId) return false;
   const activeAt = where['activeAt'];
-  if (activeAt instanceof Date) {
-    if (row.validFrom.getTime() > activeAt.getTime()) return false;
-    if (row.validTo !== null && row.validTo.getTime() <= activeAt.getTime()) {
-      return false;
-    }
+  if (activeAt !== undefined && !isGregorianBusinessDate(activeAt)) {
+    throw new Error('TEST DOUBLE: activeAt must be a canonical BusinessDate.');
+  }
+  if (
+    isGregorianBusinessDate(activeAt) &&
+    (row.validFrom > activeAt ||
+      (row.validTo !== null && row.validTo <= activeAt))
+  ) {
+    return false;
   }
   return true;
 }

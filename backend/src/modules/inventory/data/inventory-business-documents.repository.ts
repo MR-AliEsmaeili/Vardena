@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
   isInventoryDocumentKind,
   isInventoryDocumentStatus,
   type InventoryBusinessDocument,
@@ -22,6 +27,7 @@ import type {
   InventoryDocumentLineRow,
   InventoryDocumentRow,
   InventoryDocumentUpdate,
+  InventoryDocumentUpdateData,
   InventoryDocumentWhere,
 } from './inventory-business-document-rows.js';
 
@@ -47,15 +53,20 @@ export interface DocumentListFilter {
   kind?: InventoryDocumentKind | undefined;
   status?: InventoryDocumentStatus | undefined;
   warehouseId?: string | undefined;
-  dateFrom?: Date | undefined;
-  dateTo?: Date | undefined;
+  dateFrom?: BusinessDate | undefined;
+  dateTo?: BusinessDate | undefined;
 }
+
+export type LockedInventoryDocumentRow = Omit<
+  InventoryDocumentRow,
+  'businessDate'
+> & { businessDate: BusinessDate };
 
 export interface DocumentHeaderCreate {
   id: string;
   organizationId: string;
   kind: InventoryDocumentKind;
-  businessDate: Date;
+  businessDate: BusinessDate;
   warehouseId: string | null;
   sourceWarehouseId: string | null;
   destinationWarehouseId: string | null;
@@ -296,7 +307,7 @@ export class InventoryBusinessDocumentsRepository {
     tx: DocTxClient,
     organizationId: string,
     id: string,
-  ): Promise<InventoryDocumentRow | null> {
+  ): Promise<LockedInventoryDocumentRow | null> {
     const rows = await tx.$queryRaw<InventoryDocumentRow>`
       SELECT "id",
              "organization_id" AS "organizationId",
@@ -334,7 +345,10 @@ export class InventoryBusinessDocumentsRepository {
        WHERE "id" = ${id}
          AND "organization_id" = ${organizationId}
        FOR UPDATE`;
-    return rows[0] ?? null;
+    const row = rows[0];
+    return row === undefined
+      ? null
+      : { ...row, businessDate: businessDateFromDbDate(row.businessDate) };
   }
 
   // ---- writes --------------------------------------------------------------
@@ -387,7 +401,10 @@ export class InventoryBusinessDocumentsRepository {
     id: string,
     data: InventoryDocumentUpdate,
   ): Promise<void> {
-    await tx.inventoryBusinessDocument.update({ where: { id }, data });
+    await tx.inventoryBusinessDocument.update({
+      where: { id },
+      data: toUpdateData(data),
+    });
   }
 
   /** Point a line at the ledger fact(s) it now owns (or clear them). */
@@ -462,13 +479,33 @@ export class InventoryBusinessDocumentsRepository {
 
 // ---- Internal helpers ----
 
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Inventory BusinessDate "${value}".`);
+  }
+  return carrier;
+}
+
+function toUpdateData(
+  input: InventoryDocumentUpdate,
+): InventoryDocumentUpdateData {
+  const { businessDate, ...data } = input;
+  return {
+    ...data,
+    ...(businessDate === undefined
+      ? {}
+      : { businessDate: dbBusinessDate(businessDate) }),
+  };
+}
+
 function toCreateData(header: DocumentHeaderCreate): InventoryDocumentCreate {
   return {
     id: header.id,
     organizationId: header.organizationId,
     kind: header.kind,
     number: null,
-    businessDate: header.businessDate,
+    businessDate: dbBusinessDate(header.businessDate),
     warehouseId: header.warehouseId,
     sourceWarehouseId: header.sourceWarehouseId,
     destinationWarehouseId: header.destinationWarehouseId,
@@ -492,8 +529,12 @@ function toWhere(filter: DocumentListFilter): InventoryDocumentWhere {
   if (filter.warehouseId !== undefined) where.warehouseId = filter.warehouseId;
   if (filter.dateFrom !== undefined || filter.dateTo !== undefined) {
     where.businessDate = {
-      ...(filter.dateFrom === undefined ? {} : { gte: filter.dateFrom }),
-      ...(filter.dateTo === undefined ? {} : { lte: filter.dateTo }),
+      ...(filter.dateFrom === undefined
+        ? {}
+        : { gte: dbBusinessDate(filter.dateFrom) }),
+      ...(filter.dateTo === undefined
+        ? {}
+        : { lte: dbBusinessDate(filter.dateTo) }),
     };
   }
   return where;
@@ -542,7 +583,7 @@ export function toDomain(
     id: row.id,
     organizationId: row.organizationId,
     number: row.number,
-    businessDate: row.businessDate,
+    businessDate: businessDateFromDbDate(row.businessDate),
     lines: lineRows.map(toLineDomain),
     description: row.description,
     reference: row.reference,

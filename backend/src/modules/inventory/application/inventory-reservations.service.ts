@@ -7,6 +7,7 @@ import { generateId } from '../../../kernel/ids/ulid.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { getPrincipal } from '../../../kernel/correlation/request-context.js';
+import { businessDateFromInstant } from '../../../kernel/datetime/business-date.js';
 import {
   toOffset,
   toPaginatedResult,
@@ -193,9 +194,12 @@ export class InventoryReservationsService {
       referenceType: input.referenceType,
       referenceId: input.referenceId,
     });
-    // Reservations carry no business date: the claim applies to stock now, so
-    // the conversion resolves at now.
+    // Reservations carry no business date: the claim applies to stock now,
+    // so resolve the conversion on the organization's current business day.
     const now = new Date();
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
+    );
     const resolved = await resolveEnteredToBase({
       conversions: this.conversions,
       organizationId: input.organizationId,
@@ -203,7 +207,7 @@ export class InventoryReservationsService {
       baseUnitId: item.baseUnitId,
       unitId: input.unitId,
       quantity: input.quantity,
-      asOf: now,
+      asOf: businessDateFromInstant(now, timeZone),
     });
 
     const requestHash = buildRequestHash('reservation_create', {

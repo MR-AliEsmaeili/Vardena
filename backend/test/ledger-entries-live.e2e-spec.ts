@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { APP_CONFIG, loadAppConfig } from '../src/kernel/config/app-config.js';
 import { generateId } from '../src/kernel/ids/ulid.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
+import { toBusinessDate } from '../src/kernel/datetime/business-date.js';
 import { DocumentTypeRegistry } from '../src/modules/documents/application/document-type-registry.js';
 import { NumberingService } from '../src/modules/documents/application/numbering.service.js';
 import { NumberingSeriesService } from '../src/modules/documents/application/numbering-series.service.js';
@@ -135,7 +136,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       id: generateId(),
       organizationId,
       financialAreaId,
-      documentDate: new Date(Date.UTC(2026, 3, 5)),
+      documentDate: toBusinessDate('2026-04-05')!,
       description: 'Live ledger entry',
       state: 'draft',
       origin: 'manual',
@@ -425,9 +426,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           finalizedBy: 'live-finalizer',
           dimensionAssignments: [],
         });
-        expect(entry.documentDate.toISOString().slice(0, 10)).toBe(
-          '2026-04-05',
-        );
+        expect(entry.documentDate).toBe('2026-04-05');
         expect(entry.postingTimestamp.getTime()).toBe(finalizedAt.getTime());
       }
       // The entry identity is its own ULID — never a line id, never the

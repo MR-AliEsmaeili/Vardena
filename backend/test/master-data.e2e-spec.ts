@@ -262,12 +262,37 @@ describe('Organization + Inventory master data (e2e)', () => {
     // The API never exposes audit actor ids (AR-24).
     expect(res.body).not.toHaveProperty('createdBy');
     expect(res.body.id).toMatch(/^[0-9A-Z]{26}$/);
+    expect(res.body.calendarSystem).toBe('JALALI');
+    expect(res.body.timeZone).toBe('Asia/Tehran');
     state.orgId = res.body.id as string;
 
     // ODR-3 (Task 19): both personas are legitimate members (the cross-org
     // assertions later are data-scoped, not membership-scoped).
     master.raw.memberships.seed(state.rootId, state.orgId);
     master.raw.memberships.seed(state.limitedId, state.orgId);
+  });
+
+  it('keeps the organization calendar fixed and rejects calendar mutations over HTTP', async () => {
+    const invalidCreate = await root
+      .post('/api/v1/organizations')
+      .send({
+        code: 'calendar-choice',
+        name: 'Calendar Choice',
+        calendarSystem: 'GREGORIAN',
+      })
+      .expect(400);
+    expect(invalidCreate.body.code).toBe('ValidationFailed');
+
+    const invalidUpdate = await root
+      .patch(`/api/v1/organizations/${state.orgId}`)
+      .send({ calendarSystem: 'GREGORIAN' })
+      .expect(400);
+    expect(invalidUpdate.body.code).toBe('ValidationFailed');
+
+    const unchanged = await root
+      .get(`/api/v1/organizations/${state.orgId}`)
+      .expect(200);
+    expect(unchanged.body.calendarSystem).toBe('JALALI');
   });
 
   it('requires the distinct Enable/Disable permissions, not just View', async () => {
@@ -557,7 +582,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
         factor: '12',
-        validFrom: '2026-01-01T00:00:00.000Z',
+        validFrom: '2026-01-01',
       })
       .expect(201);
     expect(first.body).toMatchObject({
@@ -574,7 +599,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
         factor: '24',
-        validFrom: '2026-02-01T00:00:00.000Z',
+        validFrom: '2026-02-01',
       })
       .expect(201);
 
@@ -584,7 +609,7 @@ describe('Organization + Inventory master data (e2e)', () => {
       .query({ organizationId: state.orgId })
       .expect(200);
     expect(historical.body.factor).toBe('12');
-    expect(historical.body.validTo).toBe('2026-02-01T00:00:00.000Z');
+    expect(historical.body.validTo).toBe('2026-02-01');
     expect(second.body.validTo).toBe(null);
   });
 
@@ -597,17 +622,45 @@ describe('Organization + Inventory master data (e2e)', () => {
       .expect(404);
   });
 
-  it('journey 2: resolves the version in force at an instant, historically', async () => {
+  it('journey 2: resolves the version in force on a business date, historically', async () => {
     const january = await root
       .get('/api/v1/inventory/unit-conversions/resolve')
       .query({
         organizationId: state.orgId,
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
-        asOf: '2026-01-15T00:00:00.000Z',
+        asOf: '2026-01-15',
       })
       .expect(200);
     expect(january.body.conversion.factor).toBe('12');
+
+    const utcDayBoundary = await root
+      .get('/api/v1/inventory/unit-conversions/resolve')
+      .query({
+        organizationId: state.orgId,
+        fromUnitId: state.unitBoxId,
+        toUnitId: state.unitPcsId,
+        asOf: '2026-02-01T00:15:00+03:30',
+      })
+      .expect(200);
+    // The legacy timestamp is on February 1 in its +03:30 offset, but its UTC
+    // BusinessDate is January 31, still in the first [Jan 1, Feb 1) version.
+    expect(utcDayBoundary.body.conversion.factor).toBe('12');
+
+    const activeAtUtcDay = await root
+      .get('/api/v1/inventory/unit-conversions')
+      .query({
+        organizationId: state.orgId,
+        scope: 'global',
+        fromUnitId: state.unitBoxId,
+        toUnitId: state.unitPcsId,
+        activeAt: '2026-02-01T00:15:00+03:30',
+        page: 1,
+        pageSize: 10,
+      })
+      .expect(200);
+    expect(activeAtUtcDay.body.total).toBe(1);
+    expect(activeAtUtcDay.body.items[0].id).toBe(state.conversionId);
 
     const current = await root
       .get('/api/v1/inventory/unit-conversions/resolve')
@@ -615,7 +668,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         organizationId: state.orgId,
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
-        asOf: '2026-06-01T00:00:00.000Z',
+        asOf: '2026-06-01',
       })
       .expect(200);
     expect(current.body.conversion.factor).toBe('24');
@@ -628,7 +681,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         organizationId: state.orgId,
         fromUnitId: state.unitPcsId,
         toUnitId: state.unitBoxId,
-        asOf: '2026-01-15T00:00:00.000Z',
+        asOf: '2026-01-15',
       })
       .expect(200);
     expect(res.body.conversion).toBe(null);
@@ -643,11 +696,16 @@ describe('Organization + Inventory master data (e2e)', () => {
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
         factor: '0.000001',
-        validFrom: '2026-01-01T00:00:00.000Z',
+        validFrom: '2026-01-01T00:15:00+03:30',
+        validTo: '2027-01-01T00:15:00+03:30',
       })
       .expect(201);
     expect(res.body.factor).toBe('0.000001');
     expect(res.body.itemId).toBe(state.itemId);
+    // Effective validity endpoints preserve the legacy HTTP input by its UTC
+    // business day, not the explicit +03:30 or organization-local date.
+    expect(res.body.validFrom).toBe('2025-12-31');
+    expect(res.body.validTo).toBe('2026-12-31');
 
     // The item-specific version wins over the global one.
     const resolved = await root
@@ -657,7 +715,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         itemId: state.itemId,
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
-        asOf: '2026-06-01T00:00:00.000Z',
+        asOf: '2026-06-01',
       })
       .expect(200);
     expect(resolved.body.conversion.factor).toBe('0.000001');
@@ -671,7 +729,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
         factor: '0',
-        validFrom: '2026-01-01T00:00:00.000Z',
+        validFrom: '2026-01-01',
       })
       .expect(400);
     expect(res.body.code).toBe('BadRequest');
@@ -795,8 +853,8 @@ describe('Organization + Inventory master data (e2e)', () => {
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
         factor: '30',
-        validFrom: '2026-01-15T00:00:00.000Z',
-        validTo: '2026-02-15T00:00:00.000Z',
+        validFrom: '2026-01-15',
+        validTo: '2026-02-15',
       })
       .expect(422);
     expect(overlapping.body.code).toBe('BusinessRuleViolation');
@@ -808,7 +866,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         organizationId: state.orgId,
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
-        asOf: '2026-01-20T00:00:00.000Z',
+        asOf: '2026-01-20',
       })
       .expect(200);
     expect(january.body.conversion.factor).toBe('12');
@@ -834,7 +892,7 @@ describe('Organization + Inventory master data (e2e)', () => {
         itemId: state.itemId,
         fromUnitId: state.unitBoxId,
         toUnitId: state.unitPcsId,
-        asOf: '2026-03-01T00:00:00.000Z',
+        asOf: '2026-03-01',
       })
       .expect(404);
     expect(res.body.code).toBe('EntityNotFound');

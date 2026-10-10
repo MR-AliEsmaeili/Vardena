@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  toBusinessDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
   compareCanonicalMovementOrder,
   replayCoupledTransfer,
   type CoupledReplayEntry,
@@ -35,6 +39,12 @@ const MWA = 'moving_weighted_average' as const;
 /** A business date inside one fixed month; only the day varies. */
 function at(day: number): Date {
   return new Date(Date.UTC(2026, 0, day, 8, 0, 0));
+}
+
+function businessDay(day: number): BusinessDate {
+  const value = toBusinessDate(`2026-01-${String(day).padStart(2, '0')}`);
+  if (value === null) throw new Error(`Invalid test BusinessDate day: ${day}`);
+  return value;
 }
 
 function receipt(
@@ -77,7 +87,7 @@ function entry(
 ): CoupledReplayEntry {
   return {
     side,
-    movementDate: at(day),
+    movementDate: businessDay(day),
     createdAt: at(day),
     id: fact.id,
     fact,
@@ -89,13 +99,13 @@ function pair(
   day: number,
   quantity: string,
 ): {
-  movementDate: Date;
+  movementDate: BusinessDate;
   createdAt: Date;
   id: string;
   quantity: string;
 } {
   return {
-    movementDate: at(day),
+    movementDate: businessDay(day),
     createdAt: at(day),
     id: 'pair-out',
     quantity,
@@ -364,14 +374,18 @@ describe('replayCoupledTransfer — the pair is valued together', () => {
 
 describe('compareCanonicalMovementOrder', () => {
   it('orders by business date, then creation instant, then id', () => {
-    const base = { movementDate: at(1), createdAt: at(1), id: 'b' };
-    const later = { movementDate: at(2), createdAt: at(1), id: 'a' };
+    const base = { movementDate: businessDay(1), createdAt: at(1), id: 'b' };
+    const later = { movementDate: businessDay(2), createdAt: at(1), id: 'a' };
     const sameDateLaterInstant = {
-      movementDate: at(1),
+      movementDate: businessDay(1),
       createdAt: at(2),
       id: 'a',
     };
-    const sameInstant = { movementDate: at(1), createdAt: at(1), id: 'a' };
+    const sameInstant = {
+      movementDate: businessDay(1),
+      createdAt: at(1),
+      id: 'a',
+    };
 
     expect(compareCanonicalMovementOrder(base, later)).toBeLessThan(0);
     expect(

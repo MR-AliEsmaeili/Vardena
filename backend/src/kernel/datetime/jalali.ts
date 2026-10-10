@@ -18,9 +18,11 @@
  * conversion (a classic Jalali bug: `new Date(2026, 9, 8)` is a DIFFERENT day
  * depending on the host zone).
  *
- * Supported range: Jalaali year −61…3177 (Gregorian ≈ 560…3798). Outside it
- * the library throws; this wrapper turns that into `null` so callers keep the
- * "invalid input never throws, it is rejected" contract of the kernel.
+ * The library supports Jalaali years −61…3177 (Gregorian ≈ 560…3798), but the
+ * public four-digit day shape cannot represent negative Jalali years. The
+ * conversion wrapper therefore returns `null` for those renderings and catches
+ * the library's boundary exceptions so callers keep the "invalid input never
+ * throws, it is rejected" contract of the kernel.
  *
  * Framework-free (AR-05/AR-06).
  */
@@ -53,6 +55,12 @@ export interface GregorianDay {
   /** 1–31. */
   day: number;
 }
+
+/** Inclusive canonical Gregorian envelope that the API can render as Jalali. */
+export const JALALI_RENDERABLE_GREGORIAN_RANGE = {
+  minimum: '0621-03-21',
+  maximum: '3798-12-31',
+} as const;
 
 /** True when the Jalali year is a leap year (366 days) and is supported. */
 export function isJalaliLeapYear(year: number): boolean {
@@ -117,6 +125,10 @@ export function jalaliToGregorianDay(
 ): GregorianDay | null {
   if (!isValidJalaliDay(year, month, day)) return null;
   const converted = toGregorian(year, month, day);
+  // The upstream algorithm supports some Jalaali 3177 dates that fall in
+  // Gregorian 3799, but the kernel's reverse-rendering/API envelope ends at
+  // Gregorian year 3798. Do not accept a day that cannot be rendered back.
+  if (!isSupportedGregorianYear(converted.gy)) return null;
   return { year: converted.gy, month: converted.gm, day: converted.gd };
 }
 
@@ -131,8 +143,16 @@ export function gregorianToJalaliDay(
 ): JalaliDay | null {
   if (!isRealGregorianDay(year, month, day)) return null;
   if (!isSupportedGregorianYear(year)) return null;
-  const converted = toJalaali(year, month, day);
-  return { year: converted.jy, month: converted.jm, day: converted.jd };
+  try {
+    const converted = toJalaali(year, month, day);
+    if (converted.jy < 0 || !isSupportedJalaliYear(converted.jy)) return null;
+    return { year: converted.jy, month: converted.jm, day: converted.jd };
+  } catch {
+    // The library can throw for Gregorian days before/after its exact
+    // conversion interval even when the Gregorian year is within our coarse
+    // supported-year guard. An unsupported rendering is data, not a crash.
+    return null;
+  }
 }
 
 /** Proleptic-Gregorian day check (the same calendar PostgreSQL `date` uses). */
@@ -148,8 +168,11 @@ export function isRealGregorianDay(
   ) {
     return false;
   }
+  if (year < 1 || year > 9999) return false;
   if (month < 1 || month > 12 || day < 1 || day > 31) return false;
-  const probe = new Date(Date.UTC(year, month - 1, day));
+  const probe = new Date(0);
+  probe.setUTCHours(0, 0, 0, 0);
+  probe.setUTCFullYear(year, month - 1, day);
   return (
     probe.getUTCFullYear() === year &&
     probe.getUTCMonth() === month - 1 &&

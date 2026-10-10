@@ -106,8 +106,6 @@ async function buildFixture(): Promise<Fixture> {
       code,
       name: code,
       isActive: true,
-      // C-63: the date/time policy an organization always carries.
-      calendarSystem: 'JALALI',
       timeZone: 'Asia/Tehran',
       createdAt: now,
       updatedAt: now,

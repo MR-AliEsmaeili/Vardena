@@ -7,6 +7,7 @@ import { getAccount } from '@/api/accounting.api';
 import { normalizeApiError } from '@/api/errors';
 import { queryKeys } from '@/api/query-keys';
 import type { AccountingDocument, Account } from '@/api/contracts';
+import { todayBusinessDay, useTimeZone } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
@@ -140,10 +141,10 @@ function DocumentFormPage({
 
 // -----------------------------------------------------------------------------
 
-function createDefaults(): DocumentFormValues {
+function createDefaults(timeZone: string): DocumentFormValues {
   return {
     financialAreaId: '',
-    documentDate: new Date().toLocaleDateString('en-CA'),
+    documentDate: todayBusinessDay(timeZone),
     description: '',
     lines: [emptyDocumentLine(), emptyDocumentLine()],
   };
@@ -174,6 +175,7 @@ function DocumentForm({
   document?: AccountingDocument | undefined;
 }): ReactElement {
   const navigate = useNavigate();
+  const timeZone = useTimeZone();
   const { showToast } = useToast();
   const [serverError, setServerError] = useState<DocumentErrorMessage | null>(
     null,
@@ -197,7 +199,7 @@ function DocumentForm({
     resolver: zodResolver(schema),
     defaultValues:
       mode === 'create'
-        ? createDefaults()
+        ? createDefaults(timeZone)
         : editDefaults(document as AccountingDocument),
   });
   const { register, watch, handleSubmit, formState } = form;

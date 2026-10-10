@@ -4,22 +4,24 @@
  * Two shapes, and only two — no endpoint invents its own:
  *
  *   event timestamps → {@link ApiInstant}
- *     { instant, timeZone, gregorian, jalali }
+ *     { instant, timeZone, gregorian, jalali|null }
  *
  *   business dates   → {@link ApiBusinessDate}
- *     { gregorian, jalali }
+ *     { gregorian, jalali|null }
  *
  * Rules that hold for both:
  *
  *   * the canonical field (`instant`, `gregorian`) is AUTHORITATIVE and is
  *     what a client persists or compares;
- *   * the Jalali field is DERIVED from the canonical one, on every request,
- *     from the organization's configured zone/calendar — nothing is stored;
+ *   * Jalali BusinessDate values are derived from the canonical day under the
+ *     fixed Jalali-first policy; Instant renderings first use the supplied
+ *     organization zone. Neither rendering is stored;
  *   * ASCII digits and fixed shapes only (`YYYY-MM-DD`, `YYYY-MM-DD HH:mm:ss`):
  *     numerals (۱۲۳) and locale formats are a frontend concern (C-63 §32),
  *     and an API value is machine-readable by contract;
- *   * a value that cannot be rendered faithfully is `null` — never a
- *     silently wrong calendar. Callers treat `null` as a data defect.
+ *   * an unavailable Jalali rendering is `null`, never a silently wrong
+ *     calendar. The canonical BusinessDate or Instant remains authoritative;
+ *     no domain write requires a Jalali rendering.
  *
  * These are DERIVED fields, not a second truth: a response keeps its existing
  * canonical fields exactly as they are and adds the standardized object
@@ -36,12 +38,12 @@ import {
 } from './time-zone.js';
 import { gregorianToJalaliDay } from './jalali.js';
 
-/** A business day, in both calendars. `gregorian` is authoritative. */
+/** A canonical business day with its optional Jalali rendering. */
 export interface ApiBusinessDate {
   /** Canonical day, `YYYY-MM-DD`. */
   gregorian: string;
-  /** Derived Jalali day, `YYYY-MM-DD`. */
-  jalali: string;
+  /** Derived Jalali day, or `null` outside the supported rendering range. */
+  jalali: string | null;
 }
 
 /** An event timestamp, canonical + both local renderings. */
@@ -52,8 +54,8 @@ export interface ApiInstant {
   timeZone: string;
   /** Derived local Gregorian rendering, `YYYY-MM-DD HH:mm:ss`. */
   gregorian: string;
-  /** Derived local Jalali rendering, `YYYY-MM-DD HH:mm:ss`. */
-  jalali: string;
+  /** Derived local Jalali rendering, or null outside the supported range. */
+  jalali: string | null;
 }
 
 /** The one local date-time rendering shape (derived, never persisted). */
@@ -61,21 +63,23 @@ export const LOCAL_DATE_TIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 
 /**
  * Build the standardized business-date representation of a canonical
- * Gregorian day. `null` when the day or its Jalali rendering is invalid.
+ * Gregorian day. `null` only when the canonical day is invalid; Jalali is null
+ * when that valid day cannot be rendered in the supported conversion range.
  */
 export function toApiBusinessDate(
   gregorianDay: string,
 ): ApiBusinessDate | null {
   if (formatBusinessDate(gregorianDay, 'GREGORIAN') === null) return null;
-  const jalali = formatBusinessDate(gregorianDay, 'JALALI');
-  if (jalali === null) return null;
-  return { gregorian: gregorianDay, jalali };
+  return {
+    gregorian: gregorianDay,
+    jalali: formatBusinessDate(gregorianDay, 'JALALI'),
+  };
 }
 
 /**
  * Build the standardized instant representation of an event timestamp in
- * `timeZone`. `null` when the zone is unknown, the instant is invalid, or the
- * Jalali rendering is outside the supported range.
+ * `timeZone`. `null` only when the zone is unknown or the instant is invalid;
+ * an unavailable Jalali rendering remains `null` beside the canonical value.
  */
 export function toApiInstant(
   instant: Date,
@@ -84,7 +88,6 @@ export function toApiInstant(
   if (!isTimeZone(timeZone)) return null;
   if (Number.isNaN(instant.getTime())) return null;
   const jalali = renderLocalJalaliDateTime(instant, timeZone);
-  if (jalali === null) return null;
   return {
     instant: instant.toISOString(),
     timeZone,

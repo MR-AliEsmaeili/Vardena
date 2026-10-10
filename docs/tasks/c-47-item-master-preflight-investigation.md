@@ -77,7 +77,7 @@ executed other than creating this report.
 | Item application service | `backend/src/modules/inventory/application/items.service.ts` | `listItems`, `getItem`, `createItem`, `updateItem`, `enableItem`, `disableItem`, `requireUsableItemInOrganization`. Validates organization, group and base-unit scope through owning public services; normalizes code/name/description/barcode; catches DB uniqueness races; publishes item events. `itemKind` is immutable. |
 | Item group | `domain/item-group.ts`, `application/item-groups.service.ts`, `data/item-groups.repository.ts` | Organization-scoped self-referencing hierarchy. Create/update validates same-organization parent, self-parent and cycle. Lifecycle is enable/disable; no delete. One item has at most one `itemGroupId`. |
 | Units | `domain/unit.ts`, `application/units.service.ts`, `data/units.repository.ts` | Organization-scoped reusable UoM rows (`code`, `name`, optional `symbol`, active state). No hard-coded unit seed/list. Same operation/lifecycle pattern as other master records. |
-| Conversions | `domain/unit-conversion.ts`, `application/unit-conversions.service.ts`, `data/unit-conversions.repository.ts` | Global (`itemId = null`) and item-specific rows. Positive decimal factor, pair validation, half-open effective windows, open-ended version supersession, historical `resolveVersionAt`; no in-place edit endpoint. Item-specific conversion wins over global for the same pair/as-of instant. |
+| Conversions | `domain/unit-conversion.ts`, `application/unit-conversions.service.ts`, `data/unit-conversions.repository.ts` | Global (`itemId = null`) and item-specific rows. Positive decimal factor, pair validation, half-open BusinessDate windows, open-ended version supersession, historical `resolveVersionAt`; no in-place edit endpoint. Item-specific conversion wins over global for the same pair/as-of BusinessDate. Owner decision (2026-10-09): validity bounds are PostgreSQL `date`, converted by `20261012000000_inventory_business_date_validity_windows` after fail-closed fixture rehearsal; target historical-data evidence remains required. |
 | HTTP contracts | `backend/src/modules/inventory/api/{items,item-groups,units,unit-conversions}.controller.ts`; DTOs in `api/dto/` | Versioned REST routes under `/api/v1/inventory/...`; list/get/create/update plus enable/disable for lifecycle entities; conversion list/get/resolve/create only. DTOs validate ULIDs, dates, booleans and factor shape. OpenAPI decorators describe the same contracts. |
 
 ### 3.2 Schema, migration and constraints
@@ -156,8 +156,8 @@ are evidence of existing coverage, not a claim that they passed in this turn:
 - `backend/src/modules/inventory/application/unit-conversions.service.spec.ts` —
   `creates a global conversion version and publishes the event`, `rejects a
   non-positive or over-precise factor`, `supersedes the open-ended version and
-  closes it at the new validFrom`, `resolves the version in force at an instant,
-  historically`, `returns null rather than inventing a 1:1 conversion`,
+  closes it at the new validFrom`, `resolves the version in force on a business
+  date, historically`, `returns null rather than inventing a 1:1 conversion`,
   `prefers an item-specific version over the global one`, and cross-organization
   conversion cases.
 - `backend/src/modules/inventory/domain/item-capabilities.spec.ts`,

@@ -1,5 +1,5 @@
 import { subtractDecimalStrings } from './quantities.js';
-import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 
 /**
  * Inventory balance — the materialized projection of the ledger for one
@@ -23,12 +23,8 @@ export interface InventoryBalance {
   onHand: string;
   /** Decimal string. */
   reserved: string;
-  /**
-   * Business DATE carrier (OQ-73): the newest movement's calendar day as a
-   * PostgreSQL `date` value (a `Date` whose UTC components are the day).
-   * Never an instant — convert with `businessDateFromDbDate` at the boundary.
-   */
-  lastMovementDate: Date | null;
+  /** Newest movement's canonical Gregorian business day, if any. */
+  lastMovementDate: BusinessDate | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -99,10 +95,7 @@ export function toInventoryBalanceDto(
     reserved: balance.reserved,
     available: resolveAvailableQuantity(balance, reservationsReduceAvailable),
     reservationsReduceAvailable,
-    lastMovementDate:
-      balance.lastMovementDate === null
-        ? null
-        : businessDateFromDbDate(balance.lastMovementDate),
+    lastMovementDate: balance.lastMovementDate,
     createdAt: balance.createdAt.toISOString(),
     updatedAt: balance.updatedAt.toISOString(),
   };

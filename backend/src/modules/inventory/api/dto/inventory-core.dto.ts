@@ -11,7 +11,10 @@ import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
 import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
 import { IsBusinessDay } from '../../../../kernel/http/is-business-day.decorator.js';
-import { DECLARED_BUSINESS_DATE_SCHEMA } from '../../../../kernel/datetime/api-date-time.dto.js';
+import {
+  DECLARED_BUSINESS_DATE_SCHEMA,
+  LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+} from '../../../../kernel/datetime/api-date-time.dto.js';
 import { CALENDAR_SYSTEMS } from '../../../../kernel/datetime/calendar-system.js';
 import {
   MOVEMENT_TYPES,
@@ -165,10 +168,11 @@ export class PostInventoryMovementDto {
   @ApiPropertyOptional({
     oneOf: [
       { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
       DECLARED_BUSINESS_DATE_SCHEMA,
     ],
     description:
-      'Business DATE of the movement — a calendar DAY, not an instant (OQ-73). Canonical Gregorian "2026-10-08", a declared Jalali day { calendar, value }, or a legacy ISO instant resolved to the day it falls on in the organization zone. Defaults to today\'s business day in the organization zone. A backdated posting resolves the conversion version in force then, not today.',
+      'Business DATE of the movement — a calendar DAY, not an instant (OQ-73). Canonical Gregorian "2026-10-08", a declared Jalali day { calendar, value }, or a legacy ISO instant resolved to its UTC calendar day. Defaults to today\'s business day in the organization zone. A backdated posting resolves the conversion version in force then, not today.',
   })
   @IsOptional()
   @IsBusinessDate()
@@ -256,6 +260,7 @@ export class ReverseInventoryMovementDto {
   @ApiPropertyOptional({
     oneOf: [
       { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
       DECLARED_BUSINESS_DATE_SCHEMA,
     ],
     description:
@@ -453,6 +458,7 @@ export class PostInventoryTransferDto {
   @ApiPropertyOptional({
     oneOf: [
       { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
       DECLARED_BUSINESS_DATE_SCHEMA,
     ],
     description:

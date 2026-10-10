@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import type { BackdateAssessment } from '../domain/backdating.js';
 import type {
   InventoryValuationRun,
@@ -30,8 +35,8 @@ import {
   valuationChanged,
 } from '../domain/valuation-replay.js';
 import {
-  distinctInstants,
-  findAmbiguousInstant,
+  distinctBusinessDates,
+  findAmbiguousBusinessDate,
   isValuationMethod,
   resolveValuationMethodAt,
 } from '../domain/valuation-method.js';
@@ -130,7 +135,7 @@ export interface RecalculationInput {
   runId: string;
   trigger: ValuationRunTrigger;
   /** Informational only: the whole key always replays (determinism). */
-  fromDate: Date | null;
+  fromDate: BusinessDate | null;
   reason: string | null;
   operation: OperationCreate;
   actorId: string | null;
@@ -274,7 +279,7 @@ export class InventoryValuationRepository {
     organizationId: string;
     warehouseId: string;
     itemId: string;
-    movementDate: Date;
+    movementDate: BusinessDate;
   }): Promise<BackdateAssessment> {
     const { inventoryMovement } = await this.client();
     const key = {
@@ -287,12 +292,14 @@ export class InventoryValuationRepository {
       _sum: { baseQuantity: true },
       _max: { movementDate: true },
     });
-    const latestMovementDate = aggregate._max.movementDate;
+    const latestMovementDate =
+      aggregate._max.movementDate === null
+        ? null
+        : businessDateFromDbDate(aggregate._max.movementDate);
     const laterWhere = {
       ...key,
-      // Strictly later: a movement at the same instant is not "after" the
-      // proposed one — the canonical order breaks that tie, not the clock.
-      movementDate: { gt: params.movementDate },
+      // A business date is a day, so strictly later is a date comparison.
+      movementDate: { gt: dbBusinessDate(params.movementDate) },
     };
     const [affectedMovements, affectedValuedMovements, state] =
       await Promise.all([
@@ -307,8 +314,7 @@ export class InventoryValuationRepository {
       ]);
     return {
       backdated:
-        latestMovementDate !== null &&
-        params.movementDate.getTime() < latestMovementDate.getTime(),
+        latestMovementDate !== null && params.movementDate < latestMovementDate,
       movementDate: params.movementDate,
       latestMovementDate,
       affectedMovements,
@@ -661,6 +667,14 @@ export class InventoryValuationRepository {
 
 // ---- Internal helpers ----
 
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Inventory BusinessDate "${value}".`);
+  }
+  return carrier;
+}
+
 /**
  * One key's movements in the canonical ledger order, with an explicit upper
  * bound. The `+ 1` read is how the bound is DETECTED rather than silently
@@ -741,11 +755,12 @@ function toFact(row: MovementRow, method: ValuationMethod): ReplayFact {
  * because they are in force for no replayed movement, not as special cases.
  * Asserted in `domain/valuation-method.spec.ts`.
  *
- * **Ambiguity is checked per date, not by counting rows.** Every instant is
- * examined on its own: if two versions are in force at one movement date the
- * replay fails closed (`AmbiguousValuationMethodError`). A global "more rows
- * than dates?" comparison would be unsound — two versions on one date and
- * none on another returns exactly as many rows as there are dates — which is
+ * **Ambiguity is checked per date, not by counting rows.** Every distinct
+ * movement BusinessDate is examined on its own: if two versions are in force
+ * on one movement date the replay fails closed
+ * (`AmbiguousValuationMethodError`). A global "more rows than dates?"
+ * comparison would be unsound — two versions on one date and none on another
+ * returns exactly as many rows as there are dates — which is
  * why the count check that used to live here is gone.
  *
  * The read still transfers at most one row more than there are dates, and
@@ -757,23 +772,26 @@ function toFact(row: MovementRow, method: ValuationMethod): ReplayFact {
 export async function readMethodVersions(
   tx: CoreTxClient,
   key: BalanceKey,
-  movementDates: readonly Date[],
+  movementDates: readonly BusinessDate[],
 ): Promise<ItemValuationMethodVersion[]> {
-  const instants = distinctInstants(movementDates);
+  const businessDates = distinctBusinessDates(movementDates);
   // No movements, nothing to resolve: an empty key reads no configuration.
-  if (instants.length === 0) return [];
+  if (businessDates.length === 0) return [];
   const rows = await tx.itemValuationMethod.findMany({
     where: {
       organizationId: key.organizationId,
       itemId: key.itemId,
-      OR: instants.map((instant) => ({
-        validFrom: { lte: instant },
-        OR: [{ validTo: null }, { validTo: { gt: instant } }],
+      OR: businessDates.map((businessDate) => ({
+        validFrom: { lte: dbBusinessDate(businessDate) },
+        OR: [
+          { validTo: null },
+          { validTo: { gt: dbBusinessDate(businessDate) } },
+        ],
       })),
     },
     orderBy: [{ validFrom: 'asc' }],
     skip: 0,
-    take: instants.length + 1,
+    take: businessDates.length + 1,
   });
   const versions = rows.map((row) => {
     if (!isValuationMethod(row.method)) {
@@ -786,18 +804,19 @@ export async function readMethodVersions(
       organizationId: row.organizationId,
       itemId: row.itemId,
       method: row.method,
-      validFrom: row.validFrom,
-      validTo: row.validTo,
+      validFrom: businessDateFromDbDate(row.validFrom),
+      validTo:
+        row.validTo === null ? null : businessDateFromDbDate(row.validTo),
       note: row.note,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };
   });
-  const ambiguous = findAmbiguousInstant(versions, instants);
+  const ambiguous = findAmbiguousBusinessDate(versions, businessDates);
   if (ambiguous !== null) {
     throw new AmbiguousValuationMethodError(
       key.itemId,
-      ambiguous.instant,
+      ambiguous.businessDate,
       ambiguous.versionIds,
     );
   }
@@ -815,7 +834,13 @@ export function buildReplayFacts(
   versions: readonly ItemValuationMethodVersion[],
 ): ReplayFact[] {
   return rows.map((row) =>
-    toFact(row, resolveValuationMethodAt(versions, row.movementDate).method),
+    toFact(
+      row,
+      resolveValuationMethodAt(
+        versions,
+        businessDateFromDbDate(row.movementDate),
+      ).method,
+    ),
   );
 }
 
@@ -836,7 +861,7 @@ async function applyReplay(
     key: BalanceKey;
     method: ValuationMethod;
     trigger: ValuationRunTrigger;
-    fromDate: Date | null;
+    fromDate: BusinessDate | null;
     reason: string | null;
     operationKey: string;
     at: Date;
@@ -847,7 +872,7 @@ async function applyReplay(
   const versions = await readMethodVersions(
     tx,
     input.key,
-    rows.map((row) => row.movementDate),
+    rows.map((row) => businessDateFromDbDate(row.movementDate)),
   );
   // One strategy lookup PER MOVEMENT at that movement's business date — never
   // one method for the whole history (OD-VAL-14). A period configured with a
@@ -877,7 +902,7 @@ async function applyReplay(
     itemId: input.key.itemId,
     method: input.method,
     trigger: input.trigger,
-    fromDate: input.fromDate,
+    fromDate: input.fromDate === null ? null : dbBusinessDate(input.fromDate),
     movementsExamined: rows.length,
     movementsRevalued: changes.length,
     resultingValuedQuantity: result.position.valuedQuantity,
@@ -1024,7 +1049,8 @@ function toRunDomain(row: ValuationRunRow): InventoryValuationRun {
     itemId: row.itemId,
     method: row.method,
     trigger: row.trigger as ValuationRunTrigger,
-    fromDate: row.fromDate,
+    fromDate:
+      row.fromDate === null ? null : businessDateFromDbDate(row.fromDate),
     movementsExamined: row.movementsExamined,
     movementsRevalued: row.movementsRevalued,
     resultingValuedQuantity: decimalToString(row.resultingValuedQuantity),

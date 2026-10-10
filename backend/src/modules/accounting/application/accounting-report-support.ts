@@ -1,4 +1,5 @@
 import { AppException } from '../../../kernel/errors/app-exception.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import { toOffset } from '../../../kernel/pagination/paginated-result.js';
 import { parseOptionalDocumentDate } from './accounting-document-support.js';
 import type {
@@ -32,8 +33,8 @@ export interface ResolvedAccountingReportScope {
   financialArea: StatementAreaRef;
   fiscalYear: StatementYearRef;
   accountingPeriod: StatementPeriodRef | null;
-  dateFrom: Date;
-  dateTo: Date;
+  dateFrom: BusinessDate;
+  dateTo: BusinessDate;
   /** True only when the caller supplied a lower date boundary. */
   dateFromExplicit: boolean;
   /** True only when the caller supplied an upper date boundary. */
@@ -121,13 +122,10 @@ export async function resolveAccountingReportScope(
   const dateTo = parseOptionalDocumentDate(query.dateTo, 'dateTo');
   const start = dateFrom ?? period?.startDate ?? year.startDate;
   const end = dateTo ?? period?.endDate ?? year.endDate;
-  if (start.getTime() > end.getTime()) {
+  if (start > end) {
     throw AppException.badRequest('dateFrom must not be after dateTo.');
   }
-  if (
-    start.getTime() < year.startDate.getTime() ||
-    end.getTime() > year.endDate.getTime()
-  ) {
+  if (start < year.startDate || end > year.endDate) {
     throw AppException.businessRule(
       'The reporting date range must remain inside the requested fiscal year.',
     );

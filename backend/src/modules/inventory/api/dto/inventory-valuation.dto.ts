@@ -1,7 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import {
-  IsDate,
   IsIn,
   IsOptional,
   IsString,
@@ -12,12 +10,11 @@ import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
 import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
 import { IsBusinessDay } from '../../../../kernel/http/is-business-day.decorator.js';
-import { DECLARED_BUSINESS_DATE_SCHEMA } from '../../../../kernel/datetime/api-date-time.dto.js';
-import { CALENDAR_SYSTEMS } from '../../../../kernel/datetime/calendar-system.js';
-
-/** The business-date INPUT shape (OQ-73 / C-63) — see the document DTOs. */
-export type BusinessDateInputDto =
-  string | { calendar: (typeof CALENDAR_SYSTEMS)[number]; value: string };
+import {
+  DECLARED_BUSINESS_DATE_SCHEMA,
+  LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+} from '../../../../kernel/datetime/api-date-time.dto.js';
+import type { BusinessDateInput } from '../../../../kernel/datetime/business-date-input.js';
 import {
   MAX_OPERATION_KEY_LENGTH,
   MAX_REASON_LENGTH,
@@ -67,13 +64,17 @@ export class ListValuationMethodsQueryDto extends PageQueryDto {
   itemId?: string;
 
   @ApiPropertyOptional({
-    format: 'date-time',
-    description: 'Only the version in force at this instant.',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'Only versions in force on this BusinessDate. Legacy ISO instants resolve by UTC calendar day; declared calendar input is converted once.',
   })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  activeAt?: Date;
+  @IsBusinessDate()
+  activeAt?: BusinessDateInput;
 }
 
 export class ConfigureValuationMethodDto {
@@ -93,23 +94,30 @@ export class ConfigureValuationMethodDto {
   method!: string;
 
   @ApiPropertyOptional({
-    format: 'date-time',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'Start of the validity window; defaults to now. The previous open-ended version is closed at this instant (effective dating, D-21).',
+      'Start of the business-date validity window; defaults to today in the organization time zone. Declare { calendar, value } for Jalali input. A legacy ISO instant resolves to its UTC calendar day.',
   })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  validFrom?: Date;
+  @IsBusinessDate()
+  validFrom?: BusinessDateInput;
 
   @ApiPropertyOptional({
-    format: 'date-time',
-    description: 'Optional end of the window; must be after validFrom.',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'Optional exclusive end business date; must be later than validFrom. A legacy ISO instant resolves to its UTC calendar day.',
   })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  validTo?: Date;
+  @IsBusinessDate()
+  validTo?: BusinessDateInput;
 
   @ApiPropertyOptional({ maxLength: 500 })
   @IsOptional()
@@ -128,14 +136,17 @@ export class ResolveValuationMethodQueryDto {
   itemId!: string;
 
   @ApiPropertyOptional({
-    format: 'date-time',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'The instant to resolve at; defaults to now. A past instant resolves the version that was in force then, not today.',
+      'BusinessDate to resolve. Legacy ISO instants resolve by UTC calendar day; declared calendar input is converted once. If omitted, uses today in the organization time zone.',
   })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate()
-  asOf?: Date;
+  @IsBusinessDate()
+  asOf?: BusinessDateInput;
 }
 
 export class ListValuationStatesQueryDto extends PageQueryDto {
@@ -290,14 +301,15 @@ export class RecalculateValuationDto {
   @ApiPropertyOptional({
     oneOf: [
       { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
       DECLARED_BUSINESS_DATE_SCHEMA,
     ],
     description:
-      'The business DAY the run was requested for, recorded on the run for audit (OQ-73: a calendar day, never an instant). The replay always covers the whole key: a partial replay cannot produce a deterministic average.',
+      'The business day the run was requested for, recorded on the run for audit. A legacy ISO instant resolves to its UTC calendar day. The replay always covers the whole key: a partial replay cannot produce a deterministic average.',
   })
   @IsOptional()
   @IsBusinessDate()
-  fromDate?: BusinessDateInputDto;
+  fromDate?: BusinessDateInput;
 
   @ApiPropertyOptional({ maxLength: MAX_REASON_LENGTH })
   @IsOptional()
@@ -321,10 +333,10 @@ export class ItemValuationMethodResponseDto {
   @ApiProperty({ enum: VALUATION_METHODS })
   method!: string;
 
-  @ApiProperty({ format: 'date-time' })
+  @ApiProperty({ format: 'date' })
   validFrom!: string;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ format: 'date', nullable: true })
   validTo!: string | null;
 
   @ApiProperty({ nullable: true })
@@ -344,7 +356,7 @@ export class ResolvedValuationMethodResponseDto {
   @ApiProperty({ format: 'ulid' })
   itemId!: string;
 
-  @ApiProperty({ format: 'date-time' })
+  @ApiProperty({ format: 'date' })
   asOf!: string;
 
   @ApiProperty({ enum: VALUATION_METHODS })
@@ -353,17 +365,17 @@ export class ResolvedValuationMethodResponseDto {
   @ApiProperty({
     enum: ['configured', 'default'],
     description:
-      '"default" means no configuration row covers this instant and the code-defined MVP default applies — not that a row exists saying so.',
+      '"default" means no configuration row covers this business date and the code-defined MVP default applies — not that a row exists saying so.',
   })
   source!: string;
 
   @ApiProperty({ format: 'ulid', nullable: true })
   configurationId!: string | null;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ format: 'date', nullable: true })
   validFrom!: string | null;
 
-  @ApiProperty({ format: 'date-time', nullable: true })
+  @ApiProperty({ format: 'date', nullable: true })
   validTo!: string | null;
 
   @ApiProperty({

@@ -20,9 +20,8 @@ import {
  * The calendar NAMES mirror the backend kernel (`kernel/datetime/
  * calendar-system.ts`): `GREGORIAN` (identity) and `JALALI` (Sunni-less
  * astronomical Jalali / Solar Hijri, the civil calendar of Iran). The
- * deployment default is JALALI (docs/datetime.md), but nothing here hard-codes
- * it for a given screen: the active calendar comes from the organization's
- * date/time settings.
+ * MVP presentation is fixed to JALALI (ADR-0044); Gregorian remains part of
+ * the closed API vocabulary and canonical-day model, not a user setting.
  */
 
 export const CALENDAR_SYSTEMS = ['GREGORIAN', 'JALALI'] as const;
@@ -30,6 +29,9 @@ export type CalendarSystem = (typeof CALENDAR_SYSTEMS)[number];
 
 /** Product default, mirrored from the backend kernel (`DEFAULT_CALENDAR_SYSTEM`). */
 export const DEFAULT_CALENDAR_SYSTEM: CalendarSystem = 'JALALI';
+
+/** Maximum Gregorian year supported by backend and migration rendering. */
+const MAX_JALALI_RENDER_GREGORIAN_YEAR = 3798;
 
 /** True for a value the closed vocabulary accepts (any other string is not). */
 export function isCalendarSystem(value: unknown): value is CalendarSystem {
@@ -78,7 +80,7 @@ export function formatDayParts(parts: DayParts): string {
  */
 export function isGregorianDay(value: string): boolean {
   const parts = parseDayParts(value);
-  if (parts === null) return false;
+  if (parts === null || parts.year < 1) return false;
   const probe = new Date(Date.UTC(2000, 0, 1));
   probe.setUTCFullYear(parts.year, parts.month - 1, parts.day);
   probe.setUTCHours(0, 0, 0, 0);
@@ -107,6 +109,7 @@ export function jalaliDayToGregorianDay(value: string): string | null {
   if (parts === null) return null;
   if (!isValidJalaaliDate(parts.year, parts.month, parts.day)) return null;
   const gregorian = toGregorian(parts.year, parts.month, parts.day);
+  if (gregorian.gy > MAX_JALALI_RENDER_GREGORIAN_YEAR) return null;
   return formatDayParts({
     year: gregorian.gy,
     month: gregorian.gm,
@@ -118,10 +121,14 @@ export function jalaliDayToGregorianDay(value: string): string | null {
 export function gregorianDayToJalaliDay(value: string): string | null {
   if (!isGregorianDay(value)) return null;
   const parts = parseDayParts(value);
-  if (parts === null) return null;
+  if (parts === null || parts.year > MAX_JALALI_RENDER_GREGORIAN_YEAR) {
+    return null;
+  }
   try {
     const jalali = toJalaali(parts.year, parts.month, parts.day);
-    if (!isValidJalaaliDate(jalali.jy, jalali.jm, jalali.jd)) return null;
+    if (jalali.jy < 0 || !isValidJalaaliDate(jalali.jy, jalali.jm, jalali.jd)) {
+      return null;
+    }
     return formatDayParts({
       year: jalali.jy,
       month: jalali.jm,

@@ -369,3 +369,17 @@ test was run and none is claimed.
   Preparation* (OWNER DECISION PREPARATION ONLY). Gate recorded as **CLOSED**. No
   production, schema, migration, index, endpoint, permission, projection, OQ, ADR or
   status change.
+
+## Later date/time clarification (2026-10-09)
+
+This gate is a historical Task 17B snapshot dated 2026-09-25. Its OQ-02
+localization/`BLOCKED BY OQ` statements and its Gregorian-only date assumption
+were accurate for that gate at the time. Owner-accepted ADR-0042 (2026-10-09)
+subsequently resolved the generic BusinessDate/Instant contract: canonical
+Gregorian BusinessDates persist as PostgreSQL `date`, user-facing input/display
+uses the organization's configured calendar (Jalali by default), and UTC
+Instants display in the configured valid IANA zone and calendar. The later
+architecture decision does not change this historical implementation gate or
+authorize its proposed slice. OQ-02 remains open for primary UI language,
+Persian numerals, and broader localization only. See ADR-0042 and
+`docs/datetime.md`.

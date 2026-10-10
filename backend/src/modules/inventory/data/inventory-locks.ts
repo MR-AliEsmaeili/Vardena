@@ -1,4 +1,6 @@
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
+import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import type { InventoryBalance } from '../domain/inventory-balance.js';
 import { isValuationMethod } from '../domain/valuation-method.js';
@@ -153,7 +155,7 @@ export async function adjustBalanceCounters(
     balanceId: string;
     onHandDelta: string;
     reservedDelta: string;
-    lastMovementDate: Date | null;
+    lastMovementDate: BusinessDate | null;
     updatedAt: Date;
     updatedBy: string | null;
   },
@@ -179,7 +181,7 @@ export async function setBalanceAbsolute(
     balanceId: string;
     onHand: string;
     reserved: string;
-    lastMovementDate: Date | null;
+    lastMovementDate: BusinessDate | null;
     updatedAt: Date;
     updatedBy: string | null;
   },
@@ -308,7 +310,10 @@ function toBalance(row: LockedBalanceRow): InventoryBalance {
     itemId: row.itemId,
     onHand: decimalToString(row.onHand),
     reserved: decimalToString(row.reservedQuantity),
-    lastMovementDate: row.lastMovementDate,
+    lastMovementDate:
+      row.lastMovementDate === null
+        ? null
+        : businessDateFromDbDate(row.lastMovementDate),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

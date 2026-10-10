@@ -2,6 +2,7 @@ import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { describe, expect, it } from 'vitest';
 import { DomainEventBus } from '../../../kernel/events/domain-event-bus.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import { createMasterDataStores } from '../../../../test/support/master-data-repositories.js';
 import { createInventoryCoreStores } from '../../../../test/support/inventory-core-repositories.js';
 import { UNPINNED_APP_CONFIG } from '../../../../test/support/app-config.js';
@@ -289,5 +290,62 @@ describe('InventoryBalancesService.listBalances honors reservationsReduceAvailab
     // Never mutates on-hand either way.
     expect(a?.onHand).toBe('20');
     expect(b?.onHand).toBe('20');
+  });
+});
+
+describe('InventoryBalancesService.rebuild', () => {
+  it('rebuilds a balance from a valid historical Gregorian ledger date outside Jalali rendering range', async () => {
+    const fixture = await buildFixture();
+    const warehouse = await fixture.warehouses.createWarehouse({
+      organizationId: fixture.organizationId,
+      branchId: fixture.branchId,
+      code: 'WH-HISTORICAL-REBUILD',
+      name: 'Historical rebuild source',
+    });
+    const movementDate = toBusinessDate('0600-01-01');
+    if (movementDate === null) throw new Error('Invalid fixture BusinessDate.');
+    const now = new Date('2026-10-10T00:00:00.000Z');
+    fixture.core.tables.movements.seed({
+      id: 'movement-historical-rebuild',
+      organizationId: fixture.organizationId,
+      branchId: fixture.branchId,
+      warehouseId: warehouse.id,
+      itemId: fixture.itemId,
+      movementType: 'inbound',
+      quantity: '1',
+      enteredUnitId: 'fixture-unit',
+      baseQuantity: '1',
+      baseUnitId: 'fixture-unit',
+      conversionFactor: '1',
+      movementDate,
+      transferId: null,
+      reversalOfMovementId: null,
+      referenceType: null,
+      referenceId: null,
+      reason: null,
+      operationKey: 'historical-rebuild-source',
+      totalCost: null,
+      valuationStatus: 'unvalued',
+      valuationSource: null,
+      valuedAt: null,
+      valuationRunId: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const report = await fixture.balancesService.rebuild({
+      organizationId: fixture.organizationId,
+    });
+    expect(report).toMatchObject({ checked: 1, rebuilt: 1 });
+    await expect(
+      fixture.core.balances.findByKey(
+        fixture.organizationId,
+        warehouse.id,
+        fixture.itemId,
+      ),
+    ).resolves.toMatchObject({
+      onHand: '1',
+      lastMovementDate: '0600-01-01',
+    });
   });
 });

@@ -8,7 +8,7 @@ import { Card, CardDescription, CardHeader, CardTitle } from '@/ui/card';
 import { DataTable } from '@/ui/patterns/data-table';
 import type { ColumnDef } from '@tanstack/react-table';
 import { AmountCell } from '@/ui/patterns/amount-cell';
-import { formatDateOnly } from '@/lib/format';
+import { formatDateOnly, formatDateOnlyCanonical } from '@/lib/format';
 
 /**
  * Recent accounting documents (reference: dense server-paged table).
@@ -75,7 +75,12 @@ export function buildDocumentColumns(
       header: t.dashboard.colDocumentDate,
       enableSorting: true,
       cell: ({ row }) => (
-        <span className="num">{formatDateOnly(row.original.documentDate)}</span>
+        <span
+          className="num"
+          title={formatDateOnlyCanonical(row.original.documentDate)}
+        >
+          {formatDateOnly(row.original.documentDate)}
+        </span>
       ),
     },
     {

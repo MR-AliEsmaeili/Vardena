@@ -66,7 +66,10 @@ export function formatBusinessDayWithCanonical(
   if (calendar === 'GREGORIAN' || !isBusinessDay(day)) {
     return formatBusinessDay(day, calendar);
   }
-  return `${formatBusinessDay(day, 'JALALI')} (${day})`;
+  const jalali = jalaliDayOf(day);
+  // An unrenderable historical date remains visible as its canonical day; do
+  // not duplicate it or turn a presentation limitation into a missing fact.
+  return jalali === null ? day : `${jalali.replace(/-/g, '/')} (${day})`;
 }
 
 /**

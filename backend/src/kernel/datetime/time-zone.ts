@@ -138,14 +138,12 @@ export function localDateTimeParts(
  */
 export function utcOffsetMinutesAt(instant: Date, timeZone: string): number {
   const parts = localDateTimeParts(instant, timeZone);
-  const asUtc = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour,
-    parts.minute,
-    parts.second,
-  );
+  // `Date.UTC` remaps years 0–99 to 1900–1999. Preserve the calendar year
+  // explicitly so historical four-digit Instants keep their real offset.
+  const projectedUtc = new Date(0);
+  projectedUtc.setUTCFullYear(parts.year, parts.month - 1, parts.day);
+  projectedUtc.setUTCHours(parts.hour, parts.minute, parts.second, 0);
+  const asUtc = projectedUtc.getTime();
   // Second-resolution comparison: both sides carry whole seconds.
   const minutes = Math.round((asUtc - instant.getTime()) / 60_000);
   // `-0` is mathematically 0 and must never leak into a stored/config value.

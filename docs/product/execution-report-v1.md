@@ -140,7 +140,7 @@ OQ-57, OQ-58, OQ-59, OQ-61.
 7. **OQ-45** — license expiry/termination behavior (can be interim for
    Stage 1).
 8. **OQ-54** — document cancel/edit posture (interim acceptable for Stage 4).
-9. **OQ-02** — UI language/calendar (blocks A-26 UX baseline).
+9. **OQ-02** — primary UI language, Persian numerals and broader localization (blocks only scopes that need those remaining choices); generic BusinessDate calendar and Instant zone/calendar are accepted by ADR-0042 and do not block A-26's date/time contract.
 10. Stage-2/3 gates when reached: OQ-23/25/27/41 (Stage 2), OQ-39 + its ADR,
     OQ-42/24/29/30 (Stage 3).
 11. Later-stage gates: OQ-51 (Stage 4), OQ-52/53 (Stage 6), OQ-46/58/61

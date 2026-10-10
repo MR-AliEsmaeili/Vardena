@@ -243,6 +243,10 @@
 
 import type { AccountingDocument } from './accounting-document.js';
 import {
+  isGregorianBusinessDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
   checkOriginEvidence,
   isAccountingDocumentOrigin,
 } from './accounting-document.js';
@@ -313,7 +317,7 @@ export interface PostingInput {
   /** Numeric-only serial, immutable after final (AC-I-22, §18). */
   readonly voucherNumber: string;
   /** Business date, date-only (Class C3, §12.3). */
-  readonly documentDate: Date;
+  readonly documentDate: BusinessDate;
   /** Header narration, required non-blank (§12.2). */
   readonly description: string;
   /** Optional operational scope dimension (AC-D-17, Class C5). */
@@ -466,10 +470,7 @@ export function checkPostingInput(input: PostingInput): PostingInputProblem[] {
   if (input.voucherNumber.trim() === '')
     problems.push('missing_voucher_number');
 
-  if (
-    !(input.documentDate instanceof Date) ||
-    Number.isNaN(input.documentDate.getTime())
-  ) {
+  if (!isGregorianBusinessDate(input.documentDate)) {
     problems.push('missing_document_date');
   }
 
@@ -580,7 +581,7 @@ export function toPostingInput(params: {
     accountingPeriodId: document.accountingPeriodId,
     voucherId: document.id,
     voucherNumber: document.documentNumber,
-    documentDate: new Date(document.documentDate.getTime()),
+    documentDate: document.documentDate,
     description: document.description,
     branchId: document.branchId,
     origin: document.origin,
@@ -640,7 +641,7 @@ export function toLedgerEntries(
     debitAmount: canonicalizeAmount(line.debitAmount),
     creditAmount: canonicalizeAmount(line.creditAmount),
     description: line.description,
-    documentDate: new Date(input.documentDate.getTime()),
+    documentDate: input.documentDate,
     postingTimestamp: new Date(input.finalizedAt.getTime()),
     branchId: input.branchId,
     origin: input.origin,

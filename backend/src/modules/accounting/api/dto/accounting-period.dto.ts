@@ -4,18 +4,19 @@ import {
   IsInt,
   IsOptional,
   IsString,
-  Matches,
   MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
+import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
+import { DECLARED_BUSINESS_DATE_SCHEMA } from '../../../../kernel/datetime/api-date-time.dto.js';
+import type { BusinessDateInput } from '../../../../kernel/datetime/business-date-input.js';
 import {
   MAX_REASON_LENGTH,
   MAX_TITLE_LENGTH,
 } from '../../domain/master-data.js';
-import { DATE_ONLY_PATTERN } from '../../domain/date-range.js';
 import {
   ACCOUNTING_PERIOD_KINDS,
   ACCOUNTING_PERIOD_STATUSES,
@@ -59,26 +60,36 @@ export class CreateAccountingPeriodDto {
   title!: string;
 
   @ApiProperty({
-    example: '2026-03-21',
-    description: 'Inclusive start date (YYYY-MM-DD), inside the year.',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-03-21' },
+      {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-03-21T08:30:00.000Z',
+      },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'Inclusive start business date inside the year; Jalali input must be declared and legacy instants resolve by UTC day.',
   })
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'startDate must be a valid calendar date (YYYY-MM-DD).',
-  })
-  @MaxLength(10)
-  startDate!: string;
+  @IsBusinessDate()
+  startDate!: BusinessDateInput;
 
   @ApiProperty({
-    example: '2026-04-20',
-    description: 'Inclusive end date (YYYY-MM-DD), inside the year.',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-04-20' },
+      {
+        type: 'string',
+        format: 'date-time',
+        example: '2026-04-20T08:30:00.000Z',
+      },
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'Inclusive end business date inside the year; Jalali input must be declared and legacy instants resolve by UTC day.',
   })
-  @IsString()
-  @Matches(DATE_ONLY_PATTERN, {
-    message: 'endDate must be a valid calendar date (YYYY-MM-DD).',
-  })
-  @MaxLength(10)
-  endDate!: string;
+  @IsBusinessDate()
+  endDate!: BusinessDateInput;
 }
 
 export class TransitionAccountingPeriodDto {

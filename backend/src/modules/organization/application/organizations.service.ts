@@ -43,7 +43,6 @@ import {
   ORGANIZATION_UPDATED_EVENT,
 } from '../domain/organization.events.js';
 import {
-  assertCalendarSystem,
   assertCodeAndName,
   assertTimeZone,
   assertUsable,
@@ -79,16 +78,12 @@ export interface ListOrganizationsQuery {
 export interface CreateOrganizationInput {
   code: string;
   name: string;
-  /** C-63: omit to take the deployment default (`JALALI` / `Asia/Tehran`). */
-  calendarSystem?: string | undefined;
   timeZone?: string | undefined;
 }
 
 export interface UpdateOrganizationInput {
   code?: string | undefined;
   name?: string | undefined;
-  /** C-63: closes over the code-defined list; an unknown value is refused. */
-  calendarSystem?: string | undefined;
   /** C-63: must be a resolvable IANA zone. */
   timeZone?: string | undefined;
 }
@@ -258,11 +253,6 @@ export class OrganizationsService {
     const code = normalizeCode(input.code);
     const name = normalizeName(input.name);
     assertCodeAndName(code, name);
-    // C-63: the date/time policy is validated here and, when omitted, left to
-    // the column defaults — never invented by the service.
-    if (input.calendarSystem !== undefined) {
-      assertCalendarSystem(input.calendarSystem);
-    }
     if (input.timeZone !== undefined) assertTimeZone(input.timeZone);
 
     const existing = await this.repository.findByCode(code);
@@ -282,12 +272,8 @@ export class OrganizationsService {
           code,
           name,
           isActive: true,
-          // C-63: what the caller stated, otherwise the deployment default —
-          // written explicitly so a created organization can never be missing
-          // its date/time policy (the column default remains the backstop for
-          // rows created outside this path).
-          calendarSystem:
-            input.calendarSystem ?? DEFAULT_DATE_TIME_SETTINGS.calendarSystem,
+          // The calendar is a fixed Jalali-first MVP policy. The only
+          // per-organization date/time value is the IANA zone.
           timeZone: input.timeZone ?? DEFAULT_DATE_TIME_SETTINGS.timeZone,
           createdAt: now,
           updatedAt: now,
@@ -346,24 +332,17 @@ export class OrganizationsService {
       }
     }
 
-    if (input.calendarSystem !== undefined) {
-      assertCalendarSystem(input.calendarSystem);
-    }
     if (input.timeZone !== undefined) assertTimeZone(input.timeZone);
 
     const patch: {
       code?: string;
       name?: string;
-      calendarSystem?: string;
       timeZone?: string;
       updatedAt: Date;
       updatedBy: string | null;
     } = { updatedAt: new Date(), updatedBy: getPrincipal()?.userId ?? null };
     if (code !== undefined) patch.code = code;
     if (name !== undefined) patch.name = name;
-    if (input.calendarSystem !== undefined) {
-      patch.calendarSystem = input.calendarSystem;
-    }
     if (input.timeZone !== undefined) patch.timeZone = input.timeZone;
 
     const updated = await this.repository.update(id, patch);
@@ -587,9 +566,8 @@ export class OrganizationsService {
           code: DEPLOYMENT_ORGANIZATION_BOOTSTRAP_CODE,
           name: DEPLOYMENT_ORGANIZATION_BOOTSTRAP_NAME,
           isActive: true,
-          // C-63: the pinned organization starts on the deployment default;
-          // an operator changes it afterwards through the ordinary edit path.
-          calendarSystem: DEFAULT_DATE_TIME_SETTINGS.calendarSystem,
+          // Calendar display is a fixed Jalali-first MVP policy; the only
+          // organization-specific setting here is the IANA time zone.
           timeZone: DEFAULT_DATE_TIME_SETTINGS.timeZone,
           createdAt: now,
           updatedAt: now,

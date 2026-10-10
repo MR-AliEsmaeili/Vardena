@@ -1,8 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsDate, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { IsUlid } from '../../../../kernel/http/is-ulid.decorator.js';
+import { IsBusinessDate } from '../../../../kernel/http/is-business-date.decorator.js';
+import {
+  DECLARED_BUSINESS_DATE_SCHEMA,
+  LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+} from '../../../../kernel/datetime/api-date-time.dto.js';
+import type { BusinessDateInput } from '../../../../kernel/datetime/business-date-input.js';
 
 /**
  * Unit conversion API contracts (D-26, master-data-strategy.md §3.4, OQ-29).
@@ -57,22 +62,29 @@ export class CreateUnitConversionDto {
   factor!: string;
 
   @ApiProperty({
-    format: 'date-time',
-    description: 'Instant from which this version applies.',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'Business date on which this version becomes effective. Gregorian dates use YYYY-MM-DD; declare { calendar, value } for a Jalali date. A legacy ISO instant resolves to its UTC calendar day.',
   })
-  @Type(() => Date)
-  @IsDate({ message: 'validFrom must be an ISO-8601 date-time.' })
-  validFrom!: Date;
+  @IsBusinessDate()
+  validFrom!: BusinessDateInput;
 
   @ApiPropertyOptional({
-    format: 'date-time',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'Usually omitted (open-ended). A new open-ended version closes the previous one automatically.',
+      'Exclusive business-date end (open-ended when omitted); legacy ISO instants resolve by UTC calendar day. A new open-ended version closes the previous one automatically.',
   })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate({ message: 'validTo must be an ISO-8601 date-time.' })
-  validTo?: Date;
+  @IsBusinessDate()
+  validTo?: BusinessDateInput;
 }
 
 export class ListUnitConversionsQueryDto extends PageQueryDto {
@@ -108,13 +120,17 @@ export class ListUnitConversionsQueryDto extends PageQueryDto {
   toUnitId?: string;
 
   @ApiPropertyOptional({
-    format: 'date-time',
-    description: 'Only versions in force at this instant.',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
+    description:
+      'Only versions in force on this BusinessDate. Legacy ISO instants resolve by UTC calendar day; declared calendar input is converted once.',
   })
   @IsOptional()
-  @Type(() => Date)
-  @IsDate({ message: 'activeAt must be an ISO-8601 date-time.' })
-  activeAt?: Date;
+  @IsBusinessDate()
+  activeAt?: BusinessDateInput;
 }
 
 export class UnitConversionResponseDto {
@@ -140,11 +156,11 @@ export class UnitConversionResponseDto {
   @ApiProperty({ example: '12', description: 'Decimal string.' })
   factor!: string;
 
-  @ApiProperty({ format: 'date-time' })
+  @ApiProperty({ format: 'date' })
   validFrom!: string;
 
   @ApiProperty({
-    format: 'date-time',
+    format: 'date',
     nullable: true,
     description:
       'Null while this is the current version; set when a later version superseded it.',
@@ -158,7 +174,7 @@ export class UnitConversionResponseDto {
   updatedAt!: string;
 }
 
-/** Query for the "which version applies at instant X" read. */
+/** Query for the version effective on business date X. */
 export class ResolveUnitConversionQueryDto {
   @ApiProperty({ format: 'ulid' })
   @IsUlid()
@@ -182,13 +198,16 @@ export class ResolveUnitConversionQueryDto {
   toUnitId!: string;
 
   @ApiProperty({
-    format: 'date-time',
+    oneOf: [
+      { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
+      DECLARED_BUSINESS_DATE_SCHEMA,
+    ],
     description:
-      'The instant to resolve at. A past date returns the version that was in force then.',
+      'BusinessDate to resolve. Legacy ISO instants resolve by UTC calendar day; declared calendar input is converted once.',
   })
-  @Type(() => Date)
-  @IsDate({ message: 'asOf must be an ISO-8601 date-time.' })
-  asOf!: Date;
+  @IsBusinessDate()
+  asOf!: BusinessDateInput;
 }
 
 export class ResolveUnitConversionResponseDto {

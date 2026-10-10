@@ -86,6 +86,11 @@ A change is done when **all** hold:
 - [ ] External side effects go through the outbox, not direct calls (AR-14)
 - [ ] Migrations present and unedited-after-apply (AR-10/08)
 - [ ] Tests cover the business rules, including failure paths (AG-06)
+- [ ] Date/time fields are explicitly classified as `BusinessDate` or `Instant`; the branded canonical day and PostgreSQL `date` never become a UTC-midnight JS `Date`, `toISOString()` day contract, implicit parse, or timestamp comparison outside a persistence carrier (AG-20/AR-32)
+- [ ] DTO/validation, domain, repository, queries/filters, API, frontend, resolver, replay/revaluation, and migration consumers follow `docs/datetime.md`; declared Jalali input stays explicit and legacy ISO BusinessDate compatibility is isolated to approved endpoints and resolves by UTC day (AG-20)
+- [ ] Inventory unit-conversion and item-valuation windows retain BusinessDate `[validFrom, validTo)` semantics, open-ended `null`, adjacency, and fail-closed invalid/overlap behavior; no other `valid_*` field is reclassified without an Owner decision (AG-20)
+- [ ] Migration audit output is aggregate/non-sensitive; rehearsal uses a disposable PostgreSQL database, refuses unsafe reuse, and is not presented as production-data evidence (AG-20)
+- [ ] If the Owner requires CI-only tests, no local heavy suite is run; GitHub checks are inspected on the exact final SHA before any pass claim (AG-20)
 - [ ] Docs updated; ADR added if architecture changed (AG-07)
 - [ ] No new major dependencies (AG-11)
 - [ ] Diff contains nothing unrelated (AG-03)
@@ -102,3 +107,10 @@ A change is done when **all** hold:
   inventing a new pattern.
 - **AG-19 — Small enough to review.** If a change would exceed ~600 lines of
   meaningful diff, split it into ordered PRs and say so.
+- **AG-20 — Preserve the date/time contract.** For any date/time consumer,
+  inspect the owning module's DTO, validation, domain, persistence, query, API,
+  frontend and migration paths; enforce AR-32 and `docs/datetime.md` rather than
+  fixing only a shared formatter. Do not claim historical-data safety from a
+  fixture or an assumed convention: record actual rehearsal evidence and limits.
+  If an accepted policy is unclear or conflicts, stop and ask the Owner; do not
+  silently redefine it.

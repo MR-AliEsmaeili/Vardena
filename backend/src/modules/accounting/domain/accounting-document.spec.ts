@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseDateOnly } from './date-range.js';
 import {
   ACCOUNTING_DOCUMENT_PHASES,
   ACCOUNTING_DOCUMENT_ORIGINS,
@@ -189,7 +190,7 @@ describe('accounting document DTO (§13.5, AR-24)', () => {
     accountingPeriodId: '01J8ZQ9W7R6T5Y4U3I2O1P0PRD',
     documentType: 'accounting_voucher',
     documentNumber: '1002',
-    documentDate: new Date(Date.UTC(2026, 3, 5)),
+    documentDate: parseDateOnly('2026-04-05')!,
     description: 'Opening entry',
     phase: 'temporary',
     origin: 'manual',

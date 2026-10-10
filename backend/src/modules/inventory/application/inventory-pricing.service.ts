@@ -7,6 +7,7 @@ import { generateId } from '../../../kernel/ids/ulid.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { getPrincipal } from '../../../kernel/correlation/request-context.js';
+import { businessDateFromInstant } from '../../../kernel/datetime/business-date.js';
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
 import {
   toOffset,
@@ -54,10 +55,9 @@ import {
   buildRequestHash,
   canonicalClientBusinessDate,
   requireOperationKey,
-  resolveBusinessDateCarrier,
+  resolveBusinessDate as resolveBusinessDateInput,
 } from './inventory-posting-support.js';
 import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
-import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
 
 /**
  * The Periodic Pricing Operation and its reverse (C-59E / C-59E+,
@@ -144,9 +144,9 @@ export interface RunPricingInput {
   /** One or more inventory document kinds; sorted + de-duplicated. */
   documentKinds: string[];
   /**
-   * Inclusive range end over movement BUSINESS DAYS — the operator's ONLY
-   * range choice (OD-PDP-01). OQ-73 input contract: a canonical Gregorian
-   * day, a declared Jalali day, or a legacy ISO instant.
+   * Inclusive range end over movement BusinessDates — the operator's ONLY
+   * range choice (OD-PDP-01). A legacy ISO instant resolves to its UTC
+   * calendar day; an omitted range endpoint is not inferred here.
    */
   toDate: BusinessDateInput;
   reason?: string | null | undefined;
@@ -205,12 +205,12 @@ export class InventoryPricingService {
       );
     }
     const reason = normalizeNote(input.reason);
-    // OQ-73: the range end is a business DAY (PostgreSQL `date`), resolved
-    // once from the caller's declared day.
+    // OQ-73: the range end is a BusinessDate (PostgreSQL `date`), resolved
+    // once from the caller's Gregorian/Jalali day or legacy instant's UTC day.
     const { timeZone } = await this.organizations.getDateTimeSettings(
       input.organizationId,
     );
-    const toDate = resolveBusinessDateCarrier({
+    const toDate = resolveBusinessDateInput({
       field: 'toDate',
       value: input.toDate,
       timeZone,
@@ -242,13 +242,13 @@ export class InventoryPricingService {
       documentKinds,
     });
     const fromDate = lastRun?.toDate ?? null;
-    if (fromDate !== null && toDate.getTime() <= fromDate.getTime()) {
+    if (fromDate !== null && toDate <= fromDate) {
       throw AppException.businessRule(
-        `This scope\\u2019s last pricing run already covers up to ${businessDateFromDbDate(fromDate)}. A new run must extend it: choose a later end day.`,
+        `This scope\\u2019s last pricing run already covers up to ${fromDate}. A new run must extend it: choose a later end day.`,
         {
           code: 'inventory.pricing.range_not_extending',
           lastRunId: lastRun?.id ?? null,
-          lastToDate: businessDateFromDbDate(fromDate),
+          lastToDate: fromDate,
         },
       );
     }
@@ -346,7 +346,7 @@ export class InventoryPricingService {
         const resolved = await this.valuationService.resolveMethodForPosting({
           organizationId: input.organizationId,
           itemId: item.id,
-          asOf: now,
+          asOf: businessDateFromInstant(now, timeZone),
         });
         const balanceKey: BalanceKey = {
           organizationId: input.organizationId,
@@ -564,6 +564,9 @@ export class InventoryPricingService {
     // Everything decidable without writing: the keys, their branch and the
     // method in force (only used if a state row is missing).
     const now = new Date();
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
+    );
     const actorId = getPrincipal()?.userId ?? null;
     const prepared = await Promise.all(
       pricedOutcomes.map(async (outcome) => {
@@ -581,7 +584,7 @@ export class InventoryPricingService {
         const resolved = await this.valuationService.resolveMethodForPosting({
           organizationId: input.organizationId,
           itemId: item.id,
-          asOf: now,
+          asOf: businessDateFromInstant(now, timeZone),
         });
         return {
           key: {
@@ -950,9 +953,8 @@ export class InventoryPricingService {
       organizationId: run.organizationId,
       warehouseId: run.warehouseId,
       documentKinds: [...run.documentKinds],
-      fromDate:
-        run.fromDate === null ? null : businessDateFromDbDate(run.fromDate),
-      toDate: businessDateFromDbDate(run.toDate),
+      fromDate: run.fromDate,
+      toDate: run.toDate,
       kind: run.kind,
       reversesRunId: run.reversesRunId,
       keysExamined: run.keysExamined,

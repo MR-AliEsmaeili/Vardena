@@ -2,6 +2,10 @@ import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import {
+  toBusinessDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import {
   runWithRequestContext,
   type AuthenticatedPrincipal,
 } from '../../../kernel/correlation/request-context.js';
@@ -1035,7 +1039,7 @@ async function buildFixture(options: BuildOptions = {}) {
       fromUnitId: string;
       toUnitId: string;
       factor: string;
-      validFrom: Date;
+      validFrom: BusinessDate;
     }) =>
       stores.raw.unitConversions.globals.seed({
         id: generateId(),
@@ -1046,8 +1050,8 @@ async function buildFixture(options: BuildOptions = {}) {
         factor: input.factor,
         validFrom: input.validFrom,
         validTo: null,
-        createdAt: input.validFrom,
-        updatedAt: input.validFrom,
+        createdAt: new Date(`${input.validFrom}T00:00:00.000Z`),
+        updatedAt: new Date(`${input.validFrom}T00:00:00.000Z`),
       }),
   };
 }
@@ -2438,7 +2442,7 @@ describe('Owner decision — invocation consumes the active reservation', () => 
       fromUnitId: boxUnitId,
       toUnitId: fixture.unitId,
       factor: '12',
-      validFrom: new Date('2020-01-01T00:00:00.000Z'),
+      validFrom: toBusinessDate('2020-01-01')!,
     });
 
     const created = await asActor(() =>

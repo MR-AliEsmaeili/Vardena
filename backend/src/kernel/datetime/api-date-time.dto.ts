@@ -16,7 +16,7 @@ import { CALENDAR_SYSTEMS } from './calendar-system.js';
  * `toApiBusinessDate` / `toApiInstant`, never by hand.
  */
 
-/** `{ gregorian, jalali }` — a business day in both calendars. */
+/** `{ gregorian, jalali }` — canonical day and its nullable Jalali rendering. */
 export class ApiBusinessDateDto {
   @ApiProperty({
     format: 'date',
@@ -26,11 +26,14 @@ export class ApiBusinessDateDto {
   gregorian!: string;
 
   @ApiProperty({
+    type: String,
     format: 'date',
     example: '1405-07-16',
-    description: 'The same day in the Jalali calendar (derived for display).',
+    nullable: true,
+    description:
+      'The same day in the Jalali calendar when representable; null outside the supported Jalali rendering range.',
   })
-  jalali!: string;
+  jalali!: string | null;
 }
 
 /** `{ instant, timeZone, gregorian, jalali }` — an event timestamp. */
@@ -55,10 +58,13 @@ export class ApiInstantDto {
   gregorian!: string;
 
   @ApiProperty({
+    type: String,
     example: '1405-07-16 12:02:14',
-    description: 'Local Jalali rendering, `YYYY-MM-DD HH:mm:ss` (derived).',
+    nullable: true,
+    description:
+      'Local Jalali rendering, `YYYY-MM-DD HH:mm:ss` (derived), or null outside the supported conversion range.',
   })
-  jalali!: string;
+  jalali!: string | null;
 }
 
 /**
@@ -97,4 +103,19 @@ export const DECLARED_BUSINESS_DATE_SCHEMA = {
   },
   required: ['calendar', 'value'],
   additionalProperties: false as const,
+};
+
+/**
+ * Legacy timestamp form accepted only for compatibility on BusinessDate
+ * inputs. The current owner-approved parser resolves this value to its UTC
+ * calendar day, aligned with migration 110's stored-value conversion. This
+ * intentionally differs from the pre-cutover parser's organization-zone
+ * request behavior; it is never stored as an Instant.
+ */
+export const LEGACY_BUSINESS_DATE_INSTANT_SCHEMA = {
+  type: 'string' as const,
+  format: 'date-time' as const,
+  example: '2026-10-08T21:30:00.000Z',
+  description:
+    'Legacy ISO-8601 instant accepted for compatibility; its UTC calendar day is used as the BusinessDate.',
 };

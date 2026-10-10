@@ -37,6 +37,11 @@
  * covered by the live-database suite instead.
  */
 import { generateId } from '../../src/kernel/ids/ulid.js';
+import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../src/kernel/datetime/business-date.js';
 import type { AccountingDocument } from '../../src/modules/accounting/domain/accounting-document.js';
 import type { LedgerEntry } from '../../src/modules/accounting/domain/ledger-entry.js';
 import { canonicalizeAmount } from '../../src/modules/accounting/domain/money.js';
@@ -317,21 +322,15 @@ function matchesWhere(
   for (const [key, expected] of Object.entries(where)) {
     if (expected === undefined) continue;
     if (key === 'dateFrom') {
-      if (
-        !(record.documentDate instanceof Date) ||
-        record.documentDate < (expected as Date)
-      ) {
-        return false;
-      }
+      if (!(record.documentDate instanceof Date)) return false;
+      const documentDate = businessDateFromDbDate(record.documentDate);
+      if (documentDate < (expected as BusinessDate)) return false;
       continue;
     }
     if (key === 'dateTo') {
-      if (
-        !(record.documentDate instanceof Date) ||
-        record.documentDate > (expected as Date)
-      ) {
-        return false;
-      }
+      if (!(record.documentDate instanceof Date)) return false;
+      const documentDate = businessDateFromDbDate(record.documentDate);
+      if (documentDate > (expected as BusinessDate)) return false;
       continue;
     }
     if (key === 'search') {
@@ -439,7 +438,7 @@ export class InMemoryAccountingDocumentsRepository {
         accountingPeriodId: scope.periodId,
         documentType: 'accounting_voucher',
         documentNumber: input.documentNumber,
-        documentDate: input.documentDate,
+        documentDate: dbBusinessDate(input.documentDate),
         description: input.description,
         state: input.state,
         origin: input.origin,
@@ -503,7 +502,7 @@ export class InMemoryAccountingDocumentsRepository {
       financialAreaId: input.financialAreaId,
       fiscalYearId: scope.yearId,
       accountingPeriodId: scope.periodId,
-      documentDate: input.documentDate,
+      documentDate: dbBusinessDate(input.documentDate),
       description: input.description,
       branchId: input.branchId,
       updatedAt: input.updatedAt,
@@ -546,7 +545,7 @@ export class InMemoryAccountingDocumentsRepository {
     const scope = this.resolveScope(
       input.organizationId,
       header.financialAreaId,
-      header.documentDate,
+      businessDateFromDbDate(header.documentDate),
     );
     // Task 14 — the lifecycle gate refuses a closed/sealed period BEFORE
     // anything else happens, exactly like the real transaction's fail-fast
@@ -714,7 +713,7 @@ export class InMemoryAccountingDocumentsRepository {
           accountingPeriodId: scope.periodId,
           documentType: 'accounting_voucher',
           documentNumber: input.documentNumber,
-          documentDate: input.documentDate,
+          documentDate: dbBusinessDate(input.documentDate),
           description: input.description,
           state: 'final',
           origin: original.origin,
@@ -791,7 +790,7 @@ export class InMemoryAccountingDocumentsRepository {
   private resolveScope(
     organizationId: string,
     financialAreaId: string,
-    documentDate: Date,
+    documentDate: BusinessDate,
   ): {
     yearId: string;
     periodId: string;
@@ -835,7 +834,7 @@ export class InMemoryAccountingDocumentsRepository {
   private resolveOpenScope(
     organizationId: string,
     financialAreaId: string,
-    documentDate: Date,
+    documentDate: BusinessDate,
   ): { yearId: string; periodId: string } {
     const scope = this.resolveScope(
       organizationId,
@@ -943,7 +942,7 @@ export class InMemoryAccountingDocumentsRepository {
         debitAmount: canonicalizeAmount(entry.debitAmount),
         creditAmount: canonicalizeAmount(entry.creditAmount),
         description: entry.description,
-        documentDate: entry.documentDate,
+        documentDate: dbBusinessDate(entry.documentDate),
         postingTimestamp: entry.postingTimestamp,
         branchId: entry.branchId,
         origin: entry.origin,
@@ -983,7 +982,7 @@ export class InMemoryAccountingDocumentsRepository {
       accountingPeriodId: row.accountingPeriodId,
       documentType: row.documentType,
       documentNumber: row.documentNumber,
-      documentDate: row.documentDate,
+      documentDate: businessDateFromDbDate(row.documentDate),
       description: row.description,
       phase: toPhase(row.state),
       origin: row.origin === 'system' ? 'system' : 'manual',
@@ -1137,13 +1136,9 @@ function matchesMovementFilter(
   ) {
     return false;
   }
-  const day = row.documentDate.getTime();
-  if (filter.dateFrom !== undefined && day < filter.dateFrom.getTime()) {
-    return false;
-  }
-  if (filter.dateTo !== undefined && day > filter.dateTo.getTime()) {
-    return false;
-  }
+  const day = businessDateFromDbDate(row.documentDate);
+  if (filter.dateFrom !== undefined && day < filter.dateFrom) return false;
+  if (filter.dateTo !== undefined && day > filter.dateTo) return false;
   return true;
 }
 
@@ -1194,7 +1189,7 @@ function toLedgerEntry(record: LedgerEntryRecord): LedgerEntry {
     debitAmount: canonicalizeAmount(record.debitAmount),
     creditAmount: canonicalizeAmount(record.creditAmount),
     description: record.description,
-    documentDate: record.documentDate,
+    documentDate: businessDateFromDbDate(record.documentDate),
     postingTimestamp: record.postingTimestamp,
     branchId: record.branchId,
     origin: record.origin,
@@ -1318,4 +1313,12 @@ function toPhase(state: string): 'draft' | 'temporary' | 'final' {
     return state;
   }
   throw new Error(`Accounting document has an unknown state "${state}".`);
+}
+
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Accounting BusinessDate "${value}".`);
+  }
+  return carrier;
 }

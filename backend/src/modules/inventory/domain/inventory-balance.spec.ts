@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import {
   availableQuantity,
   resolveAvailableQuantity,
@@ -46,6 +47,17 @@ describe('availability', () => {
     expect(dto.onHand).toBe('10');
     expect(dto.reserved).toBe('4');
     expect(dto.reservationsReduceAvailable).toBe(true);
+  });
+});
+
+describe('Inventory BusinessDate mapping', () => {
+  it('keeps a historical canonical Gregorian day in the balance DTO', () => {
+    const day = toBusinessDate('0600-01-01');
+    if (day === null) throw new Error('Invalid fixture BusinessDate.');
+    expect(
+      toInventoryBalanceDto(balance({ lastMovementDate: day }), true)
+        .lastMovementDate,
+    ).toBe('0600-01-01');
   });
 });
 

@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import type { FiscalYear } from '../domain/fiscal-year.js';
 import {
   checkFiscalYearRange,
@@ -71,8 +76,8 @@ export interface CreateFiscalYearCheckedInput {
   financialAreaId: string;
   code: string;
   title: string;
-  startDate: Date;
-  endDate: Date;
+  startDate: BusinessDate;
+  endDate: BusinessDate;
   priorYearId: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -83,8 +88,8 @@ export interface UpdateFiscalYearCheckedInput {
   id: string;
   code?: string | undefined;
   title?: string | undefined;
-  startDate?: Date | undefined;
-  endDate?: Date | undefined;
+  startDate?: BusinessDate | undefined;
+  endDate?: BusinessDate | undefined;
   isActive?: boolean | undefined;
   priorYearId?: string | null | undefined;
   updatedAt: Date;
@@ -194,7 +199,11 @@ export class FiscalYearsRepository {
       });
       const check = checkFiscalYearRange({
         candidate: { startDate: input.startDate, endDate: input.endDate },
-        existing: siblings,
+        existing: siblings.map((row) => ({
+          id: row.id,
+          startDate: businessDateFromDbDate(row.startDate),
+          endDate: businessDateFromDbDate(row.endDate),
+        })),
       });
       // `invalid_range` cannot happen here — the service parses and orders
       // the dates before calling — so reaching it is a caller bug.
@@ -212,8 +221,8 @@ export class FiscalYearsRepository {
           financialAreaId: input.financialAreaId,
           code: input.code,
           title: input.title,
-          startDate: input.startDate,
-          endDate: input.endDate,
+          startDate: dbBusinessDate(input.startDate),
+          endDate: dbBusinessDate(input.endDate),
           status: 'open',
           isActive: true,
           priorYearId: input.priorYearId,
@@ -264,8 +273,8 @@ export class FiscalYearsRepository {
       if (datesChanging) {
         const startDate = input.startDate ?? locked.startDate;
         const endDate = input.endDate ?? locked.endDate;
-        patch.startDate = startDate;
-        patch.endDate = endDate;
+        patch.startDate = dbBusinessDate(startDate);
+        patch.endDate = dbBusinessDate(endDate);
 
         const siblings = await tx.fiscalYear.findMany({
           where: {
@@ -278,7 +287,11 @@ export class FiscalYearsRepository {
         });
         const check = checkFiscalYearRange({
           candidate: { startDate, endDate },
-          existing: siblings,
+          existing: siblings.map((row) => ({
+            id: row.id,
+            startDate: businessDateFromDbDate(row.startDate),
+            endDate: businessDateFromDbDate(row.endDate),
+          })),
           excludeId: input.id,
         });
         if (check.problem === 'invalid_range') {
@@ -298,7 +311,15 @@ export class FiscalYearsRepository {
         const newRange = { startDate, endDate };
         for (const period of periods) {
           // Every period must stay inside the NEW range, not the stored one.
-          if (!dateOnlyRangeWithin(period, newRange)) {
+          if (
+            !dateOnlyRangeWithin(
+              {
+                startDate: businessDateFromDbDate(period.startDate),
+                endDate: businessDateFromDbDate(period.endDate),
+              },
+              newRange,
+            )
+          ) {
             throw new FiscalYearRangeExcludesPeriodsError(period.id);
           }
         }
@@ -402,12 +423,20 @@ function toDomain(row: FiscalYearRow): FiscalYear {
     financialAreaId: row.financialAreaId,
     code: row.code,
     title: row.title,
-    startDate: row.startDate,
-    endDate: row.endDate,
+    startDate: businessDateFromDbDate(row.startDate),
+    endDate: businessDateFromDbDate(row.endDate),
     status,
     isActive: row.isActive,
     priorYearId: row.priorYearId,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Accounting BusinessDate "${value}".`);
+  }
+  return carrier;
 }

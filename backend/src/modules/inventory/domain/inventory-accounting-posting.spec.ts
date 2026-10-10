@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import {
   ACCOUNTING_POST_ACTION,
   ACCOUNTING_POST_CANCEL_ACTION,
@@ -76,7 +77,7 @@ function request(
     sourceDocumentId: 'doc-1',
     sourceDocumentType: 'inventory_receipt',
     sourceDocumentNumber: 'R-0001',
-    sourceDocumentDate: '2026-10-08',
+    sourceDocumentDate: toBusinessDate('2026-10-08')!,
     sourceDocumentVersion: '2026-10-08T00:00:00.000Z',
     warehouseId: 'wh-1',
     postingMode: 'direct_final',
@@ -293,7 +294,7 @@ describe('C-62 canonical request hash', () => {
       request({ sourceDocumentId: 'doc-2' }),
       request({ sourceDocumentType: 'inventory_issue' }),
       request({ sourceDocumentNumber: 'R-0002' }),
-      request({ sourceDocumentDate: '2026-10-09' }),
+      request({ sourceDocumentDate: toBusinessDate('2026-10-09')! }),
       request({ sourceDocumentVersion: '2026-10-09T00:00:00.000Z' }),
       request({ warehouseId: 'wh-2' }),
       request({ postingMode: 'draft' }),

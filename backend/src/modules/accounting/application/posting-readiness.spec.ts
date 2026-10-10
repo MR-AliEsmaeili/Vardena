@@ -63,7 +63,7 @@ const DEBIT_ACCOUNT = '01ACCOUNTAAAAAAAAAAAAAAAAA01';
 const CREDIT_ACCOUNT = '01ACCOUNTAAAAAAAAAAAAAAAAA02';
 const CONFIGURATION = '01CONFIGAAAAAAAAAAAAAAAAAA01';
 
-const DOCUMENT_DATE = parseDateOnly('2026-04-05') as Date;
+const DOCUMENT_DATE = parseDateOnly('2026-04-05')!;
 
 function loggerStub(): JsonLogger {
   return {
@@ -140,8 +140,8 @@ function seedScope(fx: Fixture): void {
     financialAreaId: AREA,
     code: 'Y1405',
     title: 'Year 1405',
-    startDate: parseDateOnly('2026-01-01') as Date,
-    endDate: parseDateOnly('2026-12-31') as Date,
+    startDate: parseDateOnly('2026-01-01')!,
+    endDate: parseDateOnly('2026-12-31')!,
     status: 'open',
     isActive: true,
     priorYearId: null,
@@ -155,8 +155,8 @@ function seedScope(fx: Fixture): void {
     fiscalYearId: YEAR,
     sequence: 1,
     title: 'April',
-    startDate: parseDateOnly('2026-04-01') as Date,
-    endDate: parseDateOnly('2026-04-30') as Date,
+    startDate: parseDateOnly('2026-04-01')!,
+    endDate: parseDateOnly('2026-04-30')!,
     status: 'open',
     periodKind: 'normal',
     createdAt: now,
@@ -452,8 +452,8 @@ describe('PostingReadinessService (Task 10.5 seam)', () => {
     // edits yet), so a stored resolution can go stale — readiness reports
     // the drift instead of re-resolving and silently accepting it.
     fixture.accounting.raw.state.years.patch(YEAR, {
-      startDate: parseDateOnly('2027-01-01') as Date,
-      endDate: parseDateOnly('2027-12-31') as Date,
+      startDate: parseDateOnly('2027-01-01')!,
+      endDate: parseDateOnly('2027-12-31')!,
     });
     await expect(
       fixture.readiness.evaluateReadiness(ORG_A, voucher.id),

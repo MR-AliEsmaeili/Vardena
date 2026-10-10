@@ -129,6 +129,7 @@ export class OrganizationsController {
     return this.organizations.createOrganization({
       code: body.code,
       name: body.name,
+      timeZone: body.timeZone,
     });
   }
 
@@ -139,6 +140,7 @@ export class OrganizationsController {
   @ApiOkResponse({ type: OrganizationResponseDto })
   @ApiNotFoundResponse({ description: 'Organization does not exist.' })
   @ApiConflictResponse({ description: 'Organization code already exists.' })
+  @ApiBadRequestResponse({ description: 'Validation failed.' })
   @DeploymentOrganizationRoot()
   async update(
     @Param('id') id: string,
@@ -147,6 +149,7 @@ export class OrganizationsController {
     return this.organizations.updateOrganization(id, {
       code: body.code,
       name: body.name,
+      timeZone: body.timeZone,
     });
   }
 

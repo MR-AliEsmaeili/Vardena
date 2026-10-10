@@ -9,6 +9,10 @@ import {
   uniqueViolationTouches,
 } from '../../../kernel/prisma/prisma-errors.js';
 import { getPrincipal } from '../../../kernel/correlation/request-context.js';
+import {
+  businessDateFromInstant,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
@@ -1721,7 +1725,7 @@ export class InventoryAccountingPostingService {
           documentType: request.sourceDocumentType,
           documentNumber: request.sourceDocumentNumber,
           documentVersion: request.sourceDocumentVersion,
-          documentDate: new Date(request.sourceDocumentDate),
+          documentDate: locked.businessDate,
           branchId: request.branchId,
           warehouseId: request.warehouseId,
           valuationState: facts.valuationState,
@@ -1804,6 +1808,9 @@ export class InventoryAccountingPostingService {
         ]),
       ).values(),
     ];
+    const { timeZone } =
+      await this.organizations.getDateTimeSettings(organizationId);
+    const asOf = businessDateFromInstant(now, timeZone);
     const lockEntries = await Promise.all(
       keys.map(async (key) => ({
         key,
@@ -1811,7 +1818,7 @@ export class InventoryAccountingPostingService {
           await this.valuation.resolveMethodForPosting({
             organizationId: key.organizationId,
             itemId: key.itemId,
-            asOf: now,
+            asOf,
           })
         ).method,
       })),
@@ -1900,7 +1907,7 @@ export class InventoryAccountingPostingService {
       organizationId: string;
       kind: string;
       number: string | null;
-      businessDate: Date;
+      businessDate: BusinessDate;
       warehouseId: string | null;
       valuationStale: boolean;
       updatedAt: Date;

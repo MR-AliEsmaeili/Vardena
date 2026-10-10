@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import type { AccountingPeriod } from '../domain/accounting-period.js';
 import {
   checkAccountingPeriodRange,
@@ -82,8 +87,8 @@ export interface CreateAccountingPeriodCheckedInput {
   fiscalYearId: string;
   sequence: number;
   title: string;
-  startDate: Date;
-  endDate: Date;
+  startDate: BusinessDate;
+  endDate: BusinessDate;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string | null;
@@ -208,7 +213,11 @@ export class AccountingPeriodsRepository {
       const check = checkAccountingPeriodRange({
         candidate: { startDate: input.startDate, endDate: input.endDate },
         year: { startDate: year.startDate, endDate: year.endDate },
-        existing: siblings,
+        existing: siblings.map((row) => ({
+          id: row.id,
+          startDate: businessDateFromDbDate(row.startDate),
+          endDate: businessDateFromDbDate(row.endDate),
+        })),
       });
       // `invalid_range` cannot happen here — the service parses and orders
       // the dates before calling — so reaching it is a caller bug.
@@ -228,8 +237,8 @@ export class AccountingPeriodsRepository {
           fiscalYearId: input.fiscalYearId,
           sequence: input.sequence,
           title: input.title,
-          startDate: input.startDate,
-          endDate: input.endDate,
+          startDate: dbBusinessDate(input.startDate),
+          endDate: dbBusinessDate(input.endDate),
           status: 'open',
           periodKind: 'normal',
           createdAt: input.createdAt,
@@ -349,11 +358,19 @@ function toDomain(row: AccountingPeriodRow): AccountingPeriod {
     fiscalYearId: row.fiscalYearId,
     sequence: row.sequence,
     title: row.title,
-    startDate: row.startDate,
-    endDate: row.endDate,
+    startDate: businessDateFromDbDate(row.startDate),
+    endDate: businessDateFromDbDate(row.endDate),
     status: row.status,
     periodKind: row.periodKind,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Accounting BusinessDate "${value}".`);
+  }
+  return carrier;
 }

@@ -134,3 +134,18 @@ authorize follow-up implementation work.
 - [Architecture](../../architecture.md)
 
 **Task 22 — Frontend Vertical Slice — ACCEPTED under Owner-authorized formal acceptance synchronization.**
+
+## Later date/time clarification (2026-10-09)
+
+This acceptance record remains a historical snapshot of Task 22 and PR #62; its
+statement above that OQ-02's Jalali date behavior was open was accurate on
+2026-09-26. Owner-accepted ADR-0042 (2026-10-09) subsequently resolved the
+generic BusinessDate/Instant contract: BusinessDates are canonical Gregorian
+PostgreSQL `date` values with organization-calendar input/display (Jalali by
+default), while Instants remain UTC `timestamptz` values rendered in the
+organization's valid IANA zone and calendar. The present audit separately
+verifies the current shared frontend paths; this later decision does not imply
+that PR #62 implemented them. OQ-02 remains open for primary UI language,
+Persian-numeral preference, and broader localization, not for the generic
+date/time contract. See ADR-0042, `docs/datetime.md`, and the resolved OQ-73
+entry in `docs/open-questions.md`.

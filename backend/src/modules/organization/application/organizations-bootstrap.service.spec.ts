@@ -82,8 +82,6 @@ async function seedOrganization(
     code,
     name: code,
     isActive,
-    // C-63: the date/time policy an organization always carries.
-    calendarSystem: 'JALALI',
     timeZone: 'Asia/Tehran',
     createdAt: now,
     updatedAt: now,

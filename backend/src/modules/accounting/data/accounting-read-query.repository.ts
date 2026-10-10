@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  isGregorianBusinessDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import { canonicalizeAmount, subtractAmounts } from '../domain/money.js';
 import type { LedgerEntry } from '../domain/ledger-entry.js';
 import type { LedgerEntryRow, OrderBy } from './accounting-rows.js';
@@ -73,9 +79,17 @@ export interface StatementLedgerWhere {
   accountId: string;
   /** A single period (movement window) or a set (opening window). */
   accountingPeriodId?: string | { in: string[] };
-  /** Optional primary financial reporting date bounds. */
-  documentDate?: { gte?: Date; lte?: Date; lt?: Date };
+  /** Optional primary financial reporting date bounds (BusinessDate days). */
+  documentDate?: {
+    gte?: BusinessDate;
+    lte?: BusinessDate;
+    lt?: BusinessDate;
+  };
 }
+
+type StatementLedgerDbWhere = Omit<StatementLedgerWhere, 'documentDate'> & {
+  documentDate?: { gte?: Date; lte?: Date; lt?: Date };
+};
 
 /** Account identity + flags needed for scope validation (never nature). */
 export interface StatementAccountRef {
@@ -101,8 +115,8 @@ export interface AccountingReportScopeFilter extends AccountingReportAccountFilt
   accountId?: string | undefined;
   fiscalYearId: string;
   accountingPeriodId?: string | undefined;
-  dateFrom?: Date | undefined;
-  dateTo?: Date | undefined;
+  dateFrom?: BusinessDate | undefined;
+  dateTo?: BusinessDate | undefined;
   /** Use the explicit dateFrom boundary instead of sequence-based opening. */
   dateFromExplicit?: boolean | undefined;
   /** Apply the explicit dateTo boundary to movement rows. */
@@ -115,7 +129,7 @@ export interface GeneralLedgerReadRow {
   financialAreaId: string;
   fiscalYearId: string;
   accountingPeriodId: string;
-  documentDate: string;
+  documentDate: BusinessDate;
   postingTimestamp: string;
   documentType: string;
   documentId: string;
@@ -160,8 +174,8 @@ export interface StatementYearRef {
   financialAreaId: string;
   code: string;
   title: string;
-  startDate: Date;
-  endDate: Date;
+  startDate: BusinessDate;
+  endDate: BusinessDate;
   status: string;
 }
 
@@ -169,8 +183,8 @@ export interface StatementPeriodRef {
   id: string;
   sequence: number;
   title: string;
-  startDate: Date;
-  endDate: Date;
+  startDate: BusinessDate;
+  endDate: BusinessDate;
   status: string;
 }
 
@@ -207,14 +221,14 @@ type StatementWhere = {
 type LedgerWindowClient = {
   ledgerEntry: {
     findMany(args: {
-      where: StatementLedgerWhere;
+      where: StatementLedgerDbWhere;
       orderBy: OrderBy;
       skip: number;
       take: number;
     }): Promise<LedgerEntryRow[]>;
-    count(args: { where: StatementLedgerWhere }): Promise<number>;
+    count(args: { where: StatementLedgerDbWhere }): Promise<number>;
     aggregate(args: {
-      where: StatementLedgerWhere;
+      where: StatementLedgerDbWhere;
       _sum: { debitAmount: true; creditAmount: true };
     }): Promise<{
       _sum: { debitAmount: unknown | null; creditAmount: unknown | null };
@@ -350,8 +364,8 @@ export class AccountingReadQueryRepository {
           financialAreaId: row.financialAreaId,
           code: row.code,
           title: row.title,
-          startDate: row.startDate,
-          endDate: row.endDate,
+          startDate: businessDateFromDbDate(row.startDate),
+          endDate: businessDateFromDbDate(row.endDate),
           status: row.status,
         };
   }
@@ -399,7 +413,7 @@ export class AccountingReadQueryRepository {
       window: StatementLedgerWhere;
       priorPeriodIds: readonly string[];
       /** Explicit Document Date opening boundary, when supplied. */
-      openingBefore?: Date | undefined;
+      openingBefore?: BusinessDate | undefined;
     },
     skip: number,
     take: number,
@@ -407,7 +421,7 @@ export class AccountingReadQueryRepository {
     const client = await this.client();
     return client.$transaction(
       async (tx) => {
-        const window = params.window;
+        const window = statementWhereToDbWhere(params.window);
         const [total, windowSums, priorSums, prePageAmounts, rows] =
           await Promise.all([
             tx.ledgerEntry.count({ where: window }),
@@ -422,7 +436,7 @@ export class AccountingReadQueryRepository {
                     financialAreaId: window.financialAreaId,
                     fiscalYearId: window.fiscalYearId,
                     accountId: window.accountId,
-                    documentDate: { lt: params.openingBefore },
+                    documentDate: { lt: dbBusinessDate(params.openingBefore) },
                   },
                   _sum: { debitAmount: true, creditAmount: true },
                 })
@@ -577,8 +591,8 @@ export class AccountingReadQueryRepository {
                AND le."financial_area_id" = ${filter.financialAreaId}
                AND le."fiscal_year_id" = ${filter.fiscalYearId}
                AND (${periodId}::text IS NULL OR le."accounting_period_id" = ${periodId})
-               AND (${dateFromExplicit} = false OR le."document_date" >= ${dateFrom})
-               AND (${dateToExplicit} = false OR le."document_date" <= ${dateTo})
+               AND (${dateFromExplicit} = false OR le."document_date" >= ${dateFrom}::date)
+               AND (${dateToExplicit} = false OR le."document_date" <= ${dateTo}::date)
              ORDER BY
                CASE WHEN ${primarySort.field} = 'documentDate'
                           AND ${primarySort.direction} = 'asc'
@@ -657,8 +671,8 @@ export class AccountingReadQueryRepository {
                AND le."financial_area_id" = ${filter.financialAreaId}
                AND le."fiscal_year_id" = ${filter.fiscalYearId}
                AND (${periodId}::text IS NULL OR le."accounting_period_id" = ${periodId})
-               AND (${dateFromExplicit} = false OR le."document_date" >= ${dateFrom})
-               AND (${dateToExplicit} = false OR le."document_date" <= ${dateTo})
+               AND (${dateFromExplicit} = false OR le."document_date" >= ${dateFrom}::date)
+               AND (${dateToExplicit} = false OR le."document_date" <= ${dateTo}::date)
           `,
         ]);
         return {
@@ -750,7 +764,7 @@ export class AccountingReadQueryRepository {
               SELECT le."account_id",
                      SUM(CASE
                        WHEN ${dateFromExplicit} = true
-                        AND le."document_date" < ${dateFrom}
+                        AND le."document_date" < ${dateFrom}::date
                        THEN le."debit_amount"
                        WHEN ${dateFromExplicit} = false
                         AND ${periodId}::text IS NOT NULL
@@ -762,7 +776,7 @@ export class AccountingReadQueryRepository {
                      END) AS "openingDebit",
                      SUM(CASE
                        WHEN ${dateFromExplicit} = true
-                        AND le."document_date" < ${dateFrom}
+                        AND le."document_date" < ${dateFrom}::date
                        THEN le."credit_amount"
                        WHEN ${dateFromExplicit} = false
                         AND ${periodId}::text IS NOT NULL
@@ -774,9 +788,9 @@ export class AccountingReadQueryRepository {
                      END) AS "openingCredit",
                      SUM(CASE
                        WHEN (${dateFromExplicit} = false OR
-                             le."document_date" >= ${dateFrom})
+                             le."document_date" >= ${dateFrom}::date)
                         AND (${dateToExplicit} = false OR
-                             le."document_date" <= ${dateTo})
+                             le."document_date" <= ${dateTo}::date)
                         AND (${periodId}::text IS NULL OR
                              le."accounting_period_id" = ${periodId})
                        THEN le."debit_amount"
@@ -784,9 +798,9 @@ export class AccountingReadQueryRepository {
                      END) AS "debit",
                      SUM(CASE
                        WHEN (${dateFromExplicit} = false OR
-                             le."document_date" >= ${dateFrom})
+                             le."document_date" >= ${dateFrom}::date)
                         AND (${dateToExplicit} = false OR
-                             le."document_date" <= ${dateTo})
+                             le."document_date" <= ${dateTo}::date)
                         AND (${periodId}::text IS NULL OR
                              le."accounting_period_id" = ${periodId})
                        THEN le."credit_amount"
@@ -925,7 +939,7 @@ export class AccountingReadQueryRepository {
               SELECT le."account_id",
                      SUM(CASE
                        WHEN ${dateFromExplicit} = true
-                        AND le."document_date" < ${dateFrom}
+                        AND le."document_date" < ${dateFrom}::date
                        THEN le."debit_amount"
                        WHEN ${dateFromExplicit} = false
                         AND ${periodId}::text IS NOT NULL
@@ -937,7 +951,7 @@ export class AccountingReadQueryRepository {
                      END) AS "openingDebit",
                      SUM(CASE
                        WHEN ${dateFromExplicit} = true
-                        AND le."document_date" < ${dateFrom}
+                        AND le."document_date" < ${dateFrom}::date
                        THEN le."credit_amount"
                        WHEN ${dateFromExplicit} = false
                         AND ${periodId}::text IS NOT NULL
@@ -949,9 +963,9 @@ export class AccountingReadQueryRepository {
                      END) AS "openingCredit",
                      SUM(CASE
                        WHEN (${dateFromExplicit} = false OR
-                             le."document_date" >= ${dateFrom})
+                             le."document_date" >= ${dateFrom}::date)
                         AND (${dateToExplicit} = false OR
-                             le."document_date" <= ${dateTo})
+                             le."document_date" <= ${dateTo}::date)
                         AND (${periodId}::text IS NULL OR
                              le."accounting_period_id" = ${periodId})
                        THEN le."debit_amount"
@@ -959,9 +973,9 @@ export class AccountingReadQueryRepository {
                      END) AS "debit",
                      SUM(CASE
                        WHEN (${dateFromExplicit} = false OR
-                             le."document_date" >= ${dateFrom})
+                             le."document_date" >= ${dateFrom}::date)
                         AND (${dateToExplicit} = false OR
-                             le."document_date" <= ${dateTo})
+                             le."document_date" <= ${dateTo}::date)
                         AND (${periodId}::text IS NULL OR
                              le."accounting_period_id" = ${periodId})
                        THEN le."credit_amount"
@@ -1013,8 +1027,8 @@ function toPeriodRef(row: {
     id: row.id,
     sequence: row.sequence,
     title: row.title,
-    startDate: row.startDate,
-    endDate: row.endDate,
+    startDate: businessDateFromDbDate(row.startDate),
+    endDate: businessDateFromDbDate(row.endDate),
     status: row.status,
   };
 }
@@ -1068,11 +1082,10 @@ function countFrom(rows: readonly CountRawRow[]): number {
   return count;
 }
 
-function toDateOnlyString(value: Date | string): string {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime()))
-    throw new Error('Accounting report returned an invalid date.');
-  return date.toISOString().slice(0, 10);
+function toDateOnlyString(value: Date | string): BusinessDate {
+  if (value instanceof Date) return businessDateFromDbDate(value);
+  if (isGregorianBusinessDate(value)) return value;
+  throw new Error('Accounting report returned an invalid date.');
 }
 
 function toTimestampString(value: Date | string): string {
@@ -1141,3 +1154,23 @@ function toTrialBalanceRow(row: TrialBalanceRawRow): TrialBalanceReadRow {
  * use bound CASE expressions plus fixed tie-breakers rather than a client SQL
  * fragment.
  */
+
+function statementWhereToDbWhere(
+  where: StatementLedgerWhere,
+): StatementLedgerDbWhere {
+  const { documentDate: bounds, ...base } = where;
+  if (bounds === undefined) return base;
+  const documentDate: { gte?: Date; lte?: Date; lt?: Date } = {};
+  if (bounds.gte !== undefined) documentDate.gte = dbBusinessDate(bounds.gte);
+  if (bounds.lte !== undefined) documentDate.lte = dbBusinessDate(bounds.lte);
+  if (bounds.lt !== undefined) documentDate.lt = dbBusinessDate(bounds.lt);
+  return { ...base, documentDate };
+}
+
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Accounting BusinessDate "${value}".`);
+  }
+  return carrier;
+}

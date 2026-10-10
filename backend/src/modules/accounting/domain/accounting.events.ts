@@ -337,10 +337,9 @@ export type AccountingDocumentDeletedEvent = ScopedEvent<
 // audited maintenance event — the Inventory `Reconciliation.Execute`
 // precedent (§19.3). The event carries the scoped slice (always the org;
 // optionally the area/year the rebuild re-derived) plus the audit
-// evidence (actor + reason + inserted/deleted counts) because there is
-// no transition history table (same posture as the calendar lifecycle
-// reasons). The ledger stays the source of truth; this event is the
-// projection's evidence.
+// evidence (actor + reason + inserted/deleted counts) because the balance
+// projection has no separate transition-history table. The ledger stays the
+// source of truth; this event is the projection's evidence.
 
 export const ACCOUNT_BALANCE_REBUILT_EVENT = 'AccountBalance.Rebuilt' as const;
 

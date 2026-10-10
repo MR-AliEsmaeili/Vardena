@@ -23,8 +23,8 @@
  * new version is inserted and the previous open-ended one is closed, never
  * edited in place, so historical valuation stays reproducible.
  *
- * **Default** (not a configuration row): a key with no version covering an
- * instant resolves to `DEFAULT_VALUATION_METHOD`. There is deliberately no
+ * **Default** (not a configuration row): a key with no version covering a
+ * business date resolves to `DEFAULT_VALUATION_METHOD`. There is deliberately no
  * organization-level default row and no "global settings" table — the MVP has
  * one active strategy, so the default is code, and configuration only ever
  * records a deviation or an explicit confirmation.
@@ -35,6 +35,7 @@
  * Framework-free (AR-05).
  */
 
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import type { ConversionWindow } from './unit-conversion.js';
 
 /** Every method the architecture admits (active or not). */
@@ -52,7 +53,7 @@ export const ACTIVE_VALUATION_METHODS = ['moving_weighted_average'] as const;
 
 export type ActiveValuationMethod = (typeof ACTIVE_VALUATION_METHODS)[number];
 
-/** Applied when no configuration version covers the instant. */
+/** Applied when no configuration version covers the business date. */
 export const DEFAULT_VALUATION_METHOD: ActiveValuationMethod =
   'moving_weighted_average';
 
@@ -120,8 +121,8 @@ export function toItemValuationMethodDto(
     organizationId: version.organizationId,
     itemId: version.itemId,
     method: version.method,
-    validFrom: version.validFrom.toISOString(),
-    validTo: version.validTo?.toISOString() ?? null,
+    validFrom: version.validFrom,
+    validTo: version.validTo,
     note: version.note,
     createdAt: version.createdAt.toISOString(),
     updatedAt: version.updatedAt.toISOString(),
@@ -136,19 +137,18 @@ export interface ResolvedValuationMethod {
   source: ValuationMethodSource;
   /** The version that decided it; `null` when the default applied. */
   configurationId: string | null;
-  validFrom: Date | null;
-  validTo: Date | null;
+  validFrom: BusinessDate | null;
+  validTo: BusinessDate | null;
 }
 
 /** Is this version in force at `asOf`? Half-open window `[validFrom, validTo)`. */
-export function versionCoversInstant(
+export function versionCoversBusinessDate(
   version: ItemValuationMethodVersion,
-  asOf: Date,
+  asOf: BusinessDate,
 ): boolean {
-  const time = asOf.getTime();
   return (
-    version.validFrom.getTime() <= time &&
-    (version.validTo === null || time < version.validTo.getTime())
+    version.validFrom <= asOf &&
+    (version.validTo === null || asOf < version.validTo)
   );
 }
 
@@ -184,11 +184,11 @@ export function resolveValuationMethodFrom(
 }
 
 /**
- * The method in force for one item at one instant.
+ * The method in force for one item on one business date.
  *
  * Resolution is purely historical: a document dated in the past resolves the
  * version that was valid then, never today's. When no version covers the
- * instant the code-defined MVP default applies, and the result says so
+ * business date the code-defined MVP default applies, and the result says so
  * (`source: 'default'`) rather than pretending a configuration exists.
  *
  * Overlaps are rejected on write, so at most one version should match; when
@@ -197,54 +197,46 @@ export function resolveValuationMethodFrom(
  */
 export function resolveValuationMethodAt(
   versions: readonly ItemValuationMethodVersion[],
-  asOf: Date,
+  asOf: BusinessDate,
 ): ResolvedValuationMethod {
   const matching = versions.filter((version) =>
-    versionCoversInstant(version, asOf),
+    versionCoversBusinessDate(version, asOf),
   );
   const winner =
     matching.length === 0
       ? null
       : matching.reduce((latest, version) =>
-          version.validFrom.getTime() > latest.validFrom.getTime()
-            ? version
-            : latest,
+          version.validFrom > latest.validFrom ? version : latest,
         );
   return resolveValuationMethodFrom(winner);
 }
 
 /**
- * The distinct instants a replay has to resolve a method for, ascending.
+ * The distinct business dates a replay has to resolve a method for, ascending.
  *
  * Movements repeat business dates constantly (a hundred movements can share
- * five dates), and the method in force depends ONLY on the instant — so the
+ * five dates), and the method in force depends ONLY on the business date — so the
  * configuration question is asked once per distinct date, never once per
  * movement. An empty list means "no movements": nothing to resolve, and no
  * configuration row is needed at all.
  */
-export function distinctInstants(dates: readonly Date[]): Date[] {
-  const seen = new Set<number>();
-  const distinct: Date[] = [];
-  for (const date of dates) {
-    const time = date.getTime();
-    if (seen.has(time)) continue;
-    seen.add(time);
-    distinct.push(date);
-  }
-  return distinct.sort((a, b) => a.getTime() - b.getTime());
+export function distinctBusinessDates(
+  dates: readonly BusinessDate[],
+): BusinessDate[] {
+  return [...new Set(dates)].sort((a, b) => a.localeCompare(b));
 }
 
 /**
- * Is this version in force at ANY of the instants a replay will resolve?
+ * Is this version in force on ANY of the business dates a replay will resolve?
  *
  * This is the predicate the bounded database read expresses, as one OR
- * branch per distinct instant. It is what makes the read both COMPLETE and
+ * branch per distinct business date. It is what makes the read both COMPLETE and
  * genuinely RELEVANT:
  *
- * - complete — every version covering a replayed instant satisfies that
- *   instant's branch, so resolving against the result is identical to
+ * - complete — every version covering a replayed business date satisfies that
+ *   date's branch, so resolving against the result is identical to
  *   resolving against the item's whole configuration history;
- * - relevant — a version that is in force at none of the instants is in
+ * - relevant — a version that is in force on none of the business dates is in
  *   force for no movement, so it cannot change any outcome. Future
  *   configuration (starting after every replayed date) and expired
  *   configuration (ended before all of them) are both excluded for the same
@@ -252,50 +244,50 @@ export function distinctInstants(dates: readonly Date[]): Date[] {
  *
  * The consequence that matters: the number of rows returned is bounded by
  * the number of DISTINCT MOVEMENT DATES, never by how densely the item's
- * configuration history happens to be versioned. Two movements spanning a
- * year of monthly policy changes read two versions, not twelve.
+ * configuration history happens to be versioned. Movements spanning a
+ * year of monthly policy changes read only the versions needed for their dates, not twelve.
  */
-export function versionCoversAnyInstant(
+export function versionCoversAnyBusinessDate(
   version: ItemValuationMethodVersion,
-  instants: readonly Date[],
+  businessDates: readonly BusinessDate[],
 ): boolean {
-  return instants.some((instant) => versionCoversInstant(version, instant));
+  return businessDates.some((businessDate) =>
+    versionCoversBusinessDate(version, businessDate),
+  );
 }
 
-/** One replayed instant with more than one configuration version in force. */
-export interface AmbiguousValuationInstant {
-  instant: Date;
+/** One replayed business date with more than one configuration version in force. */
+export interface AmbiguousValuationBusinessDate {
+  businessDate: BusinessDate;
   versionIds: string[];
 }
 
 /**
- * The first instant (ascending) at which MORE THAN ONE version is in force,
- * or `null` when every instant resolves unambiguously.
+ * The first business date (ascending) at which MORE THAN ONE version is in force,
+ * or `null` when every business date resolves unambiguously.
  *
- * This is the ambiguity detector, and it is deliberately per instant. A
+ * This is the ambiguity detector, and it is deliberately per business date. A
  * global comparison such as "did we get back more rows than we asked dates
  * for?" is not equivalent: two versions in force on one date and none on
  * another produces as many rows as there are dates, so a count check passes
- * while a date is genuinely ambiguous. Counting per instant cannot miss that.
+ * while a date is genuinely ambiguous. Checking each business date cannot miss that.
  *
  * Overlapping windows are rejected on write, so this condition means stored
  * data has become invalid — a bad migration, a manual edit, a bug, or rows
  * created before the invariant existed. The caller fails the replay closed
  * instead of resolving the date against whichever version sorted first.
  */
-export function findAmbiguousInstant(
+export function findAmbiguousBusinessDate(
   versions: readonly ItemValuationMethodVersion[],
-  instants: readonly Date[],
-): AmbiguousValuationInstant | null {
-  for (const instant of [...instants].sort(
-    (a, b) => a.getTime() - b.getTime(),
-  )) {
+  businessDates: readonly BusinessDate[],
+): AmbiguousValuationBusinessDate | null {
+  for (const businessDate of [...businessDates].sort()) {
     const inForce = versions.filter((candidate) =>
-      versionCoversInstant(candidate, instant),
+      versionCoversBusinessDate(candidate, businessDate),
     );
     if (inForce.length > 1) {
       return {
-        instant,
+        businessDate,
         versionIds: inForce.map((candidate) => candidate.id).sort(),
       };
     }

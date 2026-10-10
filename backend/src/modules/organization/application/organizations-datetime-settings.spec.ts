@@ -1,5 +1,6 @@
 import { licensingTestDouble } from '../../../../test/support/licensing.js';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { validateSync } from 'class-validator';
 import { DomainEventBus } from '../../../kernel/events/domain-event-bus.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { runWithRequestContext } from '../../../kernel/correlation/request-context.js';
@@ -12,20 +13,15 @@ import { UNPINNED_APP_CONFIG } from '../../../../test/support/app-config.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { ORGANIZATION_PERMISSIONS } from '../domain/organization-permissions.js';
 import { OrganizationsService } from './organizations.service.js';
+import {
+  CreateOrganizationDto,
+  UpdateOrganizationDto,
+} from '../api/dto/organization.dto.js';
 
 /**
- * C-63 — the organization's date/time policy (ADR-0042 §5/§6).
- *
- * The rules under test:
- *
- *   * every organization ALWAYS carries a calendar and a zone, and a newly
- *     created one starts on the deployment default (JALALI / Asia/Tehran);
- *   * the settings are a closed vocabulary plus a resolvable IANA zone: an
- *     unknown calendar or a fixed offset (`+03:30`) is refused at the
- *     boundary, never stored and re-interpreted later;
- *   * `getDateTimeSettings` is the cross-module read (AR-07): it carries no
- *     permission of its own — the caller has already authorized its request —
- *     but still asserts the principal-bound organization scope.
+ * C-63 / ADR-0042: the MVP display calendar is fixed Jalali-first. Organization
+ * owns only the IANA time zone used to render Instants; it cannot select a
+ * Gregorian calendar or change the canonical BusinessDate contract.
  */
 
 const ACTOR = '01USERDT0000000000000000A';
@@ -56,8 +52,6 @@ async function buildFixture(): Promise<{
 }> {
   const stores = createMasterDataStores();
   const rbacStores = createInMemoryStores();
-  // The RBAC fake enforces the `user_roles.user_id` foreign key, so the two
-  // principals must exist before a role can be assigned to them.
   await seedUser(rbacStores, { id: ADMIN, username: 'datetime-admin' });
   await seedUser(rbacStores, { id: ACTOR, username: 'datetime-member' });
   const authorization = new AuthorizationService(
@@ -114,13 +108,13 @@ async function buildFixture(): Promise<{
   return { service, stores, organizationId };
 }
 
-describe('C-63 organization date/time settings', () => {
+describe('C-63 fixed Jalali MVP date policy and organization time zone', () => {
   let fixture: Awaited<ReturnType<typeof buildFixture>>;
   beforeEach(async () => {
     fixture = await buildFixture();
   });
 
-  it('starts a new organization on the deployment default and returns it', async () => {
+  it('returns a fixed read-only Jalali compatibility field and only the time zone as settings', async () => {
     const dto = await asActor(ADMIN, () =>
       fixture.service.getOrganization(fixture.organizationId),
     );
@@ -131,32 +125,60 @@ describe('C-63 organization date/time settings', () => {
       asActor(ADMIN, () =>
         fixture.service.getDateTimeSettings(fixture.organizationId),
       ),
-    ).resolves.toEqual({ calendarSystem: 'JALALI', timeZone: 'Asia/Tehran' });
+    ).resolves.toEqual({ timeZone: 'Asia/Tehran' });
   });
 
-  it('accepts a stated calendar and zone, and refuses unknown ones', async () => {
+  it('rejects calendarSystem on organization create/update DTOs', () => {
+    const createErrors = validateSync(
+      Object.assign(new CreateOrganizationDto(), {
+        code: 'ACME',
+        name: 'Acme',
+        calendarSystem: 'GREGORIAN',
+      }),
+      { whitelist: true, forbidNonWhitelisted: true },
+    );
+    const updateErrors = validateSync(
+      Object.assign(new UpdateOrganizationDto(), {
+        calendarSystem: 'GREGORIAN',
+      }),
+      { whitelist: true, forbidNonWhitelisted: true },
+    );
+
+    expect(createErrors.map((error) => error.property)).toContain(
+      'calendarSystem',
+    );
+    expect(updateErrors.map((error) => error.property)).toContain(
+      'calendarSystem',
+    );
+  });
+
+  it('does not honor a legacy calendarSystem value passed around the DTO boundary', async () => {
+    const legacyPayload = {
+      calendarSystem: 'GREGORIAN',
+      timeZone: 'Europe/Berlin',
+    } as never;
+    const updated = await asActor(ADMIN, () =>
+      fixture.service.updateOrganization(fixture.organizationId, legacyPayload),
+    );
+
+    expect(updated.calendarSystem).toBe('JALALI');
+    expect(updated.timeZone).toBe('Europe/Berlin');
+    await expect(
+      asActor(ADMIN, () =>
+        fixture.service.getDateTimeSettings(fixture.organizationId),
+      ),
+    ).resolves.toEqual({ timeZone: 'Europe/Berlin' });
+  });
+
+  it('accepts valid IANA time zones and refuses fixed offsets without changing the stored value', async () => {
     const updated = await asActor(ADMIN, () =>
       fixture.service.updateOrganization(fixture.organizationId, {
-        calendarSystem: 'GREGORIAN',
         timeZone: 'Europe/Berlin',
       }),
     );
-    expect(updated.calendarSystem).toBe('GREGORIAN');
+    expect(updated.calendarSystem).toBe('JALALI');
     expect(updated.timeZone).toBe('Europe/Berlin');
 
-    await expect(
-      asActor(ADMIN, () =>
-        fixture.service.updateOrganization(fixture.organizationId, {
-          calendarSystem: 'HIJRI' as never,
-        }),
-      ),
-    ).rejects.toMatchObject({
-      status: 400,
-      details: [{ field: 'calendarSystem', code: 'isCalendarSystem' }],
-    });
-
-    // A fixed offset is not a time zone: it carries no rules, so it cannot
-    // stay correct across a DST or zone-policy change (ADR-0042 §5).
     await expect(
       asActor(ADMIN, () =>
         fixture.service.updateOrganization(fixture.organizationId, {
@@ -168,39 +190,20 @@ describe('C-63 organization date/time settings', () => {
       details: [{ field: 'timeZone', code: 'isTimeZone' }],
     });
 
-    // Neither refusal changed anything.
     await expect(
       asActor(ADMIN, () =>
         fixture.service.getDateTimeSettings(fixture.organizationId),
       ),
-    ).resolves.toEqual({
-      calendarSystem: 'GREGORIAN',
-      timeZone: 'Europe/Berlin',
-    });
+    ).resolves.toEqual({ timeZone: 'Europe/Berlin' });
   });
 
-  it('lets a caller state the settings at creation time', async () => {
-    const created = await asActor(ADMIN, () =>
-      fixture.service.createOrganization({
-        code: 'ORG-EN',
-        name: 'English',
-        calendarSystem: 'GREGORIAN',
-        timeZone: 'UTC',
-      }),
-    );
-    expect(created.calendarSystem).toBe('GREGORIAN');
-    expect(created.timeZone).toBe('UTC');
-  });
-
-  it('serves the settings to a member without the administration permission', async () => {
+  it('serves the time zone to a member without the administration permission but never to a non-member', async () => {
     await expect(
       asActor(ACTOR, () =>
         fixture.service.getDateTimeSettings(fixture.organizationId),
       ),
-    ).resolves.toEqual({ calendarSystem: 'JALALI', timeZone: 'Asia/Tehran' });
+    ).resolves.toEqual({ timeZone: 'Asia/Tehran' });
 
-    // …but never to a non-member: a foreign organization is indistinguishable
-    // from a missing one (AC-I-16).
     const outsider = '01USERDTOUTSIDER000000000C';
     await expect(
       asActor(outsider, () =>

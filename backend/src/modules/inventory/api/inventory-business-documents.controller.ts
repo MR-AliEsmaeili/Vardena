@@ -139,9 +139,10 @@ export class InventoryBusinessDocumentsController {
     return this.documents.createDraft({
       organizationId: body.organizationId,
       kind: body.kind,
-      // C-63: the business date travels as its typed INPUT and is resolved
-      // (calendar day → canonical day instant, or a legacy instant as-is) in
-      // the application layer, with the organization's zone.
+      // C-63: the BusinessDate travels in its typed input form. The
+      // application layer resolves Gregorian/Jalali days once and collapses a
+      // legacy instant by UTC calendar day; the organization zone is used only
+      // when the caller omits the date and the service defaults to today.
       businessDate: body.businessDate,
       warehouseId: body.warehouseId,
       sourceWarehouseId: body.sourceWarehouseId,

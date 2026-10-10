@@ -15,7 +15,7 @@ requirements that shape this architecture:
   and accounting practice; variation is configuration over a stable core — see
   [`architecture/domain/`](./architecture/domain/README.md).
 - **Independent**: Vardena owns its database, business logic, authentication,
-  authorization, and API. Legacy ERPs (FaraPayam-style) are *external systems*.
+  authorization, and API. Legacy ERPs (FaraPayam-style) are _external systems_.
 - **Deployable on-premise today** (single machine / local network, Docker) and
   suitable for future cloud deployment.
 - **Reporting, Excel, printing, and customization are first-class capabilities**,
@@ -63,18 +63,18 @@ Key invariants:
 
 ## 3. Architectural Principles
 
-| Principle | Meaning in Vardena |
-|---|---|
-| Modular monolith | One deployable; modules are hard boundaries, not folders (ADR-0001) |
-| Extraction-ready | Modules could become services later: no cross-module DB access, contracts via events/public APIs |
-| Domain-oriented boundaries | Modules named after business domains (inventory, accounting, sales), not technical layers |
-| No shared business layer | `kernel/` is technical-only; every business rule belongs to exactly one module (AR-06/08) |
-| Controllers = transport | Business logic never in controllers (AR-03) |
-| Infrastructure at the edge | Prisma, HTTP, file I/O, and external protocols are leaf dependencies of the module |
-| Adapter isolation | External systems behind ports+adapters (AR-18, ADR-0003) |
-| Transactional messaging | Outbox for external side effects; persisted domain events for internal ones (ADR-0004/0005) |
-| Backend-enforced security | Authorization decided in the backend, always (AR-21) |
-| Docs as architecture | `docs/` + `docs/adr/` + `.vardena/` are normative for AI agents; behavior changes update them (AG-07) |
+| Principle                  | Meaning in Vardena                                                                                    |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Modular monolith           | One deployable; modules are hard boundaries, not folders (ADR-0001)                                   |
+| Extraction-ready           | Modules could become services later: no cross-module DB access, contracts via events/public APIs      |
+| Domain-oriented boundaries | Modules named after business domains (inventory, accounting, sales), not technical layers             |
+| No shared business layer   | `kernel/` is technical-only; every business rule belongs to exactly one module (AR-06/08)             |
+| Controllers = transport    | Business logic never in controllers (AR-03)                                                           |
+| Infrastructure at the edge | Prisma, HTTP, file I/O, and external protocols are leaf dependencies of the module                    |
+| Adapter isolation          | External systems behind ports+adapters (AR-18, ADR-0003)                                              |
+| Transactional messaging    | Outbox for external side effects; persisted domain events for internal ones (ADR-0004/0005)           |
+| Backend-enforced security  | Authorization decided in the backend, always (AR-21)                                                  |
+| Docs as architecture       | `docs/` + `docs/adr/` + `.vardena/` are normative for AI agents; behavior changes update them (AG-07) |
 
 ## 4. Modular Monolith — Module Anatomy
 
@@ -126,13 +126,21 @@ Result/error types, base DTOs, exception filters. If you feel the need for a
 
 ## 5. Cross-Module Communication (AR-07)
 
-| Need | Mechanism |
-|---|---|
-| "A current command must synchronously ask another module to perform an operation" | That module's **public application/domain contract**, called in-process; Inventory → Accounting uses this pattern (ADR-0041) |
-| "An independent consumer must react to a published fact" | **Domain event** under its governing contract; events are not the primary internal Inventory → Accounting posting path (ADR-0041; ADR-0005 superseded for that path) |
-| "I need to read another module's data" | That module's **public application service** (in-process), or its **module-owned SQL view** for reporting |
-| "I need to send something to an external system" | **Outbox row** written in my transaction → worker → integration adapter — ADR-0004 |
-| Direct cross-module table/Prisma access | **Forbidden** |
+| Need                                                                              | Mechanism                                                                                                                                                            |
+| --------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "A current command must synchronously ask another module to perform an operation" | That module's **public application/domain contract**, called in-process; Inventory → Accounting uses this pattern (ADR-0041)                                         |
+| "An independent consumer must react to a published fact"                          | **Domain event** under its governing contract; events are not the primary internal Inventory → Accounting posting path (ADR-0041; ADR-0005 superseded for that path) |
+| "I need to read another module's data"                                            | That module's **public application service** (in-process), or its **module-owned SQL view** for reporting                                                            |
+| "I need to send something to an external system"                                  | **Outbox row** written in my transaction → worker → integration adapter — ADR-0004                                                                                   |
+| Direct cross-module table/Prisma access                                           | **Forbidden**                                                                                                                                                        |
+
+When one use case must coordinate multiple modules, a small root-level
+`backend/src/composition/` service may call their public application contracts.
+It is not a business module: it must not access repositories, tables or Prisma
+transaction clients, and business modules must not import it. Each new use of
+this pattern is AR-29/ADR-gated. The previously accepted Organization–Inventory
+calendar-transition use case was superseded by ADR-0044; no calendar-transition
+composition service remains.
 
 Event naming: `Entity.PastTenseVerb` in PascalCase — e.g. `InventoryReceipt.Created`,
 `Invoice.Issued`, `JournalEntry.Posted`. The initial v1 event catalog is in
@@ -154,8 +162,10 @@ semantics of an existing field requires an ADR).
 > `modules/{audit,notifications,sales,purchasing,reporting,excel,print,customization,integration,sync,jobs}`
 > folders below are **target layout, not present**. Module folders currently
 > use `api/ application/ domain/ data/`; the optional `events/ reports/
-> imports/ documents/` folders of §4 are not in use (domain event schemas live
-> in `domain/*.events.ts`).
+  imports/ documents/` folders of §4 are not in use (domain event schemas live
+> in `domain/*.events.ts`). A root `backend/src/composition/` use-case layer
+> may coordinate approved multi-module workflows through public contracts; the
+> former calendar transition described by ADR-0043 was removed under ADR-0044.
 
 ```
 Vardena/
@@ -171,6 +181,7 @@ Vardena/
 │   ├── src/
 │   │   ├── main.ts            # API process entrypoint
 │   │   ├── worker.ts          # worker process entrypoint (outbox, PDF, jobs)
+│   │   ├── composition/       # root-only, ADR-gated multi-module use cases
 │   │   ├── kernel/            # technical primitives only (AR-06)
 │   │   │   ├── events/        #   bus, domain-event log, idempotency helper
 │   │   │   ├── outbox/        #   OutboxWriter port + impl (port implemented by sync)
@@ -205,9 +216,11 @@ Vardena/
 > Task 22 slice and the Task 32 Dashboard corrected by PR #86 (login/session,
 > license and organization gates, Financial Area → Fiscal Year workspace context,
 > RTL app shell, permission-aware navigation, Accounting read surfaces and bounded Dashboard reads). Everything else —
-> other feature slices, grid-state persistence via the customization module,
-> the localization decision (OQ-02) — is still target state. Setup, scripts and
-> the file layout are documented in [`frontend/README.md`](../frontend/README.md).
+> other feature slices and grid-state persistence via the customization module
+> — are still target state. The organization-scoped date/time slice is implemented
+> under ADR-0042; OQ-02 remains open for numeral preference and broader
+> localization. Setup, scripts and the file layout are documented in
+> [`frontend/README.md`](../frontend/README.md).
 
 - **Feature slices mirror backend modules** (`features/inventory`, `features/sales`,
   ...) — the same mental model on both sides (AR-27).
@@ -218,18 +231,20 @@ Vardena/
   e.g. `['inventory','receipts', …]`); **React Hook Form + Zod** for forms (Zod
   schemas mirror the API contract); **TanStack Table** for grids (column
   visibility/order and saved filters persist via the customization module);
-  **Day.js** for all date handling; **React Router** for routing; Tailwind +
-  shadcn/ui for UI.
+  **Day.js through `frontend/src/lib/datetime/` only** for date/time handling;
+  **React Router** for routing; Tailwind + shadcn/ui for UI. Date/Instant and
+  calendar/zone rules are binding in [ADR-0042](adr/0042-datetime-calendar-architecture.md)
+  and [the date/time contract](datetime.md).
 - Frontend authorization (hiding buttons/menus by permission) is **UX only** —
   the backend enforces everything (AR-21). The scoped workspace selection is
   `Organization → Financial Area → Fiscal Year`; it is ephemeral browser state,
   clears descendants on each parent transition, and never substitutes for
   server-side organization/parent-chain validation. See
   [`frontend/financial-context.md`](frontend/financial-context.md).
-- Localization (UI language, Jalali calendar, number formatting) is **OQ-02**;
-  the architecture requirement is that all user-facing strings live in one i18n
-  dictionary and all date/number display goes through `lib/` formatters so the
-  decision can be made in one place.
+- Localization remains an open product area under OQ-02 (UI language, Persian
+  numeral preference and broader number formatting). The calendar default and
+  organization-scoped IANA time zone are already decided/implemented by ADR-0042;
+  all date and number display still goes through shared `lib/` formatters.
 
 ## 8. Event Model (overview)
 
@@ -242,12 +257,12 @@ Vardena/
 > application-service contract, not an event subscriber. **OQ-39 remains open**
 > for transaction ownership, refusal, retry and failure semantics.
 
-| Kind | Transport (v1) | Durability | Use |
-|---|---|---|---|
-| Domain event (internal) | in-process bus, according to the event's contract | No persisted event log is currently implemented | Independent reactions, audit and notifications; not the primary internal Inventory → Accounting posting path |
-| Outbox event (external) | `sync.outbox_events` table, worker dispatch | Intended to be transactional with the business write | Sending to external systems with retry (ADR-0004); not the primary internal Inventory → Accounting path |
-| Job (delayed work) | `jobs.job_runs` DB queue, worker pickup | DB | PDF rendering, heavy imports/reports, scheduled tasks (ADR-0010) |
-| Notification | event → notifications module → `notifications.items` | DB | in-app user notifications (email/SMS channels later) |
+| Kind                    | Transport (v1)                                       | Durability                                           | Use                                                                                                          |
+| ----------------------- | ---------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Domain event (internal) | in-process bus, according to the event's contract    | No persisted event log is currently implemented      | Independent reactions, audit and notifications; not the primary internal Inventory → Accounting posting path |
+| Outbox event (external) | `sync.outbox_events` table, worker dispatch          | Intended to be transactional with the business write | Sending to external systems with retry (ADR-0004); not the primary internal Inventory → Accounting path      |
+| Job (delayed work)      | `jobs.job_runs` DB queue, worker pickup              | DB                                                   | PDF rendering, heavy imports/reports, scheduled tasks (ADR-0010)                                             |
+| Notification            | event → notifications module → `notifications.items` | DB                                                   | in-app user notifications (email/SMS channels later)                                                         |
 
 Consistency rules:
 
@@ -282,11 +297,11 @@ Consistency rules:
 
 **v1 (on-premise / local network)** — single Docker Compose stack:
 
-| Service | Image | Notes |
-|---|---|---|
-| `postgres` | PostgreSQL 16 | volume-backed; backups per database-strategy §Backups |
-| `api` | backend (API entrypoint) | stateless; sessions live in Postgres |
-| `worker` | backend (worker entrypoint) | outbox dispatch, PDF, jobs; scales by running more replicas (queue is DB-backed, `SKIP LOCKED`) |
+| Service    | Image                       | Notes                                                                                           |
+| ---------- | --------------------------- | ----------------------------------------------------------------------------------------------- |
+| `postgres` | PostgreSQL 16               | volume-backed; backups per database-strategy §Backups                                           |
+| `api`      | backend (API entrypoint)    | stateless; sessions live in Postgres                                                            |
+| `worker`   | backend (worker entrypoint) | outbox dispatch, PDF, jobs; scales by running more replicas (queue is DB-backed, `SKIP LOCKED`) |
 
 - Configuration via environment variables (12-factor); secrets injected, never
   baked into images (AR-20).
@@ -297,16 +312,16 @@ Consistency rules:
 
 ## 11. Where Things Are Documented
 
-| Topic | Document |
-|---|---|
-| Module responsibilities, boundaries, event catalog | `docs/modules.md` |
-| Authentication, RBAC, audit, API security | `docs/security.md` |
-| External systems, adapters, outbox/sync design | `docs/integrations.md` |
-| Schemas, naming, migrations, raw-SQL policy, outbox DDL | `docs/database-strategy.md` |
-| Reporting engine, views, export, performance | `docs/reporting-strategy.md` |
-| Domain model, configurability, workflows, master data, inventory & accounting domain analysis | `docs/architecture/domain/` |
-| Ambiguous business/architectural decisions | `docs/open-questions.md` |
-| Decisions & their rationale | `docs/adr/` |
+| Topic                                                                                         | Document                     |
+| --------------------------------------------------------------------------------------------- | ---------------------------- |
+| Module responsibilities, boundaries, event catalog                                            | `docs/modules.md`            |
+| Authentication, RBAC, audit, API security                                                     | `docs/security.md`           |
+| External systems, adapters, outbox/sync design                                                | `docs/integrations.md`       |
+| Schemas, naming, migrations, raw-SQL policy, outbox DDL                                       | `docs/database-strategy.md`  |
+| Reporting engine, views, export, performance                                                  | `docs/reporting-strategy.md` |
+| Domain model, configurability, workflows, master data, inventory & accounting domain analysis | `docs/architecture/domain/`  |
+| Ambiguous business/architectural decisions                                                    | `docs/open-questions.md`     |
+| Decisions & their rationale                                                                   | `docs/adr/`                  |
 
 ## 12. Extraction Path (future)
 

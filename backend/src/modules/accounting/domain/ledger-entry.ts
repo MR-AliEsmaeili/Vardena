@@ -94,6 +94,10 @@
  * no HTTP.
  */
 
+import {
+  isGregorianBusinessDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import { isZeroAmount, validateEnteredAmount } from './money.js';
 import type { AccountingDocumentSource } from './accounting-document.js';
 
@@ -154,7 +158,7 @@ export interface LedgerEntry {
   /** Optional line narration. */
   readonly description: string | null;
   /** Business/occurrence date (date-only, §12.3, Class C3). */
-  readonly documentDate: Date;
+  readonly documentDate: BusinessDate;
   /** System timestamp when voucher became final (posting timestamp, §15.5). */
   readonly postingTimestamp: Date;
   /** Optional operational scope dimension, header-level (AC-D-17, Class C5). */
@@ -270,10 +274,7 @@ export function checkLedgerEntry(entry: LedgerEntry): LedgerEntryProblem[] {
     if (!debitZero && !creditZero) problems.push('both_sides_set');
   }
 
-  if (
-    !(entry.documentDate instanceof Date) ||
-    Number.isNaN(entry.documentDate.getTime())
-  ) {
+  if (!isGregorianBusinessDate(entry.documentDate)) {
     problems.push('missing_document_date');
   }
   if (

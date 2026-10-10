@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import { isRecordNotFound } from '../../../kernel/prisma/prisma-errors.js';
 import type { Organization } from '../domain/organization.js';
-import { isCalendarSystem } from '../../../kernel/datetime/calendar-system.js';
 import { isTimeZone } from '../../../kernel/datetime/time-zone.js';
 import type { LicensedAllocation } from '../../licensing/application/licensing.service.js';
 import {
@@ -27,8 +26,6 @@ type OrganizationRow = {
   code: string;
   name: string;
   isActive: boolean;
-  /** C-63: `GREGORIAN` | `JALALI` (closed list, validated in `toDomain`). */
-  calendarSystem: string;
   /** C-63: IANA time zone (resolvable, validated in `toDomain`). */
   timeZone: string;
 } & AuditColumns;
@@ -50,13 +47,7 @@ interface OrganizationCreate {
   code: string;
   name: string;
   isActive: boolean;
-  /**
-   * C-63: REQUIRED on the create payload. The application layer fills in the
-   * deployment default (`DEFAULT_DATE_TIME_SETTINGS`) when the caller omitted
-   * them, so the write path, the API response and the database column default
-   * can never disagree about what a new organization's calendar is.
-   */
-  calendarSystem: string;
+  /** IANA time zone; the database default is used when omitted. */
   timeZone: string;
   createdAt: Date;
   updatedAt: Date;
@@ -67,7 +58,6 @@ interface OrganizationUpdate {
   code?: string | undefined;
   name?: string | undefined;
   isActive?: boolean | undefined;
-  calendarSystem?: string | undefined;
   timeZone?: string | undefined;
   updatedAt: Date;
   updatedBy: string | null;
@@ -247,15 +237,8 @@ function toWhere(filter: OrganizationListFilter): OrganizationWhere {
 }
 
 function toDomain(row: OrganizationRow): Organization {
-  // C-63: a stored calendar/zone the code does not know is a defect, never a
-  // silent default — the same fail-closed rule the inventory module applies to
-  // its stored vocabularies. Falling back would silently re-render every date
-  // of this organization in the wrong calendar.
-  if (!isCalendarSystem(row.calendarSystem)) {
-    throw new Error(
-      `Stored organization "${row.id}" has an unknown calendar system "${row.calendarSystem}".`,
-    );
-  }
+  // The legacy `calendar_system` column is deliberately ignored: MVP display
+  // policy is fixed to Jalali and cannot vary per organization.
   if (!isTimeZone(row.timeZone)) {
     throw new Error(
       `Stored organization "${row.id}" has an unknown time zone "${row.timeZone}".`,
@@ -266,7 +249,6 @@ function toDomain(row: OrganizationRow): Organization {
     code: row.code,
     name: row.name,
     isActive: row.isActive,
-    calendarSystem: row.calendarSystem,
     timeZone: row.timeZone,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

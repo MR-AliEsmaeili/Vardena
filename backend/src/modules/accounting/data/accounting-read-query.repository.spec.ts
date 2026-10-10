@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseDateOnly } from '../domain/date-range.js';
 import { AccountingReadQueryRepository } from './accounting-read-query.repository.js';
 
 type QueryCall = { text: string; values: unknown[] };
@@ -86,7 +87,7 @@ describe('AccountingReadQueryRepository raw report reads', () => {
     const result = await repository.readGeneralLedger(
       {
         ...scope,
-        dateFrom: new Date('2026-03-21T00:00:00.000Z'),
+        dateFrom: parseDateOnly('2026-03-21')!,
         dateFromExplicit: true,
       },
       [{ field: 'documentDate', direction: 'asc' }],

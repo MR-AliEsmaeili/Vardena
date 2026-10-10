@@ -7,6 +7,7 @@ import { generateId } from '../../../kernel/ids/ulid.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { getPrincipal } from '../../../kernel/correlation/request-context.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
@@ -41,11 +42,10 @@ import {
   normalizeReference,
   normalizeReason,
   requireOperationKey,
-  resolveBusinessDateCarrier,
+  resolveBusinessDate as resolveBusinessDateInput,
   resolveEnteredToBase,
 } from './inventory-posting-support.js';
 import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
-import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
 import {
   InsufficientStockError,
   RecalculationTooLargeError,
@@ -65,10 +65,10 @@ export interface PostTransferInput {
   quantity: string;
   unitId: string;
   /**
-   * C-63 business-date INPUT (OQ-73): a canonical Gregorian day, a declared
+   * C-63 BusinessDate input (OQ-73): a canonical Gregorian day, a declared
    * Jalali day (`{ calendar, value }`), or a legacy ISO instant resolved to
-   * the day it falls on in the organization zone. Omit for today's business
-   * day in the organization zone.
+   * its UTC calendar day. Omit for today's business day in the organization
+   * zone.
    */
   movementDate?: BusinessDateInput | undefined;
   reason?: string | null | undefined;
@@ -168,7 +168,7 @@ export class InventoryTransfersService {
     const { timeZone } = await this.organizations.getDateTimeSettings(
       input.organizationId,
     );
-    const movementDate = resolveBusinessDateCarrier({
+    const movementDate = resolveBusinessDateInput({
       field: 'movementDate',
       value: input.movementDate,
       timeZone,
@@ -463,7 +463,7 @@ export class InventoryTransfersService {
  * then also needs `Inventory.Valuation.Recalculate` before writing.
  */
 export function requireTransferBackdateDecision(params: {
-  movementDate: Date;
+  movementDate: BusinessDate;
   sourceWarehouseId: string;
   destinationWarehouseId: string;
   source: BackdateAssessment;
@@ -490,13 +490,10 @@ export function requireTransferBackdateDecision(params: {
     }),
     {
       code: BACKDATE_CONFIRMATION_CODE,
-      movementDate: businessDateFromDbDate(params.movementDate),
+      movementDate: params.movementDate,
       keys: keys.map((key) => ({
         warehouseId: key.warehouseId,
-        latestMovementDate:
-          key.latestMovementDate === null
-            ? null
-            : businessDateFromDbDate(key.latestMovementDate),
+        latestMovementDate: key.latestMovementDate,
       })),
       source: backdateSummary(params.source),
       destination: backdateSummary(params.destination),
@@ -525,13 +522,10 @@ export function translateTransferReplayError(
       }),
       {
         code: BACKDATE_CONFIRMATION_CODE,
-        movementDate: businessDateFromDbDate(error.movementDate),
+        movementDate: error.movementDate,
         keys: error.keys.map((key) => ({
           warehouseId: key.warehouseId,
-          latestMovementDate:
-            key.latestMovementDate === null
-              ? null
-              : businessDateFromDbDate(key.latestMovementDate),
+          latestMovementDate: key.latestMovementDate,
         })),
       },
     );
@@ -573,11 +567,8 @@ function backdateSummary(
 ): Record<string, unknown> {
   return {
     backdated: assessment.backdated,
-    movementDate: businessDateFromDbDate(assessment.movementDate),
-    latestMovementDate:
-      assessment.latestMovementDate === null
-        ? null
-        : businessDateFromDbDate(assessment.latestMovementDate),
+    movementDate: assessment.movementDate,
+    latestMovementDate: assessment.latestMovementDate,
     affectedMovements: assessment.affectedMovements,
     affectedValuedMovements: assessment.affectedValuedMovements,
     alreadyStale: assessment.alreadyStale,

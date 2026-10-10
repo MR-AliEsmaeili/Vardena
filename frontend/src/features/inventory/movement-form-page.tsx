@@ -12,7 +12,11 @@ import { PERMISSIONS } from '@/features/permissions/permission-codes';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { formatQuantity } from '@/lib/format';
 import { t } from '@/lib/i18n';
-import { toBusinessDateInput, useCalendarSystem } from '@/lib/datetime';
+import {
+  todayBusinessDay,
+  toBusinessDateInput,
+  useTimeZone,
+} from '@/lib/datetime';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
 import { Button } from '@/ui/button';
 import { Input } from '@/ui/input';
@@ -159,7 +163,7 @@ function MovementForm({
   kind: MovementFormKind;
   references: ReturnType<typeof useInventoryReferences>;
 }): ReactElement {
-  const calendarSystem = useCalendarSystem();
+  const timeZone = useTimeZone();
   const { showToast } = useToast();
   const permissions = usePermissions();
   // Cost entry is gated by the backend's own permission (UX only — the API
@@ -179,7 +183,7 @@ function MovementForm({
       warehouseId: '',
       quantity: '',
       unitId: '',
-      movementDate: new Date().toLocaleDateString('en-CA'),
+      movementDate: todayBusinessDay(timeZone),
       reason: '',
       totalCost: '',
     },
@@ -235,12 +239,9 @@ function MovementForm({
       unitId: values.unitId,
       ...(values.movementDate !== ''
         ? {
-            // OQ-73: send the business DAY — declared Jalali for a Jalali
-            // organization, canonical Gregorian otherwise.
-            movementDate: toBusinessDateInput(
-              values.movementDate,
-              calendarSystem,
-            ),
+            // OQ-73 / ADR-0044: send the BusinessDate in the fixed Jalali-first
+            // form when renderable; preserve canonical Gregorian fallback.
+            movementDate: toBusinessDateInput(values.movementDate),
           }
         : {}),
       ...(values.reason.trim() !== '' ? { reason: values.reason.trim() } : {}),

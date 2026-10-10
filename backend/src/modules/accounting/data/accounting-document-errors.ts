@@ -1,6 +1,7 @@
 import type { AccountingDocumentPhase } from '../domain/accounting-document.js';
 import type { AccountingDocumentOriginProblem } from '../domain/accounting-document.js';
 import type { VoucherLineProblem } from '../domain/voucher-lines.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 
 /**
  * Guard failures that can only be detected INSIDE the guarded transactions of
@@ -110,9 +111,9 @@ export class AccountingDocumentAccountRejectedError extends Error {
  * year creation, no nearest-year guessing.
  */
 export class AccountingDocumentDateUnresolvableError extends Error {
-  readonly documentDate: Date;
+  readonly documentDate: BusinessDate;
 
-  constructor(documentDate: Date) {
+  constructor(documentDate: BusinessDate) {
     super('The document date resolves to no accounting period.');
     this.name = 'AccountingDocumentDateUnresolvableError';
     this.documentDate = documentDate;

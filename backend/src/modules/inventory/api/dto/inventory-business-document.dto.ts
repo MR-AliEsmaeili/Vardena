@@ -22,6 +22,7 @@ import {
   ApiBusinessDateDto,
   ApiInstantDto,
   DECLARED_BUSINESS_DATE_SCHEMA,
+  LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
 } from '../../../../kernel/datetime/api-date-time.dto.js';
 import { CALENDAR_SYSTEMS } from '../../../../kernel/datetime/calendar-system.js';
 import { REPRICING_CHOICES } from '../../domain/backdating.js';
@@ -102,10 +103,11 @@ export class CreateInventoryDocumentDto {
   @ApiPropertyOptional({
     oneOf: [
       { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
       DECLARED_BUSINESS_DATE_SCHEMA,
     ],
     description:
-      'C-63 business date — a calendar DAY (OQ-73: stored as PostgreSQL date, no time-of-day, no time zone). The calendar a day is written in must be declared when it is Jalali: "2026-10-08" (Gregorian, the default), { "calendar": "JALALI", "value": "1405-07-16" }. A full ISO-8601 instant is accepted for backward compatibility and resolved to the day it falls on in the organization time zone. Omitted = today\'s business day in the organization time zone (send an explicit day).',
+      'C-63 business date — a calendar DAY (OQ-73: stored as PostgreSQL date, no time-of-day, no time zone). The calendar a day is written in must be declared when it is Jalali: "2026-10-08" (Gregorian, the default), { "calendar": "JALALI", "value": "1405-07-16" }. A full ISO-8601 instant is accepted for backward compatibility and resolved to its UTC calendar day (not the organization display zone). Omitted = today\'s business day in the organization time zone (send an explicit day).',
   })
   @IsOptional()
   @IsBusinessDate()
@@ -163,10 +165,11 @@ export class UpdateInventoryDocumentDto {
   @ApiPropertyOptional({
     oneOf: [
       { type: 'string', format: 'date', example: '2026-10-08' },
+      LEGACY_BUSINESS_DATE_INSTANT_SCHEMA,
       DECLARED_BUSINESS_DATE_SCHEMA,
     ],
     description:
-      'C-63 business date. Same three accepted forms as create: a canonical Gregorian day, a declared Jalali day ({ calendar, value }), or a legacy ISO instant (resolved to the day it falls on in the organization time zone). Omitted = the document keeps its current business date.',
+      'C-63 business date. Same three accepted forms as create: a canonical Gregorian day, a declared Jalali day ({ calendar, value }), or a legacy ISO instant (resolved to its UTC calendar day). Omitted = the document keeps its current business date.',
   })
   @IsOptional()
   @IsBusinessDate()
@@ -463,7 +466,7 @@ export class InventoryDocumentResponseDto {
   @ApiProperty({
     type: ApiBusinessDateDto,
     description:
-      'C-63: the SAME business day in both calendars, derived from the organization settings. `businessDate` above stays the canonical value.',
+      'The same canonical BusinessDate with a derived Jalali rendering when representable. Outside the shared rendering range `jalali` is null for every organization; `businessDate` above remains authoritative.',
   })
   businessDateCalendar!: ApiBusinessDate;
   @ApiProperty({ type: String, nullable: true })

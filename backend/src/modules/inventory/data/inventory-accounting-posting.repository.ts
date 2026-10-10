@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
+import {
+  businessDateFromDbDate,
+  businessDateToDbDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import type { DocTxClient } from './inventory-business-document-rows.js';
 import {
@@ -58,7 +63,7 @@ export interface InventoryAccountingPostingSnapshot {
   documentType: string;
   documentNumber: string | null;
   documentVersion: string;
-  documentDate: Date;
+  documentDate: BusinessDate;
   branchId: string;
   warehouseId: string;
   valuationState: string;
@@ -115,7 +120,7 @@ export interface RecordAccountingPostingSnapshotInput {
   documentType: string;
   documentNumber: string | null;
   documentVersion: string;
-  documentDate: Date;
+  documentDate: BusinessDate;
   branchId: string;
   warehouseId: string;
   valuationState: string;
@@ -485,7 +490,7 @@ function toSnapshotCreate(
     documentType: input.documentType,
     documentNumber: input.documentNumber,
     documentVersion: input.documentVersion,
-    documentDate: input.documentDate,
+    documentDate: dbBusinessDate(input.documentDate),
     branchId: input.branchId,
     warehouseId: input.warehouseId,
     valuationState: input.valuationState,
@@ -577,7 +582,7 @@ function toSnapshotDomain(
     documentType: row.documentType,
     documentNumber: row.documentNumber,
     documentVersion: row.documentVersion,
-    documentDate: row.documentDate,
+    documentDate: businessDateFromDbDate(row.documentDate),
     branchId: row.branchId,
     warehouseId: row.warehouseId,
     valuationState: row.valuationState,
@@ -627,3 +632,11 @@ export type {
   InventoryAccountingPostingOperationWhere,
   InventoryAccountingPostingOperationUpdate,
 };
+
+function dbBusinessDate(value: BusinessDate): Date {
+  const carrier = businessDateToDbDate(value);
+  if (carrier === null) {
+    throw new Error(`Invalid canonical Inventory BusinessDate "${value}".`);
+  }
+  return carrier;
+}
