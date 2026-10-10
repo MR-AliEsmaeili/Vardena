@@ -42,6 +42,10 @@ import { LicensingModule } from '../licensing/licensing.module.js';
  * never read `organization.*` tables. Each exposes a `requireUsable*` method
  * for cross-module reference resolution that carries no permission of its own:
  * the calling service has already performed its own authorization check.
+ * `OrganizationsService.withBusinessDateWriteLock` is also the public
+ * organization-calendar rendezvous used by Inventory writers; root
+ * `composition/` supplies Inventory's history-reader contract for the guarded
+ * GREGORIAN → JALALI update. Organization imports no Inventory provider.
  *
  * Dependencies:
  * - `RbacModule` — `AuthorizationService` (the application-service check) and

@@ -20,7 +20,10 @@ import {
   type PaginatedResult,
 } from '../../../kernel/pagination/paginated-result.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
-import { OrganizationsRepository } from '../data/organizations.repository.js';
+import {
+  OrganizationsRepository,
+  type OrganizationCalendarWriteLockResult,
+} from '../data/organizations.repository.js';
 import { OrganizationMembershipsRepository } from '../data/organization-memberships.repository.js';
 import type {
   Organization,
@@ -34,6 +37,8 @@ import {
 } from '../domain/organization.js';
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
 import { JALALI_RENDERABLE_GREGORIAN_RANGE } from '../../../kernel/datetime/jalali.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
+import type { CalendarSystem } from '../../../kernel/datetime/calendar-system.js';
 import { normalizeCode, normalizeName } from '../domain/master-data.js';
 import { ORGANIZATION_PERMISSIONS } from '../domain/organization-permissions.js';
 import { LicensingService } from '../../licensing/application/licensing.service.js';
@@ -93,6 +98,11 @@ export interface UpdateOrganizationInput {
   /** C-63: must be a resolvable IANA zone. */
   timeZone?: string | undefined;
 }
+
+/** Inventory's public read contract supplied for a GREGORIAN → JALALI update. */
+export type JalaliCalendarHistoryReader = (
+  organizationId: string,
+) => Promise<BusinessDate | null>;
 
 /**
  * Organization administration + the module's public read surface for the
@@ -324,6 +334,7 @@ export class OrganizationsService {
   async updateOrganization(
     id: string,
     input: UpdateOrganizationInput,
+    findFirstUnrenderableBusinessDate?: JalaliCalendarHistoryReader,
   ): Promise<OrganizationDto> {
     await this.authorization.requireAllPermissions([
       ORGANIZATION_PERMISSIONS.EDIT,
@@ -368,8 +379,20 @@ export class OrganizationsService {
     if (input.timeZone !== undefined) patch.timeZone = input.timeZone;
 
     let updated: Organization | null;
-    if (input.calendarSystem === 'JALALI') {
-      const result = await this.repository.updateToJalali(id, patch);
+    if (input.calendarSystem !== undefined) {
+      if (
+        input.calendarSystem === 'JALALI' &&
+        typeof findFirstUnrenderableBusinessDate !== 'function'
+      ) {
+        throw new Error(
+          'A JALALI calendar update requires the Inventory history contract.',
+        );
+      }
+      const result = await this.repository.updateCalendarSystem(
+        id,
+        patch,
+        findFirstUnrenderableBusinessDate,
+      );
       if (result.kind === 'not_found') {
         throw AppException.notFound('Organization', id);
       }
@@ -442,6 +465,31 @@ export class OrganizationsService {
     const organization = await this.repository.findById(id);
     if (organization === null) throw AppException.notFound('Organization', id);
     return toDateTimeSettings(organization);
+  }
+
+  /**
+   * Organization-owned public contract for an Inventory BusinessDate write.
+   * It carries no permission of its own, but enforces principal/deployment
+   * scope. The callback is awaited while `FOR KEY SHARE` is held and must wrap
+   * the complete Inventory transaction; a stale/missing calendar never runs
+   * it. No Prisma transaction client crosses this boundary.
+   */
+  async withBusinessDateWriteLock<T>(
+    id: string,
+    validatedCalendarSystem: CalendarSystem,
+    work: () => Promise<T>,
+  ): Promise<OrganizationCalendarWriteLockResult<T>> {
+    if (typeof work !== 'function') {
+      throw new Error(
+        'An Inventory BusinessDate write requires a transaction callback.',
+      );
+    }
+    await this.assertOrganizationInScope(id);
+    return this.repository.withBusinessDateWriteLock(
+      id,
+      validatedCalendarSystem,
+      work,
+    );
   }
 
   async requireUsableOrganization(

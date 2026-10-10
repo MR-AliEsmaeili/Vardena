@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
-import type { CalendarSystem } from '../../../kernel/datetime/calendar-system.js';
-import { OrganizationCalendarChangedDuringDocumentWriteError } from './inventory-business-document-errors.js';
 import {
   businessDateFromDbDate,
   businessDateToDbDate,
+  toBusinessDate,
   type BusinessDate,
 } from '../../../kernel/datetime/business-date.js';
+import { JALALI_RENDERABLE_GREGORIAN_RANGE } from '../../../kernel/datetime/jalali.js';
 import {
   isInventoryDocumentKind,
   isInventoryDocumentStatus,
@@ -136,6 +136,45 @@ export class InventoryBusinessDocumentsRepository {
       take: MAX_LINES_PER_DOCUMENT,
     });
     return toDomain(row, lines);
+  }
+
+  /**
+   * Inventory-owned history read for the GREGORIAN → JALALI guard. Returns the
+   * earliest stored BusinessDate outside the inclusive conversion envelope;
+   * no Organization table or Prisma model is read here (AR-07).
+   */
+  async findFirstUnrenderableBusinessDate(
+    organizationId: string,
+  ): Promise<BusinessDate | null> {
+    const { inventoryBusinessDocument } = await this.client();
+    const rows = await inventoryBusinessDocument.findMany({
+      where: {
+        organizationId,
+        OR: [
+          {
+            businessDate: {
+              lt: dbBusinessDate(
+                requireBusinessDate(JALALI_RENDERABLE_GREGORIAN_RANGE.minimum),
+              ),
+            },
+          },
+          {
+            businessDate: {
+              gt: dbBusinessDate(
+                requireBusinessDate(JALALI_RENDERABLE_GREGORIAN_RANGE.maximum),
+              ),
+            },
+          },
+        ],
+      },
+      orderBy: [{ businessDate: 'asc' }, { id: 'asc' }],
+      skip: 0,
+      take: 1,
+    });
+    const earliest = rows[0];
+    return earliest === undefined
+      ? null
+      : businessDateFromDbDate(earliest.businessDate);
   }
 
   async list(params: {
@@ -359,14 +398,8 @@ export class InventoryBusinessDocumentsRepository {
   async createDocument(input: {
     header: DocumentHeaderCreate;
     lines: DocumentLineCreate[];
-    validatedCalendarSystem: CalendarSystem;
   }): Promise<InventoryBusinessDocument> {
     return this.withTransaction(async (tx) => {
-      await lockOrganizationCalendarForBusinessDateWrite(
-        tx,
-        input.header.organizationId,
-        input.validatedCalendarSystem,
-      );
       await tx.inventoryBusinessDocument.create({
         data: toCreateData(input.header),
       });
@@ -408,23 +441,7 @@ export class InventoryBusinessDocumentsRepository {
     tx: DocTxClient,
     id: string,
     data: InventoryDocumentUpdate,
-    calendarPolicy?: {
-      organizationId: string;
-      validatedCalendarSystem: CalendarSystem;
-    },
   ): Promise<void> {
-    if (data.businessDate !== undefined) {
-      if (calendarPolicy === undefined) {
-        throw new Error(
-          'An organization calendar policy is required for a BusinessDate update.',
-        );
-      }
-      await lockOrganizationCalendarForBusinessDateWrite(
-        tx,
-        calendarPolicy.organizationId,
-        calendarPolicy.validatedCalendarSystem,
-      );
-    }
     await tx.inventoryBusinessDocument.update({
       where: { id },
       data: toUpdateData(data),
@@ -502,6 +519,16 @@ export class InventoryBusinessDocumentsRepository {
 }
 
 // ---- Internal helpers ----
+
+function requireBusinessDate(value: string): BusinessDate {
+  const businessDate = toBusinessDate(value);
+  if (businessDate === null) {
+    throw new Error(
+      `Invalid configured Inventory BusinessDate boundary "${value}".`,
+    );
+  }
+  return businessDate;
+}
 
 function dbBusinessDate(value: BusinessDate): Date {
   const carrier = businessDateToDbDate(value);
@@ -691,29 +718,4 @@ export function toDomain(
     destinationWarehouseId: null,
     cost: row.receiptCost === null ? null : decimalToString(row.receiptCost),
   };
-}
-
-/**
- * Lock and re-check the display calendar used to validate a BusinessDate.
- * Organization calendar updates take `FOR UPDATE` before checking history;
- * this `FOR KEY SHARE` serializes inserts/date edits with that transition.
- */
-async function lockOrganizationCalendarForBusinessDateWrite(
-  tx: DocTxClient,
-  organizationId: string,
-  validatedCalendarSystem: CalendarSystem,
-): Promise<void> {
-  const rows = await tx.$queryRaw<{ calendarSystem: string }>`
-    SELECT "calendar_system" AS "calendarSystem"
-      FROM "organization"."organizations"
-     WHERE "id" = ${organizationId}
-     FOR KEY SHARE
-  `;
-  const organization = rows[0];
-  if (
-    organization === undefined ||
-    organization.calendarSystem !== validatedCalendarSystem
-  ) {
-    throw new OrganizationCalendarChangedDuringDocumentWriteError();
-  }
 }

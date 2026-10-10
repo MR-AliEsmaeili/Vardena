@@ -350,6 +350,18 @@ export class InventoryBusinessDocumentsService {
     return this.toDto(await this.mustFind(id, organizationId));
   }
 
+  /**
+   * Inventory-owned public history contract used by Organization's guarded
+   * GREGORIAN → JALALI transition. The caller authorizes the transition; this
+   * read still enforces the caller's organization scope.
+   */
+  async findFirstUnrenderableBusinessDate(
+    organizationId: string,
+  ): Promise<BusinessDate | null> {
+    await this.organizations.assertOrganizationInScope(organizationId);
+    return this.documents.findFirstUnrenderableBusinessDate(organizationId);
+  }
+
   // ---- create --------------------------------------------------------------
 
   async createDraft(input: CreateDocumentInput): Promise<InventoryDocumentDto> {
@@ -388,25 +400,29 @@ export class InventoryBusinessDocumentsService {
     const actorId = getPrincipal()?.userId ?? null;
     let document: InventoryBusinessDocument;
     try {
-      document = await this.documents.createDocument({
-        header: {
-          id: generateId(),
-          organizationId: input.organizationId,
-          kind,
-          businessDate,
-          warehouseId: header.warehouseId,
-          sourceWarehouseId: header.sourceWarehouseId,
-          destinationWarehouseId: header.destinationWarehouseId,
-          receiptCost: header.cost,
-          status: 'draft',
-          description: header.description,
-          reference: header.reference,
-          actorId,
-          at: now,
-        },
-        lines: lines.map(toLineCreate),
-        validatedCalendarSystem: calendarSystem,
-      });
+      document = await this.withBusinessDateWriteLock(
+        input.organizationId,
+        calendarSystem,
+        () =>
+          this.documents.createDocument({
+            header: {
+              id: generateId(),
+              organizationId: input.organizationId,
+              kind,
+              businessDate,
+              warehouseId: header.warehouseId,
+              sourceWarehouseId: header.sourceWarehouseId,
+              destinationWarehouseId: header.destinationWarehouseId,
+              receiptCost: header.cost,
+              status: 'draft',
+              description: header.description,
+              reference: header.reference,
+              actorId,
+              at: now,
+            },
+            lines: lines.map(toLineCreate),
+          }),
+      );
     } catch (error) {
       throw this.translatePostingError(error, header);
     }
@@ -635,25 +651,23 @@ export class InventoryBusinessDocumentsService {
       'inventory.document.change.lines',
     );
     try {
-      await this.documents.withTransaction(async (tx) => {
-        if (assessment.requiresLedgerReconciliation) {
-          await this.reverseDocumentEffect(tx, current, {
-            keyPrefix: `invdoc:${current.id}:e:${editId}:rev`,
-            actorId,
-            at: now,
-          });
-        }
-        if (linesChanged) {
-          await this.documents.replaceLines(
-            tx,
-            { id: current.id, organizationId, actorId, at: now },
-            resolved.map(toLineCreate),
-          );
-        }
-        await this.documents.updateHeader(
-          tx,
-          current.id,
-          {
+      await this.withBusinessDateWriteLock(organizationId, calendarSystem, () =>
+        this.documents.withTransaction(async (tx) => {
+          if (assessment.requiresLedgerReconciliation) {
+            await this.reverseDocumentEffect(tx, current, {
+              keyPrefix: `invdoc:${current.id}:e:${editId}:rev`,
+              actorId,
+              at: now,
+            });
+          }
+          if (linesChanged) {
+            await this.documents.replaceLines(
+              tx,
+              { id: current.id, organizationId, actorId, at: now },
+              resolved.map(toLineCreate),
+            );
+          }
+          await this.documents.updateHeader(tx, current.id, {
             businessDate,
             warehouseId: header.warehouseId,
             sourceWarehouseId: header.sourceWarehouseId,
@@ -676,37 +690,33 @@ export class InventoryBusinessDocumentsService {
               : {}),
             updatedAt: now,
             updatedBy: actorId,
-          },
-          {
-            organizationId,
-            validatedCalendarSystem: calendarSystem,
-          },
-        );
-        if (assessment.requiresLedgerReconciliation) {
-          const reposted = await this.postDocumentEffect(tx, {
-            documentId: current.id,
-            organizationId,
-            kind: current.kind,
-            header,
-            businessDate,
-            lines: resolved,
-            keyPrefix: `invdoc:${current.id}:e:${editId}`,
-            actorId,
-            at: now,
-            // The C-58 debt (recorded, not redesigned here): the edit endpoint
-            // still carries ONE acknowledgement flag for both the side-effect
-            // confirmation and the backdate confirmation.
-            backdateConfirmed: input.acknowledgeSideEffects === true,
           });
-          movementIds.push(...reposted);
-        }
-        // 6. The repricing the operator explicitly asked for, replayed on
-        // the facts this very transaction just wrote. A failure here rolls
-        // the reversal, the re-post and the header change back with it:
-        // the command is either fully applied and repriced, or not applied
-        // at all.
-        valuationRuns = await this.repriceWithin(tx, repricingPlans);
-      });
+          if (assessment.requiresLedgerReconciliation) {
+            const reposted = await this.postDocumentEffect(tx, {
+              documentId: current.id,
+              organizationId,
+              kind: current.kind,
+              header,
+              businessDate,
+              lines: resolved,
+              keyPrefix: `invdoc:${current.id}:e:${editId}`,
+              actorId,
+              at: now,
+              // The C-58 debt (recorded, not redesigned here): the edit endpoint
+              // still carries ONE acknowledgement flag for both the side-effect
+              // confirmation and the backdate confirmation.
+              backdateConfirmed: input.acknowledgeSideEffects === true,
+            });
+            movementIds.push(...reposted);
+          }
+          // 6. The repricing the operator explicitly asked for, replayed on
+          // the facts this very transaction just wrote. A failure here rolls
+          // the reversal, the re-post and the header change back with it:
+          // the command is either fully applied and repriced, or not applied
+          // at all.
+          valuationRuns = await this.repriceWithin(tx, repricingPlans);
+        }),
+      );
     } catch (error) {
       throw this.translatePostingError(error, header);
     }
@@ -2194,6 +2204,27 @@ export class InventoryBusinessDocumentsService {
         movementIds,
       },
     });
+  }
+
+  /**
+   * Hold Organization's calendar row lock around the complete Inventory
+   * transaction. Validation and read-only planning happen before this point;
+   * the write callback does not run when the calendar became stale.
+   */
+  private async withBusinessDateWriteLock<T>(
+    organizationId: string,
+    validatedCalendarSystem: CalendarSystem,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const result = await this.organizations.withBusinessDateWriteLock(
+      organizationId,
+      validatedCalendarSystem,
+      work,
+    );
+    if (result.kind !== 'completed') {
+      throw new OrganizationCalendarChangedDuringDocumentWriteError();
+    }
+    return result.value;
   }
 
   /**

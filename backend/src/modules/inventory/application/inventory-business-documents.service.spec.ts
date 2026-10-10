@@ -1,5 +1,5 @@
 import { licensingTestDouble } from '../../../../test/support/licensing.js';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   runWithRequestContext,
   type AuthenticatedPrincipal,
@@ -1170,6 +1170,7 @@ async function buildFixture(options: BuildOptions = {}) {
 
   return {
     service,
+    organizations,
     world,
     published,
     recalculations,
@@ -1343,6 +1344,38 @@ describe('C-63 business dates and calendars', () => {
       }),
     );
     expect(created.businessDate).toBe('2026-10-08');
+  });
+
+  it('rejects a stale calendar before starting Inventory writes or publishing events', async () => {
+    const gregorianFixture = await buildFixture({
+      calendarSystem: 'GREGORIAN',
+    });
+    const documentsBefore = gregorianFixture.world.documents.size;
+    const eventsBefore = gregorianFixture.published.length;
+    const calendarWrite = vi
+      .spyOn(gregorianFixture.organizations, 'withBusinessDateWriteLock')
+      .mockImplementation(async () => ({ kind: 'calendar_changed' }));
+
+    await expect(
+      asActor(() =>
+        gregorianFixture.service.createDraft({
+          organizationId: gregorianFixture.organizationId,
+          kind: 'receipt',
+          warehouseId: gregorianFixture.warehouseId,
+          businessDate: '0600-01-01',
+          lines: [
+            {
+              itemId: gregorianFixture.itemId,
+              quantity: '1',
+              unitId: gregorianFixture.unitId,
+            },
+          ],
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'Conflict' });
+    expect(calendarWrite).toHaveBeenCalledTimes(1);
+    expect(gregorianFixture.world.documents.size).toBe(documentsBefore);
+    expect(gregorianFixture.published).toHaveLength(eventsBefore);
   });
 
   it('rejects an out-of-range Gregorian day for a Jalali organization before writing', async () => {
@@ -1581,7 +1614,7 @@ describe('C-63 business dates and calendars', () => {
     expect(created.businessDateCalendar.jalali).toBe('1405-07-16');
   });
 
-  it('edits a document to another day without touching its event instants', async () => {
+  it('refuses a stale calendar before an edit transaction or event is applied', async () => {
     const created = await asActor(() =>
       fixture.service.createDraft({
         organizationId: fixture.organizationId,
@@ -1593,10 +1626,60 @@ describe('C-63 business dates and calendars', () => {
         ],
       }),
     );
+    const before = fixture.world.snapshot();
+    const eventsBefore = fixture.published.length;
+    const calendarWrite = vi
+      .spyOn(fixture.organizations, 'withBusinessDateWriteLock')
+      .mockImplementation(async () => ({ kind: 'calendar_changed' }));
+
+    await expect(
+      asActor(() =>
+        fixture.service.updateDocument(created.id, fixture.organizationId, {
+          description: 'stale edit must not persist',
+        }),
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'Conflict' });
+
+    expect(calendarWrite).toHaveBeenCalledTimes(1);
+    expect(fixture.world.snapshot()).toEqual(before);
+    expect(fixture.published).toHaveLength(eventsBefore);
+  });
+
+  it('edits a document to another day without touching its event instants', async () => {
+    const calendarWrite = vi.spyOn(
+      fixture.organizations,
+      'withBusinessDateWriteLock',
+    );
+    const created = await asActor(() =>
+      fixture.service.createDraft({
+        organizationId: fixture.organizationId,
+        kind: 'receipt',
+        warehouseId: fixture.warehouseId,
+        businessDate: '2026-10-08',
+        lines: [
+          { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
+        ],
+      }),
+    );
+    expect(calendarWrite).toHaveBeenCalledTimes(1);
+    expect(calendarWrite).toHaveBeenNthCalledWith(
+      1,
+      fixture.organizationId,
+      'JALALI',
+      expect.any(Function),
+    );
+
     const updated = await asActor(() =>
       fixture.service.updateDocument(created.id, fixture.organizationId, {
         businessDate: { calendar: 'JALALI', value: '1405-07-16' },
       }),
+    );
+    expect(calendarWrite).toHaveBeenCalledTimes(2);
+    expect(calendarWrite).toHaveBeenNthCalledWith(
+      2,
+      fixture.organizationId,
+      'JALALI',
+      expect.any(Function),
     );
     // Same day, declared in the other calendar: no change at all.
     expect(updated.businessDate).toBe(created.businessDate);

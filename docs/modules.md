@@ -146,10 +146,16 @@ Jalali conversion uses the reversible Gregorian range `0621-03-21` through
 must be refused at the declared-Jalali input boundary. Cross-module readers call
 `OrganizationsService.getDateTimeSettings(organizationId)` once per response;
 the contract is `docs/datetime.md`. No second settings store exists. A
-GREGORIAN → JALALI update is checked against Inventory business documents in a
-single locked transaction and is refused when any stored day lies outside the
-renderable range; the reverse transition remains allowed and history is never
-rewritten.
+GREGORIAN → JALALI update follows Proposed ADR-0043: root composition calls
+Organization's calendar-update contract, which holds `FOR UPDATE` while the
+Inventory public history reader checks the range; a failure aborts the
+Organization update, and history is never rewritten. Each explicit calendar
+system update takes the same Organization row lock; JALALI → GREGORIAN remains
+unrestricted by history. Inventory create/edit paths take `FOR KEY SHARE`,
+re-check the calendar used to validate input, then await the complete Inventory
+transaction before releasing the lock. The history read, Organization update,
+and Inventory write are separate module operations/transactions, not a shared
+cross-module transaction; live PostgreSQL tests cover both lock orderings.
 
 - **Status:** implemented in Task 6 for the organizational-structure and party half
   (ADR-0020, ADR-0021). The _configuration_ half — fiscal calendar, numbering series,

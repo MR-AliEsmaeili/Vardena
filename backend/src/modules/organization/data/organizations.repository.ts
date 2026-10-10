@@ -2,13 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import { isRecordNotFound } from '../../../kernel/prisma/prisma-errors.js';
 import type { Organization } from '../domain/organization.js';
-import { isCalendarSystem } from '../../../kernel/datetime/calendar-system.js';
-import { isTimeZone } from '../../../kernel/datetime/time-zone.js';
 import {
-  businessDateFromDbDate,
-  type BusinessDate,
-} from '../../../kernel/datetime/business-date.js';
-import { JALALI_RENDERABLE_GREGORIAN_RANGE } from '../../../kernel/datetime/jalali.js';
+  isCalendarSystem,
+  type CalendarSystem,
+} from '../../../kernel/datetime/calendar-system.js';
+import { isTimeZone } from '../../../kernel/datetime/time-zone.js';
+import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
 import type { LicensedAllocation } from '../../licensing/application/licensing.service.js';
 import {
   type AuditColumns,
@@ -100,11 +99,17 @@ export interface OrganizationListFilter {
   search?: string | undefined;
 }
 
-/** Outcome of a serialized GREGORIAN → JALALI organization update. */
-export type JalaliCalendarUpdateResult =
+/** Outcome of a serialized organization calendar-system update. */
+export type OrganizationCalendarUpdateResult =
   | { kind: 'updated'; organization: Organization }
   | { kind: 'not_found' }
   | { kind: 'unrenderable_history'; businessDate: BusinessDate };
+
+/** Outcome of the Organization-owned calendar lock around an Inventory write. */
+export type OrganizationCalendarWriteLockResult<T> =
+  | { kind: 'completed'; value: T }
+  | { kind: 'not_found' }
+  | { kind: 'calendar_changed' };
 
 @Injectable()
 export class OrganizationsRepository {
@@ -234,20 +239,30 @@ export class OrganizationsRepository {
   }
 
   /**
-   * Update toward JALALI only after serializing against Inventory BusinessDate
-   * writes and checking history in the same transaction as the organization
-   * update. The explicit `FOR UPDATE` is the writer/transition rendezvous:
-   * Inventory header inserts/date edits hold `FOR KEY SHARE` on this row until
-   * their transaction commits, so the query sees their committed date or a
-   * later stale writer re-checks the calendar before persisting.
+   * Update the calendar system in Organization's transaction. The owner
+   * module supplies an awaited history reader for a requested JALALI setting;
+   * this repository itself reads only `organization.organizations` (AR-07).
    *
-   * This narrow cross-schema query enforces the C-63 data-integrity boundary;
-   * it never changes, deletes, or rewrites an Inventory document.
+   * `FOR UPDATE` is the transition/writer rendezvous in BOTH directions. The
+   * history callback calls Inventory's public application contract only for
+   * GREGORIAN → JALALI; JALALI → GREGORIAN remains unrestricted. An exception
+   * from the mandatory callback aborts this transaction.
    */
-  async updateToJalali(
+  async updateCalendarSystem(
     id: string,
     patch: OrganizationUpdate,
-  ): Promise<JalaliCalendarUpdateResult> {
+    findFirstUnrenderableBusinessDate?: (
+      organizationId: string,
+    ) => Promise<BusinessDate | null>,
+  ): Promise<OrganizationCalendarUpdateResult> {
+    if (
+      patch.calendarSystem === 'JALALI' &&
+      typeof findFirstUnrenderableBusinessDate !== 'function'
+    ) {
+      throw new Error(
+        'A Jalali transition requires the Inventory history contract.',
+      );
+    }
     const client = await this.client();
     return client.$transaction(async (tx) => {
       const lockedOrganizations = await tx.$queryRaw<
@@ -261,25 +276,21 @@ export class OrganizationsRepository {
       const current = lockedOrganizations[0];
       if (current === undefined) return { kind: 'not_found' };
 
-      if (current.calendarSystem === 'GREGORIAN') {
-        const incompatibleDocuments = await tx.$queryRaw<
-          Array<{ businessDate: Date }>
-        >`
-          SELECT "business_date" AS "businessDate"
-            FROM "inventory"."inventory_business_documents"
-           WHERE "organization_id" = ${id}
-             AND (
-               "business_date" < CAST(${JALALI_RENDERABLE_GREGORIAN_RANGE.minimum} AS date)
-               OR "business_date" > CAST(${JALALI_RENDERABLE_GREGORIAN_RANGE.maximum} AS date)
-             )
-           ORDER BY "business_date" ASC, "id" ASC
-           LIMIT 1
-        `;
-        const incompatible = incompatibleDocuments[0];
-        if (incompatible !== undefined) {
+      if (
+        current.calendarSystem === 'GREGORIAN' &&
+        patch.calendarSystem === 'JALALI'
+      ) {
+        if (typeof findFirstUnrenderableBusinessDate !== 'function') {
+          throw new Error(
+            'A Jalali transition requires the Inventory history contract.',
+          );
+        }
+        const incompatibleBusinessDate =
+          await findFirstUnrenderableBusinessDate(id);
+        if (incompatibleBusinessDate !== null) {
           return {
             kind: 'unrenderable_history',
-            businessDate: businessDateFromDbDate(incompatible.businessDate),
+            businessDate: incompatibleBusinessDate,
           };
         }
       }
@@ -295,6 +306,39 @@ export class OrganizationsRepository {
         if (isRecordNotFound(error)) return { kind: 'not_found' };
         throw error;
       }
+    });
+  }
+
+  /**
+   * Organization-owned half of the Inventory BusinessDate write contract.
+   * Keep the row lock while the caller's complete Inventory transaction
+   * commits; no transaction client crosses the module boundary. The callback
+   * is never invoked for a missing organization or stale calendar.
+   */
+  async withBusinessDateWriteLock<T>(
+    organizationId: string,
+    validatedCalendarSystem: CalendarSystem,
+    work: () => Promise<T>,
+  ): Promise<OrganizationCalendarWriteLockResult<T>> {
+    if (typeof work !== 'function') {
+      throw new Error(
+        'An Inventory BusinessDate write requires a transaction callback.',
+      );
+    }
+    const client = await this.client();
+    return client.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<Array<{ calendarSystem: string }>>`
+        SELECT "calendar_system" AS "calendarSystem"
+          FROM "organization"."organizations"
+         WHERE "id" = ${organizationId}
+         FOR KEY SHARE
+      `;
+      const organization = rows[0];
+      if (organization === undefined) return { kind: 'not_found' };
+      if (organization.calendarSystem !== validatedCalendarSystem) {
+        return { kind: 'calendar_changed' };
+      }
+      return { kind: 'completed', value: await work() };
     });
   }
 }

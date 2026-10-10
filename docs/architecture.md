@@ -134,6 +134,15 @@ Result/error types, base DTOs, exception filters. If you feel the need for a
 | "I need to send something to an external system" | **Outbox row** written in my transaction → worker → integration adapter — ADR-0004 |
 | Direct cross-module table/Prisma access | **Forbidden** |
 
+When one use case must coordinate multiple modules, a small root-level
+`backend/src/composition/` service may call their public application contracts.
+It is not a business module: it must not access repositories, tables or Prisma
+transaction clients, and business modules must not import it. Each new use of
+this pattern is AR-29/ADR-gated. The Organization–Inventory calendar use case is
+the current example in [ADR-0043](adr/0043-acyclic-organization-inventory-calendar-transition.md),
+which remains **Proposed** pending formal Product Owner review; task-level
+authorization to implement in PR #135 is not ADR acceptance.
+
 Event naming: `Entity.PastTenseVerb` in PascalCase — e.g. `InventoryReceipt.Created`,
 `Invoice.Issued`, `JournalEntry.Posted`. The initial v1 event catalog is in
 `docs/modules.md` §Event catalog; it grows as modules are implemented (each event
@@ -155,7 +164,9 @@ semantics of an existing field requires an ADR).
 > folders below are **target layout, not present**. Module folders currently
 > use `api/ application/ domain/ data/`; the optional `events/ reports/
 > imports/ documents/` folders of §4 are not in use (domain event schemas live
-> in `domain/*.events.ts`).
+> in `domain/*.events.ts`). A root `backend/src/composition/` use-case layer
+> coordinates the Organization–Inventory calendar transition under ADR-0043
+> (still Proposed; task-authorized in PR #135, not formally accepted).
 
 ```
 Vardena/
@@ -171,6 +182,7 @@ Vardena/
 │   ├── src/
 │   │   ├── main.ts            # API process entrypoint
 │   │   ├── worker.ts          # worker process entrypoint (outbox, PDF, jobs)
+│   │   ├── composition/       # root-only, ADR-gated multi-module use cases
 │   │   ├── kernel/            # technical primitives only (AR-06)
 │   │   │   ├── events/        #   bus, domain-event log, idempotency helper
 │   │   │   ├── outbox/        #   OutboxWriter port + impl (port implemented by sync)

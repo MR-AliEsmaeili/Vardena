@@ -42,7 +42,7 @@ import {
   isGregorianBusinessDate,
   type BusinessDate,
 } from '../../src/kernel/datetime/business-date.js';
-import { JALALI_RENDERABLE_GREGORIAN_RANGE } from '../../src/kernel/datetime/jalali.js';
+import type { CalendarSystem } from '../../src/kernel/datetime/calendar-system.js';
 import { planNewVersion } from '../../src/modules/inventory/domain/unit-conversion.js';
 import {
   ConversionPlanRejectedError,
@@ -51,7 +51,8 @@ import {
 import type { Warehouse } from '../../src/modules/inventory/domain/warehouse.js';
 import type { HierarchyEdge } from '../../src/modules/organization/domain/hierarchy.js';
 import type {
-  JalaliCalendarUpdateResult,
+  OrganizationCalendarUpdateResult,
+  OrganizationCalendarWriteLockResult,
   OrganizationsRepository,
 } from '../../src/modules/organization/data/organizations.repository.js';
 import type { LicensedAllocation } from '../../src/modules/licensing/application/licensing.service.js';
@@ -312,16 +313,6 @@ class ScopedCodeTable<TRow extends Row & { organizationId: string }> {
 export class InMemoryOrganizationsRepository {
   readonly table = new InMemoryTable<Organization>([['code']]);
   private allocationTail: Promise<void> = Promise.resolve();
-  private readonly inventoryBusinessDates = new Map<string, BusinessDate[]>();
-
-  seedInventoryBusinessDocumentDate(
-    organizationId: string,
-    businessDate: BusinessDate,
-  ): void {
-    const dates = this.inventoryBusinessDates.get(organizationId) ?? [];
-    dates.push(businessDate);
-    this.inventoryBusinessDates.set(organizationId, dates);
-  }
 
   async findById(id: string): Promise<Organization | null> {
     return this.table.findById(id);
@@ -386,19 +377,34 @@ export class InMemoryOrganizationsRepository {
     return this.table.patch(id, patch);
   }
 
-  async updateToJalali(
+  async updateCalendarSystem(
     id: string,
     patch: Patch,
-  ): Promise<JalaliCalendarUpdateResult> {
+    findFirstUnrenderableBusinessDate?: (
+      organizationId: string,
+    ) => Promise<BusinessDate | null>,
+  ): Promise<OrganizationCalendarUpdateResult> {
+    if (
+      patch.calendarSystem === 'JALALI' &&
+      typeof findFirstUnrenderableBusinessDate !== 'function'
+    ) {
+      throw new Error(
+        'A JALALI calendar update requires the Inventory history contract.',
+      );
+    }
     const current = this.table.findById(id);
     if (current === null) return { kind: 'not_found' };
-    if (current.calendarSystem === 'GREGORIAN') {
-      const incompatible = (this.inventoryBusinessDates.get(id) ?? []).find(
-        (businessDate) =>
-          businessDate < JALALI_RENDERABLE_GREGORIAN_RANGE.minimum ||
-          businessDate > JALALI_RENDERABLE_GREGORIAN_RANGE.maximum,
-      );
-      if (incompatible !== undefined) {
+    if (
+      current.calendarSystem === 'GREGORIAN' &&
+      patch.calendarSystem === 'JALALI'
+    ) {
+      if (typeof findFirstUnrenderableBusinessDate !== 'function') {
+        throw new Error(
+          'A JALALI calendar update requires the Inventory history contract.',
+        );
+      }
+      const incompatible = await findFirstUnrenderableBusinessDate(id);
+      if (incompatible !== null) {
         return {
           kind: 'unrenderable_history',
           businessDate: incompatible,
@@ -409,6 +415,24 @@ export class InMemoryOrganizationsRepository {
     return updated === null
       ? { kind: 'not_found' }
       : { kind: 'updated', organization: updated };
+  }
+
+  async withBusinessDateWriteLock<T>(
+    organizationId: string,
+    validatedCalendarSystem: CalendarSystem,
+    work: () => Promise<T>,
+  ): Promise<OrganizationCalendarWriteLockResult<T>> {
+    if (typeof work !== 'function') {
+      throw new Error(
+        'An Inventory BusinessDate write requires a transaction callback.',
+      );
+    }
+    const organization = this.table.findById(organizationId);
+    if (organization === null) return { kind: 'not_found' };
+    if (organization.calendarSystem !== validatedCalendarSystem) {
+      return { kind: 'calendar_changed' };
+    }
+    return { kind: 'completed', value: await work() };
   }
 }
 

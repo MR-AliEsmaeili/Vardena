@@ -74,7 +74,10 @@ import { InventoryPricingController } from './api/inventory-pricing.controller.j
  * document modules resolve items, units, warehouses and balances through them
  * and never read `inventory.*` tables. Each exposes `requireUsable*` / query
  * methods that carry no permission of their own: the calling service has
- * already performed its own authorization check.
+ * already performed its own authorization check. The business-document
+ * service owns the Jalali-history query and uses Organization's public
+ * `withBusinessDateWriteLock` contract for every create/edit transaction; the
+ * root composition layer supplies the history reader for the transition.
  *
  * Dependencies:
  * - `RbacModule` — `AuthorizationService` and `PermissionRegistry` for the

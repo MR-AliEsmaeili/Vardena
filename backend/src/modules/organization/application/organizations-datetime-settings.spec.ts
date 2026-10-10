@@ -10,7 +10,11 @@ import {
 import { createMasterDataStores } from '../../../../test/support/master-data-repositories.js';
 import { UNPINNED_APP_CONFIG } from '../../../../test/support/app-config.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
-import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
+import {
+  toBusinessDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import { JALALI_RENDERABLE_GREGORIAN_RANGE } from '../../../kernel/datetime/jalali.js';
 import { ORGANIZATION_PERMISSIONS } from '../domain/organization-permissions.js';
 import { OrganizationsService } from './organizations.service.js';
 
@@ -54,8 +58,14 @@ async function buildFixture(): Promise<{
   service: OrganizationsService;
   stores: ReturnType<typeof createMasterDataStores>;
   organizationId: string;
+  addInventoryBusinessDate(organizationId: string, date: BusinessDate): void;
+  updateWithInventoryHistory(
+    id: string,
+    input: Parameters<OrganizationsService['updateOrganization']>[1],
+  ): ReturnType<OrganizationsService['updateOrganization']>;
 }> {
   const stores = createMasterDataStores();
+  const inventoryBusinessDates = new Map<string, BusinessDate[]>();
   const rbacStores = createInMemoryStores();
   // The RBAC fake enforces the `user_roles.user_id` foreign key, so the two
   // principals must exist before a role can be assigned to them.
@@ -75,6 +85,27 @@ async function buildFixture(): Promise<{
     UNPINNED_APP_CONFIG,
     licensingTestDouble(),
   );
+  const addInventoryBusinessDate = (
+    organizationId: string,
+    date: BusinessDate,
+  ) => {
+    const dates = inventoryBusinessDates.get(organizationId) ?? [];
+    dates.push(date);
+    inventoryBusinessDates.set(organizationId, dates);
+  };
+  const findFirstUnrenderableBusinessDate = async (organizationId: string) => {
+    const { minimum, maximum } = JALALI_RENDERABLE_GREGORIAN_RANGE;
+    return (
+      inventoryBusinessDates
+        .get(organizationId)
+        ?.filter((date) => date < minimum || date > maximum)
+        .sort()[0] ?? null
+    );
+  };
+  const updateWithInventoryHistory = (
+    id: string,
+    input: Parameters<OrganizationsService['updateOrganization']>[1],
+  ) => service.updateOrganization(id, input, findFirstUnrenderableBusinessDate);
 
   const permissionIds: string[] = [];
   await rbacStores.raw.permissions.syncDefinitions(
@@ -112,7 +143,13 @@ async function buildFixture(): Promise<{
   stores.raw.memberships.seed(ADMIN, organizationId);
   stores.raw.memberships.seed(ACTOR, organizationId);
 
-  return { service, stores, organizationId };
+  return {
+    service,
+    stores,
+    organizationId,
+    addInventoryBusinessDate,
+    updateWithInventoryHistory,
+  };
 }
 
 describe('C-63 organization date/time settings', () => {
@@ -180,20 +217,91 @@ describe('C-63 organization date/time settings', () => {
     });
   });
 
+  it('fails closed when the mandatory Jalali-history contract is missing or fails', async () => {
+    await asActor(ADMIN, () =>
+      fixture.service.updateOrganization(fixture.organizationId, {
+        calendarSystem: 'GREGORIAN',
+      }),
+    );
+
+    await expect(
+      asActor(ADMIN, () =>
+        fixture.service.updateOrganization(fixture.organizationId, {
+          calendarSystem: 'JALALI',
+        }),
+      ),
+    ).rejects.toThrow(/Inventory history contract/);
+    await expect(
+      asActor(ADMIN, () =>
+        fixture.service.getDateTimeSettings(fixture.organizationId),
+      ),
+    ).resolves.toEqual({
+      calendarSystem: 'GREGORIAN',
+      timeZone: 'Asia/Tehran',
+    });
+
+    const historyFailure = new Error('Inventory history read failed.');
+    await expect(
+      asActor(ADMIN, () =>
+        fixture.service.updateOrganization(
+          fixture.organizationId,
+          { calendarSystem: 'JALALI' },
+          async () => {
+            throw historyFailure;
+          },
+        ),
+      ),
+    ).rejects.toBe(historyFailure);
+    await expect(
+      asActor(ADMIN, () =>
+        fixture.service.getDateTimeSettings(fixture.organizationId),
+      ),
+    ).resolves.toEqual({
+      calendarSystem: 'GREGORIAN',
+      timeZone: 'Asia/Tehran',
+    });
+  });
+
+  it('fails closed when an Inventory writer omits its lock callback or has stale calendar validation', async () => {
+    let invoked = false;
+    const missingCallback = undefined as unknown as () => Promise<void>;
+    await expect(
+      asActor(ADMIN, () =>
+        fixture.service.withBusinessDateWriteLock(
+          fixture.organizationId,
+          'JALALI',
+          missingCallback,
+        ),
+      ),
+    ).rejects.toThrow(/transaction callback/);
+
+    const stale = await asActor(ADMIN, () =>
+      fixture.service.withBusinessDateWriteLock(
+        fixture.organizationId,
+        'GREGORIAN',
+        async () => {
+          invoked = true;
+        },
+      ),
+    );
+    expect(stale).toEqual({ kind: 'calendar_changed' });
+    expect(invoked).toBe(false);
+  });
+
   it('refuses GREGORIAN → JALALI when existing Inventory history is not renderable and preserves settings', async () => {
     await asActor(ADMIN, () =>
       fixture.service.updateOrganization(fixture.organizationId, {
         calendarSystem: 'GREGORIAN',
       }),
     );
-    fixture.stores.raw.organizations.seedInventoryBusinessDocumentDate(
+    fixture.addInventoryBusinessDate(
       fixture.organizationId,
       toBusinessDate('0600-01-01')!,
     );
 
     await expect(
       asActor(ADMIN, () =>
-        fixture.service.updateOrganization(fixture.organizationId, {
+        fixture.updateWithInventoryHistory(fixture.organizationId, {
           calendarSystem: 'JALALI',
         }),
       ),
@@ -222,17 +330,17 @@ describe('C-63 organization date/time settings', () => {
         calendarSystem: 'GREGORIAN',
       }),
     );
-    fixture.stores.raw.organizations.seedInventoryBusinessDocumentDate(
+    fixture.addInventoryBusinessDate(
       fixture.organizationId,
       toBusinessDate('0621-03-21')!,
     );
-    fixture.stores.raw.organizations.seedInventoryBusinessDocumentDate(
+    fixture.addInventoryBusinessDate(
       fixture.organizationId,
       toBusinessDate('3798-12-31')!,
     );
 
     const updated = await asActor(ADMIN, () =>
-      fixture.service.updateOrganization(fixture.organizationId, {
+      fixture.updateWithInventoryHistory(fixture.organizationId, {
         calendarSystem: 'JALALI',
       }),
     );
@@ -249,7 +357,7 @@ describe('C-63 organization date/time settings', () => {
   });
 
   it('keeps the reverse JALALI → GREGORIAN transition unrestricted', async () => {
-    fixture.stores.raw.organizations.seedInventoryBusinessDocumentDate(
+    fixture.addInventoryBusinessDate(
       fixture.organizationId,
       toBusinessDate('0600-01-01')!,
     );

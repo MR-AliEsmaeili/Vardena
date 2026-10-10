@@ -3,15 +3,18 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { APP_CONFIG, loadAppConfig } from '../src/kernel/config/app-config.js';
 import { generateId } from '../src/kernel/ids/ulid.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
-import {
-  businessDateToDbDate,
-  toBusinessDate,
-} from '../src/kernel/datetime/business-date.js';
+import { toBusinessDate } from '../src/kernel/datetime/business-date.js';
 import { JALALI_RENDERABLE_GREGORIAN_RANGE } from '../src/kernel/datetime/jalali.js';
+import type { CalendarSystem } from '../src/kernel/datetime/calendar-system.js';
+import { OrganizationCalendarTransitionService } from '../src/composition/organization-calendar-transition.service.js';
 import { OrganizationsService } from '../src/modules/organization/application/organizations.service.js';
 import { BranchesService } from '../src/modules/organization/application/branches.service.js';
+import { InventoryBusinessDocumentsService } from '../src/modules/inventory/application/inventory-business-documents.service.js';
 import { WarehousesService } from '../src/modules/inventory/application/warehouses.service.js';
-import { InventoryBusinessDocumentsRepository } from '../src/modules/inventory/data/inventory-business-documents.repository.js';
+import {
+  InventoryBusinessDocumentsRepository,
+  type DocumentLineCreate,
+} from '../src/modules/inventory/data/inventory-business-documents.repository.js';
 import { OrganizationCalendarChangedDuringDocumentWriteError } from '../src/modules/inventory/data/inventory-business-document-errors.js';
 import { createTestApp } from './support/test-app.js';
 
@@ -19,13 +22,9 @@ const DATABASE_URL = process.env['VARDENA_TEST_DATABASE_URL'];
 
 type CalendarTransitionTransaction = {
   $queryRaw<T>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
-  inventoryBusinessDocument: {
-    create(args: unknown): Promise<unknown>;
-  };
 };
 
-type CalendarTransitionClient = {
-  $queryRaw<T>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
+type CalendarTransitionClient = CalendarTransitionTransaction & {
   $transaction<T>(
     callback: (tx: CalendarTransitionTransaction) => Promise<T>,
   ): Promise<T>;
@@ -41,6 +40,8 @@ describe.skipIf(DATABASE_URL === undefined)(
     let app: INestApplication | undefined;
     let prisma: PrismaService;
     let organizations: OrganizationsService;
+    let calendarTransitions: OrganizationCalendarTransitionService;
+    let inventoryDocuments: InventoryBusinessDocumentsService;
     let branches: BranchesService;
     let warehouses: WarehousesService;
     let documents: InventoryBusinessDocumentsRepository;
@@ -69,11 +70,10 @@ describe.skipIf(DATABASE_URL === undefined)(
       return { organization, warehouse };
     }
 
-    async function createReceipt(
+    async function insertReceipt(
       organizationId: string,
       warehouseId: string,
       canonicalDate: string,
-      validatedCalendarSystem: 'GREGORIAN' | 'JALALI' = 'GREGORIAN',
     ) {
       const businessDate = toBusinessDate(canonicalDate);
       if (businessDate === null) {
@@ -96,8 +96,47 @@ describe.skipIf(DATABASE_URL === undefined)(
           at: new Date(),
         },
         lines: [],
-        validatedCalendarSystem,
       });
+    }
+
+    async function createReceipt(
+      organizationId: string,
+      warehouseId: string,
+      canonicalDate: string,
+      validatedCalendarSystem: CalendarSystem = 'GREGORIAN',
+    ) {
+      const result = await organizations.withBusinessDateWriteLock(
+        organizationId,
+        validatedCalendarSystem,
+        () => insertReceipt(organizationId, warehouseId, canonicalDate),
+      );
+      if (result.kind !== 'completed') {
+        throw new OrganizationCalendarChangedDuringDocumentWriteError();
+      }
+      return result.value;
+    }
+
+    async function isWaitingForCalendarLock(
+      client: CalendarTransitionClient,
+      lockMode: 'FOR UPDATE' | 'FOR KEY SHARE',
+    ): Promise<boolean> {
+      const pattern = `%${lockMode}%`;
+      for (let attempt = 0; attempt < 160; attempt += 1) {
+        const activity = await client.$queryRaw<Array<{ waiting: boolean }>>`
+          SELECT EXISTS (
+            SELECT 1
+              FROM pg_stat_activity
+             WHERE datname = current_database()
+               AND state = 'active'
+               AND wait_event_type = 'Lock'
+               AND query LIKE '%FROM "organization"."organizations"%'
+               AND query LIKE ${pattern}
+          ) AS "waiting"
+        `;
+        if (activity[0]?.waiting === true) return true;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return false;
     }
 
     beforeAll(async () => {
@@ -112,6 +151,8 @@ describe.skipIf(DATABASE_URL === undefined)(
       app = built.app;
       prisma = built.module.get(PrismaService);
       organizations = app.get(OrganizationsService);
+      calendarTransitions = app.get(OrganizationCalendarTransitionService);
+      inventoryDocuments = app.get(InventoryBusinessDocumentsService);
       branches = app.get(BranchesService);
       warehouses = app.get(WarehousesService);
       documents = app.get(InventoryBusinessDocumentsRepository);
@@ -163,7 +204,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       );
 
       await expect(
-        organizations.updateOrganization(organization.id, {
+        calendarTransitions.updateOrganization(organization.id, {
           calendarSystem: 'JALALI',
         }),
       ).rejects.toMatchObject({
@@ -198,9 +239,12 @@ describe.skipIf(DATABASE_URL === undefined)(
         JALALI_RENDERABLE_GREGORIAN_RANGE.maximum,
       );
 
-      const updated = await organizations.updateOrganization(organization.id, {
-        calendarSystem: 'JALALI',
-      });
+      const updated = await calendarTransitions.updateOrganization(
+        organization.id,
+        {
+          calendarSystem: 'JALALI',
+        },
+      );
 
       expect(updated.calendarSystem).toBe('JALALI');
       await expect(
@@ -215,10 +259,101 @@ describe.skipIf(DATABASE_URL === undefined)(
       });
     });
 
+    it('keeps JALALI → GREGORIAN unrestricted with out-of-range history', async () => {
+      const { organization, warehouse } =
+        await createGregorianOrganization('reverse');
+      await calendarTransitions.updateOrganization(organization.id, {
+        calendarSystem: 'JALALI',
+      });
+      const legacyReceipt = await createReceipt(
+        organization.id,
+        warehouse.id,
+        '0600-01-01',
+        'JALALI',
+      );
+
+      const updated = await calendarTransitions.updateOrganization(
+        organization.id,
+        { calendarSystem: 'GREGORIAN' },
+      );
+
+      expect(updated.calendarSystem).toBe('GREGORIAN');
+      await expect(
+        documents.findById(organization.id, legacyReceipt.id),
+      ).resolves.toMatchObject({ businessDate: '0600-01-01' });
+    });
+
+    it('takes the same PostgreSQL transition lock for the unrestricted JALALI → GREGORIAN reversal', async () => {
+      const { organization, warehouse } =
+        await createGregorianOrganization('reverse-lock');
+      await calendarTransitions.updateOrganization(organization.id, {
+        calendarSystem: 'JALALI',
+      });
+      await createReceipt(
+        organization.id,
+        warehouse.id,
+        '0600-01-01',
+        'JALALI',
+      );
+
+      const client = await prisma.getClient<CalendarTransitionClient>();
+      let signalHeldLock: () => void = () => undefined;
+      const heldLockReady = new Promise<void>((resolve) => {
+        signalHeldLock = resolve;
+      });
+      let releaseHeldLock: () => void = () => undefined;
+      const heldLockGate = new Promise<void>((resolve) => {
+        releaseHeldLock = resolve;
+      });
+      const heldLock = client.$transaction(async (tx) => {
+        await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+            FROM "organization"."organizations"
+           WHERE "id" = ${organization.id}
+           FOR UPDATE
+        `;
+        signalHeldLock();
+        await heldLockGate;
+      });
+      await heldLockReady;
+      const transition = calendarTransitions
+        .updateOrganization(organization.id, {
+          calendarSystem: 'GREGORIAN',
+        })
+        .then(
+          (value) => ({ kind: 'updated' as const, value }),
+          (error: unknown) => ({ kind: 'rejected' as const, error }),
+        );
+
+      let transitionWaited = false;
+      try {
+        transitionWaited = await isWaitingForCalendarLock(client, 'FOR UPDATE');
+      } finally {
+        releaseHeldLock();
+      }
+
+      await heldLock;
+      expect(transitionWaited).toBe(true);
+      await expect(transition).resolves.toMatchObject({
+        kind: 'updated',
+        value: { calendarSystem: 'GREGORIAN' },
+      });
+      const clientForHistory = await prisma.getClient<{
+        inventoryBusinessDocument: {
+          count(args: unknown): Promise<number>;
+        };
+      }>();
+      await expect(
+        clientForHistory.inventoryBusinessDocument.count({
+          where: { organizationId: organization.id },
+        }),
+      ).resolves.toBe(1);
+    });
+
     it('refuses a stale Gregorian document write after a calendar transition', async () => {
       const { organization, warehouse } =
         await createGregorianOrganization('stale');
-      await organizations.updateOrganization(organization.id, {
+      await calendarTransitions.updateOrganization(organization.id, {
         calendarSystem: 'JALALI',
       });
 
@@ -240,15 +375,122 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).resolves.toBe(0);
     });
 
-    it('waits for a concurrent Inventory writer and checks its committed date', async () => {
+    it('rolls back Organization settings when the mandatory Inventory history contract fails', async () => {
       const { organization, warehouse } =
-        await createGregorianOrganization('concurrent');
-      const client = await prisma.getClient<CalendarTransitionClient>();
-      const businessDate = businessDateToDbDate('0600-01-01');
+        await createGregorianOrganization('guard-failure');
+      const receipt = await createReceipt(
+        organization.id,
+        warehouse.id,
+        '2026-10-01',
+      );
+      const injectedFailure = new Error('Injected Inventory history failure.');
+
+      await expect(
+        organizations.updateOrganization(
+          organization.id,
+          { calendarSystem: 'JALALI' },
+          async (organizationId) => {
+            await inventoryDocuments.findFirstUnrenderableBusinessDate(
+              organizationId,
+            );
+            throw injectedFailure;
+          },
+        ),
+      ).rejects.toBe(injectedFailure);
+
+      await expect(
+        organizations.getDateTimeSettings(organization.id),
+      ).resolves.toEqual({ calendarSystem: 'GREGORIAN', timeZone: 'UTC' });
+      await expect(
+        documents.findById(organization.id, receipt.id),
+      ).resolves.toMatchObject({ businessDate: '2026-10-01' });
+
+      // The failed transaction released its row lock; the normal composition
+      // path can now complete the same transition.
+      await expect(
+        calendarTransitions.updateOrganization(organization.id, {
+          calendarSystem: 'JALALI',
+        }),
+      ).resolves.toMatchObject({ calendarSystem: 'JALALI' });
+    });
+
+    it('rolls back the Inventory header and line transaction when the write callback fails', async () => {
+      const { organization, warehouse } =
+        await createGregorianOrganization('write-failure');
+      const businessDate = toBusinessDate('2026-10-01');
       if (businessDate === null) {
-        throw new Error('Invalid concurrent-test BusinessDate fixture.');
+        throw new Error('Invalid write-failure BusinessDate fixture.');
       }
-      const documentId = generateId();
+      const badLine: DocumentLineCreate = {
+        id: generateId(),
+        lineNumber: 1,
+        itemId: generateId(),
+        quantity: '1',
+        unitId: generateId(),
+        baseQuantity: '1',
+        baseUnitId: generateId(),
+        conversionFactor: '1',
+        basisMovementId: null,
+      };
+
+      await expect(
+        organizations.withBusinessDateWriteLock(
+          organization.id,
+          'GREGORIAN',
+          () =>
+            documents.createDocument({
+              header: {
+                id: generateId(),
+                organizationId: organization.id,
+                kind: 'receipt',
+                businessDate,
+                warehouseId: warehouse.id,
+                sourceWarehouseId: null,
+                destinationWarehouseId: null,
+                receiptCost: null,
+                status: 'draft',
+                description: null,
+                reference: null,
+                actorId: null,
+                at: new Date(),
+              },
+              lines: [badLine],
+            }),
+        ),
+      ).rejects.toThrow();
+
+      const client = await prisma.getClient<{
+        inventoryBusinessDocument: {
+          count(args: unknown): Promise<number>;
+        };
+      }>();
+      await expect(
+        client.inventoryBusinessDocument.count({
+          where: { organizationId: organization.id },
+        }),
+      ).resolves.toBe(0);
+
+      // Both independent transactions released their locks on failure.
+      await expect(
+        createReceipt(organization.id, warehouse.id, '2026-10-01'),
+      ).resolves.toMatchObject({ businessDate: '2026-10-01' });
+    });
+
+    it('uses PostgreSQL READ COMMITTED for the Prisma transactions that serialize these contracts', async () => {
+      const client = await prisma.getClient<CalendarTransitionClient>();
+      const isolation = await client.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<Array<{ isolation: string }>>`
+          SELECT current_setting('transaction_isolation') AS "isolation"
+        `;
+        return rows[0]?.isolation;
+      });
+      expect(isolation).toBe('read committed');
+    });
+
+    it('waits for a writer-first Inventory transaction, then checks its committed history', async () => {
+      const { organization, warehouse } =
+        await createGregorianOrganization('writer-first');
+      const client = await prisma.getClient<CalendarTransitionClient>();
 
       let signalWriterLock: () => void = () => undefined;
       const writerLocked = new Promise<void>((resolve) => {
@@ -258,29 +500,18 @@ describe.skipIf(DATABASE_URL === undefined)(
       const writerGate = new Promise<void>((resolve) => {
         releaseWriter = resolve;
       });
-      const writer = client.$transaction(async (tx) => {
-        await tx.$queryRaw<Array<{ id: string }>>`
-          SELECT "id"
-            FROM "organization"."organizations"
-           WHERE "id" = ${organization.id}
-           FOR KEY SHARE
-        `;
-        signalWriterLock();
-        await writerGate;
-        await tx.inventoryBusinessDocument.create({
-          data: {
-            id: documentId,
-            organizationId: organization.id,
-            kind: 'receipt',
-            businessDate,
-            warehouseId: warehouse.id,
-            status: 'draft',
-          },
-        });
-      });
+      const writer = organizations.withBusinessDateWriteLock(
+        organization.id,
+        'GREGORIAN',
+        async () => {
+          signalWriterLock();
+          await writerGate;
+          return insertReceipt(organization.id, warehouse.id, '0600-01-01');
+        },
+      );
 
       await writerLocked;
-      const transition = organizations
+      const transition = calendarTransitions
         .updateOrganization(organization.id, { calendarSystem: 'JALALI' })
         .then(
           (value) => ({ kind: 'updated' as const, value }),
@@ -288,31 +519,13 @@ describe.skipIf(DATABASE_URL === undefined)(
         );
 
       try {
-        let blockedOnOrganizationLock = false;
-        for (let attempt = 0; attempt < 120; attempt += 1) {
-          const activity = await client.$queryRaw<Array<{ waiting: boolean }>>`
-            SELECT EXISTS (
-              SELECT 1
-                FROM pg_stat_activity
-               WHERE datname = current_database()
-                 AND state = 'active'
-                 AND wait_event_type = 'Lock'
-                 AND query LIKE '%FROM "organization"."organizations"%'
-                 AND query LIKE '%FOR UPDATE%'
-            ) AS "waiting"
-          `;
-          if (activity[0]?.waiting === true) {
-            blockedOnOrganizationLock = true;
-            break;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 25));
-        }
-        expect(blockedOnOrganizationLock).toBe(true);
+        expect(await isWaitingForCalendarLock(client, 'FOR UPDATE')).toBe(true);
       } finally {
         releaseWriter();
       }
 
-      await writer;
+      const writerResult = await writer;
+      expect(writerResult.kind).toBe('completed');
       const result = await transition;
       expect(result.kind).toBe('rejected');
       if (result.kind === 'rejected') {
@@ -328,9 +541,85 @@ describe.skipIf(DATABASE_URL === undefined)(
       await expect(
         organizations.getDateTimeSettings(organization.id),
       ).resolves.toEqual({ calendarSystem: 'GREGORIAN', timeZone: 'UTC' });
+      if (writerResult.kind === 'completed') {
+        await expect(
+          documents.findById(organization.id, writerResult.value.id),
+        ).resolves.toMatchObject({ businessDate: '0600-01-01' });
+      }
+    });
+
+    it('when the transition wins, a waiting READ COMMITTED writer observes the new calendar and never starts its write callback', async () => {
+      const { organization, warehouse } =
+        await createGregorianOrganization('transition-first');
+      const client = await prisma.getClient<CalendarTransitionClient>();
+
+      let signalHistoryRead: () => void = () => undefined;
+      const historyRead = new Promise<void>((resolve) => {
+        signalHistoryRead = resolve;
+      });
+      let releaseTransition: () => void = () => undefined;
+      const transitionGate = new Promise<void>((resolve) => {
+        releaseTransition = resolve;
+      });
+      const transition = organizations
+        .updateOrganization(
+          organization.id,
+          { calendarSystem: 'JALALI' },
+          async (organizationId) => {
+            const incompatible =
+              await inventoryDocuments.findFirstUnrenderableBusinessDate(
+                organizationId,
+              );
+            signalHistoryRead();
+            await transitionGate;
+            return incompatible;
+          },
+        )
+        .then(
+          (value) => ({ kind: 'updated' as const, value }),
+          (error: unknown) => ({ kind: 'rejected' as const, error }),
+        );
+
+      await historyRead;
+      let writerCallbackInvoked = false;
+      const staleWriter = organizations.withBusinessDateWriteLock(
+        organization.id,
+        'GREGORIAN',
+        async () => {
+          writerCallbackInvoked = true;
+          return insertReceipt(organization.id, warehouse.id, '0600-01-01');
+        },
+      );
+
+      try {
+        expect(await isWaitingForCalendarLock(client, 'FOR KEY SHARE')).toBe(
+          true,
+        );
+      } finally {
+        releaseTransition();
+      }
+
+      const transitionResult = await transition;
+      expect(transitionResult.kind).toBe('updated');
+      const writerResult = await staleWriter;
+      expect(writerResult).toEqual({ kind: 'calendar_changed' });
+      expect(writerCallbackInvoked).toBe(false);
       await expect(
-        documents.findById(organization.id, documentId),
-      ).resolves.toMatchObject({ businessDate: '0600-01-01' });
+        organizations.getDateTimeSettings(organization.id),
+      ).resolves.toEqual({ calendarSystem: 'JALALI', timeZone: 'UTC' });
+
+      const documentsInOrganization = await prisma
+        .getClient<{
+          inventoryBusinessDocument: {
+            count(args: unknown): Promise<number>;
+          };
+        }>()
+        .then((db) =>
+          db.inventoryBusinessDocument.count({
+            where: { organizationId: organization.id },
+          }),
+        );
+      expect(documentsInOrganization).toBe(0);
     });
   },
 );

@@ -66,7 +66,8 @@ export interface InventoryDocumentWhere {
   kind?: string | { in: string[] };
   status?: string | { in: string[] };
   warehouseId?: string;
-  businessDate?: { gte?: Date; lte?: Date };
+  businessDate?: { gte?: Date; lte?: Date; lt?: Date; gt?: Date };
+  OR?: Array<Pick<InventoryDocumentWhere, 'businessDate'>>;
 }
 
 export interface InventoryDocumentCreate {
