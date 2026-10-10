@@ -578,7 +578,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             '0600-01-01',
           );
           signalInventoryCommit();
-          await client.$queryRaw`SELECT pg_sleep(8)`;
+          await client.$queryRaw`SELECT pg_sleep(8) IS NULL AS "slept"`;
           return document;
         })
         .then(
@@ -594,7 +594,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         );
 
       expect(await isWaitingForCalendarLock(client, 'FOR UPDATE')).toBe(true);
-      await client.$queryRaw`SELECT pg_sleep(6)`;
+      await client.$queryRaw`SELECT pg_sleep(6) IS NULL AS "slept"`;
       expect(await isWaitingForCalendarLock(client, 'FOR UPDATE')).toBe(true);
 
       const [writer, transitionResult] = await Promise.all([
