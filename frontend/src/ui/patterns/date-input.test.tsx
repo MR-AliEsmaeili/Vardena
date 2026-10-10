@@ -68,6 +68,43 @@ describe('DateInput', () => {
     expect(onValueChange).toHaveBeenLastCalledWith('2026-10-09');
   });
 
+  it('discards a partial Jalali draft when the active calendar changes', () => {
+    const onValueChange = vi.fn();
+    const { rerender } = render(
+      <DateInput
+        id="day"
+        calendar="JALALI"
+        value="2026-10-08"
+        onValueChange={onValueChange}
+      />,
+    );
+
+    const jalaliField = screen.getByRole('textbox');
+    fireEvent.change(jalaliField, { target: { value: '1405/07' } });
+    expect(jalaliField).toHaveValue('1405/07');
+
+    rerender(
+      <DateInput
+        id="day"
+        calendar="GREGORIAN"
+        value="2026-10-08"
+        onValueChange={onValueChange}
+      />,
+    );
+    const gregorianField = screen.getByDisplayValue('2026-10-08');
+    fireEvent.change(gregorianField, { target: { value: '2026-10-09' } });
+
+    rerender(
+      <DateInput
+        id="day"
+        calendar="JALALI"
+        value="2026-10-09"
+        onValueChange={onValueChange}
+      />,
+    );
+    expect(screen.getByRole('textbox')).toHaveValue('1405/07/17');
+  });
+
   it('renders an empty day as empty in both calendars', () => {
     setDateTimeSettings({ calendarSystem: 'JALALI', timeZone: 'Asia/Tehran' });
     render(<DateInput id="day" value="" onValueChange={() => {}} />);

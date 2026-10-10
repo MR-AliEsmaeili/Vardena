@@ -1,11 +1,6 @@
-import { useState } from 'react';
 import { Input } from '@/ui/input';
-import {
-  formatBusinessDay,
-  resolveDayInput,
-  useCalendarSystem,
-  type CalendarSystem,
-} from '@/lib/datetime';
+import { useCalendarSystem, type CalendarSystem } from '@/lib/datetime';
+import { JalaliDateInputField } from './jalali-date-input-field';
 
 /**
  * The ONE calendar-aware date field (C-63 §17, ADR-0042 §D9).
@@ -52,9 +47,6 @@ export function DateInput({
 }: DateInputProps) {
   const organizationCalendar = useCalendarSystem();
   const active = calendar ?? organizationCalendar;
-  // The Jalali field shows the text the user is still typing; `null` means
-  // "show the day derived from the canonical value".
-  const [draft, setDraft] = useState<string | null>(null);
 
   if (active === 'GREGORIAN') {
     return (
@@ -69,27 +61,14 @@ export function DateInput({
     );
   }
 
+  // Switching calendars unmounts the text field, discarding any partial Jalali
+  // draft. Returning to Jalali then derives its display from the canonical
+  // value instead of resurrecting text entered under the prior calendar.
   return (
-    <Input
+    <JalaliDateInputField
       {...props}
-      type="text"
-      dir="ltr"
-      inputMode="numeric"
-      autoComplete="off"
-      placeholder={formatBusinessDay('2026-03-21', 'JALALI')}
-      data-calendar="JALALI"
-      value={draft ?? (value === '' ? '' : formatBusinessDay(value, 'JALALI'))}
-      onChange={(event) => {
-        const text = event.target.value;
-        setDraft(text);
-        const day = resolveDayInput(text, 'JALALI');
-        if (day !== null) {
-          onValueChange(day);
-        } else if (text.trim() === '') {
-          onValueChange('');
-        }
-      }}
-      onBlur={() => setDraft(null)}
+      value={value}
+      onValueChange={onValueChange}
     />
   );
 }

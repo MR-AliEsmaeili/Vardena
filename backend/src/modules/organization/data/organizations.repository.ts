@@ -89,8 +89,33 @@ type OrganizationTx = {
   $queryRaw<T>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
 };
 
+type OrganizationTransactionOptions = {
+  maxWait: number;
+  timeout: number;
+  isolationLevel: 'ReadCommitted';
+};
+
 type Client = OrganizationTx & {
-  $transaction<T>(fn: (tx: OrganizationTx) => Promise<T>): Promise<T>;
+  $transaction<T>(
+    fn: (tx: OrganizationTx) => Promise<T>,
+    options?: OrganizationTransactionOptions,
+  ): Promise<T>;
+};
+
+// Prisma interactive transactions default to a 5-second timeout. The Inventory
+// write transaction keeps that default; the Organization-side lock transaction
+// must outlive it so the FOR SHARE lock cannot expire before Inventory commits.
+// READ COMMITTED is explicit because a writer that waits behind a transition
+// must observe the committed calendar when its SELECT ... FOR SHARE resumes.
+const CALENDAR_TRANSITION_TRANSACTION: OrganizationTransactionOptions = {
+  maxWait: 3_000,
+  timeout: 15_000,
+  isolationLevel: 'ReadCommitted',
+};
+const BUSINESS_DATE_WRITE_LOCK_TRANSACTION: OrganizationTransactionOptions = {
+  maxWait: 3_000,
+  timeout: 10_000,
+  isolationLevel: 'ReadCommitted',
 };
 
 export interface OrganizationListFilter {
@@ -306,7 +331,7 @@ export class OrganizationsRepository {
         if (isRecordNotFound(error)) return { kind: 'not_found' };
         throw error;
       }
-    });
+    }, CALENDAR_TRANSITION_TRANSACTION);
   }
 
   /**
@@ -331,7 +356,7 @@ export class OrganizationsRepository {
         SELECT "calendar_system" AS "calendarSystem"
           FROM "organization"."organizations"
          WHERE "id" = ${organizationId}
-         FOR KEY SHARE
+         FOR SHARE
       `;
       const organization = rows[0];
       if (organization === undefined) return { kind: 'not_found' };
@@ -339,7 +364,7 @@ export class OrganizationsRepository {
         return { kind: 'calendar_changed' };
       }
       return { kind: 'completed', value: await work() };
-    });
+    }, BUSINESS_DATE_WRITE_LOCK_TRANSACTION);
   }
 }
 

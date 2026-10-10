@@ -1,5 +1,9 @@
 import { subtractDecimalStrings } from './quantities.js';
-import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
+import {
+  formatBusinessDate,
+  type BusinessDate,
+} from '../../../kernel/datetime/business-date.js';
+import type { CalendarSystem } from '../../../kernel/datetime/calendar-system.js';
 
 /**
  * Inventory balance — the materialized projection of the ledger for one
@@ -51,6 +55,22 @@ export interface InventoryBalanceDto {
   lastMovementDate: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Whether a stored Inventory BusinessDate can be displayed under the
+ * organization's captured calendar. Gregorian keeps the general canonical
+ * API range; Jalali also requires the reversible rendering envelope.
+ */
+export function isInventoryBusinessDateRenderable(
+  businessDate: BusinessDate,
+  calendarSystem: CalendarSystem,
+): boolean {
+  return (
+    formatBusinessDate(businessDate, 'GREGORIAN') !== null &&
+    (calendarSystem === 'GREGORIAN' ||
+      formatBusinessDate(businessDate, 'JALALI') !== null)
+  );
 }
 
 /** Availability for a key: what is on hand minus what is promised. */

@@ -118,6 +118,26 @@ jobs:
           DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
         run: npm run bootstrap:system-admin
 
+      # Exercise actual PrismaPg/PostgreSQL DATE round-trips with a non-UTC
+      # process timezone. BusinessDate must remain the same calendar day in
+      # model reads, raw history queries and write responses; it is not an
+      # instant that can shift with the runner's local timezone.
+      - name: Inventory BusinessDate live suite (Asia/Tehran process timezone)
+        working-directory: backend
+        env:
+          TZ: Asia/Tehran
+          VARDENA_TEST_DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+        run: npm run test:e2e -- test/inventory-business-date-writes-live.e2e-spec.ts
+
+      # Also run under a negative process offset: a PostgreSQL `date` must not
+      # shift when Prisma materializes it in a process timezone west of UTC.
+      - name: Inventory BusinessDate live suite (America/Los_Angeles process timezone)
+        working-directory: backend
+        env:
+          TZ: America/Los_Angeles
+          VARDENA_TEST_DATABASE_URL: postgresql://vardena:vardena_test_password@localhost:5432/vardena_test
+        run: npm run test:e2e -- test/inventory-business-date-writes-live.e2e-spec.ts
+
       # The populated pre-Task-11 backfill cannot be observed on a database that
       # was migrated from empty, so this step proves it the only way possible:
       # a disposable database created from the service, the 12 pre-Task-11

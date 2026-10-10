@@ -20,6 +20,15 @@ import { createTestApp } from './support/test-app.js';
 
 const DATABASE_URL = process.env['VARDENA_TEST_DATABASE_URL'];
 
+function databaseUrlWithApplicationName(
+  databaseUrl: string,
+  applicationName: string,
+): string {
+  const url = new URL(databaseUrl);
+  url.searchParams.set('application_name', applicationName);
+  return url.toString();
+}
+
 type CalendarTransitionTransaction = {
   $queryRaw<T>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
 };
@@ -34,6 +43,7 @@ describe.skipIf(DATABASE_URL === undefined)(
   'Organization calendar transition (live database)',
   () => {
     const suffix = generateId().slice(-8).toLowerCase();
+    const applicationName = `vardena-calendar-transition-${suffix}`;
     const organizationIds: string[] = [];
     const branchIds: string[] = [];
     const warehouseIds: string[] = [];
@@ -118,7 +128,7 @@ describe.skipIf(DATABASE_URL === undefined)(
 
     async function isWaitingForCalendarLock(
       client: CalendarTransitionClient,
-      lockMode: 'FOR UPDATE' | 'FOR KEY SHARE',
+      lockMode: 'FOR UPDATE' | 'FOR SHARE',
     ): Promise<boolean> {
       const pattern = `%${lockMode}%`;
       for (let attempt = 0; attempt < 160; attempt += 1) {
@@ -127,6 +137,8 @@ describe.skipIf(DATABASE_URL === undefined)(
             SELECT 1
               FROM pg_stat_activity
              WHERE datname = current_database()
+               AND application_name = ${applicationName}
+               AND pid <> pg_backend_pid()
                AND state = 'active'
                AND wait_event_type = 'Lock'
                AND query LIKE '%FROM "organization"."organizations"%'
@@ -145,7 +157,10 @@ describe.skipIf(DATABASE_URL === undefined)(
         override: (builder) =>
           builder.overrideProvider(APP_CONFIG).useValue({
             ...baseConfig,
-            databaseUrl: DATABASE_URL,
+            databaseUrl: databaseUrlWithApplicationName(
+              DATABASE_URL!,
+              applicationName,
+            ),
           }),
       });
       app = built.app;
@@ -350,6 +365,71 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).resolves.toBe(1);
     });
 
+    it('serializes two simultaneous calendar transitions on the Organization row', async () => {
+      const { organization } =
+        await createGregorianOrganization('two-transitions');
+      const client = await prisma.getClient<CalendarTransitionClient>();
+      let signalHistoryRead: () => void = () => undefined;
+      const historyRead = new Promise<void>((resolve) => {
+        signalHistoryRead = resolve;
+      });
+      let releaseFirstTransition: () => void = () => undefined;
+      const firstTransitionGate = new Promise<void>((resolve) => {
+        releaseFirstTransition = resolve;
+      });
+      const firstTransition = organizations
+        .updateOrganization(
+          organization.id,
+          { calendarSystem: 'JALALI' },
+          async (organizationId) => {
+            const incompatible =
+              await inventoryDocuments.findFirstUnrenderableBusinessDate(
+                organizationId,
+              );
+            signalHistoryRead();
+            await firstTransitionGate;
+            return incompatible;
+          },
+        )
+        .then(
+          (value) => ({ kind: 'updated' as const, value }),
+          (error: unknown) => ({ kind: 'rejected' as const, error }),
+        );
+
+      await historyRead;
+      const secondTransition = calendarTransitions
+        .updateOrganization(organization.id, {
+          calendarSystem: 'GREGORIAN',
+        })
+        .then(
+          (value) => ({ kind: 'updated' as const, value }),
+          (error: unknown) => ({ kind: 'rejected' as const, error }),
+        );
+      let secondWaited = false;
+      try {
+        secondWaited = await isWaitingForCalendarLock(client, 'FOR UPDATE');
+      } finally {
+        releaseFirstTransition();
+      }
+
+      const [first, second] = await Promise.all([
+        firstTransition,
+        secondTransition,
+      ]);
+      expect(secondWaited).toBe(true);
+      expect(first).toMatchObject({
+        kind: 'updated',
+        value: { calendarSystem: 'JALALI' },
+      });
+      expect(second).toMatchObject({
+        kind: 'updated',
+        value: { calendarSystem: 'GREGORIAN' },
+      });
+      await expect(
+        organizations.getDateTimeSettings(organization.id),
+      ).resolves.toEqual({ calendarSystem: 'GREGORIAN', timeZone: 'UTC' });
+    });
+
     it('refuses a stale Gregorian document write after a calendar transition', async () => {
       const { organization, warehouse } =
         await createGregorianOrganization('stale');
@@ -476,16 +556,63 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).resolves.toMatchObject({ businessDate: '2026-10-01' });
     });
 
-    it('uses PostgreSQL READ COMMITTED for the Prisma transactions that serialize these contracts', async () => {
+    it('keeps the Organization row lock beyond the former 5-second default until the Inventory write callback completes', async () => {
+      const { organization, warehouse } = await createGregorianOrganization(
+        'write-timeout-margin',
+      );
       const client = await prisma.getClient<CalendarTransitionClient>();
-      const isolation = await client.$transaction(async (tx) => {
-        const rows = await tx.$queryRaw<Array<{ isolation: string }>>`
-          SELECT current_setting('transaction_isolation') AS "isolation"
-        `;
-        return rows[0]?.isolation;
+      let signalInventoryCommit: () => void = () => undefined;
+      const inventoryCommitted = new Promise<void>((resolve) => {
+        signalInventoryCommit = resolve;
       });
-      expect(isolation).toBe('read committed');
-    });
+
+      // The delay is test-only: it exercises the Organization transaction's
+      // explicit 10-second timeout after the independent Inventory transaction
+      // commits. Production callbacks return immediately after their Inventory
+      // transaction; no post-commit work belongs inside this lock.
+      const writerOutcome = organizations
+        .withBusinessDateWriteLock(organization.id, 'GREGORIAN', async () => {
+          const document = await insertReceipt(
+            organization.id,
+            warehouse.id,
+            '0600-01-01',
+          );
+          signalInventoryCommit();
+          await client.$queryRaw`SELECT pg_sleep(8)`;
+          return document;
+        })
+        .then(
+          (value) => ({ kind: 'completed' as const, value }),
+          (error: unknown) => ({ kind: 'rejected' as const, error }),
+        );
+      await inventoryCommitted;
+      const transition = calendarTransitions
+        .updateOrganization(organization.id, { calendarSystem: 'JALALI' })
+        .then(
+          (value) => ({ kind: 'updated' as const, value }),
+          (error: unknown) => ({ kind: 'rejected' as const, error }),
+        );
+
+      expect(await isWaitingForCalendarLock(client, 'FOR UPDATE')).toBe(true);
+      await client.$queryRaw`SELECT pg_sleep(6)`;
+      expect(await isWaitingForCalendarLock(client, 'FOR UPDATE')).toBe(true);
+
+      const [writer, transitionResult] = await Promise.all([
+        writerOutcome,
+        transition,
+      ]);
+      expect(writer.kind).toBe('completed');
+      expect(transitionResult.kind).toBe('rejected');
+      if (transitionResult.kind === 'rejected') {
+        expect(transitionResult.error).toMatchObject({
+          code: 'BusinessRuleViolation',
+          details: {
+            code: 'organization.calendar.jalali_history_unrenderable',
+            businessDate: '0600-01-01',
+          },
+        });
+      }
+    }, 30_000);
 
     it('waits for a writer-first Inventory transaction, then checks its committed history', async () => {
       const { organization, warehouse } =
@@ -592,9 +719,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       );
 
       try {
-        expect(await isWaitingForCalendarLock(client, 'FOR KEY SHARE')).toBe(
-          true,
-        );
+        expect(await isWaitingForCalendarLock(client, 'FOR SHARE')).toBe(true);
       } finally {
         releaseTransition();
       }

@@ -704,7 +704,10 @@ function seedReceipt(world: FakeWorld, options: SeedOptions = {}) {
   return { documentId, movementId, warehouseId };
 }
 
-function buildService(world: FakeWorld) {
+function buildService(
+  world: FakeWorld,
+  calendarSystem: 'GREGORIAN' | 'JALALI' = 'GREGORIAN',
+) {
   return new InventoryAccountingPostingService(
     fakeDocumentsRepository(world),
     fakeMovementsRepository(world),
@@ -718,9 +721,19 @@ function buildService(world: FakeWorld) {
     {
       assertOrganizationInScope: async () => undefined,
       getDateTimeSettings: async () => ({
-        calendarSystem: 'GREGORIAN',
+        calendarSystem,
         timeZone: 'UTC',
       }),
+      withBusinessDateWriteLock: async (
+        _organizationId: string,
+        validatedCalendarSystem: 'GREGORIAN' | 'JALALI',
+        work: () => Promise<unknown>,
+      ) => {
+        if (validatedCalendarSystem !== calendarSystem) {
+          return { kind: 'calendar_changed' };
+        }
+        return { kind: 'completed', value: await work() };
+      },
     } as unknown as OrganizationsService,
     {
       requireAllPermissions: async () => undefined,
@@ -836,6 +849,27 @@ async function expectBusinessRule(
 // ---- idempotency ------------------------------------------------------------
 
 describe('C-62 OD-06 idempotency (hermetic)', () => {
+  it('refuses to snapshot an unrenderable document date in JALALI before writing a durable intent', async () => {
+    const world = createWorld();
+    const service = buildService(world, 'JALALI');
+    const { documentId } = seedReceipt(world);
+    documentOf(world, documentId).businessDate = toBusinessDate('4000-01-01')!;
+
+    await expect(
+      asUser(() =>
+        service.requestAccountingPosting(documentId, ORG, {
+          operationKey: 'jalali-unrenderable-posting',
+        }),
+      ),
+    ).rejects.toMatchObject({
+      code: 'ValidationFailed',
+      details: [{ field: 'businessDate', code: 'business_date_calendar' }],
+    });
+    expect(world.operations).toHaveLength(0);
+    expect(world.snapshots.size).toBe(0);
+    expect(world.accountingCalls).toHaveLength(0);
+  });
+
   it('replays the same key + same request instead of a second effect', async () => {
     const world = createWorld();
     const service = buildService(world);

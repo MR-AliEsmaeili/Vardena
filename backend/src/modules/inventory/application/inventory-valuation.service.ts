@@ -85,12 +85,17 @@ import {
   resolveBusinessDateFilter,
 } from './inventory-posting-support.js';
 import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
+import type { CalendarSystem } from '../../../kernel/datetime/calendar-system.js';
 import {
   businessDateFromInstant,
   type BusinessDate,
 } from '../../../kernel/datetime/business-date.js';
 import { ItemsService } from './items.service.js';
 import { WarehousesService } from './warehouses.service.js';
+import {
+  assertInventoryBusinessDateRenderable,
+  withInventoryBusinessDateWriteLock,
+} from './inventory-business-date-write.js';
 
 /**
  * Inventory valuation: configuration, state, cost assignment and the
@@ -331,9 +336,8 @@ export class InventoryValuationService {
     }
 
     const now = new Date();
-    const { timeZone } = await this.organizations.getDateTimeSettings(
-      input.organizationId,
-    );
+    const { timeZone, calendarSystem } =
+      await this.organizations.getDateTimeSettings(input.organizationId);
     const validFrom = resolveBusinessDateInput({
       field: 'validFrom',
       value: input.validFrom,
@@ -348,6 +352,14 @@ export class InventoryValuationService {
             value: input.validTo,
             timeZone,
           });
+    assertInventoryBusinessDateRenderable(
+      'validFrom',
+      validFrom,
+      calendarSystem,
+    );
+    if (validTo !== null) {
+      assertInventoryBusinessDateRenderable('validTo', validTo, calendarSystem);
+    }
     if (validTo !== null && validTo <= validFrom) {
       throw AppException.validation([
         {
@@ -360,23 +372,28 @@ export class InventoryValuationService {
 
     const actorId = getPrincipal()?.userId ?? null;
     try {
-      const { version, supersededVersionId } = await this.methods.createVersion(
-        {
-          create: {
-            id: generateId(),
-            organizationId: input.organizationId,
-            itemId: input.itemId,
-            method: input.method,
-            validFrom,
-            validTo,
-            note: normalizeNote(input.note),
-            createdAt: now,
-            updatedAt: now,
-            createdBy: actorId,
-          },
-          closeAudit: { updatedAt: now, updatedBy: actorId },
-        },
-      );
+      const { version, supersededVersionId } =
+        await withInventoryBusinessDateWriteLock(
+          this.organizations,
+          input.organizationId,
+          calendarSystem,
+          () =>
+            this.methods.createVersion({
+              create: {
+                id: generateId(),
+                organizationId: input.organizationId,
+                itemId: input.itemId,
+                method: input.method,
+                validFrom,
+                validTo,
+                note: normalizeNote(input.note),
+                createdAt: now,
+                updatedAt: now,
+                createdBy: actorId,
+              },
+              closeAudit: { updatedAt: now, updatedBy: actorId },
+            }),
+        );
       await publishEvent(this.events, {
         type: INVENTORY_VALUATION_METHOD_CONFIGURED_EVENT,
         aggregateType: 'ItemValuationMethod',
@@ -850,7 +867,12 @@ export class InventoryValuationService {
       return { run: plan.run, state: plan.state };
     }
     try {
-      const result = await this.valuation.recalculateKey(plan.input);
+      const result = await withInventoryBusinessDateWriteLock(
+        this.organizations,
+        input.organizationId,
+        plan.calendarSystem,
+        () => this.valuation.recalculateKey(plan.input),
+      );
       await this.announceRecalculated(result.run);
       this.logger.log(
         'Inventory valuation recalculated',
@@ -943,7 +965,11 @@ export class InventoryValuationService {
         run: InventoryValuationRunDto;
         state: InventoryValuationStateDto;
       }
-    | { kind: 'pending'; input: RecalculationInput }
+    | {
+        kind: 'pending';
+        input: RecalculationInput;
+        calendarSystem: CalendarSystem;
+      }
   > {
     await this.authorization.requireAllPermissions([
       VALUATION_PERMISSIONS.RECALCULATE,
@@ -964,9 +990,8 @@ export class InventoryValuationService {
     const trigger = requireTrigger(input.trigger);
     // OQ-73: the run's audit business DATE is a calendar day (PostgreSQL
     // `date`), resolved once here; `null` when the caller supplied none.
-    const { timeZone } = await this.organizations.getDateTimeSettings(
-      input.organizationId,
-    );
+    const { timeZone, calendarSystem } =
+      await this.organizations.getDateTimeSettings(input.organizationId);
     const fromDate =
       input.fromDate === undefined
         ? null
@@ -975,6 +1000,13 @@ export class InventoryValuationService {
             value: input.fromDate,
             timeZone,
           });
+    if (fromDate !== null) {
+      assertInventoryBusinessDateRenderable(
+        'fromDate',
+        fromDate,
+        calendarSystem,
+      );
+    }
 
     const requestHash = buildRequestHash('valuation_recalculation', {
       warehouseId: input.warehouseId,
@@ -1019,6 +1051,7 @@ export class InventoryValuationService {
     const runId = generateId();
     return {
       kind: 'pending',
+      calendarSystem,
       input: {
         runId,
         key: {

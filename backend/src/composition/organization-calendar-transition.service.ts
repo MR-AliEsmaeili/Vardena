@@ -7,7 +7,7 @@ import { InventoryBusinessDocumentsService } from '../modules/inventory/applicat
 
 /**
  * Root application composition for the synchronous Organization ↔ Inventory
- * calendar-transition use case (ADR-0043, still Proposed).
+ * calendar-transition use case (accepted ADR-0043).
  *
  * This is deliberately outside both business modules: it composes their
  * public application contracts without introducing an Organization →

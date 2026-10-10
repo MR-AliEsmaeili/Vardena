@@ -39,6 +39,7 @@
  */
 import { generateId } from '../../src/kernel/ids/ulid.js';
 import type { BusinessDate } from '../../src/kernel/datetime/business-date.js';
+import type { CalendarSystem } from '../../src/kernel/datetime/calendar-system.js';
 import {
   addDecimalStrings,
   compareDecimalStrings,
@@ -51,7 +52,10 @@ import {
   isReservationStatus,
   type InventoryReservation,
 } from '../../src/modules/inventory/domain/inventory-reservation.js';
-import type { InventoryBalance } from '../../src/modules/inventory/domain/inventory-balance.js';
+import {
+  isInventoryBusinessDateRenderable,
+  type InventoryBalance,
+} from '../../src/modules/inventory/domain/inventory-balance.js';
 import {
   isInventoryOperationKind,
   type InventoryOperation,
@@ -123,6 +127,7 @@ import type {
   ReleaseReservationInput,
   ReservationListFilter,
 } from '../../src/modules/inventory/data/inventory-reservations.repository.js';
+import { InventoryBalanceDateNotRenderableError } from '../../src/modules/inventory/data/inventory-balances.repository.js';
 import type {
   BalanceListFilter,
   BalanceScope,
@@ -1590,6 +1595,7 @@ export class InMemoryInventoryBalancesRepository {
     branchId: string,
     key: StockingKey,
     actorId: string | null,
+    calendarSystem: CalendarSystem,
   ): Promise<KeyRebuild> {
     return atomic(this.tables, async () => {
       const { balance: stored, created: isNew } = ensureBalance(this.tables, {
@@ -1600,6 +1606,18 @@ export class InMemoryInventoryBalancesRepository {
       });
       void actorId;
       const expected = this.expectation(organizationId, key);
+      if (
+        expected.expectedLastMovementDate !== null &&
+        !isInventoryBusinessDateRenderable(
+          expected.expectedLastMovementDate,
+          calendarSystem,
+        )
+      ) {
+        throw new InventoryBalanceDateNotRenderableError(
+          expected.expectedLastMovementDate,
+          calendarSystem,
+        );
+      }
       const factsExist =
         compareDecimalStrings(expected.expectedOnHand, '0') !== 0 ||
         compareDecimalStrings(expected.expectedReserved, '0') !== 0 ||

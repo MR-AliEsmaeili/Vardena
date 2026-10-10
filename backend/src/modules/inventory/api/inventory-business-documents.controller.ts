@@ -271,13 +271,17 @@ export class InventoryBusinessDocumentsController {
   })
   @ApiOkResponse({ type: InventoryDocumentResponseDto })
   @ApiNotFoundResponse({ description: 'The document does not exist.' })
+  @ApiBadRequestResponse({
+    description:
+      'The document BusinessDate cannot be rendered in the organization calendar.',
+  })
   @ApiUnprocessableEntityResponse({
     description:
       'The document is not accounting eligible: not operational, not fully priced, or its valuation is stale.',
   })
   @ApiConflictResponse({
     description:
-      'The operation key was already used for a different request, or the document is already Accounting Posted.',
+      'The operation key was already used for a different request, the document is already Accounting Posted, or the organization calendar changed before the Inventory snapshot was written.',
   })
   async accountingPost(
     @Param('id') id: string,

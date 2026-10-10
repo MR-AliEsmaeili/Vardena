@@ -13,12 +13,12 @@ JavaScript `Date`, UTC-midnight transport, browser-zone value, or timestamp.
 
 ## 1. The model
 
-| Concept                | Meaning                                                           | Stored as                                   | On the wire                                                          |
-| ---------------------- | ----------------------------------------------------------------- | ------------------------------------------- | -------------------------------------------------------------------- |
-| **Instant**            | a point in time ("when it happened")                              | `timestamptz` (UTC)                         | ISO-8601 UTC string, e.g. `2026-10-08T08:32:14.421Z`                 |
+| Concept                | Meaning                                                           | Stored as                                   | On the wire                                                                                             |
+| ---------------------- | ----------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Instant**            | a point in time ("when it happened")                              | `timestamptz` (UTC)                         | ISO-8601 UTC string, e.g. `2026-10-08T08:32:14.421Z`                                                    |
 | **Business date**      | the calendar DAY a document belongs to ("which day it counts as") | PostgreSQL `date` (canonical Gregorian day) | canonical Gregorian `YYYY-MM-DD`; derived `{ gregorian, jalali }` with `jalali: null` when unrenderable |
-| **Local date-time**    | an instant expressed in a zone                                    | never stored                                | `YYYY-MM-DD HH:mm:ss` (+ the zone name)                              |
-| **Calendar rendering** | a day written in a calendar (`2026-10-08`, `1405/07/16`)          | never stored                                | derived per response                                                 |
+| **Local date-time**    | an instant expressed in a zone                                    | never stored                                | `YYYY-MM-DD HH:mm:ss` (+ the zone name)                                                                 |
+| **Calendar rendering** | a day written in a calendar (`2026-10-08`, `1405/07/16`)          | never stored                                | derived per response                                                                                    |
 
 The derivation chain is **one-way**:
 
@@ -60,6 +60,21 @@ Three rules follow, and they are the ones reviewers check:
   `inventory.inventory_balances.last_movement_date`). OQ-73 made this the only
   business-day carrier: the earlier "day riding a timestamptz column as its UTC
   midnight" convention is retired.
+- **Inventory BusinessDate persistence cutover** (`20261011000000_business_date_persistence`):
+  the migration converts the existing Inventory day carriers and renames
+  `last_movement_at`; PostgreSQL runs those DDL statements in one explicit
+  transaction with a 10-second `lock_timeout`. If any lock acquisition or
+  conversion fails before `COMMIT`, PostgreSQL rolls the entire migration back.
+  The timeout bounds lock acquisition, not the table rewrite. Each `ALTER TABLE`
+  takes an `ACCESS EXCLUSIVE` lock and may block reads and writes until commit;
+  this is a breaking schema cutover, not a rolling/zero-downtime migration.
+  Stop the previous API/worker and quiesce writes for the complete migration
+  sequence, verify a restorable backup and rehearse against a target-like copy,
+  then deploy the new application before resuming traffic. Prisma commits each
+  migration separately: if 110 commits but a later migration fails, keep the
+  old application stopped, inspect `_prisma_migrations` and the actual schema,
+  and complete an approved forward recovery; do not reverse-cast the data or
+  blindly rerun the migration.
 - **Inventory validity windows (Owner decision, 2026-10-09):**
   `unit_conversions.valid_from/valid_to`,
   `item_unit_conversions.valid_from/valid_to`, and
@@ -137,17 +152,17 @@ Three rules follow, and they are the ones reviewers check:
 - **Legacy normalization (migration `20261011000000_business_date_persistence`)**:
   the conversion policy is `(column AT TIME ZONE 'UTC')::date`, which preserves
   the UTC calendar day the old read path exposed for each value actually stored
-  and deliberately discards time-of-day. A separate baseline-path check found
-  that the former legacy ISO-input parser first resolved the submitted Instant
-  in the organization zone, then the standard Inventory write helper converted
-  the resulting BusinessDate to a UTC-day carrier before persistence. That
-  standard path does **not** substantiate migration 110's comment that ISO
-  instants were stored verbatim. The current owner-approved compatibility input
-  policy is UTC-day (2026-10-09); its behavior change is distinct from the
-  migration's conversion of stored values. Do not edit the merged migration;
-  alternate/raw writers and the actual historical dataset remain uninspected.
-  This audit therefore does not claim customer-data safety. Retain evidence from
-  a rehearsal/preflight against the target's actual history before deployment.
+  and deliberately discards time-of-day. A baseline-path check found that the
+  former legacy ISO-input parser first resolved the submitted Instant in the
+  organization zone, then the standard Inventory write helper converted the
+  resulting BusinessDate to a UTC-day carrier before persistence. Migration
+  110's comment now describes that path without claiming ISO instants were
+  stored verbatim. The current owner-approved compatibility input policy is
+  UTC-day (2026-10-09); its behavior change is distinct from conversion of
+  stored values. Alternate/raw writers and the actual historical dataset remain
+  uninspected, so this audit does not claim customer-data safety. Retain evidence
+  from a rehearsal/preflight against the target's actual history before
+  deployment.
   The migration also renames `last_movement_at` to `last_movement_date`; indexes
   are rebuilt alongside the type changes.
 - Migrations that introduce settings carry **safe defaults** for existing rows
@@ -202,10 +217,15 @@ separate Instant field.
 
 `YYYY-MM-DD` is the same SHAPE in both calendars, which is exactly why a Jalali
 value must be declared: without `calendar`, `1405-12-30` would have to be
-guessed (it is a valid Gregorian day and an invalid Jalali one). Rejections are
-stable codes: `business_date_format`, `business_date_calendar`,
-`business_date_declaration`. An omitted day defaults to TODAY in the
-organization's time zone.
+guessed (it is a valid Gregorian day and an invalid Jalali one). The shared
+kernel parser returns stable reasons `business_date_format`,
+`business_date_calendar`, and `business_date_declaration`. Inventory posting
+application validation preserves parser reasons in its details where DTO shape
+validation has not already rejected the request; Accounting currently maps
+invalid body dates and day filters to its existing generic HTTP 400 contract, so
+clients must not assume those detail codes are surfaced by every endpoint. An omitted
+day defaults to TODAY in the organization's time zone where the operation
+supports an omitted date.
 
 Frontend sends what the operator wrote: a Jalali organization sends the
 declared form, so the request carries the calendar the user worked in.
@@ -265,16 +285,27 @@ request. Read it **once per response** and derive every rendering from that one
 value, so a response cannot mix two settings versions.
 
 Changing the settings is a presentation change: it re-renders history, it never
-rewrites it. Before a GREGORIAN → JALALI change, Vardena checks existing
-Inventory business documents in the same transaction as the setting update. If
-any canonical date is outside the Jalali rendering envelope (`0621-03-21` through
-`3798-12-31`), the update is refused with a domain error and the organization
-remains GREGORIAN; no historical document is changed. The reverse transition
-remains permitted. The organization update returns HTTP 422 with detail code
-`organization.calendar.jalali_history_unrenderable`, the incompatible date, and
-the supported range. Inventory document creation and business-date edits lock
-and re-check the organization calendar in their write transaction; a stale
-validation returns 409 and commits no document changes.
+rewrites it. Before a GREGORIAN → JALALI change, Organization holds its row
+`FOR UPDATE` lock while invoking Inventory's public, tenant-scoped history
+contract. That deterministic read checks every persisted Inventory BusinessDate:
+movement and document dates, conversion and valuation-method validity bounds,
+valuation/pricing run dates, balance `last_movement_date`, and Accounting-posting
+snapshot dates. If any date is outside the inclusive Jalali rendering envelope
+(`0621-03-21` through `3798-12-31`), the update is refused with a domain error
+and the organization remains GREGORIAN; no historical date is changed. The
+reverse transition remains permitted. The organization update returns HTTP 422
+with detail code `organization.calendar.jalali_history_unrenderable`, the
+earliest incompatible date, and the supported range. The history read and
+Organization update are separate module transactions, not a shared transaction.
+Every Inventory write that persists a BusinessDate takes Organization's
+`FOR SHARE` lock, re-checks its captured calendar, then awaits its own complete
+Inventory-local transaction; stale validation returns 409 before that callback
+starts. Balance rebuild applies this per key (including the derived
+`last_movement_date`): if a transition wins between keys, earlier per-key
+commits remain and the API reports retry-safe partial progress rather than
+claiming batch atomicity. Lock order, PostgreSQL READ COMMITTED, independent
+timeout/pool limits, and ambiguous-commit retry guidance are specified in
+accepted ADR-0043.
 
 ## 6. Historical display policy (decided: A)
 
@@ -356,7 +387,9 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
 - **One** calendar-aware field: `src/ui/patterns/date-input.tsx`. It shows a
   native date input for a Gregorian organization and a Jalali text field
   (`1405/07/16`, Persian digits accepted) for a Jalali one, and always emits the
-  canonical Gregorian day. No screen builds its own Jalali picker.
+  canonical Gregorian day. A calendar switch discards a partial Jalali draft and
+  derives the displayed day from the canonical Gregorian value. No screen builds
+  its own Jalali picker.
 - Formatters live in `lib/format.ts` (`formatDateOnly`, `formatDateTime`, and
   the explicit-zone detail/audit formatter) and delegate to the shared layer; a
   component never imports `dayjs` or a Jalali conversion library. For an
@@ -378,7 +411,8 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
   organization settings specs (defaults, closed vocabulary, refusals).
 - Frontend: `lib/datetime/datetime.test.ts` and `ui/patterns/
 date-input.test.tsx` (round trips, leap years, typed Jalali input, Persian
-  digits, canonical emission, organization defaults).
+  digits, canonical emission, organization defaults, and resetting partial input
+  when the active calendar changes).
 - Backend tests cover the BusinessDate parser's legacy-instant UTC-day
   compatibility (including organization-zone boundaries), valid and out-of-range
   Jalali inputs, Gregorian document dates outside the Jalali envelope with a

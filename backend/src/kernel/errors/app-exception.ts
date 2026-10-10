@@ -67,8 +67,9 @@ export class AppException extends HttpException {
   /** 409 — conflicts with current state (duplicate key, version mismatch). */
   static conflict(
     message = 'The request conflicts with the current state.',
+    details?: unknown,
   ): AppException {
-    return new AppException('Conflict', message, undefined);
+    return new AppException('Conflict', message, details);
   }
 
   /** 422 — well-formed request rejected by a domain rule. */

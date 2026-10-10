@@ -470,7 +470,7 @@ export class OrganizationsService {
   /**
    * Organization-owned public contract for an Inventory BusinessDate write.
    * It carries no permission of its own, but enforces principal/deployment
-   * scope. The callback is awaited while `FOR KEY SHARE` is held and must wrap
+   * scope. The callback is awaited while `FOR SHARE` is held and must wrap
    * the complete Inventory transaction; a stale/missing calendar never runs
    * it. No Prisma transaction client crosses this boundary.
    */

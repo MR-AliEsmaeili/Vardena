@@ -2,8 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import { businessDateFromDbDate } from '../../../kernel/datetime/business-date.js';
 import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
+import type { CalendarSystem } from '../../../kernel/datetime/calendar-system.js';
 import { compareDecimalStrings } from '../domain/quantities.js';
-import type { InventoryBalance } from '../domain/inventory-balance.js';
+import {
+  isInventoryBusinessDateRenderable,
+  type InventoryBalance,
+} from '../domain/inventory-balance.js';
 import type {
   BalanceRow,
   BalanceWhere,
@@ -72,6 +76,19 @@ export type RebuildAction = 'created' | 'updated' | 'deleted' | 'noop';
 export interface KeyRebuild extends KeyExpectation {
   storedBefore: { onHand: string; reserved: string } | null;
   action: RebuildAction;
+}
+
+/** A corrupt ledger-derived day must not be copied into a JALALI projection. */
+export class InventoryBalanceDateNotRenderableError extends Error {
+  constructor(
+    readonly businessDate: BusinessDate,
+    readonly calendarSystem: CalendarSystem,
+  ) {
+    super(
+      `Inventory balance rebuild cannot render ${businessDate} in ${calendarSystem}.`,
+    );
+    this.name = 'InventoryBalanceDateNotRenderableError';
+  }
 }
 
 @Injectable()
@@ -235,6 +252,7 @@ export class InventoryBalancesRepository {
     branchId: string,
     key: StockingKey,
     actorId: string | null,
+    calendarSystem: CalendarSystem,
   ): Promise<KeyRebuild> {
     const client = await this.transacting();
     return client.$transaction(async (tx) => {
@@ -254,6 +272,18 @@ export class InventoryBalancesRepository {
         actorId,
       );
       const expected = await this.expectation(tx, organizationId, key);
+      if (
+        expected.expectedLastMovementDate !== null &&
+        !isInventoryBusinessDateRenderable(
+          expected.expectedLastMovementDate,
+          calendarSystem,
+        )
+      ) {
+        throw new InventoryBalanceDateNotRenderableError(
+          expected.expectedLastMovementDate,
+          calendarSystem,
+        );
+      }
       const factsExist =
         compareDecimalStrings(expected.expectedOnHand, '0') !== 0 ||
         compareDecimalStrings(expected.expectedReserved, '0') !== 0 ||

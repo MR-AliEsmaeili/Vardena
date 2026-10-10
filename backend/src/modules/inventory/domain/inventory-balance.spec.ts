@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import {
   availableQuantity,
+  isInventoryBusinessDateRenderable,
   resolveAvailableQuantity,
   toInventoryBalanceDto,
 } from './inventory-balance.js';
@@ -46,6 +48,35 @@ describe('availability', () => {
     expect(dto.onHand).toBe('10');
     expect(dto.reserved).toBe('4');
     expect(dto.reservationsReduceAvailable).toBe(true);
+  });
+});
+
+describe('Inventory BusinessDate rendering policy', () => {
+  it('keeps the Jalali rendering envelope inclusive while Gregorian remains general', () => {
+    const day = (value: string) => {
+      const parsed = toBusinessDate(value);
+      if (parsed === null) throw new Error(`Invalid fixture date ${value}`);
+      return parsed;
+    };
+
+    expect(
+      isInventoryBusinessDateRenderable(day('0621-03-20'), 'GREGORIAN'),
+    ).toBe(true);
+    expect(isInventoryBusinessDateRenderable(day('0621-03-20'), 'JALALI')).toBe(
+      false,
+    );
+    expect(isInventoryBusinessDateRenderable(day('0621-03-21'), 'JALALI')).toBe(
+      true,
+    );
+    expect(isInventoryBusinessDateRenderable(day('3798-12-31'), 'JALALI')).toBe(
+      true,
+    );
+    expect(isInventoryBusinessDateRenderable(day('3799-01-01'), 'JALALI')).toBe(
+      false,
+    );
+    expect(
+      isInventoryBusinessDateRenderable(day('3799-01-01'), 'GREGORIAN'),
+    ).toBe(true);
   });
 });
 

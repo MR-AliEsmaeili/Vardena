@@ -13,7 +13,10 @@ import {
   type BusinessDate,
 } from '../../../kernel/datetime/business-date.js';
 import type { CalendarSystem } from '../../../kernel/datetime/calendar-system.js';
-import { toApiBusinessDate } from '../../../kernel/datetime/api-date-time.js';
+import {
+  assertInventoryBusinessDateRenderable,
+  INVENTORY_BUSINESS_DATE_CALENDAR_CHANGED_CODE,
+} from './inventory-business-date-write.js';
 import {
   toOffset,
   toPaginatedResult,
@@ -800,6 +803,13 @@ export class InventoryBusinessDocumentsService {
         : MOVEMENT_PERMISSIONS.CREATE,
     ]);
     await this.organizations.requireUsableOrganization(organizationId);
+    const { calendarSystem } =
+      await this.organizations.getDateTimeSettings(organizationId);
+    assertInventoryBusinessDateRenderable(
+      'businessDate',
+      current.businessDate,
+      calendarSystem,
+    );
 
     const header = {
       warehouseId: current.warehouseId,
@@ -884,40 +894,42 @@ export class InventoryBusinessDocumentsService {
     let movementIds: string[] = [];
     let valuationRuns: InventoryValuationRunDto[] = [];
     try {
-      await this.documents.withTransaction(async (tx) => {
-        movementIds = await this.postDocumentEffect(tx, {
-          documentId: current.id,
-          organizationId,
-          kind: current.kind,
-          header,
-          businessDate: current.businessDate,
-          lines: resolved,
-          keyPrefix: operationKey,
-          actorId,
-          at: now,
-          backdateConfirmed: input.backdateConfirmed === true,
-        });
-        await this.documents.updateHeader(tx, current.id, {
-          status: 'operational',
-          number: allocation.number,
-          operationKey,
-          // A transfer is never left stale by a successful backdated
-          // finalize: the coupled replay restated both keys, and the transfer
-          // pair has no repricing choice to skip (OD-TRF-05).
-          valuationStale:
-            current.kind === 'transfer'
-              ? false
-              : backdating.backdated && repricing !== 'recalculate',
-          finalizedAt: now,
-          finalizedBy: actorId,
-          updatedAt: now,
-          updatedBy: actorId,
-        });
-        // Explicit repricing runs on the movements written above, in the
-        // SAME transaction: a failed replay rolls the posting back and the
-        // document stays a draft.
-        valuationRuns = await this.repriceWithin(tx, repricingPlans);
-      });
+      await this.withBusinessDateWriteLock(organizationId, calendarSystem, () =>
+        this.documents.withTransaction(async (tx) => {
+          movementIds = await this.postDocumentEffect(tx, {
+            documentId: current.id,
+            organizationId,
+            kind: current.kind,
+            header,
+            businessDate: current.businessDate,
+            lines: resolved,
+            keyPrefix: operationKey,
+            actorId,
+            at: now,
+            backdateConfirmed: input.backdateConfirmed === true,
+          });
+          await this.documents.updateHeader(tx, current.id, {
+            status: 'operational',
+            number: allocation.number,
+            operationKey,
+            // A transfer is never left stale by a successful backdated
+            // finalize: the coupled replay restated both keys, and the transfer
+            // pair has no repricing choice to skip (OD-TRF-05).
+            valuationStale:
+              current.kind === 'transfer'
+                ? false
+                : backdating.backdated && repricing !== 'recalculate',
+            finalizedAt: now,
+            finalizedBy: actorId,
+            updatedAt: now,
+            updatedBy: actorId,
+          });
+          // Explicit repricing runs on the movements written above, in the
+          // SAME transaction: a failed replay rolls the posting back and the
+          // document stays a draft.
+          valuationRuns = await this.repriceWithin(tx, repricingPlans);
+        }),
+      );
     } catch (error) {
       throw this.translatePostingError(error, header);
     }
@@ -1105,29 +1117,33 @@ export class InventoryBusinessDocumentsService {
       ]);
     }
 
+    const { calendarSystem } =
+      await this.organizations.getDateTimeSettings(organizationId);
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
     const movementIds: string[] = [];
     try {
-      await this.documents.withTransaction(async (tx) => {
-        if (reversing) {
-          movementIds.push(
-            ...(await this.reverseDocumentEffect(tx, current, {
-              keyPrefix: `invdoc:${current.id}:cancel`,
-              actorId,
-              at: now,
-            })),
-          );
-        }
-        await this.documents.updateHeader(tx, current.id, {
-          status: 'cancelled',
-          cancelledAt: now,
-          cancelledBy: actorId,
-          cancellationReason: reason,
-          updatedAt: now,
-          updatedBy: actorId,
-        });
-      });
+      await this.withBusinessDateWriteLock(organizationId, calendarSystem, () =>
+        this.documents.withTransaction(async (tx) => {
+          if (reversing) {
+            movementIds.push(
+              ...(await this.reverseDocumentEffect(tx, current, {
+                keyPrefix: `invdoc:${current.id}:cancel`,
+                actorId,
+                at: now,
+              })),
+            );
+          }
+          await this.documents.updateHeader(tx, current.id, {
+            status: 'cancelled',
+            cancelledAt: now,
+            cancelledBy: actorId,
+            cancellationReason: reason,
+            updatedAt: now,
+            updatedBy: actorId,
+          });
+        }),
+      );
     } catch (error) {
       throw this.translatePostingError(error, {
         warehouseId: current.warehouseId,
@@ -1235,23 +1251,12 @@ export class InventoryBusinessDocumentsService {
       timeZone,
     });
     // Gregorian organizations accept the full canonical BusinessDate range;
-    // their derived Jalali member may be null. A Jalali organization must be
-    // able to render the day before any write, otherwise createDraft could
-    // commit and then fail while mapping its response.
-    const businessDateCalendar = toApiBusinessDate(businessDate);
-    if (
-      businessDateCalendar === null ||
-      (calendarSystem === 'JALALI' && businessDateCalendar.jalali === null)
-    ) {
-      throw AppException.validation([
-        {
-          field: 'businessDate',
-          code: 'business_date_calendar',
-          message:
-            'Business date is outside the supported calendar rendering range.',
-        },
-      ]);
-    }
+    // Jalali organizations must be able to render it before any write.
+    assertInventoryBusinessDateRenderable(
+      'businessDate',
+      businessDate,
+      calendarSystem,
+    );
     return { businessDate, calendarSystem };
   }
 
@@ -1976,10 +1981,14 @@ export class InventoryBusinessDocumentsService {
     audit: { keyPrefix: string; actorId: string | null; at: Date },
   ): Promise<string[]> {
     const created: string[] = [];
-    const { timeZone } = await this.organizations.getDateTimeSettings(
-      document.organizationId,
-    );
+    const { timeZone, calendarSystem } =
+      await this.organizations.getDateTimeSettings(document.organizationId);
     const reversalBusinessDate = businessDateFromInstant(audit.at, timeZone);
+    assertInventoryBusinessDateRenderable(
+      'movementDate',
+      reversalBusinessDate,
+      calendarSystem,
+    );
     for (const line of document.lines) {
       const originals = [
         line.movementId,
@@ -2017,6 +2026,11 @@ export class InventoryBusinessDocumentsService {
           reversalBusinessDate < original.movementDate
             ? original.movementDate
             : reversalBusinessDate;
+        assertInventoryBusinessDateRenderable(
+          'movementDate',
+          movementDate,
+          calendarSystem,
+        );
         await this.movements.postReversal(
           {
             originalMovementId: originalId,
@@ -2221,7 +2235,10 @@ export class InventoryBusinessDocumentsService {
       validatedCalendarSystem,
       work,
     );
-    if (result.kind !== 'completed') {
+    if (result.kind === 'not_found') {
+      throw AppException.notFound('Organization', organizationId);
+    }
+    if (result.kind === 'calendar_changed') {
       throw new OrganizationCalendarChangedDuringDocumentWriteError();
     }
     return result.value;
@@ -2241,6 +2258,7 @@ export class InventoryBusinessDocumentsService {
     if (error instanceof OrganizationCalendarChangedDuringDocumentWriteError) {
       return AppException.conflict(
         'The organization calendar changed while this Inventory document was being prepared. No document changes were committed; refresh and retry the request.',
+        { code: INVENTORY_BUSINESS_DATE_CALENDAR_CHANGED_CODE },
       );
     }
     if (error instanceof InsufficientStockError) {

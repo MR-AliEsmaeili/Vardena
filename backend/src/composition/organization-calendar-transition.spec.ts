@@ -41,7 +41,7 @@ function unwrapModuleReference(reference: unknown): unknown {
   return reference;
 }
 
-describe('Organization calendar-transition composition (ADR-0043 Proposed)', () => {
+describe('Organization calendar-transition composition (accepted ADR-0043)', () => {
   beforeEach(() => vi.restoreAllMocks());
 
   it('supplies Organization with Inventory’s public history reader, without sharing a transaction client', async () => {

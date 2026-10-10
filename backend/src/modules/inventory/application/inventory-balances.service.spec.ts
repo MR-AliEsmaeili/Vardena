@@ -1,7 +1,8 @@
 import { licensingTestDouble } from '../../../../test/support/licensing.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DomainEventBus } from '../../../kernel/events/domain-event-bus.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
+import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import { createMasterDataStores } from '../../../../test/support/master-data-repositories.js';
 import { createInventoryCoreStores } from '../../../../test/support/inventory-core-repositories.js';
 import { UNPINNED_APP_CONFIG } from '../../../../test/support/app-config.js';
@@ -289,5 +290,175 @@ describe('InventoryBalancesService.listBalances honors reservationsReduceAvailab
     // Never mutates on-hand either way.
     expect(a?.onHand).toBe('20');
     expect(b?.onHand).toBe('20');
+  });
+});
+
+describe('InventoryBalancesService.rebuild calendar serialization', () => {
+  it('refuses to persist an unrenderable ledger-derived date without creating a balance row', async () => {
+    const fixture = await buildFixture();
+    const warehouse = await fixture.warehouses.createWarehouse({
+      organizationId: fixture.organizationId,
+      branchId: fixture.branchId,
+      code: 'WH-UNRENDERABLE-REBUILD',
+      name: 'Unrenderable rebuild source',
+    });
+    const movementDate = toBusinessDate('4000-01-01');
+    if (movementDate === null) throw new Error('Invalid fixture BusinessDate.');
+    const now = new Date('2026-10-10T00:00:00.000Z');
+    fixture.core.tables.movements.seed({
+      id: 'movement-unrenderable-rebuild',
+      organizationId: fixture.organizationId,
+      branchId: fixture.branchId,
+      warehouseId: warehouse.id,
+      itemId: fixture.itemId,
+      movementType: 'inbound',
+      quantity: '1',
+      enteredUnitId: 'fixture-unit',
+      baseQuantity: '1',
+      baseUnitId: 'fixture-unit',
+      conversionFactor: '1',
+      movementDate,
+      transferId: null,
+      reversalOfMovementId: null,
+      referenceType: null,
+      referenceId: null,
+      reason: null,
+      operationKey: 'unrenderable-rebuild-source',
+      totalCost: null,
+      valuationStatus: 'unvalued',
+      valuationSource: null,
+      valuedAt: null,
+      valuationRunId: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await expect(
+      fixture.balancesService.rebuild({
+        organizationId: fixture.organizationId,
+      }),
+    ).rejects.toMatchObject({
+      code: 'Conflict',
+      details: {
+        code: 'inventory.balance.rebuild.business_date_unrenderable',
+        businessDate: '4000-01-01',
+        calendarSystem: 'JALALI',
+        completedKeys: 0,
+        totalKeys: 1,
+      },
+    });
+    await expect(
+      fixture.core.balances.findByKey(
+        fixture.organizationId,
+        warehouse.id,
+        fixture.itemId,
+      ),
+    ).resolves.toBeNull();
+  });
+
+  it('captures one calendar, locks each key, and reports retry-safe partial progress if a transition wins between keys', async () => {
+    const fixture = await buildFixture();
+    const firstWarehouse = await fixture.warehouses.createWarehouse({
+      organizationId: fixture.organizationId,
+      branchId: fixture.branchId,
+      code: 'WH-REBUILD-A',
+      name: 'First rebuild key',
+    });
+    const secondWarehouse = await fixture.warehouses.createWarehouse({
+      organizationId: fixture.organizationId,
+      branchId: fixture.branchId,
+      code: 'WH-REBUILD-B',
+      name: 'Second rebuild key',
+    });
+    const keys = [
+      { warehouseId: firstWarehouse.id, itemId: fixture.itemId },
+      { warehouseId: secondWarehouse.id, itemId: fixture.itemId },
+    ];
+    const expectedDate = toBusinessDate('2026-10-01');
+    if (expectedDate === null) throw new Error('Invalid fixture BusinessDate.');
+
+    await fixture.organizations.updateOrganization(fixture.organizationId, {
+      calendarSystem: 'GREGORIAN',
+    });
+
+    const listKeys = vi
+      .spyOn(fixture.core.balances, 'listStockingKeys')
+      .mockResolvedValue(keys);
+    const keyCalls = new Map<string, number>();
+    const validatedCalendars: string[] = [];
+    const rebuildKey = vi
+      .spyOn(fixture.core.balances, 'rebuildKey')
+      .mockImplementation(
+        async (_organizationId, _branchId, key, _actorId, calendar) => {
+          validatedCalendars.push(calendar);
+          const count = (keyCalls.get(key.warehouseId) ?? 0) + 1;
+          keyCalls.set(key.warehouseId, count);
+          const firstKeyNoopOnRetry =
+            key.warehouseId === firstWarehouse.id && count > 1;
+          return {
+            warehouseId: key.warehouseId,
+            itemId: key.itemId,
+            expectedOnHand: '10',
+            expectedReserved: '0',
+            expectedLastMovementDate: expectedDate,
+            storedBefore: { onHand: count === 1 ? '99' : '10', reserved: '0' },
+            action: firstKeyNoopOnRetry ? 'noop' : 'updated',
+          };
+        },
+      );
+
+    let lockCalls = 0;
+    const originalLock = fixture.organizations.withBusinessDateWriteLock.bind(
+      fixture.organizations,
+    );
+    const lock = vi
+      .spyOn(fixture.organizations, 'withBusinessDateWriteLock')
+      .mockImplementation(async (organizationId, calendarSystem, work) => {
+        lockCalls += 1;
+        const result = await originalLock(organizationId, calendarSystem, work);
+        if (lockCalls === 1 && result.kind === 'completed') {
+          // Model a real transition committed after key one's outer lock is
+          // released and before key two asks for its own captured-calendar lock.
+          await fixture.organizations.updateOrganization(
+            organizationId,
+            { calendarSystem: 'JALALI' },
+            async () => null,
+          );
+        }
+        return result;
+      });
+
+    try {
+      await expect(
+        fixture.balancesService.rebuild({
+          organizationId: fixture.organizationId,
+        }),
+      ).rejects.toMatchObject({
+        code: 'Conflict',
+        details: {
+          code: 'organization.calendar.changed_during_business_date_write',
+          completedKeys: 1,
+          totalKeys: 2,
+          retrySafe: true,
+        },
+      });
+      expect(keyCalls.get(firstWarehouse.id)).toBe(1);
+      expect(keyCalls.has(secondWarehouse.id)).toBe(false);
+      expect(validatedCalendars).toEqual(['GREGORIAN']);
+
+      const retry = await fixture.balancesService.rebuild({
+        organizationId: fixture.organizationId,
+      });
+      expect(retry).toMatchObject({ checked: 2, rebuilt: 1 });
+      expect(retry.corrections.map((row) => row.warehouseId)).toEqual([
+        secondWarehouse.id,
+      ]);
+      expect(validatedCalendars).toEqual(['GREGORIAN', 'JALALI', 'JALALI']);
+      expect(lockCalls).toBe(4);
+    } finally {
+      lock.mockRestore();
+      rebuildKey.mockRestore();
+      listKeys.mockRestore();
+    }
   });
 });

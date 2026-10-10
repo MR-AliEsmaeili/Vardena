@@ -95,6 +95,8 @@ model UnitConversion {
 
   @@unique([organizationId, fromUnitId, toUnitId, validFrom], map: "uq_unit_conversions_pair_valid_from")
   @@index([organizationId, fromUnitId, toUnitId], map: "idx_unit_conversions_pair")
+  @@index([organizationId, validFrom], map: "idx_unit_conversions_org_valid_from")
+  @@index([organizationId, validTo], map: "idx_unit_conversions_org_valid_to")
   @@index([toUnitId], map: "idx_unit_conversions_to_unit_id")
   @@map("unit_conversions")
   @@schema("inventory")
@@ -124,6 +126,8 @@ model ItemUnitConversion {
 
   @@unique([itemId, fromUnitId, toUnitId, validFrom], map: "uq_item_unit_conversions_pair_valid_from")
   @@index([organizationId, itemId, fromUnitId, toUnitId], map: "idx_item_unit_conversions_item_pair")
+  @@index([organizationId, validFrom], map: "idx_item_unit_conversions_org_valid_from")
+  @@index([organizationId, validTo], map: "idx_item_unit_conversions_org_valid_to")
   @@index([toUnitId], map: "idx_item_unit_conversions_to_unit_id")
   @@map("item_unit_conversions")
   @@schema("inventory")
@@ -440,6 +444,7 @@ model InventoryMovement {
 
   @@unique([reversalOfMovementId], map: "uq_movements_reversal_of_movement_id")
   @@index([organizationId, warehouseId, itemId, movementDate], map: "idx_movements_org_warehouse_item_date")
+  @@index([organizationId, movementDate], map: "idx_movements_org_business_date")
   @@index([organizationId, itemId, movementDate], map: "idx_movements_org_item_date")
   @@index([organizationId, branchId, movementDate], map: "idx_movements_org_branch_date")
   @@index([transferId], map: "idx_movements_transfer_id")
@@ -482,6 +487,7 @@ model InventoryBalance {
   item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, warehouseId, itemId], map: "uq_balances_org_warehouse_item")
+  @@index([organizationId, lastMovementDate], map: "idx_balances_org_last_movement_date")
   @@index([organizationId, warehouseId], map: "idx_balances_org_warehouse")
   @@index([organizationId, itemId], map: "idx_balances_org_item")
   @@index([organizationId, branchId], map: "idx_balances_org_branch")
@@ -647,6 +653,8 @@ model ItemValuationMethod {
 
   @@unique([organizationId, itemId, validFrom], map: "uq_item_valuation_methods_item_valid_from")
   @@index([organizationId, itemId], map: "idx_item_valuation_methods_org_item")
+  @@index([organizationId, validFrom], map: "idx_item_valuation_methods_org_valid_from")
+  @@index([organizationId, validTo], map: "idx_item_valuation_methods_org_valid_to")
   @@map("item_valuation_methods")
   @@schema("inventory")
 }
@@ -792,6 +800,7 @@ model InventoryValuationRun {
 
   @@index([organizationId, warehouseId, itemId, executedAt], map: "idx_valuation_runs_org_key_executed_at")
   @@index([organizationId, executedAt], map: "idx_valuation_runs_org_executed_at")
+  @@index([organizationId, fromDate], map: "idx_valuation_runs_org_from_date")
   @@map("inventory_valuation_runs")
   @@schema("inventory")
 }

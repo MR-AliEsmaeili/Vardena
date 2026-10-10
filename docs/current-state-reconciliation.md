@@ -423,8 +423,11 @@ read-only migration report is
 `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; it emits
 counts, not row IDs or business payloads. Neither fixture rehearsal nor code
 inspection establishes what values exist in a customer/production database.
-The migration-110 comment about verbatim instant storage is not supported by the
-inspected standard Inventory input/persistence path; migration 110 remains
-unmodified, and alternate writers plus actual historical data remain
-uninspected. See ADR-0042, `docs/datetime.md`, `docs/open-questions.md` OQ-73,
-and the date/time pull request for current scope and limitations.
+The baseline check found the original migration-110 comment about verbatim
+instant storage was not supported by the standard Inventory input/persistence
+path; the comment has now been corrected in this PR to describe the legacy
+organization-zone parse followed by UTC-day carrier persistence. Alternate
+writers and actual historical data remain uninspected, so no customer-data
+safety claim is made. See ADR-0042, `docs/datetime.md`,
+`docs/open-questions.md` OQ-73, and the date/time pull request for current scope
+and limitations.

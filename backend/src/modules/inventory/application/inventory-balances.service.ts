@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import type { CalendarSystem } from '../../../kernel/datetime/calendar-system.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
+import { AppException } from '../../../kernel/errors/app-exception.js';
 import { getPrincipal } from '../../../kernel/correlation/request-context.js';
 import {
   toOffset,
@@ -9,6 +11,7 @@ import {
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import { OrganizationsService } from '../../organization/application/organizations.service.js';
 import {
+  InventoryBalanceDateNotRenderableError,
   InventoryBalancesRepository,
   type KeyComparison,
   type KeyRebuild,
@@ -21,6 +24,7 @@ import {
 import { resolveEffectivePolicy } from '../domain/negative-stock-policy.js';
 import { BALANCE_PERMISSIONS } from '../domain/inventory-core-permissions.js';
 import { RECONCILIATION_PERMISSIONS } from '../domain/inventory-core-permissions.js';
+import { INVENTORY_BUSINESS_DATE_CALENDAR_CHANGED_CODE } from './inventory-business-date-write.js';
 import { resolveSort } from './master-data-support.js';
 import { ItemsService } from './items.service.js';
 import { WarehousesService } from './warehouses.service.js';
@@ -313,15 +317,23 @@ export class InventoryBalancesService {
    * Rebuild stored balances from the ledger for every key in the scope.
    * Maintenance only (`Reconciliation.Execute`): every correction is returned
    * in the report AND logged, so a rebuild is never a silent repair.
+   *
+   * Each key remains its own short Inventory transaction. Its captured
+   * calendar is checked under Organization's public FOR SHARE rendezvous before
+   * that transaction starts; the organization lock is deliberately released
+   * between keys rather than held across an unbounded batch. If a transition
+   * wins between keys, completed key transactions remain committed and this
+   * operation fails with an explicit, retry-safe partial-progress conflict.
    */
   async rebuild(scope: ReconciliationScope): Promise<RebuildReport> {
     await this.authorization.requireAllPermissions([
       RECONCILIATION_PERMISSIONS.EXECUTE,
     ]);
-    await this.resolveScope(scope);
+    const calendarSystem = await this.resolveScope(scope);
     const keys = await this.balances.listStockingKeys(scope);
     const branches = new Map<string, string>();
     const corrections: KeyRebuild[] = [];
+    let completedKeys = 0;
     for (const key of keys) {
       // A rebuild only CREATES a row for a key the ledger knows; the branch
       // comes from the live warehouse row (warehouses cannot move branches
@@ -337,12 +349,96 @@ export class InventoryBalancesService {
         branchId = warehouse.branchId;
         branches.set(key.warehouseId, branchId);
       }
-      const rebuild = await this.balances.rebuildKey(
-        scope.organizationId,
-        branchId,
-        key,
-        getPrincipal()?.userId ?? null,
-      );
+
+      let lockResult:
+        | { kind: 'completed'; value: KeyRebuild }
+        | { kind: 'not_found' }
+        | { kind: 'calendar_changed' };
+      try {
+        lockResult = await this.organizations.withBusinessDateWriteLock(
+          scope.organizationId,
+          calendarSystem,
+          () =>
+            this.balances.rebuildKey(
+              scope.organizationId,
+              branchId,
+              key,
+              getPrincipal()?.userId ?? null,
+              calendarSystem,
+            ),
+        );
+      } catch (error) {
+        if (error instanceof InventoryBalanceDateNotRenderableError) {
+          this.logger.warn(
+            'Inventory balance rebuild stopped on an unrenderable ledger date',
+            {
+              organizationId: scope.organizationId,
+              calendarSystem,
+              warehouseId: key.warehouseId,
+              itemId: key.itemId,
+              businessDate: error.businessDate,
+              completedKeys,
+              totalKeys: keys.length,
+              corrections,
+            },
+            InventoryBalancesService.name,
+          );
+          throw AppException.conflict(
+            `The ledger-derived BusinessDate ${error.businessDate} cannot be rendered in ${calendarSystem}. The current balance-key transaction was rolled back; ${completedKeys} earlier key transaction(s) may already be committed. Correct the source history, then retry the rebuild.`,
+            {
+              code: 'inventory.balance.rebuild.business_date_unrenderable',
+              businessDate: error.businessDate,
+              calendarSystem,
+              completedKeys,
+              totalKeys: keys.length,
+            },
+          );
+        }
+        this.logger.warn(
+          'Inventory balance rebuild encountered an error during a per-key transaction',
+          {
+            organizationId: scope.organizationId,
+            warehouseId: key.warehouseId,
+            itemId: key.itemId,
+            completedKeys,
+            totalKeys: keys.length,
+            currentKeyCommitOutcome: 'unknown',
+            corrections,
+            errorName: error instanceof Error ? error.name : typeof error,
+          },
+          InventoryBalancesService.name,
+        );
+        throw error;
+      }
+
+      if (lockResult.kind === 'not_found') {
+        throw AppException.notFound('Organization', scope.organizationId);
+      }
+      if (lockResult.kind === 'calendar_changed') {
+        this.logger.warn(
+          'Inventory balance rebuild stopped after an organization calendar change',
+          {
+            organizationId: scope.organizationId,
+            validatedCalendarSystem: calendarSystem,
+            completedKeys,
+            totalKeys: keys.length,
+            corrections,
+          },
+          InventoryBalancesService.name,
+        );
+        throw AppException.conflict(
+          `The organization calendar changed before balance key ${completedKeys + 1} of ${keys.length} was rebuilt. ${completedKeys} earlier key transaction(s) have already committed; rerun the same rebuild scope to reconcile the complete projection. Per-key rebuild is idempotent.`,
+          {
+            code: INVENTORY_BUSINESS_DATE_CALENDAR_CHANGED_CODE,
+            completedKeys,
+            totalKeys: keys.length,
+            retrySafe: true,
+          },
+        );
+      }
+
+      completedKeys += 1;
+      const rebuild = lockResult.value;
       if (rebuild.action !== 'noop') corrections.push(rebuild);
     }
     this.logger.log(
@@ -365,8 +461,12 @@ export class InventoryBalancesService {
    * usable; provided warehouse/item filters must belong to it (inactive ones
    * are fine — maintenance reads history).
    */
-  private async resolveScope(scope: ReconciliationScope): Promise<void> {
-    await this.organizations.requireUsableOrganization(scope.organizationId);
+  private async resolveScope(
+    scope: ReconciliationScope,
+  ): Promise<CalendarSystem> {
+    const organization = await this.organizations.requireUsableOrganization(
+      scope.organizationId,
+    );
     if (scope.warehouseId !== undefined) {
       await this.warehouses.requireUsableWarehouseInOrganization(
         scope.warehouseId,
@@ -381,5 +481,6 @@ export class InventoryBalancesService {
         { allowInactive: true },
       );
     }
+    return organization.calendarSystem;
   }
 }
