@@ -913,7 +913,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             fixture.destinationWarehouseId,
             fixture.itemAId,
           ),
-        ).toBe('0');
+        ).toBe('0.0000');
       } finally {
         transition.release();
         pause.release();
@@ -1022,7 +1022,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             fixture.destinationWarehouseId,
             losingItemId,
           ),
-        ).toBe('0');
+        ).toBe('0.0000');
       } finally {
         releaseTransactions.resolve();
         lockSpy.mockRestore();
