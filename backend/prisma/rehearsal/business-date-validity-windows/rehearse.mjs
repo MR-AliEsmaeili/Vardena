@@ -4,8 +4,10 @@
  *
  * Uses a disposable PostgreSQL database with representative legacy
  * timestamptz rows. It verifies UTC-calendar-day conversion, preservation of
- * audit instants, and fail-closed guards for windows that collapse, duplicate
- * starts, or overlap after conversion. Two-client checks prove a pre-existing
+ * audit instants, retention of valid Gregorian dates outside the Jalali
+ * rendering envelope, and fail-closed guards for windows that collapse,
+ * duplicate starts, overlap, or fall outside the general BusinessDate/API
+ * range after conversion. Two-client checks prove a pre-existing
  * writer completes before preflight and is then observed, and that later
  * writers wait through conversion until COMMIT. This fixture rehearsal is not
  * a substitute for running the preflight against a production data snapshot.
@@ -354,14 +356,6 @@ async function main() {
   try {
     await withClient(REHEARSAL_DB, async (client, notices) => {
       await client.query(`
-        CREATE SCHEMA "organization";
-        CREATE TABLE "organization"."organizations" (
-          "id" text PRIMARY KEY,
-          "calendar_system" varchar(16) NOT NULL
-        );
-        INSERT INTO "organization"."organizations" ("id", "calendar_system")
-          VALUES ('org-1', 'JALALI'), ('org-gregorian', 'GREGORIAN');
-
         CREATE SCHEMA "inventory";
         CREATE TABLE "inventory"."inventory_movements" (
           "id" text PRIMARY KEY,
@@ -401,7 +395,7 @@ async function main() {
         INSERT INTO "inventory"."inventory_business_documents"
           ("id", "organization_id", "business_date")
           VALUES ('document-1', 'org-1', DATE '2026-10-08'),
-                 ('document-gregorian-outside-jalali', 'org-gregorian', DATE '0600-01-01');
+                 ('document-gregorian-outside-jalali', 'org-legacy', DATE '0600-01-01');
         INSERT INTO "inventory"."inventory_accounting_posting_snapshots"
           ("id", "organization_id", "document_date")
           VALUES ('snapshot-1', 'org-1', DATE '2026-10-08');
@@ -467,7 +461,7 @@ async function main() {
          VALUES
           ('global-before', 'org-1', 'kg', 'g', '2026-01-01 09:30:00-05', '2026-03-01 08:00:00-05', '2026-02-03 04:05:06.789012+03:30', '2026-02-03 04:05:06.789012+03:30'),
           ('global-next', 'org-1', 'kg', 'g', '2026-03-01 18:00:00+04', NULL, '2026-02-03 04:05:06.789012+03:30', '2026-02-03 04:05:06.789012+03:30'),
-          ('gregorian-legacy-range', 'org-gregorian', 'old-unit', 'new-unit', '0600-01-01 00:00:00+00', NULL, '2026-02-03 04:05:06.789012+03:30', '2026-02-03 04:05:06.789012+03:30')`,
+          ('gregorian-legacy-range', 'org-legacy', 'old-unit', 'new-unit', '0600-01-01 00:00:00+00', NULL, '2026-02-03 04:05:06.789012+03:30', '2026-02-03 04:05:06.789012+03:30')`,
       );
       await client.query(
         `INSERT INTO "inventory"."item_unit_conversions"
@@ -499,7 +493,7 @@ async function main() {
       assert.equal(auditCount(globalAudit, 'collapsed_or_reversed_rows'), 0);
       assert.equal(auditCount(globalAudit, 'duplicate_start_groups'), 0);
       assert.equal(auditCount(globalAudit, 'overlapping_rows'), 0);
-      assert.equal(auditCount(globalAudit, 'unrenderable_rows'), 0);
+      assert.equal(auditCount(globalAudit, 'outside_api_date_range_rows'), 0);
       for (const table of ['item_unit_conversions', 'item_valuation_methods']) {
         const row = auditRow(audit.rows, 'validity_window', table);
         assert.equal(auditCount(row, 'row_count'), 1);
@@ -509,7 +503,7 @@ async function main() {
         assert.equal(auditCount(row, 'collapsed_or_reversed_rows'), 0);
         assert.equal(auditCount(row, 'duplicate_start_groups'), 0);
         assert.equal(auditCount(row, 'overlapping_rows'), 0);
-        assert.equal(auditCount(row, 'unrenderable_rows'), 0);
+        assert.equal(auditCount(row, 'outside_api_date_range_rows'), 0);
       }
       for (const table of [
         'inventory_movements.movement_date',
@@ -529,14 +523,7 @@ async function main() {
           auditCount(row, 'row_count'),
           table === 'inventory_business_documents.business_date' ? 2 : 1,
         );
-        assert.equal(auditCount(row, 'unrenderable_rows'), 0);
-        if (table === 'inventory_business_documents.business_date') {
-          assert.equal(auditCount(row, 'outside_gregorian_api_range_rows'), 0);
-          assert.equal(
-            auditCount(row, 'outside_jalali_rendering_range_rows'),
-            0,
-          );
-        }
+        assert.equal(auditCount(row, 'outside_api_date_range_rows'), 0);
       }
 
       const nonMidnightEndpoints = audit.rows
@@ -555,8 +542,8 @@ async function main() {
       for (const row of audit.rows) {
         const counts =
           row['report_section'] === 'validity_window'
-            ? `rows=${row['row_count']}, non-midnight UTC starts=${row['valid_from_non_midnight_utc']}, non-midnight UTC ends=${row['valid_to_non_midnight_utc']}, open=${row['open_ended_rows']}, collapsed=${row['collapsed_or_reversed_rows']}, duplicate-start groups=${row['duplicate_start_groups'] ?? 0}, overlaps=${row['overlapping_rows'] ?? 0}, unrenderable=${row['unrenderable_rows']}`
-            : `values=${row['row_count']}, unrenderable=${row['unrenderable_rows']}`;
+            ? `rows=${row['row_count']}, non-midnight UTC starts=${row['valid_from_non_midnight_utc']}, non-midnight UTC ends=${row['valid_to_non_midnight_utc']}, open=${row['open_ended_rows']}, collapsed=${row['collapsed_or_reversed_rows']}, duplicate-start groups=${row['duplicate_start_groups'] ?? 0}, overlaps=${row['overlapping_rows'] ?? 0}, outside API range=${row['outside_api_date_range_rows']}`
+            : `values=${row['row_count']}, outside API range=${row['outside_api_date_range_rows']}`;
         log(`      ${row['report_section']} ${row['source_table']}: ${counts}`);
       }
       log(
@@ -566,37 +553,17 @@ async function main() {
       await assertMigrationWaitsForExistingWriter(client);
 
       await expectRejected(client, notices, {
-        setupSql: `INSERT INTO "inventory"."item_unit_conversions"
-          ("id", "organization_id", "item_id", "from_unit_id", "to_unit_id", "valid_from", "valid_to", "created_at", "updated_at")
-          VALUES ('jalali-out-of-range', 'org-1', 'legacy-item', 'old', 'new',
-                  '0600-01-01 00:00:00+00', NULL, now(), now())`,
-        message:
-          'outside the supported BusinessDate/API/calendar rendering range',
-      });
-
-      await expectRejected(client, notices, {
-        setupSql: `INSERT INTO "inventory"."inventory_business_documents"
-          ("id", "organization_id", "business_date")
-          VALUES ('legacy-jalali-out-of-range', 'org-1', DATE '0600-01-01')`,
-        message:
-          'outside the supported BusinessDate/API/calendar rendering range',
-        auditExpectation: {
-          sourceTable: 'inventory_business_documents.business_date',
-          counts: {
-            row_count: 3,
-            outside_gregorian_api_range_rows: 0,
-            outside_jalali_rendering_range_rows: 1,
-            unrenderable_rows: 1,
-          },
-        },
-      });
-
-      await expectRejected(client, notices, {
         setupSql: `INSERT INTO "inventory"."inventory_movements"
           ("id", "organization_id", "movement_date")
-          VALUES ('legacy-too-wide-for-api', 'org-gregorian', DATE '10000-01-01')`,
-        message:
-          'outside the supported BusinessDate/API/calendar rendering range',
+          VALUES ('legacy-too-wide-for-api', 'org-legacy', DATE '10000-01-01')`,
+        message: 'outside the supported four-digit BusinessDate/API range',
+        auditExpectation: {
+          sourceTable: 'inventory_movements.movement_date',
+          counts: {
+            row_count: 2,
+            outside_api_date_range_rows: 1,
+          },
+        },
       });
 
       await expectRejected(client, notices, {
@@ -714,7 +681,7 @@ async function main() {
         'migration should report discarded legacy endpoint time components',
       );
       log(
-        '    verified UTC-day conversion, UTC-boundary crossing, date column types, and unchanged audit instants',
+        '    verified UTC-day conversion, UTC-boundary crossing, valid year-0600 Gregorian retention, date column types, and unchanged audit instants',
       );
       log(
         '    verified the migration refuses collapsed, duplicate-start, and overlapping effective windows',

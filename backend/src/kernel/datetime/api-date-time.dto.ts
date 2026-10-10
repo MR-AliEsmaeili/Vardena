@@ -107,8 +107,10 @@ export const DECLARED_BUSINESS_DATE_SCHEMA = {
 
 /**
  * Legacy timestamp form accepted only for compatibility on BusinessDate
- * inputs. The parser resolves this value to its UTC calendar day, matching
- * the OQ-73 migration policy; it is never stored as an Instant.
+ * inputs. The current owner-approved parser resolves this value to its UTC
+ * calendar day, aligned with migration 110's stored-value conversion. This
+ * intentionally differs from the pre-cutover parser's organization-zone
+ * request behavior; it is never stored as an Instant.
  */
 export const LEGACY_BUSINESS_DATE_INSTANT_SCHEMA = {
   type: 'string' as const,

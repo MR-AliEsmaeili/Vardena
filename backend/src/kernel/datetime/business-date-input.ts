@@ -9,13 +9,16 @@
  *   "businessDate": "2026-10-08"                                // canonical
  *   "businessDate": { "calendar": "JALALI", "value": "1405-07-16" }
  *
- * The plain string stays the default (Gregorian, the canonical calendar) so
- * every existing client keeps working unchanged; a Jalali day must be
- * DECLARED. A full ISO-8601 instant is also accepted for backward
- * compatibility, because event timestamps arrived on these fields before the
- * calendar model existed; when one is given, its UTC calendar day becomes the
- * business date. This matches OQ-73's historical conversion policy, so a
- * resubmitted legacy instant resolves to the same day as its migrated value.
+ * The plain string stays the default (Gregorian, the canonical calendar), so
+ * existing clients that send canonical Gregorian day strings keep working
+ * unchanged; a Jalali day must be DECLARED. A full ISO-8601 instant remains
+ * accepted as a legacy input because event timestamps arrived on these fields
+ * before the calendar model existed. The current owner-approved rule resolves
+ * one by its UTC calendar day. This aligns with migration 110's conversion of
+ * stored UTC carriers, but intentionally differs from the pre-cutover API
+ * parser, which first resolved ISO inputs in the organization's zone. It is an
+ * input behavior change, not a claim that the former request path already used
+ * UTC.
  *
  * Rejections are machine-readable codes ({@link BusinessDateInputRejection});
  * the Persian wording belongs to the caller (the frontend owns user text).
@@ -114,8 +117,9 @@ export function isBusinessDateInput(
 
 /**
  * Resolve any accepted input into the canonical Gregorian day. Calendar-day
- * input needs no zone; a legacy instant is deliberately collapsed by UTC day
- * to match the accepted OQ-73 historical migration policy.
+ * input needs no zone; an owner-approved legacy ISO instant uses its UTC day.
+ * This request-input rule is distinct from zone-based resolution of "today"
+ * and from the pre-cutover API parser behavior documented above.
  */
 export function parseBusinessDateInput(
   value: BusinessDateInput,

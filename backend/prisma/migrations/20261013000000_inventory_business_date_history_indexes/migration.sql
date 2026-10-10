@@ -1,15 +1,20 @@
--- The organization-calendar transition guard must find the earliest
--- unrenderable BusinessDate across every Inventory-owned date column without
--- repeatedly scanning full tenant histories. Each index is organization-first
--- and matches one branch of the deterministic UNION query in
--- InventoryBusinessDocumentsRepository.findFirstUnrenderableBusinessDate.
+-- Indexes for concrete filter/order consumers in current Inventory repositories:
+-- - InventoryMovementsRepository.list filters by organizationId and optional
+--   movementDate bounds; the Kardex also filters/orders by movement_date using
+--   its more-specific warehouse/item composite index.
+-- - UnitConversionsRepository.listGlobal/listForItem and
+--   ItemValuationMethodsRepository.findEffectiveVersionAt/list filter by
+--   organizationId and activeAt (`valid_from <= day` and open/greater `valid_to`)
+--   and may order by valid_from.
+-- No calendar-transition history scan or renderability gate exists in the MVP.
+-- Informational date fields on run/balance/posting-snapshot rows are not indexed
+-- here because current read paths do not filter or order by those fields.
 --
--- Keep this additive migration atomic: a lock/build failure rolls all indexes
--- back and the migration can be retried. PostgreSQL's ordinary CREATE INDEX
--- holds a table lock that blocks writes until this transaction commits, so
--- deploy in a write-quiesced/low-traffic window after rehearsal against a
--- production-sized copy. A 10-second lock timeout fails before waiting
--- indefinitely; it does not limit index-build duration.
+-- Keep the additive index migration atomic. Ordinary CREATE INDEX may block
+-- writes until this transaction commits; rehearse the exact migration on the
+-- temporary PostgreSQL CI database. The 10-second lock timeout bounds lock
+-- acquisition, not index-build duration. No production-size plan/performance
+-- claim is made by the fixture rehearsal.
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 
@@ -30,19 +35,5 @@ CREATE INDEX "idx_item_valuation_methods_org_valid_from"
   ON "inventory"."item_valuation_methods" ("organization_id", "valid_from");
 CREATE INDEX "idx_item_valuation_methods_org_valid_to"
   ON "inventory"."item_valuation_methods" ("organization_id", "valid_to");
-
-CREATE INDEX "idx_valuation_runs_org_from_date"
-  ON "inventory"."inventory_valuation_runs" ("organization_id", "from_date");
-
-CREATE INDEX "idx_pricing_runs_org_from_date"
-  ON "inventory"."inventory_pricing_runs" ("organization_id", "from_date");
-CREATE INDEX "idx_pricing_runs_org_to_date"
-  ON "inventory"."inventory_pricing_runs" ("organization_id", "to_date");
-
-CREATE INDEX "idx_balances_org_last_movement_date"
-  ON "inventory"."inventory_balances" ("organization_id", "last_movement_date");
-
-CREATE INDEX "idx_inventory_accounting_posting_snapshots_org_document_date"
-  ON "inventory"."inventory_accounting_posting_snapshots" ("organization_id", "document_date");
 
 COMMIT;

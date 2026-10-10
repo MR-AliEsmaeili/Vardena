@@ -120,19 +120,19 @@ Every entity table has:
   `20261012000000_inventory_business_date_validity_windows` maps existing values
   by UTC calendar day and preflights invalid/collapsed/overlapping histories.
   `backend/prisma/rehearsal/business-date-validity-windows/audit.sql` reports
-  aggregate counts without row IDs or business payloads. Migration 120 still
-  contains its superseded legacy `calendar_system`/Jalali-rendering guard, which
-  conflicts with ADR-0044; its status/checksum in shared environments is
-  unverified, so changing it is blocked pending deployment evidence. Migration
-  120 repeats its current preflight while holding `SHARE ROW EXCLUSIVE` locks on all source tables
-  through conversion and commit; a 10-second lock timeout aborts the
-  transaction, and concurrent writers wait. Its type changes may block reads,
-  so deployment requires an authorized maintenance window. The two-session
-  PostgreSQL rehearsal verifies the barrier before and after preflight. Fixture
-  rehearsal is not production data evidence; inspect target data and retain the
-  audit counts, migration NOTICE, verified backup/restore evidence, and
-  target-like rehearsal outcome before deployment. Other modules' fields named
-  `valid_*` are not reclassified by this decision.
+  aggregate counts without row IDs or business payloads. Migration 120 now gates
+  only the general four-digit BusinessDate/API range and half-open window
+  integrity; it neither reads nor locks Organization calendar data and does not
+  impose Jalali-renderability. Its transaction retains `SHARE ROW EXCLUSIVE`
+  locks on Inventory source tables through conversion and commit; a 10-second
+  lock timeout aborts the transaction, and concurrent writers wait. Type changes
+  may block reads, so deployment requires an authorized maintenance window. The
+  two-session PostgreSQL rehearsal verifies the barrier before and after
+  preflight. Fixture rehearsal and CI are not production data/history evidence;
+  independently verify shared apply/checksum status and retain target audit,
+  migration NOTICE, backup/restore and target-like rehearsal evidence before
+  deployment. Other modules' fields named `valid_*` are not reclassified by
+  this decision.
 - FKs to users are logical (enforced at the app level; DB FK to `users.users`
   only where the owning schema and dependency are clean — e.g. not for
   `created_by` on module tables to avoid cross-schema FK sprawl; documented

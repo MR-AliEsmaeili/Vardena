@@ -153,9 +153,10 @@ jobs:
         run: npm run test:migration-rehearsal
 
       # This fixture targets the three legacy Inventory effective-dating tables
-      # independently: UTC-day conversion, preserved audit instants, and
-      # fail-closed checks for collapsed, duplicate-start, overlapping, and
-      # unrepresentable BusinessDate windows. Its two-session regression also
+      # independently: UTC-day conversion, preserved audit instants, valid
+      # Gregorian history outside the Jalali rendering envelope, and fail-closed
+      # checks for collapsed, duplicate-start, overlapping, and out-of-API-range
+      # BusinessDate windows. Its two-session regression also
       # verifies the migration drains an existing writer before preflight and
       # holds new writers until COMMIT. It is not a substitute for
       # production-snapshot evidence; the migration emits its own endpoint-time

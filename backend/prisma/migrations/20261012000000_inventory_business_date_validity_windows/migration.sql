@@ -5,13 +5,13 @@
 --
 -- Before altering data, rehearse the date-level history in a transaction and
 -- refuse conversions that collapse/reverse windows, create duplicate starts or
--- overlaps, or cannot be represented by the canonical four-digit API day and
--- configured calendar. The representability preflight also checks the
--- Inventory BusinessDates converted by migration 110; its historical values
--- were not representability-gated before conversion. Non-midnight UTC
--- endpoints are counted and emitted as a NOTICE for deployment evidence; their
--- discarded time is not reinterpreted as a different day. See
--- prisma/rehearsal/business-date-validity-windows/.
+-- overlaps, or fall outside the canonical four-digit BusinessDate/API range.
+-- Jalali renderability is presentation-only and is never a migration gate.
+-- The representability preflight also checks Inventory BusinessDates converted
+-- by migration 110; their historical values were not range-gated before
+-- conversion. Non-midnight UTC endpoints are counted and emitted as a NOTICE
+-- for deployment evidence; their discarded time is not reinterpreted as a
+-- different day. See prisma/rehearsal/business-date-validity-windows/.
 --
 -- Serialize the entire preflight + conversion against every source table read
 -- below. SHARE ROW EXCLUSIVE conflicts with INSERT/UPDATE/DELETE table locks,
@@ -30,8 +30,7 @@ LOCK TABLE
   "inventory"."inventory_valuation_runs",
   "inventory"."item_unit_conversions",
   "inventory"."item_valuation_methods",
-  "inventory"."unit_conversions",
-  "organization"."organizations"
+  "inventory"."unit_conversions"
 IN SHARE ROW EXCLUSIVE MODE;
 
 DO $business_date_validity_preflight$
@@ -81,11 +80,10 @@ BEGIN
   FROM "inventory"."item_valuation_methods";
 
   -- Compare both the proposed window conversions and the BusinessDate columns
-  -- already converted by migration 110 against the general API range. A
-  -- PostgreSQL date can represent years the four-digit API cannot; the Jalali
-  -- rendering envelope applies only to organizations configured for Jalali.
-  -- Gregorian organizations may retain a valid Gregorian day without a Jalali
-  -- rendering in the paired Inventory document response.
+  -- already converted by migration 110 against the canonical four-digit API
+  -- range. PostgreSQL date can represent values outside that API range. A valid
+  -- in-range Gregorian day is retained even when the Jalali UI cannot render it;
+  -- its paired rendering may be null with Gregorian fallback.
   CREATE TEMPORARY TABLE "_inventory_business_date_representability" (
     "source_table" text NOT NULL,
     "row_id" text NOT NULL,
@@ -133,24 +131,13 @@ BEGIN
     business_dates."business_date"
     INTO offending_table, offending_id, offending_organization, offending_business_date
     FROM "_inventory_business_date_representability" AS business_dates
-    LEFT JOIN "organization"."organizations" AS organizations
-      ON organizations."id" = business_dates."organization_id"
-   WHERE organizations."id" IS NULL
-      OR organizations."calendar_system" IS NULL
-      OR organizations."calendar_system" NOT IN ('GREGORIAN', 'JALALI')
+   WHERE NOT isfinite(business_dates."business_date")
       OR business_dates."business_date" < DATE '0001-01-01'
       OR business_dates."business_date" > DATE '9999-12-31'
-      OR (
-        organizations."calendar_system" = 'JALALI'
-        AND (
-          business_dates."business_date" < DATE '0621-03-21'
-          OR business_dates."business_date" > DATE '3798-12-31'
-        )
-      )
    LIMIT 1;
   IF FOUND THEN
     RAISE EXCEPTION
-      'BusinessDate migration rejected: row % in % for organization % has day %, outside the supported BusinessDate/API/calendar rendering range.',
+      'BusinessDate migration rejected: row % in % for organization % has day %, outside the supported four-digit BusinessDate/API range.',
       offending_id, offending_table, offending_organization, offending_business_date;
   END IF;
 

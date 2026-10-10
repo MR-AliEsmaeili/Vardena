@@ -777,22 +777,19 @@ conversions, item-specific unit conversions, and item valuation methods have
 BusinessDate `valid_from`/`valid_to` bounds with half-open `[valid_from,
 valid_to)` semantics and a nullable open end; they are not event Instants. The
 conversion migration is `20261012000000_inventory_business_date_validity_windows`.
-Its SQL still contains the superseded preflight keyed by the legacy
-`organization.calendar_system`, including the Jalali rendering bound; that
-conflicts with ADR-0044 and must be resolved only after shared-environment
-application/checksum status is established. This migration remains an explicit
-deployment blocker. The aggregate-only target-data report is
-`backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; run it
+Its preflight enforces the general four-digit BusinessDate/API range and window
+integrity only; it no longer reads or locks `organization.organizations` and
+never rejects a valid Gregorian day because Jalali cannot render it. It retains
+an atomic transaction and `SHARE ROW EXCLUSIVE` locks on the Inventory source
+tables to serialize preflight with writes. The aggregate-only target-data report
+is `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; run it
 read-only after migration 110 and before migration 120, retain the counts and
 migration NOTICE, and rehearse against a fresh, restorable target-like copy.
-Migration 120 repeats its current preflight under `SHARE ROW EXCLUSIVE` locks on
-all source tables, holds them through conversion/commit, and aborts if the
-10-second lock timeout is exceeded. Existing writes drain before preflight;
-subsequent writes wait, and `ALTER COLUMN TYPE` may also block reads, so an
-authorized maintenance window is required. CI's two-session rehearsal verifies
-both the pre-existing-writer and waiting-writer cases only against disposable
-synthetic data; it does not establish shared/production safety. Resolve any
-preflight failures only through approved repairs and apply schema changes
+The CI two-session rehearsal covers the pre-existing-writer and waiting-writer
+cases on disposable synthetic data only. It is not evidence of shared or
+production migration history or data safety; target apply/checksum status must
+be established independently before deployment. Resolve any preflight failures
+only through approved repairs and apply schema changes
 through reviewed Prisma migrations.
 
 - **Status (corrected 2026-09-26 — `repository-documentation-audit.md`):**

@@ -423,16 +423,19 @@ read-only migration report is
 `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; it emits
 counts, not row IDs or business payloads. Neither fixture rehearsal nor code
 inspection establishes what values exist in a customer/shared database. The
-baseline check found the original migration-110 comment about verbatim instant
-storage was not supported by the standard Inventory input/persistence path;
-that comment was corrected earlier in PR #135. Alternate writers and actual
-historical data remain uninspected, so no customer-data safety claim is made.
+baseline check found the PR-head migration-110 comment about verbatim instant
+storage was not supported by the standard Inventory input/persistence path.
+The remediation restores migration 110 byte-for-byte to `main`; alternate
+writers and actual historical data remain uninspected, so no customer-data
+safety claim is made.
 
-Migration `20261012000000_inventory_business_date_validity_windows` still has a
-legacy calendar/renderability preflight that conflicts with ADR-0044. Its
-application status and checksum in shared environments could not be verified;
-this remains a deployment blocker. The policy changes leave the migration files
-unchanged relative to PR #135's starting head (which already contains migrations
-110, 120, and 130). Do not treat the synthetic migration rehearsal as an audit
-of shared or production data. See ADR-0042, ADR-0044, `docs/datetime.md`,
-`docs/database-strategy.md`, and OQ-73 for current scope and limitations.
+The remediation removes migration 120's `organization.calendar_system` and
+Jalali-renderability preflight while preserving the general BusinessDate/API
+range and window-integrity checks. Migration 130 retains indexes with current
+Inventory query consumers and drops indexes on informational date fields with no
+current filter/order consumer. Both migrations are exercised only against
+throwaway PostgreSQL in CI/rehearsal. Their apply/checksum state in shared
+environments is still unknown and must be established independently before
+deployment; neither synthetic fixtures nor CI answer that question. See
+ADR-0042, ADR-0044, `docs/datetime.md`, `docs/database-strategy.md`, and OQ-73
+for current scope and limitations.

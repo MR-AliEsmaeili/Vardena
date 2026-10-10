@@ -487,7 +487,6 @@ model InventoryBalance {
   item         Item         @relation(fields: [itemId], references: [id], onDelete: Restrict)
 
   @@unique([organizationId, warehouseId, itemId], map: "uq_balances_org_warehouse_item")
-  @@index([organizationId, lastMovementDate], map: "idx_balances_org_last_movement_date")
   @@index([organizationId, warehouseId], map: "idx_balances_org_warehouse")
   @@index([organizationId, itemId], map: "idx_balances_org_item")
   @@index([organizationId, branchId], map: "idx_balances_org_branch")
@@ -800,7 +799,6 @@ model InventoryValuationRun {
 
   @@index([organizationId, warehouseId, itemId, executedAt], map: "idx_valuation_runs_org_key_executed_at")
   @@index([organizationId, executedAt], map: "idx_valuation_runs_org_executed_at")
-  @@index([organizationId, fromDate], map: "idx_valuation_runs_org_from_date")
   @@map("inventory_valuation_runs")
   @@schema("inventory")
 }

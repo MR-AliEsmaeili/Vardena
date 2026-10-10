@@ -240,8 +240,6 @@ model InventoryPricingRun {
   /// "all warehouses" case (warehouse_id IS NULL) too.
   @@index([organizationId, warehouseId, kind, executedAt], map: "idx_pricing_runs_org_scope_executed_at")
   @@index([organizationId, executedAt], map: "idx_pricing_runs_org_executed_at")
-  @@index([organizationId, fromDate], map: "idx_pricing_runs_org_from_date")
-  @@index([organizationId, toDate], map: "idx_pricing_runs_org_to_date")
   @@index([reversesRunId], map: "idx_pricing_runs_reverses_run_id")
   @@map("inventory_pricing_runs")
   @@schema("inventory")

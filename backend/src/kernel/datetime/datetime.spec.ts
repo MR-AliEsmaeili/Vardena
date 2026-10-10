@@ -322,7 +322,15 @@ describe('business-date input contract', () => {
     });
   });
 
-  it('resolves a legacy ISO instant to its UTC day, matching OQ-73 migration semantics', () => {
+  it('resolves a legacy ISO instant by UTC day under the owner-approved input rule', () => {
+    // Unlike the pre-cutover API parser, the compatibility input rule is now
+    // intentionally UTC-day based even when this instant is the next local day.
+    expect(
+      businessDateFromInstant(
+        new Date('2026-10-08T21:00:00.000Z'),
+        'Asia/Tehran',
+      ),
+    ).toBe('2026-10-09');
     expect(parseBusinessDateInput('2026-10-08T00:00:00.000Z')).toMatchObject({
       ok: true,
       gregorian: '2026-10-08',

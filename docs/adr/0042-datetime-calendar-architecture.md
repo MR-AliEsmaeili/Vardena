@@ -3,6 +3,14 @@
 Status: Accepted for the BusinessDate/Instant foundation; organization-selectable calendar superseded by ADR-0044
 Date: 2026-10-08
 
+> **Current calendar-selection policy:** ADR-0044 supersedes the organization
+> calendar selection/default/presentation clauses below. MVP presentation is
+> fixed Jalali-first; `organization.calendar_system` is legacy and ignored,
+> historical out-of-Jalali-range Gregorian facts use the Gregorian fallback,
+> and no calendar-transition workflow or renderability gate is part of MVP.
+> This ADR remains normative for the canonical `date`/`timestamptz` model, IANA
+> time-zone use, and the explicit BusinessDate input boundary.
+
 ## Context
 
 Before this architecture was implemented, modules used incompatible date/time
@@ -78,8 +86,8 @@ its facts and rules.
     with plugins registered once, one calendar-aware date input, shared
     formatters and API adapters. Calendar conversion and numeral rendering are
     separate; OQ-02 remains open for Persian-numeral and broader localization
-    policy, not for the BusinessDate/Instant distinction or configured calendar
-    contract.
+    policy, not for the BusinessDate/Instant distinction or the fixed Jalali-first
+    MVP presentation decided by ADR-0044.
 
 ## Consequences
 

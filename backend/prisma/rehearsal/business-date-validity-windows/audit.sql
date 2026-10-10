@@ -10,11 +10,12 @@
 --   psql "$READ_ONLY_DATABASE_URL" -X -v ON_ERROR_STOP=1 \
 --     -f backend/prisma/rehearsal/business-date-validity-windows/audit.sql
 --
--- The report mirrors the migration's UTC-day conversion and representability
--- guards. A non-midnight count is evidence of discarded clock components, not
--- by itself a migration failure. Any collision, invalid range, unsupported
--- date, missing/invalid organization calendar, or overlap must be investigated;
--- this report does not repair data or authorize a production migration.
+-- The report mirrors the migration's UTC-day conversion and four-digit
+-- BusinessDate/API range checks. A non-midnight count is evidence of discarded
+-- clock components, not by itself a migration failure. Any collision, invalid
+-- range, out-of-range date, or overlap must be investigated; Jalali rendering
+-- is not a migration gate. This report does not repair data or authorize a
+-- production migration.
 
 WITH validity_windows AS (
   SELECT
@@ -129,10 +130,7 @@ window_summary AS (
         AND windows.valid_to_day <= windows.valid_from_day
     ) AS collapsed_or_reversed_rows,
     count(windows.row_id) FILTER (
-      WHERE organizations.id IS NULL
-         OR organizations.calendar_system IS NULL
-         OR organizations.calendar_system NOT IN ('GREGORIAN', 'JALALI')
-         OR NOT isfinite(windows.valid_from_day)
+      WHERE NOT isfinite(windows.valid_from_day)
          OR windows.valid_from_day < DATE '0001-01-01'
          OR windows.valid_from_day > DATE '9999-12-31'
          OR (
@@ -143,26 +141,10 @@ window_summary AS (
              OR windows.valid_to_day > DATE '9999-12-31'
            )
          )
-         OR (
-           organizations.calendar_system = 'JALALI'
-           AND (
-             windows.valid_from_day < DATE '0621-03-21'
-             OR windows.valid_from_day > DATE '3798-12-31'
-             OR (
-               windows.valid_to_day IS NOT NULL
-               AND (
-                 windows.valid_to_day < DATE '0621-03-21'
-                 OR windows.valid_to_day > DATE '3798-12-31'
-               )
-             )
-           )
-         )
-    ) AS unrenderable_version_rows
+    ) AS outside_api_date_range_rows
   FROM validity_tables AS tables
   LEFT JOIN validity_windows AS windows
     ON windows.source_table = tables.column1
-  LEFT JOIN "organization"."organizations" AS organizations
-    ON organizations.id = windows.organization_id
   GROUP BY tables.column1
 ),
 business_date_values AS (
@@ -233,50 +215,20 @@ business_date_sources(source_table) AS (
     ('inventory_valuation_runs.from_date'::text),
     ('inventory_balances.last_movement_date'::text)
 ),
--- The Jalali envelope is a display constraint only for JALALI organizations.
--- A GREGORIAN BusinessDate remains valid without a Jalali rendering; Inventory
--- document responses carry that unavailable derived member as null.
+-- Jalali rendering is presentation-only. This audit counts only values outside
+-- the canonical four-digit BusinessDate/API range, never display constraints.
 business_date_summary AS (
   SELECT
     sources.source_table,
     count(date_values.source_table) AS row_count,
     count(date_values.source_table) FILTER (
-      WHERE organizations.id IS NULL
-         OR organizations.calendar_system IS NULL
-         OR organizations.calendar_system NOT IN ('GREGORIAN', 'JALALI')
-    ) AS missing_or_invalid_calendar_rows,
-    count(date_values.source_table) FILTER (
       WHERE NOT isfinite(date_values.business_date)
          OR date_values.business_date < DATE '0001-01-01'
          OR date_values.business_date > DATE '9999-12-31'
-    ) AS outside_gregorian_api_range_rows,
-    count(date_values.source_table) FILTER (
-      WHERE organizations.calendar_system = 'JALALI'
-        AND (
-          date_values.business_date < DATE '0621-03-21'
-          OR date_values.business_date > DATE '3798-12-31'
-        )
-    ) AS outside_jalali_rendering_range_rows,
-    count(date_values.source_table) FILTER (
-      WHERE organizations.id IS NULL
-         OR organizations.calendar_system IS NULL
-         OR organizations.calendar_system NOT IN ('GREGORIAN', 'JALALI')
-         OR NOT isfinite(date_values.business_date)
-         OR date_values.business_date < DATE '0001-01-01'
-         OR date_values.business_date > DATE '9999-12-31'
-         OR (
-           organizations.calendar_system = 'JALALI'
-           AND (
-             date_values.business_date < DATE '0621-03-21'
-             OR date_values.business_date > DATE '3798-12-31'
-           )
-         )
-    ) AS unrenderable_rows
+    ) AS outside_api_date_range_rows
   FROM business_date_sources AS sources
   LEFT JOIN business_date_values AS date_values
     ON date_values.source_table = sources.source_table
-  LEFT JOIN "organization"."organizations" AS organizations
-    ON organizations.id = date_values.organization_id
   GROUP BY sources.source_table
 ),
 report_rows AS (
@@ -291,10 +243,7 @@ report_rows AS (
     COALESCE(duplicates.duplicate_start_groups, 0) AS duplicate_start_groups,
     COALESCE(duplicates.duplicate_start_extra_rows, 0) AS duplicate_start_extra_rows,
     COALESCE(conflicts.overlapping_rows, 0) AS overlapping_rows,
-    windows.unrenderable_version_rows AS unrenderable_rows,
-    0::bigint AS missing_or_invalid_calendar_rows,
-    0::bigint AS outside_gregorian_api_range_rows,
-    0::bigint AS outside_jalali_rendering_range_rows
+    windows.outside_api_date_range_rows
   FROM window_summary AS windows
   LEFT JOIN duplicate_starts AS duplicates USING ("source_table")
   LEFT JOIN window_conflicts AS conflicts USING ("source_table")
@@ -312,10 +261,7 @@ report_rows AS (
     0::bigint,
     0::bigint,
     0::bigint,
-    business_dates.unrenderable_rows,
-    business_dates.missing_or_invalid_calendar_rows,
-    business_dates.outside_gregorian_api_range_rows,
-    business_dates.outside_jalali_rendering_range_rows
+    business_dates.outside_api_date_range_rows
   FROM business_date_summary AS business_dates
 )
 SELECT
@@ -329,9 +275,6 @@ SELECT
   duplicate_start_groups,
   duplicate_start_extra_rows,
   overlapping_rows,
-  unrenderable_rows,
-  missing_or_invalid_calendar_rows,
-  outside_gregorian_api_range_rows,
-  outside_jalali_rendering_range_rows
+  outside_api_date_range_rows
 FROM report_rows
 ORDER BY report_section, source_table;

@@ -63,20 +63,21 @@ Three rules follow, and they are the ones reviewers check:
   business-day carrier: the earlier "day riding a timestamptz column as its UTC
   midnight" convention is retired.
 - **Inventory BusinessDate persistence cutover** (`20261011000000_business_date_persistence`):
-  the migration converts the existing Inventory day carriers and renames
-  `last_movement_at`; PostgreSQL runs those DDL statements in one explicit
-  transaction with a 10-second `lock_timeout`. If any lock acquisition or
-  conversion fails before `COMMIT`, PostgreSQL rolls the entire migration back.
-  The timeout bounds lock acquisition, not the table rewrite. Each `ALTER TABLE`
-  takes an `ACCESS EXCLUSIVE` lock and may block reads and writes until commit;
-  this is a breaking schema cutover, not a rolling/zero-downtime migration.
-  Stop the previous API/worker and quiesce writes for the complete migration
-  sequence, verify a restorable backup and rehearse against a target-like copy,
-  then deploy the new application before resuming traffic. Prisma commits each
-  migration separately: if 110 commits but a later migration fails, keep the
-  old application stopped, inspect `_prisma_migrations` and the actual schema,
-  and complete an approved forward recovery; do not reverse-cast the data or
-  blindly rerun the migration.
+  the base migration converts the existing Inventory day carriers and renames
+  `last_movement_at`. Its SQL contains no explicit `BEGIN`/`COMMIT` and sets no
+  `lock_timeout`; do not infer those guarantees from an earlier PR variant or
+  from PostgreSQL DDL in general. Whether the installed Prisma Migrate runner
+  makes this whole script atomic must be verified using the exact Prisma version
+  against a disposable PostgreSQL database before any operational claim. The
+  `ALTER TABLE ... TYPE` operations acquire strong locks and may block reads and
+  writes; this is a breaking schema cutover, not a rolling/zero-downtime
+  migration. Stop the previous API/worker and quiesce writes for the complete
+  migration sequence, verify a restorable backup and rehearse against a
+  target-like copy, then deploy the new application before resuming traffic.
+  Prisma records each migration separately: if 110 commits but a later
+  migration fails, keep the old application stopped, inspect
+  `_prisma_migrations` and the actual schema, and complete an approved forward
+  recovery; do not reverse-cast the data or blindly rerun the migration.
 - **Inventory validity windows (Owner decision, 2026-10-09):**
   `unit_conversions.valid_from/valid_to`,
   `item_unit_conversions.valid_from/valid_to`, and
@@ -88,27 +89,20 @@ Three rules follow, and they are the ones reviewers check:
   adjacent versions may meet on the same business date without overlapping.
   The migration converts the UTC calendar day, reports discarded non-midnight
   UTC time components, and fails closed on collapsed/reversed windows,
-  duplicate starts, overlap, and values outside the general four-digit API day
-  range. **It also still contains the superseded transition-era Jalali-rendering
-  preflight** keyed by the legacy `organization.calendar_system` column, across
-  Inventory BusinessDates converted by migration 110 and these windows. That
-  check contradicts ADR-0044's fixed Jalali-first policy and preservation of
-  unrenderable historical Gregorian facts. The migration file has deliberately
-  not been changed while shared-environment application status and checksums
-  remain unverified; resolving that mismatch is a deployment blocker. Its
-  current SQL therefore still locks `organization.organizations` during
-  preflight. It opens an explicit PostgreSQL transaction, sets a 10-second
-  `lock_timeout`, and acquires `SHARE ROW EXCLUSIVE` locks on every source table
-  read by the preflight before inspecting rows. Those
-  locks conflict with concurrent `INSERT`/`UPDATE`/`DELETE` and remain held
-  through all three type conversions and `COMMIT`: an existing writer finishes
-  before preflight begins, while later writers wait until the migration commits.
-  If a lock cannot be acquired within the timeout, the migration transaction
-  aborts rather than leave a partially converted schema. The subsequent
+  duplicate starts, overlap, and values outside the general four-digit
+  BusinessDate/API range. It does not read `organization.calendar_system`, lock
+  `organization.organizations`, or reject a valid Gregorian day because Jalali
+  cannot render it; rendering remains a presentation concern with Gregorian
+  fallback. It retains an explicit PostgreSQL transaction, a 10-second
+  `lock_timeout`, and `SHARE ROW EXCLUSIVE` locks on the Inventory source tables
+  read by preflight. Those locks conflict with concurrent
+  `INSERT`/`UPDATE`/`DELETE` and remain held through all three type conversions
+  and `COMMIT`: existing writers finish before preflight begins, while later
+  writers wait until the migration commits. A lock timeout aborts the
+  transaction rather than leave a partial conversion. The subsequent
   `ALTER TABLE ... TYPE date` statements require stronger table locks and may
-  also block reads; schedule an authorized maintenance window, do not treat
-  this as a zero-downtime migration, and do not raise the timeout without an
-  explicit operational review.
+  also block reads; schedule an authorized maintenance window, do not treat this
+  as zero-downtime, and do not raise the timeout without operational review.
 
   Its aggregate-only, read-only target report is
   `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; run it
@@ -119,8 +113,9 @@ Three rules follow, and they are the ones reviewers check:
   later writes; the migration repeats its authoritative preflight while holding
   the serialization locks. Deployment gate: review and retain that report plus
   the migration NOTICE; rehearse the exact migration on a fresh, restorable
-  target-like copy; resolve any nonzero invalid-range/collision/overlap/
-  unrepresentable counts through an explicitly approved data repair and rerun
+  target-like copy; resolve any nonzero API-range, collapsed/reversed-window,
+  duplicate-start, or overlap counts through an explicitly approved data repair
+  and rerun
   the audit/rehearsal; and verify a recoverable backup before applying only
   through `prisma migrate deploy`. Before authorization, record the backup or
   PITR recovery-point identity and timestamp, restore it to an isolated
@@ -156,23 +151,40 @@ Three rules follow, and they are the ones reviewers check:
   production or customer database; no historical-data safety claim is made
   without target-specific evidence.
 
+- **Inventory date indexes (migration `20261013000000_inventory_business_date_history_indexes`):**
+  retain `idx_movements_org_business_date` for
+  `InventoryMovementsRepository.list` organization/date bounds and the six
+  organization/valid-from/valid-to indexes for
+  `UnitConversionsRepository.listGlobal/listForItem` and
+  `ItemValuationMethodsRepository.findEffectiveVersionAt/list` `activeAt` /
+  ordering paths. Remove the five
+  indexes on `inventory_valuation_runs.from_date`, pricing-run `from_date` /
+  `to_date`, `inventory_balances.last_movement_date`, and posting-snapshot
+  `document_date`: current Inventory readers select these values but do not
+  filter or sort by them. This is a code-path audit, not an `EXPLAIN` or a
+  production-size performance claim; no calendar-transition history scan is
+  part of the rationale.
 - **No formatted dates** are ever persisted (no `'1405/07/16'` column), and no
   parallel Jalali column is added for a date that already exists: the calendar
   is a rendering, and duplicate columns would let the two disagree.
 - **Legacy normalization (migration `20261011000000_business_date_persistence`)**:
-  the conversion policy is `(column AT TIME ZONE 'UTC')::date`, which preserves
-  the UTC calendar day the old read path exposed for each value actually stored
-  and deliberately discards time-of-day. A baseline-path check found that the
-  former legacy ISO-input parser first resolved the submitted Instant in the
-  organization zone, then the standard Inventory write helper converted the
-  resulting BusinessDate to a UTC-day carrier before persistence. Migration
-  110's comment now describes that path without claiming ISO instants were
-  stored verbatim. The current owner-approved compatibility input policy is
-  UTC-day (2026-10-09); its behavior change is distinct from conversion of
-  stored values. Alternate/raw writers and the actual historical dataset remain
-  uninspected, so this audit does not claim customer-data safety. Retain evidence
-  from a rehearsal/preflight against the target's actual history before
-  deployment.
+  the SQL conversion `(column AT TIME ZONE 'UTC')::date` preserves the UTC
+  calendar day of each value actually stored and discards time-of-day. That is
+  the storage conversion contract; it does not, by itself, define how an old API
+  timestamp request was interpreted. In the base runtime, the legacy ISO-input
+  parser resolved the Instant in the organization's time zone, then the
+  Inventory write helper stored the resulting day in a UTC-midnight carrier.
+  For example, `2026-10-08T21:00:00Z` for `Asia/Tehran` became the BusinessDate
+  `2026-10-09`, encoded as `2026-10-09T00:00:00Z`; migration 110 preserves that
+  stored day. The current owner-approved compatibility input policy is UTC-day,
+  so the PR parser changes this request behavior; it must not be described as
+  unchanged legacy behavior or inferred from the migration cast. Direct/raw
+  writers and the actual historical dataset remain uninspected, so this audit
+  makes no customer-data safety claim. Retain target-specific read-only audit
+  and isolated rehearsal evidence before deployment. The earlier PR-head variant
+  (`c9a4561`) of migration 110's comment described arbitrary ISO instants as
+  stored verbatim;
+  that claim is not established by the standard runtime path examined here.
   The migration also renames `last_movement_at` to `last_movement_date`; indexes
   are rebuilt alongside the type changes.
 - Historical migration `20261010000000_organization_datetime_settings`
@@ -436,20 +448,22 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
   `backend/prisma/rehearsal/business-date-validity-windows/rehearse.mjs` uses a
   local PostgreSQL server to create a uniquely named disposable database,
   applies the current validity-window migration to representative synthetic
-  fixtures, verifies UTC-day conversion/adjacency/open-ended ranges and
-  unchanged audit Instants, and expects collapsed/reversed, duplicate-start,
-  overlap, and unrepresentable-value cases to fail. Its current SQL and fixture
-  still include the superseded organization-calendar/Jalali-envelope guard;
-  they do not verify the ADR-0044 no-renderability-gate policy. The migration and
-  its checksum remain untouched pending shared-environment status evidence.
-  It refuses non-local hosts
-  and any pre-existing database name; it never drops or reuses a database it did
-  not create. CI runs it against its ephemeral PostgreSQL 16 service
-  (`.github/workflows/ci.yml`). The aggregate-only target report is
-  `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`. The
-  fixture is not a customer/production snapshot and does not prove a target
-  dataset is safe; retain target-specific audit, rehearsal, backup, and recovery
-  evidence before deployment.
+  fixtures, verifies UTC-day conversion/adjacency/open-ended ranges, retains a
+  valid Gregorian year-0600 day outside the Jalali rendering envelope, and
+  preserves audit Instants. It expects collapsed/reversed, duplicate-start,
+  overlapping, and `10000-01-01` outside the general API range to fail. Its
+  minimal fixture
+  has no Organization calendar schema, so it guards against reintroducing a
+  `calendar_system` dependency; it is not a full customer-schema snapshot.
+  The script refuses non-local hosts and pre-existing database names; it never
+  drops or reuses a database it did not create. CI runs it against its ephemeral
+  PostgreSQL 16 service (`.github/workflows/ci.yml`), whose `migrate deploy` also
+  applies the complete migration set to a temporary database. Neither check
+  establishes shared/staging apply/checksum history or customer-data safety.
+  The aggregate-only target report is
+  `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; retain
+  target-specific read-only audit and authorized backup/recovery evidence before
+  deployment.
 
 ## 11. Open items
 
@@ -479,8 +493,10 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
   this output therefore verifies DTO/schema generation, not database behavior.
 - The audited paths include the Organization IANA time-zone contract,
   Accounting BusinessDate inputs/filters/reports, Inventory movement/document/
-  valuation/configuration date paths, and shared frontend date inputs/formatters.
-  The migration's legacy calendar-range preflight remains an unresolved rollout
-  gap as described above. This is not permission to assume an unaudited future
+  valuation/configuration date paths, and shared frontend date inputs/formatters;
+  this is a path audit, not an assertion of exhaustive cross-module coverage.
+  Migration 120's legacy calendar-range gate has been removed from the PR SQL,
+  but target apply/checksum history remains unverified as described above. This
+  is not permission to assume an unaudited future
   DTO or consumer is correct: date/time changes must use the checklist in
   `.vardena/agent-rules.md` AG-20 and verify the complete execution path.

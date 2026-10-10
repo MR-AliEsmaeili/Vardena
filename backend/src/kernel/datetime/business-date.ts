@@ -209,8 +209,9 @@ export function businessDateFromDbDate(value: Date): BusinessDate {
 /**
  * The business day an *instant* falls on in a time zone — the calendar-aware
  * "today". Used ONLY where a day is derived from a genuine moment (defaults,
- * period resolution, a legacy instant input), never to re-derive a stored
- * business date: a stored day is already a day and needs no zone.
+ * period resolution, or another explicitly zone-based rule), never to
+ * re-derive a stored business date: a stored day is already a day and needs no
+ * zone.
  */
 export function businessDateFromInstant(
   instant: Instant,
@@ -222,13 +223,14 @@ export function businessDateFromInstant(
 /**
  * The UTC calendar day of a legacy instant supplied to a BusinessDate field.
  *
- * OQ-73 migration semantics are UTC-day preserving, so the compatibility
- * parser must resolve equivalent legacy inputs using the same UTC calendar
- * rather than the organization's display zone. This helper is intentionally
- * separate from {@link businessDateFromInstant}, which is used for "today"
- * defaults and renders a real instant in the organization's configured zone.
- * Returns `null` for an invalid instant or a UTC day outside the canonical
- * four-digit BusinessDate range.
+ * The owner-approved legacy ISO BusinessDate input rule uses UTC day rather
+ * than the organization display zone. This aligns with migration 110's
+ * conversion of stored UTC timestamp carriers, but intentionally differs from
+ * the pre-cutover API parser's organization-zone request behavior. This helper
+ * is separate from {@link businessDateFromInstant}, which is used for "today"
+ * defaults and other explicitly zone-based rules. Returns `null` for an
+ * invalid instant or a UTC day outside the canonical four-digit BusinessDate
+ * range.
  */
 export function businessDateFromUtcInstant(
   instant: Instant,

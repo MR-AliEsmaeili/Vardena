@@ -191,7 +191,6 @@ model InventoryAccountingPostingSnapshot {
   movements    InventoryAccountingPostingSnapshotMovement[]
 
   @@index([organizationId, documentId], map: "idx_inventory_accounting_posting_snapshots_org_document")
-  @@index([organizationId, documentDate], map: "idx_inventory_accounting_posting_snapshots_org_document_date")
   @@map("inventory_accounting_posting_snapshots")
   @@schema("inventory")
 }
