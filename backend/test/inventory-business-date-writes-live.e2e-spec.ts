@@ -111,32 +111,32 @@ describe.skipIf(DATABASE_URL === undefined)(
       });
       const unitA = await units.createUnit({
         organizationId: organization.id,
-        code: `EA-${key}-${suffix}`,
+        code: `EA-${suffix}`,
         name: `Each ${key}`,
         symbol: 'ea',
       });
       const unitB = await units.createUnit({
         organizationId: organization.id,
-        code: `BX-${key}-${suffix}`,
+        code: `BX-${suffix}`,
         name: `Box ${key}`,
         symbol: 'bx',
       });
       const unitC = await units.createUnit({
         organizationId: organization.id,
-        code: `PL-${key}-${suffix}`,
+        code: `PL-${suffix}`,
         name: `Pallet ${key}`,
         symbol: 'pl',
       });
       const itemA = await items.createItem({
         organizationId: organization.id,
-        code: `GOOD-A-${key}-${suffix}`,
+        code: `GOOD-A-${suffix}`,
         name: `Good A ${key}`,
         itemKind: 'goods',
         baseUnitId: unitA.id,
       });
       const itemB = await items.createItem({
         organizationId: organization.id,
-        code: `GOOD-B-${key}-${suffix}`,
+        code: `GOOD-B-${suffix}`,
         name: `Good B ${key}`,
         itemKind: 'goods',
         baseUnitId: unitA.id,
