@@ -149,10 +149,10 @@ export interface LicenseActivationResult extends LicenseState {
 // Organization
 // ---------------------------------------------------------------------------
 
-/** C-63 / ADR-0042 date/time settings projected from the generated response. */
+/** Organization-owned date/time setting: the IANA time zone only. */
 export type OrganizationDateTimeSettings = Pick<
   Schemas['OrganizationResponseDto'],
-  'calendarSystem' | 'timeZone'
+  'timeZone'
 >;
 
 /** Organization settings are required by the backend response contract. */

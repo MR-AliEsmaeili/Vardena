@@ -100,18 +100,19 @@ Every entity table has:
 - **Instants are always `timestamptz` stored in UTC.** Display is not a raw
   timestamp or browser-zone conversion: use the shared frontend date-time layer,
   resolve the organization's valid IANA zone, then render the resulting local
-  date/time in its configured calendar. Detail/audit views include seconds and
-  the resolved zone and offset. OQ-02 remains open for numeral rendering and
-  broader localization, not the organization calendar/zone contract.
+  date/time Jalali-first under the fixed MVP policy (ADR-0044). Detail/audit
+  views include seconds and the resolved zone and offset. OQ-02 remains open
+  for numeral rendering and broader localization.
 - **BusinessDates are PostgreSQL `date` values, canonical Gregorian.** They are
   days, not JavaScript `Date` domain values, UTC-midnight transports, or
   `timestamptz` values. Prisma exposes a PG `date` through a `DateTime` carrier;
   convert only inside the owning persistence adapter with the shared
   `businessDateToDbDate` / `businessDateFromDbDate` functions, never through
-  application DTOs or domain services. User-facing entry/display follows the
-  organization's configured calendar (Jalali by default); use the shared
-  date-input and conversion APIs. Never infer a BusinessDate from an event
-  Instant inside domain logic.
+  application DTOs or domain services. User-facing entry/display is fixed
+  Jalali-first, with canonical Gregorian fallback for valid historical days
+  outside the Jalali rendering envelope; use the shared date-input and
+  conversion APIs. Gregorian API/integration contracts remain valid. Never
+  infer a BusinessDate from an event Instant inside domain logic.
 - **Inventory effective-dated windows have an explicit BusinessDate axis**
   (Owner decision, 2026-10-09): global and item-specific unit-conversion windows
   and item-valuation-method windows use half-open `[valid_from, valid_to)`
@@ -119,8 +120,11 @@ Every entity table has:
   `20261012000000_inventory_business_date_validity_windows` maps existing values
   by UTC calendar day and preflights invalid/collapsed/overlapping histories.
   `backend/prisma/rehearsal/business-date-validity-windows/audit.sql` reports
-  aggregate counts without row IDs or business payloads. Migration 120 repeats
-  its preflight while holding `SHARE ROW EXCLUSIVE` locks on all source tables
+  aggregate counts without row IDs or business payloads. Migration 120 still
+  contains its superseded legacy `calendar_system`/Jalali-rendering guard, which
+  conflicts with ADR-0044; its status/checksum in shared environments is
+  unverified, so changing it is blocked pending deployment evidence. Migration
+  120 repeats its current preflight while holding `SHARE ROW EXCLUSIVE` locks on all source tables
   through conversion and commit; a 10-second lock timeout aborts the
   transaction, and concurrent writers wait. Its type changes may block reads,
   so deployment requires an authorized maintenance window. The two-session

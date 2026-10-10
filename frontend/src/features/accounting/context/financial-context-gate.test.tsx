@@ -277,10 +277,10 @@ describe('financial workspace context gate', () => {
       testFiscalYear.title,
     );
     fireEvent.change(screen.getByLabelText(t.financialContext.startDate), {
-      target: { value: testFiscalYear.startDate },
+      target: { value: '1405-01-01' },
     });
     fireEvent.change(screen.getByLabelText(t.financialContext.endDate), {
-      target: { value: testFiscalYear.endDate },
+      target: { value: '1405-12-29' },
     });
     await user.click(
       screen.getByRole('button', { name: t.financialContext.createFiscalYear }),
@@ -292,8 +292,8 @@ describe('financial workspace context gate', () => {
         financialAreaId: testFinancialArea.id,
         code: testFiscalYear.code,
         title: testFiscalYear.title,
-        startDate: testFiscalYear.startDate,
-        endDate: testFiscalYear.endDate,
+        startDate: { calendar: 'JALALI', value: '1405-01-01' },
+        endDate: { calendar: 'JALALI', value: '1405-12-29' },
       });
     });
     expect(

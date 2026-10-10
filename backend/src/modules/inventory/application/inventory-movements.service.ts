@@ -64,10 +64,6 @@ import {
   type RepricingChoice,
 } from '../domain/backdating.js';
 import { VALUATION_PERMISSIONS } from '../domain/inventory-valuation-permissions.js';
-import {
-  assertInventoryBusinessDateRenderable,
-  withInventoryBusinessDateWriteLock,
-} from './inventory-business-date-write.js';
 
 const SORTABLE_FIELDS: Record<string, string> = {
   movementDate: 'movementDate',
@@ -252,18 +248,14 @@ export class InventoryMovementsService {
     // `date`), resolved from the client's day input (legacy instants use UTC),
     // or today's business day in the organization zone when omitted. It is NOT `created_at`,
     // which records the registration instant below.
-    const { timeZone, calendarSystem } =
-      await this.organizations.getDateTimeSettings(input.organizationId);
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
+    );
     const movementDate = resolveBusinessDateInput({
       field: 'movementDate',
       value: input.movementDate,
       timeZone,
     });
-    assertInventoryBusinessDateRenderable(
-      'movementDate',
-      movementDate,
-      calendarSystem,
-    );
     const resolved = await resolveEnteredToBase({
       conversions: this.conversions,
       organizationId: input.organizationId,
@@ -362,59 +354,53 @@ export class InventoryMovementsService {
     // idempotency envelope can reference the movement before it exists.
     const movementId = generateId();
     try {
-      const { movement } = await withInventoryBusinessDateWriteLock(
-        this.organizations,
-        input.organizationId,
-        calendarSystem,
-        () =>
-          this.movements.postMovement({
-            movement: {
-              id: movementId,
-              organizationId: input.organizationId,
-              branchId: warehouse.branchId,
-              warehouseId: input.warehouseId,
-              itemId: input.itemId,
-              movementType,
-              quantity: resolved.quantity,
-              unitId: input.unitId,
-              baseQuantity,
-              baseUnitId: item.baseUnitId,
-              conversionFactor: resolved.conversionFactor,
-              movementDate,
-              transferId: null,
-              reversalOfMovementId: null,
-              referenceType: reference.referenceType,
-              referenceId: reference.referenceId,
-              reason,
-              operationKey,
-              createdAt: now,
-              updatedAt: now,
-              createdBy: actorId,
-            },
-            operation: {
-              id: generateId(),
-              organizationId: input.organizationId,
-              operationKey,
-              operation: 'movement_post',
-              requestHash,
-              result: { kind: 'movement', movementIds: [movementId] },
-              createdAt: now,
-              updatedAt: now,
-              createdBy: actorId,
-            },
-            allowNegative: resolveEffectivePolicy({
-              itemAllow: item.allowNegativeStock,
-              warehouseAllow: warehouse.allowNegativeStock,
-            }),
-            actorId,
-            valuation: {
-              method: valuationMethod.method,
-              knownValue: enteredCost,
-              knownValueSource: 'entered',
-              backdated: backdating.backdated,
-            },
-          }),
-      );
+      const { movement } = await this.movements.postMovement({
+        movement: {
+          id: movementId,
+          organizationId: input.organizationId,
+          branchId: warehouse.branchId,
+          warehouseId: input.warehouseId,
+          itemId: input.itemId,
+          movementType,
+          quantity: resolved.quantity,
+          unitId: input.unitId,
+          baseQuantity,
+          baseUnitId: item.baseUnitId,
+          conversionFactor: resolved.conversionFactor,
+          movementDate,
+          transferId: null,
+          reversalOfMovementId: null,
+          referenceType: reference.referenceType,
+          referenceId: reference.referenceId,
+          reason,
+          operationKey,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: actorId,
+        },
+        operation: {
+          id: generateId(),
+          organizationId: input.organizationId,
+          operationKey,
+          operation: 'movement_post',
+          requestHash,
+          result: { kind: 'movement', movementIds: [movementId] },
+          createdAt: now,
+          updatedAt: now,
+          createdBy: actorId,
+        },
+        allowNegative: resolveEffectivePolicy({
+          itemAllow: item.allowNegativeStock,
+          warehouseAllow: warehouse.allowNegativeStock,
+        }),
+        actorId,
+        valuation: {
+          method: valuationMethod.method,
+          knownValue: enteredCost,
+          knownValueSource: 'entered',
+          backdated: backdating.backdated,
+        },
+      });
       await publishEvent(this.events, {
         type: INVENTORY_MOVEMENT_POSTED_EVENT,
         aggregateType: 'InventoryMovement',
@@ -560,18 +546,14 @@ export class InventoryMovementsService {
 
     // OQ-73: the reversal's business DATE is a calendar day, defaulted to
     // today's business day in the organization zone when omitted.
-    const { timeZone, calendarSystem } =
-      await this.organizations.getDateTimeSettings(original.organizationId);
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      original.organizationId,
+    );
     const movementDate = resolveBusinessDateInput({
       field: 'movementDate',
       value: input.movementDate,
       timeZone,
     });
-    assertInventoryBusinessDateRenderable(
-      'movementDate',
-      movementDate,
-      calendarSystem,
-    );
     if (movementDate < original.movementDate) {
       throw AppException.businessRule(
         'A reversal cannot be dated before the movement it reverses. Use a date on or after the original movement date.',
@@ -642,59 +624,53 @@ export class InventoryMovementsService {
     const actorId = getPrincipal()?.userId ?? null;
     const movementId = generateId();
     try {
-      const { movement } = await withInventoryBusinessDateWriteLock(
-        this.organizations,
-        original.organizationId,
-        calendarSystem,
-        () =>
-          this.movements.postReversal({
-            originalMovementId: original.id,
-            movement: {
-              id: movementId,
-              organizationId: original.organizationId,
-              branchId: original.branchId,
-              warehouseId: original.warehouseId,
-              itemId: original.itemId,
-              movementType: reversalType,
-              quantity: original.quantity,
-              unitId: original.enteredUnitId,
-              baseQuantity: subtractDecimalStrings('0', original.baseQuantity),
-              baseUnitId: original.baseUnitId,
-              conversionFactor: original.conversionFactor,
-              movementDate,
-              transferId: null,
-              reversalOfMovementId: original.id,
-              referenceType: original.referenceType,
-              referenceId: original.referenceId,
-              reason: original.reason,
-              operationKey,
-              createdAt: now,
-              updatedAt: now,
-              createdBy: actorId,
-            },
-            operation: {
-              id: generateId(),
-              organizationId: original.organizationId,
-              operationKey,
-              operation: 'movement_reversal',
-              requestHash,
-              result: { kind: 'movement', movementIds: [movementId] },
-              createdAt: now,
-              updatedAt: now,
-              createdBy: actorId,
-            },
-            allowNegative: resolveEffectivePolicy({
-              itemAllow: item.allowNegativeStock,
-              warehouseAllow: warehouse.allowNegativeStock,
-            }),
-            actorId,
-            valuation: {
-              method: valuationMethod.method,
-              knownValue: null,
-              backdated: backdating.backdated,
-            },
-          }),
-      );
+      const { movement } = await this.movements.postReversal({
+        originalMovementId: original.id,
+        movement: {
+          id: movementId,
+          organizationId: original.organizationId,
+          branchId: original.branchId,
+          warehouseId: original.warehouseId,
+          itemId: original.itemId,
+          movementType: reversalType,
+          quantity: original.quantity,
+          unitId: original.enteredUnitId,
+          baseQuantity: subtractDecimalStrings('0', original.baseQuantity),
+          baseUnitId: original.baseUnitId,
+          conversionFactor: original.conversionFactor,
+          movementDate,
+          transferId: null,
+          reversalOfMovementId: original.id,
+          referenceType: original.referenceType,
+          referenceId: original.referenceId,
+          reason: original.reason,
+          operationKey,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: actorId,
+        },
+        operation: {
+          id: generateId(),
+          organizationId: original.organizationId,
+          operationKey,
+          operation: 'movement_reversal',
+          requestHash,
+          result: { kind: 'movement', movementIds: [movementId] },
+          createdAt: now,
+          updatedAt: now,
+          createdBy: actorId,
+        },
+        allowNegative: resolveEffectivePolicy({
+          itemAllow: item.allowNegativeStock,
+          warehouseAllow: warehouse.allowNegativeStock,
+        }),
+        actorId,
+        valuation: {
+          method: valuationMethod.method,
+          knownValue: null,
+          backdated: backdating.backdated,
+        },
+      });
       await publishEvent(this.events, {
         type: INVENTORY_MOVEMENT_POSTED_EVENT,
         aggregateType: 'InventoryMovement',

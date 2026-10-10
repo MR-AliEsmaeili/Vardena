@@ -3,10 +3,8 @@ import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import {
   businessDateFromDbDate,
   businessDateToDbDate,
-  toBusinessDate,
   type BusinessDate,
 } from '../../../kernel/datetime/business-date.js';
-import { JALALI_RENDERABLE_GREGORIAN_RANGE } from '../../../kernel/datetime/jalali.js';
 import {
   isInventoryDocumentKind,
   isInventoryDocumentStatus,
@@ -136,118 +134,6 @@ export class InventoryBusinessDocumentsRepository {
       take: MAX_LINES_PER_DOCUMENT,
     });
     return toDomain(row, lines);
-  }
-
-  /**
-   * Inventory-owned history read for the GREGORIAN → JALALI guard. It checks
-   * every persisted Inventory-owned BusinessDate (including derived balance
-   * and Accounting snapshot dates) and returns the earliest one outside the
-   * inclusive conversion envelope. Every branch is organization-scoped and
-   * the ordered aggregate makes the result deterministic. No Organization
-   * table or Prisma model is read here (AR-07).
-   */
-  async findFirstUnrenderableBusinessDate(
-    organizationId: string,
-  ): Promise<BusinessDate | null> {
-    const minimum = businessDateToDbDate(
-      requireBusinessDate(JALALI_RENDERABLE_GREGORIAN_RANGE.minimum),
-    );
-    const maximum = businessDateToDbDate(
-      requireBusinessDate(JALALI_RENDERABLE_GREGORIAN_RANGE.maximum),
-    );
-    const client = await this.prisma.getClient<
-      DocClient & { $queryRaw: import('./inventory-core-rows.js').RawQuery }
-    >();
-    // PostgreSQL `date` is a calendar value, not an instant. Return its ISO
-    // text form so a driver-level Date parser or host timezone cannot shift the
-    // day while the transition guard converts it back into the canonical type.
-    const rows = await client.$queryRaw<{ businessDate: string | null }>`
-      SELECT candidate."businessDate"::text AS "businessDate"
-      FROM (
-        SELECT MIN("movement_date") AS "businessDate", 1 AS "sourceOrder"
-        FROM "inventory"."inventory_movements"
-        WHERE "organization_id" = ${organizationId}
-          AND ("movement_date" < ${minimum}::date OR "movement_date" > ${maximum}::date)
-        UNION ALL
-        SELECT MIN("business_date") AS "businessDate", 2 AS "sourceOrder"
-        FROM "inventory"."inventory_business_documents"
-        WHERE "organization_id" = ${organizationId}
-          AND ("business_date" < ${minimum}::date OR "business_date" > ${maximum}::date)
-        UNION ALL
-        SELECT MIN("valid_from") AS "businessDate", 3 AS "sourceOrder"
-        FROM "inventory"."unit_conversions"
-        WHERE "organization_id" = ${organizationId}
-          AND ("valid_from" < ${minimum}::date OR "valid_from" > ${maximum}::date)
-        UNION ALL
-        SELECT MIN("valid_to") AS "businessDate", 4 AS "sourceOrder"
-        FROM "inventory"."unit_conversions"
-        WHERE "organization_id" = ${organizationId}
-          AND "valid_to" IS NOT NULL
-          AND ("valid_to" < ${minimum}::date OR "valid_to" > ${maximum}::date)
-        UNION ALL
-        SELECT MIN("valid_from") AS "businessDate", 5 AS "sourceOrder"
-        FROM "inventory"."item_unit_conversions"
-        WHERE "organization_id" = ${organizationId}
-          AND ("valid_from" < ${minimum}::date OR "valid_from" > ${maximum}::date)
-        UNION ALL
-        SELECT MIN("valid_to") AS "businessDate", 6 AS "sourceOrder"
-        FROM "inventory"."item_unit_conversions"
-        WHERE "organization_id" = ${organizationId}
-          AND "valid_to" IS NOT NULL
-          AND ("valid_to" < ${minimum}::date OR "valid_to" > ${maximum}::date)
-        UNION ALL
-        SELECT MIN("valid_from") AS "businessDate", 7 AS "sourceOrder"
-        FROM "inventory"."item_valuation_methods"
-        WHERE "organization_id" = ${organizationId}
-          AND ("valid_from" < ${minimum}::date OR "valid_from" > ${maximum}::date)
-        UNION ALL
-        SELECT MIN("valid_to") AS "businessDate", 8 AS "sourceOrder"
-        FROM "inventory"."item_valuation_methods"
-        WHERE "organization_id" = ${organizationId}
-          AND "valid_to" IS NOT NULL
-          AND ("valid_to" < ${minimum}::date OR "valid_to" > ${maximum}::date)
-        UNION ALL
-        SELECT MIN("from_date") AS "businessDate", 9 AS "sourceOrder"
-        FROM "inventory"."inventory_valuation_runs"
-        WHERE "organization_id" = ${organizationId}
-          AND "from_date" IS NOT NULL
-          AND ("from_date" < ${minimum}::date OR "from_date" > ${maximum}::date)
-        UNION ALL
-        SELECT MIN("from_date") AS "businessDate", 10 AS "sourceOrder"
-        FROM "inventory"."inventory_pricing_runs"
-        WHERE "organization_id" = ${organizationId}
-          AND "from_date" IS NOT NULL
-          AND ("from_date" < ${minimum}::date OR "from_date" > ${maximum}::date)
-        UNION ALL
-        SELECT MIN("to_date") AS "businessDate", 11 AS "sourceOrder"
-        FROM "inventory"."inventory_pricing_runs"
-        WHERE "organization_id" = ${organizationId}
-          AND ("to_date" < ${minimum}::date OR "to_date" > ${maximum}::date)
-        UNION ALL
-        SELECT MIN("last_movement_date") AS "businessDate", 12 AS "sourceOrder"
-        FROM "inventory"."inventory_balances"
-        WHERE "organization_id" = ${organizationId}
-          AND "last_movement_date" IS NOT NULL
-          AND ("last_movement_date" < ${minimum}::date OR "last_movement_date" > ${maximum}::date)
-        UNION ALL
-        SELECT MIN("document_date") AS "businessDate", 13 AS "sourceOrder"
-        FROM "inventory"."inventory_accounting_posting_snapshots"
-        WHERE "organization_id" = ${organizationId}
-          AND ("document_date" < ${minimum}::date OR "document_date" > ${maximum}::date)
-      ) AS candidate
-      WHERE candidate."businessDate" IS NOT NULL
-      ORDER BY candidate."businessDate" ASC, candidate."sourceOrder" ASC
-      LIMIT 1
-    `;
-    const earliest = rows[0]?.businessDate;
-    if (earliest === undefined || earliest === null) return null;
-    const businessDate = toBusinessDate(earliest);
-    if (businessDate === null) {
-      throw new Error(
-        `Inventory BusinessDate history contains a non-canonical day "${earliest}".`,
-      );
-    }
-    return businessDate;
   }
 
   async list(params: {
@@ -592,16 +478,6 @@ export class InventoryBusinessDocumentsRepository {
 }
 
 // ---- Internal helpers ----
-
-function requireBusinessDate(value: string): BusinessDate {
-  const businessDate = toBusinessDate(value);
-  if (businessDate === null) {
-    throw new Error(
-      `Invalid configured Inventory BusinessDate boundary "${value}".`,
-    );
-  }
-  return businessDate;
-}
 
 function dbBusinessDate(value: BusinessDate): Date {
   const carrier = businessDateToDbDate(value);

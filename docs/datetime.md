@@ -1,15 +1,17 @@
-# Date & Time Architecture (C-63 / ADR-0042)
+# Date & Time Architecture (C-63 / ADR-0042 / ADR-0044)
 
 The single contract for what a date, a timestamp and a calendar day mean in
 Vardena, where each is stored, how each crosses the API, and how each is shown.
 Every module follows it; no module invents its own conversion.
 
 **Permanent rule:** `BusinessDate` is a canonical Gregorian PostgreSQL `date`;
-user-facing input and display follow the organization's configured calendar
-(Jalali by default). `Instant` is a UTC PostgreSQL `timestamptz`; display follows
-the organization's configured valid IANA time zone and calendar. Use the shared
-kernel/frontend date-time abstractions; do not reinterpret a business day as a
-JavaScript `Date`, UTC-midnight transport, browser-zone value, or timestamp.
+the MVP UI is fixed Jalali-first, with an explicit canonical-Gregorian fallback
+when Jalali cannot render a valid historical day. `Instant` is a UTC PostgreSQL
+`timestamptz`; display uses the organization's valid IANA time zone followed by
+the fixed Jalali-first presentation policy. Use the shared kernel/frontend
+date-time abstractions; do not reinterpret a business day as a JavaScript
+`Date`, UTC-midnight transport, browser-zone value, or timestamp. Calendar
+selection and calendar-transition workflows are not part of the MVP.
 
 ## 1. The model
 
@@ -86,10 +88,18 @@ Three rules follow, and they are the ones reviewers check:
   adjacent versions may meet on the same business date without overlapping.
   The migration converts the UTC calendar day, reports discarded non-midnight
   UTC time components, and fails closed on collapsed/reversed windows,
-  duplicate starts, overlap, and unrepresentable values. It opens an explicit
-  PostgreSQL transaction, sets a 10-second `lock_timeout`, and acquires
-  `SHARE ROW EXCLUSIVE` locks on every source table read by the preflight
-  (including organization calendar settings) before inspecting rows. Those
+  duplicate starts, overlap, and values outside the general four-digit API day
+  range. **It also still contains the superseded transition-era Jalali-rendering
+  preflight** keyed by the legacy `organization.calendar_system` column, across
+  Inventory BusinessDates converted by migration 110 and these windows. That
+  check contradicts ADR-0044's fixed Jalali-first policy and preservation of
+  unrenderable historical Gregorian facts. The migration file has deliberately
+  not been changed while shared-environment application status and checksums
+  remain unverified; resolving that mismatch is a deployment blocker. Its
+  current SQL therefore still locks `organization.organizations` during
+  preflight. It opens an explicit PostgreSQL transaction, sets a 10-second
+  `lock_timeout`, and acquires `SHARE ROW EXCLUSIVE` locks on every source table
+  read by the preflight before inspecting rows. Those
   locks conflict with concurrent `INSERT`/`UPDATE`/`DELETE` and remain held
   through all three type conversions and `COMMIT`: an existing writer finishes
   before preflight begins, while later writers wait until the migration commits.
@@ -165,12 +175,15 @@ Three rules follow, and they are the ones reviewers check:
   deployment.
   The migration also renames `last_movement_at` to `last_movement_date`; indexes
   are rebuilt alongside the type changes.
-- Migrations that introduce settings carry **safe defaults** for existing rows
-  (`JALALI`, `Asia/Tehran`): defaults affect rendering only, so no stored fact
-  moves (`prisma/migrations/20261010000000_organization_datetime_settings`).
+- Historical migration `20261010000000_organization_datetime_settings`
+  introduced `calendar_system` (`JALALI`) and `time_zone` (`Asia/Tehran`) with
+  defaults. The former is now legacy and ignored by runtime policy; only the
+  IANA time zone remains an organization setting. Do not rewrite the applied
+  migration or drop its legacy column without an audited rollout plan.
 - The kernel datetime layer (`backend/src/kernel/datetime/`) is framework-free
-  and business-free (AR-06): calendars, zones, day/instant math and the API
-  shapes. Which calendar an organization uses is DATA (its row), not code.
+  and business-free (AR-06): calendars, zones, day/instant math and API shapes.
+  The organization's IANA time zone is DATA; Jalali display is fixed product
+  policy, not organization data.
 
 ## 3. API representation
 
@@ -193,9 +206,8 @@ Klass-level OpenAPI schemas: `kernel/datetime/api-date-time.dto.ts`
 **Business date** — `{ "gregorian": "2026-10-08", "jalali": "1405-07-16" }`, with
 the Gregorian member canonical. `jalali` is derived and may be `null` when a
 valid canonical Gregorian day is outside the reversible Jalali rendering range.
-Inventory documents in a Gregorian organization retain the full general API
-range and expose that null; a Jalali organization rejects such dates on input
-and the migration/audit fail closed for its historical rows. Canonical day
+That valid day remains accepted and authoritative under the fixed policy; no
+organization setting gates its storage or API representation. Canonical day
 fields (`documentDate`, `businessDate`, `movementDate`, `lastMovementDate`, run
 `fromDate`/`toDate`) remain plain `YYYY-MM-DD` strings; where a paired rendering
 is exposed it is additive (`businessDateCalendar`).
@@ -227,22 +239,27 @@ clients must not assume those detail codes are surfaced by every endpoint. An om
 day defaults to TODAY in the organization's time zone where the operation
 supports an omitted date.
 
-Frontend sends what the operator wrote: a Jalali organization sends the
-declared form, so the request carries the calendar the user worked in.
+The frontend uses fixed Jalali-first entry and sends the declared Jalali form
+for dates the converter can render. If an existing valid canonical day lies
+outside that envelope, the shared field switches automatically to a Gregorian
+fallback and the request remains a bare canonical Gregorian string. This is not
+a user-selectable calendar mode; external API and integration clients retain
+both explicit Jalali and canonical Gregorian request forms.
 
 The shared Jalali converter has a reversible rendering envelope of Gregorian
 `0621-03-21` through `3798-12-31`, inclusive. The upstream algorithm can convert
 some later Jalali-year-3177 days into Gregorian 3799, but those are rejected at
 declared-Jalali input boundaries because they fall outside the supported
-reverse-rendering range. Separately, a canonical Gregorian BusinessDate uses
-the general API envelope `0001-01-01` through `9999-12-31`. Owner-approved
-clarification for Inventory documents: in a Gregorian organization a valid day
-outside the Jalali envelope remains accepted and its paired
-`businessDateCalendar.jalali` value is `null`; in a Jalali organization the
-same unrenderable day is rejected. Migration 120 and its aggregate audit apply
-the Jalali bound only to rows whose organization uses Jalali, including document
-business dates. A PostgreSQL `date` outside the general API envelope remains
-invalid for either calendar.
+reverse-rendering range. Separately, canonical Gregorian BusinessDates use the
+general API envelope `0001-01-01` through `9999-12-31`. Under ADR-0044, any valid
+canonical Gregorian day outside the Jalali envelope remains accepted for all
+organizations and its paired `jalali` rendering is `null`; the frontend shows
+the canonical Gregorian value as a fallback. **Migration 120 and its current
+target audit still apply the old Jalali bound using the legacy organization
+column.** They contradict this runtime policy and remain an explicit deployment
+blocker pending an applied-status/checksum review and an approved migration
+plan. A PostgreSQL `date` outside the general API envelope remains invalid as
+a canonical BusinessDate.
 
 ## 4. Range and filter semantics
 
@@ -269,57 +286,48 @@ invalid for either calendar.
   Jalali day is converted to the canonical Gregorian day ONCE, at the boundary;
   `format()`/string comparison on a Jalali rendering is never a query plan.
 
-## 5. Organization settings
+## 5. Organization date/time data
 
-| Setting          | Column                                       | Default       | Validated by                                 |
-| ---------------- | -------------------------------------------- | ------------- | -------------------------------------------- |
-| `calendarSystem` | `organization.organizations.calendar_system` | `JALALI`      | closed list `GREGORIAN \| JALALI`            |
-| `timeZone`       | `organization.organizations.time_zone`       | `Asia/Tehran` | resolvable IANA id; numeric offsets rejected |
+| Setting   | Column                                      | Default       | Validated by                                 |
+| --------- | ------------------------------------------- | ------------- | -------------------------------------------- |
+| `timeZone`| `organization.organizations.time_zone`      | `Asia/Tehran` | resolvable IANA id; numeric offsets rejected |
 
-They are exposed on the existing organization DTOs (create/update accept them;
-`GET /organizations/mine` and `GET /organizations/:id` return them). Cross-module
-reads go through `OrganizationsService.getDateTimeSettings(organizationId)` —
-an AR-07 reference read that asserts organization scope but demands no
-Organization permission, because the caller has already authorized its own
-request. Read it **once per response** and derive every rendering from that one
-value, so a response cannot mix two settings versions.
+The Organization module owns only the organization's IANA time zone as
+mutable date/time configuration. `calendar_system` is a legacy persisted
+column: current application code ignores it, does not accept it on create or
+update, and keeps the existing response field as the constant `JALALI` for
+wire compatibility. There is no organization calendar selector, transition
+endpoint, per-user calendar setting, or Inventory-specific calendar setting.
 
-Changing the settings is a presentation change: it re-renders history, it never
-rewrites it. Before a GREGORIAN → JALALI change, Organization holds its row
-`FOR UPDATE` lock while invoking Inventory's public, tenant-scoped history
-contract. That deterministic read checks every persisted Inventory BusinessDate:
-movement and document dates, conversion and valuation-method validity bounds,
-valuation/pricing run dates, balance `last_movement_date`, and Accounting-posting
-snapshot dates. If any date is outside the inclusive Jalali rendering envelope
-(`0621-03-21` through `3798-12-31`), the update is refused with a domain error
-and the organization remains GREGORIAN; no historical date is changed. The
-reverse transition remains permitted. The organization update returns HTTP 422
-with detail code `organization.calendar.jalali_history_unrenderable`, the
-earliest incompatible date, and the supported range. The history read and
-Organization update are separate module transactions, not a shared transaction.
-Every Inventory write that persists a BusinessDate takes Organization's
-`FOR SHARE` lock, re-checks its captured calendar, then awaits its own complete
-Inventory-local transaction; stale validation returns 409 before that callback
-starts. Balance rebuild applies this per key (including the derived
-`last_movement_date`): if a transition wins between keys, earlier per-key
-commits remain and the API reports retry-safe partial progress rather than
-claiming batch atomicity. Lock order, PostgreSQL READ COMMITTED, independent
-timeout/pool limits, and ambiguous-commit retry guidance are specified in
-accepted ADR-0043.
+Cross-module time-zone reads go through the Organization module's public
+`OrganizationsService.getDateTimeSettings(organizationId)` contract — an AR-07
+reference read that asserts organization scope but demands no Organization
+permission, because the caller has already authorized its own request. Read it
+once per response and derive every Instant rendering from that one value, so a
+response cannot mix time-zone versions. BusinessDate persistence and comparison
+remain organization-independent Gregorian `date` operations.
 
-## 6. Historical display policy (decided: A)
+Inventory retains its ordinary module-local transaction, row-lock,
+idempotency, and balance-rebuild boundaries. None takes or waits on an
+Organization calendar lock; no calendar history scan or renderability check is
+part of the write path. The transition-only coordination described in the
+historical body of ADR-0043 is superseded by ADR-0044, without changing
+unrelated concurrency controls.
 
-Of the three candidates — (A) render with the current organization settings,
-(B) resolve the settings that were stored at the record's timestamp, (C) snapshot
-the rendering onto the record — **Vardena uses (A)**:
+## 6. Historical display policy
 
-- the stored instant/day is the fact; the rendering is a view;
-- settings history is not retained, so (B) would require a new history table for
-  a purely presentational feature, and (C) would freeze a display value that the
-  user may legitimately want changed;
-- to keep a rendering from being mistaken for evidence, detail and audit
-  surfaces name the zone they rendered in (`Asia/Tehran (UTC+03:30)`) and show
-  seconds; the authoritative value (`createdAt`) stays on the payload.
+Rendering is a view; the canonical BusinessDate/Instant is the fact.
+
+- BusinessDates render Jalali-first using the current shared converter. If a
+  valid historical Gregorian day lies outside its rendering envelope, show the
+  canonical Gregorian value; do not reject, rewrite, or hide it.
+- Instants render in the organization's current IANA time zone, followed by the
+  fixed Jalali-first date presentation. Detail/audit surfaces name the zone
+  (`Asia/Tehran (UTC+03:30)`) and show seconds; the authoritative ISO instant
+  remains on the payload.
+- No calendar-setting history or rendering snapshot is retained. A display is
+  never audit evidence; the raw canonical day/instant remains available for
+  reconciliation.
 
 ## 7. Inventory semantics
 
@@ -370,7 +378,7 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
     (Persian-numeral rendering is a pending preference, OQ-02);
   - `dayjs.ts` — the ONE Day.js configuration (plugins registered once);
   - `time-zone.ts` / `instant.ts` — valid IANA-zone handling and Instant →
-    organization-zone local rendering followed by organization-calendar
+    organization-zone local rendering followed by fixed Jalali-first
     rendering. Wire Instants must be valid UTC `Z` values; naive, malformed, or
     offset-bearing values are not parsed in the browser zone: display formatters
     preserve them raw, while day/offset helpers reject them. Detail/audit
@@ -380,21 +388,21 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
     input resolution; a business day is NEVER reinterpreted as an instant or
     shifted by the browser's timezone (OQ-73);
   - `settings.ts` + `use-date-time-settings.ts` — the active organization's
-    settings as an external store (components, form defaults and API mapping all
-    read the same value);
+    IANA time zone as an external store; there is no calendar setting;
   - `api-mapping.ts` — the `{ gregorian, jalali|null }` / `{ instant, … }`
-    boundary and the declared-day request form.
-- **One** calendar-aware field: `src/ui/patterns/date-input.tsx`. It shows a
-  native date input for a Gregorian organization and a Jalali text field
-  (`1405/07/16`, Persian digits accepted) for a Jalali one, and always emits the
-  canonical Gregorian day. A calendar switch discards a partial Jalali draft and
-  derives the displayed day from the canonical Gregorian value. No screen builds
-  its own Jalali picker.
+    boundary and the fixed Jalali-first declared-day request form, with
+    canonical Gregorian fallback when the converter cannot render a day.
+- **One** shared BusinessDate field: `src/ui/patterns/date-input.tsx`. It always
+  uses a Jalali text field (`1405/07/16`, Persian digits accepted) for supported
+  dates and emits a canonical Gregorian day. For a valid historical day outside
+  the Jalali envelope it automatically switches to a native Gregorian fallback;
+  that is range handling, not a user or organization calendar choice. No screen
+  builds its own date picker.
 - Formatters live in `lib/format.ts` (`formatDateOnly`, `formatDateTime`, and
   the explicit-zone detail/audit formatter) and delegate to the shared layer; a
   component never imports `dayjs` or a Jalali conversion library. For an
   Instant, convert to the organization's IANA zone first, then render that
-  local day in the organization's configured calendar; never format the UTC or
+  local day in the fixed Jalali-first policy; never format the UTC or
   browser-local day as a shortcut.
 - Detail/audit Instant views show seconds and an explicit resolved IANA zone and
   offset. Where helpful, raw ISO timestamps and canonical Gregorian dates remain
@@ -405,31 +413,36 @@ unchanged. Displaying statutory reports in Jalali is a Legal Profile concern
 ## 10. Testing
 
 - Backend: `kernel/datetime/datetime.spec.ts` (round trips, boundaries, leap
-  years, invalid days, DST-dependent offsets, half-open ranges, API shapes, and
-  the timezone-independent day ⇄ `date` carrier round trip), inventory document
-  specs (Jalali day ≡ Gregorian day, backdated day ≠ creation instant),
-  organization settings specs (defaults, closed vocabulary, refusals).
-- Frontend: `lib/datetime/datetime.test.ts` and `ui/patterns/
-date-input.test.tsx` (round trips, leap years, typed Jalali input, Persian
-  digits, canonical emission, organization defaults, and resetting partial input
-  when the active calendar changes).
+  years, invalid days, DST-dependent offsets, half-open ranges, nullable
+  renderings, API shapes, and the timezone-independent day ⇄ `date` carrier
+  round trip), inventory document specs (Jalali day ≡ Gregorian day, backdated
+  day ≠ creation instant), organization specs (IANA-zone defaults, fixed
+  `JALALI` compatibility output, rejection of calendar-setting writes).
+- Frontend: `lib/datetime/datetime.test.ts` and
+  `ui/patterns/date-input.test.tsx` (round trips, leap years, typed Jalali input,
+  Persian digits, canonical emission, ignoring stale calendar data, and
+  automatic Gregorian fallback for unrenderable history).
 - Backend tests cover the BusinessDate parser's legacy-instant UTC-day
   compatibility (including organization-zone boundaries), valid and out-of-range
-  Jalali inputs, Gregorian document dates outside the Jalali envelope with a
-  nullable derived rendering, rejection outside the general API range, DTO
-  declarations, and the Accounting/Inventory date consumers. Frontend tests
-  cover nullable API mapping, Jalali input conversion, canonical URL/filter
-  values, impossible Gregorian dates, and Instant rendering across UTC/local-day
-  boundaries; malformed, naive, and offset-bearing wire Instants are
-  preserved/rejected by the formatter, day, and offset helpers rather than
-  browser-zone parsed.
+  declared-Jalali inputs, canonical Gregorian dates outside the Jalali envelope
+  with nullable derived renderings for both BusinessDates and Instants, rejection
+  outside the general API range, DTO declarations, and Accounting/Inventory
+  consumers. Frontend tests cover nullable API mapping, fixed Jalali input,
+  canonical URL/filter values, impossible Gregorian dates, historical Gregorian
+  fallback, and Instant rendering across UTC/local-day boundaries; malformed,
+  naive, and offset-bearing wire Instants are preserved/rejected by the
+  formatter, day, and offset helpers rather than browser-zone parsed.
 - PostgreSQL conversion rehearsal:
   `backend/prisma/rehearsal/business-date-validity-windows/rehearse.mjs` uses a
   local PostgreSQL server to create a uniquely named disposable database,
-  applies the real validity-window migration to representative synthetic
+  applies the current validity-window migration to representative synthetic
   fixtures, verifies UTC-day conversion/adjacency/open-ended ranges and
   unchanged audit Instants, and expects collapsed/reversed, duplicate-start,
-  overlap, and unrepresentable-value cases to fail. It refuses non-local hosts
+  overlap, and unrepresentable-value cases to fail. Its current SQL and fixture
+  still include the superseded organization-calendar/Jalali-envelope guard;
+  they do not verify the ADR-0044 no-renderability-gate policy. The migration and
+  its checksum remain untouched pending shared-environment status evidence.
+  It refuses non-local hosts
   and any pre-existing database name; it never drops or reuses a database it did
   not create. CI runs it against its ephemeral PostgreSQL 16 service
   (`.github/workflows/ci.yml`). The aggregate-only target report is
@@ -441,9 +454,9 @@ date-input.test.tsx` (round trips, leap years, typed Jalali input, Persian
 ## 11. Open items
 
 - **OQ-02** — Persian-numeral rendering, primary UI language(s), and broader
-  localization remain open. The BusinessDate/Instant distinction, organization
-  calendar default, and IANA-zone behavior are accepted in ADR-0042; Jalali is
-  the organization default, not a per-screen assumption.
+  localization remain open. The BusinessDate/Instant distinction and IANA-zone
+  behavior are accepted in ADR-0042; the fixed Jalali-first MVP presentation is
+  decided in ADR-0044, not stored as organization data.
 - ~~**OQ-73**~~ — **resolved**: every business-day column is PostgreSQL `date`
   (canonical Gregorian), instants stay `timestamptz`, and the legacy
   UTC-midnight-on-a-timestamp convention is retired. See ADR-0042 (Accepted),
@@ -464,9 +477,10 @@ date-input.test.tsx` (round trips, leap years, typed Jalali input, Persian
   its BusinessDate aliases match the generated unions. Swagger bootstrap logged
   that Prisma Client was not generated and skipped permission-registry sync;
   this output therefore verifies DTO/schema generation, not database behavior.
-- The implemented paths include Organization settings, Accounting BusinessDate
-  inputs/filters/reports, Inventory movement/document/valuation/configuration
-  date paths, and shared frontend date inputs/formatters. This is not permission
-  to assume an unaudited future DTO or consumer is correct: date/time changes
-  must use the checklist in `.vardena/agent-rules.md` AG-20 and verify the
-  complete execution path.
+- The audited paths include the Organization IANA time-zone contract,
+  Accounting BusinessDate inputs/filters/reports, Inventory movement/document/
+  valuation/configuration date paths, and shared frontend date inputs/formatters.
+  The migration's legacy calendar-range preflight remains an unresolved rollout
+  gap as described above. This is not permission to assume an unaudited future
+  DTO or consumer is correct: date/time changes must use the checklist in
+  `.vardena/agent-rules.md` AG-20 and verify the complete execution path.

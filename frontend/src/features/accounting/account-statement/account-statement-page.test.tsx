@@ -46,10 +46,7 @@ const organizationApi = await import('@/api/organization.api');
 const accountingApi = await import('@/api/accounting.api');
 
 beforeEach(() => {
-  setDateTimeSettings({
-    calendarSystem: testOrganization.calendarSystem,
-    timeZone: testOrganization.timeZone,
-  });
+  setDateTimeSettings({ timeZone: testOrganization.timeZone });
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
     userId: testUser.id,
@@ -146,7 +143,7 @@ describe('Account statement page', () => {
     // debit, net and running balance all carry the same exact value.
     expect(within(table).getAllByText('1,500,000.00')).toHaveLength(3);
     expect(
-      within(table).getByText('2026-04-01 10:15:00 UTC (UTC+00:00)'),
+      within(table).getByText('1405/01/12 10:15:00 UTC (UTC+00:00)'),
     ).toHaveAttribute(
       'title',
       accountStatement.movements.items[0]!.postingTimestamp,

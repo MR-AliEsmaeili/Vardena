@@ -101,10 +101,7 @@ function mockPermissions(permissions: string[]) {
 
 beforeEach(() => {
   resetDateTimeSettings();
-  setDateTimeSettings({
-    calendarSystem: testOrganization.calendarSystem,
-    timeZone: testOrganization.timeZone,
-  });
+  setDateTimeSettings({ timeZone: testOrganization.timeZone });
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   mockPermissions(allAccountingPermissions);
   vi.mocked(organizationApi.listMyOrganizations).mockResolvedValue([
@@ -146,7 +143,7 @@ describe('Documents list — loading, rendering, empty and error states', () => 
 
     const table = await screen.findByRole('table');
     expect(within(table).getByText('1001')).toBeInTheDocument();
-    expect(within(table).getByText('2026-04-05')).toBeInTheDocument();
+    expect(within(table).getByText('1405/01/16')).toBeInTheDocument();
     expect(within(table).getByText(t.documents.stateFinal)).toBeInTheDocument();
     // The financial area column resolves from its own query
     // (`listFinancialAreas`) — `findByText` rather than `getByText` because
@@ -259,10 +256,7 @@ describe('Documents list — URL-owned filters', () => {
       expect(accountingApi.listAccountingDocuments).toHaveBeenCalled(),
     );
     act(() => {
-      setDateTimeSettings({
-        calendarSystem: 'JALALI',
-        timeZone: 'Asia/Tehran',
-      });
+      setDateTimeSettings({ timeZone: 'Asia/Tehran' });
     });
 
     const dateFrom = screen.getByLabelText(t.filters.dateFrom);

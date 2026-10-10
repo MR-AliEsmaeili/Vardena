@@ -38,11 +38,7 @@ import type { Unit } from '../../src/modules/inventory/domain/unit.js';
 import type { ItemGroup } from '../../src/modules/inventory/domain/item-group.js';
 import type { Item } from '../../src/modules/inventory/domain/item.js';
 import type { UnitConversion } from '../../src/modules/inventory/domain/unit-conversion.js';
-import {
-  isGregorianBusinessDate,
-  type BusinessDate,
-} from '../../src/kernel/datetime/business-date.js';
-import type { CalendarSystem } from '../../src/kernel/datetime/calendar-system.js';
+import { isGregorianBusinessDate } from '../../src/kernel/datetime/business-date.js';
 import { planNewVersion } from '../../src/modules/inventory/domain/unit-conversion.js';
 import {
   ConversionPlanRejectedError,
@@ -50,11 +46,7 @@ import {
 } from '../../src/modules/inventory/data/unit-conversions.repository.js';
 import type { Warehouse } from '../../src/modules/inventory/domain/warehouse.js';
 import type { HierarchyEdge } from '../../src/modules/organization/domain/hierarchy.js';
-import type {
-  OrganizationCalendarUpdateResult,
-  OrganizationCalendarWriteLockResult,
-  OrganizationsRepository,
-} from '../../src/modules/organization/data/organizations.repository.js';
+import type { OrganizationsRepository } from '../../src/modules/organization/data/organizations.repository.js';
 import type { LicensedAllocation } from '../../src/modules/licensing/application/licensing.service.js';
 import type { OrganizationMembershipsRepository } from '../../src/modules/organization/data/organization-memberships.repository.js';
 import type { OrganizationMembershipRow } from '../../src/modules/organization/data/organization-memberships.repository.js';
@@ -375,64 +367,6 @@ export class InMemoryOrganizationsRepository {
 
   async update(id: string, patch: Patch): Promise<Organization | null> {
     return this.table.patch(id, patch);
-  }
-
-  async updateCalendarSystem(
-    id: string,
-    patch: Patch,
-    findFirstUnrenderableBusinessDate?: (
-      organizationId: string,
-    ) => Promise<BusinessDate | null>,
-  ): Promise<OrganizationCalendarUpdateResult> {
-    if (
-      patch.calendarSystem === 'JALALI' &&
-      typeof findFirstUnrenderableBusinessDate !== 'function'
-    ) {
-      throw new Error(
-        'A JALALI calendar update requires the Inventory history contract.',
-      );
-    }
-    const current = this.table.findById(id);
-    if (current === null) return { kind: 'not_found' };
-    if (
-      current.calendarSystem === 'GREGORIAN' &&
-      patch.calendarSystem === 'JALALI'
-    ) {
-      if (typeof findFirstUnrenderableBusinessDate !== 'function') {
-        throw new Error(
-          'A JALALI calendar update requires the Inventory history contract.',
-        );
-      }
-      const incompatible = await findFirstUnrenderableBusinessDate(id);
-      if (incompatible !== null) {
-        return {
-          kind: 'unrenderable_history',
-          businessDate: incompatible,
-        };
-      }
-    }
-    const updated = this.table.patch(id, patch);
-    return updated === null
-      ? { kind: 'not_found' }
-      : { kind: 'updated', organization: updated };
-  }
-
-  async withBusinessDateWriteLock<T>(
-    organizationId: string,
-    validatedCalendarSystem: CalendarSystem,
-    work: () => Promise<T>,
-  ): Promise<OrganizationCalendarWriteLockResult<T>> {
-    if (typeof work !== 'function') {
-      throw new Error(
-        'An Inventory BusinessDate write requires a transaction callback.',
-      );
-    }
-    const organization = this.table.findById(organizationId);
-    if (organization === null) return { kind: 'not_found' };
-    if (organization.calendarSystem !== validatedCalendarSystem) {
-      return { kind: 'calendar_changed' };
-    }
-    return { kind: 'completed', value: await work() };
   }
 }
 

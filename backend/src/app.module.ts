@@ -12,7 +12,6 @@ import { WorkflowModule } from './modules/workflow/workflow.module.js';
 import { AccountingModule } from './modules/accounting/accounting.module.js';
 import { SystemAdministratorBootstrapService } from './bootstrap/system-administrator-bootstrap.service.js';
 import { LicensingModule } from './modules/licensing/licensing.module.js';
-import { OrganizationCalendarTransitionModule } from './composition/organization-calendar-transition.module.js';
 
 /**
  * API root module. Business modules register here (docs/architecture.md §6),
@@ -29,7 +28,6 @@ import { OrganizationCalendarTransitionModule } from './composition/organization
     RbacModule,
     OrganizationModule,
     InventoryModule,
-    OrganizationCalendarTransitionModule,
     DocumentsModule,
     WorkflowModule,
     AccountingModule,

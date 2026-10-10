@@ -35,10 +35,6 @@ import { publishEvent, resolveSort } from './master-data-support.js';
 import { requireBusinessDateInput } from './inventory-posting-support.js';
 import { UnitsService } from './units.service.js';
 import { ItemsService } from './items.service.js';
-import {
-  assertInventoryBusinessDateRenderable,
-  withInventoryBusinessDateWriteLock,
-} from './inventory-business-date-write.js';
 
 const SORTABLE_FIELDS: Record<string, string> = {
   validFrom: 'validFrom',
@@ -266,18 +262,6 @@ export class UnitConversionsService {
       input.validTo === undefined || input.validTo === null
         ? null
         : requireBusinessDateInput(input.validTo, 'validTo');
-    const { calendarSystem } = await this.organizations.getDateTimeSettings(
-      input.organizationId,
-    );
-    assertInventoryBusinessDateRenderable(
-      'validFrom',
-      validFrom,
-      calendarSystem,
-    );
-    if (validTo !== null) {
-      assertInventoryBusinessDateRenderable('validTo', validTo, calendarSystem);
-    }
-
     // Fail-fast validation of the pure window rule (also enforced — and this
     // is the authoritative check — inside the repository transaction).
     if (validTo !== null && validTo <= validFrom) {
@@ -305,18 +289,13 @@ export class UnitConversionsService {
       supersededConversionId: string | null;
     };
     try {
-      write = await withInventoryBusinessDateWriteLock(
-        this.organizations,
-        input.organizationId,
-        calendarSystem,
-        () =>
-          itemId === null
-            ? this.repository.createGlobalVersion({ create, closeAudit })
-            : this.repository.createItemVersion({
-                create: { ...create, itemId },
-                closeAudit,
-              }),
-      );
+      write =
+        itemId === null
+          ? await this.repository.createGlobalVersion({ create, closeAudit })
+          : await this.repository.createItemVersion({
+              create: { ...create, itemId },
+              closeAudit,
+            });
     } catch (error) {
       if (error instanceof ConversionPlanRejectedError) {
         if (error.problem === 'invalid_window') {

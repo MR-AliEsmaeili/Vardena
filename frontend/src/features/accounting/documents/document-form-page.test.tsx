@@ -169,10 +169,7 @@ function renderEdit(documentId = 'doc-1') {
 
 beforeEach(() => {
   resetDateTimeSettings();
-  setDateTimeSettings({
-    calendarSystem: testOrganization.calendarSystem,
-    timeZone: testOrganization.timeZone,
-  });
+  setDateTimeSettings({ timeZone: testOrganization.timeZone });
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
     userId: testUser.id,
@@ -247,7 +244,7 @@ describe('Document create — validation', () => {
 
     const documentDate = await screen.findByLabelText(t.documents.fieldDate);
     fireEvent.change(documentDate, {
-      target: { value: '2026-04-05' },
+      target: { value: '1405-01-16' },
     });
     await selectFinancialArea(user);
     await user.type(
@@ -280,7 +277,7 @@ describe('Document create — submission', () => {
 
     const documentDate = await screen.findByLabelText(t.documents.fieldDate);
     fireEvent.change(documentDate, {
-      target: { value: '2026-04-05' },
+      target: { value: '1405-01-16' },
     });
     await selectFinancialArea(user);
     await user.type(
@@ -300,7 +297,7 @@ describe('Document create — submission', () => {
     expect(body).toMatchObject({
       organizationId: 'org-1',
       financialAreaId: 'area-1',
-      documentDate: '2026-04-05',
+      documentDate: { calendar: 'JALALI', value: '1405-01-16' },
       description: 'شرح سند آزمایشی',
       lines: [
         expect.objectContaining({
@@ -335,10 +332,7 @@ describe('Document create — submission', () => {
 
     await screen.findByLabelText(t.documents.fieldArea);
     act(() => {
-      setDateTimeSettings({
-        calendarSystem: 'JALALI',
-        timeZone: 'Asia/Tehran',
-      });
+      setDateTimeSettings({ timeZone: 'Asia/Tehran' });
     });
     const dateField = screen.getByLabelText(t.documents.fieldDate);
     expect(dateField).toHaveAttribute('data-calendar', 'JALALI');

@@ -52,10 +52,6 @@ import { INVENTORY_DOCUMENT_ACCOUNTING_POSTED_EVENT } from '../domain/inventory-
 import type { WarehouseAccountingPostingMode } from '../domain/warehouse-posting-mode.js';
 import { WarehousesRepository } from '../data/warehouses.repository.js';
 import { InventoryValuationService } from './inventory-valuation.service.js';
-import {
-  assertInventoryBusinessDateRenderable,
-  withInventoryBusinessDateWriteLock,
-} from './inventory-business-date-write.js';
 import { publishEvent } from './master-data-support.js';
 import { InventoryPostingService } from '../../accounting/application/inventory-posting.service.js';
 import {
@@ -360,22 +356,9 @@ export class InventoryAccountingPostingService {
       );
     }
 
-    const { calendarSystem } =
-      await this.organizations.getDateTimeSettings(organizationId);
-    assertInventoryBusinessDateRenderable(
-      'businessDate',
-      current.businessDate,
-      calendarSystem,
-    );
-
     let phase1: Phase1Result;
     try {
-      phase1 = await withInventoryBusinessDateWriteLock(
-        this.organizations,
-        organizationId,
-        calendarSystem,
-        () => this.writeDurableIntent(id, organizationId, operationKey),
-      );
+      phase1 = await this.writeDurableIntent(id, organizationId, operationKey);
     } catch (error) {
       // Lost the insert race on (organization, document, action, operation
       // key). The unique constraint is the authority, not an accident to

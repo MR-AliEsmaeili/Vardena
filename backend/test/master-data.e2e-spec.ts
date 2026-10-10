@@ -262,12 +262,37 @@ describe('Organization + Inventory master data (e2e)', () => {
     // The API never exposes audit actor ids (AR-24).
     expect(res.body).not.toHaveProperty('createdBy');
     expect(res.body.id).toMatch(/^[0-9A-Z]{26}$/);
+    expect(res.body.calendarSystem).toBe('JALALI');
+    expect(res.body.timeZone).toBe('Asia/Tehran');
     state.orgId = res.body.id as string;
 
     // ODR-3 (Task 19): both personas are legitimate members (the cross-org
     // assertions later are data-scoped, not membership-scoped).
     master.raw.memberships.seed(state.rootId, state.orgId);
     master.raw.memberships.seed(state.limitedId, state.orgId);
+  });
+
+  it('keeps the organization calendar fixed and rejects calendar mutations over HTTP', async () => {
+    const invalidCreate = await root
+      .post('/api/v1/organizations')
+      .send({
+        code: 'calendar-choice',
+        name: 'Calendar Choice',
+        calendarSystem: 'GREGORIAN',
+      })
+      .expect(400);
+    expect(invalidCreate.body.code).toBe('ValidationFailed');
+
+    const invalidUpdate = await root
+      .patch(`/api/v1/organizations/${state.orgId}`)
+      .send({ calendarSystem: 'GREGORIAN' })
+      .expect(400);
+    expect(invalidUpdate.body.code).toBe('ValidationFailed');
+
+    const unchanged = await root
+      .get(`/api/v1/organizations/${state.orgId}`)
+      .expect(200);
+    expect(unchanged.body.calendarSystem).toBe('JALALI');
   });
 
   it('requires the distinct Enable/Disable permissions, not just View', async () => {

@@ -6,8 +6,8 @@
  * start. It is NOT when something happened, and it must never be
  * interchangeable with an event timestamp:
  *
- *   documentDate = 1405-07-01   (business day — the reporting axis)
- *   createdAt    = 1405-07-16 12:32  (event instant — the audit axis)
+ *   documentDate = 2026-10-08 (canonical Gregorian BusinessDate; displayed Jalali-first)
+ *   createdAt    = 2026-10-08T08:32:14.421Z (event Instant; rendered in the organization's zone)
  *
  * A backdated receipt is exactly this difference, so the two are DISTINCT
  * TYPES here: {@link BusinessDate} (a calendar day) and {@link Instant} (an

@@ -1,6 +1,6 @@
 # ADR-0042: One Date/Time Model — UTC Instants, Calendar Days, a Configurable Calendar
 
-Status: Accepted (PO-02, 2026-10-09 — OQ-73 resolved; owner clarification on legacy BusinessDate inputs and Inventory validity windows, 2026-10-09)
+Status: Accepted for the BusinessDate/Instant foundation; organization-selectable calendar superseded by ADR-0044
 Date: 2026-10-08
 
 ## Context

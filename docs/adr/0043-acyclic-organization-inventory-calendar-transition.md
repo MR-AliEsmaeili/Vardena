@@ -1,6 +1,6 @@
 # ADR-0043: Acyclic Organization–Inventory Calendar-Transition Coordination
 
-Status: Accepted (PO-02, 2026-10-10)
+Status: Superseded by ADR-0044
 Date: 2026-10-10
 Builds on: ADR-0042, AR-07, AR-29
 

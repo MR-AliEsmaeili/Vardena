@@ -163,19 +163,12 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     return null;
   }, [isSelectionForCurrentUser, selectedOrganization, organizations]);
 
-  // C-63 / ADR-0042 §6: the selected organization's date/time policy is the
-  // one the whole UI renders through. It is published to the date/time layer
-  // HERE, once per change, so formatters, form defaults and the date field all
-  // read the same value instead of each holding a copy (a signed-out or
-  // organization-less session falls back to the product defaults).
+  // ADR-0044: only the selected organization's IANA time zone is mutable
+  // date/time configuration. Jalali presentation is a fixed MVP policy, so
+  // legacy calendarSystem response data is deliberately ignored.
   useEffect(() => {
     setDateTimeSettings(
-      organization === null
-        ? null
-        : {
-            calendarSystem: organization.calendarSystem,
-            timeZone: organization.timeZone,
-          },
+      organization === null ? null : { timeZone: organization.timeZone },
     );
   }, [organization]);
 

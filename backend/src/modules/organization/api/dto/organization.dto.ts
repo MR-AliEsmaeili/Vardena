@@ -9,8 +9,6 @@ import {
 } from 'class-validator';
 import { PageQueryDto } from '../../../../kernel/pagination/page-query.dto.js';
 import { parseQueryBoolean } from '../../../../kernel/http/parse-query-boolean.js';
-import { CALENDAR_SYSTEMS } from '../../../../kernel/datetime/calendar-system.js';
-import { JALALI_RENDERABLE_GREGORIAN_RANGE } from '../../../../kernel/datetime/jalali.js';
 import { MAX_CODE_LENGTH, MAX_NAME_LENGTH } from '../../domain/master-data.js';
 
 /**
@@ -36,16 +34,6 @@ export class CreateOrganizationDto {
   @MinLength(1, { message: 'Name is required.' })
   @MaxLength(MAX_NAME_LENGTH)
   name!: string;
-
-  @ApiPropertyOptional({
-    enum: CALENDAR_SYSTEMS,
-    description:
-      'C-63 display calendar. Omit for the deployment default (JALALI). A rendering/authoring setting: it never changes what is stored.',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(16)
-  calendarSystem?: string;
 
   @ApiPropertyOptional({
     example: 'Asia/Tehran',
@@ -75,18 +63,9 @@ export class UpdateOrganizationDto {
   name?: string;
 
   @ApiPropertyOptional({
-    enum: CALENDAR_SYSTEMS,
-    description: `C-63 display calendar of this organization. Changing it re-renders history; it rewrites nothing. GREGORIAN → JALALI is refused when existing Inventory business dates fall outside ${JALALI_RENDERABLE_GREGORIAN_RANGE.minimum} through ${JALALI_RENDERABLE_GREGORIAN_RANGE.maximum}.`,
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(16)
-  calendarSystem?: string;
-
-  @ApiPropertyOptional({
     example: 'Asia/Tehran',
     description:
-      'C-63 IANA time zone of this organization. Changing it re-renders history; it rewrites nothing.',
+      'C-63 IANA time zone of this organization. Changing it affects instant rendering only; stored Instants and BusinessDates are unchanged.',
   })
   @IsOptional()
   @IsString()
@@ -134,11 +113,12 @@ export class OrganizationResponseDto {
   isActive!: boolean;
 
   @ApiProperty({
-    enum: CALENDAR_SYSTEMS,
+    enum: ['JALALI'],
+    readOnly: true,
     description:
-      'C-63 display calendar. Instants are always stored and exchanged in UTC; a business date is always stored Gregorian. This value decides how days are SHOWN and authored.',
+      'Fixed Jalali-first MVP display calendar. This read-only compatibility field is not configurable; BusinessDates remain Gregorian canonical.',
   })
-  calendarSystem!: string;
+  calendarSystem!: 'JALALI';
 
   @ApiProperty({
     example: 'Asia/Tehran',

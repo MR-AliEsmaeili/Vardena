@@ -58,10 +58,13 @@ export class ApiInstantDto {
   gregorian!: string;
 
   @ApiProperty({
+    type: String,
     example: '1405-07-16 12:02:14',
-    description: 'Local Jalali rendering, `YYYY-MM-DD HH:mm:ss` (derived).',
+    nullable: true,
+    description:
+      'Local Jalali rendering, `YYYY-MM-DD HH:mm:ss` (derived), or null outside the supported conversion range.',
   })
-  jalali!: string;
+  jalali!: string | null;
 }
 
 /**

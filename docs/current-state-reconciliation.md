@@ -402,32 +402,37 @@ The repository contains a materially broader current implementation than the pre
 
 **READY FOR REVIEW**
 
-## Later date/time audit addendum (2026-10-09)
+## Later date/time and Jalali-first policy addendum (2026-10-10)
 
-The 2026-09-29 findings above are retained as a dated snapshot. They predate
-Owner-accepted ADR-0042 and resolution of OQ-73 on 2026-10-09. Under the current
-contract, BusinessDates are canonical Gregorian PostgreSQL `date` values with
-organization-calendar user input/display (Jalali by default); Instants remain
-UTC `timestamptz` values rendered in the organization's valid IANA zone and
-calendar. Accordingly, the earlier OQ-02 row's wording about the calendar being
-undecided and the earlier future-decision bullet about Jalali/date policy are
-superseded only for this generic date/time contract. OQ-02 remains open for
-primary UI language, Persian-numeral preference, and broader localization.
+The 2026-09-29 findings and the 2026-10-09 date/time note are retained as
+dated snapshots. ADR-0042 remains the BusinessDate/Instant foundation and OQ-73
+resolution: BusinessDates are canonical Gregorian PostgreSQL `date` values;
+Instants remain `timestamptz` and use an organization's valid IANA zone for
+local rendering. Accepted ADR-0044 fixes Jalali-first presentation for the MVP:
+there is no user, Organization, or Inventory calendar selector or transition.
+Gregorian API/integration inputs and historical days remain supported, with a
+canonical Gregorian display fallback outside the Jalali conversion range.
+OQ-02 remains open for primary UI language, Persian-numeral preference, and
+broader localization.
 
-The current date/time audit traces the implementation paths in this change from
-the 2026-10-09 `main` baseline (`9438eb7`) through DTOs, domain, persistence,
-queries, API declarations and frontend consumers. Its non-test lint/typecheck/
-format evidence is reported with the delivery; tests and PostgreSQL rehearsal
-must be verified through GitHub CI on the exact final SHA. The aggregate-only,
+The PR #135 audit traces the affected DTO, domain, persistence, query, generated
+OpenAPI and frontend input/display/filter surfaces from the 2026-10-09 `main`
+baseline (`9438eb7`). This is scoped to the related BusinessDate/Instant
+surfaces, not a claim that every frontend screen was audited. The aggregate-only,
 read-only migration report is
 `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; it emits
 counts, not row IDs or business payloads. Neither fixture rehearsal nor code
-inspection establishes what values exist in a customer/production database.
-The baseline check found the original migration-110 comment about verbatim
-instant storage was not supported by the standard Inventory input/persistence
-path; the comment has now been corrected in this PR to describe the legacy
-organization-zone parse followed by UTC-day carrier persistence. Alternate
-writers and actual historical data remain uninspected, so no customer-data
-safety claim is made. See ADR-0042, `docs/datetime.md`,
-`docs/open-questions.md` OQ-73, and the date/time pull request for current scope
-and limitations.
+inspection establishes what values exist in a customer/shared database. The
+baseline check found the original migration-110 comment about verbatim instant
+storage was not supported by the standard Inventory input/persistence path;
+that comment was corrected earlier in PR #135. Alternate writers and actual
+historical data remain uninspected, so no customer-data safety claim is made.
+
+Migration `20261012000000_inventory_business_date_validity_windows` still has a
+legacy calendar/renderability preflight that conflicts with ADR-0044. Its
+application status and checksum in shared environments could not be verified;
+this remains a deployment blocker. The policy changes leave the migration files
+unchanged relative to PR #135's starting head (which already contains migrations
+110, 120, and 130). Do not treat the synthetic migration rehearsal as an audit
+of shared or production data. See ADR-0042, ADR-0044, `docs/datetime.md`,
+`docs/database-strategy.md`, and OQ-73 for current scope and limitations.

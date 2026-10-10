@@ -4,7 +4,7 @@ import {
   type UseMutationResult,
 } from '@tanstack/react-query';
 import type { AccountingDocument } from '@/api/contracts';
-import { toBusinessDateInput, useCalendarSystem } from '@/lib/datetime';
+import { toBusinessDateInput } from '@/lib/datetime';
 import {
   createAccountingDocument,
   deleteAccountingDocument,
@@ -116,7 +116,6 @@ export function useCreateDocumentMutation(
   organizationId: string,
 ): UseMutationResult<AccountingDocument, Error, CreateDocumentVariables> {
   const invalidateDocuments = useDocumentsPrefixInvalidation(organizationId);
-  const calendarSystem = useCalendarSystem();
   return useMutation({
     mutationKey: [
       'accounting',
@@ -128,7 +127,7 @@ export function useCreateDocumentMutation(
       const body: CreateAccountingDocumentInput = {
         organizationId,
         financialAreaId: values.financialAreaId,
-        documentDate: toBusinessDateInput(values.documentDate, calendarSystem),
+        documentDate: toBusinessDateInput(values.documentDate),
         description: values.description.trim(),
         lines: toDocumentLineInputs(values.lines),
         operationKey,
@@ -149,7 +148,6 @@ export function useUpdateDocumentMutation(
 ): UseMutationResult<AccountingDocument, Error, UpdateDocumentVariables> {
   const invalidateDocuments = useDocumentsPrefixInvalidation(organizationId);
   const cacheDetail = useDetailCacheUpdate(organizationId);
-  const calendarSystem = useCalendarSystem();
   return useMutation({
     mutationKey: [
       'accounting',
@@ -161,7 +159,7 @@ export function useUpdateDocumentMutation(
       // An edit is a state-carrying PUT: no operationKey, and the fields the
       // form does not own (branch) are simply not sent — omitted = kept.
       const body: UpdateAccountingDocumentInput = {
-        documentDate: toBusinessDateInput(values.documentDate, calendarSystem),
+        documentDate: toBusinessDateInput(values.documentDate),
         description: values.description.trim(),
         financialAreaId: values.financialAreaId,
         lines: toDocumentLineInputs(values.lines),

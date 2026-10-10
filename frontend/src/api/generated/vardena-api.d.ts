@@ -407,7 +407,7 @@ export interface paths {
         options?: never;
         head?: never;
         /** Edit an organization. */
-        patch: operations["OrganizationCalendarTransitionController_update_v1"];
+        patch: operations["OrganizationsController_update_v1"];
         trace?: never;
     };
     "/api/v1/organizations/{id}/enable": {
@@ -1306,7 +1306,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Rebuild stored balances from the ledger and open reservations. Each key uses its own short transaction; if a calendar transition interrupts the batch, completed keys remain committed and the full scope is safe to retry. */
+        /** Rebuild stored balances from the ledger and open reservations. Each key uses its own short transaction and row lock; a repeated rebuild safely resumes reconciliation. */
         post: operations["InventoryBalancesController_rebuild_v1"];
         delete?: never;
         options?: never;
@@ -3592,10 +3592,10 @@ export interface components {
             /** @description False while disabled. A disabled organization blocks the creation of new organization-scoped records but keeps existing ones readable. */
             isActive: boolean;
             /**
-             * @description C-63 display calendar. Instants are always stored and exchanged in UTC; a business date is always stored Gregorian. This value decides how days are SHOWN and authored.
+             * @description Fixed Jalali-first MVP display calendar. This read-only compatibility field is not configurable; BusinessDates remain Gregorian canonical.
              * @enum {string}
              */
-            calendarSystem: "GREGORIAN" | "JALALI";
+            readonly calendarSystem: "JALALI";
             /**
              * @description C-63 IANA time zone used to turn an instant into a local date-time for this organization.
              * @example Asia/Tehran
@@ -3621,12 +3621,16 @@ export interface components {
             /** @example Acme Trading Co. */
             name: string;
             /**
-             * @description C-63 display calendar. Omit for the deployment default (JALALI). A rendering/authoring setting: it never changes what is stored.
-             * @enum {string}
-             */
-            calendarSystem?: "GREGORIAN" | "JALALI";
-            /**
              * @description C-63 IANA time zone used for local date-times. Omit for the deployment default (Asia/Tehran). A fixed offset is rejected.
+             * @example Asia/Tehran
+             */
+            timeZone?: string;
+        };
+        UpdateOrganizationDto: {
+            code?: string;
+            name?: string;
+            /**
+             * @description C-63 IANA time zone of this organization. Changing it affects instant rendering only; stored Instants and BusinessDates are unchanged.
              * @example Asia/Tehran
              */
             timeZone?: string;
@@ -4784,29 +4788,6 @@ export interface components {
             mismatched: number;
             mismatches: components["schemas"]["ReconciliationMismatchDto"][];
         };
-        InventoryBalanceRebuildConflictDetailsDto: {
-            /**
-             * @description Stable reason code for this rebuild conflict.
-             * @enum {string}
-             */
-            code: "organization.calendar.changed_during_business_date_write" | "inventory.balance.rebuild.business_date_unrenderable";
-            /** @description Key transactions confirmed complete before the conflict. */
-            completedKeys: number;
-            /** @description Total stocking keys discovered for this invocation. */
-            totalKeys: number;
-            /** @description True when the whole scope is safe to retry after refreshing the organization calendar. */
-            retrySafe?: boolean;
-            /**
-             * Format: date
-             * @description Ledger-derived latest movement date that cannot be rendered under the captured calendar.
-             */
-            businessDate?: string;
-            /**
-             * @description Calendar captured by the rebuild when it encountered the date.
-             * @enum {string}
-             */
-            calendarSystem?: "GREGORIAN" | "JALALI";
-        };
         RebuildInventoryBalancesDto: {
             /**
              * Format: ulid
@@ -4853,15 +4834,6 @@ export interface components {
             checked: number;
             rebuilt: number;
             corrections: components["schemas"]["RebuildCorrectionDto"][];
-        };
-        InventoryBalanceRebuildConflictResponseDto: {
-            /** @enum {string} */
-            code: "Conflict";
-            /** @description Human-readable explanation; clients branch on details.code. */
-            message: string;
-            details: components["schemas"]["InventoryBalanceRebuildConflictDetailsDto"];
-            /** @description Correlation identifier echoed in the x-correlation-id header. */
-            correlationId: string;
         };
         ItemValuationMethodResponseDto: {
             /** Format: ulid */
@@ -5405,10 +5377,10 @@ export interface components {
              */
             gregorian: string;
             /**
-             * @description Local Jalali rendering, `YYYY-MM-DD HH:mm:ss` (derived).
+             * @description Local Jalali rendering, `YYYY-MM-DD HH:mm:ss` (derived), or null outside the supported conversion range.
              * @example 1405-07-16 12:02:14
              */
-            jalali: string;
+            jalali: string | null;
         };
         InventoryDocumentLineResponseDto: {
             /** Format: ulid */
@@ -5453,7 +5425,7 @@ export interface components {
              * @example 2026-10-08
              */
             businessDate: string;
-            /** @description C-63: the same canonical business day with a derived Jalali rendering when representable. For a Gregorian organization, `jalali` is null outside the shared rendering range; `businessDate` above remains authoritative. */
+            /** @description The same canonical BusinessDate with a derived Jalali rendering when representable. Outside the shared rendering range `jalali` is null for every organization; `businessDate` above remains authoritative. */
             businessDateCalendar: components["schemas"]["ApiBusinessDateDto"];
             warehouseId: string | null;
             sourceWarehouseId: string | null;
@@ -7551,20 +7523,6 @@ export interface components {
              */
             parentId?: Record<string, never> | null;
         };
-        UpdateOrganizationDto: {
-            code?: string;
-            name?: string;
-            /**
-             * @description C-63 display calendar of this organization. Changing it re-renders history; it rewrites nothing. GREGORIAN → JALALI is refused when existing Inventory business dates fall outside 0621-03-21 through 3798-12-31.
-             * @enum {string}
-             */
-            calendarSystem?: "GREGORIAN" | "JALALI";
-            /**
-             * @description C-63 IANA time zone of this organization. Changing it re-renders history; it rewrites nothing.
-             * @example Asia/Tehran
-             */
-            timeZone?: string;
-        };
         WorkflowDefinitionResponseDto: {
             /** Format: ulid */
             id: string;
@@ -9176,7 +9134,7 @@ export interface operations {
             };
         };
     };
-    OrganizationCalendarTransitionController_update_v1: {
+    OrganizationsController_update_v1: {
         parameters: {
             query?: never;
             header?: never;
@@ -9198,6 +9156,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["OrganizationResponseDto"];
                 };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Not authenticated. */
             401: {
@@ -9222,13 +9187,6 @@ export interface operations {
             };
             /** @description Organization code already exists. */
             409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description A GREGORIAN organization cannot change to JALALI while Inventory history contains business dates outside the supported Jalali rendering range. Keep the calendar GREGORIAN; historical documents are not changed. */
-            422: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -12806,15 +12764,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The organization calendar changed between per-key transactions or the ledger-derived date cannot be rendered; the error reports committed progress and the full scope is safe to retry after refresh or source-history repair. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["InventoryBalanceRebuildConflictResponseDto"];
-                };
-            };
         };
     };
     InventoryValuationController_listMethods_v1: {
@@ -14086,13 +14035,6 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The organization calendar changed after the business date was validated; no draft was written. Refresh and retry. */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
             /** @description A disabled or non-stockable reference, a same-warehouse transfer, a cost on an issue/transfer, or no unit conversion covering the business date. */
             422: {
                 headers: {
@@ -14233,13 +14175,6 @@ export interface operations {
             };
             /** @description The document does not exist. */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description The organization calendar changed after the business date was validated; the document update was rolled back. Refresh and retry. */
-            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -14388,13 +14323,6 @@ export interface operations {
                     "application/json": components["schemas"]["InventoryDocumentResponseDto"];
                 };
             };
-            /** @description The document BusinessDate cannot be rendered in the organization calendar. */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
             /** @description Not authenticated. */
             401: {
                 headers: {
@@ -14416,7 +14344,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description The operation key was already used for a different request, the document is already Accounting Posted, or the organization calendar changed before the Inventory snapshot was written. */
+            /** @description The operation key was already used for a different request, or the document is already Accounting Posted. */
             409: {
                 headers: {
                     [name: string]: unknown;

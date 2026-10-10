@@ -20,10 +20,7 @@ import {
   type PaginatedResult,
 } from '../../../kernel/pagination/paginated-result.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
-import {
-  OrganizationsRepository,
-  type OrganizationCalendarWriteLockResult,
-} from '../data/organizations.repository.js';
+import { OrganizationsRepository } from '../data/organizations.repository.js';
 import { OrganizationMembershipsRepository } from '../data/organization-memberships.repository.js';
 import type {
   Organization,
@@ -36,9 +33,6 @@ import {
   toOrganizationDto,
 } from '../domain/organization.js';
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
-import { JALALI_RENDERABLE_GREGORIAN_RANGE } from '../../../kernel/datetime/jalali.js';
-import type { BusinessDate } from '../../../kernel/datetime/business-date.js';
-import type { CalendarSystem } from '../../../kernel/datetime/calendar-system.js';
 import { normalizeCode, normalizeName } from '../domain/master-data.js';
 import { ORGANIZATION_PERMISSIONS } from '../domain/organization-permissions.js';
 import { LicensingService } from '../../licensing/application/licensing.service.js';
@@ -49,7 +43,6 @@ import {
   ORGANIZATION_UPDATED_EVENT,
 } from '../domain/organization.events.js';
 import {
-  assertCalendarSystem,
   assertCodeAndName,
   assertTimeZone,
   assertUsable,
@@ -85,24 +78,15 @@ export interface ListOrganizationsQuery {
 export interface CreateOrganizationInput {
   code: string;
   name: string;
-  /** C-63: omit to take the deployment default (`JALALI` / `Asia/Tehran`). */
-  calendarSystem?: string | undefined;
   timeZone?: string | undefined;
 }
 
 export interface UpdateOrganizationInput {
   code?: string | undefined;
   name?: string | undefined;
-  /** C-63: closes over the code-defined list; an unknown value is refused. */
-  calendarSystem?: string | undefined;
   /** C-63: must be a resolvable IANA zone. */
   timeZone?: string | undefined;
 }
-
-/** Inventory's public read contract supplied for a GREGORIAN → JALALI update. */
-export type JalaliCalendarHistoryReader = (
-  organizationId: string,
-) => Promise<BusinessDate | null>;
 
 /**
  * Organization administration + the module's public read surface for the
@@ -269,11 +253,6 @@ export class OrganizationsService {
     const code = normalizeCode(input.code);
     const name = normalizeName(input.name);
     assertCodeAndName(code, name);
-    // C-63: the date/time policy is validated here and, when omitted, left to
-    // the column defaults — never invented by the service.
-    if (input.calendarSystem !== undefined) {
-      assertCalendarSystem(input.calendarSystem);
-    }
     if (input.timeZone !== undefined) assertTimeZone(input.timeZone);
 
     const existing = await this.repository.findByCode(code);
@@ -293,12 +272,8 @@ export class OrganizationsService {
           code,
           name,
           isActive: true,
-          // C-63: what the caller stated, otherwise the deployment default —
-          // written explicitly so a created organization can never be missing
-          // its date/time policy (the column default remains the backstop for
-          // rows created outside this path).
-          calendarSystem:
-            input.calendarSystem ?? DEFAULT_DATE_TIME_SETTINGS.calendarSystem,
+          // The calendar is a fixed Jalali-first MVP policy. The only
+          // per-organization date/time value is the IANA zone.
           timeZone: input.timeZone ?? DEFAULT_DATE_TIME_SETTINGS.timeZone,
           createdAt: now,
           updatedAt: now,
@@ -334,7 +309,6 @@ export class OrganizationsService {
   async updateOrganization(
     id: string,
     input: UpdateOrganizationInput,
-    findFirstUnrenderableBusinessDate?: JalaliCalendarHistoryReader,
   ): Promise<OrganizationDto> {
     await this.authorization.requireAllPermissions([
       ORGANIZATION_PERMISSIONS.EDIT,
@@ -358,60 +332,21 @@ export class OrganizationsService {
       }
     }
 
-    if (input.calendarSystem !== undefined) {
-      assertCalendarSystem(input.calendarSystem);
-    }
     if (input.timeZone !== undefined) assertTimeZone(input.timeZone);
 
     const patch: {
       code?: string;
       name?: string;
-      calendarSystem?: string;
       timeZone?: string;
       updatedAt: Date;
       updatedBy: string | null;
     } = { updatedAt: new Date(), updatedBy: getPrincipal()?.userId ?? null };
     if (code !== undefined) patch.code = code;
     if (name !== undefined) patch.name = name;
-    if (input.calendarSystem !== undefined) {
-      patch.calendarSystem = input.calendarSystem;
-    }
     if (input.timeZone !== undefined) patch.timeZone = input.timeZone;
 
-    let updated: Organization | null;
-    if (input.calendarSystem !== undefined) {
-      if (
-        input.calendarSystem === 'JALALI' &&
-        typeof findFirstUnrenderableBusinessDate !== 'function'
-      ) {
-        throw new Error(
-          'A JALALI calendar update requires the Inventory history contract.',
-        );
-      }
-      const result = await this.repository.updateCalendarSystem(
-        id,
-        patch,
-        findFirstUnrenderableBusinessDate,
-      );
-      if (result.kind === 'not_found') {
-        throw AppException.notFound('Organization', id);
-      }
-      if (result.kind === 'unrenderable_history') {
-        const { minimum, maximum } = JALALI_RENDERABLE_GREGORIAN_RANGE;
-        throw AppException.businessRule(
-          `Cannot change this organization to JALALI while an Inventory business document is dated ${result.businessDate}, outside the supported Jalali range ${minimum} through ${maximum}. Keep the organization GREGORIAN; historical documents were not changed.`,
-          {
-            code: 'organization.calendar.jalali_history_unrenderable',
-            businessDate: result.businessDate,
-            supportedGregorianRange: { minimum, maximum },
-          },
-        );
-      }
-      updated = result.organization;
-    } else {
-      updated = await this.repository.update(id, patch);
-      if (updated === null) throw AppException.notFound('Organization', id);
-    }
+    const updated = await this.repository.update(id, patch);
+    if (updated === null) throw AppException.notFound('Organization', id);
 
     await publishEvent(this.events, {
       type: ORGANIZATION_UPDATED_EVENT,
@@ -465,31 +400,6 @@ export class OrganizationsService {
     const organization = await this.repository.findById(id);
     if (organization === null) throw AppException.notFound('Organization', id);
     return toDateTimeSettings(organization);
-  }
-
-  /**
-   * Organization-owned public contract for an Inventory BusinessDate write.
-   * It carries no permission of its own, but enforces principal/deployment
-   * scope. The callback is awaited while `FOR SHARE` is held and must wrap
-   * the complete Inventory transaction; a stale/missing calendar never runs
-   * it. No Prisma transaction client crosses this boundary.
-   */
-  async withBusinessDateWriteLock<T>(
-    id: string,
-    validatedCalendarSystem: CalendarSystem,
-    work: () => Promise<T>,
-  ): Promise<OrganizationCalendarWriteLockResult<T>> {
-    if (typeof work !== 'function') {
-      throw new Error(
-        'An Inventory BusinessDate write requires a transaction callback.',
-      );
-    }
-    await this.assertOrganizationInScope(id);
-    return this.repository.withBusinessDateWriteLock(
-      id,
-      validatedCalendarSystem,
-      work,
-    );
   }
 
   async requireUsableOrganization(
@@ -656,9 +566,8 @@ export class OrganizationsService {
           code: DEPLOYMENT_ORGANIZATION_BOOTSTRAP_CODE,
           name: DEPLOYMENT_ORGANIZATION_BOOTSTRAP_NAME,
           isActive: true,
-          // C-63: the pinned organization starts on the deployment default;
-          // an operator changes it afterwards through the ordinary edit path.
-          calendarSystem: DEFAULT_DATE_TIME_SETTINGS.calendarSystem,
+          // Calendar display is a fixed Jalali-first MVP policy; the only
+          // organization-specific setting here is the IANA time zone.
           timeZone: DEFAULT_DATE_TIME_SETTINGS.timeZone,
           createdAt: now,
           updatedAt: now,

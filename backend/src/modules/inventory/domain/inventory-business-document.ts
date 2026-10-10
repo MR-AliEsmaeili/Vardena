@@ -658,7 +658,7 @@ export interface InventoryDocumentDto {
   businessDate: string;
   /**
    * C-63 §10: the canonical day and its derived Jalali rendering when
-   * representable. The Jalali member may be null for a Gregorian organization;
+   * representable. Jalali is null outside the supported rendering range;
    * nothing here is persisted, and `businessDate` remains authoritative.
    */
   businessDateCalendar: ApiBusinessDate;
@@ -724,10 +724,8 @@ export function toInventoryDocumentDto(
   includeCost: boolean,
   options: {
     /**
-     * The organization's date/time policy, read ONCE per response (C-63).
-     * Required on purpose: a caller that forgot it would render a Persian
-     * user's document in the wrong calendar, and a default here would hide
-     * exactly that bug.
+     * Organization's IANA time zone, read once per response for derived
+     * Instant renderings. Calendar presentation is fixed Jalali-first in the MVP.
      */
     dateTimeSettings: DateTimeSettings;
     movementValuationState?: InventoryDocumentValuationState;
@@ -744,13 +742,9 @@ export function toInventoryDocumentDto(
       : 'unpriced');
   const accountingEligible = isAccountingEligible(document, valuationState);
   const businessDateCalendar = toApiBusinessDate(document.businessDate);
-  if (
-    businessDateCalendar === null ||
-    (options.dateTimeSettings.calendarSystem === 'JALALI' &&
-      businessDateCalendar.jalali === null)
-  ) {
+  if (businessDateCalendar === null) {
     throw new Error(
-      `Inventory document ${document.id} has a business date outside the supported calendar range.`,
+      `Inventory document ${document.id} has an invalid canonical business date.`,
     );
   }
   const createdAtCalendar = toApiInstant(

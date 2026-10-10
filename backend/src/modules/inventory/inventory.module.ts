@@ -74,10 +74,11 @@ import { InventoryPricingController } from './api/inventory-pricing.controller.j
  * document modules resolve items, units, warehouses and balances through them
  * and never read `inventory.*` tables. Each exposes `requireUsable*` / query
  * methods that carry no permission of their own: the calling service has
- * already performed its own authorization check. The business-document
- * service owns the Jalali-history query and uses Organization's public
- * `withBusinessDateWriteLock` contract for every create/edit transaction; the
- * root composition layer supplies the history reader for the transition.
+ * already performed its own authorization check. BusinessDates remain
+ * canonical Gregorian calendar days in Inventory; the Organization module
+ * supplies the IANA time zone for omitted-day resolution, while Jalali display
+ * is derived at the API/UI boundary. No calendar-transition workflow, history
+ * scan, or cross-module calendar lock is part of this module's contract.
  *
  * Dependencies:
  * - `RbacModule` — `AuthorizationService` and `PermissionRegistry` for the

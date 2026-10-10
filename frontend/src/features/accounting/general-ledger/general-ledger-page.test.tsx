@@ -48,10 +48,7 @@ const accountingApi = await import('@/api/accounting.api');
 
 beforeEach(() => {
   resetDateTimeSettings();
-  setDateTimeSettings({
-    calendarSystem: testOrganization.calendarSystem,
-    timeZone: testOrganization.timeZone,
-  });
+  setDateTimeSettings({ timeZone: testOrganization.timeZone });
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
   vi.mocked(identityApi.getEffectivePermissions).mockResolvedValue({
     userId: testUser.id,
@@ -121,10 +118,7 @@ describe('General Ledger page', () => {
         timeZone: 'Asia/Tehran',
       },
     ]);
-    setDateTimeSettings({
-      calendarSystem: 'JALALI',
-      timeZone: 'Asia/Tehran',
-    });
+    setDateTimeSettings({ timeZone: 'Asia/Tehran' });
     const user = userEvent.setup();
     renderWithProviders(<GeneralLedgerPage />);
 
@@ -161,9 +155,9 @@ describe('General Ledger page', () => {
     // The row carries the same exact value in `debit` and `net`.
     expect(within(table).getAllByText('1,500,000.00')).toHaveLength(2);
     expect(within(table).getByText('1010')).toBeInTheDocument();
-    expect(within(table).getByText('2026-04-01')).toBeInTheDocument();
+    expect(within(table).getByText('1405/01/12')).toBeInTheDocument();
     expect(
-      within(table).getByText('2026-04-01 10:15:00 UTC (UTC+00:00)'),
+      within(table).getByText('1405/01/12 10:15:00 UTC (UTC+00:00)'),
     ).toHaveAttribute('title', generalLedgerRow.postingTimestamp);
   });
 

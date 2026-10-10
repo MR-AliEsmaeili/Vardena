@@ -196,7 +196,7 @@ async function fillMovement(
   await user.selectOptions(screen.getByLabelText(t.inventory.unit), 'unit-1');
   const dateInput = screen.getByLabelText(t.inventory.movementDate);
   await user.clear(dateInput);
-  await user.type(dateInput, overrides.movementDate ?? '2026-04-05');
+  await user.type(dateInput, overrides.movementDate ?? '1405-01-16');
 }
 beforeEach(() => {
   vi.mocked(identityApi.getCurrentUser).mockResolvedValue(testUser);
@@ -240,7 +240,7 @@ describe('Movement form — cost is permission-gated and never required', () => 
       movementType: 'inbound',
       quantity: '5',
       unitId: 'unit-1',
-      movementDate: '2026-04-05',
+      movementDate: { calendar: 'JALALI', value: '1405-01-16' },
     });
     expect('totalCost' in (body ?? {})).toBe(false);
     expect('backdateConfirmed' in (body ?? {})).toBe(false);
@@ -372,7 +372,7 @@ describe('Movement form — the two-step backdate decision (OD-VAL-10/11)', () =
     const user = userEvent.setup();
     renderForm('receipt');
 
-    await fillMovement(user, { movementDate: '2026-03-01' });
+    await fillMovement(user, { movementDate: '1404-12-10' });
     await user.click(
       screen.getByRole('button', { name: t.inventory.submitReceipt }),
     );
@@ -418,7 +418,7 @@ describe('Movement form — the two-step backdate decision (OD-VAL-10/11)', () =
     const [body] =
       vi.mocked(inventoryApi.postInventoryMovement).mock.calls[0] ?? [];
     expect(body).toMatchObject({
-      movementDate: '2026-03-01',
+      movementDate: { calendar: 'JALALI', value: '1404-12-10' },
       backdateConfirmed: true,
       repricing: 'recalculate',
     });
@@ -485,7 +485,7 @@ describe('Movement form — the two-step backdate decision (OD-VAL-10/11)', () =
     const user = userEvent.setup();
     renderForm('receipt');
 
-    await fillMovement(user, { movementDate: '2026-03-01' });
+    await fillMovement(user, { movementDate: '1404-12-10' });
     await user.click(
       screen.getByRole('button', { name: t.inventory.submitReceipt }),
     );
@@ -580,7 +580,7 @@ describe('Movement form — the two-step backdate decision (OD-VAL-10/11)', () =
     const user = userEvent.setup();
     renderForm('receipt');
 
-    await fillMovement(user, { movementDate: '2026-03-01' });
+    await fillMovement(user, { movementDate: '1404-12-10' });
     await user.click(
       screen.getByRole('button', { name: t.inventory.submitReceipt }),
     );
@@ -637,7 +637,7 @@ describe('Movement form — the two-step backdate decision (OD-VAL-10/11)', () =
     const user = userEvent.setup();
     renderForm('receipt');
 
-    await fillMovement(user, { movementDate: '2026-03-01' });
+    await fillMovement(user, { movementDate: '1404-12-10' });
     await user.click(
       screen.getByRole('button', { name: t.inventory.submitReceipt }),
     );

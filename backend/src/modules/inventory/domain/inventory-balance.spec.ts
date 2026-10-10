@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { toBusinessDate } from '../../../kernel/datetime/business-date.js';
 import {
   availableQuantity,
-  isInventoryBusinessDateRenderable,
   resolveAvailableQuantity,
   toInventoryBalanceDto,
 } from './inventory-balance.js';
@@ -51,32 +50,14 @@ describe('availability', () => {
   });
 });
 
-describe('Inventory BusinessDate rendering policy', () => {
-  it('keeps the Jalali rendering envelope inclusive while Gregorian remains general', () => {
-    const day = (value: string) => {
-      const parsed = toBusinessDate(value);
-      if (parsed === null) throw new Error(`Invalid fixture date ${value}`);
-      return parsed;
-    };
-
+describe('Inventory BusinessDate mapping', () => {
+  it('keeps a historical canonical Gregorian day in the balance DTO', () => {
+    const day = toBusinessDate('0600-01-01');
+    if (day === null) throw new Error('Invalid fixture BusinessDate.');
     expect(
-      isInventoryBusinessDateRenderable(day('0621-03-20'), 'GREGORIAN'),
-    ).toBe(true);
-    expect(isInventoryBusinessDateRenderable(day('0621-03-20'), 'JALALI')).toBe(
-      false,
-    );
-    expect(isInventoryBusinessDateRenderable(day('0621-03-21'), 'JALALI')).toBe(
-      true,
-    );
-    expect(isInventoryBusinessDateRenderable(day('3798-12-31'), 'JALALI')).toBe(
-      true,
-    );
-    expect(isInventoryBusinessDateRenderable(day('3799-01-01'), 'JALALI')).toBe(
-      false,
-    );
-    expect(
-      isInventoryBusinessDateRenderable(day('3799-01-01'), 'GREGORIAN'),
-    ).toBe(true);
+      toInventoryBalanceDto(balance({ lastMovementDate: day }), true)
+        .lastMovementDate,
+    ).toBe('0600-01-01');
   });
 });
 

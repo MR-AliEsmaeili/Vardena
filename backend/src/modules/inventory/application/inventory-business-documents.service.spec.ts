@@ -1,5 +1,5 @@
 import { licensingTestDouble } from '../../../../test/support/licensing.js';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   runWithRequestContext,
   type AuthenticatedPrincipal,
@@ -938,7 +938,6 @@ function fakeAccountingPosting(
 
 interface BuildOptions {
   canViewCost?: boolean;
-  calendarSystem?: 'GREGORIAN' | 'JALALI';
   backdated?: boolean;
   repricingFails?: boolean;
   noValuedStock?: boolean;
@@ -1085,9 +1084,6 @@ async function buildFixture(options: BuildOptions = {}) {
     await organizations.createOrganization({
       code: 'ORG-A',
       name: 'Org A',
-      ...(options.calendarSystem === undefined
-        ? {}
-        : { calendarSystem: options.calendarSystem }),
     })
   ).id;
   const otherOrganizationId = (
@@ -1322,16 +1318,17 @@ describe('C-58 runtime — create and read', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * C-63 — the business date is a calendar DAY, the event timestamps are
- * instants, and the two must never be confused (docs/datetime.md §Inventory).
+ * C-63 — a BusinessDate is a calendar DAY; event timestamps remain Instants.
+ * Jalali is the fixed MVP display policy, while Gregorian BusinessDate input
+ * and canonical API values remain valid across the full supported range.
  */
-describe('C-63 business dates and calendars', () => {
+describe('C-63 business dates and Jalali-first rendering', () => {
   let fixture: Fixture;
   beforeEach(async () => {
     fixture = await buildFixture();
   });
 
-  it('accepts a canonical Gregorian day and stores the BusinessDate', async () => {
+  it('accepts a Gregorian BusinessDate and derives its Jalali API rendering', async () => {
     const created = await asActor(() =>
       fixture.service.createDraft({
         organizationId: fixture.organizationId,
@@ -1343,167 +1340,15 @@ describe('C-63 business dates and calendars', () => {
         ],
       }),
     );
+
     expect(created.businessDate).toBe('2026-10-08');
-  });
-
-  it('rejects a stale calendar before starting Inventory writes or publishing events', async () => {
-    const gregorianFixture = await buildFixture({
-      calendarSystem: 'GREGORIAN',
-    });
-    const documentsBefore = gregorianFixture.world.documents.size;
-    const eventsBefore = gregorianFixture.published.length;
-    const calendarWrite = vi
-      .spyOn(gregorianFixture.organizations, 'withBusinessDateWriteLock')
-      .mockImplementation(async () => ({ kind: 'calendar_changed' }));
-
-    await expect(
-      asActor(() =>
-        gregorianFixture.service.createDraft({
-          organizationId: gregorianFixture.organizationId,
-          kind: 'receipt',
-          warehouseId: gregorianFixture.warehouseId,
-          businessDate: '0600-01-01',
-          lines: [
-            {
-              itemId: gregorianFixture.itemId,
-              quantity: '1',
-              unitId: gregorianFixture.unitId,
-            },
-          ],
-        }),
-      ),
-    ).rejects.toMatchObject({ status: 409, code: 'Conflict' });
-    expect(calendarWrite).toHaveBeenCalledTimes(1);
-    expect(gregorianFixture.world.documents.size).toBe(documentsBefore);
-    expect(gregorianFixture.published).toHaveLength(eventsBefore);
-  });
-
-  it('rejects an out-of-range Gregorian day for a Jalali organization before writing', async () => {
-    const jalaliFixture = await buildFixture({ calendarSystem: 'JALALI' });
-    const documentsBefore = jalaliFixture.world.documents.size;
-    const eventsBefore = jalaliFixture.published.length;
-    await expect(
-      asActor(() =>
-        jalaliFixture.service.createDraft({
-          organizationId: jalaliFixture.organizationId,
-          kind: 'receipt',
-          warehouseId: jalaliFixture.warehouseId,
-          businessDate: '0600-01-01',
-          lines: [
-            {
-              itemId: jalaliFixture.itemId,
-              quantity: '1',
-              unitId: jalaliFixture.unitId,
-            },
-          ],
-        }),
-      ),
-    ).rejects.toMatchObject({
-      status: 400,
-      details: [{ field: 'businessDate', code: 'business_date_calendar' }],
-    });
-    expect(jalaliFixture.world.documents.size).toBe(documentsBefore);
-    expect(jalaliFixture.published).toHaveLength(eventsBefore);
-  });
-
-  it('accepts a Gregorian day outside the Jalali envelope for a Gregorian organization', async () => {
-    const gregorianFixture = await buildFixture({
-      calendarSystem: 'GREGORIAN',
-    });
-    const created = await asActor(() =>
-      gregorianFixture.service.createDraft({
-        organizationId: gregorianFixture.organizationId,
-        kind: 'receipt',
-        warehouseId: gregorianFixture.warehouseId,
-        businessDate: '0600-01-01',
-        lines: [
-          {
-            itemId: gregorianFixture.itemId,
-            quantity: '1',
-            unitId: gregorianFixture.unitId,
-          },
-        ],
-      }),
-    );
-
-    expect(created.businessDate).toBe('0600-01-01');
     expect(created.businessDateCalendar).toEqual({
-      gregorian: '0600-01-01',
-      jalali: null,
-    });
-
-    const readBack = await asActor(() =>
-      gregorianFixture.service.getDocument(
-        created.id,
-        gregorianFixture.organizationId,
-      ),
-    );
-    expect(readBack.businessDate).toBe('0600-01-01');
-    expect(readBack.businessDateCalendar).toEqual({
-      gregorian: '0600-01-01',
-      jalali: null,
+      gregorian: '2026-10-08',
+      jalali: '1405-07-16',
     });
   });
 
-  it('rejects a declared Jalali day outside the reversible range before writing', async () => {
-    const jalaliFixture = await buildFixture({ calendarSystem: 'JALALI' });
-    const documentsBefore = jalaliFixture.world.documents.size;
-    const eventsBefore = jalaliFixture.published.length;
-    await expect(
-      asActor(() =>
-        jalaliFixture.service.createDraft({
-          organizationId: jalaliFixture.organizationId,
-          kind: 'receipt',
-          warehouseId: jalaliFixture.warehouseId,
-          businessDate: { calendar: 'JALALI', value: '3177-10-12' },
-          lines: [
-            {
-              itemId: jalaliFixture.itemId,
-              quantity: '1',
-              unitId: jalaliFixture.unitId,
-            },
-          ],
-        }),
-      ),
-    ).rejects.toMatchObject({
-      status: 400,
-      details: [{ field: 'businessDate', code: 'business_date_calendar' }],
-    });
-    expect(jalaliFixture.world.documents.size).toBe(documentsBefore);
-    expect(jalaliFixture.published).toHaveLength(eventsBefore);
-  });
-
-  it('rejects a Gregorian day outside the general API range before writing', async () => {
-    const gregorianFixture = await buildFixture({
-      calendarSystem: 'GREGORIAN',
-    });
-    const documentsBefore = gregorianFixture.world.documents.size;
-    const eventsBefore = gregorianFixture.published.length;
-    await expect(
-      asActor(() =>
-        gregorianFixture.service.createDraft({
-          organizationId: gregorianFixture.organizationId,
-          kind: 'receipt',
-          warehouseId: gregorianFixture.warehouseId,
-          businessDate: '0000-01-01',
-          lines: [
-            {
-              itemId: gregorianFixture.itemId,
-              quantity: '1',
-              unitId: gregorianFixture.unitId,
-            },
-          ],
-        }),
-      ),
-    ).rejects.toMatchObject({
-      status: 400,
-      details: [{ field: 'businessDate', code: 'business_date_calendar' }],
-    });
-    expect(gregorianFixture.world.documents.size).toBe(documentsBefore);
-    expect(gregorianFixture.published).toHaveLength(eventsBefore);
-  });
-
-  it('accepts a DECLARED Jalali day and stores the SAME day as the Gregorian form', async () => {
+  it('normalizes a declared Jalali day to the same canonical Gregorian DATE', async () => {
     const jalali = await asActor(() =>
       fixture.service.createDraft({
         organizationId: fixture.organizationId,
@@ -1526,6 +1371,8 @@ describe('C-63 business dates and calendars', () => {
         ],
       }),
     );
+
+    expect(jalali.businessDate).toBe('2026-10-08');
     expect(jalali.businessDate).toBe(gregorian.businessDate);
     expect(jalali.businessDateCalendar).toEqual({
       gregorian: '2026-10-08',
@@ -1533,29 +1380,34 @@ describe('C-63 business dates and calendars', () => {
     });
   });
 
-  it('keeps the business date distinct from the creation instant (backdated document)', async () => {
+  it('preserves historical Gregorian days outside Jalali rendering range', async () => {
     const created = await asActor(() =>
       fixture.service.createDraft({
         organizationId: fixture.organizationId,
         kind: 'receipt',
         warehouseId: fixture.warehouseId,
-        // Deliberately in the past: dated 1405-07-01, created today.
-        businessDate: { calendar: 'JALALI', value: '1405-07-01' },
+        businessDate: '0600-01-01',
         lines: [
           { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
         ],
       }),
     );
-    expect(created.businessDate).toBe('2026-09-23');
-    expect(created.businessDateCalendar.jalali).toBe('1405-07-01');
-    // The event instant is NOT the business date: creating a document can
-    // never move its business date forward.
-    expect(created.createdAt).not.toBe(created.businessDate);
-    expect(created.createdAtCalendar.instant).toBe(created.createdAt);
-    expect(created.createdAtCalendar.timeZone).toBe('Asia/Tehran');
+
+    expect(created.businessDate).toBe('0600-01-01');
+    expect(created.businessDateCalendar).toEqual({
+      gregorian: '0600-01-01',
+      jalali: null,
+    });
+    const readBack = await asActor(() =>
+      fixture.service.getDocument(created.id, fixture.organizationId),
+    );
+    expect(readBack.businessDate).toBe('0600-01-01');
+    expect(readBack.businessDateCalendar.gregorian).toBe('0600-01-01');
   });
 
-  it('refuses a day that does not exist in the declared calendar', async () => {
+  it('rejects invalid declared Jalali leap-boundary dates before writing', async () => {
+    const documentsBefore = fixture.world.documents.size;
+    const eventsBefore = fixture.published.length;
     await expect(
       asActor(() =>
         fixture.service.createDraft({
@@ -1573,31 +1425,13 @@ describe('C-63 business dates and calendars', () => {
       status: 400,
       details: [{ field: 'businessDate', code: 'business_date_calendar' }],
     });
+    expect(fixture.world.documents.size).toBe(documentsBefore);
+    expect(fixture.published).toHaveLength(eventsBefore);
   });
 
-  it('collapses a legacy ISO instant onto its UTC calendar day', async () => {
-    // OQ-73 migration and compatibility policy preserve the UTC calendar day.
-    // This instant's organization-local rendering is not consulted.
-    const instant = '2026-10-08T13:45:12.000Z';
-    const created = await asActor(() =>
-      fixture.service.createDraft({
-        organizationId: fixture.organizationId,
-        kind: 'receipt',
-        warehouseId: fixture.warehouseId,
-        businessDate: instant,
-        lines: [
-          { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
-        ],
-      }),
-    );
-    expect(created.businessDate).toBe('2026-10-08');
-    expect(created.businessDateCalendar.gregorian).toBe('2026-10-08');
-    expect(created.businessDateCalendar.jalali).toBe('1405-07-16');
-  });
-
-  it('keeps a legacy instant on its UTC day even when the organization day differs', async () => {
-    // 21:30 UTC is 01:00 the next Tehran day, but the compatibility path is
-    // UTC-calendar-day preserving per the approved OQ-73 policy.
+  it('resolves legacy timestamp inputs to their UTC calendar day without changing the Instant semantics', async () => {
+    // 21:30 UTC is 01:00 the following day in Tehran. Compatibility input
+    // still resolves by UTC day; omitted dates instead use the organization TZ.
     const created = await asActor(() =>
       fixture.service.createDraft({
         organizationId: fixture.organizationId,
@@ -1609,12 +1443,15 @@ describe('C-63 business dates and calendars', () => {
         ],
       }),
     );
+
     expect(created.businessDate).toBe('2026-10-08');
-    expect(created.businessDateCalendar.gregorian).toBe('2026-10-08');
     expect(created.businessDateCalendar.jalali).toBe('1405-07-16');
+    expect(created.createdAt).not.toBe(created.businessDate);
+    expect(created.createdAtCalendar.instant).toBe(created.createdAt);
+    expect(created.createdAtCalendar.timeZone).toBe('Asia/Tehran');
   });
 
-  it('refuses a stale calendar before an edit transaction or event is applied', async () => {
+  it('changes only the BusinessDate when a draft is edited to another calendar day', async () => {
     const created = await asActor(() =>
       fixture.service.createDraft({
         organizationId: fixture.organizationId,
@@ -1626,64 +1463,16 @@ describe('C-63 business dates and calendars', () => {
         ],
       }),
     );
-    const before = fixture.world.snapshot();
-    const eventsBefore = fixture.published.length;
-    const calendarWrite = vi
-      .spyOn(fixture.organizations, 'withBusinessDateWriteLock')
-      .mockImplementation(async () => ({ kind: 'calendar_changed' }));
-
-    await expect(
-      asActor(() =>
-        fixture.service.updateDocument(created.id, fixture.organizationId, {
-          description: 'stale edit must not persist',
-        }),
-      ),
-    ).rejects.toMatchObject({ status: 409, code: 'Conflict' });
-
-    expect(calendarWrite).toHaveBeenCalledTimes(1);
-    expect(fixture.world.snapshot()).toEqual(before);
-    expect(fixture.published).toHaveLength(eventsBefore);
-  });
-
-  it('edits a document to another day without touching its event instants', async () => {
-    const calendarWrite = vi.spyOn(
-      fixture.organizations,
-      'withBusinessDateWriteLock',
-    );
-    const created = await asActor(() =>
-      fixture.service.createDraft({
-        organizationId: fixture.organizationId,
-        kind: 'receipt',
-        warehouseId: fixture.warehouseId,
-        businessDate: '2026-10-08',
-        lines: [
-          { itemId: fixture.itemId, quantity: '1', unitId: fixture.unitId },
-        ],
-      }),
-    );
-    expect(calendarWrite).toHaveBeenCalledTimes(1);
-    expect(calendarWrite).toHaveBeenNthCalledWith(
-      1,
-      fixture.organizationId,
-      'JALALI',
-      expect.any(Function),
-    );
-
     const updated = await asActor(() =>
       fixture.service.updateDocument(created.id, fixture.organizationId, {
-        businessDate: { calendar: 'JALALI', value: '1405-07-16' },
+        businessDate: { calendar: 'JALALI', value: '1405-07-17' },
       }),
     );
-    expect(calendarWrite).toHaveBeenCalledTimes(2);
-    expect(calendarWrite).toHaveBeenNthCalledWith(
-      2,
-      fixture.organizationId,
-      'JALALI',
-      expect.any(Function),
-    );
-    // Same day, declared in the other calendar: no change at all.
-    expect(updated.businessDate).toBe(created.businessDate);
+
+    expect(updated.businessDate).toBe('2026-10-09');
+    expect(updated.businessDateCalendar.jalali).toBe('1405-07-17');
     expect(updated.createdAt).toBe(created.createdAt);
+    expect(updated.createdAtCalendar).toEqual(created.createdAtCalendar);
   });
 });
 

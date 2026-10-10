@@ -11,7 +11,6 @@ import {
   formatDateOnlyCanonical,
 } from '@/lib/format';
 import { t } from '@/lib/i18n';
-import { useCalendarSystem } from '@/lib/datetime';
 import { Button } from '@/ui/button';
 import { DataTable } from '@/ui/patterns/data-table';
 import { FormField } from '@/ui/patterns/form-field';
@@ -33,8 +32,8 @@ function buildKardexColumns(): ColumnDef<InventoryKardexRow, unknown>[] {
       accessorKey: 'movementDate',
       header: t.inventory.kardexColumnDate,
       cell: ({ row }) => (
-        // OQ-73: a ledger day is a business DATE — rendered in the org
-        // calendar, never shifted through an instant/timezone.
+        // OQ-73 / ADR-0044: a ledger day is a BusinessDate rendered
+        // Jalali-first, never shifted through an instant/time zone.
         <span
           className="num"
           dir="ltr"
@@ -108,11 +107,7 @@ export function KardexPage() {
   // any filter changes.
   const [snapshot, setSnapshot] = useState<string | undefined>(undefined);
 
-  const calendarSystem = useCalendarSystem();
-  const dateFieldHint =
-    calendarSystem === 'JALALI'
-      ? t.filters.dateFormatHintJalali
-      : t.filters.dateFormatHint;
+  const dateFieldHint = t.filters.dateFormatHintJalali;
 
   const scopeReady =
     organizationId !== null && itemId !== '' && warehouseId !== '';

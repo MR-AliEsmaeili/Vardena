@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -33,6 +34,7 @@ import {
   CreateOrganizationDto,
   ListOrganizationsQueryDto,
   OrganizationResponseDto,
+  UpdateOrganizationDto,
 } from './dto/organization.dto.js';
 
 const PaginatedOrganizationDto = paginatedResponseOf(OrganizationResponseDto);
@@ -127,7 +129,26 @@ export class OrganizationsController {
     return this.organizations.createOrganization({
       code: body.code,
       name: body.name,
-      calendarSystem: body.calendarSystem,
+      timeZone: body.timeZone,
+    });
+  }
+
+  @Patch(':id')
+  @UseGuards(AuthGuard, AuthorizationGuard)
+  @RequirePermission(ORGANIZATION_PERMISSIONS.EDIT)
+  @ApiOperation({ summary: 'Edit an organization.' })
+  @ApiOkResponse({ type: OrganizationResponseDto })
+  @ApiNotFoundResponse({ description: 'Organization does not exist.' })
+  @ApiConflictResponse({ description: 'Organization code already exists.' })
+  @ApiBadRequestResponse({ description: 'Validation failed.' })
+  @DeploymentOrganizationRoot()
+  async update(
+    @Param('id') id: string,
+    @Body() body: UpdateOrganizationDto,
+  ): Promise<OrganizationResponseDto> {
+    return this.organizations.updateOrganization(id, {
+      code: body.code,
+      name: body.name,
       timeZone: body.timeZone,
     });
   }

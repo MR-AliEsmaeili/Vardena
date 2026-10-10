@@ -505,7 +505,7 @@ untouched and remain the only tenancy decisions.
 |---|---|
 | `organization_id`, `financial_area_id` | scope (§4, §5.2) |
 | `code`, `title` | human identifiers, e.g. a Jalali year label or a name; broader text localization remains OQ-02. `code` unique per (organization, area) |
-| `start_date`, `end_date` | inclusive BusinessDates: PostgreSQL `date`, canonical Gregorian. User-facing input/display follows the organization's configured calendar (Jalali by default), per ADR-0042; the fiscal-year range itself remains explicit configured days. |
+| `start_date`, `end_date` | inclusive BusinessDates: PostgreSQL `date`, canonical Gregorian. User-facing input/display is fixed Jalali-first per ADR-0044; valid historical Gregorian days outside the Jalali rendering range remain canonical and are displayed as fallback. The fiscal-year range itself remains explicit configured days. |
 | `status` | `open` \| `closed` \| `sealed` (closed list, code-defined) |
 | `is_active` | lifecycle flag (§6.5) |
 | `prior_year_id` | optional link to the previous year of the same (organization, area) — the year-transition chain |

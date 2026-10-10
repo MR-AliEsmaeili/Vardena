@@ -8,6 +8,7 @@ import {
   instantTimeZoneLabel,
   isInstant,
 } from '@/lib/datetime/instant';
+import { DEFAULT_CALENDAR_SYSTEM } from '@/lib/datetime/calendar';
 import { getDateTimeSettings } from '@/lib/datetime/settings';
 
 /**
@@ -20,15 +21,15 @@ import { getDateTimeSettings } from '@/lib/datetime/settings';
  * pure string transformation that adds grouping separators for readability
  * and preserves the returned value digit for digit.
  *
- * Dates go through the centralized date/time layer (C-63, ADR-0042):
- * `src/lib/datetime/` owns the calendar and the time zone, and the helpers
- * below merely apply the active organization settings. A component never
- * formats a date itself and never converts a calendar — it calls these (or the
- * layer directly, for the API-shaped values in §3 of `docs/datetime.md`).
+ * Dates go through the centralized date/time layer (C-63, ADR-0044):
+ * BusinessDates render in the fixed Jalali-first MVP policy (with canonical
+ * Gregorian fallback outside the converter's range); Instants use the active
+ * organization's IANA time zone and Jalali-first rendering. A component never
+ * formats a date itself or selects a calendar.
  *
- * The settings are read from the module store rather than a hook, so a table
- * cell, a helper and a test all render the same value in the same way. The
- * store is updated once per selected organization by `OrganizationProvider`.
+ * The organization's time zone is read from the module store rather than a
+ * hook, so a table cell, helper and test all use one value. The store is
+ * updated once per selected organization by `OrganizationProvider`.
  */
 
 const DECIMAL_PATTERN = /^[+-]?\d+(\.\d+)?$/;
@@ -63,14 +64,14 @@ export function isNegativeAmount(value: string | null | undefined): boolean {
 }
 
 /**
- * A canonical business day (`YYYY-MM-DD`), rendered in the organization's
- * calendar — Jalali by default (`1405/07/16`), unchanged for a Gregorian
- * organization. A value that is not a canonical day is returned as-is, so an
- * unexpected server value stays visible instead of being mangled.
+ * A canonical business day (`YYYY-MM-DD`), rendered in the fixed Jalali-first
+ * MVP policy (`1405/07/16`). If the valid canonical day is outside the shared
+ * converter's range, preserve and display the Gregorian day. Unexpected values
+ * are also returned unchanged instead of being mangled.
  */
 export function formatDateOnly(value: string | null | undefined): string {
   if (!value) return '';
-  return formatBusinessDay(value, getDateTimeSettings().calendarSystem);
+  return formatBusinessDay(value, DEFAULT_CALENDAR_SYSTEM);
 }
 
 /**
@@ -85,17 +86,15 @@ export function formatDateOnlyCanonical(
 }
 
 /**
- * A business day rendered in the organization's calendar and, for Jalali
- * displays, paired with its canonical Gregorian day for audit reconciliation.
+ * A business day rendered Jalali-first and paired with its canonical
+ * Gregorian day for audit reconciliation when Jalali rendering is available.
+ * An unrenderable historical day is shown once in its canonical Gregorian form.
  */
 export function formatDateOnlyWithCanonical(
   value: string | null | undefined,
 ): string {
   if (!value) return '';
-  return formatBusinessDayWithCanonical(
-    value,
-    getDateTimeSettings().calendarSystem,
-  );
+  return formatBusinessDayWithCanonical(value, DEFAULT_CALENDAR_SYSTEM);
 }
 
 /**
@@ -107,12 +106,7 @@ export function formatDateOnlyWithCanonical(
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return '';
   const settings = getDateTimeSettings();
-  return formatInstant(
-    value,
-    settings.timeZone,
-    undefined,
-    settings.calendarSystem,
-  );
+  return formatInstant(value, settings.timeZone);
 }
 
 /**
@@ -127,11 +121,7 @@ export function formatDateTimeWithZone(
   if (!value) return '';
   if (!isInstant(value)) return value;
   const settings = getDateTimeSettings();
-  const rendered = formatInstantWithSeconds(
-    value,
-    settings.timeZone,
-    settings.calendarSystem,
-  );
+  const rendered = formatInstantWithSeconds(value, settings.timeZone);
   return `${rendered} ${instantTimeZoneLabel(value, settings.timeZone)}`;
 }
 

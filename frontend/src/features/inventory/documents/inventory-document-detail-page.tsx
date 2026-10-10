@@ -5,8 +5,7 @@ import type { InventoryDocument } from '@/api/contracts';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { t } from '@/lib/i18n';
 import {
-  formatDateOnly,
-  formatDateOnlyCanonical,
+  formatDateOnlyWithCanonical,
   formatDateTimeWithZone,
   formatQuantity,
 } from '@/lib/format';
@@ -164,14 +163,10 @@ function DocumentFacts({
         <Fact
           label={t.inventoryDocuments.columnDate}
           value={
-            // C-63 §11 / OQ-73: the business day in the organization calendar
-            // PLUS the canonical Gregorian day, so a Jalali reader and an
-            // auditor see the same document. The API returns the day itself.
+            // Jalali-first with a canonical Gregorian fallback outside the
+            // shared converter range; the underlying API value is still a day.
             <span dir="ltr">
-              {formatDateOnly(document.businessDate)}{' '}
-              <span className="text-slate-500">
-                ({formatDateOnlyCanonical(document.businessDate)})
-              </span>
+              {formatDateOnlyWithCanonical(document.businessDate)}
             </span>
           }
         />

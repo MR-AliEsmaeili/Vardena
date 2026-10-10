@@ -58,10 +58,6 @@ import {
   resolveBusinessDate as resolveBusinessDateInput,
 } from './inventory-posting-support.js';
 import type { BusinessDateInput } from '../../../kernel/datetime/business-date-input.js';
-import {
-  assertInventoryBusinessDateRenderable,
-  withInventoryBusinessDateWriteLock,
-} from './inventory-business-date-write.js';
 
 /**
  * The Periodic Pricing Operation and its reverse (C-59E / C-59E+,
@@ -211,14 +207,14 @@ export class InventoryPricingService {
     const reason = normalizeNote(input.reason);
     // OQ-73: the range end is a BusinessDate (PostgreSQL `date`), resolved
     // once from the caller's Gregorian/Jalali day or legacy instant's UTC day.
-    const { timeZone, calendarSystem } =
-      await this.organizations.getDateTimeSettings(input.organizationId);
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
+    );
     const toDate = resolveBusinessDateInput({
       field: 'toDate',
       value: input.toDate,
       timeZone,
     });
-    assertInventoryBusinessDateRenderable('toDate', toDate, calendarSystem);
     const requestHash = buildRequestHash('pricing_run', {
       warehouseId,
       documentKinds,
@@ -246,13 +242,6 @@ export class InventoryPricingService {
       documentKinds,
     });
     const fromDate = lastRun?.toDate ?? null;
-    if (fromDate !== null) {
-      assertInventoryBusinessDateRenderable(
-        'fromDate',
-        fromDate,
-        calendarSystem,
-      );
-    }
     if (fromDate !== null && toDate <= fromDate) {
       throw AppException.businessRule(
         `This scope\\u2019s last pricing run already covers up to ${fromDate}. A new run must extend it: choose a later end day.`,
@@ -381,142 +370,133 @@ export class InventoryPricingService {
     const outcomes: PricingOutcomeRow[] = [];
 
     try {
-      await withInventoryBusinessDateWriteLock(
-        this.organizations,
-        input.organizationId,
-        calendarSystem,
-        () =>
-          this.pricing.withTransaction(async (tx) => {
-            // The multi-key lock discipline: every key's valuation-state row is
-            // locked in the fixed ascending order BEFORE any key is replayed, so
-            // this batch serializes against every other multi-key writer (and
-            // against itself on retry) instead of deadlocking.
-            await lockValuationStateRowsInOrder(
-              tx,
-              prepared.map((p) => ({ key: p.key, method: p.method })),
-              actorId,
-            );
+      await this.pricing.withTransaction(async (tx) => {
+        // The multi-key lock discipline: every key's valuation-state row is
+        // locked in the fixed ascending order BEFORE any key is replayed, so
+        // this batch serializes against every other multi-key writer (and
+        // against itself on retry) instead of deadlocking.
+        await lockValuationStateRowsInOrder(
+          tx,
+          prepared.map((p) => ({ key: p.key, method: p.method })),
+          actorId,
+        );
 
-            for (const entry of orderedKeys) {
-              const failing = unvaluedInbounds.get(entry.keyId) ?? [];
-              if (failing.length > 0) {
-                // OD-PDP-03: THIS key fails, the batch continues. Nothing is
-                // written on the key; the outcome names the movements.
-                outcomes.push({
-                  organizationId: input.organizationId,
-                  warehouseId: entry.key.warehouseId,
-                  itemId: entry.key.itemId,
-                  outcome: 'failed',
-                  reason: 'inventory.pricing.unvalued_inbound_in_range',
-                  failedMovementIds: failing,
-                  valuationRunId: null,
-                  movementsExamined: 0,
-                  movementsRevalued: 0,
-                });
-                continue;
-              }
-              try {
-                const result = await this.valuation.recalculateKeyWithinBatch(
-                  tx,
-                  {
-                    key: entry.key,
-                    method: entry.method,
-                    runId: entry.runId,
-                    trigger: 'pricing_operation',
-                    fromDate,
-                    reason,
-                    operationKey,
-                    actorId,
-                    at: now,
-                  },
-                );
-                outcomes.push({
-                  organizationId: input.organizationId,
-                  warehouseId: entry.key.warehouseId,
-                  itemId: entry.key.itemId,
-                  outcome: 'priced',
-                  reason: null,
-                  failedMovementIds: [],
-                  valuationRunId: result.run.id,
-                  movementsExamined: result.run.movementsExamined,
-                  movementsRevalued: result.run.movementsRevalued,
-                });
-              } catch (error) {
-                const translated = translateKeyFailure(error);
-                if (translated === null) throw error;
-                outcomes.push({
-                  organizationId: input.organizationId,
-                  warehouseId: entry.key.warehouseId,
-                  itemId: entry.key.itemId,
-                  outcome: 'failed',
-                  reason: translated,
-                  failedMovementIds: [],
-                  valuationRunId: null,
-                  movementsExamined: 0,
-                  movementsRevalued: 0,
-                });
-              }
-            }
-
-            const keysPriced = outcomes.filter(
-              (o) => o.outcome === 'priced',
-            ).length;
-            const keysFailed = outcomes.length - keysPriced;
-            const movementsExamined = outcomes.reduce(
-              (sum, o) => sum + o.movementsExamined,
-              0,
-            );
-            const movementsRevalued = outcomes.reduce(
-              (sum, o) => sum + o.movementsRevalued,
-              0,
-            );
-            await this.pricing.insertRun(tx, {
-              id: pricingRunId,
+        for (const entry of orderedKeys) {
+          const failing = unvaluedInbounds.get(entry.keyId) ?? [];
+          if (failing.length > 0) {
+            // OD-PDP-03: THIS key fails, the batch continues. Nothing is
+            // written on the key; the outcome names the movements.
+            outcomes.push({
               organizationId: input.organizationId,
-              warehouseId,
-              documentKinds,
+              warehouseId: entry.key.warehouseId,
+              itemId: entry.key.itemId,
+              outcome: 'failed',
+              reason: 'inventory.pricing.unvalued_inbound_in_range',
+              failedMovementIds: failing,
+              valuationRunId: null,
+              movementsExamined: 0,
+              movementsRevalued: 0,
+            });
+            continue;
+          }
+          try {
+            const result = await this.valuation.recalculateKeyWithinBatch(tx, {
+              key: entry.key,
+              method: entry.method,
+              runId: entry.runId,
+              trigger: 'pricing_operation',
               fromDate,
-              toDate,
-              kind: 'pricing_operation',
-              reversesRunId: null,
-              keysExamined: outcomes.length,
-              keysPriced,
-              keysFailed,
-              movementsExamined,
-              movementsRevalued,
               reason,
               operationKey,
-              executedBy: actorId,
-              executedAt: now,
-              createdAt: now,
-              updatedAt: now,
-              createdBy: actorId,
+              actorId,
+              at: now,
             });
-            for (const outcome of outcomes) {
-              await this.pricing.insertKeyOutcome(tx, {
-                id: generateId(),
-                pricingRunId,
-                ...outcome,
-                createdAt: now,
-                updatedAt: now,
-                createdBy: actorId,
-              });
-            }
-            // ONE idempotency row for the WHOLE batch, LAST (a lost key race
-            // aborts everything; the winner's row is what a retry replays).
-            await insertOperationRow(tx, {
-              id: generateId(),
+            outcomes.push({
               organizationId: input.organizationId,
-              operationKey,
-              operation: 'pricing_run',
-              requestHash,
-              result: { kind: 'pricing', pricingRunId },
-              createdAt: now,
-              updatedAt: now,
-              createdBy: actorId,
+              warehouseId: entry.key.warehouseId,
+              itemId: entry.key.itemId,
+              outcome: 'priced',
+              reason: null,
+              failedMovementIds: [],
+              valuationRunId: result.run.id,
+              movementsExamined: result.run.movementsExamined,
+              movementsRevalued: result.run.movementsRevalued,
             });
-          }),
-      );
+          } catch (error) {
+            const translated = translateKeyFailure(error);
+            if (translated === null) throw error;
+            outcomes.push({
+              organizationId: input.organizationId,
+              warehouseId: entry.key.warehouseId,
+              itemId: entry.key.itemId,
+              outcome: 'failed',
+              reason: translated,
+              failedMovementIds: [],
+              valuationRunId: null,
+              movementsExamined: 0,
+              movementsRevalued: 0,
+            });
+          }
+        }
+
+        const keysPriced = outcomes.filter(
+          (o) => o.outcome === 'priced',
+        ).length;
+        const keysFailed = outcomes.length - keysPriced;
+        const movementsExamined = outcomes.reduce(
+          (sum, o) => sum + o.movementsExamined,
+          0,
+        );
+        const movementsRevalued = outcomes.reduce(
+          (sum, o) => sum + o.movementsRevalued,
+          0,
+        );
+        await this.pricing.insertRun(tx, {
+          id: pricingRunId,
+          organizationId: input.organizationId,
+          warehouseId,
+          documentKinds,
+          fromDate,
+          toDate,
+          kind: 'pricing_operation',
+          reversesRunId: null,
+          keysExamined: outcomes.length,
+          keysPriced,
+          keysFailed,
+          movementsExamined,
+          movementsRevalued,
+          reason,
+          operationKey,
+          executedBy: actorId,
+          executedAt: now,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: actorId,
+        });
+        for (const outcome of outcomes) {
+          await this.pricing.insertKeyOutcome(tx, {
+            id: generateId(),
+            pricingRunId,
+            ...outcome,
+            createdAt: now,
+            updatedAt: now,
+            createdBy: actorId,
+          });
+        }
+        // ONE idempotency row for the WHOLE batch, LAST (a lost key race
+        // aborts everything; the winner's row is what a retry replays).
+        await insertOperationRow(tx, {
+          id: generateId(),
+          organizationId: input.organizationId,
+          operationKey,
+          operation: 'pricing_run',
+          requestHash,
+          result: { kind: 'pricing', pricingRunId },
+          createdAt: now,
+          updatedAt: now,
+          createdBy: actorId,
+        });
+      });
     } catch (error) {
       if (isUniqueViolation(error)) {
         const raced = await this.replayPricingRun(
@@ -584,19 +564,8 @@ export class InventoryPricingService {
     // Everything decidable without writing: the keys, their branch and the
     // method in force (only used if a state row is missing).
     const now = new Date();
-    const { timeZone, calendarSystem } =
-      await this.organizations.getDateTimeSettings(input.organizationId);
-    if (original.fromDate !== null) {
-      assertInventoryBusinessDateRenderable(
-        'fromDate',
-        original.fromDate,
-        calendarSystem,
-      );
-    }
-    assertInventoryBusinessDateRenderable(
-      'toDate',
-      original.toDate,
-      calendarSystem,
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
     );
     const actorId = getPrincipal()?.userId ?? null;
     const prepared = await Promise.all(
@@ -635,231 +604,225 @@ export class InventoryPricingService {
 
     const compensatingRunId = generateId();
 
-    await withInventoryBusinessDateWriteLock(
-      this.organizations,
-      input.organizationId,
-      calendarSystem,
-      () =>
-        this.pricing.withTransaction(async (tx) => {
-          // Serialize concurrent reversals of the same run on its header row.
-          const locked = await this.pricing.lockRunRow(
-            tx,
-            input.organizationId,
-            input.pricingRunId,
+    await this.pricing.withTransaction(async (tx) => {
+      // Serialize concurrent reversals of the same run on its header row.
+      const locked = await this.pricing.lockRunRow(
+        tx,
+        input.organizationId,
+        input.pricingRunId,
+      );
+      if (locked === null) {
+        throw AppException.notFound(
+          'Inventory pricing run',
+          input.pricingRunId,
+        );
+      }
+      if (locked.reversedByRunId !== null) {
+        throw AppException.conflict(
+          `Pricing run "${input.pricingRunId}" was already reversed by run "${locked.reversedByRunId}".`,
+        );
+      }
+      if (locked.kind !== 'pricing_operation') {
+        throw AppException.businessRule(
+          'Only a Periodic Pricing Operation run can be reversed, not a compensating run.',
+          { code: 'inventory.pricing.reverse_of_reverse' },
+        );
+      }
+
+      // The multi-key lock tier, in the fixed order, BEFORE the guards read.
+      await lockValuationStateRowsInOrder(
+        tx,
+        prepared.map((p) => ({ key: p.key, method: p.method })),
+        actorId,
+      );
+
+      // OD-RVP-02/03/07 guards, each naming its blockers.
+      for (const entry of prepared) {
+        const originalKeyRun = await this.valuation.findRunById(
+          entry.originalRunId,
+        );
+        if (
+          originalKeyRun === null ||
+          originalKeyRun.organizationId !== input.organizationId
+        ) {
+          throw new Error(
+            `Pricing run "${original.id}" records per-key run "${entry.originalRunId}", which does not exist in this organization.`,
           );
-          if (locked === null) {
-            throw AppException.notFound(
-              'Inventory pricing run',
-              input.pricingRunId,
-            );
-          }
-          if (locked.reversedByRunId !== null) {
-            throw AppException.conflict(
-              `Pricing run "${input.pricingRunId}" was already reversed by run "${locked.reversedByRunId}".`,
-            );
-          }
-          if (locked.kind !== 'pricing_operation') {
+        }
+
+        // OD-RVP-02: this run must still be the latest on every key.
+        const newer = await this.valuation.listRunsForKeyAfter({
+          organizationId: entry.key.organizationId,
+          warehouseId: entry.key.warehouseId,
+          itemId: entry.key.itemId,
+          executedAfter: originalKeyRun.executedAt,
+        });
+        if (newer.length > 0) {
+          throw AppException.businessRule(
+            `This pricing run is no longer the latest valuation on key "${entry.key.warehouseId}/${entry.key.itemId}": run "${newer[0]!.id}" was executed after it. Reverse the newer runs first.`,
+            {
+              code: 'inventory.pricing.reverse_not_latest_run',
+              warehouseId: entry.key.warehouseId,
+              itemId: entry.key.itemId,
+              newerRunIds: newer.map((run) => run.id),
+            },
+          );
+        }
+
+        // OD-RVP-03: no affected document may have crossed Accounting Post.
+        const affected = await this.movements.findByValuationRun(
+          entry.originalRunId,
+        );
+        const affectedDocumentIds = [
+          ...new Set(
+            affected
+              .filter(
+                (movement) =>
+                  movement.referenceType ===
+                    INVENTORY_DOCUMENT_REFERENCE_TYPE &&
+                  movement.referenceId !== null,
+              )
+              .map((movement) => movement.referenceId as string),
+          ),
+        ];
+        const affectedHeaders = await this.documents.listHeadersByIds(
+          input.organizationId,
+          affectedDocumentIds,
+        );
+        const blockers = affectedHeaders.filter(
+          (header) =>
+            header.status === 'accounting_posted' ||
+            header.status === 'immutable',
+        );
+        if (blockers.length > 0) {
+          throw AppException.businessRule(
+            `This pricing run valued movements of ${blockers.length} accounting-posted document(s): ${blockers.map((header) => header.id).join(', ')}. Reverse pricing is blocked until those documents are handled by an explicit accounting correction (OQ-27).`,
+            {
+              code: 'inventory.pricing.reverse_accounting_posted',
+              blockedDocumentIds: blockers.map((header) => header.id),
+            },
+          );
+        }
+
+        // OD-RVP-07: a valued transfer SOURCE leg whose paired DESTINATION
+        // key has been valued since — the destination's value may depend on
+        // the source leg this reverse would void.
+        for (const movement of affected) {
+          if (movement.movementType !== 'transfer_out') continue;
+          if (movement.transferId === null) continue;
+          const pair = await this.movements.findByTransferId(
+            movement.transferId,
+          );
+          const destination = pair.find(
+            (leg) => leg.movementType === 'transfer_in',
+          );
+          if (destination === undefined) continue;
+          const destinationRuns = await this.valuation.listRunsForKeyAfter({
+            organizationId: destination.organizationId,
+            warehouseId: destination.warehouseId,
+            itemId: destination.itemId,
+            executedAfter: originalKeyRun.executedAt,
+          });
+          if (destinationRuns.length > 0) {
             throw AppException.businessRule(
-              'Only a Periodic Pricing Operation run can be reversed, not a compensating run.',
-              { code: 'inventory.pricing.reverse_of_reverse' },
+              `This pricing run valued the source leg of transfer "${movement.transferId}", and the destination key "${destination.warehouseId}/${destination.itemId}" has been valued since (run "${destinationRuns[0]!.id}"). Reversing the source now would strand the destination\\u2019s value.`,
+              {
+                code: 'inventory.pricing.reverse_transfer_destination_valued',
+                transferId: movement.transferId,
+                sourceMovementId: movement.id,
+                destinationWarehouseId: destination.warehouseId,
+                destinationItemId: destination.itemId,
+                newerRunIds: destinationRuns.map((run) => run.id),
+              },
             );
           }
+        }
+      }
 
-          // The multi-key lock tier, in the fixed order, BEFORE the guards read.
-          await lockValuationStateRowsInOrder(
-            tx,
-            prepared.map((p) => ({ key: p.key, method: p.method })),
-            actorId,
-          );
+      // All guards passed: compensate every key. Quantities are never
+      // touched (OD-RVP-04); the key is left stale (OD-RVP-06).
+      const outcomes: PricingOutcomeRow[] = [];
+      for (const entry of prepared) {
+        const result = await this.valuation.reverseRunWithin(tx, {
+          key: entry.key,
+          method: entry.method,
+          originalRunId: entry.originalRunId,
+          compensatingRunId: entry.compensatingRunId,
+          reason,
+          at: now,
+          actorId,
+        });
+        outcomes.push({
+          organizationId: input.organizationId,
+          warehouseId: entry.key.warehouseId,
+          itemId: entry.key.itemId,
+          outcome: 'reversed' as const,
+          reason: null,
+          failedMovementIds: [],
+          valuationRunId: entry.compensatingRunId,
+          movementsExamined: result.run.movementsExamined,
+          movementsRevalued: result.movementsUnvalued,
+        });
+      }
 
-          // OD-RVP-02/03/07 guards, each naming its blockers.
-          for (const entry of prepared) {
-            const originalKeyRun = await this.valuation.findRunById(
-              entry.originalRunId,
-            );
-            if (
-              originalKeyRun === null ||
-              originalKeyRun.organizationId !== input.organizationId
-            ) {
-              throw new Error(
-                `Pricing run "${original.id}" records per-key run "${entry.originalRunId}", which does not exist in this organization.`,
-              );
-            }
-
-            // OD-RVP-02: this run must still be the latest on every key.
-            const newer = await this.valuation.listRunsForKeyAfter({
-              organizationId: entry.key.organizationId,
-              warehouseId: entry.key.warehouseId,
-              itemId: entry.key.itemId,
-              executedAfter: originalKeyRun.executedAt,
-            });
-            if (newer.length > 0) {
-              throw AppException.businessRule(
-                `This pricing run is no longer the latest valuation on key "${entry.key.warehouseId}/${entry.key.itemId}": run "${newer[0]!.id}" was executed after it. Reverse the newer runs first.`,
-                {
-                  code: 'inventory.pricing.reverse_not_latest_run',
-                  warehouseId: entry.key.warehouseId,
-                  itemId: entry.key.itemId,
-                  newerRunIds: newer.map((run) => run.id),
-                },
-              );
-            }
-
-            // OD-RVP-03: no affected document may have crossed Accounting Post.
-            const affected = await this.movements.findByValuationRun(
-              entry.originalRunId,
-            );
-            const affectedDocumentIds = [
-              ...new Set(
-                affected
-                  .filter(
-                    (movement) =>
-                      movement.referenceType ===
-                        INVENTORY_DOCUMENT_REFERENCE_TYPE &&
-                      movement.referenceId !== null,
-                  )
-                  .map((movement) => movement.referenceId as string),
-              ),
-            ];
-            const affectedHeaders = await this.documents.listHeadersByIds(
-              input.organizationId,
-              affectedDocumentIds,
-            );
-            const blockers = affectedHeaders.filter(
-              (header) =>
-                header.status === 'accounting_posted' ||
-                header.status === 'immutable',
-            );
-            if (blockers.length > 0) {
-              throw AppException.businessRule(
-                `This pricing run valued movements of ${blockers.length} accounting-posted document(s): ${blockers.map((header) => header.id).join(', ')}. Reverse pricing is blocked until those documents are handled by an explicit accounting correction (OQ-27).`,
-                {
-                  code: 'inventory.pricing.reverse_accounting_posted',
-                  blockedDocumentIds: blockers.map((header) => header.id),
-                },
-              );
-            }
-
-            // OD-RVP-07: a valued transfer SOURCE leg whose paired DESTINATION
-            // key has been valued since — the destination's value may depend on
-            // the source leg this reverse would void.
-            for (const movement of affected) {
-              if (movement.movementType !== 'transfer_out') continue;
-              if (movement.transferId === null) continue;
-              const pair = await this.movements.findByTransferId(
-                movement.transferId,
-              );
-              const destination = pair.find(
-                (leg) => leg.movementType === 'transfer_in',
-              );
-              if (destination === undefined) continue;
-              const destinationRuns = await this.valuation.listRunsForKeyAfter({
-                organizationId: destination.organizationId,
-                warehouseId: destination.warehouseId,
-                itemId: destination.itemId,
-                executedAfter: originalKeyRun.executedAt,
-              });
-              if (destinationRuns.length > 0) {
-                throw AppException.businessRule(
-                  `This pricing run valued the source leg of transfer "${movement.transferId}", and the destination key "${destination.warehouseId}/${destination.itemId}" has been valued since (run "${destinationRuns[0]!.id}"). Reversing the source now would strand the destination\\u2019s value.`,
-                  {
-                    code: 'inventory.pricing.reverse_transfer_destination_valued',
-                    transferId: movement.transferId,
-                    sourceMovementId: movement.id,
-                    destinationWarehouseId: destination.warehouseId,
-                    destinationItemId: destination.itemId,
-                    newerRunIds: destinationRuns.map((run) => run.id),
-                  },
-                );
-              }
-            }
-          }
-
-          // All guards passed: compensate every key. Quantities are never
-          // touched (OD-RVP-04); the key is left stale (OD-RVP-06).
-          const outcomes: PricingOutcomeRow[] = [];
-          for (const entry of prepared) {
-            const result = await this.valuation.reverseRunWithin(tx, {
-              key: entry.key,
-              method: entry.method,
-              originalRunId: entry.originalRunId,
-              compensatingRunId: entry.compensatingRunId,
-              reason,
-              at: now,
-              actorId,
-            });
-            outcomes.push({
-              organizationId: input.organizationId,
-              warehouseId: entry.key.warehouseId,
-              itemId: entry.key.itemId,
-              outcome: 'reversed' as const,
-              reason: null,
-              failedMovementIds: [],
-              valuationRunId: entry.compensatingRunId,
-              movementsExamined: result.run.movementsExamined,
-              movementsRevalued: result.movementsUnvalued,
-            });
-          }
-
-          const movementsExamined = outcomes.reduce(
-            (sum, o) => sum + o.movementsExamined,
-            0,
-          );
-          const movementsRevalued = outcomes.reduce(
-            (sum, o) => sum + o.movementsRevalued,
-            0,
-          );
-          await this.pricing.insertRun(tx, {
-            id: compensatingRunId,
-            organizationId: input.organizationId,
-            warehouseId: original.warehouseId,
-            documentKinds: [...original.documentKinds],
-            fromDate: original.fromDate,
-            toDate: original.toDate,
-            kind: 'reverse_pricing',
-            reversesRunId: original.id,
-            keysExamined: outcomes.length,
-            keysPriced: 0,
-            keysFailed: 0,
-            movementsExamined,
-            movementsRevalued,
-            reason,
-            operationKey,
-            executedBy: actorId,
-            executedAt: now,
-            createdAt: now,
-            updatedAt: now,
-            createdBy: actorId,
-          });
-          for (const outcome of outcomes) {
-            await this.pricing.insertKeyOutcome(tx, {
-              id: generateId(),
-              pricingRunId: compensatingRunId,
-              ...outcome,
-              createdAt: now,
-              updatedAt: now,
-              createdBy: actorId,
-            });
-          }
-          // OD-RVP-05: the original is MARKED, never deleted.
-          await this.pricing.markRunReversed(tx, original.id, {
-            byRunId: compensatingRunId,
-            at: now,
-            by: actorId,
-          });
-          await insertOperationRow(tx, {
-            id: generateId(),
-            organizationId: input.organizationId,
-            operationKey,
-            operation: 'reverse_pricing',
-            requestHash,
-            result: { kind: 'pricing', pricingRunId: compensatingRunId },
-            createdAt: now,
-            updatedAt: now,
-            createdBy: actorId,
-          });
-        }),
-    );
+      const movementsExamined = outcomes.reduce(
+        (sum, o) => sum + o.movementsExamined,
+        0,
+      );
+      const movementsRevalued = outcomes.reduce(
+        (sum, o) => sum + o.movementsRevalued,
+        0,
+      );
+      await this.pricing.insertRun(tx, {
+        id: compensatingRunId,
+        organizationId: input.organizationId,
+        warehouseId: original.warehouseId,
+        documentKinds: [...original.documentKinds],
+        fromDate: original.fromDate,
+        toDate: original.toDate,
+        kind: 'reverse_pricing',
+        reversesRunId: original.id,
+        keysExamined: outcomes.length,
+        keysPriced: 0,
+        keysFailed: 0,
+        movementsExamined,
+        movementsRevalued,
+        reason,
+        operationKey,
+        executedBy: actorId,
+        executedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: actorId,
+      });
+      for (const outcome of outcomes) {
+        await this.pricing.insertKeyOutcome(tx, {
+          id: generateId(),
+          pricingRunId: compensatingRunId,
+          ...outcome,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: actorId,
+        });
+      }
+      // OD-RVP-05: the original is MARKED, never deleted.
+      await this.pricing.markRunReversed(tx, original.id, {
+        byRunId: compensatingRunId,
+        at: now,
+        by: actorId,
+      });
+      await insertOperationRow(tx, {
+        id: generateId(),
+        organizationId: input.organizationId,
+        operationKey,
+        operation: 'reverse_pricing',
+        requestHash,
+        result: { kind: 'pricing', pricingRunId: compensatingRunId },
+        createdAt: now,
+        updatedAt: now,
+        createdBy: actorId,
+      });
+    });
 
     const run = await this.mustFindRun(input.organizationId, compensatingRunId);
     await this.publishRunEvent(INVENTORY_PRICING_RUN_REVERSED_EVENT, run);

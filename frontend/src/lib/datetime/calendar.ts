@@ -20,9 +20,8 @@ import {
  * The calendar NAMES mirror the backend kernel (`kernel/datetime/
  * calendar-system.ts`): `GREGORIAN` (identity) and `JALALI` (Sunni-less
  * astronomical Jalali / Solar Hijri, the civil calendar of Iran). The
- * deployment default is JALALI (docs/datetime.md), but nothing here hard-codes
- * it for a given screen: the active calendar comes from the organization's
- * date/time settings.
+ * MVP presentation is fixed to JALALI (ADR-0044); Gregorian remains part of
+ * the closed API vocabulary and canonical-day model, not a user setting.
  */
 
 export const CALENDAR_SYSTEMS = ['GREGORIAN', 'JALALI'] as const;

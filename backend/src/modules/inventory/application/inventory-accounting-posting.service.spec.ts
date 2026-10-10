@@ -704,10 +704,7 @@ function seedReceipt(world: FakeWorld, options: SeedOptions = {}) {
   return { documentId, movementId, warehouseId };
 }
 
-function buildService(
-  world: FakeWorld,
-  calendarSystem: 'GREGORIAN' | 'JALALI' = 'GREGORIAN',
-) {
+function buildService(world: FakeWorld) {
   return new InventoryAccountingPostingService(
     fakeDocumentsRepository(world),
     fakeMovementsRepository(world),
@@ -720,20 +717,7 @@ function buildService(
     } as unknown as InventoryValuationService,
     {
       assertOrganizationInScope: async () => undefined,
-      getDateTimeSettings: async () => ({
-        calendarSystem,
-        timeZone: 'UTC',
-      }),
-      withBusinessDateWriteLock: async (
-        _organizationId: string,
-        validatedCalendarSystem: 'GREGORIAN' | 'JALALI',
-        work: () => Promise<unknown>,
-      ) => {
-        if (validatedCalendarSystem !== calendarSystem) {
-          return { kind: 'calendar_changed' };
-        }
-        return { kind: 'completed', value: await work() };
-      },
+      getDateTimeSettings: async () => ({ timeZone: 'UTC' }),
     } as unknown as OrganizationsService,
     {
       requireAllPermissions: async () => undefined,
@@ -849,25 +833,22 @@ async function expectBusinessRule(
 // ---- idempotency ------------------------------------------------------------
 
 describe('C-62 OD-06 idempotency (hermetic)', () => {
-  it('refuses to snapshot an unrenderable document date in JALALI before writing a durable intent', async () => {
+  it('keeps a historical canonical Gregorian date in the durable accounting snapshot', async () => {
     const world = createWorld();
-    const service = buildService(world, 'JALALI');
+    const service = buildService(world);
     const { documentId } = seedReceipt(world);
-    documentOf(world, documentId).businessDate = toBusinessDate('4000-01-01')!;
+    documentOf(world, documentId).businessDate = toBusinessDate('0600-01-01')!;
 
-    await expect(
-      asUser(() =>
-        service.requestAccountingPosting(documentId, ORG, {
-          operationKey: 'jalali-unrenderable-posting',
-        }),
-      ),
-    ).rejects.toMatchObject({
-      code: 'ValidationFailed',
-      details: [{ field: 'businessDate', code: 'business_date_calendar' }],
-    });
-    expect(world.operations).toHaveLength(0);
-    expect(world.snapshots.size).toBe(0);
-    expect(world.accountingCalls).toHaveLength(0);
+    await asUser(() =>
+      service.requestAccountingPosting(documentId, ORG, {
+        operationKey: 'historical-accounting-date',
+      }),
+    );
+
+    const operation = operationOf(world, documentId);
+    const snapshot = world.snapshots.get(operation.id);
+    expect(snapshot?.documentDate).toBe('0600-01-01');
+    expect(world.accountingCalls).toHaveLength(1);
   });
 
   it('replays the same key + same request instead of a second effect', async () => {

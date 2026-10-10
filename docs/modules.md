@@ -134,19 +134,22 @@ Disable|ResetPassword`. There is no delete permission because there is no
 
 ## Organization (implemented — structure & party master data)
 
-**C-63 date/time policy (ADR-0042).** The organization row is also the single
-home of the deployment's date/time DISPLAY policy: `calendar_system`
-(`GREGORIAN` | `JALALI`, default `JALALI`) and `time_zone` (IANA id, default
-`Asia/Tehran`, numeric offsets rejected). They decide how BusinessDates are
-shown/authored and how Instants render (convert to the IANA zone first, then
-render the local day in the configured calendar) — never what is stored (Instants
-stay UTC, BusinessDates stay canonical Gregorian days). Shared backend/frontend
-Jalali conversion uses the reversible Gregorian range `0621-03-21` through
-`3798-12-31`; upstream-convertible dates beyond it are not API-renderable and
-must be refused at the declared-Jalali input boundary. Cross-module readers call
-`OrganizationsService.getDateTimeSettings(organizationId)` once per response;
-the contract is `docs/datetime.md`. No second settings store exists. A
-GREGORIAN → JALALI update follows accepted [ADR-0043](./adr/0043-acyclic-organization-inventory-calendar-transition.md): root composition calls Organization's calendar-update contract, which holds `FOR UPDATE` while the Inventory-owned, organization-scoped history reader checks every stored Inventory BusinessDate against the inclusive renderable range; a failure aborts the Organization update, and history is never rewritten. Each explicit calendar-system update takes the same Organization row lock; JALALI → GREGORIAN remains unrestricted by history. Every Inventory write that persists a BusinessDate takes `FOR SHARE`, rechecks the captured calendar, and awaits its complete local transaction before releasing the lock. `FOR SHARE` is required because calendar changes are non-key updates; `FOR KEY SHARE` would not serialize them. The history read, Organization update, and Inventory write are separate module operations/transactions, not a shared cross-module transaction; live PostgreSQL tests cover both lock orderings. READ COMMITTED, independent transaction timeouts, pool limits, and safe recovery when an API error follows a committed Inventory write are specified in ADR-0043.
+**C-63 date/time policy (ADR-0042 foundation; ADR-0044 MVP display policy).**
+The Organization row owns only `time_zone` (valid IANA id, default
+`Asia/Tehran`; numeric offsets rejected) as mutable date/time configuration.
+`calendar_system` remains a legacy persisted column and is ignored; the
+read-only response property is the constant `JALALI` for compatibility, while
+create/update DTOs reject it. BusinessDates remain canonical Gregorian days in
+PostgreSQL `date`; Instants remain UTC `timestamptz`. The UI is fixed
+Jalali-first, with canonical Gregorian fallback for a valid day outside the
+converter envelope (`0621-03-21` through `3798-12-31`). External Gregorian API
+and integration contracts remain valid. Cross-module readers use the public
+`OrganizationsService.getDateTimeSettings(organizationId)` time-zone contract;
+the full date/time rules are in [`docs/datetime.md`](./datetime.md). There is no
+organization or Inventory calendar setting, calendar-transition endpoint,
+history scan, or calendar-specific Inventory lock/gate. Organization and
+Inventory retain their ordinary module ownership, transactions, and
+concurrency rules; ADR-0043 is superseded by ADR-0044.
 
 - **Status:** implemented in Task 6 for the organizational-structure and party half
   (ADR-0020, ADR-0021). The _configuration_ half — fiscal calendar, numbering series,
@@ -755,41 +758,42 @@ operation_key)` + `request_hash` identity of the `document_finalize` kind
 
 ## Inventory (v1 core — implemented)
 
-**C-63 date/time contract (ADR-0042 Accepted).** A business document's
-`businessDate` is a BusinessDate, persisted as PostgreSQL `date` (OQ-73, resolved
-— migration `20261011000000_business_date_persistence`). Input accepts canonical
-Gregorian `YYYY-MM-DD`, a declared Jalali day `{ calendar, value }`, or the
-owner-approved legacy ISO-instant compatibility form resolved to the instant's
-**UTC calendar day** (not the organization's display-zone day). User-facing day
-input/display follows the organization's configured calendar (Jalali by default).
-`createdAt`/`updatedAt` remain event Instants (`timestamptz`); format them by
-converting to the organization's IANA zone first and then applying its calendar.
-A backdated document keeps its BusinessDate. Day filters (`dateFrom`/`dateTo`)
-are true `date` comparisons on inclusive bounds — see `docs/datetime.md` §3–§7.
+**C-63 date/time contract (ADR-0042 foundation; ADR-0044 display policy).**
+A business document's `businessDate` is a BusinessDate, persisted as PostgreSQL
+`date` (OQ-73, resolved — migration
+`20261011000000_business_date_persistence`). The API accepts canonical
+Gregorian `YYYY-MM-DD`, a declared Jalali day `{ calendar, value }`, and the
+legacy ISO-instant compatibility form resolved to its **UTC calendar day** at
+the explicit boundary. User-facing day input/display is fixed Jalali-first;
+valid dates outside the Jalali converter range remain canonical Gregorian facts
+and have a nullable Jalali rendering. `createdAt`/`updatedAt` remain event
+Instants (`timestamptz`); render them in the organization's IANA zone, then
+Jalali-first. A backdated document keeps its BusinessDate. Day filters
+(`dateFrom`/`dateTo`) are true `date` comparisons on inclusive bounds — see
+`docs/datetime.md` §3–§7.
 
 **Inventory validity windows (Owner decision, 2026-10-09).** Global unit
 conversions, item-specific unit conversions, and item valuation methods have
 BusinessDate `valid_from`/`valid_to` bounds with half-open `[valid_from,
 valid_to)` semantics and a nullable open end; they are not event Instants. The
-new conversion migration is `20261012000000_inventory_business_date_validity_windows`.
-Its preflight rejects BusinessDates outside the shared reversible range
-`0621-03-21` through `3798-12-31` only for Jalali organizations. Gregorian
-organizations retain the general `0001-01-01` through `9999-12-31` API range;
-for an Inventory document outside the Jalali envelope, the derived
-`businessDateCalendar.jalali` is null. Verify the kernel/frontend edge tests
-alongside it. Its aggregate-only target-data report is
+conversion migration is `20261012000000_inventory_business_date_validity_windows`.
+Its SQL still contains the superseded preflight keyed by the legacy
+`organization.calendar_system`, including the Jalali rendering bound; that
+conflicts with ADR-0044 and must be resolved only after shared-environment
+application/checksum status is established. This migration remains an explicit
+deployment blocker. The aggregate-only target-data report is
 `backend/prisma/rehearsal/business-date-validity-windows/audit.sql`; run it
-read-only after migration 110 and before migration 120, then retain the counts
-and migration NOTICE with a rehearsal against a fresh, restorable target-like
-copy. Migration 120 repeats its preflight under `SHARE ROW EXCLUSIVE` locks on
+read-only after migration 110 and before migration 120, retain the counts and
+migration NOTICE, and rehearse against a fresh, restorable target-like copy.
+Migration 120 repeats its current preflight under `SHARE ROW EXCLUSIVE` locks on
 all source tables, holds them through conversion/commit, and aborts if the
 10-second lock timeout is exceeded. Existing writes drain before preflight;
 subsequent writes wait, and `ALTER COLUMN TYPE` may also block reads, so an
 authorized maintenance window is required. CI's two-session rehearsal verifies
-both the pre-existing-writer and waiting-writer cases. CI fixtures and code
-inspection do not establish production/customer data safety. Resolve preflight
-failures only through approved repairs and apply schema changes through Prisma
-migrations.
+both the pre-existing-writer and waiting-writer cases only against disposable
+synthetic data; it does not establish shared/production safety. Resolve any
+preflight failures only through approved repairs and apply schema changes
+through reviewed Prisma migrations.
 
 - **Status (corrected 2026-09-26 — `repository-documentation-audit.md`):**
   **both halves are implemented.** Master data (Task 6): schema `inventory` —

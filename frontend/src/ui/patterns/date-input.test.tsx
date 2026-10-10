@@ -8,18 +8,14 @@ beforeEach(() => {
   resetDateTimeSettings();
 });
 
-/**
- * The shared calendar-aware date field (C-63 §17).
- *
- * The rules under test are the ones a screen depends on: the field emits the
- * canonical Gregorian day whatever calendar it displays, a Jalali organization
- * gets the Jalali rendering, a half-typed day never overwrites the form value,
- * and Persian digits are accepted.
- */
 describe('DateInput', () => {
-  it('uses the organization calendar, and emits the canonical day', async () => {
+  it('always uses Jalali for supported days and emits the canonical day', async () => {
     const user = userEvent.setup();
-    setDateTimeSettings({ calendarSystem: 'JALALI', timeZone: 'Asia/Tehran' });
+    // A legacy Gregorian response value must not switch the fixed UI policy.
+    setDateTimeSettings({
+      calendarSystem: 'GREGORIAN',
+      timeZone: 'Asia/Tehran',
+    });
     const onValueChange = vi.fn();
     render(
       <DateInput id="day" value="2026-10-08" onValueChange={onValueChange} />,
@@ -36,7 +32,6 @@ describe('DateInput', () => {
 
   it('keeps the form value while the Jalali day is incomplete', async () => {
     const user = userEvent.setup();
-    setDateTimeSettings({ calendarSystem: 'JALALI', timeZone: 'Asia/Tehran' });
     const onValueChange = vi.fn();
     render(
       <DateInput id="day" value="2026-10-08" onValueChange={onValueChange} />,
@@ -44,70 +39,31 @@ describe('DateInput', () => {
 
     const field = screen.getByRole('textbox');
     await user.clear(field);
-    // A cleared field is a cleared day, which the form must see.
     expect(onValueChange).toHaveBeenLastCalledWith('');
 
-    // …but a half-typed day must not overwrite the form value.
     await user.type(field, '1405/07');
     expect(onValueChange).toHaveBeenLastCalledWith('');
   });
 
-  it('keeps the native date input for a Gregorian organization', () => {
-    setDateTimeSettings({ calendarSystem: 'GREGORIAN', timeZone: 'UTC' });
+  it('automatically uses Gregorian input for an unrenderable historical day', () => {
     const onValueChange = vi.fn();
     render(
-      <DateInput id="day" value="2026-10-08" onValueChange={onValueChange} />,
+      <DateInput id="day" value="0600-01-01" onValueChange={onValueChange} />,
     );
 
-    const field = screen.getByDisplayValue('2026-10-08');
+    const field = screen.getByDisplayValue('0600-01-01');
     expect(field).toHaveAttribute('type', 'date');
     expect(field).toHaveAttribute('data-calendar', 'GREGORIAN');
+    expect(field).toHaveAttribute('data-calendar-fallback', 'true');
 
-    // A native date input reports its value as a `YYYY-MM-DD` string.
-    fireEvent.change(field, { target: { value: '2026-10-09' } });
-    expect(onValueChange).toHaveBeenLastCalledWith('2026-10-09');
+    fireEvent.change(field, { target: { value: '0600-01-02' } });
+    expect(onValueChange).toHaveBeenLastCalledWith('0600-01-02');
   });
 
-  it('discards a partial Jalali draft when the active calendar changes', () => {
-    const onValueChange = vi.fn();
-    const { rerender } = render(
-      <DateInput
-        id="day"
-        calendar="JALALI"
-        value="2026-10-08"
-        onValueChange={onValueChange}
-      />,
-    );
-
-    const jalaliField = screen.getByRole('textbox');
-    fireEvent.change(jalaliField, { target: { value: '1405/07' } });
-    expect(jalaliField).toHaveValue('1405/07');
-
-    rerender(
-      <DateInput
-        id="day"
-        calendar="GREGORIAN"
-        value="2026-10-08"
-        onValueChange={onValueChange}
-      />,
-    );
-    const gregorianField = screen.getByDisplayValue('2026-10-08');
-    fireEvent.change(gregorianField, { target: { value: '2026-10-09' } });
-
-    rerender(
-      <DateInput
-        id="day"
-        calendar="JALALI"
-        value="2026-10-09"
-        onValueChange={onValueChange}
-      />,
-    );
-    expect(screen.getByRole('textbox')).toHaveValue('1405/07/17');
-  });
-
-  it('renders an empty day as empty in both calendars', () => {
-    setDateTimeSettings({ calendarSystem: 'JALALI', timeZone: 'Asia/Tehran' });
+  it('renders an empty day as an empty Jalali input', () => {
     render(<DateInput id="day" value="" onValueChange={() => {}} />);
-    expect(screen.getByRole('textbox')).toHaveValue('');
+    const field = screen.getByRole('textbox');
+    expect(field).toHaveValue('');
+    expect(field).toHaveAttribute('data-calendar', 'JALALI');
   });
 });

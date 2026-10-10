@@ -12,11 +12,6 @@ import {
   businessDateFromInstant,
   type BusinessDate,
 } from '../../../kernel/datetime/business-date.js';
-import type { CalendarSystem } from '../../../kernel/datetime/calendar-system.js';
-import {
-  assertInventoryBusinessDateRenderable,
-  INVENTORY_BUSINESS_DATE_CALENDAR_CHANGED_CODE,
-} from './inventory-business-date-write.js';
 import {
   toOffset,
   toPaginatedResult,
@@ -37,7 +32,6 @@ import type {
   InventoryDocumentUpdate,
 } from '../data/inventory-business-document-rows.js';
 import { InsufficientStockError } from '../data/inventory-posting-errors.js';
-import { OrganizationCalendarChangedDuringDocumentWriteError } from '../data/inventory-business-document-errors.js';
 import { resolveEffectivePolicy } from '../domain/negative-stock-policy.js';
 import { movementSign, reversalTypeFor } from '../domain/movement-type.js';
 import { subtractDecimalStrings } from '../domain/quantities.js';
@@ -353,18 +347,6 @@ export class InventoryBusinessDocumentsService {
     return this.toDto(await this.mustFind(id, organizationId));
   }
 
-  /**
-   * Inventory-owned public history contract used by Organization's guarded
-   * GREGORIAN → JALALI transition. The caller authorizes the transition; this
-   * read still enforces the caller's organization scope.
-   */
-  async findFirstUnrenderableBusinessDate(
-    organizationId: string,
-  ): Promise<BusinessDate | null> {
-    await this.organizations.assertOrganizationInScope(organizationId);
-    return this.documents.findFirstUnrenderableBusinessDate(organizationId);
-  }
-
   // ---- create --------------------------------------------------------------
 
   async createDraft(input: CreateDocumentInput): Promise<InventoryDocumentDto> {
@@ -374,8 +356,7 @@ export class InventoryBusinessDocumentsService {
     const kind = requireKind(input.kind);
     await this.organizations.requireUsableOrganization(input.organizationId);
 
-    const resolvedDate = await this.resolveBusinessDate(input);
-    const { businessDate, calendarSystem } = resolvedDate;
+    const businessDate = await this.resolveBusinessDate(input);
     const header = this.normalizeHeader(kind, input);
     if (header.cost !== null) {
       await this.authorization.requireAllPermissions([
@@ -403,29 +384,24 @@ export class InventoryBusinessDocumentsService {
     const actorId = getPrincipal()?.userId ?? null;
     let document: InventoryBusinessDocument;
     try {
-      document = await this.withBusinessDateWriteLock(
-        input.organizationId,
-        calendarSystem,
-        () =>
-          this.documents.createDocument({
-            header: {
-              id: generateId(),
-              organizationId: input.organizationId,
-              kind,
-              businessDate,
-              warehouseId: header.warehouseId,
-              sourceWarehouseId: header.sourceWarehouseId,
-              destinationWarehouseId: header.destinationWarehouseId,
-              receiptCost: header.cost,
-              status: 'draft',
-              description: header.description,
-              reference: header.reference,
-              actorId,
-              at: now,
-            },
-            lines: lines.map(toLineCreate),
-          }),
-      );
+      document = await this.documents.createDocument({
+        header: {
+          id: generateId(),
+          organizationId: input.organizationId,
+          kind,
+          businessDate,
+          warehouseId: header.warehouseId,
+          sourceWarehouseId: header.sourceWarehouseId,
+          destinationWarehouseId: header.destinationWarehouseId,
+          receiptCost: header.cost,
+          status: 'draft',
+          description: header.description,
+          reference: header.reference,
+          actorId,
+          at: now,
+        },
+        lines: lines.map(toLineCreate),
+      });
     } catch (error) {
       throw this.translatePostingError(error, header);
     }
@@ -489,19 +465,13 @@ export class InventoryBusinessDocumentsService {
     rethrowDomain(() => assertEditable(current));
 
     // 2. VALIDATE
-    const resolvedDate =
+    const businessDate =
       input.businessDate === undefined
-        ? {
-            businessDate: current.businessDate,
-            calendarSystem: (
-              await this.organizations.getDateTimeSettings(organizationId)
-            ).calendarSystem,
-          }
+        ? current.businessDate
         : await this.resolveBusinessDate({
             organizationId,
             businessDate: input.businessDate,
           });
-    const { businessDate, calendarSystem } = resolvedDate;
     const header = this.normalizeHeader(current.kind, {
       warehouseId:
         input.warehouseId === undefined
@@ -654,72 +624,70 @@ export class InventoryBusinessDocumentsService {
       'inventory.document.change.lines',
     );
     try {
-      await this.withBusinessDateWriteLock(organizationId, calendarSystem, () =>
-        this.documents.withTransaction(async (tx) => {
-          if (assessment.requiresLedgerReconciliation) {
-            await this.reverseDocumentEffect(tx, current, {
-              keyPrefix: `invdoc:${current.id}:e:${editId}:rev`,
-              actorId,
-              at: now,
-            });
-          }
-          if (linesChanged) {
-            await this.documents.replaceLines(
-              tx,
-              { id: current.id, organizationId, actorId, at: now },
-              resolved.map(toLineCreate),
-            );
-          }
-          await this.documents.updateHeader(tx, current.id, {
-            businessDate,
-            warehouseId: header.warehouseId,
-            sourceWarehouseId: header.sourceWarehouseId,
-            destinationWarehouseId: header.destinationWarehouseId,
-            receiptCost: header.cost,
-            description: header.description,
-            reference: header.reference,
-            ...(assessment.classification === 'material'
-              ? {
-                  // Same reasoning as the finalize path: when a TRANSFER's
-                  // effect is re-posted, the re-post itself (coupled replay or
-                  // incremental pair) leaves both keys consistent, so the
-                  // "did not reprice" flag would be a false alarm.
-                  valuationStale:
-                    current.kind === 'transfer' &&
-                    assessment.requiresLedgerReconciliation
-                      ? false
-                      : repricing === 'skip',
-                }
-              : {}),
-            updatedAt: now,
-            updatedBy: actorId,
+      await this.documents.withTransaction(async (tx) => {
+        if (assessment.requiresLedgerReconciliation) {
+          await this.reverseDocumentEffect(tx, current, {
+            keyPrefix: `invdoc:${current.id}:e:${editId}:rev`,
+            actorId,
+            at: now,
           });
-          if (assessment.requiresLedgerReconciliation) {
-            const reposted = await this.postDocumentEffect(tx, {
-              documentId: current.id,
-              organizationId,
-              kind: current.kind,
-              header,
-              businessDate,
-              lines: resolved,
-              keyPrefix: `invdoc:${current.id}:e:${editId}`,
-              actorId,
-              at: now,
-              // The C-58 debt (recorded, not redesigned here): the edit endpoint
-              // still carries ONE acknowledgement flag for both the side-effect
-              // confirmation and the backdate confirmation.
-              backdateConfirmed: input.acknowledgeSideEffects === true,
-            });
-            movementIds.push(...reposted);
-          }
-          // 6. The repricing the operator explicitly asked for, replayed on
-          // the facts this very transaction just wrote. A failure here rolls
-          // the reversal, the re-post and the header change back with it:
-          // the command is either fully applied and repriced, or not applied
-          // at all.
-          valuationRuns = await this.repriceWithin(tx, repricingPlans);
-        }),
-      );
+        }
+        if (linesChanged) {
+          await this.documents.replaceLines(
+            tx,
+            { id: current.id, organizationId, actorId, at: now },
+            resolved.map(toLineCreate),
+          );
+        }
+        await this.documents.updateHeader(tx, current.id, {
+          businessDate,
+          warehouseId: header.warehouseId,
+          sourceWarehouseId: header.sourceWarehouseId,
+          destinationWarehouseId: header.destinationWarehouseId,
+          receiptCost: header.cost,
+          description: header.description,
+          reference: header.reference,
+          ...(assessment.classification === 'material'
+            ? {
+                // Same reasoning as the finalize path: when a TRANSFER's
+                // effect is re-posted, the re-post itself (coupled replay or
+                // incremental pair) leaves both keys consistent, so the
+                // "did not reprice" flag would be a false alarm.
+                valuationStale:
+                  current.kind === 'transfer' &&
+                  assessment.requiresLedgerReconciliation
+                    ? false
+                    : repricing === 'skip',
+              }
+            : {}),
+          updatedAt: now,
+          updatedBy: actorId,
+        });
+        if (assessment.requiresLedgerReconciliation) {
+          const reposted = await this.postDocumentEffect(tx, {
+            documentId: current.id,
+            organizationId,
+            kind: current.kind,
+            header,
+            businessDate,
+            lines: resolved,
+            keyPrefix: `invdoc:${current.id}:e:${editId}`,
+            actorId,
+            at: now,
+            // The C-58 debt (recorded, not redesigned here): the edit endpoint
+            // still carries ONE acknowledgement flag for both the side-effect
+            // confirmation and the backdate confirmation.
+            backdateConfirmed: input.acknowledgeSideEffects === true,
+          });
+          movementIds.push(...reposted);
+        }
+        // 6. The repricing the operator explicitly asked for, replayed on
+        // the facts this very transaction just wrote. A failure here rolls
+        // the reversal, the re-post and the header change back with it:
+        // the command is either fully applied and repriced, or not applied
+        // at all.
+        valuationRuns = await this.repriceWithin(tx, repricingPlans);
+      });
     } catch (error) {
       throw this.translatePostingError(error, header);
     }
@@ -803,14 +771,6 @@ export class InventoryBusinessDocumentsService {
         : MOVEMENT_PERMISSIONS.CREATE,
     ]);
     await this.organizations.requireUsableOrganization(organizationId);
-    const { calendarSystem } =
-      await this.organizations.getDateTimeSettings(organizationId);
-    assertInventoryBusinessDateRenderable(
-      'businessDate',
-      current.businessDate,
-      calendarSystem,
-    );
-
     const header = {
       warehouseId: current.warehouseId,
       sourceWarehouseId: current.sourceWarehouseId,
@@ -894,42 +854,40 @@ export class InventoryBusinessDocumentsService {
     let movementIds: string[] = [];
     let valuationRuns: InventoryValuationRunDto[] = [];
     try {
-      await this.withBusinessDateWriteLock(organizationId, calendarSystem, () =>
-        this.documents.withTransaction(async (tx) => {
-          movementIds = await this.postDocumentEffect(tx, {
-            documentId: current.id,
-            organizationId,
-            kind: current.kind,
-            header,
-            businessDate: current.businessDate,
-            lines: resolved,
-            keyPrefix: operationKey,
-            actorId,
-            at: now,
-            backdateConfirmed: input.backdateConfirmed === true,
-          });
-          await this.documents.updateHeader(tx, current.id, {
-            status: 'operational',
-            number: allocation.number,
-            operationKey,
-            // A transfer is never left stale by a successful backdated
-            // finalize: the coupled replay restated both keys, and the transfer
-            // pair has no repricing choice to skip (OD-TRF-05).
-            valuationStale:
-              current.kind === 'transfer'
-                ? false
-                : backdating.backdated && repricing !== 'recalculate',
-            finalizedAt: now,
-            finalizedBy: actorId,
-            updatedAt: now,
-            updatedBy: actorId,
-          });
-          // Explicit repricing runs on the movements written above, in the
-          // SAME transaction: a failed replay rolls the posting back and the
-          // document stays a draft.
-          valuationRuns = await this.repriceWithin(tx, repricingPlans);
-        }),
-      );
+      await this.documents.withTransaction(async (tx) => {
+        movementIds = await this.postDocumentEffect(tx, {
+          documentId: current.id,
+          organizationId,
+          kind: current.kind,
+          header,
+          businessDate: current.businessDate,
+          lines: resolved,
+          keyPrefix: operationKey,
+          actorId,
+          at: now,
+          backdateConfirmed: input.backdateConfirmed === true,
+        });
+        await this.documents.updateHeader(tx, current.id, {
+          status: 'operational',
+          number: allocation.number,
+          operationKey,
+          // A transfer is never left stale by a successful backdated
+          // finalize: the coupled replay restated both keys, and the transfer
+          // pair has no repricing choice to skip (OD-TRF-05).
+          valuationStale:
+            current.kind === 'transfer'
+              ? false
+              : backdating.backdated && repricing !== 'recalculate',
+          finalizedAt: now,
+          finalizedBy: actorId,
+          updatedAt: now,
+          updatedBy: actorId,
+        });
+        // Explicit repricing runs on the movements written above, in the
+        // SAME transaction: a failed replay rolls the posting back and the
+        // document stays a draft.
+        valuationRuns = await this.repriceWithin(tx, repricingPlans);
+      });
     } catch (error) {
       throw this.translatePostingError(error, header);
     }
@@ -1117,33 +1075,29 @@ export class InventoryBusinessDocumentsService {
       ]);
     }
 
-    const { calendarSystem } =
-      await this.organizations.getDateTimeSettings(organizationId);
     const now = new Date();
     const actorId = getPrincipal()?.userId ?? null;
     const movementIds: string[] = [];
     try {
-      await this.withBusinessDateWriteLock(organizationId, calendarSystem, () =>
-        this.documents.withTransaction(async (tx) => {
-          if (reversing) {
-            movementIds.push(
-              ...(await this.reverseDocumentEffect(tx, current, {
-                keyPrefix: `invdoc:${current.id}:cancel`,
-                actorId,
-                at: now,
-              })),
-            );
-          }
-          await this.documents.updateHeader(tx, current.id, {
-            status: 'cancelled',
-            cancelledAt: now,
-            cancelledBy: actorId,
-            cancellationReason: reason,
-            updatedAt: now,
-            updatedBy: actorId,
-          });
-        }),
-      );
+      await this.documents.withTransaction(async (tx) => {
+        if (reversing) {
+          movementIds.push(
+            ...(await this.reverseDocumentEffect(tx, current, {
+              keyPrefix: `invdoc:${current.id}:cancel`,
+              actorId,
+              at: now,
+            })),
+          );
+        }
+        await this.documents.updateHeader(tx, current.id, {
+          status: 'cancelled',
+          cancelledAt: now,
+          cancelledBy: actorId,
+          cancellationReason: reason,
+          updatedAt: now,
+          updatedBy: actorId,
+        });
+      });
     } catch (error) {
       throw this.translatePostingError(error, {
         warehouseId: current.warehouseId,
@@ -1240,24 +1194,16 @@ export class InventoryBusinessDocumentsService {
   private async resolveBusinessDate(input: {
     organizationId: string;
     businessDate?: BusinessDateInput | undefined;
-  }): Promise<{ businessDate: BusinessDate; calendarSystem: CalendarSystem }> {
-    const dateTimeSettings = await this.organizations.getDateTimeSettings(
+  }): Promise<BusinessDate> {
+    const { timeZone } = await this.organizations.getDateTimeSettings(
       input.organizationId,
     );
-    const { timeZone, calendarSystem } = dateTimeSettings;
     const businessDate = resolveBusinessDateInput({
       field: 'businessDate',
       value: input.businessDate,
       timeZone,
     });
-    // Gregorian organizations accept the full canonical BusinessDate range;
-    // Jalali organizations must be able to render it before any write.
-    assertInventoryBusinessDateRenderable(
-      'businessDate',
-      businessDate,
-      calendarSystem,
-    );
-    return { businessDate, calendarSystem };
+    return businessDate;
   }
 
   private normalizeHeader(
@@ -1981,14 +1927,10 @@ export class InventoryBusinessDocumentsService {
     audit: { keyPrefix: string; actorId: string | null; at: Date },
   ): Promise<string[]> {
     const created: string[] = [];
-    const { timeZone, calendarSystem } =
-      await this.organizations.getDateTimeSettings(document.organizationId);
-    const reversalBusinessDate = businessDateFromInstant(audit.at, timeZone);
-    assertInventoryBusinessDateRenderable(
-      'movementDate',
-      reversalBusinessDate,
-      calendarSystem,
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      document.organizationId,
     );
+    const reversalBusinessDate = businessDateFromInstant(audit.at, timeZone);
     for (const line of document.lines) {
       const originals = [
         line.movementId,
@@ -2026,11 +1968,6 @@ export class InventoryBusinessDocumentsService {
           reversalBusinessDate < original.movementDate
             ? original.movementDate
             : reversalBusinessDate;
-        assertInventoryBusinessDateRenderable(
-          'movementDate',
-          movementDate,
-          calendarSystem,
-        );
         await this.movements.postReversal(
           {
             originalMovementId: originalId,
@@ -2221,30 +2158,6 @@ export class InventoryBusinessDocumentsService {
   }
 
   /**
-   * Hold Organization's calendar row lock around the complete Inventory
-   * transaction. Validation and read-only planning happen before this point;
-   * the write callback does not run when the calendar became stale.
-   */
-  private async withBusinessDateWriteLock<T>(
-    organizationId: string,
-    validatedCalendarSystem: CalendarSystem,
-    work: () => Promise<T>,
-  ): Promise<T> {
-    const result = await this.organizations.withBusinessDateWriteLock(
-      organizationId,
-      validatedCalendarSystem,
-      work,
-    );
-    if (result.kind === 'not_found') {
-      throw AppException.notFound('Organization', organizationId);
-    }
-    if (result.kind === 'calendar_changed') {
-      throw new OrganizationCalendarChangedDuringDocumentWriteError();
-    }
-    return result.value;
-  }
-
-  /**
    * Turn the ledger's internal failures into the SAME stable business codes
    * a direct posting produces, so the UI renders one insufficient-stock
    * experience regardless of which surface caused it (FE-UX-02 §1.2) — and a
@@ -2255,12 +2168,6 @@ export class InventoryBusinessDocumentsService {
     error: unknown,
     header: { warehouseId?: string | null; sourceWarehouseId?: string | null },
   ): unknown {
-    if (error instanceof OrganizationCalendarChangedDuringDocumentWriteError) {
-      return AppException.conflict(
-        'The organization calendar changed while this Inventory document was being prepared. No document changes were committed; refresh and retry the request.',
-        { code: INVENTORY_BUSINESS_DATE_CALENDAR_CHANGED_CODE },
-      );
-    }
     if (error instanceof InsufficientStockError) {
       const warehouseId =
         header.sourceWarehouseId ?? header.warehouseId ?? null;

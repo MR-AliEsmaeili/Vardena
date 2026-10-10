@@ -1,28 +1,17 @@
+import { isBusinessDay, jalaliDayOf } from '@/lib/datetime';
 import { Input } from '@/ui/input';
-import { useCalendarSystem, type CalendarSystem } from '@/lib/datetime';
 import { JalaliDateInputField } from './jalali-date-input-field';
 
 /**
- * The ONE calendar-aware date field (C-63 §17, ADR-0042 §D9).
+ * The ONE BusinessDate input. Supported dates are always entered and displayed
+ * in Jalali; there is no user- or organization-selectable calendar. Its form
+ * value remains the canonical Gregorian day (`YYYY-MM-DD`).
  *
- * The contract is deliberately narrow, and it is what keeps calendar handling
- * out of every screen:
- *
- *  - the field's VALUE is always the canonical Gregorian day (`YYYY-MM-DD`),
- *    or `''` while empty — forms hold the canonical day, then API adapters
- *    declare the calendar if the operator entered a Jalali day;
- *  - the field's PRESENTATION follows the organization's calendar: a Gregorian
- *    organization gets the native date input (unchanged behaviour, unchanged
- *    accessibility, unchanged keyboard), a Jalali organization gets a text
- *    field that accepts `1405/07/16` — including Persian digits and a short
- *    `7/6`, as the operator actually types them — and converts it once, here;
- *  - a partially typed day never overwrites the form value, so validation
- *    cannot fire mid-typing and an invalid entry cannot blank a valid date.
- *
- * It EXTENDS the field every screen already used (same `Input`, same
- * keyboard/ARIA wiring, same `YYYY-MM-DD` value) rather than adding a parallel
- * picker; a Jalali calendar grid is a UI follow-up (`docs/datetime.md` §11) and
- * would replace this component's rendering, not its contract.
+ * A valid historical Gregorian day that cannot be rendered by the shared
+ * Jalali converter automatically uses a native Gregorian input, so viewing or
+ * editing it never erases the stored fact. This is a range fallback, not a
+ * second calendar preference. Partial Jalali text never overwrites the form
+ * value and invalid entries cannot blank an existing day.
  */
 export interface DateInputProps {
   id?: string;
@@ -30,8 +19,6 @@ export interface DateInputProps {
   value: string;
   /** Receives the canonical Gregorian day — never a Jalali string. */
   onValueChange: (day: string) => void;
-  /** Overrides the organization calendar (tests, intentionally fixed screens). */
-  calendar?: CalendarSystem;
   disabled?: boolean;
   className?: string;
   'aria-invalid'?: boolean | undefined;
@@ -39,31 +26,24 @@ export interface DateInputProps {
   'data-testid'?: string | undefined;
 }
 
-export function DateInput({
-  calendar,
-  value,
-  onValueChange,
-  ...props
-}: DateInputProps) {
-  const organizationCalendar = useCalendarSystem();
-  const active = calendar ?? organizationCalendar;
+export function DateInput({ value, onValueChange, ...props }: DateInputProps) {
+  const useGregorianFallback =
+    value !== '' && isBusinessDay(value) && jalaliDayOf(value) === null;
 
-  if (active === 'GREGORIAN') {
+  if (useGregorianFallback) {
     return (
       <Input
         {...props}
         type="date"
         dir="ltr"
         data-calendar="GREGORIAN"
+        data-calendar-fallback="true"
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
       />
     );
   }
 
-  // Switching calendars unmounts the text field, discarding any partial Jalali
-  // draft. Returning to Jalali then derives its display from the canonical
-  // value instead of resurrecting text entered under the prior calendar.
   return (
     <JalaliDateInputField
       {...props}

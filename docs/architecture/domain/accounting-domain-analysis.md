@@ -90,7 +90,7 @@ one), and whether dimension defaults live on accounts.
 
 | Aspect | Options | Recommendation | Expert? |
 |---|---|---|---|
-| Year definition | Gregorian fiscal year; organization-defined start; Jalali-aligned fiscal year | **Organization-defined start date** (a fiscal year is a configured row and its bounds are BusinessDates; ordinary input/display follows ADR-0042's organization calendar). Whether a particular fiscal-year alignment/convention is desired remains OQ-23; no Jalali fiscal-year rule is inferred from the UI calendar. | Yes |
+| Year definition | Gregorian fiscal year; organization-defined start; Jalali-aligned fiscal year | **Organization-defined start date** (a fiscal year is a configured row and its bounds are BusinessDates; ordinary input/display is fixed Jalali-first under ADR-0044). Whether a particular fiscal-year alignment/convention is desired remains OQ-23; no Jalali fiscal-year rule is inferred from the UI calendar. | Yes |
 | Period granularity | 12 months; 12 + adjustment period; 4-4-5; 13 periods | Start with **configurable monthly periods + optional adjustment period**; the schema stores period rows, so other layouts are data | Yes |
 | Period status | open/closed only; open/soft-close/hard-close | **open / closed** in v1, with `locked` semantics documented, because soft-close rules are policy (expert) | Yes |
 | Posting into closed periods | reject always; allow with special permission; allow with reversal-dated entry | **Reject by default**; any override is a policy decision (expert) | Yes |

@@ -15,7 +15,6 @@ import { t } from '@/lib/i18n';
 import {
   todayBusinessDay,
   toBusinessDateInput,
-  useCalendarSystem,
   useTimeZone,
 } from '@/lib/datetime';
 import { Alert, AlertBody, AlertTitle } from '@/ui/alert';
@@ -164,7 +163,6 @@ function MovementForm({
   kind: MovementFormKind;
   references: ReturnType<typeof useInventoryReferences>;
 }): ReactElement {
-  const calendarSystem = useCalendarSystem();
   const timeZone = useTimeZone();
   const { showToast } = useToast();
   const permissions = usePermissions();
@@ -241,12 +239,9 @@ function MovementForm({
       unitId: values.unitId,
       ...(values.movementDate !== ''
         ? {
-            // OQ-73: send the business DAY — declared Jalali for a Jalali
-            // organization, canonical Gregorian otherwise.
-            movementDate: toBusinessDateInput(
-              values.movementDate,
-              calendarSystem,
-            ),
+            // OQ-73 / ADR-0044: send the BusinessDate in the fixed Jalali-first
+            // form when renderable; preserve canonical Gregorian fallback.
+            movementDate: toBusinessDateInput(values.movementDate),
           }
         : {}),
       ...(values.reason.trim() !== '' ? { reason: values.reason.trim() } : {}),

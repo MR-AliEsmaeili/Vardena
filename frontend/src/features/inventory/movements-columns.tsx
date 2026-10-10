@@ -40,8 +40,8 @@ export function movementsColumns(
       accessorKey: 'movementDate',
       header: t.inventory.columnDate,
       cell: ({ row }) => (
-        // OQ-73: movementDate is a business DATE — rendered in the org
-        // calendar, never shifted through an instant/timezone.
+        // OQ-73 / ADR-0044: movementDate is a BusinessDate rendered
+        // Jalali-first, never shifted through an instant/time zone.
         <span
           className="num"
           dir="ltr"

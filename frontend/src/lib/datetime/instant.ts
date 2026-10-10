@@ -4,29 +4,22 @@ import {
   DATE_TIME_SECONDS_DISPLAY_FORMAT,
   dayjs,
 } from './dayjs';
+import { DEFAULT_CALENDAR_SYSTEM } from './calendar';
 import {
   formatBusinessDay,
   isBusinessDay,
   todayBusinessDay,
 } from './business-date';
-import type { CalendarSystem } from './calendar';
 import { isTimeZone } from './time-zone';
 
 /**
- * Event timestamps (C-63 §10, ADR-0042 §D1).
+ * Event timestamps (C-63 §10, ADR-0044).
  *
  * A timestamp is an INSTANT: it answers "when did this happen", it is stored
- * as `timestamptz`, and it travels as ISO-8601 UTC. Rendering it is a
- * derivation — instant → organization time zone → local date/time → calendar
- * — and it happens here and nowhere else, so a component can never add an
- * offset by hand or show a UTC value as if it were local.
- *
- * Historical records are rendered with the organization settings in effect
- * NOW (ADR-0042 §D6 policy A): the rendering is presentational, the stored
- * instant is the truth, and the settings that produced a historical rendering
- * are not retained. Detail views therefore show the zone name next to the
- * value (`instantTimeZoneLabel`), so the rendering can never be mistaken for
- * a fact about the record itself.
+ * as `timestamptz`, and it travels as ISO-8601 UTC. Rendering is derived:
+ * instant → organization IANA time zone → local date/time → fixed Jalali-first
+ * presentation. Historical renderings use the current zone; the canonical
+ * instant remains authoritative and is never rewritten.
  */
 
 const UTC_INSTANT_PATTERN =
@@ -44,28 +37,26 @@ export function isInstant(value: unknown): value is string {
 }
 
 /**
- * The instant rendered in `timeZone` (default: minute precision, the shape the
- * rest of the UI uses). An unparsable value is returned UNCHANGED rather than
- * blanked or approximated — an unexpected server value must stay visible.
+ * The instant rendered in `timeZone` (default: minute precision). An
+ * unparsable value is returned UNCHANGED rather than blanked or approximated.
  */
 export function formatInstant(
   value: string | null | undefined,
   timeZone: string,
   format: string = DATE_TIME_DISPLAY_FORMAT,
-  calendarSystem: CalendarSystem = 'GREGORIAN',
 ): string {
   if (!value) return '';
   if (!isInstant(value) || !isTimeZone(timeZone)) return value;
   const parsed = dayjs(value);
 
   // Resolve the local day in the organization's IANA zone FIRST, then render
-  // that day in its configured calendar. Converting the UTC day instead would
-  // be wrong around zone boundaries (the instant remains authoritative).
+  // that day in the fixed Jalali-first presentation. Converting the UTC day
+  // instead would be wrong around zone boundaries (the instant is authoritative).
   const zoned = parsed.tz(timeZone);
   const gregorianDay = zoned.format(DATE_DISPLAY_FORMAT);
   const rendered = zoned.format(format);
   if (!rendered.startsWith(gregorianDay)) return rendered;
-  return `${formatBusinessDay(gregorianDay, calendarSystem)}${rendered.slice(
+  return `${formatBusinessDay(gregorianDay, DEFAULT_CALENDAR_SYSTEM)}${rendered.slice(
     gregorianDay.length,
   )}`;
 }
@@ -74,14 +65,8 @@ export function formatInstant(
 export function formatInstantWithSeconds(
   value: string | null | undefined,
   timeZone: string,
-  calendarSystem: CalendarSystem = 'GREGORIAN',
 ): string {
-  return formatInstant(
-    value,
-    timeZone,
-    DATE_TIME_SECONDS_DISPLAY_FORMAT,
-    calendarSystem,
-  );
+  return formatInstant(value, timeZone, DATE_TIME_SECONDS_DISPLAY_FORMAT);
 }
 
 /** The calendar day an instant falls on in `timeZone` (never its UTC day). */
@@ -97,11 +82,8 @@ export function instantDayInZone(
 
 /**
  * The zone's offset at `value`, as `UTC+03:30` — the label a detail view
- * shows next to a rendered timestamp so the zone is explicit.
- *
- * Resolved by the runtime for THAT instant (an offset is not a constant:
- * Tehran was `UTC+04:30` in 1401 and is `UTC+03:30` today), and derived by
- * Day.js rather than by hand. Returns `null` when the value cannot be parsed.
+ * shows next to a rendered timestamp so the zone is explicit. The runtime
+ * resolves the offset for THAT instant; it is not a constant.
  */
 export function instantOffsetLabel(
   value: string,
@@ -117,10 +99,7 @@ export function instantOffsetLabel(
   return `UTC${sign}${hours}:${rest}`;
 }
 
-/**
- * `Asia/Tehran (UTC+03:30)` — the label of the zone an instant is rendered
- * in, for the detail views that must not hide where the time came from.
- */
+/** `Asia/Tehran (UTC+03:30)` — the label of the zone an instant is rendered in. */
 export function instantTimeZoneLabel(value: string, timeZone: string): string {
   const offset = instantOffsetLabel(value, timeZone);
   return offset === null ? timeZone : `${timeZone} (${offset})`;

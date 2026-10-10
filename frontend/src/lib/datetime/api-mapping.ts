@@ -32,7 +32,7 @@ export interface ApiInstant {
   instant: string;
   timeZone: string;
   gregorian: string;
-  jalali: string;
+  jalali: string | null;
 }
 
 export interface DeclaredBusinessDate {
@@ -46,17 +46,13 @@ export type BusinessDateInput = string | DeclaredBusinessDate;
 /**
  * What the frontend sends for a business day.
  *
- * A Jalali organization sends the DECLARED form — the day the operator wrote,
- * plus the calendar it is written in — so the request carries the calendar the
- * user worked in and the backend resolves it exactly once. A Gregorian
- * organization (or a day that is not canonical) sends the day unchanged:
- * `YYYY-MM-DD` is Gregorian by contract.
+ * The fixed Jalali-first UI sends the DECLARED form when the canonical day is
+ * renderable as Jalali, so the backend resolves it exactly once. A valid day
+ * outside that rendering envelope stays a canonical Gregorian string. The
+ * backend continues accepting either form for existing API/integration clients.
  */
-export function toBusinessDateInput(
-  day: string,
-  calendar: CalendarSystem,
-): BusinessDateInput {
-  if (calendar === 'GREGORIAN' || !isBusinessDay(day)) return day;
+export function toBusinessDateInput(day: string): BusinessDateInput {
+  if (!isBusinessDay(day)) return day;
   const jalali = convertDay(day, 'GREGORIAN', 'JALALI');
   return jalali === null ? day : { calendar: 'JALALI', value: jalali };
 }
@@ -76,9 +72,9 @@ export function readApiBusinessDate(value: unknown): ApiBusinessDate | null {
 
 /**
  * Narrow an unknown value that should be a
- * `{ instant, timeZone, gregorian, jalali }` block. The block is only accepted
- * when its `instant` and `timeZone` are usable: a half-formed block must not
- * replace a locally derived rendering.
+ * `{ instant, timeZone, gregorian, jalali|null }` block. The block is only
+ * accepted when its `instant`, `timeZone`, and rendering fields are usable: a
+ * half-formed block must not replace a locally derived rendering.
  */
 export function readApiInstant(value: unknown): ApiInstant | null {
   if (typeof value !== 'object' || value === null) return null;
@@ -87,7 +83,7 @@ export function readApiInstant(value: unknown): ApiInstant | null {
     !isInstant(candidate.instant) ||
     !isTimeZone(candidate.timeZone) ||
     typeof candidate.gregorian !== 'string' ||
-    typeof candidate.jalali !== 'string'
+    (candidate.jalali !== null && typeof candidate.jalali !== 'string')
   ) {
     return null;
   }

@@ -5,11 +5,7 @@ import { z } from 'zod';
 import { createFiscalYear } from '@/api/accounting.api';
 import type { CreateFiscalYearRequest } from '@/api/contracts';
 import { queryKeys } from '@/api/query-keys';
-import {
-  isBusinessDay,
-  toBusinessDateInput,
-  useCalendarSystem,
-} from '@/lib/datetime';
+import { isBusinessDay, toBusinessDateInput } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { Button } from '@/ui/button';
 import {
@@ -69,11 +65,7 @@ export function FiscalYearCreateForm({
   financialAreaId: string;
 }) {
   const queryClient = useQueryClient();
-  const calendarSystem = useCalendarSystem();
-  const dateHint =
-    calendarSystem === 'JALALI'
-      ? t.filters.dateFormatHintJalali
-      : t.filters.dateFormatHint;
+  const dateHint = t.filters.dateFormatHintJalali;
   const form = useForm<FiscalYearFormValues>({
     resolver: zodResolver(fiscalYearSchema),
     defaultValues: { code: '', title: '', startDate: '', endDate: '' },
@@ -86,8 +78,8 @@ export function FiscalYearCreateForm({
         financialAreaId,
         code: values.code.trim(),
         title: values.title.trim(),
-        startDate: toBusinessDateInput(values.startDate, calendarSystem),
-        endDate: toBusinessDateInput(values.endDate, calendarSystem),
+        startDate: toBusinessDateInput(values.startDate),
+        endDate: toBusinessDateInput(values.endDate),
       };
       return createFiscalYear(body);
     },

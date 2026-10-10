@@ -55,10 +55,6 @@ import { assertPostableItem } from './inventory-movements.service.js';
 import { ItemsService } from './items.service.js';
 import { WarehousesService } from './warehouses.service.js';
 import { UnitsService } from './units.service.js';
-import {
-  assertInventoryBusinessDateRenderable,
-  withInventoryBusinessDateWriteLock,
-} from './inventory-business-date-write.js';
 
 export interface PostTransferInput {
   operationKey: string;
@@ -169,18 +165,14 @@ export class InventoryTransfersService {
     });
     // OQ-73: the transfer's business DATE is a calendar day (PostgreSQL
     // `date`), defaulted to today's business day in the organization zone.
-    const { timeZone, calendarSystem } =
-      await this.organizations.getDateTimeSettings(input.organizationId);
+    const { timeZone } = await this.organizations.getDateTimeSettings(
+      input.organizationId,
+    );
     const movementDate = resolveBusinessDateInput({
       field: 'movementDate',
       value: input.movementDate,
       timeZone,
     });
-    assertInventoryBusinessDateRenderable(
-      'movementDate',
-      movementDate,
-      calendarSystem,
-    );
     const resolved = await resolveEnteredToBase({
       conversions: this.conversions,
       organizationId: input.organizationId,
@@ -259,80 +251,74 @@ export class InventoryTransfersService {
     const outLegId = generateId();
     const inLegId = generateId();
     try {
-      const { outLeg, inLeg } = await withInventoryBusinessDateWriteLock(
-        this.organizations,
-        input.organizationId,
-        calendarSystem,
-        () =>
-          this.movements.postTransfer({
-            outLeg: {
-              id: outLegId,
-              organizationId: input.organizationId,
-              branchId: source.branchId,
-              warehouseId: input.sourceWarehouseId,
-              itemId: input.itemId,
-              movementType: 'transfer_out',
-              quantity: resolved.quantity,
-              unitId: input.unitId,
-              baseQuantity: `-${resolved.baseQuantity}`,
-              baseUnitId: item.baseUnitId,
-              conversionFactor: resolved.conversionFactor,
-              movementDate,
-              transferId,
-              reversalOfMovementId: null,
-              referenceType: reference.referenceType,
-              referenceId: reference.referenceId,
-              reason,
-              operationKey,
-              createdAt: now,
-              updatedAt: now,
-              createdBy: actorId,
-            },
-            inLeg: {
-              id: inLegId,
-              organizationId: input.organizationId,
-              branchId: destination.branchId,
-              warehouseId: input.destinationWarehouseId,
-              itemId: input.itemId,
-              movementType: 'transfer_in',
-              quantity: resolved.quantity,
-              unitId: input.unitId,
-              baseQuantity: resolved.baseQuantity,
-              baseUnitId: item.baseUnitId,
-              conversionFactor: resolved.conversionFactor,
-              movementDate,
-              transferId,
-              reversalOfMovementId: null,
-              referenceType: reference.referenceType,
-              referenceId: reference.referenceId,
-              reason,
-              operationKey,
-              createdAt: now,
-              updatedAt: now,
-              createdBy: actorId,
-            },
-            operation: {
-              id: generateId(),
-              organizationId: input.organizationId,
-              operationKey,
-              operation: 'transfer_post',
-              requestHash,
-              result: { kind: 'transfer', movementIds: [outLegId, inLegId] },
-              createdAt: now,
-              updatedAt: now,
-              createdBy: actorId,
-            },
-            sourceAllowNegative: resolveEffectivePolicy({
-              itemAllow: item.allowNegativeStock,
-              warehouseAllow: source.allowNegativeStock,
-            }),
-            actorId,
-            valuationMethod: valuationMethod.method,
-            // The repository re-derives the verdict from the LOCKED rows; this is
-            // the operator's answer, not the repository's decision.
-            backdateConfirmed: input.backdateConfirmed === true,
-          }),
-      );
+      const { outLeg, inLeg } = await this.movements.postTransfer({
+        outLeg: {
+          id: outLegId,
+          organizationId: input.organizationId,
+          branchId: source.branchId,
+          warehouseId: input.sourceWarehouseId,
+          itemId: input.itemId,
+          movementType: 'transfer_out',
+          quantity: resolved.quantity,
+          unitId: input.unitId,
+          baseQuantity: `-${resolved.baseQuantity}`,
+          baseUnitId: item.baseUnitId,
+          conversionFactor: resolved.conversionFactor,
+          movementDate,
+          transferId,
+          reversalOfMovementId: null,
+          referenceType: reference.referenceType,
+          referenceId: reference.referenceId,
+          reason,
+          operationKey,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: actorId,
+        },
+        inLeg: {
+          id: inLegId,
+          organizationId: input.organizationId,
+          branchId: destination.branchId,
+          warehouseId: input.destinationWarehouseId,
+          itemId: input.itemId,
+          movementType: 'transfer_in',
+          quantity: resolved.quantity,
+          unitId: input.unitId,
+          baseQuantity: resolved.baseQuantity,
+          baseUnitId: item.baseUnitId,
+          conversionFactor: resolved.conversionFactor,
+          movementDate,
+          transferId,
+          reversalOfMovementId: null,
+          referenceType: reference.referenceType,
+          referenceId: reference.referenceId,
+          reason,
+          operationKey,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: actorId,
+        },
+        operation: {
+          id: generateId(),
+          organizationId: input.organizationId,
+          operationKey,
+          operation: 'transfer_post',
+          requestHash,
+          result: { kind: 'transfer', movementIds: [outLegId, inLegId] },
+          createdAt: now,
+          updatedAt: now,
+          createdBy: actorId,
+        },
+        sourceAllowNegative: resolveEffectivePolicy({
+          itemAllow: item.allowNegativeStock,
+          warehouseAllow: source.allowNegativeStock,
+        }),
+        actorId,
+        valuationMethod: valuationMethod.method,
+        // The repository re-derives the verdict from the LOCKED rows; this is
+        // the operator's answer, not the repository's decision.
+        backdateConfirmed: input.backdateConfirmed === true,
+      });
       await publishEvent(this.events, {
         type: INVENTORY_MOVEMENT_POSTED_EVENT,
         aggregateType: 'InventoryMovement',

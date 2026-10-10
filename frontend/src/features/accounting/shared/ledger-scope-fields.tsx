@@ -1,6 +1,5 @@
 import { useEffect, useMemo } from 'react';
 import { Controller, type UseFormReturn } from 'react-hook-form';
-import { useCalendarSystem } from '@/lib/datetime';
 import { t } from '@/lib/i18n';
 import { Input } from '@/ui/input';
 import { Select } from '@/ui/select';
@@ -37,11 +36,7 @@ export function LedgerScopeFields({
   disabled = false,
 }: LedgerScopeFieldsProps) {
   const { register, watch, setValue, formState } = form;
-  const calendarSystem = useCalendarSystem();
-  const dateFormatHint =
-    calendarSystem === 'JALALI'
-      ? t.filters.dateFormatHintJalali
-      : t.filters.dateFormatHint;
+  const dateFormatHint = t.filters.dateFormatHintJalali;
   const financialAreaId = watch('financialAreaId');
   const fiscalYearId = watch('fiscalYearId');
   const accountId = watch('accountId');

@@ -125,10 +125,6 @@ export class InventoryBusinessDocumentsController {
       'Create a DRAFT Inventory business document. A draft has no stock effect and consumes no document number.',
   })
   @ApiOkResponse({ type: InventoryDocumentResponseDto })
-  @ApiConflictResponse({
-    description:
-      'The organization calendar changed after the business date was validated; no draft was written. Refresh and retry.',
-  })
   @ApiNotFoundResponse({
     description: 'Organization, warehouse, item or unit does not exist.',
   })
@@ -167,10 +163,6 @@ export class InventoryBusinessDocumentsController {
   })
   @ApiOkResponse({ type: InventoryDocumentResponseDto })
   @ApiNotFoundResponse({ description: 'The document does not exist.' })
-  @ApiConflictResponse({
-    description:
-      'The organization calendar changed after the business date was validated; the document update was rolled back. Refresh and retry.',
-  })
   @ApiUnprocessableEntityResponse({
     description:
       'Accounting-posted/cancelled document, missing side-effect acknowledgement or repricing choice, backdating refusal, or insufficient stock (nothing was changed).',
@@ -271,17 +263,13 @@ export class InventoryBusinessDocumentsController {
   })
   @ApiOkResponse({ type: InventoryDocumentResponseDto })
   @ApiNotFoundResponse({ description: 'The document does not exist.' })
-  @ApiBadRequestResponse({
-    description:
-      'The document BusinessDate cannot be rendered in the organization calendar.',
-  })
   @ApiUnprocessableEntityResponse({
     description:
       'The document is not accounting eligible: not operational, not fully priced, or its valuation is stale.',
   })
   @ApiConflictResponse({
     description:
-      'The operation key was already used for a different request, the document is already Accounting Posted, or the organization calendar changed before the Inventory snapshot was written.',
+      'The operation key was already used for a different request, or the document is already Accounting Posted.',
   })
   async accountingPost(
     @Param('id') id: string,

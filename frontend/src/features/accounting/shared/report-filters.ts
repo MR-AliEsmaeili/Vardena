@@ -11,8 +11,8 @@ import { createReportUrlCodec } from './use-report-query-state';
  * filter would be a runtime error, not a feature. The date pattern is the
  * backend's own date-only contract
  * (`backend/src/modules/accounting/domain/date-range.ts`). The shared
- * `DateInput` presents the organization calendar while the form and URL retain
- * a validated canonical Gregorian BusinessDate.
+ * `DateInput` presents the fixed Jalali-first policy while the form and URL
+ * retain a validated canonical Gregorian BusinessDate.
  */
 
 const optionalDate = z

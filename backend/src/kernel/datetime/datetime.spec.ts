@@ -35,7 +35,7 @@ import {
 } from './api-date-time.js';
 
 describe('calendar system', () => {
-  it('defaults to the Jalali calendar for Vardena but stays configurable', () => {
+  it('uses fixed Jalali-first display while retaining both explicit API calendars', () => {
     expect(DEFAULT_CALENDAR_SYSTEM).toBe('JALALI');
     expect(CALENDAR_SYSTEMS).toEqual(['GREGORIAN', 'JALALI']);
     expect(isCalendarSystem('JALALI')).toBe(true);
@@ -417,6 +417,15 @@ describe('standardized API representations', () => {
     expect(utc?.instant).toBe('2026-10-08T08:32:14.421Z');
     expect(utc?.gregorian).toBe('2026-10-08 08:32:14');
     expect(utc?.jalali).toBe('1405-07-16 08:32:14');
+  });
+
+  it('keeps a historical canonical instant when Jalali cannot render it', () => {
+    expect(toApiInstant(new Date('0600-01-01T00:00:00.000Z'), 'UTC')).toEqual({
+      instant: '0600-01-01T00:00:00.000Z',
+      timeZone: 'UTC',
+      gregorian: '0600-01-01 00:00:00',
+      jalali: null,
+    });
   });
 
   it('refuses to invent a rendering for an unknown zone or an invalid instant', () => {

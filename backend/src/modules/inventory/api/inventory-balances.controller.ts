@@ -10,7 +10,6 @@ import {
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
-  ApiConflictResponse,
   ApiExtraModels,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
@@ -32,8 +31,6 @@ import {
 import {
   InventoryAvailabilityQueryDto,
   InventoryAvailabilityResponseDto,
-  InventoryBalanceRebuildConflictDetailsDto,
-  InventoryBalanceRebuildConflictResponseDto,
   InventoryBalanceResponseDto,
   ItemAvailabilityAcrossWarehousesQueryDto,
   ItemWarehouseAvailabilityResponseDto,
@@ -166,19 +163,13 @@ export class InventoryBalancesController {
   @RequirePermission(RECONCILIATION_PERMISSIONS.EXECUTE)
   @ApiOperation({
     summary:
-      'Rebuild stored balances from the ledger and open reservations. Each key uses its own short transaction; if a calendar transition interrupts the batch, completed keys remain committed and the full scope is safe to retry.',
+      'Rebuild stored balances from the ledger and open reservations. Each key uses its own short transaction and row lock; a repeated rebuild safely resumes reconciliation.',
   })
   @ApiOkResponse({ type: RebuildReportDto })
   @ApiNotFoundResponse({
     description: 'Organization, warehouse or item does not exist.',
   })
   @ApiBadRequestResponse({ description: 'Validation failed.' })
-  @ApiExtraModels(InventoryBalanceRebuildConflictDetailsDto)
-  @ApiConflictResponse({
-    type: InventoryBalanceRebuildConflictResponseDto,
-    description:
-      'The organization calendar changed between per-key transactions or the ledger-derived date cannot be rendered; the error reports committed progress and the full scope is safe to retry after refresh or source-history repair.',
-  })
   async rebuild(
     @Body() body: RebuildInventoryBalancesDto,
   ): Promise<RebuildReportDto> {

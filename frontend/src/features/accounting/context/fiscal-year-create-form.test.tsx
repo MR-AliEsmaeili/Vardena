@@ -18,7 +18,7 @@ describe('FiscalYearCreateForm', () => {
   it('sends Jalali dates as declared BusinessDate inputs', async () => {
     vi.mocked(accountingApi.createFiscalYear).mockResolvedValue({} as never);
     const user = userEvent.setup();
-    setDateTimeSettings({ calendarSystem: 'JALALI', timeZone: 'Asia/Tehran' });
+    setDateTimeSettings({ timeZone: 'Asia/Tehran' });
 
     renderWithProviders(
       <FiscalYearCreateForm organizationId="org-1" financialAreaId="area-1" />,

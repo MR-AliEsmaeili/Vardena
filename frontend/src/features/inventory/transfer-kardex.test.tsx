@@ -196,7 +196,7 @@ async function fillTransfer(user: ReturnType<typeof userEvent.setup>) {
   await user.selectOptions(screen.getByLabelText(t.inventory.unit), 'unit-1');
   const dateInput = screen.getByLabelText(t.inventory.movementDate);
   await user.clear(dateInput);
-  await user.type(dateInput, '2026-03-01');
+  await user.type(dateInput, '1404-12-10');
 }
 
 describe('Transfer form — no cost, no pre-check, honest refusal', () => {
@@ -240,7 +240,7 @@ describe('Transfer form — no cost, no pre-check, honest refusal', () => {
       destinationWarehouseId: 'wh-2',
       itemId: 'item-1',
       quantity: '5',
-      movementDate: '2026-03-01',
+      movementDate: { calendar: 'JALALI', value: '1404-12-10' },
     });
     expect('totalCost' in (body ?? {})).toBe(false);
     expect('backdateConfirmed' in (body ?? {})).toBe(false);

@@ -1,9 +1,5 @@
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { getCorrelationId } from '../../../kernel/correlation/request-context.js';
-import {
-  CALENDAR_SYSTEMS,
-  isCalendarSystem,
-} from '../../../kernel/datetime/calendar-system.js';
 import { isTimeZone } from '../../../kernel/datetime/time-zone.js';
 import type {
   DomainEvent,
@@ -52,26 +48,6 @@ export function resolveSort(
     }
     return { [mapped]: direction };
   });
-}
-
-/**
- * Validate an operator-supplied display calendar (C-63 §4).
- *
- * A closed, code-defined vocabulary: anything outside it is refused here, at
- * the boundary, rather than stored and re-interpreted later (the same rule the
- * module applies to a code/name). Omitted means "leave the current value /
- * take the column default".
- */
-export function assertCalendarSystem(value: string): void {
-  if (!isCalendarSystem(value)) {
-    throw AppException.validation([
-      {
-        field: 'calendarSystem',
-        message: `Unsupported calendar system. Allowed: ${CALENDAR_SYSTEMS.join(', ')}.`,
-        code: 'isCalendarSystem',
-      },
-    ]);
-  }
 }
 
 /**
