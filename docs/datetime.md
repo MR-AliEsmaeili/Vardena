@@ -234,10 +234,13 @@ is exposed it is additive (`businessDateCalendar`).
 
 The legacy `date-time` branch resolves to the UTC calendar day, regardless of
 the offset written in the instant or the organization's display zone. This is
-the owner-approved compatibility rule (2026-10-09), matching OQ-73's UTC-day
-migration policy. The input's time-of-day is not written into the BusinessDate
-column. If the request also contains a real event timestamp, that remains a
-separate Instant field.
+the owner-approved rule for current compatibility inputs (2026-10-09), not a
+description of the historical API parser: before this change, that parser
+resolved legacy ISO inputs in the organization's zone. OQ-73 separately governs
+normalization of timestamp carriers already stored in PostgreSQL; its UTC-day
+cast does not establish how an old request was interpreted. The input's
+time-of-day is not written into the BusinessDate column. If the request also
+contains a real event timestamp, that remains a separate Instant field.
 
 `YYYY-MM-DD` is the same SHAPE in both calendars, which is exactly why a Jalali
 value must be declared: without `calendar`, `1405-12-30` would have to be

@@ -71,10 +71,10 @@ export type BusinessDateInputResult =
       gregorian: BusinessDate;
       calendar: CalendarSystem;
       /**
-       * A legacy ISO instant was supplied. The DAY is the value to persist
-       * (the columns are PostgreSQL `date` — OQ-73); the instant is carried
-       * through for audit/reporting only and is never written to a
-       * business-date column.
+       * A legacy ISO instant was supplied. The UTC DAY is the value to persist
+       * (the columns are PostgreSQL `date` — OQ-73). The parsed instant is
+       * included as input metadata only; it must not be written to a
+       * BusinessDate column and is not itself an audit record.
        */
       source: 'instant';
       instant: Date;

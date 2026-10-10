@@ -217,8 +217,10 @@ export async function resolveEnteredToBase(input: {
  *   * a declared day (`{ calendar, value }`) hashes as the canonical
  *     Gregorian day it resolves to, so `1405-07-16`/JALALI and `2026-10-08`
  *     are ONE intent;
- *   * a legacy ISO instant hashes as its UTC calendar day, matching the
- *     OQ-73 historical conversion policy;
+ *   * a legacy ISO instant hashes as its UTC calendar day under the current
+ *     owner-approved compatibility-input rule. This does not describe the
+ *     pre-cutover API parser, which resolved ISO inputs in the organization
+ *     zone; OQ-73 governs normalization of stored values.
  *   * an omitted date hashes as an explicit `null`.
  *
  * The omission MUST be hashed as `null`, never as the server's effective
