@@ -106,10 +106,17 @@ model LicenseVersion {
   userLimit         Int? @map("user_limit")
   importedAt   DateTime @map("imported_at") @db.Timestamptz(6)
   importedBy   String?  @map("imported_by")
-  /// Explicit signed supersession (the only way windows may overlap).
+  /// Explicit signed supersession (the only way windows may overlap), or the
+  /// version a legacy text code replaced.
   supersedesVersionId   String? @map("supersedes_version_id")
-  /// Non-null on a version that is retained but no longer eligible.
+  /// WHEN the supersession was recorded (the successor's import instant).
+  /// Audit/traceability only — it never decides eligibility.
   supersededAt          DateTime? @map("superseded_at") @db.Timestamptz(6)
+  /// The instant FROM which this version no longer governs: the retiring
+  /// successor's `valid_from`, so a future-dated renewal does not interrupt a
+  /// license that is still valid (PDR-11 §3.2, CF-1). Set together with
+  /// `superseded_at`; both null while the version was never retired.
+  governsUntil          DateTime? @map("governs_until") @db.Timestamptz(6)
   supersededByVersionId String?   @map("superseded_by_version_id")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)

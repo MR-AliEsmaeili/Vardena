@@ -399,6 +399,70 @@ describe('License document import (e2e)', () => {
     expect(licensing.versions).toHaveLength(1);
   });
 
+  it('keeps the governing license effective while a future-dated successor waits (CF-1)', async () => {
+    const installationId = (await state()).installationId as string;
+    const predecessor = issueLicenseFile(
+      {
+        installationId,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        organizationLimit: 5,
+      },
+      authority.privateKey,
+    );
+    await importDocument(predecessor.file).expect(200);
+
+    // Far-future on purpose: the hand-over is asserted with a pinned clock in
+    // the service spec; here it only has to be in the future for any runner.
+    const successor = issueLicenseFile(
+      {
+        installationId,
+        validFrom: new Date('2033-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-01-01T00:00:00.000Z'),
+        organizationLimit: 9,
+        supersedesOperationId: predecessor.payload.operationId,
+      },
+      authority.privateKey,
+    );
+    const response = await importDocument(successor.file).expect(200);
+
+    // The AUTHORITATIVE backend evaluation still reports the predecessor: a
+    // recorded supersession with a future hand-over does not invalidate it.
+    expect(response.body).toMatchObject({
+      outcome: 'APPLIED',
+      licensed: true,
+      active: true,
+      organizationLimit: 5,
+      inactiveReason: null,
+    });
+    expect(response.body.versions).toHaveLength(2);
+
+    const predecessorVersion = (
+      response.body.versions as Array<Record<string, unknown>>
+    ).find((version) => version['licenseId'] === predecessor.payload.licenseId);
+    expect(predecessorVersion).toMatchObject({
+      effective: true,
+      supersededAt: expect.any(String),
+      governsUntil: '2033-01-01T00:00:00.000Z',
+    });
+    expect(predecessorVersion?.['supersededAt']).not.toBe(
+      predecessorVersion?.['governsUntil'],
+    );
+    expect(response.body.scheduledVersion).toMatchObject({
+      licenseId: successor.payload.licenseId,
+      validFrom: '2033-01-01T00:00:00.000Z',
+      effective: false,
+    });
+
+    // The same verdict on a plain read, and the retired predecessor does not
+    // come back once the successor's own window ends.
+    expect(await state()).toMatchObject({ active: true, organizationLimit: 5 });
+    expect(licensing.versions).toHaveLength(2);
+    expect(licensing.versions[0]?.supersededAt).not.toBeNull();
+    expect(licensing.versions[0]?.governsUntil?.toISOString()).toBe(
+      '2033-01-01T00:00:00.000Z',
+    );
+  });
+
   it('persists across a restart and never re-enters the document', async () => {
     const installationId = (await state()).installationId as string;
     const { file } = issueLicenseFile(

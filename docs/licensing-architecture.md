@@ -102,28 +102,36 @@ CF-8).
 
 ```text
 import ─► retained ─┬─ not yet effective   (validFrom > now)
-                    ├─ effective           (not superseded, status ACTIVE, window contains now)
+                    ├─ effective           (not retired yet, status ACTIVE, window contains now)
                     ├─ expired             (validUntil <= now, derived — never written)
-                    └─ superseded          (explicit signed supersession; retained as history)
+                    └─ supersession        (recorded at superseded_at, in force from governs_until)
 ```
 
 The **effective version** is resolved deterministically on every read
 (`docs/licensing/version-model-and-file-exchange.md` §3.2): eligible versions are
-those with no supersession; at most one of them may cover the current instant,
-because the import path rejects overlap. When nothing covers the instant, an
-ended version reports `expired` and a future version reports `not-yet-valid`;
-`UNLICENSED` remains the absence of any version. Status vocabulary
-(`ACTIVE|EXPIRED|SUSPENDED`, `UNLICENSED`) is unchanged; the `SUSPENDED`
-mapping question stays open (OQ-79) and no migration rewrites a status value.
+those that have not stopped governing by the instant being evaluated
+(`governs_until IS NULL OR governs_until > at`) — a recorded-but-not-yet-in-force
+supersession does **not** make a version ineligible — and at most one of them may
+cover that instant, because the import path enforces pairwise-disjoint effective
+windows. A version therefore hands over exactly at its successor's `validFrom`,
+which is what lets a future-dated renewal (or a future-dated supersession) be
+imported without interrupting the license that is valid today. When nothing
+covers the instant, an ended version reports `expired` and a future version
+reports `not-yet-valid`; `UNLICENSED` remains the absence of any version. Status
+vocabulary (`ACTIVE|EXPIRED|SUSPENDED`, `UNLICENSED`) is unchanged; the
+`SUSPENDED` mapping question stays open (OQ-79) and no migration rewrites a
+status value.
 
 ### Overlap, gaps and supersession (interim, fail-closed)
 
 Overlap resolution is an open product question (PDR-11 PQ-5 → OQ-80). Until it
-is decided, the import **rejects** a window that overlaps any retained
-non-superseded version, unless the signed document explicitly supersedes a named
-operation id. Adjacency is not overlap; gaps are allowed and report `expired`
-until the next version starts. Superseding never changes a retained row's
-validity, limits or entitlements — only its eligibility. This grants no customer
+is decided, the import **rejects** a window that overlaps any version that still
+governs at the import instant, unless the signed document explicitly supersedes
+a named operation id; a future-dated start does not excuse an overlap. Adjacency
+is not overlap; gaps are allowed and report `expired` until the next version
+starts. Superseding never changes a retained row's validity, limits or
+entitlements — only when it stops governing, and that instant is the candidate's
+own `validFrom` (a version is retired at most once). This grants no customer
 anything and invents no precedence rule.
 
 ## Import, replay protection and audit
@@ -137,13 +145,19 @@ unless every stage passes**. The submitted document and its signature are never
 persisted; only a SHA-256 `document_hash` is retained.
 
 Every v2 document carries a unique `operationId`. Applying it is one
-transaction: customer upsert, license upsert, supersession stamps, version +
-entitlements insert, audit event insert. A second application of the same
-operation is **rejected** (409, `duplicate-operation`) and changes nothing; the
-unique index `(installation_id, operation_id)` is the database backstop. A
-repeated legacy `VLIC1` code keeps its documented idempotent no-op
+transaction that **first takes a `FOR UPDATE` row lock on the installation row
+and re-runs the conflict evaluation under it** (READ COMMITTED): customer
+upsert, license upsert, version + entitlements insert, supersession stamp
+(guarded, writing both the recorded and the hand-over instant), audit event
+insert. A second application of the same operation is **rejected** (409,
+`duplicate-operation`) and changes nothing; the unique index
+`(installation_id, operation_id)` is the database backstop, and the row lock is
+what makes the check authoritative for concurrent, *distinct* documents whose
+windows conflict — the loser of such a race gets the documented 409 and writes
+nothing. A repeated legacy `VLIC1` code keeps its documented idempotent no-op
 (`changed: false`) — the documented per-operation-type behaviour that PDR-11
-PQ-8 asks about (OQ-81).
+PQ-8 asks about (OQ-81). Concurrency details and evidence: design §3.4,
+ADR-0046 Decision 11, `test/licensing-persistence-live.e2e-spec.ts`.
 
 Outcomes are recorded in the typed, append-only `licensing.license_audit_events`
 table (`license.import.applied`, `license.import.rejected`,
@@ -155,12 +169,14 @@ deletion exists. Rejections never change state, and an unverified document's
 
 ### Legacy L-02 semantics preserved
 
-A different valid `VLIC1` code still replaces the version that currently
-governs (implicit legacy replacement, stamped `superseded_at`, retained); the
-same code again remains an idempotent no-op. A `VLIC1` code may supersede only
-the governing version implicitly — other overlaps are rejected.
+A different valid `VLIC1` code still replaces the single version that currently
+governs (implicit legacy replacement: the version is stamped and retained, and
+it stops governing when the new code's window starts); the same code again
+remains an idempotent no-op. A `VLIC1` code may replace only that one version
+implicitly — other overlaps, or a version whose supersession is already
+recorded, are rejected rather than guessed.
 
-## Migration from L-01/L-02 (migration `20261014000000_licensing_version_model_and_import`)
+## Migration from L-01/L-02 (migrations `20261014000000_licensing_version_model_and_import` and `20261015000000_licensing_supersession_governs_until`)
 
 Every existing `licensing.licenses` row becomes a **retained version** (same
 id, same status/provider/dates/limits/entitlements, `document_hash =
@@ -169,8 +185,17 @@ code_hash`, `source = 'legacy-code'`, `superseded_at = replaced_at`) and one
 entitlements move to `licensing.license_version_entitlements`. No validity,
 history or idempotency is lost, no status is rewritten (CF-11 stays open), and
 the L-02 partial unique index that encoded "exactly one current license" is
-replaced by the version model. Evidence: `backend/prisma/rehearsal/licensing-version-model/rehearse.mjs`
-and the live PostgreSQL suite.
+replaced by the version model.
+
+The corrective migration adds `governs_until` (the instant a version stops
+governing) and backfills it from the recorded successor's `valid_from` when one
+is recorded — which repairs licenses that the first implementation retired the
+moment a future-dated successor arrived — and otherwise from the recorded
+instant, so migrated L-02 rows keep exactly the old meaning of `replaced_at`. A
+check constraint keeps the two instants set together. Evidence:
+`backend/prisma/rehearsal/licensing-version-model/rehearse.mjs` (including a
+database that carries the premature-retirement defect and must come out
+repaired) and the live PostgreSQL suite.
 
 ## Activation and persistence (L-02, ADR-0045)
 

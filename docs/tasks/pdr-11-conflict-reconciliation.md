@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Reconciliation complete for the first licensing implementation slice (L-03); open items preserved and registered |
+| Status | Reconciliation complete for the first licensing implementation slice (L-03); open items preserved and registered. **Corrected 2026-10-11** after the Product-Owner review of PR #137 (§0): CF-1/CF-2 and the concurrency evidence were re-stated against the fixed implementation. |
 | Date | 2026-10-11 |
 | Baseline inspected | `main` at `f27065149ffcb3b6d62929e418a8c6c1b4ce8fea` (merge of PR #136), plus the session branch `arena/5fd62737-vardena` |
 | Authority order | accepted ADRs and Owner decisions → PDR-11 (product source) → current implementation, migrations, tests → canonical registries → historical reports |
@@ -25,12 +25,84 @@ Classification used for each item:
   registered, and the implementation fails closed around it.
 - **PROCESS** — repository governance, not product behaviour.
 
+## 0. Corrective review of the first slice (Product-Owner review of PR #137)
+
+The first slice passed its own tests but two defects were found by review. Both
+are fixed on the same branch/PR (no new PR) and both changed the claims this
+document is allowed to make, so they are recorded here **before** the matrix.
+
+### Defect 1 — a future-dated supersession invalidated the current license
+
+- **Root cause.** The data layer stamped the predecessor with
+  `superseded_at = <import instant>` and eligibility was defined as
+  `superseded_at IS NULL`, so importing an overlapping successor that starts in
+  2027 removed the license that is valid today. The non-overlapping-renewal case
+  (which the matrix used as evidence) never exercised this path.
+- **Fix.** Supersession is now two facts: `superseded_at` (when it was recorded)
+  and `governs_until` (the successor's own `validFrom` — when the predecessor
+  stops governing). Eligibility is `governs_until IS NULL OR governs_until > at`;
+  the predecessor keeps governing until the hand-over and the successor takes
+  over at its own start, half-open. A version is never governing after its
+  successor's window begins, so the retained effective windows stay pairwise
+  disjoint.
+- **Evidence.** `license-import.service.spec.ts` › `future-dated supersession`
+  (pinned clock, no sleeps: before / at / after the hand-over, the retired
+  predecessor never returning, a failed successor import leaving state
+  untouched, a second successor refused, an overlapping future-dated document
+  refused); `license-import.e2e-spec.ts` › "keeps the governing license effective
+  while a future-dated successor waits (CF-1)"; `license-version.spec.ts` (the
+  two-instant rules and the disjoint-window invariant); the rehearsal's
+  premature-retirement database.
+- **Compatibility.** Non-overlapping renewals behave exactly as before (no
+  supersession is recorded at all in that case), and legacy `VLIC1` codes keep
+  their documented L-02 lifecycle.
+
+### Defect 2 — concurrent imports could commit conflicting windows
+
+- **Root cause.** The overlap/supersession check was a read in application code
+  before the transaction. Two distinct documents (so no unique index applies)
+  could both pass it and both commit windows that overlap. The
+  `operation_id` / `document_hash` unique indexes protect replay, not window
+  compatibility.
+- **Fix.** The import transaction takes a `SELECT … FOR UPDATE` lock on the
+  installation row **before** it reads, re-runs the same conflict evaluation
+  (`evaluateImportConflicts`) inside that lock in READ COMMITTED, and refuses the
+  import if the version it would retire is not the one the read-side pass
+  resolved. The loser of a race gets the documented `409` reason and writes
+  nothing (no version, entitlement, supersession stamp or `applied` audit event);
+  a rejection audit row is written outside the transaction, as for every other
+  rejection. The lock is a database row lock — multi-process by construction; a
+  process-local mutex is explicitly not the mechanism.
+- **Evidence.** `licensing-persistence-live.e2e-spec.ts` on real PostgreSQL:
+  three rounds of two concurrent imports with the same window; two concurrent
+  imports of the same document; two concurrent successors of one version
+  (exactly one stamp, the loser refused); a **late** transaction failure
+  (duplicated entitlement) rolling back customer/license/installation/version/
+  audit; and the disjoint-window invariant plus the supersession pair re-asserted
+  directly in SQL. Unit tests are **not** accepted as evidence for this defect.
+- **Why not `SERIALIZABLE` alone.** It answers with retryable serialization
+  failures instead of the documented conflict reason; the row lock makes the
+  semantics explicit and keeps the conflict machine-readable (design §3.4).
+
+### Corrections to the matrix
+
+- **CF-1** was marked RESOLVED on the strength of the non-overlapping renewal.
+  The non-overlapping case was always correct; the *overlapping future-dated
+  successor* was not. The row now states both and cites both.
+- **CF-2** was marked RESOLVED for the same reason. A future-dated document that
+  overlaps a version still governing is **still refused** (409
+  `overlapping-range`) unless it declares an explicit signed supersession — a
+  future start never excuses an overlap, and no general precedence rule was
+  invented (PQ-5 → `OQ-80` stays open).
+- The matrix and the design record no longer claim concurrency safety except
+  where the live PostgreSQL suite proves it (§4).
+
 ## 1. Conflict matrix (CF-1 … CF-22)
 
 | ID | Classification | Affected records / code | Resolution | Evidence | Status |
 | --- | --- | --- | --- | --- | --- |
-| CF-1 | CONFLICT | ADR-0045 (was 0036) Decision 6; `uq_licenses_installation_current`; `licenses.repository.activate()` | The single-current-license model is replaced by retained versions under one license. A future-dated document is imported and retained without replacing the governing version; the partial unique index is dropped by migration. | ADR-0046 §1/§4; migration `20261014000000_licensing_version_model_and_import`; `license-import.service.spec.ts`; live e2e | **RESOLVED** |
-| CF-2 | CONFLICT | ADR-0045 Decision 7 step 5; `license-activation.service.ts` | A not-yet-valid signed document is no longer refused at import: it is validated, retained and becomes effective at its own `validFrom`. Effective-version resolution reports `not-yet-valid` only when nothing else covers or has ended. | ADR-0046 Decisions 4–5; design §3.2; `license-version.spec.ts`, `license-import.service.spec.ts` | **RESOLVED** |
+| CF-1 | CONFLICT | ADR-0045 (was 0036) Decision 6; `uq_licenses_installation_current`; `licenses.repository.activate()` | The single-current-license model is replaced by retained versions under one license; the partial unique index is dropped by migration. Two cases, both required: (a) a **non-overlapping** future-dated renewal is retained without touching the governing version; (b) an **overlapping future-dated successor** (explicit signed supersession) is retained and leaves the governing version in force until the successor's own `validFrom` — supersession is recorded (`superseded_at`) separately from when governance ends (`governs_until`). Fixed in the corrective review (§0 Defect 1); case (a) alone had been cited as evidence and was insufficient. | ADR-0046 Decision 4 (corrected); design §3.1–§3.3, §11; migrations `20261014000000_…` + `20261015000000_licensing_supersession_governs_until`; `license-import.service.spec.ts` › future-dated supersession (pinned clock); `license-import.e2e-spec.ts` › CF-1 case; `license-version.spec.ts`; rehearsal premature-retirement database | **RESOLVED** (corrected: both timelines proven, disposition unchanged) |
+| CF-2 | CONFLICT | ADR-0045 Decision 7 step 5; `license-activation.service.ts` | A not-yet-valid signed document is no longer refused at import: it is validated, retained and becomes effective at its own `validFrom`. Effective-version resolution reports `not-yet-valid` only when nothing else covers or has ended. Being future-dated does **not** waive the overlap rule: a future-dated document whose window overlaps a version that still governs is refused (409 `overlapping-range`) unless it declares an explicit signed supersession — and when it does, the predecessor keeps governing until that start (§0 Defect 1). | ADR-0046 Decisions 4–5 (corrected); design §3.2–§3.3; `license-version.spec.ts`; `license-import.service.spec.ts` (future-dated supersession, refused overlapping future document); `license-import.e2e-spec.ts` | **RESOLVED** (corrected: the "future-dated" path no longer rests on the non-overlapping renewal) |
 | CF-3 | CONFLICT | ADR-0045 Decision 4 (`VLIC1` text code as delivery) | Signed **files** are the primary transport (versioned envelope carrying a `VLIC2` artifact); text is the same artifact without the envelope. Both enter one verification pipeline, so text is not a weaker path. Legacy `VLIC1` codes still import. | ADR-0046 Decision 1; design §2; `license-document.spec.ts`, `license-import.e2e-spec.ts`, frontend file+text tests | **RESOLVED** (import path) |
 | CF-4 | OPEN POLICY | ADR-0030 (licensing vs authentication); ADR-0045 Decision 12; `docs/security.md`; frontend UX §4 | Full revocation is **not implemented**. The conflict (revocation stops System Administrator login vs "license state never ends a session") is preserved as an Owner decision and registered; the design records only the binding constraint that recovery must not depend on an ordinary licensed session. | ADR-0046 §8; OQ-78; no code path added | **OPEN** — registered `OQ-78` |
 | CF-5 | CONFLICT / EXTENSION | ADR-0045 Decision 1 + Consequences ("restoring a backup restores the identity and its license") | Import never creates, recreates or adopts an installation identity: a document for an unknown installation is rejected and leaves no installation row. A database restore without the identity material cannot silently become the previous installation — it fails binding. Recovery stays an Owner-side process. | design §7; `license-import.service.spec.ts` ("wrong installation"); live e2e (no installation row created) | **RESOLVED** for the import path; restore semantics documented |
@@ -109,19 +181,27 @@ and GitHub CI on the exact PR head is the authoritative evidence.
 | Artifact | What it is | Where it ran |
 | --- | --- | --- |
 | `backend/prisma/migrations/20261014000000_licensing_version_model_and_import/` | Non-lossy backfill of every license row into retained versions + version entitlements + typed audit trail; drops the L-02 single-current partial index | GitHub CI (`prisma migrate deploy`) |
+| `backend/prisma/migrations/20261015000000_licensing_supersession_governs_until/` | Corrective migration (§0 Defect 1): adds the hand-over instant, backfills it from the recorded successor (repairing prematurely retired versions) or from the recorded instant, and constrains the two instants to be set together | GitHub CI (`prisma migrate deploy` + rehearsal) |
 | `backend/prisma/rehearsal/licensing-version-model/rehearse.mjs` (`npm run test:licensing-version-rehearsal`) | Fixture rehearsal over a disposable database: populated pre-migration shape through the migration, asserting preserved statuses/ids/hashes/limits/windows, moved entitlements, one eligible version per licensed installation, retained superseded history, the new unique guards, and fail-closed refusal of data the model cannot represent | GitHub CI (`Migration rehearsal (Licensing version model and import)`) |
 | `backend/src/modules/licensing/domain/license-document.ts` + `license-document.spec.ts` | `VLIC2` artifact, versioned file envelope, trusted-key rotation with key ids, canonicalization, strict payload validation, transport decode | local unit run (14 tests) |
-| `backend/src/modules/licensing/domain/license-version.ts` + `license-version.spec.ts` | Half-open windows, eligibility, deterministic effective-version resolution, signed-supersession-only overlap, latest-ended/earliest-future classification | local unit run (15 tests) |
-| `backend/src/modules/licensing/application/license-import.service.ts` + `license-import.service.spec.ts` | The single 10-stage pipeline: transport → verify → bind → payload → lifecycle → replay → supersession → overlap → one transaction → state; rejection order and audit events | local unit run (21 tests) |
+| `backend/src/modules/licensing/domain/license-version.ts` + `license-version.spec.ts` | Half-open windows, eligibility at an instant, the two supersession instants, deterministic effective-version resolution, the single conflict authority (`evaluateImportConflicts`), latest-ended/earliest-future classification, and the disjoint-window invariant over a mixed retained set | local unit run (30 tests) |
+| `backend/src/modules/licensing/application/license-import.service.ts` + `license-import.service.spec.ts` | The single 10-stage pipeline: transport → verify → bind → payload → lifecycle → replay → supersession → overlap → **locked transaction that re-runs the conflict evaluation** → state; rejection order and audit events; the future-dated-supersession timeline on a pinned clock (no sleeps) | local unit run (26 tests) |
+| `backend/src/modules/licensing/data/licenses.repository.ts` | The import transaction: per-installation `FOR UPDATE` lock (the one documented raw statement), in-transaction evaluation, guarded supersession stamp writing both instants, audit rows in the same transaction | local typecheck + lint; behaviour proven by the live suites and the rehearsal |
 | `backend/test/license-import.e2e-spec.ts` | Route-level end-to-end over the real pipeline with in-memory stores: file/text/legacy transports, restart persistence, duplicate 409, overlap 409 then explicit supersession, foreign installation, stranger key, malformed bodies, 401/403 | local e2e run (11 tests) |
-| `backend/test/licensing-persistence-live.e2e-spec.ts` | Live PostgreSQL: identity and versions across restarts, column/leak audits, audit-event sequence, foreign-installation rejection, as-of future resolution, forced rollback leaving no partial write, duplicate operation stopped by the unique index | GitHub CI (live suite) |
+| `backend/test/licensing-persistence-live.e2e-spec.ts` | Live PostgreSQL: identity and versions across restarts, column/leak audits, audit-event sequence, foreign-installation rejection, as-of future resolution, a duplicate refused inside the transaction with nothing written, a **late** failure rolling back every earlier write, and the concurrency suite (§0 Defect 2: three same-window races, a same-document race, competing successors, the disjoint-window invariant and the supersession pair re-asserted in SQL) | GitHub CI (live suite) — the only accepted evidence for Defect 2 |
 | `backend/test/licensing-activation.e2e-spec.ts` | L-02 compatibility contract against the new store (`/license/activate` alias, unchanged rejections, idempotent repeat) | local e2e run (verified against `createLicensingStores`) |
 | `frontend/src/features/licensing/*` + `license-import.test.tsx` | File-first import (file picker primary, paste fallback), 409/422 classification apart from transport failures, gate releases only after the canonical re-read, dashboard renewal card showing the scheduled version | local frontend run (11 tests) |
 
 Two limits are explicit and are not claimed as done: the live suites and the
-rehearsal have not executed locally (no PostgreSQL in this session), and
-`frontend/src/api/generated/vardena-api.d.ts` was not regenerated
+rehearsal have not executed locally (no PostgreSQL in this session), so
+`migrate deploy`, the rehearsal and the live concurrency assertions are CI-only
+evidence and this document is only final once that run is green on the PR head;
+and `frontend/src/api/generated/vardena-api.d.ts` was not regenerated
 (`npm run api:types` boots the API and needs a database; the frontend declares
 the two licensing response shapes verbatim in `src/api/contracts.ts` because
 the controllers' inline return types emit no OpenAPI schema, as documented
 there).
+
+Concurrency is claimed only for what the live suite proves. No unit test, no
+in-memory store and no in-process lock is offered as evidence that two
+concurrent imports of one installation cannot commit incompatible windows.

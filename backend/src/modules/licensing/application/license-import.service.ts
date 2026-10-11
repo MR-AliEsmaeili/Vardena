@@ -11,8 +11,8 @@ import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import {
+  ImportConflictError,
   LicensesRepository,
-  SupersessionConflictError,
   type LicenseAuditEventCommand,
 } from '../data/licenses.repository.js';
 import {
@@ -42,10 +42,10 @@ import type {
   LicenseEntitlement,
 } from '../domain/license.js';
 import {
-  findVersionByOperationId,
-  isSuperseded,
-  overlappingVersions,
+  evaluateImportConflicts,
   resolveEffectiveVersion,
+  type ImportConflict,
+  type ImportSupersessionIntent,
   type LicenseVersionSource,
   type RetainedLicenseVersion,
 } from '../domain/license-version.js';
@@ -111,9 +111,16 @@ const CONFLICT_REASONS: ReadonlySet<LicenseImportRejectionReason> = new Set([
  *                       already has (never created here);
  *   7. semantics      — active status, window not already over;
  *   8. replay         — operation id (and artifact hash) not already applied;
- *   9. conflicts      — overlap only through an explicit signed supersession;
+ *   9. conflicts      — overlap only through an explicit signed supersession
+ *                       (`evaluateImportConflicts`, the ONE authority);
  *  10. persistence    — ONE transaction (customer, license, version,
- *                       entitlements, supersession stamps, audit event).
+ *                       entitlements, supersession stamps, audit event) that
+ *                       RE-RUNS steps 8 and 9 under the per-installation
+ *                       database lock before it writes (design §3.4).
+ *
+ * The read-side pass of steps 8/9 and the authoritative pass inside the
+ * transaction share one implementation, so they cannot drift apart; the
+ * transaction's verdict is the one that decides.
  *
  * Security properties that hold by construction:
  * - a rejection writes **nothing**; no state is ever replaced or deactivated by
@@ -274,30 +281,28 @@ export class LicenseImportService {
       );
     }
 
-    // 8. Replay. A v2 operation is applied at most once: the second attempt is
-    //    refused (409) and changes nothing, which is also what makes retrying
-    //    an ambiguous failure safe (PDR-11 §10.8).
+    // 8./9. Replay and version conflicts — evaluated by the ONE authority the
+    //    data layer re-runs inside the import transaction, under the
+    //    per-installation lock (design §3.4). This read-side pass is a fast,
+    //    informative rejection: it is the authoritative pass in
+    //    `LicensesRepository.importVersion` that decides, so a concurrent
+    //    import can never invalidate it silently.
     const versions = await this.licenses.listVersions(installationId);
-    if (findVersionByOperationId(versions, payload.operationId) !== null) {
-      return this.rejectVerified(
-        'duplicate-operation',
-        {
-          now,
-          installationId,
-          payload,
-          keyId,
-          source: transport.transport,
-          documentHash,
-        },
-        'This license version has already been imported.',
-      );
-    }
-    const byHash = await this.licenses.findVersion(installationId, {
+    const supersession: ImportSupersessionIntent =
+      payload.supersedesOperationId === null
+        ? { kind: 'none' }
+        : { kind: 'explicit', operationId: payload.supersedesOperationId };
+    const precheck = evaluateImportConflicts({
+      candidate: payload,
+      operationId: payload.operationId,
       documentHash,
+      supersession,
+      versions,
+      at: now,
     });
-    if (byHash !== null) {
+    if (precheck.conflict !== null) {
       return this.rejectVerified(
-        'duplicate-operation',
+        precheck.conflict.reason,
         {
           now,
           installationId,
@@ -306,54 +311,14 @@ export class LicenseImportService {
           source: transport.transport,
           documentHash,
         },
-        'This license version has already been imported.',
+        documentConflictMessage(precheck.conflict),
+        precheck.conflict.overlapping,
       );
     }
+    const supersedes = precheck.supersedes;
 
-    // 9. Version conflicts. Overlap is only allowed through an explicit signed
-    //    supersession (design §3.3); the open product question about a general
-    //    precedence rule (PDR-11 PQ-5 → OQ-80) is deliberately NOT decided.
-    let supersedes: RetainedLicenseVersion | null = null;
-    if (payload.supersedesOperationId !== null) {
-      supersedes = findVersionByOperationId(
-        versions,
-        payload.supersedesOperationId,
-      );
-      if (supersedes === null || isSuperseded(supersedes)) {
-        return this.rejectVerified(
-          'unknown-supersession',
-          {
-            now,
-            installationId,
-            payload,
-            keyId,
-            source: transport.transport,
-            documentHash,
-          },
-          'The license version this document retires is not a retained, eligible version of this installation.',
-        );
-      }
-    }
-    const overlapping = overlappingVersions(payload, versions).filter(
-      (version) => version.versionId !== supersedes?.versionId,
-    );
-    if (overlapping.length > 0) {
-      return this.rejectVerified(
-        'overlapping-range',
-        {
-          now,
-          installationId,
-          payload,
-          keyId,
-          source: transport.transport,
-          documentHash,
-        },
-        'This license version overlaps a retained version. Issue a document that explicitly retires it, or a non-overlapping renewal.',
-        overlapping.length,
-      );
-    }
-
-    // 10. Persist as ONE transaction.
+    // 10. Persist as ONE transaction (which re-runs the evaluation above under
+    //     the installation lock before it writes anything).
     const version = await this.persist(
       {
         installationId,
@@ -361,6 +326,7 @@ export class LicenseImportService {
         keyId,
         source: transport.transport,
         documentHash,
+        supersession,
         supersedes,
         now,
       },
@@ -480,19 +446,29 @@ export class LicenseImportService {
       );
     }
 
-    // Replacement semantics for the version that governs now. Overlap with any
-    // other retained version cannot be expressed by a text code, so it is
-    // refused rather than guessed (fail-closed; same default as v2).
-    const overlapping = overlappingVersions(payload, versions);
-    if (overlapping.length > 1) {
+    // Replacement semantics for the version that governs now. A text code
+    // cannot express WHICH version it replaces, so it may overlap at most one
+    // still-governing version that has no recorded supersession; anything else
+    // is refused rather than guessed (fail-closed; same authority as v2 —
+    // `evaluateImportConflicts`, re-run under the lock inside the transaction).
+    const supersession: ImportSupersessionIntent = { kind: 'implicit' };
+    const precheck = evaluateImportConflicts({
+      candidate: payload,
+      operationId: legacyOperationId(documentHash),
+      documentHash,
+      supersession,
+      versions,
+      at: now,
+    });
+    if (precheck.conflict !== null) {
       return this.rejectLegacy(
-        'overlapping-range',
+        precheck.conflict.reason,
         { now, installationId, payload, source: 'legacy-code', documentHash },
-        'This license code overlaps more than one retained version and cannot be applied.',
-        overlapping.length,
+        legacyConflictMessage(precheck.conflict),
+        precheck.conflict.overlapping,
       );
     }
-    const supersedes = overlapping[0] ?? null;
+    const supersedes = precheck.supersedes;
 
     const version = await this.persist(
       {
@@ -501,6 +477,7 @@ export class LicenseImportService {
         keyId: null,
         source: 'legacy-code',
         documentHash,
+        supersession,
         supersedes,
         now,
         legacy: true,
@@ -538,6 +515,9 @@ export class LicenseImportService {
       keyId: string | null;
       source: LicenseVersionSource;
       documentHash: string;
+      /** What the artifact declares about the version it replaces. */
+      supersession: ImportSupersessionIntent;
+      /** Resolved by the read-side pass; the transaction must retire exactly it. */
       supersedes: RetainedLicenseVersion | null;
       now: Date;
       legacy?: boolean;
@@ -573,7 +553,8 @@ export class LicenseImportService {
         organizationLimit: context.payload.organizationLimit,
         userLimit: context.payload.userLimit,
         entitlements,
-        supersedesVersionId: context.supersedes?.versionId ?? null,
+        supersession: context.supersession,
+        expectedSupersessionVersionId: context.supersedes?.versionId ?? null,
         auditEvents: [
           ...(context.supersedes === null
             ? []
@@ -604,9 +585,9 @@ export class LicenseImportService {
         ],
       });
     } catch (error) {
-      if (error instanceof SupersessionConflictError) {
+      if (error instanceof ImportConflictError) {
         return this.rejectAppliedConflict(
-          'unknown-supersession',
+          error.conflict.reason,
           {
             installationId: context.installationId,
             licenseId: context.payload.licenseId,
@@ -615,7 +596,8 @@ export class LicenseImportService {
             source: context.source,
             now: context.now,
           },
-          'The license version this document retires was superseded by a concurrent import.',
+          conflictLostRaceMessage(error.conflict, legacy),
+          error.conflict.overlapping,
         );
       }
       if (isUniqueViolation(error)) {
@@ -653,6 +635,7 @@ export class LicenseImportService {
       now: Date;
     },
     message: string,
+    overlapCount?: number,
   ): Promise<never> {
     await this.recordAudit({
       installationId: context.installationId,
@@ -669,11 +652,12 @@ export class LicenseImportService {
       occurredAt: context.now,
     });
     this.logger.warn(
-      'License import rejected by the database guard',
+      'License import refused inside the import transaction',
       {
         reason,
         installationId: context.installationId,
         source: context.source,
+        ...(overlapCount === undefined ? {} : { overlapping: overlapCount }),
       },
       LicenseImportService.name,
     );
@@ -911,6 +895,56 @@ function legacyInactiveMessage(
     default:
       return 'This license code cannot be activated.';
   }
+}
+
+/**
+ * The 409 message of each conflict reason for a SIGNED document. Stable
+ * wording: the frontend maps the machine-readable `reason`, operators read the
+ * message.
+ */
+function documentConflictMessage(conflict: ImportConflict): string {
+  switch (conflict.reason) {
+    case 'duplicate-operation':
+      return 'This license version has already been imported.';
+    case 'unknown-supersession':
+      return 'The license version this document retires is not a retained, eligible version of this installation.';
+    case 'overlapping-range':
+      return 'This license version overlaps a retained version. Issue a document that explicitly retires it, or a non-overlapping renewal.';
+  }
+}
+
+/** The legacy-code wording of the same conflicts (L-02 vocabulary). */
+function legacyConflictMessage(conflict: ImportConflict): string {
+  switch (conflict.reason) {
+    case 'duplicate-operation':
+      return 'This license code has already been imported and is retained; it is no longer the version that governs.';
+    case 'unknown-supersession':
+      return 'This license code cannot replace the version it overlaps.';
+    case 'overlapping-range':
+      return 'This license code overlaps more than one retained version, or a version that is already retired, and cannot be applied.';
+  }
+}
+
+/**
+ * The message of a conflict the transaction discovered (the read-side pass
+ * passed, then a concurrent import committed first). Same reasons, phrased for
+ * the loser of the race.
+ */
+function conflictLostRaceMessage(
+  conflict: ImportConflict,
+  legacy: boolean,
+): string {
+  if (conflict.reason === 'duplicate-operation') {
+    return legacy
+      ? 'This license code has already been imported and is retained; it is no longer the version that governs.'
+      : 'This license version has already been imported.';
+  }
+  if (conflict.reason === 'unknown-supersession') {
+    return 'The license version this document retires was superseded by a concurrent import.';
+  }
+  return legacy
+    ? 'This license code overlaps a retained version that a concurrent import changed, and cannot be applied.'
+    : 'This license version overlaps a version a concurrent import retained. Nothing was changed; review the license state and retry.';
 }
 
 function rejectionException(

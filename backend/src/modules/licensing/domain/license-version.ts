@@ -17,11 +17,32 @@ import type {
  * rows and the instant — no background job, no materialization, no restart
  * dependency.
  *
+ * ## Supersession is recorded once and becomes effective later
+ *
+ * Two instants are deliberately separate facts on a retired version:
+ *
+ * - `supersededAt` — WHEN the supersession was recorded (the import instant of
+ *   the successor). Audit and traceability only; it never decides eligibility.
+ * - `governsUntil` — the instant FROM WHICH the version no longer governs. It
+ *   is the successor's own `validFrom` (never earlier than the import that
+ *   recorded it), which is what makes a future-dated renewal importable
+ *   *without* interrupting the license that still governs today (PDR-11 §3.2).
+ *
+ * A version is therefore superseded at an instant, not forever after an
+ * import: `isSupersededAt(version, at)`. Historical instants keep the version
+ * that really governed then, which matters for as-of reads.
+ *
+ * ## What the import path guarantees
+ *
  * The rules below are deliberately fail-closed around the product question that
- * is still open (PDR-11 PQ-5 → OQ-80): the import path guarantees that at most
- * one retained, non-superseded version covers any instant. Rule 7 is a
- * defensive, deterministic failure mode for corrupted or hand-edited data — it
- * is **not** a precedence policy and grants nothing.
+ * is still open (PDR-11 PQ-5 → OQ-80): at most one retained version *governs*
+ * any instant at or after the import that created it. `evaluateImportConflicts`
+ * is the single authority for that guarantee and is evaluated twice — once as
+ * a read-side pre-check (fast, informative rejection) and once inside the
+ * import transaction, under a per-installation database lock (authoritative;
+ * see `LicensesRepository.importVersion`). `resolveEffectiveVersion` rule 7
+ * remains a defensive, deterministic failure mode for corrupted or hand-edited
+ * data — it is **not** a precedence policy and grants nothing.
  */
 
 /** Where a version came from (audited; never a trust decision). */
@@ -49,8 +70,18 @@ export interface RetainedLicenseVersion {
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
   entitlements: readonly LicenseEntitlement[];
-  /** Non-null on a version that is retained but no longer eligible. */
+  /**
+   * When the supersession was RECORDED (the successor's import instant), or
+   * null while the version has never been retired. Audit/traceability only.
+   */
   supersededAt: Date | null;
+  /**
+   * The instant FROM which the version no longer governs — the retiring
+   * successor's `validFrom`, never earlier than the import that recorded it.
+   * null while the version has not been retired. This is the eligibility
+   * boundary; `supersededAt` is not.
+   */
+  governsUntil: Date | null;
   supersededByVersionId: string | null;
   supersedesVersionId: string | null;
   importedAt: Date;
@@ -76,12 +107,75 @@ export type EffectiveVersionResolution =
       covering: readonly RetainedLicenseVersion[];
     };
 
-export function isSuperseded(version: RetainedLicenseVersion): boolean {
+/** True once a supersession has been recorded, regardless of when it starts. */
+export function hasRecordedSupersession(
+  version: Pick<RetainedLicenseVersion, 'supersededAt'>,
+): boolean {
   return version.supersededAt !== null;
 }
 
-export function isEligible(version: RetainedLicenseVersion): boolean {
-  return version.supersededAt === null;
+/**
+ * True when the version no longer governs at `at`: its governance ended at or
+ * before the instant. A future-dated supersession leaves the predecessor
+ * eligible until the successor's `validFrom`.
+ */
+export function isSupersededAt(
+  version: Pick<RetainedLicenseVersion, 'governsUntil'>,
+  at: Date,
+): boolean {
+  return (
+    version.governsUntil !== null &&
+    version.governsUntil.getTime() <= at.getTime()
+  );
+}
+
+/** Retained and still governing at `at` (the eligibility half of rule 1). */
+export function isEligibleAt(
+  version: Pick<RetainedLicenseVersion, 'governsUntil'>,
+  at: Date,
+): boolean {
+  return !isSupersededAt(version, at);
+}
+
+/**
+ * The window during which a version can actually govern: its own half-open
+ * `[validFrom, validUntil)` truncated at the instant a successor takes over.
+ * A retired version never governs past `governsUntil`, and an eligible version
+ * is unaffected.
+ */
+export function effectiveWindow(version: RetainedLicenseVersion): {
+  start: Date;
+  end: Date | null;
+} {
+  return {
+    start: version.validFrom,
+    end: earliestInstant(version.validUntil, version.governsUntil),
+  };
+}
+
+/**
+ * The instant a retiring document makes its predecessor stop governing: the
+ * successor's own `validFrom`, whatever that is.
+ *
+ * The reason it is not clamped to the import instant: the invariant this model
+ * protects is *"no two retained versions govern the same instant"*, and
+ * clamping would break it. A retroactively-dated successor
+ * (`validFrom < recordedAt`) clamped to `recordedAt` would leave the
+ * predecessor eligible in `[successor.validFrom, recordedAt)` where the
+ * successor already covers — two versions governing one instant. With the
+ * candidate's own start the two windows are adjacent by construction: the
+ * predecessor governs up to exactly the instant the successor takes over.
+ *
+ * The cost of that choice is honest and bounded: a retroactive successor
+ * re-computes which version governed an instant that is already in the past
+ * (as-of reads are recomputed from the retained rows, never materialized), and
+ * the append-only audit trail still records that the predecessor was retired
+ * at `supersededAt` — a later instant than the hand-over it describes.
+ */
+export function supersessionCeaseInstant(
+  candidate: Pick<RetainedLicenseVersion, 'validFrom'>,
+): Date {
+  return candidate.validFrom;
 }
 
 /** Half-open containment: `validFrom <= at < validUntil` (null = open end). */
@@ -104,23 +198,34 @@ export function windowsOverlap(
   a: Pick<RetainedLicenseVersion, 'validFrom' | 'validUntil'>,
   b: Pick<RetainedLicenseVersion, 'validFrom' | 'validUntil'>,
 ): boolean {
-  const aEnd = a.validUntil?.getTime() ?? Number.POSITIVE_INFINITY;
-  const bEnd = b.validUntil?.getTime() ?? Number.POSITIVE_INFINITY;
-  return a.validFrom.getTime() < bEnd && b.validFrom.getTime() < aEnd;
+  return windowsIntersect(a.validFrom, a.validUntil, b.validFrom, b.validUntil);
 }
 
 /**
- * Retained, non-superseded versions whose window overlaps the candidate's.
+ * Retained versions that still govern at `at` (`isEligibleAt`) and whose
+ * EFFECTIVE window overlaps the candidate's declared window. A version retired
+ * by an earlier import contributes only the window in which it really governed,
+ * so its retained tail can never block a legitimate renewal.
+ *
  * The import path rejects a non-empty result unless the document explicitly
- * supersedes a retained version.
+ * retires exactly one of them — or, for a legacy text code, unless exactly one
+ * of them governs the version being replaced (see `evaluateImportConflicts`).
  */
 export function overlappingVersions(
   candidate: Pick<RetainedLicenseVersion, 'validFrom' | 'validUntil'>,
   versions: readonly RetainedLicenseVersion[],
+  at: Date,
 ): RetainedLicenseVersion[] {
-  return versions.filter(
-    (version) => isEligible(version) && windowsOverlap(candidate, version),
-  );
+  return versions.filter((version) => {
+    if (!isEligibleAt(version, at)) return false;
+    const window = effectiveWindow(version);
+    return windowsIntersect(
+      candidate.validFrom,
+      candidate.validUntil,
+      window.start,
+      window.end,
+    );
+  });
 }
 
 export function findVersionByOperationId(
@@ -133,9 +238,9 @@ export function findVersionByOperationId(
 }
 
 /**
- * The next version that is not effective yet: the earliest eligible version
- * starting after `at`. Reported so an operator can see that a future-dated
- * renewal landed without it having taken effect (PDR-11 §3.2).
+ * The next version that is not effective yet: the earliest version that still
+ * governs at `at` and starts after it. Reported so an operator can see that a
+ * future-dated renewal landed without it having taken effect (PDR-11 §3.2).
  */
 export function findScheduledVersion(
   versions: readonly RetainedLicenseVersion[],
@@ -144,7 +249,7 @@ export function findScheduledVersion(
   const future = versions
     .filter(
       (version) =>
-        isEligible(version) && version.validFrom.getTime() > at.getTime(),
+        isEligibleAt(version, at) && version.validFrom.getTime() > at.getTime(),
     )
     .sort(compareByStartThenImport);
   return future[0] ?? null;
@@ -160,7 +265,7 @@ export function sortVersionsNewestFirst(
 /**
  * Deterministic effective-version resolution (design §3.2).
  *
- * 1. eligible = retained and not superseded;
+ * 1. eligible = retained and still governing at `at`;
  * 2. covering = eligible versions whose window contains `at`;
  * 3. one covering version governs — its status and dates then decide active or
  *    `inactiveReason`;
@@ -175,7 +280,7 @@ export function resolveEffectiveVersion(
   versions: readonly RetainedLicenseVersion[],
   at: Date,
 ): EffectiveVersionResolution {
-  const eligible = versions.filter(isEligible);
+  const eligible = versions.filter((version) => isEligibleAt(version, at));
   if (eligible.length === 0) return { kind: 'none', version: null };
 
   const covering = eligible.filter((version) => covers(version, at));
@@ -212,6 +317,150 @@ export function resolveEffectiveVersion(
   return { kind: 'none', version: null };
 }
 
+// ---------------------------------------------------------------------------
+// Import conflict evaluation (the ONE authority for the version invariant)
+// ---------------------------------------------------------------------------
+
+/**
+ * Why an import conflicts with retained state. These are the reasons the API
+ * answers 409 with (the document is authentic; the state is the problem).
+ */
+export type ImportConflictReason =
+  'duplicate-operation' | 'unknown-supersession' | 'overlapping-range';
+
+export interface ImportConflict {
+  reason: ImportConflictReason;
+  /** How many retained versions the candidate collides with (diagnostics). */
+  overlapping: number;
+}
+
+/**
+ * What the document declares about the version it replaces:
+ *
+ * - `none` — a signed document that retires nothing; it may not overlap any
+ *   version that still governs.
+ * - `explicit` — a signed document naming its predecessor by operation id
+ *   (`supersedesOperationId`); exactly that version may be overlapped.
+ * - `implicit` — a legacy `VLIC1` text code, which by documented L-02
+ *   semantics replaces the single version governing at the import instant and
+ *   cannot express a supersession target.
+ *
+ * The declared operation id (not a resolved row id) is carried on purpose: the
+ * evaluation resolves it against the very rows it was handed, so the
+ * authoritative in-transaction check resolves against the committed state
+ * inside the lock.
+ */
+export type ImportSupersessionIntent =
+  | { kind: 'none' }
+  | { kind: 'explicit'; operationId: string }
+  | { kind: 'implicit' };
+
+export interface EvaluateImportConflictsParams {
+  candidate: Pick<RetainedLicenseVersion, 'validFrom' | 'validUntil'>;
+  operationId: string;
+  documentHash: string;
+  supersession: ImportSupersessionIntent;
+  versions: readonly RetainedLicenseVersion[];
+  /** The import instant every time-dependent rule is evaluated at. */
+  at: Date;
+}
+
+export type ImportConflictEvaluation =
+  | { conflict: ImportConflict; supersedes: null }
+  | { conflict: null; supersedes: RetainedLicenseVersion | null };
+
+/**
+ * Evaluate one import against the retained versions that must be trusted.
+ *
+ * The same function runs as the read-side pre-check and inside the import
+ * transaction under the per-installation lock, so a concurrent writer can never
+ * invalidate a decision that was only made before the transaction.
+ *
+ * Rules (fail closed; nothing is ever silently resolved):
+ * 1. an operation id that is already retained is a duplicate;
+ * 2. an artifact hash that is already retained is a duplicate;
+ * 3. an explicit supersession target (the retained version carrying the
+ *    declared operation id) must exist in this installation, must not have a
+ *    supersession recorded yet, and must still govern at `at` — a version is
+ *    retired once, so two competing successors cannot be booked;
+ * 4. a signed document that overlaps any version still governing at `at` other
+ *    than its explicit target is refused (unauthorized ambiguity);
+ * 5. a legacy code may overlap at most ONE still-governing version, and only
+ *    one without a recorded supersession; that version is the one it replaces.
+ */
+export function evaluateImportConflicts(
+  params: EvaluateImportConflictsParams,
+): ImportConflictEvaluation {
+  const { candidate, operationId, documentHash, supersession, versions, at } =
+    params;
+
+  if (findVersionByOperationId(versions, operationId) !== null) {
+    return {
+      conflict: { reason: 'duplicate-operation', overlapping: 0 },
+      supersedes: null,
+    };
+  }
+  if (versions.some((version) => version.documentHash === documentHash)) {
+    return {
+      conflict: { reason: 'duplicate-operation', overlapping: 0 },
+      supersedes: null,
+    };
+  }
+
+  let target: RetainedLicenseVersion | null = null;
+  if (supersession.kind === 'explicit') {
+    const found = findVersionByOperationId(versions, supersession.operationId);
+    if (
+      found === null ||
+      hasRecordedSupersession(found) ||
+      !isEligibleAt(found, at)
+    ) {
+      return {
+        conflict: { reason: 'unknown-supersession', overlapping: 0 },
+        supersedes: null,
+      };
+    }
+    target = found;
+  }
+
+  const overlapping = overlappingVersions(candidate, versions, at).filter(
+    (version) => version.versionId !== target?.versionId,
+  );
+
+  if (supersession.kind === 'implicit') {
+    if (overlapping.length > 1) {
+      return {
+        conflict: {
+          reason: 'overlapping-range',
+          overlapping: overlapping.length,
+        },
+        supersedes: null,
+      };
+    }
+    const implicitTarget = overlapping[0] ?? null;
+    if (implicitTarget !== null && hasRecordedSupersession(implicitTarget)) {
+      // A text code cannot express which successor it would join; refuse rather
+      // than rewrite a supersession that an earlier document already recorded.
+      return {
+        conflict: { reason: 'overlapping-range', overlapping: 1 },
+        supersedes: null,
+      };
+    }
+    return { conflict: null, supersedes: implicitTarget };
+  }
+
+  if (overlapping.length > 0) {
+    return {
+      conflict: {
+        reason: 'overlapping-range',
+        overlapping: overlapping.length,
+      },
+      supersedes: null,
+    };
+  }
+  return { conflict: null, supersedes: target };
+}
+
 /**
  * Project a retained version onto the evaluated license shape consumers and
  * the API already use (`InstallationLicense` → `evaluateLicense`). The
@@ -239,6 +488,11 @@ export function toInstallationLicense(
 /**
  * The retained-version projection the state endpoint exposes (no signature, no
  * hash, no key — the operator needs identity, dates and lifecycle only).
+ *
+ * `supersededAt` is when the supersession was recorded and `governsUntil` is
+ * when the version stops governing: for a future-dated renewal they differ, and
+ * that difference is exactly what tells an operator "retired, still valid until
+ * the successor's start".
  */
 export interface LicenseVersionSummary {
   versionId: string;
@@ -248,6 +502,7 @@ export interface LicenseVersionSummary {
   validUntil: string | null;
   effective: boolean;
   supersededAt: string | null;
+  governsUntil: string | null;
   supersededByVersionId: string | null;
   importedAt: string;
   source: LicenseVersionSource;
@@ -265,6 +520,7 @@ export function toLicenseVersionSummary(
     validUntil: version.validUntil?.toISOString() ?? null,
     effective: version.versionId === effectiveVersionId,
     supersededAt: version.supersededAt?.toISOString() ?? null,
+    governsUntil: version.governsUntil?.toISOString() ?? null,
     supersededByVersionId: version.supersededByVersionId,
     importedAt: version.importedAt.toISOString(),
     source: version.source,
@@ -290,4 +546,29 @@ function compareByStartThenImport(
   const byImport = a.importedAt.getTime() - b.importedAt.getTime();
   if (byImport !== 0) return byImport;
   return a.versionId < b.versionId ? -1 : a.versionId > b.versionId ? 1 : 0;
+}
+
+/** Half-open intersection of two `[start, end)` instants (`null` = open). */
+function windowsIntersect(
+  aStart: Date,
+  aEnd: Date | null,
+  bStart: Date,
+  bEnd: Date | null,
+): boolean {
+  const aEndMs = aEnd?.getTime() ?? Number.POSITIVE_INFINITY;
+  const bEndMs = bEnd?.getTime() ?? Number.POSITIVE_INFINITY;
+  // A window whose declared end precedes its start is EMPTY, not reversed: an
+  // effective window can be empty when a later import retired a version before
+  // its own `validFrom` (a legacy replacement of a scheduled renewal), and an
+  // empty window overlaps nothing.
+  if (aStart.getTime() >= aEndMs) return false;
+  if (bStart.getTime() >= bEndMs) return false;
+  return aStart.getTime() < bEndMs && bStart.getTime() < aEndMs;
+}
+
+/** The earlier of two optional instants; null only when both are null. */
+function earliestInstant(a: Date | null, b: Date | null): Date | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return a.getTime() <= b.getTime() ? a : b;
 }

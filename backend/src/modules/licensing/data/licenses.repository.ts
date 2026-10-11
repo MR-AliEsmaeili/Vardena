@@ -7,9 +7,14 @@ import type {
   LicenseLimit,
   LicenseStatus,
 } from '../domain/license.js';
-import type {
-  LicenseVersionSource,
-  RetainedLicenseVersion,
+import {
+  evaluateImportConflicts,
+  supersessionCeaseInstant,
+  type ImportConflict,
+  type ImportConflictReason,
+  type ImportSupersessionIntent,
+  type LicenseVersionSource,
+  type RetainedLicenseVersion,
 } from '../domain/license-version.js';
 
 /**
@@ -18,17 +23,35 @@ import type {
  * (AR-07: the Licensing module owns these tables and no other module reads
  * them).
  *
- * Two guarantees live here, not in the application layer:
+ * Three guarantees live here, not in the application layer:
  *
  * - **One transaction per import.** The commercial customer, the license
  *   identity, the supersession stamp, the version, its entitlements and the
  *   `applied` audit event are written together or not at all, so a failed
  *   import can neither deactivate a valid installation nor leave a half-applied
  *   version behind.
+ * - **One importer per installation at a time.** The transaction takes a
+ *   `FOR UPDATE` row lock on the installation BEFORE it reads the retained
+ *   versions, and re-evaluates the version invariant inside the lock
+ *   (`evaluateImportConflicts` — the same pure authority the read-side
+ *   pre-check uses). A concurrent import of the same installation therefore
+ *   blocks until the winner commits and then evaluates against the winner's
+ *   committed rows, so two incompatible version windows can never both commit.
+ *   The lock is a database row lock, not a process mutex: the API and any
+ *   worker process share it (design §3.4, ADR-0046 Decision 9).
  * - **The replay guards are database constraints.** A version is unique by
  *   `(installation_id, operation_id)` and by `(installation_id,
- *   document_hash)`, so two concurrent imports of the same operation cannot
- *   create two versions even if both pass the read-side checks.
+ *   document_hash)`, and the supersession stamp is a guarded update
+ *   (`WHERE superseded_at IS NULL`). Those indexes and guards back the lock up
+ *   as defence in depth; they are not what makes the check race-safe.
+ *
+ * `PRISMA CANNOT EXPRESS SELECT … FOR UPDATE`, hence the one parameterized raw
+ * statement below — the same documented exemption the Accounting modules carry
+ * (AR-11, `docs/modules.md`). The transaction runs in READ COMMITTED (the
+ * PostgreSQL default, requested explicitly below): every statement takes a
+ * fresh snapshot, so the checks that run after the lock is granted see exactly
+ * the winner's committed rows. Under REPEATABLE READ the snapshot would
+ * predate the wait and the re-check would be stale.
  *
  * What is NOT stored: the submitted document, its signature, or any key
  * material. Only the SHA-256 `document_hash` is kept; it is irreversible and is
@@ -57,8 +80,21 @@ export interface ImportLicenseVersionCommand {
   organizationLimit: LicenseLimit;
   userLimit: LicenseLimit;
   entitlements: readonly LicenseEntitlement[];
-  /** Resolved by the application layer from the document's declaration. */
-  supersedesVersionId: string | null;
+  /**
+   * How the artifact declares its relation to the version it replaces: nothing
+   * (a signed document that may not overlap), an explicit signed supersession,
+   * or the implicit replacement a legacy `VLIC1` text code performs (domain
+   * `ImportSupersessionIntent`).
+   */
+  supersession: ImportSupersessionIntent;
+  /**
+   * The version the application layer resolved as the supersession target; the
+   * pre-built `license.version.superseded` audit event names it. The
+   * transaction must retire EXACTLY this version or refuse the import, so the
+   * audit row can never name a version the transaction did not actually
+   * retire.
+   */
+  expectedSupersessionVersionId: string | null;
   /**
    * Audit rows written INSIDE the same transaction, so an applied change and
    * its evidence are committed together (AR-23).
@@ -82,16 +118,27 @@ export interface LicenseAuditEventCommand {
 }
 
 /**
- * The version a document declared as superseded was no longer eligible when
- * the transaction ran (a concurrent import won). The service turns this into a
- * conflict — never a silent skip and never a 500.
+ * The version invariant refused this import inside the transaction (a
+ * concurrent import won the race, or the retained state changed under it). The
+ * service turns the reason into the documented 409 answer — never a silent
+ * skip and never a 500. The transaction has already rolled back when this is
+ * thrown: no version, no entitlement, no supersession stamp, no applied audit
+ * event survive.
  */
-export class SupersessionConflictError extends Error {
-  constructor() {
+export class ImportConflictError extends Error {
+  constructor(readonly conflict: ImportConflict) {
     super(
-      'The version named by this document is no longer eligible for supersession.',
+      conflict.reason === 'duplicate-operation'
+        ? 'This license version has already been imported.'
+        : conflict.reason === 'unknown-supersession'
+          ? 'The version named by this document is no longer eligible for supersession.'
+          : 'This license version overlaps a retained version.',
     );
-    this.name = 'SupersessionConflictError';
+    this.name = 'ImportConflictError';
+  }
+
+  get reason(): ImportConflictReason {
+    return this.conflict.reason;
   }
 }
 
@@ -114,6 +161,7 @@ interface VersionRow {
   organizationLimit: number | null;
   userLimit: number | null;
   supersededAt: Date | null;
+  governsUntil: Date | null;
   supersededByVersionId: string | null;
   supersedesVersionId: string | null;
   importedAt: Date;
@@ -149,6 +197,7 @@ interface VersionDelegate {
     };
     data: {
       supersededAt: Date;
+      governsUntil: Date;
       supersededByVersionId: string;
       updatedAt: Date;
     };
@@ -268,17 +317,45 @@ interface AuditDelegate {
   >;
 }
 
-interface Tx {
+/**
+ * The raw statement interface, as the Accounting locking helpers declare it:
+ * Prisma's typed delegates cannot express `SELECT … FOR UPDATE`.
+ */
+type RawQuery = <T>(
+  query: TemplateStringsArray,
+  ...values: unknown[]
+) => Promise<T[]>;
+
+export interface LicensesTxClient {
   licenseVersion: VersionDelegate;
   licenseCustomer: CustomerDelegate;
   license: LicenseDelegate;
   installation: InstallationDelegate;
   licenseAuditEvent: AuditDelegate;
+  $queryRaw: RawQuery;
 }
 
-type Client = Tx & {
-  $transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T>;
+type Client = LicensesTxClient & {
+  $transaction<T>(
+    fn: (tx: LicensesTxClient) => Promise<T>,
+    options?: { isolationLevel?: string; timeout?: number },
+  ): Promise<T>;
 };
+
+/**
+ * READ COMMITTED — what makes the post-lock re-read see the winner's rows —
+ * plus the bounded wait for the installation lock. A loser waits at most
+ * {@link LOCK_WAIT_TIMEOUT_MS}; beyond that the transaction is aborted by
+ * Prisma and NOTHING is written (the caller retries). An import is a few
+ * milliseconds of work, so a wait that long means something is wrong with the
+ * database, not with the license state — which is why an abort surfaces as a
+ * server error rather than a license conflict.
+ */
+const LOCK_WAIT_TIMEOUT_MS = 10_000;
+const READ_COMMITTED = {
+  isolationLevel: 'ReadCommitted',
+  timeout: LOCK_WAIT_TIMEOUT_MS,
+} as const;
 
 @Injectable()
 export class LicensesRepository {
@@ -292,17 +369,7 @@ export class LicensesRepository {
   async listVersions(
     installationId: string,
   ): Promise<RetainedLicenseVersion[]> {
-    const client = await this.client();
-    const rows = await client.licenseVersion.findMany({
-      where: { installationId },
-      include: {
-        entitlements: { select: { kind: true, code: true } },
-        license: { select: { customerId: true } },
-      },
-    });
-    return rows
-      .map(toRetainedVersion)
-      .sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
+    return readVersions(await this.client(), installationId);
   }
 
   /**
@@ -340,6 +407,49 @@ export class LicensesRepository {
   ): Promise<RetainedLicenseVersion> {
     const client = await this.client();
     const row = await client.$transaction(async (tx) => {
+      // 1. Serialize every import of THIS installation. The lock is held until
+      //    commit, so the checks below cannot race a concurrent importer: the
+      //    loser waits here and then reads the winner's committed rows.
+      await lockInstallationRow(tx, command.installationId);
+
+      // 2. Authoritative invariant check. The read-side pre-check in the
+      //    service may have run before another import committed; THIS one runs
+      //    under the lock, so it decides.
+      const retained = await readVersions(tx, command.installationId);
+      const evaluation = evaluateImportConflicts({
+        candidate: {
+          validFrom: command.validFrom,
+          validUntil: command.validUntil,
+        },
+        operationId: command.operationId,
+        documentHash: command.documentHash,
+        supersession: command.supersession,
+        versions: retained,
+        at: command.now,
+      });
+      if (evaluation.conflict !== null) {
+        throw new ImportConflictError(evaluation.conflict);
+      }
+
+      // 3. The transaction must retire exactly the version the application
+      //    layer resolved (the `license.version.superseded` audit row it
+      //    already built names that version). If the state moved under it, the
+      //    import is refused rather than recording an audit row that describes
+      //    a retirement that did not happen.
+      const supersedes = evaluation.supersedes;
+      if (
+        (supersedes?.versionId ?? null) !==
+        command.expectedSupersessionVersionId
+      ) {
+        throw new ImportConflictError({
+          reason:
+            command.supersession.kind === 'implicit'
+              ? 'overlapping-range'
+              : 'unknown-supersession',
+          overlapping: supersedes === null ? 0 : 1,
+        });
+      }
+
       await tx.licenseCustomer.upsert({
         where: { id: command.customerId },
         create: {
@@ -389,7 +499,7 @@ export class LicensesRepository {
           userLimit: command.userLimit,
           importedAt: command.now,
           importedBy: command.actorId,
-          supersedesVersionId: command.supersedesVersionId,
+          supersedesVersionId: supersedes?.versionId ?? null,
           createdAt: command.now,
           updatedAt: command.now,
           entitlements: {
@@ -410,27 +520,32 @@ export class LicensesRepository {
 
       // Supersession is stamped AFTER the new version exists: the
       // `superseded_by_version_id` foreign key points at this very row and
-      // PostgreSQL checks it immediately. The guard itself is unchanged — the
-      // target must still be eligible, and a lost race throws instead of
-      // recording a supersession that never happened (the whole transaction
-      // rolls back, including the version created above).
-      if (command.supersedesVersionId !== null) {
-        // The application layer verified the target is retained and eligible;
-        // this guarded update keeps that true under a concurrent import.
+      // PostgreSQL checks it immediately. `superseded_at` records WHEN the
+      // supersession was recorded; `governs_until` records WHEN the
+      // predecessor stops governing — the successor's own `validFrom`, which
+      // for a future-dated renewal is later. The predecessor therefore keeps
+      // governing today (PDR-11 §3.2, CF-1) and the hand-over is exact.
+      if (supersedes !== null) {
         const superseded = await tx.licenseVersion.updateMany({
           where: {
-            id: command.supersedesVersionId,
+            id: supersedes.versionId,
             installationId: command.installationId,
+            // Guarded: a version is retired at most once. Redundant under the
+            // installation lock, kept as defence in depth.
             supersededAt: null,
           },
           data: {
             supersededAt: command.now,
+            governsUntil: supersessionCeaseInstant(command),
             supersededByVersionId: command.versionId,
             updatedAt: command.now,
           },
         });
         if (superseded.count === 0) {
-          throw new SupersessionConflictError();
+          throw new ImportConflictError({
+            reason: 'unknown-supersession',
+            overlapping: 0,
+          });
         }
       }
 
@@ -457,7 +572,7 @@ export class LicensesRepository {
       }
 
       return version;
-    });
+    }, READ_COMMITTED);
     return toRetainedVersion(row);
   }
 
@@ -518,6 +633,67 @@ export class LicensesRepository {
   }
 }
 
+/**
+ * Every retained version of one installation, oldest first — the shared read of
+ * the pre-check (outside a transaction) and of the authoritative in-transaction
+ * evaluation.
+ */
+async function readVersions(
+  client: LicensesTxClient,
+  installationId: string,
+): Promise<RetainedLicenseVersion[]> {
+  const rows = await client.licenseVersion.findMany({
+    where: { installationId },
+    include: {
+      entitlements: { select: { kind: true, code: true } },
+      license: { select: { customerId: true } },
+    },
+  });
+  return rows
+    .map(toRetainedVersion)
+    .sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
+}
+
+/**
+ * Take the per-installation import lock: `SELECT … FOR UPDATE` on the
+ * installation row, held until the transaction ends.
+ *
+ * This is the entire concurrency strategy for version windows (design §3.4):
+ * every import of one installation serializes here, so the conflict evaluation
+ * that follows reads a state no other importer can change until this one has
+ * committed or rolled back. It is a DATABASE lock — two API processes, an API
+ * and a worker, or two containers behind a load balancer all take the same
+ * lock; nothing about it is process-local.
+ *
+ * Lock order is a single step (installation → rows this transaction writes),
+ * so no deadlock cycle exists; the installation row is the only row this
+ * transaction locks before touching its own tables.
+ *
+ * Raw SQL is the documented exemption (AR-11): Prisma cannot express
+ * `FOR UPDATE`. The statement is parameterized — the installation id is never
+ * interpolated.
+ *
+ * @throws Error when the installation row does not exist. The service resolves
+ *   the identity before importing and installations are never deleted, so a
+ *   missing row is a bug: the import must fail closed rather than write a
+ *   version for an identity that is gone.
+ */
+export async function lockInstallationRow(
+  tx: LicensesTxClient,
+  installationId: string,
+): Promise<void> {
+  const rows = await tx.$queryRaw<{ id: string }>`
+    SELECT "id"
+      FROM "licensing"."installations"
+     WHERE "id" = ${installationId}
+     FOR UPDATE`;
+  if (rows[0] === undefined) {
+    throw new Error(
+      `Installation "${installationId}" no longer exists; the license import was refused.`,
+    );
+  }
+}
+
 function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
   return {
     versionId: row.id,
@@ -539,6 +715,7 @@ function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
       code,
     })) as LicenseEntitlement[],
     supersededAt: row.supersededAt,
+    governsUntil: row.governsUntil,
     supersededByVersionId: row.supersededByVersionId,
     supersedesVersionId: row.supersedesVersionId,
     importedAt: row.importedAt,

@@ -85,6 +85,7 @@ export const testLicenseVersion: LicenseVersionSummary = {
   validUntil: null,
   effective: true,
   supersededAt: null,
+  governsUntil: null,
   supersededByVersionId: null,
   importedAt: '2026-01-01T00:00:00.000Z',
   source: 'text',

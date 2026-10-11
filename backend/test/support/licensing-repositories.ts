@@ -8,9 +8,17 @@
  *   - at most one retained version per `(installation_id, operation_id)` and
  *     per `(installation_id, document_hash)` — a duplicate raises the same
  *     `P2002` classification the kernel maps to a conflict;
+ *   - `importVersion` RE-EVALUATES the version invariant
+ *     (`evaluateImportConflicts`) before it writes, exactly like the real
+ *     transaction does under its installation row lock, and throws the same
+ *     `ImportConflictError` the service maps to 409;
  *   - supersession is a guarded stamp: a version that is already superseded
- *     cannot be superseded again inside one import (the real transaction
- *     aborts and the service answers 409).
+ *     cannot be superseded again inside one import.
+ *
+ * JavaScript is single-threaded and `importVersion` here has no `await` between
+ * its evaluation and its writes, so the fake is atomic by construction: the
+ * live PostgreSQL suite (`licensing-persistence-live.e2e-spec.ts`) is what
+ * proves the real `FOR UPDATE` lock closes the race between processes.
  *
  * The stores outlive the Nest application that uses them, which is exactly
  * what makes a restart testable: a second `createTestApp()` over the SAME
@@ -23,9 +31,13 @@ import type {
   LicenseAuditEventRow,
   LicensesRepository,
 } from '../../src/modules/licensing/data/licenses.repository.js';
-import { SupersessionConflictError } from '../../src/modules/licensing/data/licenses.repository.js';
+import { ImportConflictError } from '../../src/modules/licensing/data/licenses.repository.js';
 import type { InstallationIdentity } from '../../src/modules/licensing/domain/installation.js';
-import type { RetainedLicenseVersion } from '../../src/modules/licensing/domain/license-version.js';
+import {
+  evaluateImportConflicts,
+  supersessionCeaseInstant,
+  type RetainedLicenseVersion,
+} from '../../src/modules/licensing/domain/license-version.js';
 
 export interface LicensingStores {
   installations: InstallationsRepository;
@@ -116,36 +128,37 @@ export function createLicensingStores(
     async importVersion(
       command: ImportLicenseVersionCommand,
     ): Promise<RetainedLicenseVersion> {
-      // Unique guards first, exactly like the real indexes.
-      if (
-        versions.some(
-          (version) =>
-            version.installationId === command.installationId &&
-            version.operationId === command.operationId,
-        )
-      ) {
-        throw uniqueViolation('installation_id, operation_id');
+      // The authoritative invariant pass, exactly like the real transaction
+      // (which runs it under the installation row lock).
+      const retained = versions.filter(
+        (version) => version.installationId === command.installationId,
+      );
+      const evaluation = evaluateImportConflicts({
+        candidate: {
+          validFrom: command.validFrom,
+          validUntil: command.validUntil,
+        },
+        operationId: command.operationId,
+        documentHash: command.documentHash,
+        supersession: command.supersession,
+        versions: retained,
+        at: command.now,
+      });
+      if (evaluation.conflict !== null) {
+        throw new ImportConflictError(evaluation.conflict);
       }
+      const supersedes = evaluation.supersedes;
       if (
-        versions.some(
-          (version) =>
-            version.installationId === command.installationId &&
-            version.documentHash === command.documentHash,
-        )
+        (supersedes?.versionId ?? null) !==
+        command.expectedSupersessionVersionId
       ) {
-        throw uniqueViolation('installation_id, document_hash');
-      }
-
-      if (command.supersedesVersionId !== null) {
-        const target = versions.find(
-          (version) => version.versionId === command.supersedesVersionId,
-        );
-        if (target === undefined || target.supersededAt !== null) {
-          // The real transaction aborts on a guarded zero-row update.
-          throw new SupersessionConflictError();
-        }
-        target.supersededAt = command.now;
-        target.supersededByVersionId = command.versionId;
+        throw new ImportConflictError({
+          reason:
+            command.supersession.kind === 'implicit'
+              ? 'overlapping-range'
+              : 'unknown-supersession',
+          overlapping: supersedes === null ? 0 : 1,
+        });
       }
 
       customers.set(command.customerId, command.customerName);
@@ -169,12 +182,53 @@ export function createLicensingStores(
         userLimit: command.userLimit,
         entitlements: command.entitlements.map((entry) => ({ ...entry })),
         supersededAt: null,
+        governsUntil: null,
         supersededByVersionId: null,
-        supersedesVersionId: command.supersedesVersionId,
+        supersedesVersionId: supersedes?.versionId ?? null,
         importedAt: command.now,
         source: command.source,
       };
+      // The real unique indexes fire on this insert: a duplicate operation (or
+      // artifact) that somehow passed the evaluation still cannot create two
+      // versions.
+      if (
+        versions.some(
+          (version) =>
+            version.installationId === command.installationId &&
+            version.operationId === command.operationId,
+        )
+      ) {
+        throw uniqueViolation('installation_id, operation_id');
+      }
+      if (
+        versions.some(
+          (version) =>
+            version.installationId === command.installationId &&
+            version.documentHash === command.documentHash,
+        )
+      ) {
+        throw uniqueViolation('installation_id, document_hash');
+      }
       versions.push(created);
+
+      // The stamp follows the version row, exactly like the real transaction
+      // (`superseded_by_version_id` has a foreign key to the new row).
+      if (supersedes !== null) {
+        const target = versions.find(
+          (version) => version.versionId === supersedes.versionId,
+        );
+        if (target === undefined || target.supersededAt !== null) {
+          // The real transaction aborts on a guarded zero-row update.
+          throw new ImportConflictError({
+            reason: 'unknown-supersession',
+            overlapping: 0,
+          });
+        }
+        target.supersededAt = command.now;
+        target.governsUntil = supersessionCeaseInstant(command);
+        target.supersededByVersionId = command.versionId;
+      }
+
       for (const event of command.auditEvents) {
         recordEvent(event);
       }

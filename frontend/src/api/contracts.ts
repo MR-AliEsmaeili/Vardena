@@ -107,10 +107,13 @@ export type LicenseVersionSource = 'file' | 'text' | 'legacy-code';
  * One retained license version (`LicenseVersionSummary`,
  * `backend/src/modules/licensing/domain/license-version.ts`).
  *
- * Versions are never replaced destructively: importing a renewal adds a row
- * and (when it supersedes another version) marks the old one superseded. The
- * window is half-open — `validFrom` inclusive, `validUntil` exclusive — and
- * `validUntil: null` means perpetual.
+ * Versions are never replaced destructively: importing a renewal adds a row,
+ * and a supersession is recorded on the old one. Two instants describe the
+ * record, because a future-dated successor must not interrupt the license that
+ * is valid today: `supersededAt` is when the supersession was recorded and
+ * `governsUntil` is when that version stops governing (the successor's own
+ * start). The window is half-open — `validFrom` inclusive, `validUntil`
+ * exclusive — and `validUntil: null` means perpetual.
  */
 export interface LicenseVersionSummary {
   versionId: string;
@@ -120,7 +123,14 @@ export interface LicenseVersionSummary {
   validUntil: string | null;
   /** True for the one version the backend resolved as governing now. */
   effective: boolean;
+  /** When the supersession was recorded (audit); null while never retired. */
   supersededAt: string | null;
+  /**
+   * When this version stops governing — the retiring successor's start; null
+   * while never retired. A version with `supersededAt` set but `governsUntil`
+   * in the future is retired *and* still governing today.
+   */
+  governsUntil: string | null;
   supersededByVersionId: string | null;
   importedAt: string;
   source: LicenseVersionSource;

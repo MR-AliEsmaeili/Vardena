@@ -172,7 +172,10 @@ jobs:
       # installation, a non-ACTIVE status) through migration 20261014000000
       # and asserts that every fact survives, that the new unique guards hold,
       # and that unrepresentable data (duplicate artifact hash) is refused with
-      # a clear message instead of a constraint failure.
+      # a clear message instead of a constraint failure. It then applies the
+      # corrective migration 20261015000000 (supersession hand-over instant)
+      # and additionally runs a database that carries the premature-retirement
+      # defect, which the backfill must repair.
       - name: Migration rehearsal (Licensing version model and import)
         working-directory: backend
         env:
