@@ -139,13 +139,17 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).resolves.toMatchObject({ changed: false, outcome: 'UNCHANGED' });
 
       // 5. A replacement (a different legacy code) supersedes the governing
-      //    version and keeps exactly one eligible version.
+      //    version and keeps exactly one eligible version. Its window ends
+      //    exactly where the future-dated renewal of the next case begins
+      //    (half-open `[validFrom, validUntil)`), so that renewal is a
+      //    non-overlapping renewal rather than an overlapping range.
       const replacement = issueLicenseCode(
         {
           installationId: identity.installationId,
           customerName: 'Live customer',
           organizationLimit: 5,
           moduleEntitlements: ['organization', 'users'],
+          validUntil: new Date('2027-01-01T00:00:00.000Z'),
         },
         authority.privateKey,
       ).code;

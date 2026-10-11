@@ -371,6 +371,49 @@ export class LicensesRepository {
         data: { customerId: command.customerId, updatedAt: command.now },
       });
 
+      const version = await tx.licenseVersion.create({
+        data: {
+          id: command.versionId,
+          licenseId: command.licenseId,
+          installationId: command.installationId,
+          operationId: command.operationId,
+          status: command.status,
+          provider: command.provider,
+          documentVersion: command.documentVersion,
+          documentHash: command.documentHash,
+          keyId: command.keyId,
+          source: command.source,
+          validFrom: command.validFrom,
+          validUntil: command.validUntil,
+          organizationLimit: command.organizationLimit,
+          userLimit: command.userLimit,
+          importedAt: command.now,
+          importedBy: command.actorId,
+          supersedesVersionId: command.supersedesVersionId,
+          createdAt: command.now,
+          updatedAt: command.now,
+          entitlements: {
+            create: command.entitlements.map((entitlement) => ({
+              id: generateId(),
+              kind: entitlement.kind,
+              code: entitlement.code,
+              createdAt: command.now,
+              updatedAt: command.now,
+            })),
+          },
+        },
+        include: {
+          entitlements: { select: { kind: true, code: true } },
+          license: { select: { customerId: true } },
+        },
+      });
+
+      // Supersession is stamped AFTER the new version exists: the
+      // `superseded_by_version_id` foreign key points at this very row and
+      // PostgreSQL checks it immediately. The guard itself is unchanged — the
+      // target must still be eligible, and a lost race throws instead of
+      // recording a supersession that never happened (the whole transaction
+      // rolls back, including the version created above).
       if (command.supersedesVersionId !== null) {
         // The application layer verified the target is retained and eligible;
         // this guarded update keeps that true under a concurrent import.
@@ -413,42 +456,7 @@ export class LicensesRepository {
         });
       }
 
-      return tx.licenseVersion.create({
-        data: {
-          id: command.versionId,
-          licenseId: command.licenseId,
-          installationId: command.installationId,
-          operationId: command.operationId,
-          status: command.status,
-          provider: command.provider,
-          documentVersion: command.documentVersion,
-          documentHash: command.documentHash,
-          keyId: command.keyId,
-          source: command.source,
-          validFrom: command.validFrom,
-          validUntil: command.validUntil,
-          organizationLimit: command.organizationLimit,
-          userLimit: command.userLimit,
-          importedAt: command.now,
-          importedBy: command.actorId,
-          supersedesVersionId: command.supersedesVersionId,
-          createdAt: command.now,
-          updatedAt: command.now,
-          entitlements: {
-            create: command.entitlements.map((entitlement) => ({
-              id: generateId(),
-              kind: entitlement.kind,
-              code: entitlement.code,
-              createdAt: command.now,
-              updatedAt: command.now,
-            })),
-          },
-        },
-        include: {
-          entitlements: { select: { kind: true, code: true } },
-          license: { select: { customerId: true } },
-        },
-      });
+      return version;
     });
     return toRetainedVersion(row);
   }
