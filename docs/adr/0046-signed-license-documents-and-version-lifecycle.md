@@ -150,6 +150,16 @@ protection and migration before any code changes (G-10, AR-29).
   interim fail-closed behaviour. The legacy `VLIC1` replacement of a
   still-governing version falls under the same rule and is part of that
   question.
+- *Addendum (2026-10-11, post-merge verification of PR #137):* the license
+  binding of Decision 2 is enforced for identifiers, not only for documents. A
+  `licenseId` retained for this installation under another customer, or owned by
+  another installation, is refused as `license-binding-conflict` (409, nothing
+  written) — by the shared evaluation for the first case and under the installation
+  lock, before any upsert, for the second. Before this addendum a re-bound customer
+  was applied silently and a foreign identifier surfaced as an unmapped database
+  error. See `docs/licensing/version-model-and-file-exchange.md` §3.5. The
+  backdated-overlap case described in the OQ-86 evidence is **not** changed by
+  this addendum and remains an Owner decision.
 - `POST /api/v1/license/activate` keeps working for existing automation; the new
   `POST /api/v1/license/import` is the documented path for signed files and text.
 - Evaluation becomes date-driven; expiry, suspension and the

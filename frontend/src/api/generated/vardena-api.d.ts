@@ -78,6 +78,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/license/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a signed license document (file or artifact).
+         * @description Verifies the document signature, its binding to THIS installation, its payload and its position in the retained version history, then persists it in one transaction. A future-dated document is retained and becomes effective at its own validFrom. A repeated operation is refused with 409 and changes nothing.
+         */
+        post: operations["LicenseImportController_import_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -3420,6 +3440,13 @@ export interface components {
              * @example VLIC1.eyJ2IjoxLC4uLn0.c2lnbmF0dXJl
              */
             code: string;
+        };
+        ImportLicenseDocumentDto: {
+            /**
+             * @description A signed license document: either the vardena-license file envelope or the bare VLIC2 artifact (legacy VLIC1 codes are accepted as well).
+             * @example {"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}
+             */
+            document: string;
         };
         LoginRequestDto: {
             /**
@@ -8133,6 +8160,63 @@ export interface operations {
                 content?: never;
             };
             /** @description The license code is malformed, tampered with, issued for another installation, expired, or suspended. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    LicenseImportController_import_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportLicenseDocumentDto"];
+            };
+        };
+        responses: {
+            /** @description The evaluated state after the import, with the retained-version history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is authentic but conflicts with retained state: a repeated operation, an overlapping range without an explicit supersession, an unknown supersession target, or a license identifier already bound to another customer or installation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is malformed, tampered with, issued for another installation, not active, already ended, or names capabilities this build does not know. */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -254,6 +254,10 @@ interface CustomerDelegate {
 }
 
 interface LicenseDelegate {
+  findUnique(args: {
+    where: { id: string };
+    select: { installationId: true; customerId: true };
+  }): Promise<{ installationId: string; customerId: string } | null>;
   upsert(args: {
     where: { id: string };
     create: {
@@ -420,6 +424,8 @@ export class LicensesRepository {
         candidate: {
           validFrom: command.validFrom,
           validUntil: command.validUntil,
+          licenseId: command.licenseId,
+          customerId: command.customerId,
         },
         operationId: command.operationId,
         documentHash: command.documentHash,
@@ -447,6 +453,27 @@ export class LicensesRepository {
               ? 'overlapping-range'
               : 'unknown-supersession',
           overlapping: supersedes === null ? 0 : 1,
+        });
+      }
+
+      // 2b. Cross-installation binding. A license identifier belongs to exactly
+      //     one installation and one customer (PDR-11 §2.1, ADR-0046 Decision 2).
+      //     The retained-version check above only sees THIS installation's rows,
+      //     so the license row itself is checked here, under the same lock, before
+      //     anything is upserted. Without this check a foreign identifier reached
+      //     the composite foreign key and surfaced as an unmapped database error.
+      const boundLicense = await tx.license.findUnique({
+        where: { id: command.licenseId },
+        select: { installationId: true, customerId: true },
+      });
+      if (
+        boundLicense !== null &&
+        (boundLicense.installationId !== command.installationId ||
+          boundLicense.customerId !== command.customerId)
+      ) {
+        throw new ImportConflictError({
+          reason: 'license-binding-conflict',
+          overlapping: 0,
         });
       }
 

@@ -133,10 +133,26 @@ export function createLicensingStores(
       const retained = versions.filter(
         (version) => version.installationId === command.installationId,
       );
+      // Cross-installation binding (the transaction's rule 2b): a license
+      // identifier retained for another installation is refused.
+      if (
+        versions.some(
+          (version) =>
+            version.licenseId === command.licenseId &&
+            version.installationId !== command.installationId,
+        )
+      ) {
+        throw new ImportConflictError({
+          reason: 'license-binding-conflict',
+          overlapping: 0,
+        });
+      }
       const evaluation = evaluateImportConflicts({
         candidate: {
           validFrom: command.validFrom,
           validUntil: command.validUntil,
+          licenseId: command.licenseId,
+          customerId: command.customerId,
         },
         operationId: command.operationId,
         documentHash: command.documentHash,

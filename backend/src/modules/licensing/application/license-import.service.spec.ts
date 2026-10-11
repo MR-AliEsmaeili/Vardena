@@ -253,6 +253,40 @@ describe('license import pipeline', () => {
     });
   });
 
+  it('refuses a renewal that re-binds the license to another customer as a 409, and keeps the customer', async () => {
+    const LICENSE = '01K7LICENSEREBIND0000000';
+    await harness.service.importDocument(
+      issuedFile({
+        licenseId: LICENSE,
+        customerId: '01K7CUSTOMERA000000000000',
+        validUntil: new Date('2026-12-31T00:00:00.000Z'),
+      }),
+    );
+
+    const rejection = await rejectionOf(
+      harness.service.importDocument(
+        issuedFile({
+          licenseId: LICENSE,
+          customerId: '01K7CUSTOMERB000000000000',
+          validFrom: new Date('2027-01-01T00:00:00.000Z'),
+          validUntil: new Date('2028-01-01T00:00:00.000Z'),
+        }),
+      ),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(/already bound to a different customer/);
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.versions[0]?.customerId).toBe(
+      '01K7CUSTOMERA000000000000',
+    );
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      outcome: 'REJECTED',
+      reason: 'license-binding-conflict',
+      eventType: 'license.import.rejected',
+    });
+  });
+
   it('allows a gap and reports the installation as expired until the next version', async () => {
     // A version that covers today, plus a scheduled renewal; between them
     // there is a gap. Nothing is extended and no policy is invented: the

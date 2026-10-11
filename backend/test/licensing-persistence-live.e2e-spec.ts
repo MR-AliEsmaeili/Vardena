@@ -851,6 +851,131 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).toBe(1);
     }, 90_000);
 
+    it('refuses a renewal that re-binds a license to another customer, and keeps the customer', async () => {
+      const identity = await app.get(InstallationIdentityService).current();
+      const licenseId = '01K7REBINDLICENSE00000000001';
+      const customerA = '01K7REBINDCUSTOMERA000000001';
+      const customerB = '01K7REBINDCUSTOMERB000000002';
+      const first = issueLicenseFile(
+        {
+          installationId: identity.installationId,
+          licenseId,
+          customerId: customerA,
+          customerName: 'Customer A',
+          validFrom: new Date('2050-01-01T00:00:00.000Z'),
+          validUntil: new Date('2051-01-01T00:00:00.000Z'),
+        },
+        authority.privateKey,
+      );
+      const second = issueLicenseFile(
+        {
+          installationId: identity.installationId,
+          licenseId,
+          customerId: customerB,
+          customerName: 'Customer B',
+          validFrom: new Date('2051-01-01T00:00:00.000Z'),
+          validUntil: new Date('2052-01-01T00:00:00.000Z'),
+        },
+        authority.privateKey,
+      );
+
+      await expect(
+        app.get(LicenseImportService).importDocument(first.file),
+      ).resolves.toMatchObject({ changed: true, outcome: 'APPLIED' });
+
+      const refused = await importOutcome(second);
+      expect(refused).toMatchObject({
+        applied: false,
+        status: 409,
+        reason: 'license-binding-conflict',
+      });
+
+      // The commercial identity was not re-bound, and the refused renewal left
+      // no version and no applied event behind.
+      expect(
+        await query<{ customer_id: string }>(
+          `SELECT "customer_id" FROM "licensing"."licenses" WHERE "id" = $1`,
+          licenseId,
+        ),
+      ).toEqual([{ customer_id: customerA }]);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          second.payload.operationId,
+        ),
+      ).toBe(0);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+            WHERE "reason" = 'license-binding-conflict'`,
+        ),
+      ).toBeGreaterThanOrEqual(1);
+    }, 60_000);
+
+    it('refuses a license identifier that another installation owns, as a conflict and not a database error', async () => {
+      const identity = await app.get(InstallationIdentityService).current();
+      const client = await prisma.getClient<{
+        $executeRawUnsafe(
+          query: string,
+          ...values: unknown[]
+        ): Promise<unknown>;
+      }>();
+      const foreignCustomer = '01K7FOREIGNCUSTOMER0000000001';
+      const foreignInstallation = '01K7FOREIGNINSTALLATION00001';
+      const foreignLicense = '01K7FOREIGNLICENSE000000001';
+      await client.$executeRawUnsafe(
+        `INSERT INTO "licensing"."customers" ("id", "display_name", "created_at", "updated_at")
+         VALUES ($1, 'Foreign customer', now(), now())`,
+        foreignCustomer,
+      );
+      await client.$executeRawUnsafe(
+        `INSERT INTO "licensing"."installations" ("id", "name", "is_self", "created_at", "updated_at")
+         VALUES ($1, 'Foreign installation', false, now(), now())`,
+        foreignInstallation,
+      );
+      await client.$executeRawUnsafe(
+        `INSERT INTO "licensing"."licenses" ("id", "installation_id", "customer_id", "created_at", "updated_at")
+         VALUES ($1, $2, $3, now(), now())`,
+        foreignLicense,
+        foreignInstallation,
+        foreignCustomer,
+      );
+
+      // Same customer, so only the installation binding can refuse it.
+      const document = issueLicenseFile(
+        {
+          installationId: identity.installationId,
+          licenseId: foreignLicense,
+          customerId: foreignCustomer,
+          customerName: 'Foreign customer',
+          validFrom: new Date('2052-01-01T00:00:00.000Z'),
+          validUntil: new Date('2053-01-01T00:00:00.000Z'),
+        },
+        authority.privateKey,
+      );
+
+      const outcome = await importOutcome(document);
+      expect(outcome).toMatchObject({
+        applied: false,
+        status: 409,
+        reason: 'license-binding-conflict',
+      });
+      expect(
+        await query<{ installation_id: string }>(
+          `SELECT "installation_id" FROM "licensing"."licenses" WHERE "id" = $1`,
+          foreignLicense,
+        ),
+      ).toEqual([{ installation_id: foreignInstallation }]);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          document.payload.operationId,
+        ),
+      ).toBe(0);
+    }, 60_000);
+
     it('keeps every retained effective window disjoint', async () => {
       // The static invariant, checked in SQL rather than through the
       // application: `[valid_from, min(valid_until, governs_until))` of an

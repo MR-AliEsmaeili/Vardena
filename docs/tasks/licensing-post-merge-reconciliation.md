@@ -1,0 +1,228 @@
+# Licensing slice — post-merge audit, reconciliation and verification (PR #137)
+
+| Field | Value |
+| --- | --- |
+| Date | 2026-10-11 (UTC) |
+| Scope | The merged first Licensing vertical slice (L-03: signed-file import, installation binding, retained versions, effective-version resolution, supersession hand-over, concurrency, migrations, frontend license gate and renewal card). |
+| `main` inspected | `345047abec5a6af6760b05ad36b570ee5ed3a5f9` (merge commit of PR #137). Parents: `f27065149ffcb3b6d62929e418a8c6c1b4ce8fea` (`main` before, PR #136 merge) and `2ecd8396f0edcc1c34b3724c79cd767b3401c96d` (PR #137 head). |
+| Session branch | `arena/f0ddc379-vardena` (created from `345047a`; did not exist on origin before this audit). |
+| Owner acceptance | **Not given.** Nothing in this record accepts the slice, any OQ answer or any §15 policy. |
+| Product policy | **No product decision is taken here.** OQ-80 and OQ-86 stay OPEN (decision brief: `docs/tasks/licensing-oq-80-oq-86-decision-brief.md`). |
+
+Three states are kept apart throughout: **merged** (on `main`), **technically verified** (executed and passing, with the evidence named), and **Owner-accepted** (not yet — no Owner acceptance is recorded anywhere).
+
+---
+
+## 1. Baseline and PR #137 identity (verified with `gh` and `git ls-remote`, 2026-10-11)
+
+- `git ls-remote origin refs/heads/main` → `345047abec5a6af6760b05ad36b570ee5ed3a5f9`.
+- PR #137 (`Licensing L-03: PDR-11 reconciliation + signed-file import slice …`): `state=MERGED`, `mergedAt=2026-10-11T20:10:51Z`, `mergedBy=MR-AliEsmaeili`, `mergeCommit.oid=345047abec5a6af6760b05ad36b570ee5ed3a5f9`, `headRefOid=2ecd8396f0edcc1c34b3724c79cd767b3401c96d`, base `main`, head branch `arena/5fd62737-vardena`.
+- The merge commit's tree is identical to the PR head's tree (verified in the earlier audit pass; the merge added no content beyond the PR head).
+- Stale "unmerged" statements were found in `STATE.md` §32 and `docs/tasks/pdr-11-conflict-reconciliation.md`. They are reconciled in §8.
+
+## 2. Post-merge CI evidence
+
+| Item | Run / job | Event and SHA | Result | Use as evidence |
+| --- | --- | --- | --- | --- |
+| **Merge commit** (the only CI result that verifies `main`) | run `38171112633` (`CI`) | `push` to `main` at `345047a` | `completed / success` | **Yes** — verifies `main` |
+| merge commit, backend job | job `114563738873` | `345047a` | `success`, 27 steps | Yes. Steps: Prisma validate, Prisma generate, Lint, Typecheck, Format check, Unit tests, Build, Migrate test database, Bootstrap system administrator, Inventory BusinessDate live suite (Asia/Tehran), Inventory BusinessDate live suite (America/Los_Angeles), Migration rehearsal (populated pre-Task-11 data), Migration rehearsal (Inventory BusinessDate validity windows), Migration rehearsal (Licensing version model and import), E2E tests (incl. live-DB suites) — all `success` |
+| merge commit, frontend job | job `114563738695` | `345047a` | `success`, 13 steps (Lint, Typecheck, Format check, Tests, Build) | Yes |
+| PR head run | run `38169633397` | `pull_request` at `2ecd839` | `success` | **Not** merge-commit evidence. Recorded for history only. |
+| earlier PR head | run `38169257077` | `pull_request` at **`df41f735a206581c601f28a179b378dd8f2da0bf`** (branch `arena/5fd62737-vardena`) | `success` (re-verified) | Only for `df41f73`. Not evidence for any other SHA. |
+
+**Gaps in the CI evidence (stated, not hidden):**
+- Per-test counts for the merged CI run cannot be quoted from the sandbox: the Actions log blob host is not reachable from here. Only step- and job-level conclusions are cited.
+- The legacy combined-status endpoint for `345047a` reports `pending` with zero statuses. This repo's checks are Actions check runs, and the check-runs API reports `backend: success` and `frontend: success`. The legacy endpoint is not used as evidence.
+- CI has no step that checks the generated OpenAPI client is in sync with the backend. That gap is what allowed `frontend/src/api/generated/vardena-api.d.ts` to fall behind (finding F-5, §6).
+
+## 3. Gaps A and B — live probe (pre-fix), and the fix
+
+A scratch live probe ran against PostgreSQL 16.4 on the **unfixed** `345047a` code. Its output is `/tmp/probe.log`. The scratch file was deleted from the repository; its assertions were not kept.
+
+- **Gap B — re-binding a license to another customer (confirmed).** Two signed documents shared `licenseId` `01PROBELICENSE00000000001`: the first for customer A, the second (a renewal) for customer B. Result: `PROBE1 renewal result: applied`. The license row then read `customer_id = 01PROBECUSTOMERB0000000002` ("Customer B"). Both retained versions read through the license join, so the version imported for A was attributed to B. This contradicts PDR-11 §2.1 ("bound to one customer and to one server installation").
+- **Gap A — a `licenseId` owned by another installation (confirmed).** A foreign license `01PROBEFOREIGNLICENSE00001` (owned by another installation, customer Z), then a new version for it. Result: `PROBE2 result: THREW PrismaClientKnownRequestError code=P2003`, FK `license_versions_license_id_installation_id_fkey`, model `LicenseVersion`. `PROBE2 licenses unchanged: true`; no version written. The global filter maps a non-`AppException` to a generic 500 `InternalError`. A probe run lost one piece of output to a field access in the probe itself; that does not affect the product results above.
+
+**Decision and fix (on `arena/f0ddc379-vardena`).** A license is bound to one customer and one installation, so a conflicting identifier is refused, not re-bound. The approved contracts settle that a conflict is refused with nothing written; they do not name the HTTP reason. The 409 family (ADR-0046: retained-state conflicts) is the closest approved class. One new reason is therefore added: **`license-binding-conflict`, 409, nothing written.** This is an interpretation for Product Owner ratification (§9).
+
+Implementation:
+- `backend/src/modules/licensing/domain/license-version.ts` — new reason; rule 2a in `evaluateImportConflicts`: same `licenseId` retained for this installation under a different `customerId` → conflict. Applies to renewals and to explicit supersessions alike.
+- `backend/src/modules/licensing/data/licenses.repository.ts` — the candidate carries `licenseId` and `customerId`; **rule 2b**: under the installation lock and before any upsert, `tx.license.findUnique` reads the license; if it belongs to another installation or another customer, `ImportConflictError({reason:'license-binding-conflict', overlapping:0})` is thrown and the transaction rolls back.
+- `backend/src/modules/licensing/application/license-import.service.ts` — reason added to the rejection union and to the 409 set; one shared message (`LICENSE_BINDING_CONFLICT_MESSAGE`) in the signed, legacy and lost-race paths.
+- `backend/test/support/licensing-repositories.ts` — the in-memory store refuses a cross-installation identifier the same way.
+- The frontend needs no change: `license-import-errors.ts` maps every 409 to the retained-state conflict message.
+
+**Post-fix evidence (executed in this session, see §4):** domain unit tests (`license-version.spec.ts`: different customer refused; explicit supersession cannot re-bind; same-customer renewal still accepted); service unit test (`license-import.service.spec.ts`: "refuses a renewal that re-binds the license to another customer as a 409, and keeps the customer" — 409, `already bound to a different customer`, one version, customer unchanged, audit `license-binding-conflict`); live PostgreSQL tests (`licensing-persistence-live.e2e-spec.ts`: "refuses a renewal that re-binds a license to another customer, and keeps the customer" and "refuses a license identifier that another installation owns, as a conflict and not a database error" — 409, `customer_id`/`installation_id` unchanged, no `license_versions` row for the refused operation, audit row present).
+
+The post-fix live suite runs on the real database, and the pre-fix probe outcomes (applied re-bind; P2003) are the behaviour these tests would have failed on. A red-before-green run on the unfixed code was **not** executed in this session; the pre-fix probe output is the recorded red evidence.
+
+## 4. Local verification executed in this session
+
+**Environment and substitutions (not CI parity):**
+- Node/npm from the sandbox; **no Docker** available, so the Compose path was not run (see §7 for the Owner's checklist).
+- PostgreSQL 16.4 from `@embedded-postgres/linux-x64@16.4.0-beta.13` (npm), running on `127.0.0.1:5432` from `/tmp/pgtools`. It is not the CI service container.
+- The Prisma schema engine and query engine binaries cannot be downloaded (`binaries.prisma.sh` is not on the allowed-host list). `prisma validate` and `prisma generate` ran with `PRISMA_SCHEMA_ENGINE_BINARY=/bin/true PRISMA_QUERY_ENGINE_LIBRARY=/bin/true`.
+- `prisma migrate deploy` was replaced by `/tmp/pgtools/apply-migrations.mjs`, which applies the same 34 `migration.sql` files in lexical order and records them in `_prisma_migrations`. Checksum fidelity with Prisma is therefore not established locally; CI's migrate step is the authority for that.
+- `prisma generate` overwrote the tracked stub `backend/src/generated/prisma/client.ts`. It is restored with `git checkout` before any commit (§5).
+
+**Results (all on the final working tree of this branch; "pre-fix" entries are noted where they differ):**
+
+| Check | Command | Result |
+| --- | --- | --- |
+| Backend typecheck | `npx tsc --noEmit` (against the regenerated client) | rc 0 (`/tmp/tc-final.log`) |
+| Backend lint | `npm run lint` | rc 0; 1 warning, pre-existing, in `src/modules/accounting/application/coding-structure-accounts.spec.ts` (not in licensing) |
+| Backend format | `npm run format:check` | rc 0 |
+| Backend unit | `npm test` | **147 files, 1962 of 1962 passed** (was 1958 before this fix) |
+| Backend licensing unit | `vitest run … src/modules/licensing` | **8 files, 115 of 115 passed** |
+| Backend licensing live + e2e | `vitest run … test/licensing-persistence-live.e2e-spec.ts test/licensing.e2e-spec.ts test/license-import.e2e-spec.ts test/license-state-route.e2e-spec.ts test/licensing-activation.e2e-spec.ts test/licensing-limits-live.e2e-spec.ts` | **6 files, 55 of 55 passed** (persistence-live: 12, up from 10) |
+| Backend full e2e | `vitest run --config vitest.config.e2e.ts` | **51 files, 616 of 616 passed** (was 614; the two new live cases) |
+| BusinessDate live (Asia/Tehran) | `TZ=Asia/Tehran vitest … inventory-business-date-writes-live + inventory-business-documents-live` | **2 files, 24 of 24 passed** |
+| BusinessDate live (America/Los_Angeles) | same, `TZ=America/Los_Angeles` | **2 files, 24 of 24 passed** |
+| Migration rehearsal (populated pre-Task-11) | `npm run test:migration-rehearsal` | rc 0 — "REHEARSAL PASSED" |
+| Migration rehearsal (BusinessDate validity) | `npm run test:business-date-validity-rehearsal` | rc 0 — "PASS" |
+| Migration rehearsal (Licensing version model) | `npm run test:licensing-version-rehearsal` | rc 0 — "Migration rehearsal passed." (includes the preserved-state assertions) |
+| Operational-freeze rehearsal | `npm run test:operational-freeze-rehearsal` | rc 0 — 5/5 checks |
+| Bootstrap, fresh database | migrations applied to an empty database, then `npm run bootstrap:system-admin` twice | rc 0 both runs; second run is a no-op (`/tmp/bootstrap-fresh-*.log`); scratch database dropped |
+| Backend build | `npm run build` | rc 0 |
+| Frontend typecheck, lint, format | `npm run typecheck`, `npm run lint`, `npm run format:check` | rc 0 each (after the generated-type refresh) |
+| Frontend tests | `npm test` | **56 files, 397 of 397 passed** |
+| Frontend build | `npm run build` | rc 0 |
+| OpenAPI capture | built API booted against the test database; `GET /api/docs-json` → 200, 193 paths, the three `/api/v1/license/*` paths present | `/tmp/openapi.json` (not committed) |
+
+**Known non-results:**
+- The scratch probe was not re-run after the fix. The live suite now asserts the same outcomes against the same database, and the pre-fix output is recorded in §3.
+- `bootstrap:system-admin` on the shared test database returned rc 1 ("The installation license active-user limit has been reached.") because a previous test run had left an active license at its user limit. This is the designed refusal for creating a user at capacity (PDR-11 §8.3). A fresh database (the Compose case: UNLICENSED, bootstrap allowance) returned rc 0. Recorded as finding F-11.
+- Lock-wait timeout behaviour (ADR-0046 D11, 10 s) is implemented as a server error, which matches the ADR, but no test exercises the timeout path (finding F-10).
+
+## 5. Merged-slice audit (requirement by requirement)
+
+| Area (scope item) | Evidence | Result |
+| --- | --- | --- |
+| Signed-file import and installation binding | `license-import.service.spec.ts` — "rejects a document issued for another installation" (422, nothing written); "imports a signed file, retains the version and records the audit event"; unit `license-document.spec.ts` (14). Live: "rejects a license bound to another installation against the real database". | **Verified** (unit, hermetic e2e `license-import.e2e-spec.ts`, live PostgreSQL) |
+| Installation binding — cross-customer and cross-installation identifiers | §3 (Gaps A/B) and the new tests. | **Defect found and fixed on this branch** (F-1, F-2) |
+| Retained versions and entitlements | Migration `20261014000000_licensing_version_model_and_import`; live "persists the identity and the retained version across a restart"; rehearsal preserved-state assertions. | **Verified** (local PG 16.4 + rehearsal; CI migrate and rehearsal steps `success` on `345047a`) |
+| Effective-version resolution and scheduled renewals | `license-version.spec.ts` (36 tests incl. `resolveEffectiveVersion`); service: "retains a future-dated renewal without deactivating the current version", "keeps the current license governing while the successor is still future-dated"; live: "retains a signed future-dated version and resolves it by date". | **Verified** |
+| Duplicate operation handling and audit | Service: "rejects a duplicate operation and keeps the retained version untouched"; live: "refuses a duplicate operation inside the transaction and writes nothing", "refuses a duplicate operation at the database level", "applies a replayed document exactly once under concurrency". Audit rows: `license.import.rejected` with reason, `applied` events. | **Verified** |
+| Supersession hand-over — future-dated | Service: "applies a supersession whose hand-over is the import instant itself"; "lets exactly one of two concurrent successors retire a version" (live); `governs_until` set to successor `validFrom` (`20261015000000_licensing_supersession_governs_until`). | **Verified** |
+| Supersession hand-over — backdated | Service: "refuses a successor that would hand over before the import instant" (422, nothing written). **Not covered:** a *non-superseding* backdated document that overlaps a retired version's past window (Gap C, F-3). | **Verified for supersession; open policy gap for non-superseding backdated documents (OQ-80/OQ-86)** |
+| Concurrent import serialization and rollback | Live: "commits exactly one of two concurrent imports with the same window", "rolls a LATE failure back completely (no partial write)", "lets exactly one of two concurrent successors retire a version". Lock: `SELECT … FOR UPDATE` on the installation row, READ COMMITTED, re-run of the evaluation under the lock. | **Verified** (local live PG 16.4 and CI live suite on `345047a`) |
+| Migration ordering and rehearsal | Ordered names `20261014…` then `20261015…`; rehearsals pass locally (§4) and in CI. | **Verified** locally and in CI; the licensing migrations ship no down script (F-13) |
+| Legacy-data preservation | Migration backfills every existing license row; rehearsal "preserved state assertions passed". The rehearsal uses **synthetic** fixtures; no production data was inspected. | **Verified on fixtures only** |
+| Frontend license-gate refresh | `license-import.test.tsx` — "releases the gate only on the backend-confirmed re-read"; `license-gate.test.tsx` — "stops before organization bootstrap when the license is inactive"; success invalidates `queryKeys.licenseState()` only. | **Verified** (hermetic unit tests, 397/397) |
+| Dashboard renewal | `license-import.test.tsx` — "shows the scheduled renewal on an active installation and imports the next version without interrupting work"; `LicenseStatusCard` self-gated on `Licensing.License.Activate`. | **Verified** (component tests) |
+| API / OpenAPI contract consistency | Live OpenAPI capture (§4). `/license/import` and its DTO were **missing** from the committed generated client (`frontend/src/api/generated/vardena-api.d.ts`) — regenerated (F-5). `GET /license/current` 200 has **no schema** in the document (F-6). | **Gap found; import route fixed; current-state schema gap open** |
+
+## 6. Findings
+
+Classification: **Blocker** = must be fixed or formally accepted before the slice is treated as accepted; **Important** = a real gap that needs a fix or a recorded decision; **Minor** = low impact or documentation; **No issue** = checked, no finding.
+
+| ID | Class | Status | Finding | Evidence / action |
+| --- | --- | --- | --- | --- |
+| F-1 | Important | **Fixed on this branch** | A renewal naming an existing `licenseId` with a different customer was applied and re-attributed every retained version. | §3; rule 2a + rule 2b; tests in §4. |
+| F-2 | Important | **Fixed on this branch** | A `licenseId` owned by another installation surfaced as an unmapped database FK error (HTTP 500), not a documented refusal. | §3; rule 2b under the lock; live test; 409. |
+| F-3 | Important | **Open — Owner decision (OQ-80 / OQ-86)** | A **non-superseding** backdated document whose window overlaps the past governed window of a version that a later supersession retired is **accepted**. The as-of read for that period then reports `ambiguous`. ADR-0046 D4 says effective windows are pairwise disjoint after every import. The existing unit test "never counts a superseded version as an overlap" pins the implemented rule. | Verified by a scratch spec on the unfixed code: retired R (2026-01-01, superseded by S at 2026-12-01), backdated N (2026-03-01 → 2026-06-01) imported 2027-01-15 → accepted; `resolveEffectiveVersion` at 2026-04-01 → `ambiguous`. Code reading: the overlap rule considers only versions still eligible at the import instant, so a document that covers the present or the future is refused; the observable effect is on past instants, which no current API exposes. **Not changed** — choosing between the D4 wording and the implemented rule is the OQ-86 decision. The recorded text is in `version-model-and-file-exchange.md` §3.5. |
+| F-4 | Important | **Open — Owner question** | An applied import overwrites the **installation's** `customerId` (`tx.installation.update`), including when the new license names a different customer. PDR-11 §2.1 says a customer owns one or more installations but does not say whether an installation can change customer. | `licenses.repository.ts` (installation update). Not changed. Recorded in the decision brief (Q4). |
+| F-5 | Important | **Fixed on this branch** | The committed generated client lacked `/api/v1/license/import`, `ImportLicenseDocumentDto` and its responses (84 added lines). Nothing in CI detects drift (F-7). | Regenerated with the pinned `openapi-typescript@7.13.0` from the live document. The diff is **additive only** (0 removed lines; no other module changed). The hand-written `frontend/src/api/contracts.ts` already describes the import route. |
+| F-6 | Important | **Open — follow-up** | `GET /api/v1/license/current` documents a 200 response with **no content schema**; the frontend hand-restores `LicenseState` in `contracts.ts` to compensate. | The generated 200 response has `content?: never`. Fix belongs to a small controller annotation change (a DTO class for `@ApiOkResponse`), which would also replace the hand-written type. Not done here to keep this audit free of API-surface changes. |
+| F-7 | Important | **Open — process** | No CI step verifies that `frontend/src/api/generated/vardena-api.d.ts` matches the backend's OpenAPI document. | Recommended: a CI step that boots the API (or uses a committed OpenAPI snapshot) and fails on drift. Not added here (CI change is a separate, reviewable slice). |
+| F-8 | Important | **Open — Owner question** | The issuer CLI always generates a **new** `licenseId` (`buildLicensePayload` → `options.licenseId ?? generateId()`) and has no option to target an existing license. A renewal through the CLI therefore never shares a `licenseId` with the license it renews. The rule in F-1/F-2 can be reached only by a document the trusted authority signs deliberately (or by a hand-built document). | `backend/src/issue-development-license.ts` (options: `--customer`, no `--license-id`). Whether renewals keep the license identity is an Owner decision (decision brief Q3). Documentation corrected in `licensing-architecture.md` to reference this finding. |
+| F-9 | Minor | **Fixed (documentation)** | `docs/licensing-architecture.md` documented CLI flags the parser does not accept: `--file-out` (the parser reads `--out`), `--operation` (`--operation-id`), `--legacy-code` (`--format v1`). Following the documented command would not have written the file. | Corrected in the same document; the binding refusal is also described there. |
+| F-10 | Minor | Open (test gap) | No test exercises the 10 s lock-wait timeout (`LOCK_WAIT_TIMEOUT_MS`). Behaviour matches ADR-0046 D11 (server error, nothing written). | Add a deterministic test in a later slice; not a contract defect. |
+| F-11 | Minor | Open (observation) | Bootstrap refuses to **create** the system administrator when an active license is already at its user limit (designed refusal, PDR-11 §8.3, loud failure by design). This surfaced on the shared test database. A fresh database (Compose's first run) passes, and re-running bootstrap is a no-op. | `bootstrap:system-admin` on the shared database rc 1; on a fresh database rc 0, second run rc 0. No change. |
+| F-12 | Blocker for any non-development deployment; pre-existing, out of this slice | Open | The initial administrator's password is the documented constant `1` (`README.md`, bootstrap service), with no forced change (the README says so). | Documented limitation, not introduced by PR #137. Must be resolved before any deployment beyond local development. Owner/security decision on the remediation path; no change made here. |
+| F-13 | Minor | Open (operational) | The two licensing migrations (`20261014…`, `20261015…`) ship **no down script**; a rollback therefore means restoring a pre-deployment backup. | Include a pre-migration backup in the Owner checklist (§7). |
+| F-14 | Minor | Open (process) | Local live results are from PostgreSQL 16.4 binaries and `apply-migrations.mjs`, not from the CI service container and `prisma migrate deploy`. | The merge-commit CI run is the authority for those checks. |
+| F-15 | No issue | — | Frontend license gate: a successful import never promotes the response into the cache; the gate releases only on a backend-confirmed `active` re-read (tested). | `license-import.test.tsx`, `license-gate.test.tsx`. |
+| F-16 | No issue | — | Merged-slice concurrency and rollback: exercised on a real PostgreSQL 16.4 instance locally and in CI (`345047a`). | §5. |
+| F-17 | No issue | — | Backend lint warning is in an unrelated accounting spec and predates this slice. | §4. |
+
+**Blocker summary:** no blocker in the *code* of the merged slice after the fixes above. F-12 is a blocker for any deployment beyond local development and is pre-existing. The slice is not Owner-accepted.
+
+## 7. Owner smoke-test checklist (local Docker / API / frontend)
+
+Not executed by the agent: no Docker in the sandbox. Each step lists the expected result from the code and docs. Record the outcome of each step.
+
+**Prerequisites**
+1. Docker with Compose. From the repo root, `docker compose up --build` (or `docker-compose up --build`). The stack: PostgreSQL 16, `migrate` (runs `prisma migrate deploy` and the bootstrap), `api` on `http://localhost:3000`, `worker`.
+2. **Back up first** if this database holds anything you need: `docker compose exec postgres pg_dump -U vardena vardena > pre-licensing.sql`. The licensing migrations ship no down script (F-13).
+
+**Steps**
+3. Check the stack. `curl http://localhost:3000/api/v1/health/live` → 200. `migrate` exits 0 (`docker compose ps`). Expected: the migrate log shows `20261014…` and `20261015…` applied and the bootstrap complete.
+4. Log in as the documented administrator (`README.md`: username `مدیر`, password `1`). **Change the password immediately** (F-12). Expected: a session cookie; `GET /api/v1/auth/me` returns the user.
+5. Read the license state: `GET /api/v1/license/current` (authenticated). Expected on a new installation: `UNLICENSED`, the installation id present, no key or signature anywhere in the response. **Copy the installation id.**
+6. Frontend: `cd frontend && npm install && npm run dev` (dev server proxies `/api` to `http://localhost:3000`, see `frontend/README.md`). Open the printed URL, log in. Expected: the license screen ("this installation has no license yet") quoting the installation id — not the "inactive" screen.
+7. Issue a **development** license (never on a production host). `npm run license:keygen` (keep the private key out of the repo). Set `LICENSE_SIGNING_PUBLIC_KEYS` to the public key in `.env` (or the compose environment for `api` and `worker`), then `docker compose up -d --build api worker`. Issue:
+   `LICENSE_SIGNING_PRIVATE_KEY=<private> npm run license:issue -- --installation <id> --customer-name "Smoke customer" --users 5 --modules organization,users --valid-from <now-ish> --valid-until <next-year> --out smoke-1.vlic`
+   (`--out`, not `--file-out`; see F-9.)
+8. Import through the UI: choose `smoke-1.vlic` in the import form. Expected: the gate releases only after the re-read; the dashboard shows the license; `GET /api/v1/license/current` shows `ACTIVE`, the effective version and the entitlements.
+9. **Replay:** import `smoke-1.vlic` again. Expected: an "unchanged receipt" (the frontend test's wording) — no new version; `GET /api/v1/license/current` retains one version.
+10. **Overlap:** issue a document for the same installation with an overlapping window and no `--supersedes`. Expected: refused with a retained-state conflict (409 `overlapping-range`); nothing written.
+11. **Re-binding (F-1):** issue a document with the *same `licenseId`* but another customer. The CLI cannot choose `licenseId` (F-8), so this step needs a hand-built document signed by the same key. Expected: 409, `license-binding-conflict`, the customer on the license unchanged, nothing written.
+12. **Tamper and foreign installation:** edit one character of `smoke-1.vlic` → refused (422, signature). Issue for a different installation id → refused (422, "different Vardena installation"). Expected: nothing written in either case.
+13. **Scheduled renewal:** issue a future-dated renewal (`--valid-from` next month, no `--supersedes`) and import it. Expected: the current version still governs; the dashboard shows the scheduled renewal.
+14. **Restart:** `docker compose restart api`. Expected: the license state is unchanged and the file is not re-entered.
+15. **Known limits to note, not to test as pass/fail:** the Gap C scenario (backdated non-superseding document), F-4 (installation customer changes with the license) and F-8 are open Owner questions — see the decision brief.
+
+Record the results, the installation id (not a secret), the migration log lines and any unexpected 500 responses. Any 500 from steps 8–13 is a defect to report.
+
+## 8. Reconciliation of records (what changed and why)
+
+| Record | Change |
+| --- | --- |
+| `STATE.md` §32 | "Implemented on `arena/5fd62737-vardena` … unmerged at the time of writing" → merged to `main` at `345047a` (PR #137), CI on the merge commit recorded; post-merge verification and the new reason added; "Next gate" changed from "review of PR #137 on its head" to the Owner decisions and acceptance that remain. Acceptance remains the Owner's. |
+| `docs/tasks/pdr-11-conflict-reconciliation.md` | Status row and a new §6 "Post-merge verification (2026-10-11)" listing F-1…F-17 and the new reason. The existing per-matrix rows are unchanged; OQ-80/OQ-86 stay OPEN. |
+| `docs/decisions/product/PDR-11-vardena-licensing-product-requirements.md` §19.4 | Post-merge addendum: merged state, the new 409 reason for PO ratification, OQ-80/OQ-86 evidence. No decision text in §1–§18 changed. |
+| `docs/adr/0046-…md` | Addendum on the license binding (Decision 2 enforced for identifiers), cross-referencing `version-model` §3.5. |
+| `docs/licensing/version-model-and-file-exchange.md` | §3.5 (binding; the OQ-86 known behaviour); the reason lists in §3.4 and the §4 pipeline table (step 10) updated for `license-binding-conflict`. |
+| `docs/licensing-architecture.md` | Corrected CLI flags (F-9); binding refusal sentence added; reference to F-8. |
+| `docs/open-questions.md` | Historical-log entry for this audit; evidence notes on OQ-80 and OQ-86. **Status of every OQ unchanged (OPEN).** |
+| `docs/tasks/licensing-oq-80-oq-86-decision-brief.md` | New: the decision brief (no decision). |
+| `frontend/src/api/generated/vardena-api.d.ts` | Regenerated from the live document (additive; F-5). |
+| `backend/src/generated/prisma/client.ts` | **Not committed** — restored to the tracked stub (§5 of the workflow). |
+
+## 9. Items for Product Owner ratification
+
+1. **The new 409 reason `license-binding-conflict`** (F-1, F-2). The approved PDR-11/ADR-0046 texts settle that the conflict is refused with nothing written and that the license is bound to one customer and installation; they do not name the reason or its HTTP class. This was placed in the existing 409 family (ADR-0046 retained-state conflicts). Ratify the name and the class, or direct a different reason.
+2. **OQ-80 and OQ-86** — see the decision brief. Not decided.
+3. **F-4 and F-8** — installation customer change and renewal identity (decision brief Q3 and Q4).
+4. **F-12** — the initial administrator credential is a documented constant. Not a licensing item, but it blocks any non-development deployment.
+
+## 10. Files changed on this branch
+
+| File | Rationale |
+| --- | --- |
+| `backend/src/modules/licensing/domain/license-version.ts` | Rule 2a; new reason; candidate carries `licenseId`/`customerId`. |
+| `backend/src/modules/licensing/data/licenses.repository.ts` | Candidate fields; rule 2b under the lock; `findUnique` on the license delegate. |
+| `backend/src/modules/licensing/application/license-import.service.ts` | Reason in the 409 set; shared message in the three wording paths. |
+| `backend/src/modules/licensing/api/license-import.controller.ts` | 409 description lists the new case (OpenAPI text only). |
+| `backend/src/modules/licensing/domain/license-version.spec.ts` | Domain tests for re-binding and same-customer renewal. |
+| `backend/src/modules/licensing/application/license-import.service.spec.ts` | Service test: 409, message, one version, customer unchanged, audit. |
+| `backend/test/support/licensing-repositories.ts` | In-memory store refuses a cross-installation identifier. |
+| `backend/test/licensing-persistence-live.e2e-spec.ts` | Two live cases on real PostgreSQL. |
+| `frontend/src/api/generated/vardena-api.d.ts` | Regenerated from the live OpenAPI (additive). |
+| `docs/licensing-architecture.md` | CLI flags corrected; binding sentence. |
+| `docs/licensing/version-model-and-file-exchange.md` | §3.5; reason lists. |
+| `docs/adr/0046-signed-license-documents-and-version-lifecycle.md` | Addendum. |
+| `docs/tasks/licensing-post-merge-reconciliation.md` | This report (new). |
+| `docs/tasks/licensing-oq-80-oq-86-decision-brief.md` | Decision brief (new). |
+| `docs/tasks/pdr-11-conflict-reconciliation.md`, `docs/decisions/product/PDR-11-…md`, `STATE.md`, `docs/open-questions.md` | Reconciliation (§8). |
+
+Not changed: any OQ status; any §15 policy; any migration; the accepted architecture; the frontend source (no change was needed for the new reason).
+
+## 11. Recommended next Licensing slice (not started)
+
+**Candidate: L-04 — capacity-change conflicts (PDR-11 §8.3, §8.4, §8.6).** Rationale: §8.3 (user capacity at limit blocks creation) is already implemented for activation and organization creation (`LicensingService.assertCanActivateUser`, `assertCanCreateOrganization`). §8.4 (reduction: the administrator deactivates excess users) and §8.6 (check, explain, preserve, require resolution before a reducing version is applied) are **not** implemented — the import does not compare a new version's capacity with current usage. PDR-11's own table row 59 marks the §8.6 algorithm "design item (§16)".
+
+- **Dependencies / decisions required first:** (a) whether a capacity-reducing version takes effect at its `validFrom` with a conflict state, or is held until the administrator resolves the excess (§8.6 wording admits both readings); (b) which version's capacity applies on a given day, which depends on OQ-80 for overlapping and gapped windows; (c) F-8 — renewal identity; (d) the deactivation semantics for excess users (§8.4, existing user lifecycle).
+- **Backend:** a read-only conflict evaluation on import; a conflict state in the license state read; an explicit resolution command (deactivate chosen users) that is audited; creation blocked while a conflict is unresolved. **DB:** likely a conflict record or state table (new migration, rehearsal required). **Frontend:** explanation and a resolution list in the licensing stage. **Security/audit:** every deactivation attributed to the administrator and audited; no automatic deactivation.
+- **Tests/CI:** domain unit tests for the conflict evaluation; service tests for each resolution path; live PostgreSQL tests for concurrent creation during a conflict; migration rehearsal; frontend component tests.
+- **Out of scope:** Grace/Read-Only enforcement (OQ-45, durations undecided), revocation (OQ-78), replacement (OQ-82), device quota (OQ-83), signed receipts (OQ-84), the Owner-side system (OQ-85), and any policy in §15 that is still undecided.
+
+**Do not start L-04 until the Owner has decided (a) and (b) above.** The alternatives are blocked by undecided policy: revocation, Grace/Read-Only and replacement each depend on OQ-45, OQ-78 or OQ-82.
+
+## 12. Limitations of this audit
+
+- No Docker; the Compose path and the browser smoke test were not executed (§7 is the Owner's checklist).
+- Local PostgreSQL 16.4 and `apply-migrations.mjs` are not the CI environment (F-14). CI on the merge commit is the authority for the CI-only steps.
+- Gap C was confirmed by a scratch spec on the unfixed code; that scratch spec was deleted and is not kept as an automated test, since its expected outcome depends on the OQ-86 decision.
+- The merge-commit CI log content (per-test counts) could not be retrieved from the sandbox.
+- No live Owner or customer data was inspected; migration rehearsals use synthetic fixtures.

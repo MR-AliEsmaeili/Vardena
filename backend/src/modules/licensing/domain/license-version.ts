@@ -392,8 +392,9 @@ export function resolveEffectiveVersion(
  * Why an import cannot be applied against the retained state. The document is
  * authentic; the state is the problem.
  *
- * `duplicate-operation`, `unknown-supersession` and `overlapping-range` are the
- * reasons the API answers 409 with. `backdated-supersession` is the temporal
+ * `duplicate-operation`, `unknown-supersession`, `overlapping-range` and
+ * `license-binding-conflict` are the reasons the API answers 409 with (a
+ * retained-state conflict, ADR-0046). `backdated-supersession` is the temporal
  * refusal — it is answered 422 like the other document-level verdicts
  * (`expired-document`, `not-yet-valid`) because the document as issued can
  * never be applied; the fix is a re-issued document, not a changed installation
@@ -403,7 +404,8 @@ export type ImportConflictReason =
   | 'duplicate-operation'
   | 'unknown-supersession'
   | 'overlapping-range'
-  | 'backdated-supersession';
+  | 'backdated-supersession'
+  | 'license-binding-conflict';
 
 export interface ImportConflict {
   reason: ImportConflictReason;
@@ -433,7 +435,10 @@ export type ImportSupersessionIntent =
   | { kind: 'implicit' };
 
 export interface EvaluateImportConflictsParams {
-  candidate: Pick<RetainedLicenseVersion, 'validFrom' | 'validUntil'>;
+  candidate: Pick<
+    RetainedLicenseVersion,
+    'validFrom' | 'validUntil' | 'licenseId' | 'customerId'
+  >;
   operationId: string;
   documentHash: string;
   supersession: ImportSupersessionIntent;
@@ -456,6 +461,13 @@ export type ImportConflictEvaluation =
  * Rules (fail closed; nothing is ever silently resolved):
  * 1. an operation id that is already retained is a duplicate;
  * 2. an artifact hash that is already retained is a duplicate;
+ *    2a. a license identifier that this installation already retains under a
+ *    different customer is refused (`license-binding-conflict`): a license is
+ *    bound to exactly one customer (PDR-11 §2.1 terms, ADR-0046 Decision 2),
+ *    so a renewal may not re-bind the commercial identity to another customer
+ *    and silently re-attribute every retained version. The cross-installation
+ *    half of the binding is enforced by the transaction under the lock
+ *    (`LicensesRepository.importVersion`), which can see every installation;
  * 3. an explicit supersession target (the retained version carrying the
  *    declared operation id) must exist in this installation, must not have a
  *    supersession recorded yet, and must still govern at `at` — a version is
@@ -490,6 +502,18 @@ export function evaluateImportConflicts(
   if (versions.some((version) => version.documentHash === documentHash)) {
     return {
       conflict: { reason: 'duplicate-operation', overlapping: 0 },
+      supersedes: null,
+    };
+  }
+  if (
+    versions.some(
+      (version) =>
+        version.licenseId === candidate.licenseId &&
+        version.customerId !== candidate.customerId,
+    )
+  ) {
+    return {
+      conflict: { reason: 'license-binding-conflict', overlapping: 0 },
       supersedes: null,
     };
   }

@@ -67,7 +67,7 @@ export class LicenseImportController {
   @ApiBadRequestResponse({ description: 'Validation failed.' })
   @ApiConflictResponse({
     description:
-      'The document is authentic but conflicts with retained state: a repeated operation, an overlapping range without an explicit supersession, or an unknown supersession target.',
+      'The document is authentic but conflicts with retained state: a repeated operation, an overlapping range without an explicit supersession, an unknown supersession target, or a license identifier already bound to another customer or installation.',
   })
   @ApiUnprocessableEntityResponse({
     description:
