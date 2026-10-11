@@ -48,6 +48,7 @@ vi.mock('@/api/organization.api', () => ({
 
 vi.mock('@/api/licensing.api', () => ({
   getLicenseState: vi.fn(),
+  importLicenseDocument: vi.fn(),
 }));
 
 vi.mock('@/api/dashboard.api', () => ({
@@ -187,10 +188,10 @@ describe('licensing bootstrap stage', () => {
     // distinct state from "the license stopped being valid", and the screen
     // must name the installation id the operator has to quote.
     //
-    // BEHAVIOR CHANGE (frontend license activation slice): a session that
-    // holds `Licensing.License.Activate` — as this one does — is now offered
-    // the activation step itself instead of a terminal explainer, so the
-    // assertion moved from the explainer title to the activation surface.
+    // BEHAVIOR CHANGE (frontend license import slice): a session that holds
+    // `Licensing.License.Activate` — as this one does — is now offered the
+    // file-first import step itself instead of a terminal explainer, so the
+    // assertion moved from the explainer title to the import surface.
     // Everything the original test protected is still asserted: the
     // installation id is on screen, the state is never reported as a
     // permission problem, and the workspace stays closed.
@@ -206,7 +207,7 @@ describe('licensing bootstrap stage', () => {
 
     const main = await screen.findByRole('main');
     expect(
-      await within(main).findByText(t.license.activateTitle),
+      await within(main).findByText(t.license.importTitle),
     ).toBeInTheDocument();
     expect(
       within(main).getByText(
@@ -251,7 +252,7 @@ describe('licensing bootstrap stage', () => {
       ),
     ).toBeInTheDocument();
     expect(
-      within(main).queryByText(t.license.activateTitle),
+      within(main).queryByText(t.license.importTitle),
     ).not.toBeInTheDocument();
     expect(
       within(main).queryByText(t.license.inactiveTitle),

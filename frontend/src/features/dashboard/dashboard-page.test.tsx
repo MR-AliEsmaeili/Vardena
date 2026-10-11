@@ -10,6 +10,7 @@ import {
   testAccountBalances,
   testAccountingDocument,
   testAccountingPeriod,
+  testActiveLicenseState,
   testFinancialArea,
   testFiscalYear,
   testInventoryBalance,
@@ -39,6 +40,11 @@ vi.mock('@/api/organization.api', () => ({
   MAX_PAGE_SIZE: 500,
 }));
 
+vi.mock('@/api/licensing.api', () => ({
+  getLicenseState: vi.fn(),
+  importLicenseDocument: vi.fn(),
+}));
+
 vi.mock('@/api/accounting.api', () => ({
   listFinancialAreas: vi.fn(),
   listFiscalYears: vi.fn(),
@@ -64,6 +70,7 @@ const identityApi = await import('@/api/identity.api');
 const organizationApi = await import('@/api/organization.api');
 const accountingApi = await import('@/api/accounting.api');
 const dashboardApi = await import('@/api/dashboard.api');
+const licensingApi = await import('@/api/licensing.api');
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -95,6 +102,13 @@ beforeEach(() => {
   );
   vi.mocked(dashboardApi.listWorkflowInstances).mockResolvedValue(
     paginated([testWorkflowInstance]),
+  );
+  // The license status/renewal card self-gates on
+  // `Licensing.License.Activate`; `allAccountingPermissions` does not include
+  // it, so the card renders nothing here — but the single license query is
+  // still issued by the mounted hook. Answer it like the API would.
+  vi.mocked(licensingApi.getLicenseState).mockResolvedValue(
+    testActiveLicenseState,
   );
 });
 

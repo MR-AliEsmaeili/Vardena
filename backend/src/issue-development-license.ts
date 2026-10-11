@@ -4,6 +4,7 @@ import { runEntrypoint } from './kernel/bootstrap.js';
 import {
   generateAuthorityKeyPair,
   issueLicenseCode,
+  issueLicenseFile,
 } from './tools/development-license-authority.js';
 
 /**
@@ -17,9 +18,17 @@ import {
  *   LICENSE_SIGNING_PRIVATE_KEY=<base64> npm run license:issue -- \
  *     --installation 01J... [--customer-name "Acme"] [--valid-until 2027-01-01] \
  *     [--organizations 3] [--users 25] [--modules organization,users,rbac] \
- *     [--status ACTIVE]
- *     → prints the signed license code to paste into
- *       `POST /api/v1/license/activate`.
+ *     [--status ACTIVE] [--valid-from 2027-01-01] [--operation-id 01J...] \
+ *     [--supersedes 01J...] [--key-id 2026-a] [--artifact] [--out license.json]
+ *     → prints the signed license FILE (the `vardena-license` envelope around
+ *       the `VLIC2` artifact) to paste into `POST /api/v1/license/import`, or
+ *       to hand to the customer as a file. `--artifact` prints the bare
+ *       artifact instead (the text transport, for the same endpoint); `--out`
+ *       writes the chosen payload to a file without printing it.
+ *
+ *   ... --format v1
+ *     → prints the legacy `VLIC1` license code accepted by
+ *       `POST /api/v1/license/activate` (compatibility path).
  *
  * It refuses to run with `NODE_ENV=production`: a production license must be
  * issued by the commercial authority, not by a copy of the application.
@@ -64,36 +73,106 @@ async function issueDevelopmentLicense(): Promise<void> {
     );
   }
 
-  const { code, payload } = issueLicenseCode(
-    {
-      installationId,
-      ...optional('customerId', args.get('customer')),
-      ...optional('customerName', args.get('customer-name')),
-      ...optional('status', args.get('status') as 'ACTIVE' | undefined),
-      ...optional('validFrom', dateArg(args.get('valid-from'))),
-      ...optional('validUntil', dateArg(args.get('valid-until'))),
-      ...optional('organizationLimit', intArg(args.get('organizations'))),
-      ...optional('userLimit', intArg(args.get('users'))),
-      ...optional('moduleEntitlements', listArg(args.get('modules'))),
-      ...optional('featureEntitlements', listArg(args.get('features'))),
-    },
+  const format = (args.get('format') ?? 'v2').toLowerCase();
+  if (format !== 'v2' && format !== 'v1') {
+    throw new Error(`--format must be v2 or v1 (got "${format}").`);
+  }
+  const common = {
+    installationId,
+    ...optional('customerId', args.get('customer')),
+    ...optional('customerName', args.get('customer-name')),
+    ...optional('status', args.get('status') as 'ACTIVE' | undefined),
+    ...optional('validFrom', dateArg(args.get('valid-from'))),
+    ...optional('validUntil', dateArg(args.get('valid-until'))),
+    ...optional('organizationLimit', intArg(args.get('organizations'))),
+    ...optional('userLimit', intArg(args.get('users'))),
+    ...optional('moduleEntitlements', listArg(args.get('modules'))),
+    ...optional('featureEntitlements', listArg(args.get('features'))),
+  };
+
+  if (format === 'v1') {
+    const { code, payload } = issueLicenseCode(common, privateKey);
+    process.stdout.write(
+      [...summaryLines(payload, 'VLIC1 (legacy text code)'), '', code, ''].join(
+        '\n',
+      ),
+    );
+    return;
+  }
+
+  const versionOptions = {
+    ...common,
+    ...optional('operationId', args.get('operation-id')),
+    ...optional(
+      'supersedesOperationId',
+      args.has('supersedes') ? args.get('supersedes') : undefined,
+    ),
+  };
+  const keyId = args.get('key-id');
+  const artifact = args.has('artifact');
+  const { file, document, payload } = issueLicenseFile(
+    versionOptions,
     privateKey,
+    keyId === undefined || keyId === 'true' ? {} : { keyId },
   );
+  const output = artifact ? document : file;
+
+  const out = args.get('out');
+  if (out !== undefined && out !== 'true') {
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(out, output.endsWith('\n') ? output : `${output}\n`, 'utf8');
+    process.stdout.write(
+      [
+        ...summaryLines(
+          payload,
+          artifact ? 'VLIC2 artifact' : 'vardena-license file',
+        ),
+        '',
+        `Written to   : ${out}`,
+        '',
+      ].join('\n'),
+    );
+    return;
+  }
 
   process.stdout.write(
     [
-      `Installation : ${payload.installationId}`,
-      `License      : ${payload.licenseId}`,
-      `Customer     : ${payload.customerId} (${payload.customerName})`,
-      `Status       : ${payload.status}`,
-      `Valid        : ${payload.validFrom.toISOString()} → ${payload.validUntil?.toISOString() ?? 'perpetual'}`,
-      `Limits       : organizations=${payload.organizationLimit ?? 'unlimited'} users=${payload.userLimit ?? 'unlimited'}`,
-      `Modules      : ${payload.moduleEntitlements.join(', ')}`,
+      ...summaryLines(
+        payload,
+        artifact ? 'VLIC2 artifact' : 'vardena-license file',
+      ),
       '',
-      code,
+      output,
       '',
     ].join('\n'),
   );
+}
+
+function summaryLines(
+  payload: {
+    installationId: string;
+    licenseId: string;
+    customerId: string;
+    customerName: string;
+    status: string;
+    validFrom: Date;
+    validUntil: Date | null;
+    organizationLimit: number | null;
+    userLimit: number | null;
+    moduleEntitlements: readonly string[];
+  },
+  transport: string,
+): string[] {
+  return [
+    `Transport    : ${transport}`,
+    `Installation : ${payload.installationId}`,
+    `License      : ${payload.licenseId}`,
+    `Customer     : ${payload.customerId} (${payload.customerName})`,
+    `Status       : ${payload.status}`,
+    `Valid        : ${payload.validFrom.toISOString()} → ${payload.validUntil?.toISOString() ?? 'perpetual'}`,
+    `Limits       : organizations=${payload.organizationLimit ?? 'unlimited'} users=${payload.userLimit ?? 'unlimited'}`,
+    `Modules      : ${payload.moduleEntitlements.join(', ')}`,
+  ];
 }
 
 function parseArgs(argv: readonly string[]): Map<string, string> {

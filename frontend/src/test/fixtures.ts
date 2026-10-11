@@ -13,6 +13,7 @@ import type {
   GeneralLedgerRow,
   InventoryBalance,
   LicenseState,
+  LicenseVersionSummary,
   Organization,
   Paginated,
   Party,
@@ -75,6 +76,31 @@ export const secondOrganization: Organization = {
   name: 'سازمان دوم',
 };
 
+/** One retained license version (`LicenseVersionSummary`, L-03). */
+export const testLicenseVersion: LicenseVersionSummary = {
+  versionId: '01K7VERSIONAAAAAAAAAAAAAA',
+  licenseId: '01K7LICENSEAAAAAAAAAAAAAAA',
+  status: 'ACTIVE',
+  validFrom: '2026-01-01T00:00:00.000Z',
+  validUntil: null,
+  effective: true,
+  supersededAt: null,
+  supersededByVersionId: null,
+  importedAt: '2026-01-01T00:00:00.000Z',
+  source: 'text',
+};
+
+/** A retained but not-yet-effective version: a scheduled renewal (L-03). */
+export const testScheduledLicenseVersion: LicenseVersionSummary = {
+  ...testLicenseVersion,
+  versionId: '01K7SCHEDULEDVERSIONAAAAA',
+  validFrom: '2027-01-01T00:00:00.000Z',
+  validUntil: '2028-01-01T00:00:00.000Z',
+  effective: false,
+  importedAt: '2026-06-01T00:00:00.000Z',
+  source: 'file',
+};
+
 /** `GET /license/current` under the default, unconfigured local provider. */
 export const testActiveLicenseState: LicenseState = {
   licensed: true,
@@ -90,6 +116,9 @@ export const testActiveLicenseState: LicenseState = {
   userLimit: null,
   entitlements: [{ kind: 'MODULE', code: 'organization' }],
   provider: 'persistent',
+  effectiveVersionId: testLicenseVersion.versionId,
+  scheduledVersion: null,
+  versions: [testLicenseVersion],
 };
 
 /** An installation that has never activated a license (L-02). */
@@ -103,6 +132,9 @@ export const testUnlicensedLicenseState: LicenseState = {
   licenseId: null,
   validFrom: null,
   entitlements: [],
+  effectiveVersionId: null,
+  scheduledVersion: null,
+  versions: [],
 };
 
 export const testInactiveLicenseState: LicenseState = {
@@ -110,6 +142,13 @@ export const testInactiveLicenseState: LicenseState = {
   status: 'SUSPENDED',
   active: false,
   inactiveReason: 'status',
+};
+
+/** An active installation that already retained a future-dated renewal. */
+export const testScheduledLicenseState: LicenseState = {
+  ...testActiveLicenseState,
+  scheduledVersion: testScheduledLicenseVersion,
+  versions: [testLicenseVersion, testScheduledLicenseVersion],
 };
 
 export const testFinancialArea: FinancialArea = {

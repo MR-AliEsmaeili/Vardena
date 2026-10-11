@@ -1,44 +1,59 @@
 /**
- * In-memory stand-ins for the Licensing module's Prisma repositories.
+ * In-memory stand-ins for the Licensing module's Prisma repositories (L-03
+ * version model).
  *
- * They model the two database guarantees the real tables carry, because the
+ * They model the database guarantees the real tables carry, because the
  * behaviour under test depends on them:
- *   - at most one `is_self` installation row (partial unique index), and
- *   - at most one non-replaced license per installation (partial unique
- *     index) — replacement stamps the previous row instead of deleting it.
+ *   - at most one `is_self` installation row (partial unique index);
+ *   - at most one retained version per `(installation_id, operation_id)` and
+ *     per `(installation_id, document_hash)` — a duplicate raises the same
+ *     `P2002` classification the kernel maps to a conflict;
+ *   - supersession is a guarded stamp: a version that is already superseded
+ *     cannot be superseded again inside one import (the real transaction
+ *     aborts and the service answers 409).
  *
  * The stores outlive the Nest application that uses them, which is exactly
  * what makes a restart testable: a second `createTestApp()` over the SAME
- * stores is the same installation with the same persisted license.
+ * stores is the same installation with the same retained versions.
  */
 import type { InstallationsRepository } from '../../src/modules/licensing/data/installations.repository.js';
 import type {
-  ActivateLicenseCommand,
+  ImportLicenseVersionCommand,
+  LicenseAuditEventCommand,
+  LicenseAuditEventRow,
   LicensesRepository,
-  PersistedLicense,
 } from '../../src/modules/licensing/data/licenses.repository.js';
+import { SupersessionConflictError } from '../../src/modules/licensing/data/licenses.repository.js';
 import type { InstallationIdentity } from '../../src/modules/licensing/domain/installation.js';
+import type { RetainedLicenseVersion } from '../../src/modules/licensing/domain/license-version.js';
 
 export interface LicensingStores {
   installations: InstallationsRepository;
   licenses: LicensesRepository;
-  /** Every license row ever activated, newest last (audit assertions). */
-  rows: LicenseRow[];
+  /** Every retained version ever imported, in import order. */
+  versions: RetainedLicenseVersion[];
+  /** Every audit event ever written, in write order. */
+  auditEvents: LicenseAuditEventRow[];
   self: () => InstallationIdentity | null;
   customers: Map<string, string>;
 }
 
-interface LicenseRow extends PersistedLicense {
-  replacedAt: Date | null;
-  activatedBy: string | null;
+/** A Prisma-shaped unique violation, as the kernel classifier expects. */
+function uniqueViolation(target: string): Error & { code: string } {
+  return Object.assign(new Error(`Unique constraint failed on ${target}`), {
+    code: 'P2002',
+    meta: { target },
+  });
 }
 
 export function createLicensingStores(
   seed: { installation?: InstallationIdentity } = {},
 ): LicensingStores {
   let self: InstallationIdentity | null = seed.installation ?? null;
-  const rows: LicenseRow[] = [];
+  const versions: RetainedLicenseVersion[] = [];
+  const auditEvents: LicenseAuditEventRow[] = [];
   const customers = new Map<string, string>();
+  let eventCounter = 0;
 
   const installations = {
     async findSelf(): Promise<InstallationIdentity | null> {
@@ -70,65 +85,138 @@ export function createLicensingStores(
   } as unknown as InstallationsRepository;
 
   const licenses = {
-    async findCurrent(
+    async listVersions(
       installationId: string,
-    ): Promise<PersistedLicense | null> {
-      const row = rows.find(
-        (candidate) =>
-          candidate.installationId === installationId &&
-          candidate.replacedAt === null,
-      );
-      return row === undefined ? null : clone(row);
+    ): Promise<RetainedLicenseVersion[]> {
+      return versions
+        .filter((version) => version.installationId === installationId)
+        .map(cloneVersion)
+        .sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
     },
-    async activate(command: ActivateLicenseCommand): Promise<PersistedLicense> {
+
+    async findVersion(
+      installationId: string,
+      by: { operationId: string } | { documentHash: string },
+    ): Promise<RetainedLicenseVersion | null> {
+      const row =
+        'operationId' in by
+          ? versions.find(
+              (candidate) =>
+                candidate.installationId === installationId &&
+                candidate.operationId === by.operationId,
+            )
+          : versions.find(
+              (candidate) =>
+                candidate.installationId === installationId &&
+                candidate.documentHash === by.documentHash,
+            );
+      return row === undefined ? null : cloneVersion(row);
+    },
+
+    async importVersion(
+      command: ImportLicenseVersionCommand,
+    ): Promise<RetainedLicenseVersion> {
+      // Unique guards first, exactly like the real indexes.
+      if (
+        versions.some(
+          (version) =>
+            version.installationId === command.installationId &&
+            version.operationId === command.operationId,
+        )
+      ) {
+        throw uniqueViolation('installation_id, operation_id');
+      }
+      if (
+        versions.some(
+          (version) =>
+            version.installationId === command.installationId &&
+            version.documentHash === command.documentHash,
+        )
+      ) {
+        throw uniqueViolation('installation_id, document_hash');
+      }
+
+      if (command.supersedesVersionId !== null) {
+        const target = versions.find(
+          (version) => version.versionId === command.supersedesVersionId,
+        );
+        if (target === undefined || target.supersededAt !== null) {
+          // The real transaction aborts on a guarded zero-row update.
+          throw new SupersessionConflictError();
+        }
+        target.supersededAt = command.now;
+        target.supersededByVersionId = command.versionId;
+      }
+
       customers.set(command.customerId, command.customerName);
       if (self !== null && self.installationId === command.installationId) {
         self = { ...self, customerId: command.customerId };
       }
-      for (const row of rows) {
-        if (
-          row.installationId === command.installationId &&
-          row.replacedAt === null
-        ) {
-          row.replacedAt = command.now;
-        }
-      }
-      const created: LicenseRow = {
-        ...command.license,
-        installationId: command.installationId,
+      const created: RetainedLicenseVersion = {
+        versionId: command.versionId,
+        licenseId: command.licenseId,
         customerId: command.customerId,
-        codeHash: command.codeHash,
-        activatedAt: command.now,
-        activatedBy: command.activatedBy,
-        replacedAt: null,
+        installationId: command.installationId,
+        operationId: command.operationId,
+        status: command.status,
+        provider: command.provider,
+        documentVersion: command.documentVersion,
+        documentHash: command.documentHash,
+        keyId: command.keyId,
+        validFrom: command.validFrom,
+        validUntil: command.validUntil,
+        organizationLimit: command.organizationLimit,
+        userLimit: command.userLimit,
+        entitlements: command.entitlements.map((entry) => ({ ...entry })),
+        supersededAt: null,
+        supersededByVersionId: null,
+        supersedesVersionId: command.supersedesVersionId,
+        importedAt: command.now,
+        source: command.source,
       };
-      rows.push(created);
-      return clone(created);
+      versions.push(created);
+      for (const event of command.auditEvents) {
+        recordEvent(event);
+      }
+      return cloneVersion(created);
+    },
+
+    async recordAuditEvent(event: LicenseAuditEventCommand): Promise<void> {
+      recordEvent(event);
+    },
+
+    async listAuditEvents(
+      installationId: string,
+      limit = 100,
+    ): Promise<LicenseAuditEventRow[]> {
+      return auditEvents
+        .filter((event) => event.installationId === installationId)
+        .slice(0, limit)
+        .map((event) => ({ ...event }));
     },
   } as unknown as LicensesRepository;
+
+  function recordEvent(event: LicenseAuditEventCommand): void {
+    eventCounter += 1;
+    auditEvents.push({
+      ...event,
+      id: `audit-${String(eventCounter).padStart(6, '0')}`,
+    });
+  }
 
   return {
     installations,
     licenses,
-    rows,
+    versions,
+    auditEvents,
     self: () => (self === null ? null : { ...self }),
     customers,
   };
 }
 
-function clone(row: LicenseRow): PersistedLicense {
+function cloneVersion(version: RetainedLicenseVersion): RetainedLicenseVersion {
   return {
-    customerId: row.customerId,
-    installationId: row.installationId,
-    licenseId: row.licenseId,
-    status: row.status,
-    validFrom: row.validFrom,
-    validUntil: row.validUntil,
-    organizationLimit: row.organizationLimit,
-    userLimit: row.userLimit,
-    entitlements: row.entitlements.map((entitlement) => ({ ...entitlement })),
-    provider: row.provider,
-    codeHash: row.codeHash,
-    activatedAt: row.activatedAt,
+    ...version,
+    entitlements: version.entitlements.map((entry) => ({ ...entry })),
   };
 }

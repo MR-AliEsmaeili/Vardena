@@ -21,3 +21,28 @@ export class ActivateLicenseDto {
   @MaxLength(8192)
   code!: string;
 }
+
+/**
+ * Signed-document import (L-03). Like activation, the body carries exactly
+ * ONE field: the document a client received. There is no way to post a status,
+ * a limit, a validity window, a version or an entitlement — all of those are
+ * read from the verified payload, so a client can never describe the license
+ * it wants.
+ *
+ * The size limit is generous enough for a file envelope (the artifact is
+ * base64url and the envelope adds a few fields) while still bounding the
+ * unauthenticated-before-parse input.
+ */
+export class ImportLicenseDocumentDto {
+  @ApiProperty({
+    description:
+      'A signed license document: either the vardena-license file envelope or the bare VLIC2 artifact (legacy VLIC1 codes are accepted as well).',
+    example:
+      '{"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}',
+    maxLength: 65536,
+  })
+  @IsString()
+  @MinLength(1, { message: 'A license document is required.' })
+  @MaxLength(65536)
+  document!: string;
+}

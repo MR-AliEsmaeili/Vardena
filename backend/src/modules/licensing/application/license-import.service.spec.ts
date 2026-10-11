@@ -1,0 +1,590 @@
+import { beforeEach, describe, expect, it } from 'vitest';
+import type { AppConfig } from '../../../kernel/config/app-config.js';
+import { AppException } from '../../../kernel/errors/app-exception.js';
+import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
+import {
+  generateAuthorityKeyPair,
+  issueLicenseCode,
+  issueLicenseDocument,
+  issueLicenseFile,
+} from '../../../tools/development-license-authority.js';
+import { AuthorizationService } from '../../rbac/application/authorization.service.js';
+import {
+  createLicensingStores,
+  type LicensingStores,
+} from '../../../../test/support/licensing-repositories.js';
+import { InstallationIdentityService } from './installation-identity.service.js';
+import { LicenseImportService } from './license-import.service.js';
+import { LicensingService } from './licensing.service.js';
+import { PersistentLicenseProvider } from './persistent-license.provider.js';
+
+/**
+ * The import pipeline (ADR-0046, design §4–§6).
+ *
+ * The harness wires the REAL services over the in-memory stores: the identity
+ * service, the persistent provider (i.e. the same effective-version
+ * resolution the read path uses) and the licensing service. What is stubbed
+ * is only the authorization service, so 403 can be simulated without a
+ * database, and the logger.
+ *
+ * Properties under test: nothing is written unless every stage passes;
+ * a future-dated document is retained without deactivating the version that
+ * governs; overlap needs an explicit signed supersession; replay is refused;
+ * and the audit trail records applied, rejected and unchanged outcomes.
+ */
+
+const INSTALLATION = '01K7INSTALLATION0000000000';
+const ATTACKER_INSTALLATION = '01K7OTHERINSTALLATION0000';
+const AUTHORITY = generateAuthorityKeyPair();
+const STRANGER = generateAuthorityKeyPair();
+
+function loggerStub(): JsonLogger {
+  return {
+    log: () => {},
+    warn: () => {},
+    error: () => {},
+    debug: () => {},
+  } as unknown as JsonLogger;
+}
+
+function authorizationStub(allowed = true): AuthorizationService {
+  return {
+    requireAllPermissions: async (): Promise<void> => {
+      if (!allowed) throw AppException.forbidden();
+    },
+  } as unknown as AuthorizationService;
+}
+
+function configStub(keys: string[]): AppConfig {
+  return {
+    licensing: { provider: 'persistent', signingPublicKeys: keys },
+  } as unknown as AppConfig;
+}
+
+interface Harness {
+  stores: LicensingStores;
+  service: LicenseImportService;
+  licensing: LicensingService;
+  provider: PersistentLicenseProvider;
+}
+
+function buildHarness(
+  options: { withIdentity?: boolean; allowed?: boolean; keys?: string[] } = {},
+): Harness {
+  const stores = createLicensingStores(
+    options.withIdentity === false
+      ? {}
+      : {
+          installation: {
+            installationId: INSTALLATION,
+            name: 'Vardena',
+            customerId: null,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          },
+        },
+  );
+  const identity = new InstallationIdentityService(
+    stores.installations,
+    loggerStub(),
+  );
+  const provider = new PersistentLicenseProvider(
+    identity,
+    stores.licenses,
+    loggerStub(),
+  );
+  const licensing = new LicensingService(provider);
+  const service = new LicenseImportService(
+    configStub(options.keys ?? [AUTHORITY.publicKey]),
+    authorizationStub(options.allowed ?? true),
+    identity,
+    stores.licenses,
+    licensing,
+    loggerStub(),
+  );
+  return { stores, service, licensing, provider };
+}
+
+async function rejectionOf(
+  run: Promise<unknown>,
+): Promise<{ status: number; message: string; code: string }> {
+  try {
+    await run;
+    throw new Error('expected the import to be rejected');
+  } catch (error) {
+    if (error instanceof AppException) {
+      return {
+        status: error.getStatus(),
+        message: error.message,
+        code: error.code,
+      };
+    }
+    throw error;
+  }
+}
+
+function issuedFile(
+  overrides: Partial<Parameters<typeof issueLicenseFile>[0]> = {},
+  key = AUTHORITY.privateKey,
+  file: { keyId?: string } = {},
+): string {
+  return issueLicenseFile(
+    {
+      installationId: INSTALLATION,
+      customerName: 'Acme Holding',
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      ...overrides,
+    },
+    key,
+    file,
+  ).file;
+}
+
+describe('license import pipeline', () => {
+  let harness: Harness;
+
+  beforeEach(() => {
+    harness = buildHarness();
+  });
+
+  it('imports a signed file, retains the version and records the audit event', async () => {
+    const file = issuedFile({ organizationLimit: 3, userLimit: 10 });
+
+    const result = await harness.service.importDocument(file);
+
+    expect(result).toMatchObject({
+      changed: true,
+      outcome: 'APPLIED',
+      license: {
+        status: 'ACTIVE',
+        active: true,
+        organizationLimit: 3,
+        userLimit: 10,
+        installationId: INSTALLATION,
+      },
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.versions[0]).toMatchObject({
+      source: 'file',
+      documentVersion: 2,
+      keyId: expect.stringMatching(/^sha256-/),
+      supersededAt: null,
+    });
+    expect(
+      harness.stores.customers.get(harness.stores.versions[0]!.customerId),
+    ).toBe('Acme Holding');
+    expect(harness.stores.auditEvents.map((event) => event.eventType)).toEqual([
+      'license.import.applied',
+    ]);
+    expect(harness.stores.auditEvents[0]).toMatchObject({
+      outcome: 'APPLIED',
+      source: 'file',
+      reason: null,
+    });
+  });
+
+  it('imports the same artifact as text, with identical trust', async () => {
+    const { document } = issueLicenseDocument(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      AUTHORITY.privateKey,
+    );
+
+    await harness.service.importDocument(document);
+
+    expect(harness.stores.versions[0]?.source).toBe('text');
+    expect(harness.stores.versions[0]?.documentHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('retains a future-dated renewal without deactivating the current version', async () => {
+    await harness.service.importDocument(
+      issuedFile({
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2027-01-01T00:00:00.000Z'),
+      }),
+    );
+    const renewal = issuedFile({
+      validFrom: new Date('2027-01-01T00:00:00.000Z'),
+      validUntil: new Date('2028-01-01T00:00:00.000Z'),
+    });
+
+    const result = await harness.service.importDocument(renewal);
+
+    // Two retained versions; the first one still governs today (2026), and the
+    // renewal is reported as scheduled — no premature invalidation.
+    expect(result).toMatchObject({
+      outcome: 'APPLIED',
+      license: { active: true },
+    });
+    expect(harness.stores.versions).toHaveLength(2);
+    await expect(harness.provider.versionHistory()).resolves.toMatchObject({
+      scheduled: { validFrom: '2027-01-01T00:00:00.000Z' },
+    });
+    const history = await harness.provider.versionHistory();
+    expect(history.scheduled?.versionId).toBe(
+      harness.stores.versions[1]?.versionId,
+    );
+  });
+
+  it('applies an explicit signed supersession and retires the previous version', async () => {
+    const first = issueLicenseFile(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      },
+      AUTHORITY.privateKey,
+    );
+    await harness.service.importDocument(first.file);
+
+    const correction = issueLicenseFile(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        organizationLimit: 9,
+        supersedesOperationId: first.payload.operationId,
+      },
+      AUTHORITY.privateKey,
+    );
+    const result = await harness.service.importDocument(correction.file);
+
+    expect(result).toMatchObject({
+      outcome: 'APPLIED',
+      license: { organizationLimit: 9 },
+    });
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(harness.stores.versions[0]?.supersededAt).not.toBeNull();
+    expect(harness.stores.versions[0]?.supersededByVersionId).toBe(
+      harness.stores.versions[1]?.versionId,
+    );
+    expect(harness.stores.auditEvents.map((event) => event.eventType)).toEqual([
+      'license.import.applied',
+      'license.version.superseded',
+      'license.import.applied',
+    ]);
+  });
+
+  it('rejects an overlap that has no explicit supersession and writes nothing', async () => {
+    await harness.service.importDocument(issuedFile());
+
+    const rejection = await rejectionOf(
+      harness.service.importDocument(issuedFile()),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(/overlaps a retained version/);
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      outcome: 'REJECTED',
+      reason: 'overlapping-range',
+      eventType: 'license.import.rejected',
+    });
+  });
+
+  it('allows a gap and reports the installation as expired until the next version', async () => {
+    // A version that covers today, plus a scheduled renewal; between them
+    // there is a gap. Nothing is extended and no policy is invented: the
+    // installation reads as expired until the renewal's own validFrom.
+    await harness.service.importDocument(
+      issuedFile({
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2026-12-01T00:00:00.000Z'),
+      }),
+    );
+    await harness.service.importDocument(
+      issuedFile({
+        validFrom: new Date('2027-06-01T00:00:00.000Z'),
+        validUntil: new Date('2028-06-01T00:00:00.000Z'),
+      }),
+    );
+
+    await expect(
+      harness.licensing.current(new Date('2026-06-01T00:00:00.000Z')),
+    ).resolves.toMatchObject({ licensed: true, active: true });
+    await expect(
+      harness.licensing.current(new Date('2027-03-01T00:00:00.000Z')),
+    ).resolves.toMatchObject({
+      licensed: true,
+      active: false,
+      inactiveReason: 'expired',
+    });
+    await expect(
+      harness.licensing.current(new Date('2027-08-01T00:00:00.000Z')),
+    ).resolves.toMatchObject({ licensed: true, active: true });
+  });
+
+  it('rejects a duplicate operation and keeps the retained version untouched', async () => {
+    const file = issuedFile();
+    await harness.service.importDocument(file);
+
+    const rejection = await rejectionOf(harness.service.importDocument(file));
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(/already been imported/);
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      reason: 'duplicate-operation',
+      operationId: harness.stores.versions[0]?.operationId,
+    });
+  });
+
+  it('rejects an unknown supersession target with a conflict', async () => {
+    await harness.service.importDocument(issuedFile());
+
+    const rejection = await rejectionOf(
+      harness.service.importDocument(
+        issuedFile({ supersedesOperationId: '01K7MISSINGOPERATION0000000' }),
+      ),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(/not a retained, eligible version/);
+    expect(harness.stores.versions).toHaveLength(1);
+  });
+
+  it('rejects a document issued for another installation', async () => {
+    const rejection = await rejectionOf(
+      harness.service.importDocument(
+        issuedFile({ installationId: ATTACKER_INSTALLATION }),
+      ),
+    );
+
+    expect(rejection.status).toBe(422);
+    expect(rejection.message).toMatch(/different Vardena installation/);
+    expect(harness.stores.versions).toHaveLength(0);
+  });
+
+  it('creates no installation identity when none exists yet', async () => {
+    const fresh = buildHarness({ withIdentity: false });
+
+    const rejection = await rejectionOf(
+      fresh.service.importDocument(issuedFile()),
+    );
+
+    expect(rejection.status).toBe(422);
+    expect(rejection.message).toMatch(/has no identity yet/);
+    expect(fresh.stores.self()).toBeNull();
+    expect(fresh.stores.versions).toHaveLength(0);
+  });
+
+  it('rejects a document signed by an untrusted authority', async () => {
+    const rejection = await rejectionOf(
+      harness.service.importDocument(issuedFile({}, STRANGER.privateKey)),
+    );
+
+    expect(rejection.status).toBe(422);
+    expect(rejection.message).toMatch(/signature is not valid/);
+    // Unverified rejections record no identity and no hash.
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      reason: 'signature',
+      operationId: null,
+      documentHash: null,
+    });
+    expect(harness.stores.versions).toHaveLength(0);
+  });
+
+  it('rejects a document naming an untrusted key id with its own reason', async () => {
+    const rejection = await rejectionOf(
+      harness.service.importDocument(
+        issuedFile({}, AUTHORITY.privateKey, { keyId: 'retired-2025' }),
+      ),
+    );
+
+    expect(rejection.status).toBe(422);
+    expect(rejection.message).toMatch(/unknown key/);
+  });
+
+  it('rejects malformed input before any state is touched', async () => {
+    for (const input of [
+      '',
+      'not a license',
+      'VLIC2.only',
+      '{"format":"vardena-license"}',
+    ]) {
+      const rejection = await rejectionOf(
+        harness.service.importDocument(input),
+      );
+      expect(rejection.status).toBe(422);
+    }
+    expect(harness.stores.versions).toHaveLength(0);
+    expect(
+      harness.stores.auditEvents.every((event) => event.outcome === 'REJECTED'),
+    ).toBe(true);
+  });
+
+  it('rejects an already-ended document', async () => {
+    const rejection = await rejectionOf(
+      harness.service.importDocument(
+        issuedFile({
+          validFrom: new Date('2020-01-01T00:00:00.000Z'),
+          validUntil: new Date('2021-01-01T00:00:00.000Z'),
+        }),
+      ),
+    );
+
+    expect(rejection.status).toBe(422);
+    expect(rejection.message).toMatch(/already ended/);
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      reason: 'expired-document',
+    });
+  });
+
+  it('rejects a document that is not active', async () => {
+    const rejection = await rejectionOf(
+      harness.service.importDocument(issuedFile({ status: 'SUSPENDED' })),
+    );
+
+    expect(rejection.status).toBe(422);
+    expect(rejection.message).toMatch(/suspended or expired/);
+  });
+
+  it('keeps an invalid import from touching a valid license', async () => {
+    await harness.service.importDocument(issuedFile({ organizationLimit: 5 }));
+
+    await rejectionOf(harness.service.importDocument('garbage'));
+    await rejectionOf(
+      harness.service.importDocument(issuedFile({}, STRANGER.privateKey)),
+    );
+    await rejectionOf(
+      harness.service.importDocument(
+        issuedFile({ installationId: ATTACKER_INSTALLATION }),
+      ),
+    );
+
+    await expect(harness.licensing.current()).resolves.toMatchObject({
+      active: true,
+      organizationLimit: 5,
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.versions[0]?.supersededAt).toBeNull();
+  });
+
+  it('refuses everything without the activation permission', async () => {
+    const denied = buildHarness({ allowed: false });
+
+    const rejection = await rejectionOf(
+      denied.service.importDocument(issuedFile()),
+    );
+
+    expect(rejection.status).toBe(403);
+    expect(rejection.code).toBe('PermissionDenied');
+    expect(denied.stores.versions).toHaveLength(0);
+    expect(denied.stores.auditEvents).toHaveLength(0);
+  });
+
+  it('accepts a legacy code, keeps it idempotent and replaces the governing version', async () => {
+    const first = issueLicenseCode(
+      { installationId: INSTALLATION, organizationLimit: 2 },
+      AUTHORITY.privateKey,
+    ).code;
+    const applied = await harness.service.importDocument(first);
+
+    expect(applied).toMatchObject({ changed: true, outcome: 'APPLIED' });
+    expect(harness.stores.versions[0]).toMatchObject({
+      source: 'legacy-code',
+      documentVersion: 1,
+      keyId: null,
+      operationId: expect.stringMatching(/^legacy-code:[0-9a-f]{64}$/),
+    });
+
+    const again = await harness.service.importDocument(first);
+    expect(again).toMatchObject({ changed: false, outcome: 'UNCHANGED' });
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      eventType: 'license.import.unchanged',
+      outcome: 'UNCHANGED',
+    });
+
+    const replacement = issueLicenseCode(
+      { installationId: INSTALLATION, organizationLimit: 7 },
+      AUTHORITY.privateKey,
+    ).code;
+    const replaced = await harness.service.importDocument(replacement);
+
+    expect(replaced).toMatchObject({
+      changed: true,
+      license: { organizationLimit: 7 },
+    });
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(harness.stores.versions[0]?.supersededAt).not.toBeNull();
+  });
+
+  it('keeps the documented legacy rejections (not-yet-valid, expired, suspended)', async () => {
+    const future = issueLicenseCode(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date(Date.now() + 86_400_000),
+      },
+      AUTHORITY.privateKey,
+    ).code;
+    const expired = issueLicenseCode(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2020-01-01T00:00:00.000Z'),
+        validUntil: new Date('2021-01-01T00:00:00.000Z'),
+      },
+      AUTHORITY.privateKey,
+    ).code;
+    const suspended = issueLicenseCode(
+      { installationId: INSTALLATION, status: 'SUSPENDED' },
+      AUTHORITY.privateKey,
+    ).code;
+
+    expect(
+      (await rejectionOf(harness.service.importDocument(future))).message,
+    ).toMatch(/not valid yet/);
+    expect(
+      (await rejectionOf(harness.service.importDocument(expired))).message,
+    ).toMatch(/expired/);
+    expect(
+      (await rejectionOf(harness.service.importDocument(suspended))).message,
+    ).toMatch(/suspended or revoked/);
+    expect(harness.stores.versions).toHaveLength(0);
+  });
+
+  it('refuses to re-apply a retained but superseded legacy code', async () => {
+    const first = issueLicenseCode(
+      { installationId: INSTALLATION },
+      AUTHORITY.privateKey,
+    ).code;
+    const second = issueLicenseCode(
+      { installationId: INSTALLATION },
+      AUTHORITY.privateKey,
+    ).code;
+    await harness.service.importDocument(first);
+    await harness.service.importDocument(second);
+    expect(harness.stores.versions[0]?.supersededAt).not.toBeNull();
+
+    const rejection = await rejectionOf(harness.service.importDocument(first));
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(/no longer the version that governs/);
+    expect(harness.stores.versions).toHaveLength(2);
+  });
+
+  it('does not re-verify an already-retained version when the trust list changes', async () => {
+    await harness.service.importDocument(issuedFile());
+    const rotated = buildHarness({ keys: [STRANGER.publicKey] });
+    // A different configuration over the same retained versions: the license
+    // is read from storage and stays effective (rotation cannot invalidate a
+    // perpetual license that was already imported).
+    const stores = harness.stores;
+    const identity = new InstallationIdentityService(
+      stores.installations,
+      loggerStub(),
+    );
+    const provider = new PersistentLicenseProvider(
+      identity,
+      stores.licenses,
+      loggerStub(),
+    );
+    const licensing = new LicensingService(provider);
+    expect(rotated).toBeDefined();
+
+    await expect(licensing.current()).resolves.toMatchObject({
+      active: true,
+      status: 'ACTIVE',
+    });
+    expect(stores.versions).toHaveLength(1);
+  });
+});

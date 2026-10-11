@@ -19,6 +19,7 @@ import { AuthGuard } from '../../identity/application/auth.guard.js';
 import { AuthorizationGuard } from '../../rbac/application/authorization.guard.js';
 import { RequirePermission } from '../../rbac/application/require-permission.decorator.js';
 import { LicenseActivationService } from '../application/license-activation.service.js';
+import { LicensingService } from '../application/licensing.service.js';
 import { LICENSING_PERMISSIONS } from '../domain/licensing-permissions.js';
 import { ActivateLicenseDto } from './dto/license.dto.js';
 import {
@@ -34,6 +35,11 @@ import {
  * the application service re-checks (AR-21). There is deliberately no public
  * activation endpoint, no role-name or username check, and no generic admin
  * bypass: holding the permission is the only way in.
+ *
+ * L-03: this route is the compatibility alias for the legacy text code. It
+ * shares the ONE import pipeline (and therefore verification, binding,
+ * validation and the audit trail) with `POST /license/import`; its documented
+ * `VLIC1` lifecycle semantics are unchanged (design §5).
  */
 @ApiTags('licensing')
 @ApiUnauthorizedResponse({ description: 'Not authenticated.' })
@@ -42,7 +48,10 @@ import {
 })
 @Controller({ path: 'license', version: '1' })
 export class LicenseActivationController {
-  constructor(private readonly activation: LicenseActivationService) {}
+  constructor(
+    private readonly activation: LicenseActivationService,
+    private readonly licensing: LicensingService,
+  ) {}
 
   @Post('activate')
   @HttpCode(HttpStatus.OK)
@@ -61,8 +70,13 @@ export class LicenseActivationController {
   })
   async activate(
     @Body() body: ActivateLicenseDto,
-  ): Promise<LicenseStateView & { changed: boolean }> {
+  ): Promise<LicenseStateView & { changed: boolean; outcome: string }> {
     const result = await this.activation.activate(body.code);
-    return { ...toLicenseStateView(result.license), changed: result.changed };
+    const snapshot = await this.licensing.currentState();
+    return {
+      ...toLicenseStateView(snapshot.license, snapshot.versions),
+      changed: result.changed,
+      outcome: result.outcome,
+    };
   }
 }

@@ -167,6 +167,18 @@ jobs:
           VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
         run: npm run test:business-date-validity-rehearsal
 
+      # The licensing version-model fixture carries a populated L-02 shape
+      # (current + replaced licenses, entitlements, an unlicensed
+      # installation, a non-ACTIVE status) through migration 20261014000000
+      # and asserts that every fact survives, that the new unique guards hold,
+      # and that unrepresentable data (duplicate artifact hash) is refused with
+      # a clear message instead of a constraint failure.
+      - name: Migration rehearsal (Licensing version model and import)
+        working-directory: backend
+        env:
+          VARDENA_REHEARSAL_ADMIN_URL: postgresql://vardena:vardena_test_password@localhost:5432/postgres
+        run: npm run test:licensing-version-rehearsal
+
       - name: E2E tests (incl. live-DB suites)
         working-directory: backend
         timeout-minutes: 10

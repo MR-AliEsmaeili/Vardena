@@ -28,6 +28,7 @@ export class LicenseStateController {
   })
   @ApiOkResponse({ description: 'Non-secret evaluated license state.' })
   async current(): Promise<LicenseStateView> {
-    return toLicenseStateView(await this.licensing.current());
+    const snapshot = await this.licensing.currentState();
+    return toLicenseStateView(snapshot.license, snapshot.versions);
   }
 }

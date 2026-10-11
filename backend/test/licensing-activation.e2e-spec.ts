@@ -237,8 +237,8 @@ describe('Installation identity and license activation (e2e)', () => {
     const response = await activate(code).expect(200);
 
     // C: the hash is persisted and identifies this exact code.
-    const row = licensing.rows.at(-1);
-    expect(row?.codeHash).toBe(
+    const row = licensing.versions.at(-1);
+    expect(row?.documentHash).toBe(
       createHash('sha256').update(code, 'utf8').digest('hex'),
     );
 
@@ -258,6 +258,7 @@ describe('Installation identity and license activation (e2e)', () => {
     expect(JSON.stringify(response.body)).not.toContain(code);
     expect(response.body).not.toHaveProperty('code');
     expect(response.body).not.toHaveProperty('codeHash');
+    expect(response.body).not.toHaveProperty('documentHash');
 
     const current = await agent.get('/api/v1/license/current').expect(200);
     expect(JSON.stringify(current.body)).not.toContain(code);
@@ -270,7 +271,7 @@ describe('Installation identity and license activation (e2e)', () => {
     const second = await activate(code).expect(200);
 
     expect(second.body).toMatchObject({ changed: false, active: true });
-    expect(licensing.rows).toHaveLength(1);
+    expect(licensing.versions).toHaveLength(1);
   });
 
   it('C/S the persisted license survives a restart without re-entering the code', async () => {
@@ -309,8 +310,8 @@ describe('Installation identity and license activation (e2e)', () => {
       changed: true,
       organizationLimit: 7,
     });
-    expect(licensing.rows).toHaveLength(2);
-    expect(licensing.rows[0]?.replacedAt).not.toBeNull();
+    expect(licensing.versions).toHaveLength(2);
+    expect(licensing.versions[0]?.supersededAt).not.toBeNull();
   });
 
   // -- F, G, H, I, J, K, L, M: every rejection path
@@ -321,7 +322,7 @@ describe('Installation identity and license activation (e2e)', () => {
     ).expect(422);
 
     expect(response.body.message).toMatch(/different Vardena installation/);
-    expect(licensing.rows).toHaveLength(0);
+    expect(licensing.versions).toHaveLength(0);
   });
 
   it('G rejects a malformed license code', async () => {
@@ -332,7 +333,7 @@ describe('Installation identity and license activation (e2e)', () => {
       .post('/api/v1/license/activate')
       .send({ code: 'VLIC1.a.b', status: 'ACTIVE', organizationLimit: 99 })
       .expect(400);
-    expect(licensing.rows).toHaveLength(0);
+    expect(licensing.versions).toHaveLength(0);
   });
 
   it('H rejects a tampered license code', async () => {
@@ -351,7 +352,7 @@ describe('Installation identity and license activation (e2e)', () => {
 
     const response = await activate(forged).expect(422);
     expect(response.body.message).toMatch(/signature is not valid/);
-    expect(licensing.rows).toHaveLength(0);
+    expect(licensing.versions).toHaveLength(0);
   });
 
   it('H rejects a license signed by an unknown authority', async () => {
@@ -360,7 +361,7 @@ describe('Installation identity and license activation (e2e)', () => {
       stranger.privateKey,
     );
     await activate(code).expect(422);
-    expect(licensing.rows).toHaveLength(0);
+    expect(licensing.versions).toHaveLength(0);
   });
 
   it('I rejects an expired license', async () => {
@@ -373,7 +374,7 @@ describe('Installation identity and license activation (e2e)', () => {
     ).expect(422);
 
     expect(response.body.message).toMatch(/expired/);
-    expect(licensing.rows).toHaveLength(0);
+    expect(licensing.versions).toHaveLength(0);
   });
 
   it('K rejects a license that is not valid yet', async () => {
@@ -393,7 +394,7 @@ describe('Installation identity and license activation (e2e)', () => {
     ).expect(422);
 
     expect(response.body.message).toMatch(/suspended or revoked/);
-    expect(licensing.rows).toHaveLength(0);
+    expect(licensing.versions).toHaveLength(0);
   });
 
   it('M rejects a license naming an unknown module entitlement', async () => {
@@ -446,7 +447,7 @@ describe('Installation identity and license activation (e2e)', () => {
       status: 'ACTIVE',
       organizationLimit: 3,
     });
-    expect(licensing.rows).toHaveLength(1);
+    expect(licensing.versions).toHaveLength(1);
   });
 
   // -- P, Q, R: authorization of the activation endpoint
@@ -459,7 +460,7 @@ describe('Installation identity and license activation (e2e)', () => {
       .expect(401);
 
     expect(response.body.code).toBe('Unauthorized');
-    expect(licensing.rows).toHaveLength(0);
+    expect(licensing.versions).toHaveLength(0);
   });
 
   it('Q an ordinary authenticated user cannot activate a license', async () => {
@@ -474,8 +475,8 @@ describe('Installation identity and license activation (e2e)', () => {
 
     expect(response.body.code).toBe('PermissionDenied');
     // The valid license is still the one the operator activated.
-    expect(licensing.rows).toHaveLength(1);
-    expect(licensing.rows[0]?.organizationLimit).toBeNull();
+    expect(licensing.versions).toHaveLength(1);
+    expect(licensing.versions[0]?.organizationLimit).toBeNull();
   });
 
   it('an unlicensed installation holds only the bootstrap administrator', async () => {
@@ -489,8 +490,9 @@ describe('Installation identity and license activation (e2e)', () => {
   it('R the holder of Licensing.License.Activate can activate', async () => {
     const code = issue({ installationId: await installationId() });
     await activate(code, agent).expect(200);
-    expect(licensing.rows).toHaveLength(1);
-    expect(licensing.rows[0]?.activatedBy).not.toBeNull();
+    expect(licensing.versions).toHaveLength(1);
+    expect(licensing.versions[0]?.importedAt).not.toBeNull();
+    expect(licensing.versions[0]?.source).toBe('legacy-code');
   });
 
   // -- T: entitlement and permission stay separate facts

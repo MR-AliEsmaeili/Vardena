@@ -1,6 +1,7 @@
 import { useEffect, type ReactElement } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { SortingState } from '@tanstack/react-table';
+import { LicenseStatusCard } from '@/features/licensing/license-status-card';
 import { useOrganizationId } from '@/features/organization/use-organization';
 import { usePermissions } from '@/features/permissions/use-permissions';
 import { PERMISSIONS } from '@/features/permissions/permission-codes';
@@ -253,6 +254,16 @@ export function DashboardPage(): ReactElement {
             onRetry={() => void periodsQuery.refetch()}
           />
           <ReconciliationEmptyCard canOpenTrialBalance={canOpenTrialBalance} />
+          {/*
+            License status + renewal (L-03). Self-gated on
+            `Licensing.License.Activate`: the card renders nothing for a
+            session that may not import, so the dashboard layout is unchanged
+            for everyone else. It reads the same single license query the
+            bootstrap gate uses, and it is the only place an ALREADY ACTIVE
+            installation can import its next (possibly future-dated) signed
+            version before the current window ends.
+          */}
+          <LicenseStatusCard />
         </div>
       </div>
     </div>
