@@ -108,9 +108,13 @@ protection and migration before any code changes (G-10, AR-29).
     condition, reported as a server error rather than a license conflict).
     Rejected alternatives: serializable isolation alone (relies on predicate
     locks and answers with retryable serialization failures instead of a
-    deterministic documented conflict) and unique-index-only protection (an
-    index can prove two rows are distinct, never that two windows are
-    compatible). The live PostgreSQL suite
+    deterministic documented conflict); unique-index-only protection (an index
+    can prove two rows are distinct, never that two windows are compatible); and
+    an installation-keyed `pg_advisory_xact_lock` — the pattern the limit
+    counters use — which would serialize just as well but needs a derived key
+    space and cannot notice that the installation row is gone, whereas the
+    import already updates that row in the same transaction, so locking it is
+    both the natural mutual exclusion and an existence check. The live PostgreSQL suite
     (`test/licensing-persistence-live.e2e-spec.ts`) drives concurrent imports
     and asserts the invariant directly in SQL.
 

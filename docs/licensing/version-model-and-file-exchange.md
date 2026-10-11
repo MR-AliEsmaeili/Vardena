@@ -258,6 +258,12 @@ code: the read would be stale by the time the write commits.
 - Rejected alternative: relying on `SERIALIZABLE` isolation alone. It answers
   with retryable serialization failures instead of the documented conflict, and it
   would leave the conflict reason to be inferred rather than evaluated.
+- Rejected alternative: an installation-keyed `pg_advisory_xact_lock` (the
+  pattern the licensed-limit counters use). It would serialize imports just as
+  well, but it needs a derived key space and it succeeds even if the installation
+  row has disappeared, whereas the import already updates the installation row in
+  the same transaction — locking that row is both the natural mutual exclusion and
+  an existence check.
 - Proven by `test/licensing-persistence-live.e2e-spec.ts` on real PostgreSQL:
   two concurrent imports with the same window (three rounds), two concurrent
   imports of the same document, and two concurrent successors of one version —
