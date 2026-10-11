@@ -100,6 +100,42 @@ describe.skipIf(DATABASE_URL === undefined)(
       return Number(rows[0]?.count ?? 0);
     }
 
+    /**
+     * The applied events of ONE installation, oldest first.
+     *
+     * Scoping the check to the installation is what makes it an invariant worth
+     * asserting: the audit table also holds `rejected`, `unchanged` and
+     * `license.version.superseded` rows, so counting the table (or counting
+     * applied rows across installations) measures the history of everything
+     * else that has ever run against this database rather than the race under
+     * test.
+     */
+    async function appliedOperations(
+      installationId: string,
+    ): Promise<Array<string | null>> {
+      const rows = await query<{ operation_id: string | null }>(
+        `SELECT "operation_id" FROM "licensing"."license_audit_events"
+          WHERE "event_type" = 'license.import.applied'
+            AND "installation_id" = $1
+          ORDER BY "occurred_at", "id"`,
+        installationId,
+      );
+      return rows.map((row) => row.operation_id);
+    }
+
+    /** The installation's audit rows, for a failure message that names them. */
+    async function auditTrail(installationId: string): Promise<string> {
+      return JSON.stringify(
+        await query(
+          `SELECT "event_type", "outcome", "operation_id", "source", "occurred_at"
+             FROM "licensing"."license_audit_events"
+            WHERE "installation_id" = $1
+            ORDER BY "occurred_at", "id"`,
+          installationId,
+        ),
+      );
+    }
+
     /** One import attempt and what it left behind. */
     interface ImportOutcome {
       document: IssuedFile;
@@ -570,10 +606,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           },
           authority.privateKey,
         );
-        const appliedBefore = await count(
-          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
-            WHERE "event_type" = 'license.import.applied'`,
-        );
+        const appliedBefore = await appliedOperations(identity.installationId);
 
         const outcomes = await raceImports([left, right]);
 
@@ -616,11 +649,13 @@ describe.skipIf(DATABASE_URL === undefined)(
             loser!.document.payload.operationId,
           ),
         ).toBe(0);
-        expect(
-          await count(
-            `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"`,
-          ),
-        ).toBe(appliedBefore + 2);
+        // Exactly ONE applied event was added, and it is the winner's: the
+        // loser's refusal is written as a `license.import.rejected` row, never
+        // as an applied one (a rejection must not look like an application).
+        const appliedAfter = await appliedOperations(identity.installationId);
+        expect(appliedAfter, await auditTrail(identity.installationId)).toEqual(
+          [...appliedBefore, winner!.document.payload.operationId],
+        );
         expect(
           await count(
             `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions" AS version
