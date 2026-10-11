@@ -1,7 +1,8 @@
 # ADR-0030: Installation licensing precedes the RBAC capability catalog
 
-- **Status:** Accepted for L-01; extended by ADR-0036 (L-02: persistent installation identity, signed license codes, activation endpoint, `persistent` provider by default)
-- **Reconciliation note (2026-10-11):** The Owner-approved licensing product requirements are recorded in [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md). Some of them conflict with this ADR (see PDR-11 §19). This ADR's text is unchanged until the conflicts are decided through the ADR process.
+- **Status:** Accepted for L-01; extended by **ADR-0045** (L-02: persistent installation identity, signed license codes, activation endpoint, `persistent` provider by default) and **ADR-0046** (L-03: signed license documents, retained license versions, replay-safe import, deterministic effective-version resolution). The licensing ADR formerly shared number 0036 with the legal-reporting record; it was renumbered to ADR-0045 on 2026-10-11 (PDR-11 §19 CF-14) and this reference was repointed (CF-20).
+- **Reconciliation note (2026-10-11):** The Owner-approved licensing product requirements are recorded in [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md). Some of them conflicted with this ADR (see PDR-11 §19). The conflicts that needed a design are settled by [ADR-0046](../adr/0046-signed-license-documents-and-version-lifecycle.md) for the server-license import path; the rest are recorded in PDR-11 §19.4 and `docs/tasks/pdr-11-conflict-reconciliation.md`. This ADR's decision text is unchanged; the enforcement chain it defines is unchanged.
+- **Renumbering note (2026-10-11, CF-14):** the licensing record referenced here as "ADR-0036" is now [ADR-0045](./0045-installation-identity-and-license-activation.md); the number 0036 belongs to the legal-reporting ADR in the index. Decision text unchanged.
 - **Date:** 2026-10-01
 
 ## Context

@@ -1,8 +1,19 @@
 import { Injectable } from '@nestjs/common';
+import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
 import { LicensesRepository } from '../data/licenses.repository.js';
 import type { InstallationLicense } from '../domain/license.js';
+import {
+  findScheduledVersion,
+  resolveEffectiveVersion,
+  sortVersionsNewestFirst,
+  toInstallationLicense,
+  toLicenseVersionSummary,
+} from '../domain/license-version.js';
 import { InstallationIdentityService } from './installation-identity.service.js';
-import type { LicenseProvider } from './license-provider.js';
+import type {
+  LicenseProvider,
+  LicenseVersionSnapshot,
+} from './license-provider.js';
 
 export const PERSISTENT_LICENSE_PROVIDER_NAME = 'persistent';
 
@@ -32,25 +43,58 @@ export class PersistentLicenseProvider implements LicenseProvider {
   constructor(
     private readonly identity: InstallationIdentityService,
     private readonly licenses: LicensesRepository,
+    private readonly logger: JsonLogger,
   ) {}
 
-  async getLicense(): Promise<InstallationLicense | null> {
+  async getLicense(at = new Date()): Promise<InstallationLicense | null> {
     const installation = await this.identity.current();
-    const persisted = await this.licenses.findCurrent(
+    const versions = await this.licenses.listVersions(
       installation.installationId,
     );
-    if (persisted === null) return null;
+    if (versions.length === 0) return null;
+    const resolution = resolveEffectiveVersion(versions, at);
+    if (resolution.version === null) return null;
+    if (resolution.kind === 'ambiguous') {
+      // Defensive failure mode for corrupted data, not a precedence policy
+      // (design §3.2 rule 7): report the deterministic choice, loudly.
+      this.logger.warn(
+        'Multiple retained license versions cover the same instant',
+        {
+          installationId: installation.installationId,
+          chosenVersionId: resolution.version.versionId,
+          covering: resolution.covering.length,
+        },
+        PersistentLicenseProvider.name,
+      );
+    }
+    return toInstallationLicense(resolution.version, this.name);
+  }
+
+  /**
+   * Retained-version evidence for the state endpoint. The effective id is the
+   * SAME resolution `getLicense()` used, so the UI can never label a version
+   * "effective" that the evaluation did not choose.
+   */
+  async versionHistory(at = new Date()): Promise<LicenseVersionSnapshot> {
+    const installation = await this.identity.current();
+    const versions = await this.licenses.listVersions(
+      installation.installationId,
+    );
+    if (versions.length === 0) {
+      return { effectiveVersionId: null, scheduled: null, versions: [] };
+    }
+    const resolution = resolveEffectiveVersion(versions, at);
+    const effectiveVersionId = resolution.version?.versionId ?? null;
+    const scheduled = findScheduledVersion(versions, at);
     return {
-      customerId: persisted.customerId,
-      installationId: persisted.installationId,
-      licenseId: persisted.licenseId,
-      status: persisted.status,
-      validFrom: persisted.validFrom,
-      validUntil: persisted.validUntil,
-      organizationLimit: persisted.organizationLimit,
-      userLimit: persisted.userLimit,
-      entitlements: persisted.entitlements,
-      provider: PERSISTENT_LICENSE_PROVIDER_NAME,
+      effectiveVersionId,
+      scheduled:
+        scheduled === null
+          ? null
+          : toLicenseVersionSummary(scheduled, effectiveVersionId),
+      versions: sortVersionsNewestFirst(versions).map((version) =>
+        toLicenseVersionSummary(version, effectiveVersionId),
+      ),
     };
   }
 

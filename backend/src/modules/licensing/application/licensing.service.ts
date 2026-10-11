@@ -9,7 +9,21 @@ import {
   type EvaluatedLicense,
   type InstallationLicense,
 } from '../domain/license.js';
-import { LICENSE_PROVIDER, type LicenseProvider } from './license-provider.js';
+import {
+  LICENSE_PROVIDER,
+  type LicenseProvider,
+  type LicenseVersionSnapshot,
+} from './license-provider.js';
+
+/**
+ * The evaluated state plus the retained-version evidence behind it (L-03).
+ * `versions` is null for a provider without retained versions (the
+ * configuration-backed development authority).
+ */
+export interface LicenseStateSnapshot {
+  license: EvaluatedLicense;
+  versions: LicenseVersionSnapshot | null;
+}
 
 export interface LicensedAllocation {
   installationId: string;
@@ -50,7 +64,7 @@ export class LicensingService {
    * what an operator needs to obtain a license (L-02).
    */
   async current(at = new Date()): Promise<EvaluatedLicense> {
-    const license = await this.provider.getLicense();
+    const license = await this.provider.getLicense(at);
     if (license === null) {
       return unlicensedEvaluation({
         installationId: (await this.provider.installationId?.()) ?? null,
@@ -58,6 +72,21 @@ export class LicensingService {
       });
     }
     return evaluateLicense(license, at);
+  }
+
+  /**
+   * The state endpoint's read: the canonical evaluation plus the retained
+   * versions it was derived from. Version history is read FIRST so the
+   * evaluation is the freshest of the two reads; a concurrent import can make
+   * the pair inconsistent for one response, never the gate itself (every
+   * consumer that decides something calls `current()`).
+   */
+  async currentState(at = new Date()): Promise<LicenseStateSnapshot> {
+    const versions =
+      this.provider.versionHistory === undefined
+        ? null
+        : await this.provider.versionHistory(at);
+    return { license: await this.current(at), versions };
   }
 
   /** Evaluate a candidate license with the same rules as the read path. */

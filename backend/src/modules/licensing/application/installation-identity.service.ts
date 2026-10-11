@@ -40,6 +40,25 @@ export class InstallationIdentityService {
     return this.inFlight;
   }
 
+  /**
+   * The identity id that ALREADY exists, or null — never creates one.
+   *
+   * Import uses this: a document must name the identity this installation
+   * already has, so a license can never bring an installation row into
+   * existence (ADR-0046 Decision 6, design §7).
+   */
+  async existingIdOrNull(): Promise<string | null> {
+    try {
+      if (this.cached !== null) return this.cached.installationId;
+      const existing = await this.installations.findSelf();
+      if (existing === null) return null;
+      this.cached = existing;
+      return existing.installationId;
+    } catch {
+      return null;
+    }
+  }
+
   /** The identity id, or null when it cannot be read (database unavailable). */
   async currentIdOrNull(): Promise<string | null> {
     try {

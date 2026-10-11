@@ -44,6 +44,22 @@ recovery, and a technical backup does not satisfy business data portability.
   S3-compatible/cloud storage and other supported cloud storage. **None of
   these integrations is implemented or authorized by this record.**
 
+## Licensing interaction (annotation, 2026-10-11 — no policy change)
+
+**Restore is never blocked by license state** (OQ-53; guardrail G-9 of PDR-11).
+Nothing in the licensing implementation participates in backup, export or
+restore: there is no in-product restore surface, no licensing check on any
+backup/restore path, and the signed-file import pipeline adds none. Licensing
+never blocks, delays, logs out or requires network for a restore.
+
+The licensing reconciliation of 2026-10-11 confirmed this and left the
+interaction with **full revocation** undecided, because full revocation is not
+implemented: its recovery path (PDR-11 §10.3) and the way a signed reactivation
+is imported while System Administrator login is stopped are registered as
+**OQ-78**. The installation identity key that PDR-11 §6.1–§6.5 requires in the
+encrypted full backup is **designed but not implemented** (blocked by the
+backup-encryption design, PDR-11 U-2, and by the replacement workflow, OQ-82).
+
 ## 3. Restore authority (Owner decision, 2026-10-05)
 
 - **Normal ERP users never have an in-product Restore capability.**

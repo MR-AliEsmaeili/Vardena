@@ -74,7 +74,7 @@ export type LoginRequest = Schemas['LoginRequestDto'];
 export type EffectivePermissions = Schemas['EffectivePermissionsDto'];
 
 // ---------------------------------------------------------------------------
-// Licensing (ADR-0030 / L-01)
+// Licensing (ADR-0030 / ADR-0046)
 //
 // `LicenseStateController.current()` (`backend/src/modules/licensing/api/
 // license-state.controller.ts`) answers `GET /api/v1/license/current` with an
@@ -83,7 +83,14 @@ export type EffectivePermissions = Schemas['EffectivePermissionsDto'];
 // — the same annotation-gap category already described above for
 // `NullableString`/`AccountStatement*`. `LicenseState` is restored VERBATIM
 // from that controller's return type rather than derived from the generated
-// document.
+// document; `LicenseImportResult` is restored the same way from
+// `LicenseImportController.import()` (`POST /api/v1/license/import`).
+//
+// The frontend imports licenses through that route only. It accepts BOTH the
+// signed file envelope / VLIC2 artifact and a legacy VLIC1 code, so the UI has
+// exactly one license submission path; the backend's `POST /license/activate`
+// stays as the L-02 compatibility alias for existing clients (ADR-0046), it is
+// not called from here.
 // ---------------------------------------------------------------------------
 
 export type LicenseEntitlementKind = 'MODULE' | 'FEATURE';
@@ -93,11 +100,52 @@ export interface LicenseEntitlement {
   code: string;
 }
 
+/** How a retained version entered the installation (`LicenseVersionSource`). */
+export type LicenseVersionSource = 'file' | 'text' | 'legacy-code';
+
+/**
+ * One retained license version (`LicenseVersionSummary`,
+ * `backend/src/modules/licensing/domain/license-version.ts`).
+ *
+ * Versions are never replaced destructively: importing a renewal adds a row,
+ * and a supersession is recorded on the old one. Two instants describe the
+ * record, because a future-dated successor must not interrupt the license that
+ * is valid today: `supersededAt` is when the supersession was recorded and
+ * `governsUntil` is when that version stops governing (the successor's own
+ * start). The window is half-open — `validFrom` inclusive, `validUntil`
+ * exclusive — and `validUntil: null` means perpetual.
+ */
+export interface LicenseVersionSummary {
+  versionId: string;
+  licenseId: string;
+  status: 'ACTIVE' | 'EXPIRED' | 'SUSPENDED';
+  validFrom: string;
+  validUntil: string | null;
+  /** True for the one version the backend resolved as governing now. */
+  effective: boolean;
+  /** When the supersession was recorded (audit); null while never retired. */
+  supersededAt: string | null;
+  /**
+   * When this version stops governing — the retiring successor's start; null
+   * while never retired. A version with `supersededAt` set but `governsUntil`
+   * in the future is retired *and* still governing today.
+   */
+  governsUntil: string | null;
+  supersededByVersionId: string | null;
+  importedAt: string;
+  source: LicenseVersionSource;
+}
+
 /**
  * `UNLICENSED` is not a license lifecycle value: it is an installation that
  * has never activated one (L-02). Every license-derived field is therefore
  * nullable, while `installationId` is reported even when unlicensed — it is
  * the value an operator quotes to obtain a license for this installation.
+ *
+ * `effectiveVersionId` / `scheduledVersion` / `versions` are the retained
+ * version history (L-03): the resolved governing version, the earliest
+ * not-yet-effective version (a scheduled renewal), and the retained history
+ * bounded by the backend (nothing is deleted — the bound is display only).
  */
 export interface LicenseState {
   licensed: boolean;
@@ -113,36 +161,40 @@ export interface LicenseState {
   userLimit: number | null;
   entitlements: LicenseEntitlement[];
   provider: string;
+  effectiveVersionId: string | null;
+  scheduledVersion: LicenseVersionSummary | null;
+  versions: LicenseVersionSummary[];
 }
 
 /**
- * `POST /api/v1/license/activate` request body (`ActivateLicenseDto`,
+ * `POST /api/v1/license/import` request body (`ImportLicenseDocumentDto`,
  * `backend/src/modules/licensing/api/dto/license.dto.ts`).
  *
- * The body carries exactly ONE field — the signed license code. Status,
- * limits, validity window and entitlements are derived by the backend from
- * the verified payload inside the code, so the client can never describe the
- * license it wants (L-02).
+ * The body carries exactly ONE field — the document a client received (the
+ * `vardena-license` file envelope, a bare VLIC2 artifact, or a legacy VLIC1
+ * code). Status, limits, validity window, versions and entitlements are read
+ * from the verified payload, so the client can never describe the license it
+ * wants.
  */
-export interface ActivateLicenseRequest {
-  code: string;
+export interface ImportLicenseDocumentRequest {
+  document: string;
 }
 
-/** Backend `MaxLength(8192)` of `ActivateLicenseDto.code`. */
-export const LICENSE_CODE_MAX_LENGTH = 8192;
+/** Backend `MaxLength(65536)` of `ImportLicenseDocumentDto.document`. */
+export const LICENSE_DOCUMENT_MAX_LENGTH = 65536;
 
 /**
- * `LicenseActivationController.activate()` answers with the SAME evaluated
- * state as `GET /license/current` plus `changed` (false when the submitted
- * code was already the installation's current license — activation is
- * idempotent).
+ * `LicenseImportController.import()` answers with the SAME evaluated state as
+ * `GET /license/current` plus `changed` (false when a repeated legacy code was
+ * already the governing version) and the applied outcome.
  *
- * It is a result receipt, not a license source: the gate always re-reads
- * `GET /license/current` after a successful activation instead of promoting
- * this payload into the license query cache (§8 of the task, AR-21).
+ * It is a result receipt, not a license source: callers re-read
+ * `GET /license/current` after a successful import instead of promoting this
+ * payload into the license query cache (AR-21).
  */
-export interface LicenseActivationResult extends LicenseState {
+export interface LicenseImportResult extends LicenseState {
   changed: boolean;
+  outcome: 'APPLIED' | 'UNCHANGED';
 }
 
 // ---------------------------------------------------------------------------

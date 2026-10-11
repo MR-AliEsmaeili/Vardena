@@ -1,7 +1,7 @@
 import { apiGet, apiPost } from './client';
 import type {
-  ActivateLicenseRequest,
-  LicenseActivationResult,
+  ImportLicenseDocumentRequest,
+  LicenseImportResult,
   LicenseState,
 } from './contracts';
 
@@ -21,24 +21,30 @@ export function getLicenseState(signal?: AbortSignal): Promise<LicenseState> {
 }
 
 /**
- * Installation license activation (`POST /api/v1/license/activate`, L-02).
+ * Signed license import (`POST /api/v1/license/import`, L-03, ADR-0046).
  *
- * The raw code travels exactly once, in the request body of this call: it is
- * never put in the URL, in a query string, in a header, in a log line or in
- * any browser storage, and the only thing kept afterwards is the backend's
- * own evaluated answer. The backend verifies the signature, the installation
- * binding and the lifecycle and persists the license — this function does no
- * validation beyond transporting the string.
+ * One route for every license a customer receives: the signed file envelope,
+ * a bare VLIC2 artifact, or a legacy VLIC1 code. The document travels exactly
+ * once, in the request body of this call: it is never put in the URL, in a
+ * query string, in a header, in a log line or in any browser storage, and the
+ * only thing kept afterwards is the backend's own evaluated answer.
  *
- * The response is a receipt (`LicenseActivationResult`): callers must re-read
+ * The backend verifies the signature against its trusted keys, the
+ * installation binding, the payload (window, limits, entitlements) and the
+ * position of the document in the retained version history — this function
+ * does no validation beyond transporting the string. A future-dated document
+ * is retained and becomes effective at its own `validFrom`; a repeated
+ * operation is refused with 409 and changes nothing.
+ *
+ * The response is a receipt (`LicenseImportResult`): callers must re-read
  * `GET /license/current` for the authoritative state instead of treating a
  * 200 here as "the installation is licensed".
  */
-export function activateLicense(
-  request: ActivateLicenseRequest,
-): Promise<LicenseActivationResult> {
-  return apiPost<LicenseActivationResult, ActivateLicenseRequest>(
-    '/license/activate',
+export function importLicenseDocument(
+  request: ImportLicenseDocumentRequest,
+): Promise<LicenseImportResult> {
+  return apiPost<LicenseImportResult, ImportLicenseDocumentRequest>(
+    '/license/import',
     request,
   );
 }

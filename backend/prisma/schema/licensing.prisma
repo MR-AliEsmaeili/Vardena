@@ -1,5 +1,12 @@
-// Licensing owns commercial Customer/Installation/License/Entitlement facts.
-// Organization remains a business tenant inside the single deployed installation.
+// Licensing owns commercial Customer/Installation/License/LicenseVersion
+// facts. Organization remains a business tenant inside the single deployed
+// installation.
+//
+// L-03 (ADR-0046): a License is the installation-bound commercial right; every
+// signed version it has ever received is a retained LicenseVersion row. The
+// effective version is resolved deterministically at read time (never
+// materialized, never rewritten), so a future-dated renewal can coexist with a
+// license that is still valid without either replacing the other.
 
 enum LicenseStatus {
   ACTIVE
@@ -42,50 +49,104 @@ model Installation {
   createdBy  String?  @map("created_by")
   updatedBy  String?  @map("updated_by")
 
-  customer LicenseCustomer? @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  licenses License[]
+  customer        LicenseCustomer?     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  licenses        License[]
+  auditEvents     LicenseAuditEvent[]
 
   @@index([customerId], map: "idx_installations_customer_id")
   @@map("installations")
   @@schema("licensing")
 }
 
+/// The commercial License: customer + installation. It carries no dates, no
+/// limits and no entitlements — those belong to its versions. It is the future
+/// home of license-level revocation state (PDR-11 §10, OQ-78).
 model License {
-  id                String        @id
-  installationId    String        @map("installation_id")
-  customerId        String        @map("customer_id")
-  status            LicenseStatus
-  provider          String        @db.VarChar(80)
-  /// SHA-256 of the activated license code. The raw code is NEVER persisted:
-  /// the hash is only an idempotency/identity marker, and it is irreversible,
-  /// so a leaked database discloses no usable license code.
-  codeHash          String        @map("code_hash")
-  validFrom         DateTime      @map("valid_from") @db.Timestamptz(6)
-  validUntil        DateTime?     @map("valid_until") @db.Timestamptz(6)
-  organizationLimit Int?          @map("organization_limit")
-  userLimit         Int?          @map("user_limit")
-  activatedAt       DateTime      @default(now()) @map("activated_at") @db.Timestamptz(6)
-  activatedBy       String?       @map("activated_by")
-  /// Non-null once a later activation replaced this license.
-  replacedAt        DateTime?     @map("replaced_at") @db.Timestamptz(6)
-  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt         DateTime      @default(now()) @map("updated_at") @db.Timestamptz(6)
-  createdBy         String?       @map("created_by")
-  updatedBy         String?       @map("updated_by")
+  id             String   @id
+  installationId String   @map("installation_id")
+  customerId     String   @map("customer_id")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
 
-  installation Installation        @relation(fields: [installationId], references: [id], onDelete: Restrict)
-  customer     LicenseCustomer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
-  entitlements LicenseEntitlement[]
+  installation Installation     @relation(fields: [installationId], references: [id], onDelete: Restrict)
+  customer     LicenseCustomer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  versions     LicenseVersion[]
 
-  @@index([installationId, status], map: "idx_licenses_installation_id_status")
-  @@index([installationId, replacedAt], map: "idx_licenses_installation_id_replaced_at")
+  /// Composite target so a version cannot name a license of another
+  /// installation (integrity, not convention).
+  @@unique([id, installationId], map: "uq_licenses_id_installation")
+  @@index([installationId], map: "idx_licenses_installation_id")
   @@map("licenses")
   @@schema("licensing")
 }
 
-model LicenseEntitlement {
+/// One signed, retained LicenseVersion. Immutable except for supersession.
+model LicenseVersion {
+  id           String @id
+  licenseId    String @map("license_id")
+  installationId String @map("installation_id")
+  /// Unique operation identity (replay protection, PDR-11 §10.7/§12.4).
+  operationId  String @map("operation_id")
+  status       LicenseStatus
+  provider     String @db.VarChar(80)
+  /// Payload/document version of the artifact this version was imported from
+  /// (1 = legacy code, 2 = signed document).
+  documentVersion Int @map("document_version")
+  /// SHA-256 of the verified artifact. The artifact itself is NEVER persisted.
+  documentHash String @map("document_hash")
+  /// Trusted key id that verified the signature (null for legacy rows).
+  keyId        String? @map("key_id") @db.VarChar(120)
+  source       String  @db.VarChar(20)
+  validFrom    DateTime @map("valid_from") @db.Timestamptz(6)
+  /// Exclusive end. null means perpetual.
+  validUntil   DateTime? @map("valid_until") @db.Timestamptz(6)
+  organizationLimit Int? @map("organization_limit")
+  userLimit         Int? @map("user_limit")
+  importedAt   DateTime @map("imported_at") @db.Timestamptz(6)
+  importedBy   String?  @map("imported_by")
+  /// Explicit signed supersession (the only way windows may overlap), or the
+  /// version a legacy text code replaced.
+  supersedesVersionId   String? @map("supersedes_version_id")
+  /// WHEN the supersession was recorded (the successor's import instant).
+  /// Audit/traceability only — it never decides eligibility.
+  supersededAt          DateTime? @map("superseded_at") @db.Timestamptz(6)
+  /// The instant FROM which this version no longer governs: the retiring
+  /// successor's `valid_from`, so a future-dated renewal does not interrupt a
+  /// license that is still valid (PDR-11 §3.2, CF-1). The import refuses a
+  /// hand-over that would remove governance this version already exercised
+  /// before the import instant (`backdated-supersession`, OQ-86) — a rule in
+  /// `evaluateImportConflicts`, deliberately NOT a database constraint. Set
+  /// together with `superseded_at`; both null while never retired.
+  governsUntil          DateTime? @map("governs_until") @db.Timestamptz(6)
+  supersededByVersionId String?   @map("superseded_by_version_id")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy    String?  @map("created_by")
+  updatedBy    String?  @map("updated_by")
+
+  license License @relation(fields: [licenseId, installationId], references: [id, installationId], onDelete: Restrict)
+
+  supersedesVersion    LicenseVersion?  @relation("LicenseVersionSupersedes", fields: [supersedesVersionId], references: [id], onDelete: Restrict)
+  supersededVersions   LicenseVersion[] @relation("LicenseVersionSupersedes")
+  supersededByVersion  LicenseVersion?  @relation("LicenseVersionSupersededBy", fields: [supersededByVersionId], references: [id], onDelete: Restrict)
+  supersededByVersions LicenseVersion[] @relation("LicenseVersionSupersededBy")
+
+  entitlements LicenseVersionEntitlement[]
+
+  @@unique([installationId, operationId], map: "uq_license_versions_installation_operation")
+  @@unique([installationId, documentHash], map: "uq_license_versions_installation_document")
+  @@index([installationId, supersededAt], map: "idx_license_versions_installation_superseded")
+  @@index([installationId, validFrom], map: "idx_license_versions_installation_valid_from")
+  @@index([licenseId], map: "idx_license_versions_license_id")
+  @@map("license_versions")
+  @@schema("licensing")
+}
+
+model LicenseVersionEntitlement {
   id        String          @id
-  licenseId String          @map("license_id")
+  versionId String          @map("version_id")
   kind      EntitlementKind
   code      String          @db.VarChar(120)
   createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -93,10 +154,45 @@ model LicenseEntitlement {
   createdBy String?         @map("created_by")
   updatedBy String?         @map("updated_by")
 
-  license License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  version LicenseVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
-  @@unique([licenseId, kind, code], map: "uq_license_entitlements_license_kind_code")
-  @@index([kind, code], map: "idx_license_entitlements_kind_code")
-  @@map("license_entitlements")
+  @@unique([versionId, kind, code], map: "uq_license_version_entitlements_version_kind_code")
+  @@index([kind, code], map: "idx_license_version_entitlements_kind_code")
+  @@map("license_version_entitlements")
+  @@schema("licensing")
+}
+
+/// Typed, append-only licensing audit trail (PDR-11 §12.7). It stores
+/// identifiers, outcomes and a document hash — never a raw document, signature
+/// or key. Retention policy is open (OQ-77); nothing deletes rows.
+model LicenseAuditEvent {
+  id             String   @id
+  installationId String   @map("installation_id")
+  /// e.g. `license.import.applied` / `license.import.rejected`.
+  eventType      String   @map("event_type") @db.VarChar(60)
+  /// APPLIED | REJECTED | UNCHANGED
+  outcome        String   @db.VarChar(20)
+  /// Recorded only when the signature verified (never trusted otherwise).
+  operationId    String?  @map("operation_id")
+  licenseId      String?  @map("license_id")
+  versionId      String?  @map("version_id")
+  actorId        String?  @map("actor_id")
+  source         String   @db.VarChar(20)
+  documentHash   String?  @map("document_hash")
+  /// Bounded, machine-readable rejection reason (never a stack trace).
+  reason         String?  @db.VarChar(60)
+  /// Bounded, non-sensitive human detail.
+  detail         String?  @db.VarChar(500)
+  occurredAt     DateTime @map("occurred_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  createdBy      String?  @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  installation Installation @relation(fields: [installationId], references: [id], onDelete: Restrict)
+
+  @@index([installationId, occurredAt], map: "idx_license_audit_events_installation_occurred_at")
+  @@index([eventType], map: "idx_license_audit_events_event_type")
+  @@map("license_audit_events")
   @@schema("licensing")
 }

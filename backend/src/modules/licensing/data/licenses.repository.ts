@@ -3,82 +3,224 @@ import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import type {
   EntitlementKind,
-  InstallationLicense,
+  LicenseEntitlement,
+  LicenseLimit,
   LicenseStatus,
 } from '../domain/license.js';
+import {
+  evaluateImportConflicts,
+  supersessionCeaseInstant,
+  type ImportConflict,
+  type ImportConflictReason,
+  type ImportSupersessionIntent,
+  type LicenseVersionSource,
+  type RetainedLicenseVersion,
+} from '../domain/license-version.js';
 
 /**
- * Data access for `licensing.licenses` + `licensing.license_entitlements`
- * + `licensing.customers` (AR-07: the Licensing module owns these tables and
- * no other module reads them).
+ * Data access for `licensing.licenses`, `licensing.license_versions`,
+ * `licensing.license_version_entitlements` and `licensing.license_audit_events`
+ * (AR-07: the Licensing module owns these tables and no other module reads
+ * them).
  *
- * The *current* license of an installation is the single row with
- * `replaced_at IS NULL`; a partial unique index makes that a database
- * guarantee rather than a convention. Replacement never deletes history: the
- * previous row is stamped `replaced_at` and stays for audit.
+ * Three guarantees live here, not in the application layer:
  *
- * What is NOT stored: the raw license code. Only its SHA-256 hash is written
- * (`code_hash`), which is all that idempotent re-activation needs. Nothing in
- * these tables can be turned back into a usable license code.
+ * - **One transaction per import.** The commercial customer, the license
+ *   identity, the supersession stamp, the version, its entitlements and the
+ *   `applied` audit event are written together or not at all, so a failed
+ *   import can neither deactivate a valid installation nor leave a half-applied
+ *   version behind.
+ * - **One importer per installation at a time.** The transaction takes a
+ *   `FOR UPDATE` row lock on the installation BEFORE it reads the retained
+ *   versions, and re-evaluates the version invariant inside the lock
+ *   (`evaluateImportConflicts` — the same pure authority the read-side
+ *   pre-check uses). A concurrent import of the same installation therefore
+ *   blocks until the winner commits and then evaluates against the winner's
+ *   committed rows, so two incompatible version windows can never both commit.
+ *   The lock is a database row lock, not a process mutex: the API and any
+ *   worker process share it (design §3.4, ADR-0046 Decision 9).
+ * - **The replay guards are database constraints.** A version is unique by
+ *   `(installation_id, operation_id)` and by `(installation_id,
+ *   document_hash)`, and the supersession stamp is a guarded update
+ *   (`WHERE superseded_at IS NULL`). Those indexes and guards back the lock up
+ *   as defence in depth; they are not what makes the check race-safe.
+ *
+ * `PRISMA CANNOT EXPRESS SELECT … FOR UPDATE`, hence the one parameterized raw
+ * statement below — the same documented exemption the Accounting modules carry
+ * (AR-11, `docs/modules.md`). The transaction runs in READ COMMITTED (the
+ * PostgreSQL default, requested explicitly below): every statement takes a
+ * fresh snapshot, so the checks that run after the lock is granted see exactly
+ * the winner's committed rows. Under REPEATABLE READ the snapshot would
+ * predate the wait and the re-check would be stale.
+ *
+ * What is NOT stored: the submitted document, its signature, or any key
+ * material. Only the SHA-256 `document_hash` is kept; it is irreversible and is
+ * all that duplicate detection and audit need.
  */
 
-export interface PersistedLicense extends InstallationLicense {
-  codeHash: string;
-  activatedAt: Date;
-}
-
-export interface ActivateLicenseCommand {
+export interface ImportLicenseVersionCommand {
   installationId: string;
+  /** The acting user, for the audit trail. */
+  actorId: string | null;
+  now: Date;
+  licenseId: string;
   customerId: string;
   customerName: string;
-  license: InstallationLicense;
-  /**
-   * SHA-256 of the submitted code. The raw code is deliberately NOT part of
-   * this command: it never leaves the activation service.
-   */
-  codeHash: string;
-  activatedBy: string | null;
-  now: Date;
-}
-
-interface LicenseRow {
-  id: string;
-  installationId: string;
-  customerId: string;
+  /** Locally generated version identity (ULID). */
+  versionId: string;
+  operationId: string;
   status: LicenseStatus;
   provider: string;
-  codeHash: string;
+  documentVersion: number;
+  documentHash: string;
+  keyId: string | null;
+  source: LicenseVersionSource;
+  validFrom: Date;
+  validUntil: Date | null;
+  organizationLimit: LicenseLimit;
+  userLimit: LicenseLimit;
+  entitlements: readonly LicenseEntitlement[];
+  /**
+   * How the artifact declares its relation to the version it replaces: nothing
+   * (a signed document that may not overlap), an explicit signed supersession,
+   * or the implicit replacement a legacy `VLIC1` text code performs (domain
+   * `ImportSupersessionIntent`).
+   */
+  supersession: ImportSupersessionIntent;
+  /**
+   * The version the application layer resolved as the supersession target; the
+   * pre-built `license.version.superseded` audit event names it. The
+   * transaction must retire EXACTLY this version or refuse the import, so the
+   * audit row can never name a version the transaction did not actually
+   * retire.
+   */
+  expectedSupersessionVersionId: string | null;
+  /**
+   * Audit rows written INSIDE the same transaction, so an applied change and
+   * its evidence are committed together (AR-23).
+   */
+  auditEvents: readonly LicenseAuditEventCommand[];
+}
+
+export interface LicenseAuditEventCommand {
+  installationId: string;
+  eventType: string;
+  outcome: 'APPLIED' | 'REJECTED' | 'UNCHANGED';
+  operationId: string | null;
+  licenseId: string | null;
+  versionId: string | null;
+  actorId: string | null;
+  source: string;
+  documentHash: string | null;
+  reason: string | null;
+  detail: string | null;
+  occurredAt: Date;
+}
+
+/**
+ * The version invariant refused this import inside the transaction (a
+ * concurrent import won the race, or the retained state changed under it). The
+ * service turns the reason into the documented 409 answer — never a silent
+ * skip and never a 500. The transaction has already rolled back when this is
+ * thrown: no version, no entitlement, no supersession stamp, no applied audit
+ * event survive.
+ */
+export class ImportConflictError extends Error {
+  constructor(readonly conflict: ImportConflict) {
+    super(
+      conflict.reason === 'duplicate-operation'
+        ? 'This license version has already been imported.'
+        : conflict.reason === 'unknown-supersession'
+          ? 'The version named by this document is no longer eligible for supersession.'
+          : 'This license version overlaps a retained version.',
+    );
+    this.name = 'ImportConflictError';
+  }
+
+  get reason(): ImportConflictReason {
+    return this.conflict.reason;
+  }
+}
+
+export interface LicenseAuditEventRow extends LicenseAuditEventCommand {
+  id: string;
+}
+
+interface VersionRow {
+  id: string;
+  licenseId: string;
+  installationId: string;
+  operationId: string;
+  status: LicenseStatus;
+  provider: string;
+  documentVersion: number;
+  documentHash: string;
+  keyId: string | null;
   validFrom: Date;
   validUntil: Date | null;
   organizationLimit: number | null;
   userLimit: number | null;
-  activatedAt: Date;
+  supersededAt: Date | null;
+  governsUntil: Date | null;
+  supersededByVersionId: string | null;
+  supersedesVersionId: string | null;
+  importedAt: Date;
+  source: string;
   entitlements: Array<{ kind: EntitlementKind; code: string }>;
+  license: { customerId: string };
 }
 
-interface LicenseDelegate {
+interface VersionDelegate {
+  findMany(args: {
+    where: { installationId: string };
+    include: {
+      entitlements: { select: { kind: true; code: true } };
+      license: { select: { customerId: true } };
+    };
+  }): Promise<VersionRow[]>;
   findFirst(args: {
-    where: { installationId: string; replacedAt: null };
-    include: { entitlements: { select: { kind: true; code: true } } };
-  }): Promise<LicenseRow | null>;
+    where: {
+      installationId: string;
+      operationId?: string;
+      documentHash?: string;
+    };
+    include: {
+      entitlements: { select: { kind: true; code: true } };
+      license: { select: { customerId: true } };
+    };
+  }): Promise<VersionRow | null>;
   updateMany(args: {
-    where: { installationId: string; replacedAt: null };
-    data: { replacedAt: Date; updatedAt: Date };
+    where: {
+      id: string;
+      installationId: string;
+      supersededAt: null;
+    };
+    data: {
+      supersededAt: Date;
+      governsUntil: Date;
+      supersededByVersionId: string;
+      updatedAt: Date;
+    };
   }): Promise<{ count: number }>;
   create(args: {
     data: {
       id: string;
+      licenseId: string;
       installationId: string;
-      customerId: string;
+      operationId: string;
       status: LicenseStatus;
       provider: string;
-      codeHash: string;
+      documentVersion: number;
+      documentHash: string;
+      keyId: string | null;
+      source: string;
       validFrom: Date;
       validUntil: Date | null;
       organizationLimit: number | null;
       userLimit: number | null;
-      activatedAt: Date;
-      activatedBy: string | null;
+      importedAt: Date;
+      importedBy: string | null;
+      supersedesVersionId: string | null;
       createdAt: Date;
       updatedAt: Date;
       entitlements: {
@@ -91,8 +233,11 @@ interface LicenseDelegate {
         }>;
       };
     };
-    include: { entitlements: { select: { kind: true; code: true } } };
-  }): Promise<LicenseRow>;
+    include: {
+      entitlements: { select: { kind: true; code: true } };
+      license: { select: { customerId: true } };
+    };
+  }): Promise<VersionRow>;
 }
 
 interface CustomerDelegate {
@@ -108,6 +253,20 @@ interface CustomerDelegate {
   }): Promise<unknown>;
 }
 
+interface LicenseDelegate {
+  upsert(args: {
+    where: { id: string };
+    create: {
+      id: string;
+      installationId: string;
+      customerId: string;
+      createdAt: Date;
+      updatedAt: Date;
+    };
+    update: { customerId: string; updatedAt: Date };
+  }): Promise<unknown>;
+}
+
 interface InstallationDelegate {
   update(args: {
     where: { id: string };
@@ -115,15 +274,88 @@ interface InstallationDelegate {
   }): Promise<unknown>;
 }
 
-interface Tx {
-  license: LicenseDelegate;
-  licenseCustomer: CustomerDelegate;
-  installation: InstallationDelegate;
+interface AuditDelegate {
+  create(args: {
+    data: {
+      id: string;
+      installationId: string;
+      eventType: string;
+      outcome: string;
+      operationId: string | null;
+      licenseId: string | null;
+      versionId: string | null;
+      actorId: string | null;
+      source: string;
+      documentHash: string | null;
+      reason: string | null;
+      detail: string | null;
+      occurredAt: Date;
+      createdAt: Date;
+      updatedAt: Date;
+    };
+  }): Promise<unknown>;
+  findMany(args: {
+    where: { installationId: string };
+    orderBy: { occurredAt: 'asc' | 'desc' };
+    take?: number;
+  }): Promise<
+    Array<{
+      id: string;
+      installationId: string;
+      eventType: string;
+      outcome: string;
+      operationId: string | null;
+      licenseId: string | null;
+      versionId: string | null;
+      actorId: string | null;
+      source: string;
+      documentHash: string | null;
+      reason: string | null;
+      detail: string | null;
+      occurredAt: Date;
+    }>
+  >;
 }
 
-type Client = Tx & {
-  $transaction<T>(fn: (tx: Tx) => Promise<T>): Promise<T>;
+/**
+ * The raw statement interface, as the Accounting locking helpers declare it:
+ * Prisma's typed delegates cannot express `SELECT … FOR UPDATE`.
+ */
+type RawQuery = <T>(
+  query: TemplateStringsArray,
+  ...values: unknown[]
+) => Promise<T[]>;
+
+export interface LicensesTxClient {
+  licenseVersion: VersionDelegate;
+  licenseCustomer: CustomerDelegate;
+  license: LicenseDelegate;
+  installation: InstallationDelegate;
+  licenseAuditEvent: AuditDelegate;
+  $queryRaw: RawQuery;
+}
+
+type Client = LicensesTxClient & {
+  $transaction<T>(
+    fn: (tx: LicensesTxClient) => Promise<T>,
+    options?: { isolationLevel?: string; timeout?: number },
+  ): Promise<T>;
 };
+
+/**
+ * READ COMMITTED — what makes the post-lock re-read see the winner's rows —
+ * plus the bounded wait for the installation lock. A loser waits at most
+ * {@link LOCK_WAIT_TIMEOUT_MS}; beyond that the transaction is aborted by
+ * Prisma and NOTHING is written (the caller retries). An import is a few
+ * milliseconds of work, so a wait that long means something is wrong with the
+ * database, not with the license state — which is why an abort surfaces as a
+ * server error rather than a license conflict.
+ */
+const LOCK_WAIT_TIMEOUT_MS = 10_000;
+const READ_COMMITTED = {
+  isolationLevel: 'ReadCommitted',
+  timeout: LOCK_WAIT_TIMEOUT_MS,
+} as const;
 
 @Injectable()
 export class LicensesRepository {
@@ -133,26 +365,91 @@ export class LicensesRepository {
     return this.prisma.getClient<Client>();
   }
 
-  /** The persisted current license of the installation, or null. */
-  async findCurrent(installationId: string): Promise<PersistedLicense | null> {
-    const client = await this.client();
-    const row = await client.license.findFirst({
-      where: { installationId, replacedAt: null },
-      include: { entitlements: { select: { kind: true, code: true } } },
-    });
-    return row === null ? null : toPersisted(row);
+  /** Every retained version of the installation, oldest first. */
+  async listVersions(
+    installationId: string,
+  ): Promise<RetainedLicenseVersion[]> {
+    return readVersions(await this.client(), installationId);
   }
 
   /**
-   * Persist an activation as ONE transaction: the commercial customer, the
-   * installation → customer binding, the replacement stamp on the previous
-   * current license, and the new license with its entitlements. A partial
-   * failure can therefore never leave an installation with two current
-   * licenses or with none after it had a valid one.
+   * A retained version of one operation, or one document artifact. Used by the
+   * import path's duplicate checks; the database indexes behind these columns
+   * are what actually make the checks race-safe.
    */
-  async activate(command: ActivateLicenseCommand): Promise<PersistedLicense> {
+  async findVersion(
+    installationId: string,
+    by: { operationId: string } | { documentHash: string },
+  ): Promise<RetainedLicenseVersion | null> {
+    const client = await this.client();
+    const row = await client.licenseVersion.findFirst({
+      where: {
+        installationId,
+        ...('operationId' in by
+          ? { operationId: by.operationId }
+          : { documentHash: by.documentHash }),
+      },
+      include: {
+        entitlements: { select: { kind: true, code: true } },
+        license: { select: { customerId: true } },
+      },
+    });
+    return row === null ? null : toRetainedVersion(row);
+  }
+
+  /**
+   * Persist one import as ONE transaction. A partial failure rolls back
+   * everything: no license, no version, no entitlement, no supersession and no
+   * `applied` audit event survive.
+   */
+  async importVersion(
+    command: ImportLicenseVersionCommand,
+  ): Promise<RetainedLicenseVersion> {
     const client = await this.client();
     const row = await client.$transaction(async (tx) => {
+      // 1. Serialize every import of THIS installation. The lock is held until
+      //    commit, so the checks below cannot race a concurrent importer: the
+      //    loser waits here and then reads the winner's committed rows.
+      await lockInstallationRow(tx, command.installationId);
+
+      // 2. Authoritative invariant check. The read-side pre-check in the
+      //    service may have run before another import committed; THIS one runs
+      //    under the lock, so it decides.
+      const retained = await readVersions(tx, command.installationId);
+      const evaluation = evaluateImportConflicts({
+        candidate: {
+          validFrom: command.validFrom,
+          validUntil: command.validUntil,
+        },
+        operationId: command.operationId,
+        documentHash: command.documentHash,
+        supersession: command.supersession,
+        versions: retained,
+        at: command.now,
+      });
+      if (evaluation.conflict !== null) {
+        throw new ImportConflictError(evaluation.conflict);
+      }
+
+      // 3. The transaction must retire exactly the version the application
+      //    layer resolved (the `license.version.superseded` audit row it
+      //    already built names that version). If the state moved under it, the
+      //    import is refused rather than recording an audit row that describes
+      //    a retirement that did not happen.
+      const supersedes = evaluation.supersedes;
+      if (
+        (supersedes?.versionId ?? null) !==
+        command.expectedSupersessionVersionId
+      ) {
+        throw new ImportConflictError({
+          reason:
+            command.supersession.kind === 'implicit'
+              ? 'overlapping-range'
+              : 'unknown-supersession',
+          overlapping: supersedes === null ? 0 : 1,
+        });
+      }
+
       await tx.licenseCustomer.upsert({
         where: { id: command.customerId },
         create: {
@@ -166,32 +463,47 @@ export class LicensesRepository {
           updatedAt: command.now,
         },
       });
+      await tx.license.upsert({
+        where: { id: command.licenseId },
+        create: {
+          id: command.licenseId,
+          installationId: command.installationId,
+          customerId: command.customerId,
+          createdAt: command.now,
+          updatedAt: command.now,
+        },
+        update: { customerId: command.customerId, updatedAt: command.now },
+      });
+      // The installation keeps its commercial-customer binding (L-02), so an
+      // operator can still see which customer this deployment belongs to.
       await tx.installation.update({
         where: { id: command.installationId },
         data: { customerId: command.customerId, updatedAt: command.now },
       });
-      await tx.license.updateMany({
-        where: { installationId: command.installationId, replacedAt: null },
-        data: { replacedAt: command.now, updatedAt: command.now },
-      });
-      return tx.license.create({
+
+      const version = await tx.licenseVersion.create({
         data: {
-          id: command.license.licenseId,
+          id: command.versionId,
+          licenseId: command.licenseId,
           installationId: command.installationId,
-          customerId: command.customerId,
-          status: command.license.status,
-          provider: command.license.provider,
-          codeHash: command.codeHash,
-          validFrom: command.license.validFrom,
-          validUntil: command.license.validUntil,
-          organizationLimit: command.license.organizationLimit,
-          userLimit: command.license.userLimit,
-          activatedAt: command.now,
-          activatedBy: command.activatedBy,
+          operationId: command.operationId,
+          status: command.status,
+          provider: command.provider,
+          documentVersion: command.documentVersion,
+          documentHash: command.documentHash,
+          keyId: command.keyId,
+          source: command.source,
+          validFrom: command.validFrom,
+          validUntil: command.validUntil,
+          organizationLimit: command.organizationLimit,
+          userLimit: command.userLimit,
+          importedAt: command.now,
+          importedBy: command.actorId,
+          supersedesVersionId: supersedes?.versionId ?? null,
           createdAt: command.now,
           updatedAt: command.now,
           entitlements: {
-            create: command.license.entitlements.map((entitlement) => ({
+            create: command.entitlements.map((entitlement) => ({
               id: generateId(),
               kind: entitlement.kind,
               code: entitlement.code,
@@ -200,26 +512,213 @@ export class LicensesRepository {
             })),
           },
         },
-        include: { entitlements: { select: { kind: true, code: true } } },
+        include: {
+          entitlements: { select: { kind: true, code: true } },
+          license: { select: { customerId: true } },
+        },
       });
+
+      // Supersession is stamped AFTER the new version exists: the
+      // `superseded_by_version_id` foreign key points at this very row and
+      // PostgreSQL checks it immediately. `superseded_at` records WHEN the
+      // supersession was recorded; `governs_until` records WHEN the
+      // predecessor stops governing — the successor's own `validFrom`, which
+      // for a future-dated renewal is later. The predecessor therefore keeps
+      // governing today (PDR-11 §3.2, CF-1) and the hand-over is exact.
+      if (supersedes !== null) {
+        const superseded = await tx.licenseVersion.updateMany({
+          where: {
+            id: supersedes.versionId,
+            installationId: command.installationId,
+            // Guarded: a version is retired at most once. Redundant under the
+            // installation lock, kept as defence in depth.
+            supersededAt: null,
+          },
+          data: {
+            supersededAt: command.now,
+            governsUntil: supersessionCeaseInstant(command),
+            supersededByVersionId: command.versionId,
+            updatedAt: command.now,
+          },
+        });
+        if (superseded.count === 0) {
+          throw new ImportConflictError({
+            reason: 'unknown-supersession',
+            overlapping: 0,
+          });
+        }
+      }
+
+      for (const event of command.auditEvents) {
+        await tx.licenseAuditEvent.create({
+          data: {
+            id: generateId(),
+            installationId: event.installationId,
+            eventType: event.eventType,
+            outcome: event.outcome,
+            operationId: event.operationId,
+            licenseId: event.licenseId,
+            versionId: event.versionId,
+            actorId: event.actorId,
+            source: event.source,
+            documentHash: event.documentHash,
+            reason: event.reason,
+            detail: event.detail,
+            occurredAt: event.occurredAt,
+            createdAt: event.occurredAt,
+            updatedAt: event.occurredAt,
+          },
+        });
+      }
+
+      return version;
+    }, READ_COMMITTED);
+    return toRetainedVersion(row);
+  }
+
+  /**
+   * Append one audit event. Rejections are recorded through a separate insert
+   * (they never share the state-change transaction), and the caller treats a
+   * logging failure as secondary to the rejection itself.
+   */
+  async recordAuditEvent(command: LicenseAuditEventCommand): Promise<void> {
+    const client = await this.client();
+    await client.licenseAuditEvent.create({
+      data: {
+        id: generateId(),
+        installationId: command.installationId,
+        eventType: command.eventType,
+        outcome: command.outcome,
+        operationId: command.operationId,
+        licenseId: command.licenseId,
+        versionId: command.versionId,
+        actorId: command.actorId,
+        source: command.source,
+        documentHash: command.documentHash,
+        reason: command.reason,
+        detail: command.detail,
+        occurredAt: command.occurredAt,
+        createdAt: command.occurredAt,
+        updatedAt: command.occurredAt,
+      },
     });
-    return toPersisted(row);
+  }
+
+  /** The installation's audit trail, oldest first (bounded by `limit`). */
+  async listAuditEvents(
+    installationId: string,
+    limit = 100,
+  ): Promise<LicenseAuditEventRow[]> {
+    const client = await this.client();
+    const rows = await client.licenseAuditEvent.findMany({
+      where: { installationId },
+      orderBy: { occurredAt: 'asc' },
+      take: limit,
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      installationId: row.installationId,
+      eventType: row.eventType,
+      outcome: row.outcome as LicenseAuditEventCommand['outcome'],
+      operationId: row.operationId,
+      licenseId: row.licenseId,
+      versionId: row.versionId,
+      actorId: row.actorId,
+      source: row.source,
+      documentHash: row.documentHash,
+      reason: row.reason,
+      detail: row.detail,
+      occurredAt: row.occurredAt,
+    }));
   }
 }
 
-function toPersisted(row: LicenseRow): PersistedLicense {
+/**
+ * Every retained version of one installation, oldest first — the shared read of
+ * the pre-check (outside a transaction) and of the authoritative in-transaction
+ * evaluation.
+ */
+async function readVersions(
+  client: LicensesTxClient,
+  installationId: string,
+): Promise<RetainedLicenseVersion[]> {
+  const rows = await client.licenseVersion.findMany({
+    where: { installationId },
+    include: {
+      entitlements: { select: { kind: true, code: true } },
+      license: { select: { customerId: true } },
+    },
+  });
+  return rows
+    .map(toRetainedVersion)
+    .sort((a, b) => a.validFrom.getTime() - b.validFrom.getTime());
+}
+
+/**
+ * Take the per-installation import lock: `SELECT … FOR UPDATE` on the
+ * installation row, held until the transaction ends.
+ *
+ * This is the entire concurrency strategy for version windows (design §3.4):
+ * every import of one installation serializes here, so the conflict evaluation
+ * that follows reads a state no other importer can change until this one has
+ * committed or rolled back. It is a DATABASE lock — two API processes, an API
+ * and a worker, or two containers behind a load balancer all take the same
+ * lock; nothing about it is process-local.
+ *
+ * Lock order is a single step (installation → rows this transaction writes),
+ * so no deadlock cycle exists; the installation row is the only row this
+ * transaction locks before touching its own tables.
+ *
+ * Raw SQL is the documented exemption (AR-11): Prisma cannot express
+ * `FOR UPDATE`. The statement is parameterized — the installation id is never
+ * interpolated.
+ *
+ * @throws Error when the installation row does not exist. The service resolves
+ *   the identity before importing and installations are never deleted, so a
+ *   missing row is a bug: the import must fail closed rather than write a
+ *   version for an identity that is gone.
+ */
+export async function lockInstallationRow(
+  tx: LicensesTxClient,
+  installationId: string,
+): Promise<void> {
+  const rows = await tx.$queryRaw<{ id: string }>`
+    SELECT "id"
+      FROM "licensing"."installations"
+     WHERE "id" = ${installationId}
+     FOR UPDATE`;
+  if (rows[0] === undefined) {
+    throw new Error(
+      `Installation "${installationId}" no longer exists; the license import was refused.`,
+    );
+  }
+}
+
+function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
   return {
-    customerId: row.customerId,
+    versionId: row.id,
+    licenseId: row.licenseId,
+    customerId: row.license.customerId,
     installationId: row.installationId,
-    licenseId: row.id,
+    operationId: row.operationId,
     status: row.status,
+    provider: row.provider,
+    documentVersion: row.documentVersion,
+    documentHash: row.documentHash,
+    keyId: row.keyId,
     validFrom: row.validFrom,
     validUntil: row.validUntil,
     organizationLimit: row.organizationLimit,
     userLimit: row.userLimit,
-    entitlements: row.entitlements.map(({ kind, code }) => ({ kind, code })),
-    provider: row.provider,
-    codeHash: row.codeHash,
-    activatedAt: row.activatedAt,
+    entitlements: row.entitlements.map(({ kind, code }) => ({
+      kind,
+      code,
+    })) as LicenseEntitlement[],
+    supersededAt: row.supersededAt,
+    governsUntil: row.governsUntil,
+    supersededByVersionId: row.supersededByVersionId,
+    supersedesVersionId: row.supersedesVersionId,
+    importedAt: row.importedAt,
+    source: row.source as LicenseVersionSource,
   };
 }
