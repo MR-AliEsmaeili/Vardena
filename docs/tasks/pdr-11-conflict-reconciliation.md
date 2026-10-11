@@ -80,6 +80,18 @@ document is allowed to make, so they are recorded here **before** the matrix.
   (duplicated entitlement) rolling back customer/license/installation/version/
   audit; and the disjoint-window invariant plus the supersession pair re-asserted
   directly in SQL. Unit tests are **not** accepted as evidence for this defect.
+- **Result.** The suite ran on GitHub CI and passed on the head of this branch
+  (run `38164310367`, head `fae7f8c`; backend and frontend jobs green). The
+  preceding run of the same branch (`38163440380`, head `8887dae`) already
+  executed it and every operation-scoped assertion held — the loser's `409`, the
+  winner's single version row, the loser's zero versions and zero `applied`
+  events — but that run failed on one harness assertion which compared a count of
+  the **whole** audit table (also carrying `rejected`, `unchanged` and
+  `license.version.superseded` rows) with an applied-only baseline of `4`,
+  reading `10` where it expected `6`. The check was replaced by the invariant it
+  was meant to assert: **this installation's** applied events, in order, must
+  gain exactly the winner's operation id, and a failure prints the
+  installation's audit trail.
 - **Why not `SERIALIZABLE` alone.** It answers with retryable serialization
   failures instead of the documented conflict reason; the row lock makes the
   semantics explicit and keeps the conflict machine-readable (design §3.4).
@@ -176,7 +188,11 @@ provisioning deferral is unchanged.
 Written after the matrix above was committed; every path below exists on the
 branch. Local runs cover the fast suites; the database-backed suites and the
 migration rehearsal run on GitHub CI (this session has no PostgreSQL server),
-and GitHub CI on the exact PR head is the authoritative evidence.
+and GitHub CI on the exact PR head is the authoritative evidence. That run is
+**`38164310367` on head `fae7f8c`** — backend and frontend green, including
+`Migrate test database`, `Migration rehearsal (Licensing version model and
+import)` and `E2E tests (incl. live-DB suites)`; the JUnit-style failure
+inventory step was skipped because nothing failed.
 
 | Artifact | What it is | Where it ran |
 | --- | --- | --- |
@@ -188,15 +204,15 @@ and GitHub CI on the exact PR head is the authoritative evidence.
 | `backend/src/modules/licensing/application/license-import.service.ts` + `license-import.service.spec.ts` | The single 10-stage pipeline: transport → verify → bind → payload → lifecycle → replay → supersession → overlap → **locked transaction that re-runs the conflict evaluation** → state; rejection order and audit events; the future-dated-supersession timeline on a pinned clock (no sleeps) | local unit run (26 tests) |
 | `backend/src/modules/licensing/data/licenses.repository.ts` | The import transaction: per-installation `FOR UPDATE` lock (the one documented raw statement), in-transaction evaluation, guarded supersession stamp writing both instants, audit rows in the same transaction | local typecheck + lint; behaviour proven by the live suites and the rehearsal |
 | `backend/test/license-import.e2e-spec.ts` | Route-level end-to-end over the real pipeline with in-memory stores: file/text/legacy transports, restart persistence, duplicate 409, overlap 409 then explicit supersession, foreign installation, stranger key, malformed bodies, 401/403 | local e2e run (11 tests) |
-| `backend/test/licensing-persistence-live.e2e-spec.ts` | Live PostgreSQL: identity and versions across restarts, column/leak audits, audit-event sequence, foreign-installation rejection, as-of future resolution, a duplicate refused inside the transaction with nothing written, a **late** failure rolling back every earlier write, and the concurrency suite (§0 Defect 2: three same-window races, a same-document race, competing successors, the disjoint-window invariant and the supersession pair re-asserted in SQL) | GitHub CI (live suite) — the only accepted evidence for Defect 2 |
+| `backend/test/licensing-persistence-live.e2e-spec.ts` | Live PostgreSQL: identity and versions across restarts, column/leak audits, audit-event sequence, foreign-installation rejection, as-of future resolution, a duplicate refused inside the transaction with nothing written, a **late** failure rolling back every earlier write, and the concurrency suite (§0 Defect 2: three same-window races, a same-document race, competing successors, the disjoint-window invariant and the supersession pair re-asserted in SQL) | GitHub CI run `38164310367` (head `fae7f8c`), step `E2E tests (incl. live-DB suites)` — the only accepted evidence for Defect 2 |
 | `backend/test/licensing-activation.e2e-spec.ts` | L-02 compatibility contract against the new store (`/license/activate` alias, unchanged rejections, idempotent repeat) | local e2e run (verified against `createLicensingStores`) |
 | `frontend/src/features/licensing/*` + `license-import.test.tsx` | File-first import (file picker primary, paste fallback), 409/422 classification apart from transport failures, gate releases only after the canonical re-read, dashboard renewal card showing the scheduled version | local frontend run (11 tests) |
 
 Two limits are explicit and are not claimed as done: the live suites and the
 rehearsal have not executed locally (no PostgreSQL in this session), so
 `migrate deploy`, the rehearsal and the live concurrency assertions are CI-only
-evidence and this document is only final once that run is green on the PR head;
-and `frontend/src/api/generated/vardena-api.d.ts` was not regenerated
+evidence — green on the PR head of this branch (run `38164310367`, head
+`fae7f8c`) and not reproducible in this session; and `frontend/src/api/generated/vardena-api.d.ts` was not regenerated
 (`npm run api:types` boots the API and needs a database; the frontend declares
 the two licensing response shapes verbatim in `src/api/contracts.ts` because
 the controllers' inline return types emit no OpenAPI schema, as documented
