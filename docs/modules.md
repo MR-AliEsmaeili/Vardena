@@ -1182,12 +1182,12 @@ module" at runtime. See `docs/integrations.md` and ADR-0004.
 
 ---
 
-## Licensing (**IMPLEMENTED foundation — L-01**)
+## Licensing (**IMPLEMENTED: L-01 enforcement chain · L-02 identity/activation · L-03 signed-file import + retained versions**)
 
-- **Owns:** `licensing.customers`, `licensing.installations`, `licensing.licenses`, and typed `licensing.license_entitlements`.
-- **Public surface:** `LicensingService` behind `LicenseProvider`; current implementation is `LocalDevelopmentLicenseProvider`.
-- **Enforces:** lifecycle/validity, module/feature entitlements, finite/null-unlimited organization and active-user limits, assignable permission catalog, and effective RBAC permissions.
-- **API:** authenticated `GET /api/v1/license/current` (non-secret evaluated installation state).
-- **Foundation only:** persisted records have no commercial activation/write API in L-01.
-- **Deferred:** CRM/commercial provider, billing, remote validation, signed offline files, hardware binding, and activation UI. See ADR-0030 and `docs/licensing-architecture.md`.
-- **Approved product requirements (not implemented):** [PDR-11](decisions/product/PDR-11-vardena-licensing-product-requirements.md) is the licensing product source of truth. It covers the Owner-side system, server replacement, client-device licensing, expiry, revocation, and signed-file exchange. Conflicts with the implemented foundation are listed in its §19.
+- **Owns:** `licensing.customers`, `licensing.installations`, `licensing.licenses` (the commercial license identity), the retained `licensing.license_versions` and their typed `licensing.license_version_entitlements`, and the append-only `licensing.license_audit_events` trail.
+- **Public surface:** `LicensingService` behind `LicenseProvider` (the `persistent` provider is the default since L-02; `local-development` is the configuration-backed provider used by tests and local work).
+- **Enforces:** lifecycle/validity, module/feature entitlements, finite/null-unlimited organization and active-user limits, the assignable permission catalog, and effective RBAC permissions. Enforcement is backend-only; no role, username, environment variable or frontend state bypasses it (AR-21).
+- **API:** authenticated `GET /api/v1/license/current` (non-secret evaluated state, including the effective version, the scheduled renewal and the bounded retained history); `POST /api/v1/license/import` (signed file envelope / `VLIC2` artifact / legacy `VLIC1` code) and its L-02 alias `POST /api/v1/license/activate` — both requiring `Licensing.License.Activate` and both entering the same verification pipeline.
+- **Versions and replay:** an import adds a retained version; a future-dated renewal coexists with the governing version and becomes effective at its own `validFrom`; a repeated operation id is refused with 409 and changes nothing; applied, rejected and unchanged imports are audited. Effective-version resolution is deterministic (latest `validFrom`, then import instant, then id), and version windows may overlap only through an explicit signed supersession.
+- **Deferred (decision-gated, not faked):** full revocation/reactivation and any login-blocking state (OQ-78), Grace/Read-Only enforcement (OQ-45), server replacement and activation receipts (OQ-82/OQ-84), the installation identity key (blocked by the backup-encryption design, PDR-11 U-2), client-device licensing (OQ-83), clock-rollback detection (OQ-76), audit retention (OQ-77), the Owner-side system home (OQ-85). See ADR-0030/ADR-0045/ADR-0046 and `docs/licensing-architecture.md`.
+- **Approved product requirements (not fully implemented):** [PDR-11](decisions/product/PDR-11-vardena-licensing-product-requirements.md) is the licensing product source of truth. Its §19 conflicts are reconciled in §19.4 and in `docs/tasks/pdr-11-conflict-reconciliation.md`; §15 items remain OPEN where registered.

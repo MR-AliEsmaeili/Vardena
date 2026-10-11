@@ -48,7 +48,7 @@ Classification used for each item:
 | CF-17 | STALE DOC / DESIGN | `licensing.*` schema vs PDR-11 §14 conceptual entities | The mapping is documented (`License` → `licensing.licenses`, `LicenseVersion` → `licensing.license_versions`, `AuditEvent` → `licensing.license_audit_events`). Schema change was limited to what the design proved necessary: separating license identity from versions so several versions can belong to one license. | design §1; `prisma/schema/licensing.prisma`; migration | **RESOLVED** |
 | CF-18 | PROCESS | `.vardena/agent-rules.md` AG-09/AG-07; `docs/open-questions.md` | The Product Owner has now authorized registration. New identifiers were allocated only after checking the central registry and the repository for the next free id (`OQ-73` is taken; `OQ-74`…`OQ-85` are new). Each registered row carries its PDR-11 source id. No id is duplicated or invented out of order. | `docs/open-questions.md` (Open table + log); this document §2 | **RESOLVED** |
 | CF-19 | OPEN POLICY | `docs/licensing-architecture.md`; ADR-0030 (CRM deferred); OQ-61 | The Owner-side issuance **boundary** is fixed: signing stays outside the product, no private key is stored or served by the application, and the repository's CLI issuer refuses `NODE_ENV=production`. Where the Owner-side system lives, and CRM/billing, remain out of scope and registered/cross-referenced. | ADR-0046 Decision 9; design §10; `src/tools/development-license-authority.ts`; OQ-85 (cross-ref OQ-61) | **PARTIALLY RESOLVED** — boundary fixed, home undecided (`OQ-85`) |
-| CF-20 | STALE DOC | `docs/licensing-architecture.md` ("signed offline files … DEFERRED") | The owning document now describes the implemented signed-file import, the version model, replay protection and the audit trail, and lists exactly what remains deferred. | `docs/licensing-architecture.md` | **RESOLVED** |
+| CF-20 | STALE DOC | `docs/licensing-architecture.md` ("signed offline files … DEFERRED"); `docs/adr/0030-license-foundation.md` status line; `docs/modules.md` §Licensing | The owning documents now describe the implemented signed-file import, the version model, replay protection and the audit trail, and list exactly what remains deferred; ADR-0030's status line points at ADR-0045/ADR-0046 instead of the renumbered 0036. | `docs/licensing-architecture.md`; `docs/adr/0030-license-foundation.md`; `docs/modules.md` | **RESOLVED** |
 | CF-21 | STALE DOC | `license-activation.service.ts` comments (mentions a `revoked` lifecycle) | The stale comments are gone with the service: the import pipeline's comments, the design record and ADR-0046 state the real vocabulary (`ACTIVE`/`EXPIRED`/`SUSPENDED`, `UNLICENSED`, revocation unimplemented). | backend source; design §1–§4 | **RESOLVED** |
 | CF-22 | PROCESS | AG-02 branch naming | The session branch is fixed by the environment (`arena/5fd62737-vardena`) and is the only branch touched; the repository's `feat/…` convention could not be used for this session, exactly as PDR-11 §19.2 CF-22 recorded. One concern (licensing reconciliation + slice) per branch, per PR. | branch history; PR description | **RESOLVED (documented process deviation)** |
 
@@ -98,3 +98,30 @@ provisioning deferral is unchanged.
   conflict it cannot honour.
 - Restore is not blocked (G-9): no licensing check exists on any restore path.
 - Normal operation requires no internet (PDR-11 §11.1): import is fully local.
+
+## 4. Delivered evidence on this branch (`arena/5fd62737-vardena`)
+
+Written after the matrix above was committed; every path below exists on the
+branch. Local runs cover the fast suites; the database-backed suites and the
+migration rehearsal run on GitHub CI (this session has no PostgreSQL server),
+and GitHub CI on the exact PR head is the authoritative evidence.
+
+| Artifact | What it is | Where it ran |
+| --- | --- | --- |
+| `backend/prisma/migrations/20261014000000_licensing_version_model_and_import/` | Non-lossy backfill of every license row into retained versions + version entitlements + typed audit trail; drops the L-02 single-current partial index | GitHub CI (`prisma migrate deploy`) |
+| `backend/prisma/rehearsal/licensing-version-model/rehearse.mjs` (`npm run test:licensing-version-rehearsal`) | Fixture rehearsal over a disposable database: populated pre-migration shape through the migration, asserting preserved statuses/ids/hashes/limits/windows, moved entitlements, one eligible version per licensed installation, retained superseded history, the new unique guards, and fail-closed refusal of data the model cannot represent | GitHub CI (`Migration rehearsal (Licensing version model and import)`) |
+| `backend/src/modules/licensing/domain/license-document.ts` + `license-document.spec.ts` | `VLIC2` artifact, versioned file envelope, trusted-key rotation with key ids, canonicalization, strict payload validation, transport decode | local unit run (14 tests) |
+| `backend/src/modules/licensing/domain/license-version.ts` + `license-version.spec.ts` | Half-open windows, eligibility, deterministic effective-version resolution, signed-supersession-only overlap, latest-ended/earliest-future classification | local unit run (15 tests) |
+| `backend/src/modules/licensing/application/license-import.service.ts` + `license-import.service.spec.ts` | The single 10-stage pipeline: transport → verify → bind → payload → lifecycle → replay → supersession → overlap → one transaction → state; rejection order and audit events | local unit run (21 tests) |
+| `backend/test/license-import.e2e-spec.ts` | Route-level end-to-end over the real pipeline with in-memory stores: file/text/legacy transports, restart persistence, duplicate 409, overlap 409 then explicit supersession, foreign installation, stranger key, malformed bodies, 401/403 | local e2e run (11 tests) |
+| `backend/test/licensing-persistence-live.e2e-spec.ts` | Live PostgreSQL: identity and versions across restarts, column/leak audits, audit-event sequence, foreign-installation rejection, as-of future resolution, forced rollback leaving no partial write, duplicate operation stopped by the unique index | GitHub CI (live suite) |
+| `backend/test/licensing-activation.e2e-spec.ts` | L-02 compatibility contract against the new store (`/license/activate` alias, unchanged rejections, idempotent repeat) | local e2e run (verified against `createLicensingStores`) |
+| `frontend/src/features/licensing/*` + `license-import.test.tsx` | File-first import (file picker primary, paste fallback), 409/422 classification apart from transport failures, gate releases only after the canonical re-read, dashboard renewal card showing the scheduled version | local frontend run (11 tests) |
+
+Two limits are explicit and are not claimed as done: the live suites and the
+rehearsal have not executed locally (no PostgreSQL in this session), and
+`frontend/src/api/generated/vardena-api.d.ts` was not regenerated
+(`npm run api:types` boots the API and needs a database; the frontend declares
+the two licensing response shapes verbatim in `src/api/contracts.ts` because
+the controllers' inline return types emit no OpenAPI schema, as documented
+there).
