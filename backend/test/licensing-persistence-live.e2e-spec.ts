@@ -214,6 +214,10 @@ describe.skipIf(DATABASE_URL === undefined)(
           customerName: 'Live customer',
           organizationLimit: 2,
           moduleEntitlements: ['organization', 'users'],
+          // Bounded on purpose: its end is where the signed renewal of the
+          // `retains a signed future-dated version` case begins, so that
+          // renewal is adjacent rather than an overlapping range.
+          validUntil: new Date('2027-01-01T00:00:00.000Z'),
         },
         authority.privateKey,
       );
@@ -246,27 +250,22 @@ describe.skipIf(DATABASE_URL === undefined)(
         app.get(LicenseActivationService).activate(code),
       ).resolves.toMatchObject({ changed: false, outcome: 'UNCHANGED' });
 
-      // 5. A replacement (a different legacy code) supersedes the governing
-      //    version and keeps exactly one eligible version. Its window ends
-      //    exactly where the future-dated renewal of the next case begins
-      //    (half-open `[validFrom, validUntil)`), so that renewal is a
-      //    non-overlapping renewal rather than an overlapping range.
-      const replacement = issueLicenseCode(
+      // 5. A replacement text code that would take over from an instant that
+      //    is already past is refused and writes nothing (OQ-86): the legacy
+      //    transport cannot name the version it would retire, so the same
+      //    fail-closed temporal rule protects the past here too.
+      const backdated = issueLicenseCode(
         {
           installationId: identity.installationId,
           customerName: 'Live customer',
           organizationLimit: 5,
           moduleEntitlements: ['organization', 'users'],
-          validUntil: new Date('2027-01-01T00:00:00.000Z'),
         },
         authority.privateKey,
       ).code;
       await expect(
-        app.get(LicenseActivationService).activate(replacement),
-      ).resolves.toMatchObject({
-        changed: true,
-        license: { organizationLimit: 5 },
-      });
+        app.get(LicenseActivationService).activate(backdated),
+      ).rejects.toThrow(/already in the past/);
 
       const client = await prisma.getClient<{
         $queryRawUnsafe<T>(query: string, ...values: unknown[]): Promise<T>;
@@ -278,7 +277,9 @@ describe.skipIf(DATABASE_URL === undefined)(
       const retained = await client.$queryRawUnsafe<Array<{ count: bigint }>>(
         'SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"',
       );
-      expect(Number(retained[0]?.count)).toBe(2);
+      // The refused replacement wrote nothing: one retained version, and it is
+      // the one that governs.
+      expect(Number(retained[0]?.count)).toBe(1);
 
       // The raw license code is never persisted, and neither is the document:
       // only its irreversible SHA-256 lives on the version row.
@@ -319,10 +320,10 @@ describe.skipIf(DATABASE_URL === undefined)(
            WHERE "superseded_at" IS NULL`,
       );
       expect(hashes[0]?.document_hash).toBe(
-        createHash('sha256').update(replacement.trim(), 'utf8').digest('hex'),
+        createHash('sha256').update(code.trim(), 'utf8').digest('hex'),
       );
 
-      // The audit trail recorded the applied / unchanged / superseded events.
+      // The audit trail recorded the applied / unchanged / rejected events.
       const events = await client.$queryRawUnsafe<
         Array<{ event_type: string; outcome: string }>
       >(
@@ -332,8 +333,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       expect(events.map((event) => event.event_type)).toEqual([
         'license.import.applied',
         'license.import.unchanged',
-        'license.version.superseded',
-        'license.import.applied',
+        'license.import.rejected',
       ]);
     }, 120_000);
 
@@ -840,14 +840,15 @@ describe.skipIf(DATABASE_URL === undefined)(
         organizationLimit: winner!.document === left ? 51 : 52,
         licenseId: winner!.document.payload.licenseId,
       });
-      // Nothing else was retired: exactly two rows carry a supersession — the
-      // first case's replaced legacy code and this case's target.
+      // Nothing else was retired: exactly one row carries a supersession —
+      // this case's target. The legacy replacement of the first case was
+      // refused by the temporal rule, so it never stamped anything.
       expect(
         await count(
           `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
             WHERE "superseded_at" IS NOT NULL`,
         ),
-      ).toBe(2);
+      ).toBe(1);
     }, 90_000);
 
     it('keeps every retained effective window disjoint', async () => {

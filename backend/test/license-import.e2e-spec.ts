@@ -267,11 +267,14 @@ describe('License document import (e2e)', () => {
 
   it('refuses an overlapping version unless it retires the retained one', async () => {
     const installationId = (await state()).installationId as string;
+    // A window that covers today (a past start retires nothing) and reaches
+    // far enough that the overlapping candidate is future-dated on any runner
+    // clock: the hand-over has to stay at or after the import instant.
     const first = issueLicenseFile(
       {
         installationId,
-        validFrom: new Date('2026-01-01T00:00:00.000Z'),
-        validUntil: new Date('2027-01-01T00:00:00.000Z'),
+        validFrom: new Date('2020-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-01-01T00:00:00.000Z'),
       },
       authority.privateKey,
     );
@@ -280,8 +283,8 @@ describe('License document import (e2e)', () => {
     const overlap = issueLicenseFile(
       {
         installationId,
-        validFrom: new Date('2026-06-01T00:00:00.000Z'),
-        validUntil: new Date('2027-06-01T00:00:00.000Z'),
+        validFrom: new Date('2033-06-01T00:00:00.000Z'),
+        validUntil: new Date('2034-06-01T00:00:00.000Z'),
       },
       authority.privateKey,
     );
@@ -290,11 +293,14 @@ describe('License document import (e2e)', () => {
       /overlaps a retained version/,
     );
 
+    // The same window WITH the supersession intent is the documented escape
+    // hatch — and the hand-over is the successor's own start, so the retained
+    // version keeps governing until it comes.
     const superseding = issueLicenseFile(
       {
         installationId,
-        validFrom: new Date('2026-06-01T00:00:00.000Z'),
-        validUntil: new Date('2027-06-01T00:00:00.000Z'),
+        validFrom: new Date('2033-06-01T00:00:00.000Z'),
+        validUntil: new Date('2034-06-01T00:00:00.000Z'),
         supersedesOperationId: first.payload.operationId,
       },
       authority.privateKey,
@@ -303,10 +309,62 @@ describe('License document import (e2e)', () => {
 
     expect(applied.body).toMatchObject({ outcome: 'APPLIED', active: true });
     expect(licensing.versions).toHaveLength(2);
-    expect(licensing.versions[0]?.supersededAt).not.toBeNull();
+    expect(licensing.versions[0]).toMatchObject({
+      supersededAt: expect.any(Date),
+      governsUntil: new Date('2033-06-01T00:00:00.000Z'),
+    });
     expect(applied.body.effectiveVersionId).toBe(
-      licensing.versions[1]?.versionId,
+      licensing.versions[0]?.versionId,
     );
+    expect(applied.body.scheduledVersion).toMatchObject({
+      licenseId: superseding.payload.licenseId,
+      validFrom: '2033-06-01T00:00:00.000Z',
+      effective: false,
+    });
+  });
+
+  it('refuses a supersession that would take over before the import instant', async () => {
+    const installationId = (await state()).installationId as string;
+    // A start in the past is fine for a document that retires nothing (the
+    // ordinary "the subscription began in January" case) …
+    const governing = issueLicenseFile(
+      {
+        installationId,
+        validFrom: new Date('2020-01-01T00:00:00.000Z'),
+        validUntil: new Date('2035-01-01T00:00:00.000Z'),
+      },
+      authority.privateKey,
+    );
+    await importDocument(governing.file).expect(200);
+    const before = await state();
+
+    // … but a supersession may not retire it from an instant that is already
+    // past: that would rewrite which version governed then (fail-closed until
+    // the Owner settles the question; OQ-86).
+    const backdated = issueLicenseFile(
+      {
+        installationId,
+        validFrom: new Date('2021-01-01T00:00:00.000Z'),
+        validUntil: new Date('2035-06-01T00:00:00.000Z'),
+        supersedesOperationId: governing.payload.operationId,
+      },
+      authority.privateKey,
+    );
+    const refused = await importDocument(backdated.file).expect(422);
+
+    expect(refused.body).toMatchObject({ code: 'BusinessRuleViolation' });
+    expect(refused.body.details).toMatchObject({
+      reason: 'backdated-supersession',
+    });
+    expect(String(refused.body.message)).toMatch(/already in the past/);
+    expect(licensing.versions).toHaveLength(1);
+    expect(licensing.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+    // Nothing changed: the same governing version, the same projection.
+    expect(await state()).toEqual(before);
   });
 
   it('rejects a document issued for another installation or signed by a stranger', async () => {

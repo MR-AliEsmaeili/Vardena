@@ -678,6 +678,17 @@ did. The authoritative per-item matrix is
   operation type (OQ-81); gaps are allowed and reported as expired. Each is
   documented in ADR-0046 and can be replaced by an Owner decision without a
   data migration.
+- **Registered later (2026-10-11, Product-Owner temporal directive):
+  OQ-86.** §3.2 settles only the future-dated renewal, and §3.4 hands
+  overlapping or gapped versions to PQ-5 (OQ-80); neither says whether a
+  *backdated* document may retire a version from an instant already in the past
+  and so rewrite which version governed then. The interim behaviour is
+  fail-closed: such an import is refused (`backdated-supersession`, 422, nothing
+  written) while a hand-over at or after the import instant, the correction of a
+  version that had already ended, and documents that retire nothing keep their
+  documented behaviour. The rule is a domain rule, not a database constraint —
+  no migration is needed to lift or narrow it. §15 is unchanged: no item was
+  converted into a decision, and **PQ-5/OQ-80 stays Open**.
 - **Unchanged product policy:** no Grace/Read-Only enforcement, no revocation, no
   installation identity key, no replacement workflow, no device licensing, no
   Owner-side system, no test/training entitlements, no CRM/billing.

@@ -200,12 +200,12 @@ inventory step was skipped because nothing failed.
 | `backend/prisma/migrations/20261015000000_licensing_supersession_governs_until/` | Corrective migration (§0 Defect 1): adds the hand-over instant, backfills it from the recorded successor (repairing prematurely retired versions) or from the recorded instant, and constrains the two instants to be set together | GitHub CI (`prisma migrate deploy` + rehearsal) |
 | `backend/prisma/rehearsal/licensing-version-model/rehearse.mjs` (`npm run test:licensing-version-rehearsal`) | Fixture rehearsal over a disposable database: populated pre-migration shape through the migration, asserting preserved statuses/ids/hashes/limits/windows, moved entitlements, one eligible version per licensed installation, retained superseded history, the new unique guards, and fail-closed refusal of data the model cannot represent | GitHub CI (`Migration rehearsal (Licensing version model and import)`) |
 | `backend/src/modules/licensing/domain/license-document.ts` + `license-document.spec.ts` | `VLIC2` artifact, versioned file envelope, trusted-key rotation with key ids, canonicalization, strict payload validation, transport decode | local unit run (14 tests) |
-| `backend/src/modules/licensing/domain/license-version.ts` + `license-version.spec.ts` | Half-open windows, eligibility at an instant, the two supersession instants, deterministic effective-version resolution, the single conflict authority (`evaluateImportConflicts`), latest-ended/earliest-future classification, and the disjoint-window invariant over a mixed retained set | local unit run (30 tests) |
-| `backend/src/modules/licensing/application/license-import.service.ts` + `license-import.service.spec.ts` | The single 10-stage pipeline: transport → verify → bind → payload → lifecycle → replay → supersession → overlap → **locked transaction that re-runs the conflict evaluation** → state; rejection order and audit events; the future-dated-supersession timeline on a pinned clock (no sleeps) | local unit run (26 tests) |
+| `backend/src/modules/licensing/domain/license-version.ts` + `license-version.spec.ts` | Half-open windows, eligibility at an instant, the two supersession instants, deterministic effective-version resolution, the single conflict authority (`evaluateImportConflicts`), the temporal refusal of a supersession that would remove already-exercised governance (`supersessionRewritesPastGovernance`, OQ-86), latest-ended/earliest-future classification, and the disjoint-window invariant over a mixed retained set | local unit run (33 tests) |
+| `backend/src/modules/licensing/application/license-import.service.ts` + `license-import.service.spec.ts` | The single 10-stage pipeline: transport → verify → bind → payload → lifecycle → replay → supersession → overlap → **locked transaction that re-runs the conflict evaluation** → state; rejection order and audit events; the future-dated-supersession timeline on a pinned clock (no sleeps), the hand-over boundary at the import instant, the refused backdated supersession with full rollback, the still-allowed correction of an already-ended version, and the two surviving legacy paths | local unit run (31 tests) |
 | `backend/src/modules/licensing/data/licenses.repository.ts` | The import transaction: per-installation `FOR UPDATE` lock (the one documented raw statement), in-transaction evaluation, guarded supersession stamp writing both instants, audit rows in the same transaction | local typecheck + lint; behaviour proven by the live suites and the rehearsal |
-| `backend/test/license-import.e2e-spec.ts` | Route-level end-to-end over the real pipeline with in-memory stores: file/text/legacy transports, restart persistence, duplicate 409, overlap 409 then explicit supersession, foreign installation, stranger key, malformed bodies, 401/403 | local e2e run (11 tests) |
-| `backend/test/licensing-persistence-live.e2e-spec.ts` | Live PostgreSQL: identity and versions across restarts, column/leak audits, audit-event sequence, foreign-installation rejection, as-of future resolution, a duplicate refused inside the transaction with nothing written, a **late** failure rolling back every earlier write, and the concurrency suite (§0 Defect 2: three same-window races, a same-document race, competing successors, the disjoint-window invariant and the supersession pair re-asserted in SQL) | GitHub CI run `38164310367` (head `fae7f8c`), step `E2E tests (incl. live-DB suites)` — the only accepted evidence for Defect 2 |
-| `backend/test/licensing-activation.e2e-spec.ts` | L-02 compatibility contract against the new store (`/license/activate` alias, unchanged rejections, idempotent repeat) | local e2e run (verified against `createLicensingStores`) |
+| `backend/test/license-import.e2e-spec.ts` | Route-level end-to-end over the real pipeline with in-memory stores: file/text/legacy transports, restart persistence, duplicate 409, overlap 409 then explicit supersession (future-dated, clock-independent), the refused backdated supersession, foreign installation, stranger key, malformed bodies, 401/403 | local e2e run (13 tests) |
+| `backend/test/licensing-persistence-live.e2e-spec.ts` | Live PostgreSQL: identity and versions across restarts, column/leak audits, audit-event sequence, foreign-installation rejection, as-of future resolution, the refused backdated legacy replacement (nothing written, only a rejection audited), a duplicate refused inside the transaction with nothing written, a **late** failure rolling back every earlier write, and the concurrency suite (§0 Defect 2: three same-window races, a same-document race, competing successors, the disjoint-window invariant and the supersession pair re-asserted in SQL) | GitHub CI run `38164310367` (head `fae7f8c`), step `E2E tests (incl. live-DB suites)` — the only accepted evidence for Defect 2 |
+| `backend/test/licensing-activation.e2e-spec.ts` | L-02 compatibility contract against the new store (`/license/activate` alias, the documented rejections, idempotent repeat, and the temporal refusal of a backdated replacement — the one rejection this directive changed, registered as OQ-86) | local e2e run (verified against `createLicensingStores`) |
 | `frontend/src/features/licensing/*` + `license-import.test.tsx` | File-first import (file picker primary, paste fallback), 409/422 classification apart from transport failures, gate releases only after the canonical re-read, dashboard renewal card showing the scheduled version | local frontend run (11 tests) |
 
 Two limits are explicit and are not claimed as done: the live suites and the
@@ -221,3 +221,97 @@ there).
 Concurrency is claimed only for what the live suite proves. No unit test, no
 in-memory store and no in-process lock is offered as evidence that two
 concurrent imports of one installation cannot commit incompatible windows.
+
+## 5. Temporal directive (2026-10-11): a supersession may not hand over in the past
+
+Product-Owner directive: resolve the remaining ambiguity between a signed
+license's `validFrom`, the successor's import instant and the predecessor's
+`governsUntil`; do not invent a product policy; keep the behaviour fail-closed
+and register the question if the records do not settle it.
+
+**What the records settle (and what they don't).** PDR-11 §3.2 settles only the
+*future-dated* renewal ("the current version remains valid until its own end
+date … the new version becomes effective according to its own start date").
+§3.4 hands overlapping or gapped versions to PQ-5 → **OQ-80**, which fixes
+overlap/adjacency/gap handling but says nothing about backdating; §15 has no
+item for it, and no Owner decision covers it. ADR-0046's consequences and the
+domain header of `license-version.ts` claimed the past was protected ("every
+import after the correction satisfies the disjoint-window invariant by
+construction", `governsUntil` "never earlier than the import that recorded it")
+while `supersessionCeaseInstant`'s own rationale accepted a retroactive
+successor as a bounded cost — an internal contradiction, not a policy. So the
+question is **registered for the first time as OQ-86** and the behaviour is
+fail-closed.
+
+**Chosen interim behaviour (technical, fail-closed, no schema change).** The ONE
+authority (`evaluateImportConflicts`, run as the read-side pre-check and again
+inside the import transaction under the installation row lock) refuses a
+supersession whose hand-over would remove governance the retired version
+ALREADY exercised before the import instant: `backdated-supersession` (**422**,
+nothing written, the operation id stays unused so the same document can be
+re-issued). The predicate is the exported
+`supersessionRewritesPastGovernance(target, candidate, at)` — the removed
+interval `[max(target.validFrom, min(candidate.validFrom, currentEnd)),
+min(currentEnd, at))`, with `currentEnd` the target's effective end before the
+stamp. Everything else keeps its documented behaviour, deliberately:
+
+- a hand-over **at or after** the import instant is not the past (the
+  predecessor governs up to the hand-over — the future-dated renewal of §3.2);
+- a target that **had already ended** by its own `validUntil` is still a valid
+  correction: the stamp records the supersession and the effective window does
+  not move (the documented "correction of an expired or scheduled version");
+- a backdated document that **retires nothing** (first license, gap-filling
+  renewal) is untouched: gaps stay `expired`-until-start (OQ-80) and no policy
+  was added;
+- `superseded_at` (recorded) and `governs_until` (hand-over) stay two separate
+  facts, both set together; nothing about them was redefined;
+- the concurrency protection is unchanged (row lock + in-transaction
+  re-evaluation; the new rule is evaluated on both passes like every rule).
+
+**Behaviour that changed with this rule (and only this):** a signed document
+whose supersession would have rewritten a past instant is now refused instead of
+applied (the same-start "correction" that retired a version from its own start —
+which erased the predecessor's entire governance — is the clearest case), and
+the legacy `VLIC1` replacement of a version that still governs is refused for
+the same reason (its L-02 default window starts in 2020 and the L-02 lifecycle
+gate refuses a code whose window has not started). The legacy path keeps two
+working shapes, both covered by tests: a **renewal by adjacency** (the code
+starts at or after the end of the version it follows — no supersession recorded)
+and the documented duplicate/idempotency behaviour. These consequences are part
+of the OQ-86 question for the Owner; no data migration is needed to lift or
+narrow the rule because it is a rule, not a constraint.
+
+**Files.** `backend/src/modules/licensing/domain/license-version.ts`
+(`supersessionRewritesPastGovernance`, rule 6 of the single authority, updated
+header/rationale comments), `application/license-import.service.ts`
+(`backdated-supersession` in the rejection taxonomy — 422, **not** in
+`CONFLICT_REASONS` — plus the three stable message variants),
+`backend/prisma/schema/licensing.prisma` (comment only; **no migration**),
+`docs/licensing/version-model-and-file-exchange.md` (§3.1/§3.3/pipeline table),
+`docs/adr/0046-…` (Consequences addendum), PDR-11 §19.4,
+`docs/open-questions.md` (OQ-86), `STATE.md §32`. `OQ-80 stays Open` and no
+other OQ row was changed.
+
+**Tests added (deterministic, no sleeps).** `license-version.spec.ts`: the
+predicate's case table (past/at/future hand-over, ended target, scheduled
+target, retired target's tail) and the authority's refusal + the two allowed
+neighbours, for both the explicit and the implicit (legacy) intent.
+`license-import.service.spec.ts` (pinned clock): a hand-over exactly at the
+import instant (audit trail unchanged, predecessor governs the millisecond
+before); a successor one millisecond before the import instant refused with the
+full rollback asserted (no version, no stamp, identical state projection, only a
+`license.import.rejected` audit row, operation id reusable for a re-issue);
+a correction of an already-ended version still applied with the predecessor's
+effective window unchanged and the gap still `expired`; the legacy backdated
+replacement refused; the legacy adjacency renewal applied (no supersession) with
+the re-apply refusals; and the retained-but-no-longer-governing legacy duplicate.
+`license-import.e2e-spec.ts`: the overlap/escape-hatch case re-dated to a
+clock-independent future window (and now asserting the scheduled hand-over), plus
+an HTTP case where a past start that retires nothing is accepted and the
+backdated supersession is refused (422, `details.reason`, byte-identical state).
+
+**Evidence boundary.** Local: the unit suites above, the hermetic e2e suite and
+the frontend suite; `prisma validate`/`prisma generate` cannot run in this
+session (the schema engine is not cached and cannot be downloaded — the change
+is comment-only), and no PostgreSQL exists locally, so the live-DB suite and the
+migration rehearsal remain CI-only evidence on the exact head, recorded below.

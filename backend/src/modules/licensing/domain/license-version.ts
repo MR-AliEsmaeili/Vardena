@@ -24,9 +24,22 @@ import type {
  * - `supersededAt` — WHEN the supersession was recorded (the import instant of
  *   the successor). Audit and traceability only; it never decides eligibility.
  * - `governsUntil` — the instant FROM WHICH the version no longer governs. It
- *   is the successor's own `validFrom` (never earlier than the import that
- *   recorded it), which is what makes a future-dated renewal importable
- *   *without* interrupting the license that still governs today (PDR-11 §3.2).
+ *   is the successor's own `validFrom`, which is what makes a future-dated
+ *   renewal importable *without* interrupting the license that still governs
+ *   today (PDR-11 §3.2).
+ *
+ * The import rule that bounds this: a hand-over may never remove governance the
+ * version has ALREADY exercised before the import. `evaluateImportConflicts`
+ * refuses such a supersession (`backdated-supersession`, see
+ * `supersessionRewritesPastGovernance`) instead of rewriting which version
+ * governed an instant that is already past. When the version had already ended
+ * by its own `validUntil`, the recorded `governsUntil` can be earlier than the
+ * import while its *effective* window is unchanged — the documented correction
+ * of an expired or scheduled version. Whether the Owner may ever issue a
+ * document that does change a past answer is not decided by PDR-11 §3.2/§3.4
+ * (it is registered as OQ-86); the refusal is the interim fail-closed
+ * behaviour, and the only data that can still carry a retroactive hand-over is
+ * what the L-02 migration backfilled (design §3.3).
  *
  * A version is therefore superseded at an instant, not forever after an
  * import: `isSupersededAt(version, at)`. Historical instants keep the version
@@ -166,16 +179,70 @@ export function effectiveWindow(version: RetainedLicenseVersion): {
  * candidate's own start the two windows are adjacent by construction: the
  * predecessor governs up to exactly the instant the successor takes over.
  *
- * The cost of that choice is honest and bounded: a retroactive successor
- * re-computes which version governed an instant that is already in the past
- * (as-of reads are recomputed from the retained rows, never materialized), and
- * the append-only audit trail still records that the predecessor was retired
- * at `supersededAt` — a later instant than the hand-over it describes.
+ * The cost of that choice is bounded by the import rule that goes with it: a
+ * successor whose hand-over would remove governance the predecessor has already
+ * exercised *before* the import is refused by `evaluateImportConflicts`
+ * (`backdated-supersession`, see `supersessionRewritesPastGovernance`), so no
+ * import can re-compute which version governed a past instant by truncating a
+ * retained version. A hand-over strictly after the import instant does change
+ * which version governs the instants between `validFrom` and the successor's
+ * start from the moment it is recorded (the predecessor keeps governing until
+ * then), and the append-only audit trail still records that the predecessor was
+ * retired at `supersededAt` — a later instant than the hand-over it describes
+ * when the successor is future-dated.
+ *
+ * The only data that can still carry a *retroactive* hand-over is what the
+ * L-02 migration backfilled (whose replaced-by pointer was never persisted, so
+ * its hand-over is the recorded instant); see §3.3 of the design document.
  */
 export function supersessionCeaseInstant(
   candidate: Pick<RetainedLicenseVersion, 'validFrom'>,
 ): Date {
   return candidate.validFrom;
+}
+
+/**
+ * True when retiring `target` at `candidate.validFrom` would change what the
+ * target governed for an instant that is ALREADY in the past.
+ *
+ * Retiring a version truncates its effective window at the hand-over
+ * (`supersessionCeaseInstant`), so the coverage the pre-import read model
+ * reported for the removed interval disappears with it. This predicate is
+ * exactly the question "does the stamp take coverage away from a past instant
+ * the target really governed?":
+ *
+ *   removed = [max(target.validFrom, min(candidate.validFrom, currentEnd)),
+ *              min(currentEnd, at))            with currentEnd = the target's
+ *                                              effective end before the stamp
+ *
+ * A non-empty `removed` interval is a rewrite of history; an empty one is not,
+ * which is why the two neighbouring cases stay allowed and unchanged:
+ * a hand-over at or after `at` (nothing past is touched, the target keeps
+ * governing), and a target that had already stopped governing before
+ * `candidate.validFrom` (its window is pinned by its own `validUntil`, so the
+ * stamp records the supersession without shortening anything) — the documented
+ * "correction of an expired or scheduled version" case.
+ *
+ * It deliberately does NOT ask whether the candidate's own window starts in the
+ * past: a document that retires nothing may fill a gap backwards, which is the
+ * documented gap behaviour (OQ-80) and the state reports `expired` for the
+ * instants no retained version covers. Register OQ-86 for the wider question.
+ */
+export function supersessionRewritesPastGovernance(
+  target: Pick<
+    RetainedLicenseVersion,
+    'validFrom' | 'validUntil' | 'governsUntil'
+  >,
+  candidate: Pick<RetainedLicenseVersion, 'validFrom'>,
+  at: Date,
+): boolean {
+  const currentEnd =
+    earliestInstant(target.validUntil, target.governsUntil)?.getTime() ??
+    Number.POSITIVE_INFINITY;
+  const handOver = Math.min(candidate.validFrom.getTime(), currentEnd);
+  const removedFrom = Math.max(target.validFrom.getTime(), handOver);
+  const removedTo = Math.min(currentEnd, at.getTime());
+  return removedFrom < removedTo;
 }
 
 /** Half-open containment: `validFrom <= at < validUntil` (null = open end). */
@@ -322,11 +389,21 @@ export function resolveEffectiveVersion(
 // ---------------------------------------------------------------------------
 
 /**
- * Why an import conflicts with retained state. These are the reasons the API
- * answers 409 with (the document is authentic; the state is the problem).
+ * Why an import cannot be applied against the retained state. The document is
+ * authentic; the state is the problem.
+ *
+ * `duplicate-operation`, `unknown-supersession` and `overlapping-range` are the
+ * reasons the API answers 409 with. `backdated-supersession` is the temporal
+ * refusal — it is answered 422 like the other document-level verdicts
+ * (`expired-document`, `not-yet-valid`) because the document as issued can
+ * never be applied; the fix is a re-issued document, not a changed installation
+ * state. No reason here ever writes anything.
  */
 export type ImportConflictReason =
-  'duplicate-operation' | 'unknown-supersession' | 'overlapping-range';
+  | 'duplicate-operation'
+  | 'unknown-supersession'
+  | 'overlapping-range'
+  | 'backdated-supersession';
 
 export interface ImportConflict {
   reason: ImportConflictReason;
@@ -386,7 +463,17 @@ export type ImportConflictEvaluation =
  * 4. a signed document that overlaps any version still governing at `at` other
  *    than its explicit target is refused (unauthorized ambiguity);
  * 5. a legacy code may overlap at most ONE still-governing version, and only
- *    one without a recorded supersession; that version is the one it replaces.
+ *    one without a recorded supersession; that version is the one it replaces;
+ * 6. a supersession may not hand over in the past: if retiring the target at
+ *    the candidate's own `validFrom` would remove governance the target has
+ *    already exercised before `at` (`supersessionRewritesPastGovernance`), the
+ *    import is refused as `backdated-supersession` instead of rewriting which
+ *    version governed a past instant. A hand-over at or after `at`, and a
+ *    target that had already ended (its `validUntil` pins its window, so the
+ *    stamp shortens nothing), stay allowed. Whether a retroactive supersession
+ *    should ever be accepted is undecided (OQ-86); this rule is the interim
+ *    fail-closed behaviour and is evaluated on both passes, like every rule
+ *    here.
  */
 export function evaluateImportConflicts(
   params: EvaluateImportConflictsParams,
@@ -446,6 +533,12 @@ export function evaluateImportConflicts(
         supersedes: null,
       };
     }
+    if (
+      implicitTarget !== null &&
+      supersessionRewritesPastGovernance(implicitTarget, candidate, at)
+    ) {
+      return backdatedSupersession();
+    }
     return { conflict: null, supersedes: implicitTarget };
   }
 
@@ -458,7 +551,21 @@ export function evaluateImportConflicts(
       supersedes: null,
     };
   }
+  if (
+    target !== null &&
+    supersessionRewritesPastGovernance(target, candidate, at)
+  ) {
+    return backdatedSupersession();
+  }
   return { conflict: null, supersedes: target };
+}
+
+/** The single shape of the temporal refusal (rule 6). */
+function backdatedSupersession(): ImportConflictEvaluation {
+  return {
+    conflict: { reason: 'backdated-supersession', overlapping: 0 },
+    supersedes: null,
+  };
 }
 
 /**

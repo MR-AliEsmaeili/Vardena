@@ -13,6 +13,7 @@ import {
   resolveEffectiveVersion,
   sortVersionsNewestFirst,
   supersessionCeaseInstant,
+  supersessionRewritesPastGovernance,
   toInstallationLicense,
   windowsOverlap,
   type RetainedLicenseVersion,
@@ -587,6 +588,141 @@ describe('import conflict evaluation', () => {
     });
 
     expect(result.conflict?.reason).toBe('duplicate-operation');
+  });
+});
+
+describe('a supersession may not remove governance from the past', () => {
+  it('asks only whether already-exercised governance would disappear', () => {
+    const governing = version(window('2026-01-01T00:00:00.000Z', null));
+    const ended = version(
+      window('2026-01-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z'),
+    );
+    const scheduled = version(
+      window('2036-07-01T00:00:00.000Z', '2037-01-01T00:00:00.000Z'),
+    );
+    const at = (value: string) => new Date(value);
+
+    // A hand-over inside the past truncates what the target really governed…
+    expect(
+      supersessionRewritesPastGovernance(
+        governing,
+        version(window('2026-05-01T00:00:00.000Z', null)),
+        NOW,
+      ),
+    ).toBe(true);
+    // … including the boundary of the target's own end…
+    expect(
+      supersessionRewritesPastGovernance(
+        ended,
+        version(window('2026-02-01T00:00:00.000Z', null)),
+        NOW,
+      ),
+    ).toBe(true);
+    // … but a hand-over at the evaluation instant, or later, removes nothing.
+    expect(
+      supersessionRewritesPastGovernance(
+        governing,
+        version(window('2026-06-01T00:00:00.000Z', null)),
+        NOW,
+      ),
+    ).toBe(false);
+    expect(
+      supersessionRewritesPastGovernance(
+        governing,
+        version(window('2026-07-01T00:00:00.000Z', null)),
+        NOW,
+      ),
+    ).toBe(false);
+    // A target that had already ended has nothing left to take away: the
+    // documented correction of an expired version stays allowed.
+    expect(
+      supersessionRewritesPastGovernance(
+        ended,
+        version(window('2026-04-01T00:00:00.000Z', null)),
+        NOW,
+      ),
+    ).toBe(false);
+    // Nothing in the past of a version that has not started yet.
+    expect(
+      supersessionRewritesPastGovernance(
+        scheduled,
+        version(window('2020-01-01T00:00:00.000Z', null)),
+        NOW,
+      ),
+    ).toBe(false);
+    // The retired version's own tail never counts: it was already shortened.
+    expect(
+      supersessionRewritesPastGovernance(
+        superseded('2026-02-01T00:00:00.000Z', '01K7SUCCESSOR0000000000000', {
+          governsUntil: new Date('2026-02-01T00:00:00.000Z'),
+        }),
+        version(window('2026-03-01T00:00:00.000Z', null)),
+        at('2026-06-01T00:00:00.000Z'),
+      ),
+    ).toBe(false);
+  });
+
+  function evaluate(
+    candidate: Partial<RetainedLicenseVersion>,
+    overrides: Partial<Parameters<typeof evaluateImportConflicts>[0]> = {},
+  ): ReturnType<typeof evaluateImportConflicts> {
+    const full = version(candidate);
+    return evaluateImportConflicts({
+      candidate: full,
+      operationId: full.operationId,
+      documentHash: full.documentHash,
+      supersession: { kind: 'none' },
+      versions: [],
+      at: NOW,
+      ...overrides,
+    });
+  }
+
+  it('refuses an explicit supersession that would rewrite the past', () => {
+    const governing = version(window('2026-01-01T00:00:00.000Z', null));
+    const refused = evaluate(window('2026-05-01T00:00:00.000Z', null), {
+      versions: [governing],
+      supersession: { kind: 'explicit', operationId: governing.operationId },
+    });
+
+    expect(refused.conflict).toEqual({
+      reason: 'backdated-supersession',
+      overlapping: 0,
+    });
+    expect(refused.supersedes).toBeNull();
+
+    // The two neighbours stay allowed: a hand-over at the evaluation instant,
+    // and a correction of a target that had already ended.
+    const atOnce = evaluate(window('2026-06-01T00:00:00.000Z', null), {
+      versions: [governing],
+      supersession: { kind: 'explicit', operationId: governing.operationId },
+    });
+    expect(atOnce.conflict).toBeNull();
+    expect(atOnce.supersedes).toBe(governing);
+
+    const ended = version(
+      window('2026-01-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z'),
+    );
+    const correction = evaluate(window('2026-04-01T00:00:00.000Z', null), {
+      versions: [ended],
+      supersession: { kind: 'explicit', operationId: ended.operationId },
+    });
+    expect(correction.conflict).toBeNull();
+    expect(correction.supersedes).toBe(ended);
+  });
+
+  it('refuses a legacy code whose implicit replacement would rewrite the past', () => {
+    const governing = version(window('2026-01-01T00:00:00.000Z', null));
+    const refused = evaluate(window('2020-01-01T00:00:00.000Z', null), {
+      versions: [governing],
+      supersession: { kind: 'implicit' },
+    });
+
+    expect(refused.conflict).toEqual({
+      reason: 'backdated-supersession',
+      overlapping: 0,
+    });
+    expect(refused.supersedes).toBeNull();
   });
 });
 

@@ -114,8 +114,11 @@ model LicenseVersion {
   supersededAt          DateTime? @map("superseded_at") @db.Timestamptz(6)
   /// The instant FROM which this version no longer governs: the retiring
   /// successor's `valid_from`, so a future-dated renewal does not interrupt a
-  /// license that is still valid (PDR-11 §3.2, CF-1). Set together with
-  /// `superseded_at`; both null while the version was never retired.
+  /// license that is still valid (PDR-11 §3.2, CF-1). The import refuses a
+  /// hand-over that would remove governance this version already exercised
+  /// before the import instant (`backdated-supersession`, OQ-86) — a rule in
+  /// `evaluateImportConflicts`, deliberately NOT a database constraint. Set
+  /// together with `superseded_at`; both null while never retired.
   governsUntil          DateTime? @map("governs_until") @db.Timestamptz(6)
   supersededByVersionId String?   @map("superseded_by_version_id")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

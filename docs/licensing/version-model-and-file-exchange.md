@@ -139,7 +139,9 @@ import ──► retained (not yet effective | effective | expired)
     instant the successor takes over and not one instant longer. This is what
     makes a future-dated renewal importable *without* interrupting the license
     that is valid today (PDR-11 §3.2, CF-1). For an ordinary replacement the two
-    instants are different facts and are usually not equal.
+    instants are different facts and are usually not equal. It is bounded by the
+    import rule below: a hand-over that would remove governance the predecessor
+    already exercised before the import is refused (§3.3, OQ-86).
   - Both are set together or not at all (enforced by a check constraint), and
     `superseded_by_version_id` names the successor.
   - A version is retired **at most once**: a second document naming an already
@@ -201,6 +203,29 @@ import ──► retained (not yet effective | effective | expired)
   legacy code cannot express *which* version it replaces, so it may replace at
   most one still-governing version that has no recorded supersession; anything
   else is refused rather than guessed.
+- **A supersession may not hand over in the past.** The hand-over is the
+  candidate's own `validFrom`, so retiring a version at an instant that is
+  already past removes coverage that version really had, and the as-of answer
+  for that instant would silently change. `evaluateImportConflicts` therefore
+  refuses a supersession whose hand-over would remove governance the target
+  already exercised before the import instant: `backdated-supersession`
+  (**422**, nothing written, the operation id stays unused so the document can
+  be re-issued). The predicate is `supersessionRewritesPastGovernance` — the
+  removed interval `[max(target.validFrom, min(candidate.validFrom,
+  currentEnd)), min(currentEnd, at))`, with `currentEnd` the target's effective
+  end before the stamp. Two neighbours stay allowed and move no recorded window:
+  a hand-over **at or after** the import instant (the predecessor keeps
+  governing until then), and a target that had **already ended** by its own
+  `validUntil` (the stamp records the supersession, the effective window does
+  not move) — the correction of an expired or scheduled version described above.
+  Consequences of the same rule, to be decided together by the Owner (**OQ-86**):
+  a legacy `VLIC1` code can no longer replace a version that still governs (its
+  L-02 default window starts in 2020, and the L-02 lifecycle gate refuses a code
+  whose window has not started), while a legacy renewal still works as
+  *adjacency* — the code starts at or after the end of the version it follows and
+  nothing is superseded. Documents that retire nothing are untouched: a past
+  start on a first license or a gap-filling renewal stays importable and the gap
+  behaviour above is unchanged.
 - A **gap** is allowed. During it the installation is inactive with
   `inactiveReason: expired` (rule 4 above) — nothing is extended and no policy is
   invented.
@@ -283,8 +308,8 @@ code: the read would be stale by the time the write commits.
 | 6 | Installation binding: `installationId` is this installation's identity | `installation-mismatch` |
 | 7 | Document semantics: interval, limits, entitlements, status `ACTIVE`, document not already expired at `now` | `validity`, `limits`, `entitlements`, `not-active`, `expired-document` |
 | 8 | Replay: `operationId` (and artifact hash) already applied on this installation | `duplicate-operation` (409, no state change) |
-| 9 | Version conflicts: overlap without explicit supersession, unknown/already-retired supersession target | `overlapping-range`, `unknown-supersession` (409, no state change) |
-| 10 | Persist: ONE transaction that **first locks the installation row and re-runs stages 8–9 under the lock** (§3.4), then customer upsert, license upsert, version + entitlements insert, supersession stamps, audit event | `duplicate-operation`, `overlapping-range`, `unknown-supersession` (409, no state change) |
+| 9 | Version conflicts: overlap without explicit supersession, unknown/already-retired supersession target, supersession that would hand over before the import instant | `overlapping-range`, `unknown-supersession` (409, no state change); `backdated-supersession` (422, no state change; OQ-86) |
+| 10 | Persist: ONE transaction that **first locks the installation row and re-runs stages 8–9 under the lock** (§3.4), then customer upsert, license upsert, version + entitlements insert, supersession stamps, audit event | `duplicate-operation`, `overlapping-range`, `unknown-supersession` (409, no state change); `backdated-supersession` (422, no state change) |
 
 Stages 8 and 9 share one implementation between the read-side pass and the
 in-transaction pass, so the two cannot drift apart: the pre-check is an early,

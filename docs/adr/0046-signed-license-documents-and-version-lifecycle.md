@@ -135,6 +135,21 @@ protection and migration before any code changes (G-10, AR-29).
   (deterministic defensive path, logged). Evaluation at the present and the
   future is exact, and every import after the correction satisfies the
   disjoint-window invariant by construction.
+  *Addendum (2026-10-11, Product-Owner temporal directive):* "by construction"
+  is now enforced for the past too. An import whose supersession would remove
+  governance the retired version already exercised before the import instant is
+  refused (`backdated-supersession`, 422, nothing written, operation id not
+  retained) by the same conflict authority, on both passes; a hand-over at or
+  after the import instant, and a correction of a version that had already ended
+  (its `valid_until` pins its window, so the stamp shortens nothing), stay
+  allowed. No schema change and therefore no migration: the rule is
+  `supersessionRewritesPastGovernance`, evaluated inside
+  `evaluateImportConflicts`. Whether the Owner may authorise retroactive
+  documents — and what tolerance applies at the import instant — is not decided
+  by PDR-11 §3.2/§3.4 and is registered as **OQ-86**; this refusal is the
+  interim fail-closed behaviour. The legacy `VLIC1` replacement of a
+  still-governing version falls under the same rule and is part of that
+  question.
 - `POST /api/v1/license/activate` keeps working for existing automation; the new
   `POST /api/v1/license/import` is the documented path for signed files and text.
 - Evaluation becomes date-driven; expiry, suspension and the

@@ -297,21 +297,40 @@ describe('Installation identity and license activation (e2e)', () => {
     });
   });
 
-  it('replaces a valid license with another valid one and keeps the history', async () => {
+  it('refuses a backdated replacement of a valid license and keeps the history', async () => {
     const id = await installationId();
     await activate(issue({ installationId: id, organizationLimit: 1 })).expect(
       200,
     );
-    const replaced = await activate(
+    const refused = await activate(
       issue({ installationId: id, organizationLimit: 7 }),
-    ).expect(200);
+    ).expect(422);
 
-    expect(replaced.body).toMatchObject({
-      changed: true,
-      organizationLimit: 7,
+    // A second code cannot take over from the version that governs now without
+    // rewriting which version governed before it was imported (OQ-86): the
+    // refusal writes nothing, and the retained history is exactly the one
+    // version that is in force. The renewal shapes that remain — a code
+    // starting at the end of the version it follows, and the signed transport —
+    // are covered on a pinned clock in `license-import.service.spec.ts`.
+    expect(refused.body).toMatchObject({ code: 'BusinessRuleViolation' });
+    expect(refused.body.details).toMatchObject({
+      reason: 'backdated-supersession',
     });
-    expect(licensing.versions).toHaveLength(2);
-    expect(licensing.versions[0]?.supersededAt).not.toBeNull();
+    expect(String(refused.body.message)).toMatch(/already in the past/);
+    expect(licensing.versions).toHaveLength(1);
+    expect(licensing.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+    });
+    await agent
+      .get('/api/v1/license/current')
+      .expect(200)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          active: true,
+          organizationLimit: 1,
+        });
+      });
   });
 
   // -- F, G, H, I, J, K, L, M: every rejection path

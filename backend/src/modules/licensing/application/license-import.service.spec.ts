@@ -13,7 +13,10 @@ import {
   createLicensingStores,
   type LicensingStores,
 } from '../../../../test/support/licensing-repositories.js';
-import { resolveEffectiveVersion } from '../domain/license-version.js';
+import {
+  effectiveWindow,
+  resolveEffectiveVersion,
+} from '../domain/license-version.js';
 import { InstallationIdentityService } from './installation-identity.service.js';
 import { LicenseImportService } from './license-import.service.js';
 import { LicensingService } from './licensing.service.js';
@@ -233,43 +236,6 @@ describe('license import pipeline', () => {
     );
   });
 
-  it('applies an explicit signed supersession and retires the previous version', async () => {
-    const first = issueLicenseFile(
-      {
-        installationId: INSTALLATION,
-        validFrom: new Date('2026-01-01T00:00:00.000Z'),
-      },
-      AUTHORITY.privateKey,
-    );
-    await harness.service.importDocument(first.file);
-
-    const correction = issueLicenseFile(
-      {
-        installationId: INSTALLATION,
-        validFrom: new Date('2026-01-01T00:00:00.000Z'),
-        organizationLimit: 9,
-        supersedesOperationId: first.payload.operationId,
-      },
-      AUTHORITY.privateKey,
-    );
-    const result = await harness.service.importDocument(correction.file);
-
-    expect(result).toMatchObject({
-      outcome: 'APPLIED',
-      license: { organizationLimit: 9 },
-    });
-    expect(harness.stores.versions).toHaveLength(2);
-    expect(harness.stores.versions[0]?.supersededAt).not.toBeNull();
-    expect(harness.stores.versions[0]?.supersededByVersionId).toBe(
-      harness.stores.versions[1]?.versionId,
-    );
-    expect(harness.stores.auditEvents.map((event) => event.eventType)).toEqual([
-      'license.import.applied',
-      'license.version.superseded',
-      'license.import.applied',
-    ]);
-  });
-
   it('rejects an overlap that has no explicit supersession and writes nothing', async () => {
     await harness.service.importDocument(issuedFile());
 
@@ -478,7 +444,7 @@ describe('license import pipeline', () => {
     expect(denied.stores.auditEvents).toHaveLength(0);
   });
 
-  it('accepts a legacy code, keeps it idempotent and replaces the governing version', async () => {
+  it('accepts a legacy code and keeps it idempotent', async () => {
     const first = issueLicenseCode(
       { installationId: INSTALLATION, organizationLimit: 2 },
       AUTHORITY.privateKey,
@@ -500,19 +466,34 @@ describe('license import pipeline', () => {
       eventType: 'license.import.unchanged',
       outcome: 'UNCHANGED',
     });
+  });
+
+  it('refuses a legacy replacement while the version it overlaps still governs', async () => {
+    const first = issueLicenseCode(
+      { installationId: INSTALLATION, organizationLimit: 2 },
+      AUTHORITY.privateKey,
+    ).code;
+    await harness.service.importDocument(first);
 
     const replacement = issueLicenseCode(
       { installationId: INSTALLATION, organizationLimit: 7 },
       AUTHORITY.privateKey,
     ).code;
-    const replaced = await harness.service.importDocument(replacement);
+    const rejection = await rejectionOf(
+      harness.service.importDocument(replacement),
+    );
 
-    expect(replaced).toMatchObject({
-      changed: true,
-      license: { organizationLimit: 7 },
+    // A code issued with a start in the past cannot take over from the version
+    // that governs now without rewriting what governed then (design §3.3,
+    // OQ-86); the fake-clock suite pins the boundaries of that rule.
+    expect(rejection.status).toBe(422);
+    expect(rejection.message).toMatch(/already in the past/);
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
     });
-    expect(harness.stores.versions).toHaveLength(2);
-    expect(harness.stores.versions[0]?.supersededAt).not.toBeNull();
   });
 
   it('keeps the documented legacy rejections (not-yet-valid, expired, suspended)', async () => {
@@ -546,26 +527,6 @@ describe('license import pipeline', () => {
       (await rejectionOf(harness.service.importDocument(suspended))).message,
     ).toMatch(/suspended or revoked/);
     expect(harness.stores.versions).toHaveLength(0);
-  });
-
-  it('refuses to re-apply a retained but superseded legacy code', async () => {
-    const first = issueLicenseCode(
-      { installationId: INSTALLATION },
-      AUTHORITY.privateKey,
-    ).code;
-    const second = issueLicenseCode(
-      { installationId: INSTALLATION },
-      AUTHORITY.privateKey,
-    ).code;
-    await harness.service.importDocument(first);
-    await harness.service.importDocument(second);
-    expect(harness.stores.versions[0]?.supersededAt).not.toBeNull();
-
-    const rejection = await rejectionOf(harness.service.importDocument(first));
-
-    expect(rejection.status).toBe(409);
-    expect(rejection.message).toMatch(/no longer the version that governs/);
-    expect(harness.stores.versions).toHaveLength(2);
   });
 
   it('does not re-verify an already-retained version when the trust list changes', async () => {
@@ -864,5 +825,312 @@ describe('future-dated supersession', () => {
       versions[1]!.versionId,
       versions[2]!.versionId,
     ]);
+  });
+
+  it('applies a supersession whose hand-over is the import instant itself', async () => {
+    const predecessor = await importPredecessor();
+
+    const immediate = issueLicenseFile(
+      {
+        installationId: INSTALLATION,
+        validFrom: T0,
+        validUntil: new Date('2028-01-01T00:00:00.000Z'),
+        organizationLimit: 9,
+        supersedesOperationId: predecessor.operationId,
+      },
+      AUTHORITY.privateKey,
+    );
+    const result = await harness.service.importDocument(immediate.file);
+
+    // A hand-over AT the import instant takes nothing away from an instant
+    // that has already passed: it is the boundary the temporal rule allows.
+    expect(result).toMatchObject({
+      outcome: 'APPLIED',
+      license: { active: true, organizationLimit: 9 },
+    });
+    expect(harness.stores.versions).toHaveLength(2);
+    // Recorded at T0 and effective from T0. Both facts are the same instant
+    // here, and the predecessor governs up to T0 — not one instant less.
+    expect(harness.stores.versions[0]).toMatchObject({
+      supersededAt: T0,
+      governsUntil: T0,
+      supersededByVersionId: harness.stores.versions[1]?.versionId,
+    });
+    // One millisecond before T0 the predecessor still governs; at T0 the
+    // successor does (half-open hand-over).
+    await expect(
+      harness.licensing.current(new Date(T0.getTime() - 1)),
+    ).resolves.toMatchObject({ active: true, organizationLimit: 3 });
+    await expect(harness.licensing.current(T0)).resolves.toMatchObject({
+      active: true,
+      organizationLimit: 9,
+    });
+    expect(harness.stores.auditEvents.map((event) => event.eventType)).toEqual([
+      'license.import.applied',
+      'license.version.superseded',
+      'license.import.applied',
+    ]);
+  });
+
+  it('refuses a successor that would hand over before the import instant', async () => {
+    const predecessor = await importPredecessor();
+    const stateBefore = await harness.licensing.current(T0);
+    const historyBefore = await harness.provider.versionHistory(T0);
+    const auditBefore = harness.stores.auditEvents.length;
+
+    const backdated = issueLicenseFile(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date(T0.getTime() - 1),
+        validUntil: new Date('2028-01-01T00:00:00.000Z'),
+        organizationLimit: 9,
+        supersedesOperationId: predecessor.operationId,
+      },
+      AUTHORITY.privateKey,
+    );
+    const rejection = await rejectionOf(
+      harness.service.importDocument(backdated.file),
+    );
+
+    // Fail closed on the ambiguity (OQ-86): the predecessor really governed the
+    // instant one millisecond before the import, so the stamp is refused
+    // instead of rewriting which version governed then.
+    expect(rejection.status).toBe(422);
+    expect(rejection.code).toBe('BusinessRuleViolation');
+    expect(rejection.message).toMatch(/already in the past/);
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.versions[0]).toMatchObject({
+      versionId: predecessor.versionId,
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+
+    // Nothing was written: the predecessor keeps governing, no hand-over is
+    // scheduled, and only the rejection reaches the audit trail.
+    await expect(harness.licensing.current(T0)).resolves.toEqual(stateBefore);
+    await expect(harness.provider.versionHistory(T0)).resolves.toEqual(
+      historyBefore,
+    );
+    const auditAfter = harness.stores.auditEvents.slice(auditBefore);
+    expect(auditAfter.map((event) => event.eventType)).toEqual([
+      'license.import.rejected',
+    ]);
+    expect(auditAfter[0]).toMatchObject({
+      outcome: 'REJECTED',
+      reason: 'backdated-supersession',
+    });
+    // The refused operation id is not retained either: the Owner can re-issue
+    // the same document with a start that has not yet passed.
+    expect(
+      harness.stores.versions.some(
+        (version) => version.operationId === backdated.payload.operationId,
+      ),
+    ).toBe(false);
+    await expect(
+      harness.service.importDocument(
+        issueLicenseFile(
+          {
+            installationId: INSTALLATION,
+            operationId: backdated.payload.operationId,
+            validFrom: HANDOVER,
+            validUntil: new Date('2028-01-01T00:00:00.000Z'),
+            organizationLimit: 9,
+            supersedesOperationId: predecessor.operationId,
+          },
+          AUTHORITY.privateKey,
+        ).file,
+      ),
+    ).resolves.toMatchObject({ outcome: 'APPLIED' });
+  });
+
+  it('still accepts a correction of a version that had already ended', async () => {
+    // The rule protects instants that are already past; it is not a ban on
+    // every start in the past. A version that ended by its own `validUntil` has
+    // nothing left to take away, so the documented correction of an expired
+    // version stays importable and no effective window moves.
+    const ended = issueLicenseFile(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2026-03-01T00:00:00.000Z'),
+        organizationLimit: 3,
+      },
+      AUTHORITY.privateKey,
+    );
+    // It has to be landed while it is still valid (an ended document is refused
+    // at import), so the clock starts before its own end.
+    vi.setSystemTime(new Date('2026-01-15T00:00:00.000Z'));
+    await harness.service.importDocument(ended.file);
+    vi.setSystemTime(T0);
+
+    const windowsBefore = harness.stores.versions.map((version) => ({
+      versionId: version.versionId,
+      window: effectiveWindow(version),
+    }));
+
+    const correction = issueLicenseFile(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-04-01T00:00:00.000Z'),
+        organizationLimit: 5,
+        supersedesOperationId: ended.payload.operationId,
+      },
+      AUTHORITY.privateKey,
+    );
+    const result = await harness.service.importDocument(correction.file);
+
+    expect(result).toMatchObject({
+      outcome: 'APPLIED',
+      license: { active: true, organizationLimit: 5 },
+    });
+    expect(harness.stores.versions).toHaveLength(2);
+    // The stamp records the supersession without shortening anything: the
+    // retired version's effective window is byte-for-byte what it was.
+    expect(
+      harness.stores.versions.slice(0, 1).map((version) => ({
+        versionId: version.versionId,
+        window: effectiveWindow(version),
+      })),
+    ).toEqual(windowsBefore);
+    // The answer for the predecessor's own window is unchanged, the gap stays
+    // expired, and the correction governs from its declared (past) start.
+    await expect(
+      harness.licensing.current(new Date('2026-02-01T00:00:00.000Z')),
+    ).resolves.toMatchObject({ active: true, organizationLimit: 3 });
+    await expect(
+      harness.licensing.current(new Date('2026-03-15T00:00:00.000Z')),
+    ).resolves.toMatchObject({
+      licensed: true,
+      active: false,
+      inactiveReason: 'expired',
+    });
+    await expect(
+      harness.licensing.current(new Date('2026-04-15T00:00:00.000Z')),
+    ).resolves.toMatchObject({ active: true, organizationLimit: 5 });
+  });
+
+  it('refuses a backdated legacy code that would replace the governing version', async () => {
+    const first = issueLicenseCode(
+      // The L-02 default window: valid since 2020, open-ended.
+      { installationId: INSTALLATION, organizationLimit: 2 },
+      AUTHORITY.privateKey,
+    ).code;
+    await harness.service.importDocument(first);
+
+    const replacement = issueLicenseCode(
+      { installationId: INSTALLATION, organizationLimit: 7 },
+      AUTHORITY.privateKey,
+    ).code;
+    const rejection = await rejectionOf(
+      harness.service.importDocument(replacement),
+    );
+
+    // A legacy code carries no explicit start of its own here, and retiring the
+    // governing version in 2020 would erase what it really governed: refuse
+    // rather than guess which instant it should take over (OQ-80, OQ-86).
+    expect(rejection.status).toBe(422);
+    expect(rejection.message).toMatch(/already in the past/);
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+    await expect(harness.licensing.current(T0)).resolves.toMatchObject({
+      active: true,
+      organizationLimit: 2,
+    });
+  });
+
+  it('accepts a legacy renewal that starts where the version it follows ends', async () => {
+    // The legacy transport cannot express a start in the future (`not-yet-valid`
+    // still governs it) and must not rewrite the past, so the surviving L-02
+    // renewal is adjacency: the code starts exactly where the previous version
+    // ends. Nothing is superseded — the predecessor keeps the window it had.
+    const first = issueLicenseCode(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2026-03-01T00:00:00.000Z'),
+        organizationLimit: 2,
+      },
+      AUTHORITY.privateKey,
+    ).code;
+    vi.setSystemTime(new Date('2026-01-15T00:00:00.000Z'));
+    await harness.service.importDocument(first);
+    vi.setSystemTime(T0);
+
+    const renewal = issueLicenseCode(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-03-01T00:00:00.000Z'),
+        organizationLimit: 7,
+      },
+      AUTHORITY.privateKey,
+    ).code;
+    const applied = await harness.service.importDocument(renewal);
+
+    expect(applied).toMatchObject({
+      changed: true,
+      license: { active: true, organizationLimit: 7 },
+    });
+    expect(harness.stores.versions).toHaveLength(2);
+    // Adjacency is not an overlap: no supersession is recorded at all.
+    expect(harness.stores.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+    await expect(
+      harness.licensing.current(new Date('2026-02-01T00:00:00.000Z')),
+    ).resolves.toMatchObject({ active: true, organizationLimit: 2 });
+    await expect(harness.licensing.current(T0)).resolves.toMatchObject({
+      active: true,
+      organizationLimit: 7,
+    });
+
+    // The applied code is the governing version, so re-applying it is the
+    // documented no-op …
+    await expect(
+      harness.service.importDocument(renewal),
+    ).resolves.toMatchObject({ changed: false, outcome: 'UNCHANGED' });
+    // … and the code it followed is refused by its own end date, exactly as
+    // L-02 documented (the expiry gate precedes the replay gate).
+    const rejection = await rejectionOf(harness.service.importDocument(first));
+    expect(rejection.status).toBe(422);
+    expect(rejection.message).toMatch(/expired/);
+  });
+
+  it('refuses to re-apply a legacy code whose supersession has already taken effect', async () => {
+    const code = issueLicenseCode(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2030-01-01T00:00:00.000Z'),
+        organizationLimit: 2,
+      },
+      AUTHORITY.privateKey,
+    ).code;
+    await harness.service.importDocument(code);
+
+    // A retained, retired legacy row as a migration can leave it behind: the
+    // wire format cannot name a `legacy-code:` operation id in a signed
+    // document (`supersedesOperationId` is a ULID), so a supersession of a
+    // legacy version is recorded either by an earlier legacy replacement (the
+    // L-02 model) or by the backfill. Both instants are set, as the pair
+    // constraint requires, and the successor row is not part of this fixture.
+    const retained = harness.stores.versions[0]!;
+    retained.supersededAt = new Date('2026-02-01T00:00:00.000Z');
+    retained.governsUntil = new Date('2026-05-01T00:00:00.000Z');
+    retained.supersededByVersionId = null;
+
+    // The code's own window still covers T0, so the expiry gate lets it reach
+    // the replay gate — which refuses it: it is retained, but it no longer
+    // governs (the idempotent no-op is only honest for the governing version).
+    const rejection = await rejectionOf(harness.service.importDocument(code));
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(/no longer the version that governs/);
+    expect(harness.stores.versions).toHaveLength(1);
   });
 });

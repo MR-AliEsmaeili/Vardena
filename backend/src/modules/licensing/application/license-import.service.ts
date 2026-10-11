@@ -83,11 +83,17 @@ export type LicenseImportRejectionReason =
   | 'not-active'
   | 'expired-document'
   | 'not-yet-valid'
+  | 'backdated-supersession'
   | 'duplicate-operation'
   | 'overlapping-range'
   | 'unknown-supersession';
 
-/** 409 reasons: the document is authentic but conflicts with retained state. */
+/**
+ * 409 reasons: the document is authentic but conflicts with retained state.
+ * `backdated-supersession` is deliberately NOT here: like `expired-document`,
+ * the defect is in the document's own temporal window relative to the import,
+ * so it is answered 422 and the form asks for a re-issued document.
+ */
 const CONFLICT_REASONS: ReadonlySet<LicenseImportRejectionReason> = new Set([
   'duplicate-operation',
   'overlapping-range',
@@ -111,8 +117,9 @@ const CONFLICT_REASONS: ReadonlySet<LicenseImportRejectionReason> = new Set([
  *                       already has (never created here);
  *   7. semantics      — active status, window not already over;
  *   8. replay         — operation id (and artifact hash) not already applied;
- *   9. conflicts      — overlap only through an explicit signed supersession
- *                       (`evaluateImportConflicts`, the ONE authority);
+ *   9. conflicts      — overlap only through an explicit signed supersession,
+ *                       and never a supersession that would hand over in the
+ *                       past (`evaluateImportConflicts`, the ONE authority);
  *  10. persistence    — ONE transaction (customer, license, version,
  *                       entitlements, supersession stamps, audit event) that
  *                       RE-RUNS steps 8 and 9 under the per-installation
@@ -910,6 +917,8 @@ function documentConflictMessage(conflict: ImportConflict): string {
       return 'The license version this document retires is not a retained, eligible version of this installation.';
     case 'overlapping-range':
       return 'This license version overlaps a retained version. Issue a document that explicitly retires it, or a non-overlapping renewal.';
+    case 'backdated-supersession':
+      return 'This license version would retire the version it names from an instant that is already in the past, which would rewrite which version governed then. Issue the document with a start that has not yet passed, or after the version it retires has ended.';
   }
 }
 
@@ -922,6 +931,8 @@ function legacyConflictMessage(conflict: ImportConflict): string {
       return 'This license code cannot replace the version it overlaps.';
     case 'overlapping-range':
       return 'This license code overlaps more than one retained version, or a version that is already retired, and cannot be applied.';
+    case 'backdated-supersession':
+      return 'This license code would replace the current version from an instant that is already in the past, which would rewrite which version governed then. Start the code at or after the end of the version it follows, or retire that version with a signed document whose start has not yet passed.';
   }
 }
 
@@ -941,6 +952,13 @@ function conflictLostRaceMessage(
   }
   if (conflict.reason === 'unknown-supersession') {
     return 'The license version this document retires was superseded by a concurrent import.';
+  }
+  if (conflict.reason === 'backdated-supersession') {
+    // Not a race: the temporal rule is evaluated against the locked state, so
+    // this can only surface when the import instant moved past the hand-over.
+    return legacy
+      ? 'This license code would replace the current version from an instant that is already in the past, which would rewrite which version governed then. Start the code at or after the end of the version it follows, or retire that version with a signed document whose start has not yet passed.'
+      : 'This license version would retire the version it names from an instant that is already in the past, which would rewrite which version governed then. Issue the document with a start that has not yet passed, or after the version it retires has ended.';
   }
   return legacy
     ? 'This license code overlaps a retained version that a concurrent import changed, and cannot be applied.'
