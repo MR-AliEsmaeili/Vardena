@@ -1,5 +1,7 @@
 # Licensing architecture (L-01, L-02)
 
+> **Status note (2026-10-11).** This document describes the **implemented** licensing foundation (L-01, L-02). The Owner-approved licensing product requirements are recorded in [PDR-11](decisions/product/PDR-11-vardena-licensing-product-requirements.md), which is the product source of truth. Several approved requirements are not implemented yet, and some differ from the current foundation (for example, signed-file delivery, future-dated renewals, full revocation, and Owner-side administration). Those differences are listed in PDR-11 §19; they are not resolved here.
+
 ## Model
 
 `Customer → Installation → License → Entitlement → assignable Permission → Role → Organization Membership → Access`

@@ -1,6 +1,7 @@
 # ADR-0036: Persistent installation identity and local license activation
 
 - **Status:** Accepted for L-02 (extends ADR-0030; does not replace its model)
+- **Reconciliation note (2026-10-11):** The Owner-approved licensing product requirements are recorded in [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md). Several of them conflict with this ADR (for example: future-dated renewals, refusal of not-yet-valid licenses, text code vs. signed file as delivery, identity after reinstallation or restore, and session behavior under full revocation). See PDR-11 §19 (CF-1 to CF-12). This ADR's text is unchanged until the conflicts are decided through the ADR process. This file shares the number 0036 with `0036-legal-reporting-architecture.md` (PDR-11 §19, CF-14).
 - **Date:** 2026-10-01
 
 ## Context
