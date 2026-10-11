@@ -1190,3 +1190,4 @@ module" at runtime. See `docs/integrations.md` and ADR-0004.
 - **API:** authenticated `GET /api/v1/license/current` (non-secret evaluated installation state).
 - **Foundation only:** persisted records have no commercial activation/write API in L-01.
 - **Deferred:** CRM/commercial provider, billing, remote validation, signed offline files, hardware binding, and activation UI. See ADR-0030 and `docs/licensing-architecture.md`.
+- **Approved product requirements (not implemented):** [PDR-11](decisions/product/PDR-11-vardena-licensing-product-requirements.md) is the licensing product source of truth. It covers the Owner-side system, server replacement, client-device licensing, expiry, revocation, and signed-file exchange. Conflicts with the implemented foundation are listed in its §19.

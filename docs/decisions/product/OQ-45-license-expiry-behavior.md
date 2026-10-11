@@ -7,6 +7,8 @@
 - **Priority:** High · Blocks only the *enforcement* layer, not the license *foundation* (ADR-0030)
 - **Related docs:** PB-BASELINE §11.3, §12, §10.1; ADR-0030 (proposed foundation); PD-09, PD-12; MVP proposal category D; roadmap Stage 0/1, Stage 8; `docs/licensing-architecture.md`; frontend contract `docs/frontend/ux/document-editing-and-system-alerts.md` §4
 
+> **Cross-reference (2026-10-11, status unchanged).** [PDR-11](./PDR-11-vardena-licensing-product-requirements.md) §9 records the Owner-approved baseline for subscription expiry: the server enters a restricted mode that keeps System Administrator login, license/status viewing, viewing, backup, export, and valid renewal import, while normal new commercial operations stop. PDR-11 does **not** decide the Grace stage, the relation between restricted mode and Read-Only, or the module-by-module list. Those remain OPEN here (PDR-11 §15, PQ-1 and PQ-2; §19, CF-9). This record stays **Open**.
+
 ## Owner decision (2026-10-05) — Grace then Read-Only
 
 After license expiration / the applicable Grace period:

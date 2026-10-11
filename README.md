@@ -95,6 +95,7 @@ production deployment.
 - [STATE.md](STATE.md) — consolidated project state: repository/module inventory, task history, review status, risks
 - [docs/open-questions.md](docs/open-questions.md) — registered open questions
 - [docs/decisions/product/](docs/decisions/product/) — product/business decision records (OQ/PDR), incl. the 2026-10-05 governance re-baseline: OQ-54 document editing policy (edit until Accounting Post, then cancel/correct only), OQ-49 Report Builder scope, PDR-06 Initial Usable Product / V1 definition
+- [docs/decisions/product/PDR-11-vardena-licensing-product-requirements.md](docs/decisions/product/PDR-11-vardena-licensing-product-requirements.md) — **Vardena licensing product requirements** (Owner-approved source of truth, 2026-10-11; documentation only, not an implementation specification; open items and conflicts with existing licensing ADRs listed in §15 and §19). Implemented foundation: [docs/licensing-architecture.md](docs/licensing-architecture.md)
 - [docs/operations/backup-and-restore.md](docs/operations/backup-and-restore.md) — backup/restore/export operational policy (Business Export ≠ Disaster Recovery Backup; restore is admin-only via Runbook)
 - [docs/frontend/ux/document-editing-and-system-alerts.md](docs/frontend/ux/document-editing-and-system-alerts.md) — frontend UX contracts for document editing warnings, system alerts, Report Builder scope and license Grace/Read-Only
 - [docs/adr/](docs/adr/) — architecture decision records

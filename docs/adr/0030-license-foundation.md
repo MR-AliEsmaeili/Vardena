@@ -1,6 +1,7 @@
 # ADR-0030: Installation licensing precedes the RBAC capability catalog
 
 - **Status:** Accepted for L-01; extended by ADR-0036 (L-02: persistent installation identity, signed license codes, activation endpoint, `persistent` provider by default)
+- **Reconciliation note (2026-10-11):** The Owner-approved licensing product requirements are recorded in [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md). Some of them conflict with this ADR (see PDR-11 §19). This ADR's text is unchanged until the conflicts are decided through the ADR process.
 - **Date:** 2026-10-01
 
 ## Context
