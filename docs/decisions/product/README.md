@@ -56,7 +56,8 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 | [PDR-07](./PDR-07-inventory-pricing-sources-and-periodic-pricing-operation.md) | Inventory pricing sources, the periodic Pricing Operation, and the Accounting eligibility gate (OD-PRC-01…12, OD-VH-01, OD-DOC-01/02) | PDR | Decided (2026-10-06) | OQ-24 stays Open; opens OQ-70 / OQ-71 |
 | [PDR-08](./PDR-08-transfer-return-reversal-and-reverse-pricing-valuation.md) | Transfer / Purchase Return / Sales Return / Reversal / Reverse Pricing valuation (OD-TRF-01…09, OD-RET-01…07, OD-REV-01…08, OD-RVP-01…08, OD-PDP-01…05) | PDR | Decided (2026-10-06) | **Resolves OQ-67 and OQ-68**; OQ-70 / OQ-71 stay Open for their Accounting-side counterpart |
 | [PDR-09](./PDR-09-inventory-accounting-posting-boundary.md) | Inventory → Accounting posting boundary and Owner decisions (PO-01…PO-12; C-61) | PDR | Decided (2026-10-07) | Records approved boundaries; OQ-24/25/39/42/69/70/71/72 remain Open; no implementation authorized |
-| [PDR-11](./PDR-11-vardena-licensing-product-requirements.md) | Vardena licensing product requirements — canonical source of truth (server and client-device licensing, Owner-side administration, replacement, expiry, revocation, offline signed-file exchange) | PDR | Decided — approved product-requirements reference (2026-10-11); documentation only, not an implementation specification | Licensing design phase. OQ-45 and OQ-53 stay Open; open items in PDR-11 §15; conflicts with ADR-0030/ADR-0036 in PDR-11 §19 |
+| [PDR-11](./PDR-11-vardena-licensing-product-requirements.md) | Vardena licensing product requirements — canonical source of truth (server and client-device licensing, Owner-side administration, replacement, expiry, revocation, offline signed-file exchange) | PDR | Decided — approved product-requirements reference (2026-10-11); documentation only, not an implementation specification | Licensing design + first import slice (2026-10-11) OQ-45 and OQ-53 stay Open; open items in PDR-11 §15; conflicts with ADR-0030/ADR-0036 in PDR-11 §19 |
+| [PDR-10](./PDR-10-c62-inventory-accounting-posting-modes.md) | C-62 Inventory → Accounting posting modes (Owner-approved C62-OD-01…06; PDR-09 boundaries; no implementation authorized) | PDR | Decided (2026-10-08) — Owner-approved decision package recorded in the file; OQ-39/OQ-42/OQ-72 remain Open | Records approved C-62 decisions; index row added 2026-10-11 (PDR-11 §19, CF-15) |
 
 > **Numbering note (2026-10-02).** `OQ-62`, `OQ-63` and `OQ-64` are accounting /
 > migration questions that live only in the central registry
@@ -64,6 +65,13 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 > this directory. `OQ-65` is the next free id in the central registry and is a
 > product question, so its full record lives here.
 >
+> **Registry-only licensing rows (2026-10-11).** `OQ-74`…`OQ-85` are licensing
+> product/security questions registered in the central registry
+> ([`docs/open-questions.md`](../../open-questions.md)) only — they have no
+> record file in this directory, exactly like `OQ-62`…`OQ-64`. They exist so the
+> unresolved items of [PDR-11](./PDR-11-vardena-licensing-product-requirements.md)
+> §15 have stable identifiers; registering them decides nothing.
+
 > **PDR-01…PDR-04** are the first Product Decision Records created under the
 > `PDR-xx` convention above. Each one transcribes an explicit Owner decision
 > recorded on 2026-10-02 for the Inventory item master (candidate C-47); none of
@@ -94,8 +102,9 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 | ADR | Title | Status | Product relevance |
 |---|---|---|---|
 | [ADR-0029](../../adr/0029-machine-api-access-model.md) | Machine/API access model (API keys; OAuth2 deferred) | Proposed | Defines the licensed machine-access foundation (PD-35/PD-36) |
-| [ADR-0030](../../adr/0030-license-foundation.md) | License foundation (minimal, non-punitive, enforcement-off) | Proposed | Defines the MVP license foundation (PD-08/PD-09/PD-12) |
-| [ADR-0036 — installation identity and license activation](../../adr/0036-installation-identity-and-license-activation.md) | Persistent installation identity and local license activation (file name shares the number with the legal-reporting ADR-0036; see PDR-11 §19, CF-14) | Accepted for L-02 (per the file) | Implemented licensing foundation; conflicts with the approved requirements are listed in PDR-11 §19 |
+| [ADR-0030](../../adr/0030-license-foundation.md) | License foundation (minimal, non-punitive, enforcement-off) | Accepted for L-01; extended by ADR-0045/ADR-0046 (status per the file; index corrected 2026-10-11 — CF-13) | Defines the MVP license foundation (PD-08/PD-09/PD-12) |
+| [ADR-0045](../../adr/0045-installation-identity-and-license-activation.md) (filed as ADR-0036 until 2026-10-11) | Persistent installation identity and local license activation (renumbered; see PDR-11 §19 CF-14 and §19.4) | Accepted for L-02 (per the file) | Implemented licensing foundation; the conflicts recorded in PDR-11 §19 are reconciled in §19.4 |
+| [ADR-0046](../../adr/0046-signed-license-documents-and-version-lifecycle.md) | Signed license documents, retained license versions and deterministic effective-version resolution | Accepted for the first licensing implementation slice | Implements PDR-11 §3.2, §5.2, §11.3 and §12.4 for the server-license import path; open items stay in PDR-11 §15 |
 | [ADR-0041](../../adr/0041-synchronous-inventory-accounting-application-contract.md) | Synchronous Inventory → Accounting application contract | Accepted (PO-02) | Records the primary internal integration style; OQ-39 transaction/failure semantics remain open |
 
 ## Decision flow

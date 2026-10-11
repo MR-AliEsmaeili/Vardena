@@ -2,11 +2,12 @@
 
 - **Type:** PDR (Product Decision Record) · decision IDs: **none assigned**. This record is traced by section (§); see §18. No OQ, C, or ADR identifier was created by this record.
 - **Status:** **Decided — approved product-requirements reference** (Owner-approved, 2026-10-11). Documentation only. **This is not an implementation specification and not authorization to start coding.** Implementation requires a separate, explicit Product Owner instruction after technical design.
+- **Status update (2026-10-11, later the same day):** the Product Owner gave the explicit follow-up instruction — resolve §19, reconcile affected records, produce the technical design, and begin implementation with a tested first vertical slice. That work is recorded in §19.4, `docs/tasks/pdr-11-conflict-reconciliation.md`, [ADR-0045](../../adr/0045-installation-identity-and-license-activation.md) and [ADR-0046](../../adr/0046-signed-license-documents-and-version-lifecycle.md). §15 stays authoritative for what is *not* decided: the items it lists are now registered as OQ-74…OQ-85 and **nothing in §15 was converted into an approved decision**.
 - **Decided by:** Repository Owner / Product Owner, via the Owner-approved licensing brief of 2026-10-11. The brief itself is not stored in the repository; this record is its canonical transcription.
 - **Date:** 2026-10-11
 - **Language:** English, consistent with the other PDR and OQ records. Established technical terms are kept in English.
 - **Scope of this record:** the Vardena licensing product requirements. It does not change any ADR, any implemented behavior, or any other record. Conflicts with existing records are listed in §19 and are **not** resolved here.
-- **Companion records:** [`docs/licensing-architecture.md`](../../licensing-architecture.md) (implemented foundation, L-01/L-02) · [ADR-0030](../../adr/0030-license-foundation.md) · [ADR-0036 — installation identity and license activation](../../adr/0036-installation-identity-and-license-activation.md) · [OQ-45](./OQ-45-license-expiry-behavior.md) · [OQ-53](./OQ-53-disaster-recovery-and-restore.md) · [OQ-61](./OQ-61-crm-ticketing-timing-ownership.md) · [`docs/operations/backup-and-restore.md`](../../operations/backup-and-restore.md) · [PB-BASELINE v1](../../product/product-business-decision-baseline-v1.md) §10–§12.
+- **Companion records:** [`docs/licensing-architecture.md`](../../licensing-architecture.md) (implemented foundation, L-01/L-02) · [ADR-0030](../../adr/0030-license-foundation.md) · [ADR-0045 — installation identity and license activation](../../adr/0045-installation-identity-and-license-activation.md) (filed as ADR-0036 until the 2026-10-11 renumbering recorded in §19.4 and CF-14) · [OQ-45](./OQ-45-license-expiry-behavior.md) · [OQ-53](./OQ-53-disaster-recovery-and-restore.md) · [OQ-61](./OQ-61-crm-ticketing-timing-ownership.md) · [`docs/operations/backup-and-restore.md`](../../operations/backup-and-restore.md) · [PB-BASELINE v1](../../product/product-business-decision-baseline-v1.md) §10–§12.
 
 > **How to read this record.**
 >
@@ -634,6 +635,52 @@ Rows are traced by section, because no Owner decision IDs were assigned. **Statu
 | CF-22 | Branch rule AG-02 (`docs/<slug>` branch names) | The session branch is fixed to `arena/ecdc91f5-vardena`. | **Process note.** The documentation work is on the session branch, as the session rules require. |
 
 **19.3 Records changed in the same pull request.** Status annotations and cross-references only: this record; `docs/decisions/product/README.md`; `README.md`; `docs/licensing-architecture.md`; ADR-0030 and ADR-0036 (licensing) status notes; OQ-45 and OQ-53 cross-references; `docs/open-questions.md` reconciliation log; `docs/modules.md` licensing pointer; `STATE.md`. No decision text was rewritten.
+
+### 19.4 Post-PR #136 reconciliation addendum (2026-10-11)
+
+Recorded after the Product Owner's follow-up instruction (resolve §19, reconcile
+records, design, and implement the first slice). **No decision text in §1–§18 and
+no row of §19.2 was rewritten**; this addendum records what the follow-through
+did. The authoritative per-item matrix is
+`docs/tasks/pdr-11-conflict-reconciliation.md`.
+
+- **Settled by design and implemented (first slice):** CF-1, CF-2 (future-dated
+  documents are retained and take effect by date), CF-3 and CF-20 (signed files
+  are the primary transport; text is the same signed artifact; the owning
+  document no longer describes this as deferred), CF-8 for ordinary rotation
+  (verification happens at import only), CF-17 (conceptual-to-typed mapping).
+- **Settled as documentation/governance:** CF-13 (ADR-0030 index status
+  corrected), CF-14 (the licensing ADR-0036 is renumbered to **ADR-0045**; the
+  former path keeps a pointer; historical records are not rewritten), CF-15
+  (PDR-10 index row added), CF-16 (current-state addendum), CF-18 (open items
+  registered), CF-21 (stale lifecycle comments removed), CF-22 (session-branch
+  process note).
+- **Advanced but not finished:** CF-5 (import can never create or adopt an
+  installation identity — tested; restore semantics documented), CF-6 (id and
+  identity key are separated by design; the key is **not implemented**, blocked
+  by U-2 and U-9/PQ-3), CF-7 (the import pipeline revocation will reuse exists;
+  revocation itself is not implemented), CF-12 (duplicate semantics are defined
+  per operation type; the policy scope is open), CF-19 (issuance boundary fixed;
+  where the Owner-side system lives is open).
+- **Preserved as OPEN, now registered:** CF-4 and §10 recovery (OQ-78), CF-10
+  (unchanged: restore is not blocked by license state; revocation recovery is
+  OQ-78), CF-9 (OQ-45 unchanged), CF-11 (OQ-79; audit performed — no write path
+  can persist a non-`ACTIVE` status, so no lossy migration is needed or done).
+- **§15 registration:** U-1→OQ-74, U-5→OQ-75, U-6→OQ-76, U-7→OQ-77,
+  PQ-3→OQ-78, PQ-4→OQ-79, PQ-5→OQ-80, PQ-8→OQ-81, U-9→OQ-82 (server replacement)
+  and OQ-83 (device), PQ-6→OQ-83, PQ-9→OQ-84, PQ-7→OQ-85 (cross-referencing
+  OQ-61). U-2 stays a technical design item; U-3, U-4 and U-8 are answered for
+  the import path by ADR-0046 and `docs/licensing/version-model-and-file-exchange.md`.
+  PQ-1 and PQ-2 stay with **OQ-45**.
+- **Interim behaviours added by the design are technical, fail-closed choices,
+  not product decisions:** overlap is rejected unless the signed document
+  explicitly supersedes a named operation (OQ-80); duplicate handling differs by
+  operation type (OQ-81); gaps are allowed and reported as expired. Each is
+  documented in ADR-0046 and can be replaced by an Owner decision without a
+  data migration.
+- **Unchanged product policy:** no Grace/Read-Only enforcement, no revocation, no
+  installation identity key, no replacement workflow, no device licensing, no
+  Owner-side system, no test/training entitlements, no CRM/billing.
 
 ---
 
