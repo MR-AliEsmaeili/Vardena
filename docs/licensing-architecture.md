@@ -256,7 +256,11 @@ LICENSE_SIGNING_PRIVATE_KEY=<base64> npm run license:issue -- \
 `--file-out` writes the signed **file** (the primary transport). Without it the
 CLI prints the signed text document; `--legacy-code` still prints a `VLIC1`
 code for L-02 compatibility tests. `--operation`, `--supersedes` and
-`--key-id` cover operation identity, explicit supersession and key rotation.
+`--key-id` cover operation identity, explicit supersession and key rotation. A
+superseding document retires its target from its own `validFrom`, so it must
+start at or after the instant it is imported: pass a current or future
+`--valid-from` (the default start would be refused as `backdated-supersession`;
+see `docs/licensing/version-model-and-file-exchange.md` §3.3 and OQ-86).
 The installation id is printed by `npm run bootstrap:system-admin`, returned by
 `GET /api/v1/license/current`, and shown on the frontend license screen.
 
