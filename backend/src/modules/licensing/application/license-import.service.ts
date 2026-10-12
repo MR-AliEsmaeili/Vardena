@@ -1447,7 +1447,7 @@ function documentConflictMessage(conflict: ImportConflict): string {
     case 'renewal-gap':
       return 'This renewal would start after the license it renews has ended, leaving a gap in coverage. Issue the renewal to start at or before the end of the version it follows.';
     case 'reduction-requires-resolution':
-      return 'This version reduces the modules or capacity of the version it retires or takes over, and the reduction conflicts with current usage or the retained grant — the concrete limits, usage and entitlements are in the conflict details. Nothing was changed. A reduction may be applied only through the dedicated resolution operation, which requires its own permission and a recorded reason; closing an open end (a perpetual version handed over to a time-limited one) is never operator-resolvable and needs an explicit signed supersession that names the version.';
+      return 'This version reduces the modules or capacity of the version it retires or takes over, and the reduction conflicts with current usage or the retained grant — the concrete limits, usage and entitlements are in the conflict details. Nothing was changed. A reduction may be applied only through the dedicated resolution operation (its own permission, a recorded reason); an open end is never operator-resolvable.';
     case 'post-gap-recovery-requires-dedicated-operation':
       return "This license document carries a new license identity and would start after this installation's license coverage has already ended, which makes it a post-gap recovery. Post-gap recovery is permitted only through the dedicated recovery operation, which requires its own permission and a recorded reason. Nothing was changed.";
     case 'recovery-not-applicable':

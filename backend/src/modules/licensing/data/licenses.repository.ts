@@ -876,6 +876,12 @@ export class LicensesRepository {
    * Append one audit event. Rejections are recorded through a separate insert
    * (they never share the state-change transaction), and the caller treats a
    * logging failure as secondary to the rejection itself.
+   *
+   * The bounded columns (`reason` VarChar(60), `detail` VarChar(500)) are
+   * clamped here, not trusted to every call site: an audit event must never be
+   * LOST because its human detail ran long — the machine-readable facts
+   * (event type, outcome, ids, reason token) are the evidence, the detail is
+   * supplementary.
    */
   async recordAuditEvent(command: LicenseAuditEventCommand): Promise<void> {
     const client = await this.client();
@@ -891,8 +897,8 @@ export class LicensesRepository {
         actorId: command.actorId,
         source: command.source,
         documentHash: command.documentHash,
-        reason: command.reason,
-        detail: command.detail,
+        reason: clampText(command.reason, 60),
+        detail: clampText(command.detail, 500),
         previousCustomerId: command.previousCustomerId ?? null,
         newCustomerId: command.newCustomerId ?? null,
         previousLicenseId: command.previousLicenseId ?? null,
@@ -1162,4 +1168,10 @@ function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
     importedAt: row.importedAt,
     source: row.source as LicenseVersionSource,
   };
+}
+
+/** Clamp a bounded audit column: an event is never lost to a long detail. */
+function clampText(value: string | null, limit: number): string | null {
+  if (value === null || value.length <= limit) return value;
+  return value.slice(0, limit);
 }
