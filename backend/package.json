@@ -36,7 +36,8 @@
     "license:keygen": "node --enable-source-maps dist/issue-development-license.js --keygen",
     "license:issue": "node --enable-source-maps dist/issue-development-license.js",
     "prisma:format": "prisma format",
-    "prisma:validate": "prisma validate"
+    "prisma:validate": "prisma validate",
+    "openapi:dump": "node --enable-source-maps dist/tools/dump-openapi.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

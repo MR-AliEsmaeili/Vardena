@@ -300,3 +300,48 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+
+  # F-7: the committed generated TypeScript client must match the OpenAPI
+  # document produced by this checkout. The dump boots Nest far enough to
+  # collect DTO metadata; it does not listen on a port and does not query
+  # Postgres (DATABASE_URL is required only by config validation).
+  generated-api-client:
+    name: generated-api-client
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://vardena:unused@127.0.0.1:1/vardena_test
+      NODE_ENV: test
+      APP_VERSION: 0.0.0-dev
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Upgrade npm to v11
+        run: npm install -g npm@11
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci --no-audit --no-fund
+
+      - name: Prisma generate
+        working-directory: backend
+        run: npm run prisma:generate
+
+      - name: Build backend
+        working-directory: backend
+        run: npm run build
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Check generated API client is up to date
+        run: bash scripts/check-generated-api-client.sh

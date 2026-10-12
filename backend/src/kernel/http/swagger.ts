@@ -1,14 +1,20 @@
 import { INestApplication } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import type { OpenAPIObject } from '@nestjs/swagger';
 import type { AppConfig } from '../config/app-config.js';
 
 /**
  * OpenAPI setup (AR-26, ADR-0014). Backend DTOs are the contract source of
  * truth; the spec is generated from them and served at `/api/docs`
  * (`/api/docs-json` for codegen). Disabled in production by default.
+ *
+ * `buildOpenApiDocument` is the single source used by the live `/api/docs`
+ * UI and by `npm run openapi:dump` (F-7 generated-client drift check).
  */
-export function setupSwagger(app: INestApplication, config: AppConfig): void {
-  if (!config.swaggerEnabled) return;
+export function buildOpenApiDocument(
+  app: INestApplication,
+  config: AppConfig,
+): OpenAPIObject {
   const builder = new DocumentBuilder()
     .setTitle('Vardena API')
     .setDescription(
@@ -30,6 +36,11 @@ export function setupSwagger(app: INestApplication, config: AppConfig): void {
       },
       'cookie',
     );
-  const document = SwaggerModule.createDocument(app, builder.build());
+  return SwaggerModule.createDocument(app, builder.build());
+}
+
+export function setupSwagger(app: INestApplication, config: AppConfig): void {
+  if (!config.swaggerEnabled) return;
+  const document = buildOpenApiDocument(app, config);
   SwaggerModule.setup('docs', app, document, { useGlobalPrefix: true });
 }

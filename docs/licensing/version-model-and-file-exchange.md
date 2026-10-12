@@ -508,15 +508,13 @@ Backend (REST/OpenAPI, ADR-0014, AR-10/AR-21):
 | POST | `/api/v1/license/import` | `Licensing.License.Activate` | import a signed document (file envelope or text artifact) |
 | POST | `/api/v1/license/activate` | `Licensing.License.Activate` | L-02 compatibility alias for the same pipeline (text code) |
 
-Response DTO classes are declared for OpenAPI. The import response
-(`LicenseImportResultDto`: the evaluated state, `changed`, `outcome`, the bounded
-version history) is documented as a schema and checked against a real response by
-`license-import.e2e-spec.ts` ("documents the import response body …"); the generated
-client carries it, and `frontend/src/api/contracts.ts` fails to typecheck if the
-hand-written receipt drifts from it. `GET /license/current` and the activation
-alias still have no response schema (follow-up F-6 of the post-merge report). The
-request body carries exactly one field (`document`), so a client can never describe
-the license it wants.
+Response DTO classes are declared for OpenAPI. `GET /license/current` documents
+`LicenseStateDto`; `POST /license/import` and the L-02 `POST /license/activate`
+alias document `LicenseImportResultDto` (evaluated state plus `changed`/`outcome`).
+`license-import.e2e-spec.ts` and `license-openapi.contract.spec.ts` compare those
+schemas with the generated document; the frontend generated client is regenerated
+from a dumped OpenAPI document and gated in CI (F-7). The request body carries
+exactly one field (`document`), so a client can never describe the license it wants.
 
 Frontend (`features/licensing/`): the license stage keeps its single source
 (`GET /license/current`) and its rule that a successful POST is not an active

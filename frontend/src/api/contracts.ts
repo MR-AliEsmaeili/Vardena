@@ -76,17 +76,11 @@ export type EffectivePermissions = Schemas['EffectivePermissionsDto'];
 // ---------------------------------------------------------------------------
 // Licensing (ADR-0030 / ADR-0046)
 //
-// `LicenseStateController.current()` (`backend/src/modules/licensing/api/
-// license-state.controller.ts`) answers `GET /api/v1/license/current` with an
-// inline return type, not a decorated response DTO class (`@ApiOkResponse`
-// carries no `type`), so the generated OpenAPI document has no schema for it
-// — the same annotation-gap category already described above for
-// `NullableString`/`AccountStatement*`. `LicenseState` is therefore restored
-// VERBATIM from that controller's return type. The import receipt
-// (`POST /api/v1/license/import`) now has a generated response schema
-// (`LicenseImportResultDto`); the hand-written `LicenseImportResult` keeps its
-// narrower literal unions for the UI and is checked for compatibility against
-// that schema below, so a backend change fails `npm run typecheck`.
+// `GET /api/v1/license/current` documents `LicenseStateDto`; import and the
+// L-02 `POST /license/activate` alias document `LicenseImportResultDto`.
+// Hand-written `LicenseState` / `LicenseImportResult` keep narrower literal
+// unions for the UI and are checked for assignability against those schemas
+// below, so a backend rename or a stale generated client fails typecheck.
 //
 // The frontend imports licenses through that route only. It accepts BOTH the
 // signed file envelope / VLIC2 artifact and a legacy VLIC1 code, so the UI has
@@ -208,6 +202,10 @@ export interface LicenseImportResult extends LicenseState {
 type LicenseImportReceiptMatchesOpenApi =
   LicenseImportResult extends Schemas['LicenseImportResultDto'] ? true : never;
 export const LICENSE_IMPORT_RECEIPT_MATCHES_OPENAPI: LicenseImportReceiptMatchesOpenApi = true;
+
+type LicenseStateMatchesOpenApi =
+  LicenseState extends Schemas['LicenseStateDto'] ? true : never;
+export const LICENSE_STATE_MATCHES_OPENAPI: LicenseStateMatchesOpenApi = true;
 
 // ---------------------------------------------------------------------------
 // Organization

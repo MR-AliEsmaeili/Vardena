@@ -3434,20 +3434,6 @@ export interface components {
             version: string;
             checks: components["schemas"]["DatabaseCheckDto"];
         };
-        ActivateLicenseDto: {
-            /**
-             * @description The signed license code issued for this installation (VLIC1.<payload>.<signature>).
-             * @example VLIC1.eyJ2IjoxLC4uLn0.c2lnbmF0dXJl
-             */
-            code: string;
-        };
-        ImportLicenseDocumentDto: {
-            /**
-             * @description A signed license document: either the vardena-license file envelope or the bare VLIC2 artifact (legacy VLIC1 codes are accepted as well).
-             * @example {"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}
-             */
-            document: string;
-        };
         LicenseEntitlementDto: {
             /** @description Entitlement kind (module or feature). */
             kind: string;
@@ -3480,6 +3466,41 @@ export interface components {
             /** @enum {string} */
             source: "file" | "text" | "legacy-code";
         };
+        LicenseStateDto: {
+            /** @description Whether an installation license is evaluated. */
+            licensed: boolean;
+            /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
+            status: string;
+            /** @description True only while the license is active now. */
+            active: boolean;
+            /** @description Why the license is not active. */
+            inactiveReason: string | null;
+            installationId: string | null;
+            customerId: string | null;
+            licenseId: string | null;
+            /** Format: date-time */
+            validFrom: string | null;
+            /** Format: date-time */
+            validUntil: string | null;
+            organizationLimit: number | null;
+            userLimit: number | null;
+            entitlements: components["schemas"]["LicenseEntitlementDto"][];
+            /** @description The license provider that evaluated the state. */
+            provider: string;
+            /** @description The version that governs now. */
+            effectiveVersionId: string | null;
+            /** @description The earliest retained version that is not effective yet. */
+            scheduledVersion: components["schemas"]["LicenseVersionSummaryDto"] | null;
+            /** @description Bounded retained-version history, newest first. */
+            versions: components["schemas"]["LicenseVersionSummaryDto"][];
+        };
+        ActivateLicenseDto: {
+            /**
+             * @description The signed license code issued for this installation (VLIC1.<payload>.<signature>).
+             * @example VLIC1.eyJ2IjoxLC4uLn0.c2lnbmF0dXJl
+             */
+            code: string;
+        };
         LicenseImportResultDto: {
             /** @description Whether an installation license is evaluated. */
             licensed: boolean;
@@ -3511,6 +3532,13 @@ export interface components {
             changed: boolean;
             /** @enum {string} */
             outcome: "APPLIED" | "UNCHANGED";
+        };
+        ImportLicenseDocumentDto: {
+            /**
+             * @description A signed license document: either the vardena-license file envelope or the bare VLIC2 artifact (legacy VLIC1 codes are accepted as well).
+             * @example {"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}
+             */
+            document: string;
         };
         LoginRequestDto: {
             /**
@@ -8171,7 +8199,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LicenseStateDto"];
+                };
             };
             /** @description Not authenticated. */
             401: {
@@ -8195,12 +8225,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description The evaluated state after activation. */
+            /** @description The evaluated state after activation, with the same mutation receipt as import. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LicenseImportResultDto"];
+                };
             };
             /** @description Validation failed. */
             400: {
