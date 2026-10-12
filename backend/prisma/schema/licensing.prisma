@@ -188,6 +188,13 @@ model LicenseAuditEvent {
   previousCustomerId String? @map("previous_customer_id")
   /// The customer it is bound to AFTER that transfer; null on every other event.
   newCustomerId      String? @map("new_customer_id")
+  /// The license whose lapsed coverage a dedicated post-gap recovery follows
+  /// (OQ-87 Option B, PDR-13); null on every other event. A prior/current
+  /// license pair is the traceable history the Owner decision requires — and
+  /// a recovery never re-binds an identity, so this is context, not a
+  /// foreign key: a lapsed license id is retained forever, even if its rows
+  /// were ever removed.
+  previousLicenseId  String? @map("previous_license_id")
   occurredAt     DateTime @map("occurred_at") @db.Timestamptz(6)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)

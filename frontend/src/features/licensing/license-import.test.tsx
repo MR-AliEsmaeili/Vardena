@@ -437,6 +437,82 @@ describe('license import', () => {
     expect(screen.getByText(t.license.importSelectedFile)).toBeInTheDocument();
   });
 
+  it('explains a reduction conflict (L-04) with its own copy and keeps the file', async () => {
+    const backend = serveLicenseState(testUnlicensedLicenseState);
+    vi.mocked(licensingApi.importLicenseDocument).mockRejectedValueOnce(
+      new ApiError({
+        code: 'Conflict',
+        message: 'This version reduces the modules or capacity …',
+        status: 409,
+        correlationId: 'corr-reduction',
+        details: {
+          reason: 'reduction-requires-resolution',
+          reduction: {
+            predecessorVersionId: '01K7PREDECESSOR00000000000',
+            conflicts: [
+              { kind: 'organization-capacity', limit: 3, currentUsage: 5 },
+            ],
+          },
+        },
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+
+    await user.upload(
+      await screen.findByLabelText(t.license.importFileLabel),
+      licenseFile(),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t.license.importSubmit }),
+    );
+
+    // The reduction refusal names the dedicated resolution operation — never
+    // the backend's English message — and the selection is kept.
+    expect(
+      await screen.findByText(t.license.importReductionConflict),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(t.license.importConflict),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(t.license.importSelectedFile)).toBeInTheDocument();
+    void backend;
+  });
+
+  it('explains a post-gap refusal (OQ-87) as the dedicated recovery operation', async () => {
+    serveLicenseState(testUnlicensedLicenseState);
+    vi.mocked(licensingApi.importLicenseDocument).mockRejectedValueOnce(
+      new ApiError({
+        code: 'Conflict',
+        message: 'Post-gap recovery is permitted only …',
+        status: 409,
+        correlationId: 'corr-postgap',
+        details: {
+          reason: 'post-gap-recovery-requires-dedicated-operation',
+        },
+      }),
+    );
+    const user = userEvent.setup();
+
+    renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });
+
+    await user.upload(
+      await screen.findByLabelText(t.license.importFileLabel),
+      licenseFile(),
+    );
+    await user.click(
+      screen.getByRole('button', { name: t.license.importSubmit }),
+    );
+
+    expect(
+      await screen.findByText(t.license.importPostGapConflict),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(t.license.importConflict),
+    ).not.toBeInTheDocument();
+  });
+
   it('refuses an oversized file before any request is sent', async () => {
     const user = userEvent.setup();
     renderWithProviders(<AppRoutes />, { initialEntries: ['/app'] });

@@ -68,6 +68,77 @@ export class TransferLicenseCustomerDto {
 }
 
 /**
+ * The dedicated post-gap recovery request (Owner decision 2026-10-12, OQ-87
+ * Option B, PDR-13). Like the transfer: the body carries the signed document
+ * and the operator's reason — never a license id, a window or any other
+ * licensing fact, all of which are read from the verified payload.
+ */
+export class RecoverAfterGapDto {
+  @ApiProperty({
+    description:
+      'The signed license document that covers the lapsed window: the vardena-license file envelope or the bare VLIC2 artifact. A legacy VLIC1 text code cannot carry a recovery and is refused.',
+    example:
+      '{"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}',
+    maxLength: 65536,
+  })
+  @IsString()
+  @MinLength(1, { message: 'A license document is required.' })
+  @MaxLength(65536)
+  document!: string;
+
+  @ApiProperty({
+    description:
+      'Why coverage is being restored after a lapse. Recorded on the typed recovery audit event; required, because an unexplained recovery is not auditable.',
+    minLength: 3,
+    maxLength: 500,
+    example:
+      'Renewal order 2026-1182 arrived after the previous contract had already expired.',
+  })
+  @IsString()
+  @MinLength(3, {
+    message: 'A recovery reason of at least 3 characters is required.',
+  })
+  @MaxLength(500)
+  reason!: string;
+}
+
+/**
+ * The explicit reduction-resolution request (PDR-11 §8.6, L-04). The caller
+ * has already seen the explained conflicts on the refused import (409 with
+ * concrete limits, usage and entitlements); this operation applies the
+ * document WITH the operator's reasoned resolution of exactly those
+ * conflicts.
+ */
+export class ResolveReductionDto {
+  @ApiProperty({
+    description:
+      'The signed license document whose reduction conflicts with current usage or the retained grant: the vardena-license file envelope or the bare VLIC2 artifact.',
+    example:
+      '{"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}',
+    maxLength: 65536,
+  })
+  @IsString()
+  @MinLength(1, { message: 'A license document is required.' })
+  @MaxLength(65536)
+  document!: string;
+
+  @ApiProperty({
+    description:
+      'Why the capacity or entitlement reduction is being authorized. Recorded on the typed resolution audit event with the conflicts it authorized; required, because an unexplained reduction is not auditable.',
+    minLength: 3,
+    maxLength: 500,
+    example:
+      'Customer confirmed the user-count reduction; three unused seats were revoked before the new version applies.',
+  })
+  @IsString()
+  @MinLength(3, {
+    message: 'A resolution reason of at least 3 characters is required.',
+  })
+  @MaxLength(500)
+  reason!: string;
+}
+
+/**
  * Signed-document import (L-03). Like activation, the body carries exactly
  * ONE field: the document a client received. There is no way to post a status,
  * a limit, a validity window, a version or an entitlement — all of those are
@@ -283,4 +354,113 @@ export class LicenseCustomerTransferResultDto extends LicenseImportResultDto {
 
   @ApiProperty({ description: 'True when the transfer changed the binding.' })
   bindingChanged!: boolean;
+}
+
+/**
+ * One explained reduction conflict (PDR-11 §8.6). The explain contract is
+ * bounded on purpose: the machine-readable kind plus the numbers that make
+ * the conflict checkable — never unrelated installation or customer data.
+ */
+export class ReductionConflictDto {
+  @ApiProperty({
+    enum: [
+      'organization-capacity',
+      'user-capacity',
+      'entitlement-removed',
+      'open-end-closed',
+      'usage-unavailable',
+    ],
+    description:
+      'organization-capacity / user-capacity: the new limit is below current usage. entitlement-removed: the retired version grants an entitlement the new one does not. open-end-closed: a perpetual version would be handed over to a time-limited one (never operator-resolvable). usage-unavailable: current usage could not be counted, so the check fails closed.',
+  })
+  kind!:
+    | 'organization-capacity'
+    | 'user-capacity'
+    | 'entitlement-removed'
+    | 'open-end-closed'
+    | 'usage-unavailable';
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    required: false,
+    description: 'The new (lower) limit, for a capacity conflict.',
+  })
+  limit?: number;
+
+  @ApiProperty({
+    type: Number,
+    required: false,
+    description: 'Current counted usage the new limit would fall below.',
+  })
+  currentUsage?: number;
+
+  @ApiProperty({
+    type: () => ReductionConflictEntitlementDto,
+    nullable: true,
+    required: false,
+    description: 'The removed entitlement, for an entitlement conflict.',
+  })
+  entitlement?: ReductionConflictEntitlementDto | null;
+
+  @ApiProperty({
+    enum: ['organizations', 'active-users'],
+    nullable: true,
+    required: false,
+    description:
+      'Which count was unavailable, for a usage-unavailable conflict.',
+  })
+  scope?: 'organizations' | 'active-users' | null;
+}
+
+export class ReductionConflictEntitlementDto {
+  @ApiProperty({ description: 'Entitlement kind of the removed grant.' })
+  kind!: string;
+
+  @ApiProperty({ description: 'Entitlement code of the removed grant.' })
+  code!: string;
+}
+
+/**
+ * The receipt of `POST /api/v1/license/gap-recovery` (OQ-87 Option B,
+ * PDR-13): the import receipt plus the lapsed-license facts the transaction
+ * committed, from the same transaction as the typed
+ * `license.import.recovered` audit event.
+ */
+export class GapRecoveryResultDto extends LicenseImportResultDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The license whose retained coverage had ended before the recovery.',
+  })
+  lapsedLicenseId!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'When that coverage ended; the recovery started strictly after it (ISO instant).',
+  })
+  coverageEnd!: string | null;
+}
+
+/**
+ * The receipt of `POST /api/v1/license/reduction-resolution` (PDR-11 §8.6):
+ * the import receipt plus the conflicts the resolution authorized, recomputed
+ * inside the transaction under the locks — the same facts the typed
+ * `license.import.reduction-resolved` audit event records.
+ */
+export class ReductionResolutionResultDto extends LicenseImportResultDto {
+  @ApiProperty({
+    description:
+      'The version whose grant was reduced with explicit authorization.',
+  })
+  resolvedPredecessorVersionId!: string;
+
+  @ApiProperty({
+    type: [ReductionConflictDto],
+    description: 'The conflicts the resolution authorized.',
+  })
+  resolvedConflicts!: ReductionConflictDto[];
 }

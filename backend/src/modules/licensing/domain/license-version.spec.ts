@@ -613,16 +613,55 @@ describe('import conflict evaluation', () => {
         userLimit: 20,
         ...shrink,
       };
+      // §8.6 is a conflict with CURRENT USAGE: give the evaluation usage well
+      // above the shrunk limits so the refusal is the capacity/entitlement
+      // conflict itself, not the fail-closed absence of a count.
+      const usage = { organizationCount: 9, activeUserCount: 99 };
 
       for (const [path, overrides] of precedencePaths(predecessor)) {
         const result = evaluate(candidate, {
           versions: [predecessor],
+          usage,
           ...overrides,
         });
 
-        expect(result.conflict, path).toEqual({
+        expect(result.conflict, path).toMatchObject({
           reason: 'reduction-requires-resolution',
           overlapping: 1,
+        });
+        // The refusal EXPLAINS the conflict it preserves: which version would
+        // be reduced and the concrete conflict (L-04 explain contract). A
+        // removed entitlement is a conflict with the retained grant itself; a
+        // shrunk limit is a conflict with the counted usage.
+        expect(result.conflict, path).toMatchObject({
+          reduction:
+            _what === 'an entitlement'
+              ? {
+                  predecessorVersionId: predecessor.versionId,
+                  conflicts: [
+                    {
+                      kind: 'entitlement-removed',
+                      entitlement: { kind: 'MODULE', code: 'accounting' },
+                    },
+                  ],
+                }
+              : _what === 'organizationLimit'
+                ? {
+                    predecessorVersionId: predecessor.versionId,
+                    conflicts: [
+                      {
+                        kind: 'organization-capacity',
+                        limit: 4,
+                        currentUsage: 9,
+                      },
+                    ],
+                  }
+                : {
+                    predecessorVersionId: predecessor.versionId,
+                    conflicts: [
+                      { kind: 'user-capacity', limit: 19, currentUsage: 99 },
+                    ],
+                  },
         });
         // Nothing is retired: a refused import may not have taken the
         // predecessor over on any path.
@@ -645,7 +684,9 @@ describe('import conflict evaluation', () => {
     // Every dimension is evaluated on its own: a bigger organization limit and
     // a bigger user limit do not pay for a module the predecessor had, so the
     // whole document is refused and nothing is retired — even though the
-    // document explicitly names the version it supersedes.
+    // document explicitly names the version it supersedes. Usage is far below
+    // the grown limits, so the ONLY conflict is the removed entitlement: the
+    // retained grant is a conflict class of its own (L-04).
     const result = evaluate(
       {
         ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
@@ -657,6 +698,7 @@ describe('import conflict evaluation', () => {
       },
       {
         versions: [predecessor],
+        usage: { organizationCount: 1, activeUserCount: 1 },
         supersession: {
           kind: 'explicit',
           operationId: predecessor.operationId,
@@ -667,6 +709,15 @@ describe('import conflict evaluation', () => {
     expect(result.conflict).toEqual({
       reason: 'reduction-requires-resolution',
       overlapping: 1,
+      reduction: {
+        predecessorVersionId: predecessor.versionId,
+        conflicts: [
+          {
+            kind: 'entitlement-removed',
+            entitlement: { kind: 'MODULE', code: 'documents' },
+          },
+        ],
+      },
     });
     expect(result.supersedes).toBeNull();
   });
@@ -679,7 +730,9 @@ describe('import conflict evaluation', () => {
     });
 
     // A larger organization limit does not pay for a smaller user limit: the
-    // reduction is evaluated per dimension, not on a net total.
+    // reduction is evaluated per dimension, not on a net total. Usage sits
+    // between the two limits (3 < 6 organizations, 25 > 19 users), so the
+    // only conflict is the user dimension — with the concrete numbers (L-04).
     const result = evaluate(
       {
         ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
@@ -688,6 +741,7 @@ describe('import conflict evaluation', () => {
       },
       {
         versions: [predecessor],
+        usage: { organizationCount: 3, activeUserCount: 25 },
         supersession: {
           kind: 'explicit',
           operationId: predecessor.operationId,
@@ -698,8 +752,92 @@ describe('import conflict evaluation', () => {
     expect(result.conflict).toEqual({
       reason: 'reduction-requires-resolution',
       overlapping: 1,
+      reduction: {
+        predecessorVersionId: predecessor.versionId,
+        conflicts: [{ kind: 'user-capacity', limit: 19, currentUsage: 25 }],
+      },
     });
     expect(result.supersedes).toBeNull();
+  });
+
+  it('checks a shrunk limit against counted usage on every path (L-04)', () => {
+    const predecessor = version({
+      ...window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      userLimit: 20,
+    });
+    const shrunk = {
+      ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
+      organizationLimit: 4,
+      userLimit: 20,
+    };
+
+    for (const [path, overrides] of precedencePaths(predecessor)) {
+      // Current usage is WITHIN the new limit: the shrink is not a conflict
+      // with current usage, so it applies without any resolution (PDR-11 §8.6
+      // — the Must is a check against the resulting state, not a freeze).
+      const within = evaluate(shrunk, {
+        versions: [predecessor],
+        usage: { organizationCount: 4, activeUserCount: 20 },
+        ...overrides,
+      });
+      expect(within.conflict, `within: ${path}`).toBeNull();
+      expect(within.supersedes?.versionId, `within: ${path}`).toBe(
+        predecessor.versionId,
+      );
+
+      // One more organization than the new limit allows: a concrete conflict,
+      // explained with the limit and the counted usage.
+      const beyond = evaluate(shrunk, {
+        versions: [predecessor],
+        usage: { organizationCount: 5, activeUserCount: 20 },
+        ...overrides,
+      });
+      expect(beyond.conflict, `beyond: ${path}`).toMatchObject({
+        reason: 'reduction-requires-resolution',
+        reduction: {
+          predecessorVersionId: predecessor.versionId,
+          conflicts: [
+            { kind: 'organization-capacity', limit: 4, currentUsage: 5 },
+          ],
+        },
+      });
+      expect(beyond.supersedes, `beyond: ${path}`).toBeNull();
+
+      // The count is unavailable: fail closed — the shrink is refused as a
+      // conflict whose explain payload says WHICH count was unavailable,
+      // never as an unnoticed accept. (The shrunk dimension here is the user
+      // limit, so the missing active-user count is what fails closed.)
+      const unknown = evaluate(
+        { ...shrunk, userLimit: 19 },
+        {
+          versions: [predecessor],
+          usage: { organizationCount: 4, activeUserCount: null },
+          ...overrides,
+        },
+      );
+      expect(unknown.conflict, `unknown: ${path}`).toMatchObject({
+        reason: 'reduction-requires-resolution',
+        reduction: {
+          predecessorVersionId: predecessor.versionId,
+          conflicts: [{ kind: 'usage-unavailable', scope: 'active-users' }],
+        },
+      });
+
+      // No count was supplied at all (a caller that cannot reach the usage
+      // port): the same fail-closed decision, for every dimension.
+      const absent = evaluate(shrunk, {
+        versions: [predecessor],
+        ...overrides,
+      });
+      expect(absent.conflict, `absent: ${path}`).toMatchObject({
+        reason: 'reduction-requires-resolution',
+        reduction: {
+          predecessorVersionId: predecessor.versionId,
+          conflicts: [{ kind: 'usage-unavailable', scope: 'organizations' }],
+        },
+      });
+    }
   });
 
   it('still applies a hand-over that keeps or grows the retained grant, on every path', () => {
@@ -755,7 +893,10 @@ describe('import conflict evaluation', () => {
     };
 
     // The retirement itself is not named by the document here, so ending an
-    // open end is a reduction of the retained grant and fails closed.
+    // open end is a reduction of the retained grant and fails closed. The
+    // explain payload names the open-end conflict — which NO operator
+    // resolution may authorize (PDR-12: only an explicit signed supersession
+    // may close an open end).
     for (const [path, overrides] of [
       ['implicit precedence', { supersession: { kind: 'none' as const } }],
       [
@@ -771,6 +912,10 @@ describe('import conflict evaluation', () => {
       expect(result.conflict, path).toEqual({
         reason: 'reduction-requires-resolution',
         overlapping: 1,
+        reduction: {
+          predecessorVersionId: perpetual.versionId,
+          conflicts: [{ kind: 'open-end-closed' }],
+        },
       });
       expect(result.supersedes, path).toBeNull();
     }
@@ -801,17 +946,25 @@ describe('import conflict evaluation', () => {
     }
 
     // The exception is the term only: on the SAME path a capacity reduction is
-    // still refused, so naming the version does not buy a smaller grant.
+    // still refused when current usage exceeds the new limit, so naming the
+    // version does not buy a smaller grant.
     const reduced = evaluate(
       { ...closing, organizationLimit: 4, userLimit: 20 },
       {
         versions: [perpetual],
+        usage: { organizationCount: 5, activeUserCount: 20 },
         supersession: { kind: 'explicit', operationId: perpetual.operationId },
       },
     );
     expect(reduced.conflict).toEqual({
       reason: 'reduction-requires-resolution',
       overlapping: 1,
+      reduction: {
+        predecessorVersionId: perpetual.versionId,
+        conflicts: [
+          { kind: 'organization-capacity', limit: 4, currentUsage: 5 },
+        ],
+      },
     });
     expect(reduced.supersedes).toBeNull();
 
@@ -875,12 +1028,30 @@ describe('import conflict evaluation', () => {
     ).toBe('renewal-gap');
 
     // Another license identifier: this is not a renewal of the retained one.
-    // Whether a new identity may cover a lapse is an Owner question that is
-    // still open (OQ-87) — no rule here refuses it, and none grants it.
+    // The candidate starts AFTER the retained coverage has ended, so it is a
+    // post-gap recovery candidate — and since the Owner decision of
+    // 2026-10-12 (OQ-87 Option B, PDR-13) the ordinary import is NOT a
+    // permitted post-gap recovery path: refused with a stable 409 that points
+    // at the dedicated, permission-gated recovery operation.
     expect(
       evaluate(
         {
           ...window('2028-01-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z'),
+          licenseId: '01K7ANOTHERLICENSE000000000',
+        },
+        { versions: [first] },
+      ).conflict,
+    ).toEqual({
+      reason: 'post-gap-recovery-requires-dedicated-operation',
+      overlapping: 0,
+    });
+
+    // While coverage has NOT ended, a new identity is an ordinary import (the
+    // overlap rules decide); no recovery intent is involved.
+    expect(
+      evaluate(
+        {
+          ...window('2026-07-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z'),
           licenseId: '01K7ANOTHERLICENSE000000000',
         },
         { versions: [first] },
@@ -948,7 +1119,11 @@ describe('import conflict evaluation', () => {
     ).toEqual({ reason: 'overlapping-range', overlapping: 1 });
 
     // In its retained tail (after the hand-over): no historical governance is
-    // touched, so it is an ordinary import.
+    // touched, so the overlap rules do not refuse it. But the candidate is a
+    // NEW identity that starts after the last governance this history can
+    // prove ended (the retired version's hand-over instant), so the OQ-87
+    // decision (Option B, PDR-13) applies: the ordinary import is not a
+    // post-gap recovery path — the dedicated recovery operation is.
     expect(
       evaluate(
         {
@@ -957,7 +1132,19 @@ describe('import conflict evaluation', () => {
         },
         { versions: [retired] },
       ).conflict,
-    ).toBeNull();
+    ).toEqual({
+      reason: 'post-gap-recovery-requires-dedicated-operation',
+      overlapping: 0,
+    });
+
+    // The retained tail still protects a SAME-license successor from being an
+    // ordinary import too: a renewal that starts after the hand-over has
+    // already left a governance gap, which OQ-80 G2 refuses.
+    expect(
+      evaluate(window('2026-10-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'), {
+        versions: [retired],
+      }).conflict?.reason,
+    ).toBe('renewal-gap');
   });
 
   it('resolves an explicit signed supersession by operation id', () => {
@@ -1033,7 +1220,7 @@ describe('import conflict evaluation', () => {
     // way a signed document does, so the open end stays protected here exactly
     // as it is for the implicit hand-over (OD-LIC-01: the exception is the
     // explicit signed path only). Its capacity is unchanged, so the refusal can
-    // only be the term.
+    // only be the term — explained as the open-end conflict it is.
     const result = evaluate(
       {
         ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
@@ -1046,6 +1233,10 @@ describe('import conflict evaluation', () => {
     expect(result.conflict).toEqual({
       reason: 'reduction-requires-resolution',
       overlapping: 1,
+      reduction: {
+        predecessorVersionId: perpetual.versionId,
+        conflicts: [{ kind: 'open-end-closed' }],
+      },
     });
     expect(result.supersedes).toBeNull();
 

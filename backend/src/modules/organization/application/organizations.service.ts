@@ -655,6 +655,18 @@ export class OrganizationsService {
     return toOrganizationDto(updated);
   }
 
+  /**
+   * How many organizations exist, for the licensing module's capacity-conflict
+   * check (PDR-11 §8.6, L-04). Cross-module internal contract (AR-07): carries
+   * no permission of its own, exactly like the `requireUsable*` methods — the
+   * calling operation has already performed its own authorization — and counts
+   * through THIS module's repository (`countAll()`), the exact count the
+   * creation guard enforces.
+   */
+  async countLicensedOrganizations(): Promise<number> {
+    return this.repository.countAll();
+  }
+
   private async mustFind(id: string): Promise<Organization> {
     await this.assertOrganizationInScope(id);
     const organization = await this.repository.findById(id);

@@ -49,13 +49,18 @@ import {
   evaluateImportConflicts,
   resolveEffectiveVersion,
   type CustomerTransferIntent,
+  type GapRecoveryIntent,
   type ImportCandidate,
   type ImportConflict,
   type ImportSupersessionIntent,
+  type LicenseUsageSnapshot,
   type LicenseVersionSource,
+  type ReductionConflict,
+  type ReductionResolutionIntent,
   type RetainedLicenseVersion,
 } from '../domain/license-version.js';
 import { LICENSING_PERMISSIONS } from '../domain/licensing-permissions.js';
+import { LICENSE_USAGE_PORT, type LicenseUsagePort } from './license-usage.js';
 import { InstallationIdentityService } from './installation-identity.service.js';
 import { LicensingService } from './licensing.service.js';
 import { PERSISTENT_LICENSE_PROVIDER_NAME } from './persistent-license.provider.js';
@@ -90,23 +95,67 @@ export interface LicenseCustomerTransferResult extends LicenseImportResult {
 }
 
 /**
- * What the pipeline returns: the public import result plus the two facts the
- * transfer receipt needs — both read from the transaction that wrote them.
+ * The receipt of the dedicated post-gap recovery (Owner decision 2026-10-12,
+ * OQ-87 Option B, PDR-13). The lapse facts are read from the same transaction
+ * that wrote the typed `license.import.recovered` event, so the receipt can
+ * never disagree with the audit trail.
+ */
+export interface LicenseGapRecoveryResult extends LicenseImportResult {
+  /** The license whose retained coverage had ended before the recovery. */
+  lapsedLicenseId: string | null;
+  /** When that coverage ended; the recovery starts strictly after it. */
+  coverageEnd: string | null;
+}
+
+/**
+ * The receipt of an explicit reduction resolution (PDR-11 §8.6, L-04). The
+ * resolved conflicts are the ones the importing transaction recomputed under
+ * the installation and allocation locks — exactly what the typed
+ * `license.import.reduction-resolved` audit event records.
+ */
+export interface LicenseReductionResolutionResult extends LicenseImportResult {
+  /** The version whose grant was reduced with explicit authorization. */
+  resolvedPredecessorVersionId: string;
+  /** The conflicts the resolution authorized (machine-readable kinds). */
+  resolvedConflicts: ReductionConflict[];
+}
+
+/**
+ * What the pipeline returns: the public import result plus the facts each
+ * dedicated operation's receipt needs — all read from the transaction that
+ * wrote them.
  */
 interface LicenseImportExecution extends LicenseImportResult {
   previousCustomerId: string | null;
   bindingChanged: boolean;
+  /** Set when this transaction WAS the dedicated gap recovery. */
+  recovery: ImportVersionResult['recovery'];
+  /** Set when this transaction WAS a reduction resolution. */
+  resolution: ImportVersionResult['resolution'];
 }
 
 /**
- * Caller-supplied intent of an import. `customerTransfer` is set ONLY by the
- * dedicated transfer operation, which requires its own permission: without it
- * an import whose customer differs from the installation's binding is refused
- * (`installation-customer-mismatch`), so a document can never move an
- * installation between customers on its own.
+ * Caller-supplied intent of an import. Every intent is set ONLY by its
+ * dedicated operation, each of which requires its own permission on top of
+ * `Licensing.License.Activate`:
+ *
+ * - `customerTransfer` — the explicit installation customer transfer (Q4);
+ *   without it an import whose customer differs from the installation's
+ *   binding is refused (`installation-customer-mismatch`).
+ * - `gapRecovery` — the dedicated post-gap recovery (OQ-87 Option B, PDR-13);
+ *   without it a new-identity candidate that would start after the retained
+ *   coverage end is refused
+ *   (`post-gap-recovery-requires-dedicated-operation`), so ordinary import is
+ *   never a post-gap recovery path.
+ * - `reductionResolution` — the explicit reduction resolution (PDR-11 §8.6,
+ *   L-04); without it a reduction that conflicts with current usage or the
+ *   retained grant is refused with its concrete conflicts. A document, a
+ *   retry or a supersession name is never this resolution.
  */
 export interface LicenseImportOptions {
   customerTransfer?: CustomerTransferIntent | null;
+  gapRecovery?: GapRecoveryIntent | null;
+  reductionResolution?: ReductionResolutionIntent | null;
 }
 
 /**
@@ -130,8 +179,13 @@ export type LicenseImportRejectionReason =
   | 'installation-customer-mismatch'
   | 'transfer-not-applicable'
   | 'transfer-requires-signed-document'
+  | 'resolution-requires-signed-document'
   | 'renewal-gap'
-  | 'reduction-requires-resolution';
+  | 'reduction-requires-resolution'
+  | 'post-gap-recovery-requires-dedicated-operation'
+  | 'recovery-not-applicable'
+  | 'resolution-not-applicable'
+  | 'recovery-requires-signed-document';
 
 /**
  * 409 reasons: the document is authentic but conflicts with retained state.
@@ -142,9 +196,13 @@ export type LicenseImportRejectionReason =
  * `installation-customer-mismatch`, `transfer-not-applicable`, `renewal-gap`
  * and `reduction-requires-resolution` joined the family with the Owner
  * decisions of 2026-10-12 (Q4, OQ-80 G2, OQ-80 Option B with PDR-11 §8.6).
- * `transfer-requires-signed-document` is the document-level sibling: the
- * legacy text artifact cannot express a customer transfer, so the fix is a
- * signed document.
+ * `post-gap-recovery-requires-dedicated-operation`, `recovery-not-applicable`
+ * and `resolution-not-applicable` carry the OQ-87 Option B decision (PDR-13)
+ * and the L-04 resolution flow of the same date.
+ * `transfer-requires-signed-document` and `recovery-requires-signed-document`
+ * are the document-level siblings: the legacy text artifact can express
+ * neither a customer transfer nor a recovery, so the fix is a signed
+ * document (422).
  */
 const CONFLICT_REASONS: ReadonlySet<LicenseImportRejectionReason> = new Set([
   'duplicate-operation',
@@ -155,6 +213,9 @@ const CONFLICT_REASONS: ReadonlySet<LicenseImportRejectionReason> = new Set([
   'transfer-not-applicable',
   'renewal-gap',
   'reduction-requires-resolution',
+  'post-gap-recovery-requires-dedicated-operation',
+  'recovery-not-applicable',
+  'resolution-not-applicable',
 ]);
 
 /**
@@ -212,6 +273,7 @@ export class LicenseImportService {
     private readonly identity: InstallationIdentityService,
     private readonly licenses: LicensesRepository,
     private readonly licensing: LicensingService,
+    @Inject(LICENSE_USAGE_PORT) private readonly usage: LicenseUsagePort,
     private readonly logger: JsonLogger,
   ) {
     const seen = new Set<string>();
@@ -243,13 +305,102 @@ export class LicenseImportService {
   /**
    * Import a signed license document (file envelope or bare artifact). Legacy
    * `VLIC1` codes are accepted through the same route for compatibility and
-   * are handled by `applyLegacyCode`.
+   * are handled by `applyLegacyCode`. This is the ORDINARY import: it carries
+   * no operation intent, so it can never transfer a customer, recover a lapse
+   * or resolve a reduction conflict — each of those has its own dedicated,
+   * permission-gated, audited operation.
    */
   async importDocument(
     rawDocument: string,
     options: LicenseImportOptions = {},
   ): Promise<LicenseImportResult> {
     return await this.runImport(rawDocument, options);
+  }
+
+  /**
+   * The dedicated post-gap recovery operation (Owner decision 2026-10-12,
+   * OQ-87 Option B, PDR-13).
+   *
+   * This is the ONLY path that may apply a NEW license identity whose window
+   * starts after the installation's retained coverage has ended. It is not a
+   * new pipeline: the same import stages verify the document and the same
+   * transaction applies it — with the recovery intent, which the conflict
+   * authority accepts only here (and only for a candidate that really is
+   * post-gap). The transaction writes the typed `license.import.recovered`
+   * event (the new version, the lapsed license and its coverage end, the
+   * actor, the source, the instant and the operator's reason) together with
+   * the version, so a failure leaves the retained state untouched.
+   *
+   * Everything else is unchanged on purpose: the document must verify, be
+   * bound to THIS installation and its current customer (a recovery never
+   * transfers), pass every overlap/identity/binding/reduction rule, and a
+   * legacy `VLIC1` code is refused (`recovery-requires-signed-document`) — a
+   * recovery is a capability of the signed document exchange, exactly like a
+   * customer transfer.
+   */
+  async recoverAfterGap(
+    rawDocument: string,
+    reason: string,
+  ): Promise<LicenseGapRecoveryResult> {
+    assertOperationReason(reason, 'recovery');
+    const execution = await this.runImport(rawDocument, {
+      gapRecovery: { reason },
+    });
+    return {
+      changed: execution.changed,
+      outcome: execution.outcome,
+      license: execution.license,
+      lapsedLicenseId: execution.recovery?.lapsedLicenseId ?? null,
+      coverageEnd: execution.recovery?.coverageEnd?.toISOString() ?? null,
+    };
+  }
+
+  /**
+   * The explicit reduction-resolution operation (PDR-11 §8.6, L-04).
+   *
+   * This is the ONLY path that may apply a version whose capacity or
+   * entitlement reduction conflicts with current usage or the retained grant.
+   * The caller has seen the explained conflicts (the ordinary import answers
+   * 409 `reduction-requires-resolution` with the concrete limits, current
+   * usage and removed entitlements); supplying an authorized, reasoned
+   * resolution here applies the document AND the resolution in ONE
+   * transaction, which audits the resolution as the typed
+   * `license.import.reduction-resolved` event with the conflicts it actually
+   * authorized — recomputed under the installation and allocation locks, so
+   * the audit row can never describe conflicts the committed state did not
+   * have.
+   *
+   * Everything else is unchanged: signature, binding, identity, overlap,
+   * term rules (an open end is still closable only by an explicit signed
+   * supersession — a resolution never authorizes that arm), and the
+   * fail-closed behaviour for an absent, invalid or insufficient resolution.
+   * A resolution request whose document does not conflict is refused
+   * (`resolution-not-applicable`): an operator cannot resolve what does not
+   * conflict, and retrying the same document is never a resolution.
+   */
+  async resolveReduction(
+    rawDocument: string,
+    reason: string,
+  ): Promise<LicenseReductionResolutionResult> {
+    assertOperationReason(reason, 'resolution');
+    const execution = await this.runImport(rawDocument, {
+      reductionResolution: { reason },
+    });
+    const resolution = execution.resolution;
+    if (resolution === null || resolution === undefined) {
+      // Unreachable: the domain rule refuses a resolution that never meets a
+      // conflict, so any committed resolution import resolved real ones.
+      throw new Error(
+        'A reduction resolution committed without resolving conflicts; refusing rather than answering an empty receipt.',
+      );
+    }
+    return {
+      changed: execution.changed,
+      outcome: execution.outcome,
+      license: execution.license,
+      resolvedPredecessorVersionId: resolution.predecessorVersionId,
+      resolvedConflicts: [...resolution.conflicts],
+    };
   }
 
   /**
@@ -266,6 +417,12 @@ export class LicenseImportService {
     if (options.customerTransfer != null) {
       await this.requireCustomerTransferPermission();
     }
+    if (options.gapRecovery != null) {
+      await this.requireGapRecoveryPermission();
+    }
+    if (options.reductionResolution != null) {
+      await this.requireResolveReductionPermission();
+    }
     const now = new Date();
     // Read-only: import never creates, recreates or adopts an installation
     // identity (ADR-0046 Decision 6). The identity's commercial customer is
@@ -275,6 +432,14 @@ export class LicenseImportService {
     const installation = await this.identity.existingOrNull();
     const installationId = installation?.installationId ?? null;
     const installationCustomerId = installation?.customerId ?? null;
+    // Read-side usage for the §8.6 pre-check (L-04). Informational only: the
+    // authoritative counts are read again INSIDE the import transaction, after
+    // the allocation advisory locks, so a concurrent creation can never slip
+    // past the check. A counting failure here degrades to "unknown", which the
+    // conflict evaluation fails closed on — never to "no conflict".
+    const precheckUsage: LicenseUsageSnapshot | null = await this.usage
+      .snapshot()
+      .catch(() => null);
 
     let transport: {
       document: string;
@@ -295,7 +460,7 @@ export class LicenseImportService {
         installationId,
         installationCustomerId,
         now,
-        options.customerTransfer ?? null,
+        options,
       );
     }
 
@@ -404,6 +569,9 @@ export class LicenseImportService {
       at: now,
       installationCustomerId,
       customerTransfer: options.customerTransfer ?? null,
+      usage: precheckUsage,
+      gapRecovery: options.gapRecovery ?? null,
+      reductionResolution: options.reductionResolution ?? null,
     });
     if (precheck.conflict !== null) {
       return this.rejectVerified(
@@ -418,13 +586,14 @@ export class LicenseImportService {
         },
         documentConflictMessage(precheck.conflict),
         precheck.conflict.overlapping,
+        precheck.conflict.reduction,
       );
     }
     const supersedes = precheck.supersedes;
 
     // 10. Persist as ONE transaction (which re-runs the evaluation above under
     //     the installation lock before it writes anything).
-    const { version, previousCustomerId, bindingChanged } = await this.persist(
+    const execution = await this.persist(
       {
         installationId,
         payload,
@@ -435,18 +604,21 @@ export class LicenseImportService {
         supersedes,
         now,
         customerTransfer: options.customerTransfer ?? null,
+        gapRecovery: options.gapRecovery ?? null,
+        reductionResolution: options.reductionResolution ?? null,
+        readUsage: () => this.usage.snapshot(),
       },
-      'license.import.applied',
+      executionEventType(options),
     );
 
-    if (bindingChanged) {
+    if (execution.bindingChanged) {
       this.logger.log(
         'Installation customer transferred',
         {
           installationId,
-          previousCustomerId,
-          customerId: version.customerId,
-          operationId: version.operationId,
+          previousCustomerId: execution.previousCustomerId,
+          customerId: execution.version.customerId,
+          operationId: execution.version.operationId,
         },
         LicenseImportService.name,
       );
@@ -456,10 +628,16 @@ export class LicenseImportService {
       'License version imported',
       {
         installationId,
-        licenseId: version.licenseId,
-        versionId: version.versionId,
+        licenseId: execution.version.licenseId,
+        versionId: execution.version.versionId,
         keyId,
         supersededVersionId: supersedes?.versionId ?? null,
+        operation:
+          options.gapRecovery != null
+            ? 'gap-recovery'
+            : options.reductionResolution != null
+              ? 'reduction-resolution'
+              : 'import',
       },
       LicenseImportService.name,
     );
@@ -468,8 +646,10 @@ export class LicenseImportService {
       changed: true,
       outcome: 'APPLIED',
       license: await this.licensing.current(now),
-      previousCustomerId,
-      bindingChanged,
+      previousCustomerId: execution.previousCustomerId,
+      bindingChanged: execution.bindingChanged,
+      recovery: execution.recovery,
+      resolution: execution.resolution,
     };
   }
 
@@ -520,8 +700,16 @@ export class LicenseImportService {
     installationId: string | null,
     installationCustomerId: string | null,
     now: Date,
-    customerTransfer: CustomerTransferIntent | null,
+    options: LicenseImportOptions,
   ): Promise<LicenseImportExecution> {
+    const customerTransfer = options.customerTransfer ?? null;
+    const gapRecovery = options.gapRecovery ?? null;
+    const reductionResolution = options.reductionResolution ?? null;
+    // Read-side usage for the §8.6 pre-check on the legacy path (L-04);
+    // informational only — the transaction re-reads under the locks.
+    const precheckUsage: LicenseUsageSnapshot | null = await this.usage
+      .snapshot()
+      .catch(() => null);
     let payload: LicensePayload;
     try {
       payload = parseLicenseCode(rawCode.trim(), this.publicKeys);
@@ -543,12 +731,27 @@ export class LicenseImportService {
     // A customer transfer is a capability of the signed document exchange: the
     // legacy text code keeps its documented L-02 semantics and gains none, so a
     // transfer request carrying one is refused with a document-level verdict
-    // rather than silently applied.
+    // rather than silently applied. Post-gap recovery is the same kind of
+    // capability (OQ-87 Option B, PDR-13) and is refused for the same reason.
     if (customerTransfer !== null) {
       return this.rejectLegacy(
         'transfer-requires-signed-document',
         { now, installationId, payload, source: 'legacy-code', documentHash },
         'A customer transfer requires a signed license document; the legacy text code cannot express one. Issue the transfer as a signed document.',
+      );
+    }
+    if (gapRecovery !== null) {
+      return this.rejectLegacy(
+        'recovery-requires-signed-document',
+        { now, installationId, payload, source: 'legacy-code', documentHash },
+        'A post-gap recovery requires a signed license document; the legacy text code cannot carry one. Issue the recovery as a signed document.',
+      );
+    }
+    if (reductionResolution !== null) {
+      return this.rejectLegacy(
+        'resolution-requires-signed-document',
+        { now, installationId, payload, source: 'legacy-code', documentHash },
+        'A reduction resolution requires a signed license document; the legacy text code cannot carry one and the resolution must name, through the verified payload, the version it takes over. Apply the reduction with a signed document through the resolution operation.',
       );
     }
 
@@ -604,6 +807,8 @@ export class LicenseImportService {
         license: await this.licensing.current(now),
         previousCustomerId: null,
         bindingChanged: false,
+        recovery: null,
+        resolution: null,
       };
     }
     if (existing !== undefined) {
@@ -637,6 +842,7 @@ export class LicenseImportService {
       at: now,
       installationCustomerId,
       customerTransfer: null,
+      usage: precheckUsage,
     });
     if (precheck.conflict !== null) {
       return this.rejectLegacy(
@@ -644,11 +850,12 @@ export class LicenseImportService {
         { now, installationId, payload, source: 'legacy-code', documentHash },
         legacyConflictMessage(precheck.conflict),
         precheck.conflict.overlapping,
+        precheck.conflict.reduction,
       );
     }
     const supersedes = precheck.supersedes;
 
-    const { version, bindingChanged, previousCustomerId } = await this.persist(
+    const execution = await this.persist(
       {
         installationId,
         payload,
@@ -659,19 +866,22 @@ export class LicenseImportService {
         supersedes,
         now,
         customerTransfer: null,
+        gapRecovery: null,
+        reductionResolution: null,
+        readUsage: () => this.usage.snapshot(),
         legacy: true,
       },
       'license.import.applied',
     );
 
-    if (bindingChanged) {
+    if (execution.bindingChanged) {
       this.logger.log(
         'Installation customer transferred',
         {
           installationId,
-          previousCustomerId,
-          customerId: version.customerId,
-          operationId: version.operationId,
+          previousCustomerId: execution.previousCustomerId,
+          customerId: execution.version.customerId,
+          operationId: execution.version.operationId,
         },
         LicenseImportService.name,
       );
@@ -681,8 +891,8 @@ export class LicenseImportService {
       'Legacy license code activated',
       {
         installationId,
-        licenseId: version.licenseId,
-        versionId: version.versionId,
+        licenseId: execution.version.licenseId,
+        versionId: execution.version.versionId,
         supersededVersionId: supersedes?.versionId ?? null,
       },
       LicenseImportService.name,
@@ -692,8 +902,10 @@ export class LicenseImportService {
       changed: true,
       outcome: 'APPLIED',
       license: await this.licensing.current(now),
-      previousCustomerId,
-      bindingChanged,
+      previousCustomerId: execution.previousCustomerId,
+      bindingChanged: execution.bindingChanged,
+      recovery: execution.recovery,
+      resolution: execution.resolution,
     };
   }
 
@@ -716,6 +928,12 @@ export class LicenseImportService {
       now: Date;
       /** Explicit transfer intent; audited by the transaction that applies it. */
       customerTransfer: CustomerTransferIntent | null;
+      /** Dedicated recovery intent; its APPLIED event is built in-transaction. */
+      gapRecovery: GapRecoveryIntent | null;
+      /** Dedicated resolution intent; its APPLIED event is built in-transaction. */
+      reductionResolution: ReductionResolutionIntent | null;
+      /** §8.6 usage read, run inside the transaction after the locks (L-04). */
+      readUsage: () => Promise<LicenseUsageSnapshot>;
       legacy?: boolean;
     },
     eventType: string,
@@ -734,6 +952,12 @@ export class LicenseImportService {
     // records that it was the precedence rule, not a signed instruction.
     const implicitPrecedence =
       context.supersession.kind === 'none' && context.supersedes !== null;
+    // A dedicated operation's APPLIED event is built by the transaction from
+    // the locked state (the lapsed license for a recovery, the resolved
+    // conflicts for a resolution), so the service supplies no applied event on
+    // those paths — only the supersession stamp it can already name.
+    const dedicated =
+      context.gapRecovery !== null || context.reductionResolution !== null;
     try {
       return await this.licenses.importVersion({
         installationId: context.installationId,
@@ -757,6 +981,9 @@ export class LicenseImportService {
         entitlements,
         supersession: context.supersession,
         customerTransfer: context.customerTransfer,
+        gapRecovery: context.gapRecovery,
+        reductionResolution: context.reductionResolution,
+        readUsage: context.readUsage,
         expectedSupersessionVersionId: context.supersedes?.versionId ?? null,
         auditEvents: [
           ...(context.supersedes === null
@@ -769,25 +996,29 @@ export class LicenseImportService {
                   implicitPrecedence,
                 ),
               ]),
-          {
-            installationId: context.installationId,
-            eventType,
-            outcome: 'APPLIED',
-            operationId,
-            licenseId: context.payload.licenseId,
-            versionId,
-            actorId: getPrincipal()?.userId ?? null,
-            source: context.source,
-            documentHash: context.documentHash,
-            reason: null,
-            detail:
-              context.supersedes === null
-                ? null
-                : implicitPrecedence
-                  ? 'superseded a retained version under the later-start precedence rule (OQ-80 Option B)'
-                  : 'superseded a retained version',
-            occurredAt: context.now,
-          },
+          ...(dedicated
+            ? []
+            : [
+                {
+                  installationId: context.installationId,
+                  eventType,
+                  outcome: 'APPLIED' as const,
+                  operationId,
+                  licenseId: context.payload.licenseId,
+                  versionId,
+                  actorId: getPrincipal()?.userId ?? null,
+                  source: context.source,
+                  documentHash: context.documentHash,
+                  reason: null,
+                  detail:
+                    context.supersedes === null
+                      ? null
+                      : implicitPrecedence
+                        ? 'superseded a retained version under the later-start precedence rule (OQ-80 Option B)'
+                        : 'superseded a retained version',
+                  occurredAt: context.now,
+                },
+              ]),
         ],
       });
     } catch (error) {
@@ -804,6 +1035,7 @@ export class LicenseImportService {
           },
           conflictLostRaceMessage(error.conflict, legacy),
           error.conflict.overlapping,
+          error.conflict.reduction,
         );
       }
       // Only the version's own identity constraints (operation id, artifact hash)
@@ -850,6 +1082,7 @@ export class LicenseImportService {
     },
     message: string,
     overlapCount?: number,
+    reduction?: ImportConflict['reduction'],
   ): Promise<never> {
     await this.recordAudit({
       installationId: context.installationId,
@@ -875,7 +1108,7 @@ export class LicenseImportService {
       },
       LicenseImportService.name,
     );
-    throw rejectionException(reason, message);
+    throw rejectionException(reason, message, reduction);
   }
 
   /** Rejection before the document verified: no identifier is trusted. */
@@ -924,6 +1157,7 @@ export class LicenseImportService {
     },
     message: string,
     overlapCount?: number,
+    reduction?: ImportConflict['reduction'],
   ): Promise<never> {
     await this.recordAudit({
       installationId: context.installationId,
@@ -951,7 +1185,7 @@ export class LicenseImportService {
       },
       LicenseImportService.name,
     );
-    throw rejectionException(reason, message);
+    throw rejectionException(reason, message, reduction);
   }
 
   /** Legacy rejection helper: the code verified, so its identity is trusted. */
@@ -966,6 +1200,7 @@ export class LicenseImportService {
     },
     message: string,
     overlapCount?: number,
+    reduction?: ImportConflict['reduction'],
   ): Promise<never> {
     await this.recordAudit({
       installationId: context.installationId,
@@ -991,7 +1226,7 @@ export class LicenseImportService {
       },
       LicenseImportService.name,
     );
-    throw rejectionException(reason, message);
+    throw rejectionException(reason, message, reduction);
   }
 
   /**
@@ -1046,6 +1281,57 @@ export class LicenseImportService {
       LICENSING_PERMISSIONS.INSTALLATION_TRANSFER_CUSTOMER,
     ]);
   }
+
+  /**
+   * The post-gap recovery authority (Owner decision 2026-10-12, OQ-87 Option
+   * B, PDR-13). Re-checked in the application service (AR-21) so no caller —
+   * a controller, a worker, a future scheduler — can reach the operation
+   * without holding it, and every caller still needs
+   * `Licensing.License.Activate` as well.
+   */
+  private async requireGapRecoveryPermission(): Promise<void> {
+    await this.authorization.requireAllPermissions([
+      LICENSING_PERMISSIONS.LICENSE_ACTIVATE,
+      LICENSING_PERMISSIONS.INSTALLATION_RECOVER_AFTER_GAP,
+    ]);
+  }
+
+  /**
+   * The reduction-resolution authority (PDR-11 §8.6, L-04). Re-checked in the
+   * application service (AR-21) like every other operation permission: no
+   * document field, no retry and no supersession name can act as this
+   * authorization.
+   */
+  private async requireResolveReductionPermission(): Promise<void> {
+    await this.authorization.requireAllPermissions([
+      LICENSING_PERMISSIONS.LICENSE_ACTIVATE,
+      LICENSING_PERMISSIONS.LICENSE_RESOLVE_REDUCTION,
+    ]);
+  }
+}
+
+/**
+ * The required, validated operator reason of a dedicated operation. The DTO
+ * validates the shape; this re-checks it at the application boundary so a
+ * non-HTTP caller (a worker, a future scheduler) cannot bypass the
+ * requirement either — an unexplained recovery or resolution is not
+ * auditable, and the Owner decision requires the reason.
+ */
+function assertOperationReason(reason: string, operation: string): void {
+  if (typeof reason !== 'string' || reason.trim().length < 3) {
+    throw AppException.badRequest(
+      `A ${operation} reason of at least 3 characters is required.`,
+    );
+  }
+}
+
+/** The audit event type of an applied import, by operation kind. */
+function executionEventType(options: LicenseImportOptions): string {
+  if (options.gapRecovery != null) return 'license.import.recovered';
+  if (options.reductionResolution != null) {
+    return 'license.import.reduction-resolved';
+  }
+  return 'license.import.applied';
 }
 
 /** Entitlements of a legacy payload in the retained-version shape. */
@@ -1161,7 +1447,13 @@ function documentConflictMessage(conflict: ImportConflict): string {
     case 'renewal-gap':
       return 'This renewal would start after the license it renews has ended, leaving a gap in coverage. Issue the renewal to start at or before the end of the version it follows.';
     case 'reduction-requires-resolution':
-      return 'This version reduces the modules or capacity of the version it retires or takes over, and applying a reduction requires an explicit resolution that this release does not implement yet. Naming the version to retire does not resolve it. Nothing was changed; issue the version with the same or greater entitlements and limits.';
+      return 'This version reduces the modules or capacity of the version it retires or takes over, and the reduction conflicts with current usage or the retained grant — the concrete limits, usage and entitlements are in the conflict details. Nothing was changed. A reduction may be applied only through the dedicated resolution operation, which requires its own permission and a recorded reason; closing an open end (a perpetual version handed over to a time-limited one) is never operator-resolvable and needs an explicit signed supersession that names the version.';
+    case 'post-gap-recovery-requires-dedicated-operation':
+      return "This license document carries a new license identity and would start after this installation's license coverage has already ended, which makes it a post-gap recovery. Post-gap recovery is permitted only through the dedicated recovery operation, which requires its own permission and a recorded reason. Nothing was changed.";
+    case 'recovery-not-applicable':
+      return RECOVERY_NOT_APPLICABLE_MESSAGE;
+    case 'resolution-not-applicable':
+      return RESOLUTION_NOT_APPLICABLE_MESSAGE;
   }
 }
 
@@ -1186,6 +1478,23 @@ const INSTALLATION_CUSTOMER_MISMATCH_MESSAGE =
 const TRANSFER_NOT_APPLICABLE_MESSAGE =
   'This installation is already bound to the customer this transfer names, so there is nothing to transfer. Import the document instead.';
 
+/**
+ * A recovery request whose candidate is not a post-gap one (OQ-87 Option B,
+ * PDR-13): coverage has not lapsed, so there is nothing to recover. Mirrors
+ * `transfer-not-applicable`: a repeat or a concurrent recovery of live
+ * coverage refuses instead of silently re-applying.
+ */
+const RECOVERY_NOT_APPLICABLE_MESSAGE =
+  'The license coverage of this installation has not lapsed, so there is nothing to recover. Import this document through the ordinary import instead.';
+
+/**
+ * A resolution request whose document does not conflict with current usage or
+ * the retained grant (L-04): there is no reduction to resolve, and retrying a
+ * document is never a resolution.
+ */
+const RESOLUTION_NOT_APPLICABLE_MESSAGE =
+  'This document does not conflict with current usage or the retained grant, so there is no capacity or entitlement reduction to resolve. Import this document through the ordinary import instead.';
+
 /** The legacy-code wording of the same conflicts (L-02 vocabulary). */
 function legacyConflictMessage(conflict: ImportConflict): string {
   switch (conflict.reason) {
@@ -1206,7 +1515,13 @@ function legacyConflictMessage(conflict: ImportConflict): string {
     case 'renewal-gap':
       return 'This license code would start after the license it renews has ended, leaving a gap in coverage. Start the code at or before the end of the version it follows.';
     case 'reduction-requires-resolution':
-      return 'This license code would reduce the modules or capacity of the version it replaces, and applying a reduction requires an explicit resolution that this release does not implement yet. Nothing was changed.';
+      return 'This license code would reduce the modules or capacity of the version it replaces, and the reduction conflicts with current usage or the retained grant — the concrete limits, usage and entitlements are in the conflict details. Nothing was changed. A reduction may be applied only through the dedicated resolution operation, which requires its own permission and a recorded reason.';
+    case 'post-gap-recovery-requires-dedicated-operation':
+      return "This license code carries a new license identity and would start after this installation's license coverage has already ended, which makes it a post-gap recovery. Post-gap recovery is permitted only through the dedicated recovery operation with a signed license document. Nothing was changed.";
+    case 'recovery-not-applicable':
+      return RECOVERY_NOT_APPLICABLE_MESSAGE;
+    case 'resolution-not-applicable':
+      return RESOLUTION_NOT_APPLICABLE_MESSAGE;
   }
 }
 
@@ -1240,7 +1555,18 @@ function conflictLostRaceMessage(
     return 'This renewal would start after the license it renews has ended, leaving a gap in coverage. Issue the renewal to start at or before the end of the version it follows.';
   }
   if (conflict.reason === 'reduction-requires-resolution') {
-    return 'This version reduces the modules or capacity of the version it retires or takes over, and applying a reduction requires an explicit resolution that this release does not implement yet. Naming the version to retire does not resolve it. Nothing was changed; issue the version with the same or greater entitlements and limits.';
+    return legacy
+      ? 'This license code would reduce the modules or capacity of the version it replaces, and the reduction conflicts with current usage or the retained grant — the concrete limits, usage and entitlements are in the conflict details. Nothing was changed.'
+      : 'This version reduces the modules or capacity of the version it retires or takes over, and the reduction conflicts with current usage or the retained grant — the concrete limits, usage and entitlements are in the conflict details. Nothing was changed.';
+  }
+  if (conflict.reason === 'post-gap-recovery-requires-dedicated-operation') {
+    return 'This license document would cover a lapse with a new license identity. Post-gap recovery is permitted only through the dedicated recovery operation, which requires its own permission and a recorded reason. Nothing was changed.';
+  }
+  if (conflict.reason === 'recovery-not-applicable') {
+    return RECOVERY_NOT_APPLICABLE_MESSAGE;
+  }
+  if (conflict.reason === 'resolution-not-applicable') {
+    return RESOLUTION_NOT_APPLICABLE_MESSAGE;
   }
   if (conflict.reason === 'backdated-supersession') {
     // Not a race: the temporal rule is evaluated against the locked state, so
@@ -1257,8 +1583,13 @@ function conflictLostRaceMessage(
 function rejectionException(
   reason: LicenseImportRejectionReason,
   message: string,
+  reduction?: ImportConflict['reduction'],
 ): AppException {
+  const details: { reason: string; reduction?: ImportConflict['reduction'] } = {
+    reason,
+  };
+  if (reduction !== undefined) details.reduction = reduction;
   return CONFLICT_REASONS.has(reason)
-    ? AppException.conflict(message, { reason })
-    : AppException.businessRule(message, { reason });
+    ? AppException.conflict(message, details)
+    : AppException.businessRule(message, details);
 }

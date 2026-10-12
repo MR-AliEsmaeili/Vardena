@@ -194,23 +194,38 @@ import ──► retained (not yet effective | effective | expired)
   or already-stopped-governing targets are rejected (`unknown-supersession`).
   A **future-dated** start does not excuse an overlap: the candidate's window is
   compared with the retained windows, not with "now".
-- **A reduction is never applied by an import.** PDR-11 §8.6 requires a version
-  that reduces entitlements or capacity to be checked against the resulting
-  state, explained, preserved and explicitly resolved *before* it is applied;
-  §8.2 (module entitlement removed), §8.4 (user capacity reduced) and §8.3
-  (capacity reached) are the Musts behind it. That flow is the L-04 slice and
-  does not exist yet, so every path that retires a version fails closed while
-  the retained grant shrinks: an explicit signed supersession
-  (`supersedesOperationId`), the implicit hand-over of OQ-80 Option B, and the
-  legacy `VLIC1` replacement all refuse a smaller `organizationLimit`, a smaller
-  `userLimit` or a removed entitlement with `reduction-requires-resolution`
-  (409, nothing written, no stamp, no version, the operation id not retained).
-  *Naming the version to retire is not a resolution*: a signed
-  `supersedesOperationId` proves **which** version the document replaces and is
-  verified like every other signature fact, but it cannot know how many users
-  or organizations exist, so it may not switch §8.6 off. Increases and
-  identical grants are unaffected, and a document that retires nothing has no
-  predecessor whose grant could be taken away.
+- **A reduction is checked against current usage before it is applied (L-04,
+  PDR-11 §8.6 — implemented 2026-10-12).** PDR-11 §8.6 requires a version that
+  reduces entitlements or capacity to be checked against the resulting state,
+  explained, preserved and explicitly resolved *before* it is applied; §8.2
+  (module entitlement removed), §8.4 (user capacity reduced) and §8.3 (capacity
+  reached) are the Musts behind it. On EVERY path that retires a version — an
+  explicit signed supersession (`supersedesOperationId`), the implicit hand-over
+  of OQ-80 Option B, and the legacy `VLIC1` replacement — the conflict authority
+  compares the shrunk grant with the **counted current usage** (organizations
+  and active users, read inside the import transaction under the same advisory
+  locks the allocation guards hold; an unavailable count is a conflict that
+  fails closed) and with the **retained grant** (a removed entitlement always
+  conflicts). A shrink whose current usage stays within the new finite limits
+  is not a conflict and applies like any other version; a conflicting one is
+  refused with `reduction-requires-resolution` (409, nothing written, no stamp,
+  no version, the operation id not retained) and a structured explain payload
+  (`reduction.predecessorVersionId` plus one entry per conflict: the kind, the
+  new limit, the counted usage, or the removed entitlement). *Naming the
+  version to retire is not a resolution*: a signed `supersedesOperationId`
+  proves **which** version the document replaces and is verified like every
+  other signature fact, but it cannot know how many users or organizations
+  exist, so it may not switch §8.6 off. Increases and identical grants are
+  unaffected, and a document that retires nothing has no predecessor whose
+  grant could be taken away. The ONLY way to apply a conflicting reduction is
+  the dedicated `POST /api/v1/license/reduction-resolution` operation (PDR-13
+  §5): its own permission (`Licensing.License.ResolveReduction` together with
+  `Licensing.License.Activate`), a required operator reason, ONE transaction
+  that applies the import and writes the typed
+  `license.import.reduction-resolved` audit event with the conflicts the
+  transaction recomputed under the locks; a resolution whose document does not
+  conflict is refused (`resolution-not-applicable`), and retrying a document or
+  naming a version is never a resolution.
 - The **term** dimension is decided by the Product Owner (2026-10-12,
   [PDR-12](../decisions/product/PDR-12-license-term-supersession.md),
   decision **OD-LIC-01**): an explicit, valid, signed supersession **may**
@@ -224,9 +239,9 @@ import ──► retained (not yet effective | effective | expired)
   instruction §12.9 asks for and resolves no capacity or entitlement conflict,
   so it is allowed; a signed document cannot observe how many users or
   organizations exist, which is why naming a version never unlocks a capacity or
-  entitlement reduction. L-04 still owes §8.6's
-  check/explain/preserve/explicit-resolution flow to every path; until it
-  exists, those reductions are refused rather than resolved.
+  entitlement reduction. Closing an open end is never operator-resolvable: the
+  reduction-resolution operation refuses that arm, and only an explicit signed
+  supersession may make the term change (PDR-12).
 - A supersession is declared for exactly one version, and the hand-over is the
   candidate's own `validFrom`: overlap is allowed only in so far as it is
   replaced, so the predecessor's effective window ends exactly where the
@@ -259,9 +274,28 @@ import ──► retained (not yet effective | effective | expired)
   nothing is superseded. Documents that retire nothing are untouched: a past
   start on a first license or a gap-filling renewal stays importable and the gap
   behaviour above is unchanged.
-- A **gap** is allowed. During it the installation is inactive with
-  `inactiveReason: expired` (rule 4 above) — nothing is extended and no policy is
-  invented.
+- A **gap** is allowed, and while it lasts the installation is inactive with
+  `inactiveReason: expired` (rule 4 above) — nothing is extended and no policy
+  is invented. Leaving the gap is an Owner decision per recovery (**OQ-87
+  Option B**, [PDR-13](../decisions/product/PDR-13-post-gap-recovery.md),
+  decision **OD-LIC-02**): a NEW identity whose window starts after the
+  retained coverage end is a post-gap recovery candidate, and the ORDINARY
+  import refuses it (`post-gap-recovery-requires-dedicated-operation`, 409,
+  nothing written). The only permitted path is the dedicated
+  `POST /api/v1/license/gap-recovery` operation — its own permission
+  (`Licensing.Installation.RecoverAfterGap` together with
+  `Licensing.License.Activate`), a required operator reason, and ONE
+  transaction that applies the version and writes the typed
+  `license.import.recovered` audit event carrying the machine-readable
+  `previous_license_id` (the license whose coverage had ended) and the lapse
+  instant. A recovery is not a special pipeline: the same stages verify the
+  document, the same locks and unique indexes arbitrate concurrency, a
+  duplicate is a stable 409, a recovery without a lapse is refused
+  (`recovery-not-applicable`), the customer binding is never changed by it, and
+  a legacy `VLIC1` code cannot carry one
+  (`recovery-requires-signed-document`, 422). A candidate carrying a RETAINED
+  `licenseId` stays a renewal and keeps the G2 gap rule (§ above); adjacency
+  (`validFrom == coverageEnd`) is contiguous, not a lapse.
 - `superseded_at`, `governs_until` and `superseded_by_version_id` are the only
   fields written on an existing version row; validity, limits, entitlements and
   status of a retained version are immutable.

@@ -464,6 +464,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           supersession: { kind: 'none' },
           customerTransfer: null,
           expectedSupersessionVersionId: null,
+          gapRecovery: null,
+          reductionResolution: null,
           auditEvents: [
             {
               installationId: identity.installationId,
@@ -544,6 +546,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           supersession: { kind: 'none' },
           customerTransfer: null,
           expectedSupersessionVersionId: null,
+          gapRecovery: null,
+          reductionResolution: null,
           auditEvents: [
             {
               installationId: identity.installationId,
@@ -1176,6 +1180,8 @@ describe.skipIf(DATABASE_URL === undefined)(
         // other command states "this import is not a transfer".
         customerTransfer: null,
         expectedSupersessionVersionId: null,
+        gapRecovery: null,
+        reductionResolution: null,
         // The service always commits the `applied` evidence with the version.
         auditEvents: [
           {

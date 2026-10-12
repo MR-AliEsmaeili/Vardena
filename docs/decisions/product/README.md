@@ -59,6 +59,7 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 | [PDR-11](./PDR-11-vardena-licensing-product-requirements.md) | Vardena licensing product requirements — canonical source of truth (server and client-device licensing, Owner-side administration, replacement, expiry, revocation, offline signed-file exchange) | PDR | Decided — approved product-requirements reference (2026-10-11); documentation only, not an implementation specification | Licensing design + first import slice (2026-10-11) OQ-45 and OQ-53 stay Open; open items in PDR-11 §15; conflicts with ADR-0030/ADR-0036 in PDR-11 §19 |
 | [PDR-10](./PDR-10-c62-inventory-accounting-posting-modes.md) | C-62 Inventory → Accounting posting modes (Owner-approved C62-OD-01…06; PDR-09 boundaries; no implementation authorized) | PDR | Decided (2026-10-08) — Owner-approved decision package recorded in the file; OQ-39/OQ-42/OQ-72 remain Open | Records approved C-62 decisions; index row added 2026-10-11 (PDR-11 §19, CF-15) |
 | [PDR-12](./PDR-12-license-term-supersession.md) | License term change through explicit signed supersession (**OD-LIC-01**) — a perpetual grant may be replaced by a time-limited one by an explicit valid signed supersession, subject to non-reduction of `organizationLimit`, `userLimit` and entitlements | PDR | **Decided — Final Owner Decision (2026-10-12)** | Binds the licensing import path; **OQ-87 stays Open**; L-04 (§8.6 capacity-conflict detection + resolution flow) remains outstanding and is **not** completed by it |
+| [PDR-13](./PDR-13-post-gap-recovery.md) | Post-gap recovery through a dedicated audited operation (**OD-LIC-02**, OQ-87 **Option B**) — a NEW license identity may cover a lapse for the same customer + installation ONLY via a dedicated, explicitly authorized, reasoned, audited recovery operation; ordinary import is never a recovery path; L-04 (§8.6 usage-aware reduction check + explicit resolution) implemented in the same change | PDR | **Decided — Final Owner Decision (2026-10-12)** | Answers **OQ-87** and unblocks/completes the L-04 slice it gated; OQ-79/OQ-82/OQ-83/OQ-84/OQ-77 untouched |
 
 > **Numbering note (2026-10-02).** `OQ-62`, `OQ-63` and `OQ-64` are accounting /
 > migration questions that live only in the central registry
@@ -74,6 +75,21 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 > granted entitlements may not be reduced, on any path. It closes no OQ
 > (OQ-80/OQ-86 keep their recorded status; **OQ-87 stays Open**) and does not
 > implement L-04.
+>
+> **PDR-13 recorded (2026-10-12).** [`PDR-13`](./PDR-13-post-gap-recovery.md)
+> transcribes the Product Owner's final decision (decision id **OD-LIC-02**) on
+> **OQ-87**: post-gap recovery for the same customer + installation is
+> permitted ONLY through a dedicated, explicitly authorized, audited recovery
+> operation capturing a reason with traceable history
+> (`license.import.recovered` + `previous_license_id`); the ordinary license
+> import is NOT a permitted post-gap recovery path (stable 409
+> `post-gap-recovery-requires-dedicated-operation`, nothing written). The same
+> change implements the **L-04** slice (PDR-11 §8.6) that was registered as
+> blocked on this decision: usage-aware reduction conflicts
+> (`reduction-requires-resolution` with a structured explain payload, 409,
+> nothing written) and the dedicated, reasoned, audited
+> `reduction-resolution` operation. PDR-12's term rule is untouched: an open
+> end is never operator-resolvable. OQ-79/OQ-82/OQ-83/OQ-84 stay Open.
 >
 > **Registry-only licensing rows (2026-10-11).** `OQ-74`…`OQ-85` are licensing
 > product/security questions registered in the central registry

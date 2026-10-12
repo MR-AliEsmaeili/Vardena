@@ -487,6 +487,18 @@ export class UsersService {
       occurredAt: Date.now(),
     });
   }
+
+  /**
+   * How many users are active, for the licensing module's capacity-conflict
+   * check (PDR-11 §8.6, L-04). Cross-module internal contract (AR-07):
+   * carries no permission of its own — the calling operation has already
+   * performed its own authorization — and counts through THIS module's
+   * repository (`countActive()`), the exact count the active-user guard
+   * enforces.
+   */
+  async countLicensedActiveUsers(): Promise<number> {
+    return this.repository.countActive();
+  }
 }
 
 // ---- Internal helpers ----

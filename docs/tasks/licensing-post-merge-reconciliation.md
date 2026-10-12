@@ -226,6 +226,8 @@ Not changed: any OQ status; any §15 policy; any migration; the accepted archite
 
 **Do not start L-04 until the Owner has decided (a) and (b) above.** The alternatives are blocked by undecided policy: revocation, Grace/Read-Only and replacement each depend on OQ-45, OQ-78 or OQ-82.
 
+> **Update (2026-10-12): the gate is lifted and L-04 is implemented.** The Owner decided OQ-87 = **Option B** ([PDR-13](../decisions/product/PDR-13-post-gap-recovery.md), decision id **OD-LIC-02**), which was the last open decision in this slice's dependency set ((b) via the OQ-80 round; (a) resolved as implemented: a conflicting reduction is refused 409 `reduction-requires-resolution` with a structured explain payload and applies only through the dedicated `reduction-resolution` operation — the conflict state is the refusal itself, no conflict table; (c) Q3 was decided same `licenseId`; (d) §8.4's existing deactivation lifecycle is untouched — no automatic deactivation exists and none was added). §11's machinery sketch above was written before those decisions; the implemented shape differs (usage counts under allocation locks instead of a conflict-state table; the explain payload instead of a preview) and is authoritative — see PDR-13 §5 and the PR.
+
 ## 12. Limitations of this audit
 
 - No Docker; the Compose path and the browser smoke test were not executed (§7 is the Owner's checklist).
@@ -358,4 +360,4 @@ Not changed: any OQ status; any PDR-11 §1–§18 policy; the decision brief's o
 | Q3 renewal identity | same `licenseId` | Decision recorded; issuer CLI `--license-id` (F-8) remains an open follow-up |
 | Q4 customer change | explicit, authorized, audited operation only | Implementation recorded (`licenses.repository.transferCustomer` + typed `license.installation.customer-transferred` event + the dedicated `POST /api/v1/license/customer-transfer` route); tests at unit and live-PostgreSQL level |
 | `license-binding-conflict` | ratified (name, 409, nothing written) | Unchanged behaviour; ratification recorded in §9 |
-| **OQ-87 (new)** | **Not decided** — may a NEW license identity cover a lapse for the same customer + installation? | **BLOCKED**: no rule grants or refuses it (pre-decision behaviour preserved); no workflow may claim post-gap recovery. Registered in `docs/open-questions.md` |
+| **OQ-87 (new)** | **Not decided** — may a NEW license identity cover a lapse for the same customer + installation? | **BLOCKED**: no rule grants or refuses it (pre-decision behaviour preserved); no workflow may claim post-gap recovery. Registered in `docs/open-questions.md` **(Update 2026-10-12: DECIDED — Option B, [PDR-13](../decisions/product/PDR-13-post-gap-recovery.md); dedicated audited recovery operation, ordinary import never recovers; the BLOCKED gate above is lifted and L-04 is implemented in the same change)** |

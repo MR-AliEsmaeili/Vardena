@@ -95,6 +95,7 @@ Dates are illustrative. "Verified" means executed in this session or in a named 
 | Q3 renewal identity | **[x] same `licenseId`** (a renewal is the same license) | 2026-10-12 | Product Owner |
 | Q4 installation customer change | **[x] allowed, audited** — only as an explicit, authorized operation, never inferred from a document | 2026-10-12 | Product Owner |
 | Ratify reason `license-binding-conflict` (report §9) | **[x] yes** — name, HTTP 409, no state written | 2026-10-12 | Product Owner |
+| OQ-87 post-gap recovery | **[x] Option B** — a NEW license identity may cover a lapse for the same customer + installation ONLY through a dedicated, explicitly authorized, audited recovery operation with a required reason; ordinary import is never a recovery path (**PDR-13**, decision id **OD-LIC-02**) | 2026-10-12 | Product Owner |
 
 **Consequences of any decision:** each option changes `evaluateImportConflicts` and/or `resolveEffectiveVersion`, and each needs the tests named in §2 to be updated or added. Option B also needs a migration and rehearsal. No option can be implemented before the Owner records it in this table and in `docs/open-questions.md`; the implementation agent will not close either question on its own.
 
@@ -132,13 +133,14 @@ The identity of a license is stable across its renewals, so the license-identifi
 
 The refusal name, its HTTP class (409) and the "nothing is written" guarantee are ratified as recorded (report §9): the identifier belongs to exactly one installation and one customer, claimed by a plain `INSERT` under the installation row lock, so a loser gets the documented conflict instead of a database error or a silent re-application.
 
-### 8.6 BLOCKED — post-gap recovery is not decided
+### 8.6 ANSWERED (2026-10-12) — post-gap recovery is Option B
 
-The Owner's G2 decision answers *a renewal may not leave a gap*. Q3 answers *a renewal keeps its `licenseId`*. Neither answers the follow-on: **may a NEW license identity be issued for the same customer + installation after a lapse, to cover the gap?** The pre-decision brief assumed a new license could be issued, but that assumption was never decided, and the two decisions above make it visible (a lapsed license cannot be renewed under G2, so the only paths out of a lapse would be a new identity or an explicit Owner exception).
+The Owner's G2 decision answers *a renewal may not leave a gap*. Q3 answers *a renewal keeps its `licenseId`*. Neither answered the follow-on: **may a NEW license identity be issued for the same customer + installation after a lapse, to cover the gap?** The pre-decision brief assumed a new license could be issued, but that assumption was never decided, and the two decisions above made it visible (a lapsed license cannot be renewed under G2, so the only paths out of a lapse would be a new identity or an explicit Owner exception).
 
-- The question is registered as **OQ-87** in `docs/open-questions.md`.
-- The implementation deliberately **neither grants nor refuses** it: a candidate carrying a new `licenseId` is not a renewal, so the gap rule does not evaluate it, and no other rule refuses it. That is the pre-decision behaviour preserved, not a new policy.
-- **Blocked:** any workflow, documentation or capacity slice that *depends* on post-gap recovery (including describing a lapse as recoverable) must not be implemented or claimed until the Owner answers OQ-87. The L-04 capacity slice is gated on the whole decision set, so it stays behind the gate for this reason too.
+- The question was registered as **OQ-87** in `docs/open-questions.md`.
+- The implementation up to PR #141 deliberately **neither granted nor refused** it: a candidate carrying a new `licenseId` is not a renewal, so the gap rule did not evaluate it, and no other rule refused it. That was the pre-decision behaviour preserved, not a new policy.
+- ~~**Blocked:** any workflow, documentation or capacity slice that *depends* on post-gap recovery (including describing a lapse as recoverable) must not be implemented or claimed until the Owner answers OQ-87. The L-04 capacity slice is gated on the whole decision set, so it stays behind the gate for this reason too.~~
+- **DECIDED (Owner decision, 2026-10-12): Option B.** A new license identity may cover a lapse for the same customer + installation ONLY through a dedicated, explicitly authorized, audited recovery operation capturing a reason with traceable history; the ordinary license import is NOT a permitted post-gap recovery path. Recorded as **[PDR-13](../decisions/product/PDR-13-post-gap-recovery.md)** (decision id **OD-LIC-02**; OQ-87 row and the registry log updated). The same decision unblocks **L-04** (PDR-11 §8.6), which is implemented in the same change: usage-aware reduction conflicts (`reduction-requires-resolution` with a structured explain payload, 409, nothing written) and the dedicated `reduction-resolution` operation. The gate above is lifted for exactly this answer; nothing else in the decision set changed.
 
 ### 8.7 PDR-11 §8.6 — precedence is not permission
 
