@@ -7,10 +7,8 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '../../identity/application/auth.guard.js';
 import { LicensingService } from '../application/licensing.service.js';
-import {
-  toLicenseStateView,
-  type LicenseStateView,
-} from './license-state.view.js';
+import { LicenseStateDto } from './dto/license.dto.js';
+import { toLicenseStateView } from './license-state.view.js';
 
 @ApiTags('licensing')
 @ApiUnauthorizedResponse({ description: 'Not authenticated.' })
@@ -26,8 +24,11 @@ export class LicenseStateController {
     description:
       'Evaluates the persisted installation license on every call. An installation that has never activated a license answers status UNLICENSED with active=false; it is a state read, never an activation.',
   })
-  @ApiOkResponse({ description: 'Non-secret evaluated license state.' })
-  async current(): Promise<LicenseStateView> {
+  @ApiOkResponse({
+    type: LicenseStateDto,
+    description: 'Non-secret evaluated license state.',
+  })
+  async current(): Promise<LicenseStateDto> {
     const snapshot = await this.licensing.currentState();
     return toLicenseStateView(snapshot.license, snapshot.versions);
   }

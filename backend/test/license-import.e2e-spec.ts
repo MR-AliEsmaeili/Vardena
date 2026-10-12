@@ -232,6 +232,22 @@ describe('License document import (e2e)', () => {
     expect(result.properties.versions.items).toEqual({
       $ref: '#/components/schemas/LicenseVersionSummaryDto',
     });
+
+    const activateOp = docs.body.paths['/api/v1/license/activate'].post;
+    expect(
+      activateOp.responses['200'].content['application/json'].schema,
+    ).toEqual({ $ref: '#/components/schemas/LicenseImportResultDto' });
+    const currentOp = docs.body.paths['/api/v1/license/current'].get;
+    expect(
+      currentOp.responses['200'].content['application/json'].schema,
+    ).toEqual({ $ref: '#/components/schemas/LicenseStateDto' });
+    const stateSchema = docs.body.components.schemas.LicenseStateDto;
+    expect(stateSchema.properties.outcome).toBeUndefined();
+    expect(Object.keys(stateSchema.properties).sort()).toEqual(
+      Object.keys(response.body)
+        .filter((k) => k !== 'changed' && k !== 'outcome')
+        .sort(),
+    );
   });
 
   it('accepts the same artifact as text and retains it identically', async () => {

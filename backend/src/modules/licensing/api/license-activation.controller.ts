@@ -21,11 +21,11 @@ import { RequirePermission } from '../../rbac/application/require-permission.dec
 import { LicenseActivationService } from '../application/license-activation.service.js';
 import { LicensingService } from '../application/licensing.service.js';
 import { LICENSING_PERMISSIONS } from '../domain/licensing-permissions.js';
-import { ActivateLicenseDto } from './dto/license.dto.js';
 import {
-  toLicenseStateView,
-  type LicenseStateView,
-} from './license-state.view.js';
+  ActivateLicenseDto,
+  LicenseImportResultDto,
+} from './dto/license.dto.js';
+import { toLicenseStateView } from './license-state.view.js';
 
 /**
  * Installation license activation (L-02).
@@ -62,7 +62,11 @@ export class LicenseActivationController {
     description:
       'Verifies the code signature, its binding to THIS installation and its lifecycle, persists it, and returns the evaluated state. Re-submitting the current code is an idempotent success.',
   })
-  @ApiOkResponse({ description: 'The evaluated state after activation.' })
+  @ApiOkResponse({
+    type: LicenseImportResultDto,
+    description:
+      'The evaluated state after activation, with the same mutation receipt as import.',
+  })
   @ApiBadRequestResponse({ description: 'Validation failed.' })
   @ApiUnprocessableEntityResponse({
     description:
@@ -70,7 +74,7 @@ export class LicenseActivationController {
   })
   async activate(
     @Body() body: ActivateLicenseDto,
-  ): Promise<LicenseStateView & { changed: boolean; outcome: string }> {
+  ): Promise<LicenseImportResultDto> {
     const result = await this.activation.activate(body.code);
     const snapshot = await this.licensing.currentState();
     return {

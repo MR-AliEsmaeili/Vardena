@@ -208,6 +208,11 @@ downloads the Prisma engines); air-gapped builds must pre-seed or vendor them.
 - UI: `GET /api/docs`, spec JSON: `GET /api/docs-json` (codegen input).
 - The spec is generated from backend DTOs (ADR-0014) — DTOs are the contract.
 - Disabled in production by default (`SWAGGER_ENABLED`).
+- Deterministic dump for codegen / CI (does not listen; does not query Postgres):
+  `npm run build && npm run openapi:dump -- /tmp/vardena-openapi.json`
+  then `VARDENA_OPENAPI_SOURCE=/tmp/vardena-openapi.json npm run api:types`
+  in `frontend/`. Drift check: `./scripts/check-generated-api-client.sh` from
+  the repository root (GitHub Actions job `generated-api-client`).
 
 ## Conventions (read before adding code)
 

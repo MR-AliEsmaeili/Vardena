@@ -55,12 +55,19 @@ repository root).
 | `npm test` / `test:watch`         | Vitest + Testing Library (jsdom)                                              |
 | `npm run api:types`               | Regenerate `src/api/generated/vardena-api.d.ts` from the OpenAPI document     |
 
-Regenerating the API types (the API must be running, or point the variable at
-an exported document):
+Regenerating the API types. Prefer dumping the OpenAPI document from the
+compiled backend (no listening server) so the output matches CI (F-7):
 
 ```bash
+# from a running API (developer convenience)
 npm run api:types                                   # from http://localhost:3000/api/docs-json
-VARDENA_OPENAPI_SOURCE=./openapi.json npm run api:types
+
+# deterministic (same as CI): dump then generate
+(cd ../backend && npm run build && npm run openapi:dump -- /tmp/vardena-openapi.json)
+VARDENA_OPENAPI_SOURCE=/tmp/vardena-openapi.json npm run api:types
+
+# verify the committed client matches this checkout
+(cd .. && ./scripts/check-generated-api-client.sh)
 ```
 
 `openapi-typescript` is invoked through `npx` at a pinned version instead of

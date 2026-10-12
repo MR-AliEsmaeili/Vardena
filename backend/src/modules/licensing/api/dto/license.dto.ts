@@ -121,11 +121,10 @@ export class LicenseVersionSummaryDto implements LicenseVersionSummary {
 }
 
 /**
- * The evaluated, non-secret license state, plus the import outcome. Returned by
- * `POST /api/v1/license/import` after a fresh read (never the mutation's own
- * opinion). No key, signature, hash or document is part of it.
+ * The evaluated, non-secret license state (`GET /api/v1/license/current`).
+ * Mirrors `LicenseStateView`; no key, signature, hash or document is part of it.
  */
-export class LicenseImportResultDto implements LicenseStateView {
+export class LicenseStateDto implements LicenseStateView {
   @ApiProperty({ description: 'Whether an installation license is evaluated.' })
   licensed!: boolean;
 
@@ -209,7 +208,14 @@ export class LicenseImportResultDto implements LicenseStateView {
     description: 'Bounded retained-version history, newest first.',
   })
   versions!: LicenseVersionSummaryDto[];
+}
 
+/**
+ * Evaluated state plus mutation receipt. Returned by
+ * `POST /api/v1/license/import` and the L-02 alias `POST /api/v1/license/activate`
+ * after a fresh read (never the mutation's own opinion).
+ */
+export class LicenseImportResultDto extends LicenseStateDto {
   @ApiProperty({
     description:
       'False when a repeated legacy code was already the governing version.',

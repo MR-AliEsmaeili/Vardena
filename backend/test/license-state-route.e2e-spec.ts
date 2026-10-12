@@ -105,4 +105,36 @@ describe('License state route registration (e2e)', () => {
       expect.arrayContaining([{ kind: 'MODULE', code: 'organization' }]),
     );
   });
+
+  it('documents the current-state 200 body as LicenseStateDto', async () => {
+    const docs = await request(app.getHttpServer())
+      .get('/api/docs-json')
+      .expect(200);
+    expect(
+      docs.body.paths['/api/v1/license/current'].get.responses['200'].content[
+        'application/json'
+      ].schema,
+    ).toEqual({ $ref: '#/components/schemas/LicenseStateDto' });
+    const schema = docs.body.components.schemas.LicenseStateDto;
+    expect(Object.keys(schema.properties).sort()).toEqual(
+      [
+        'licensed',
+        'status',
+        'active',
+        'inactiveReason',
+        'installationId',
+        'customerId',
+        'licenseId',
+        'validFrom',
+        'validUntil',
+        'organizationLimit',
+        'userLimit',
+        'entitlements',
+        'provider',
+        'effectiveVersionId',
+        'scheduledVersion',
+        'versions',
+      ].sort(),
+    );
+  });
 });
