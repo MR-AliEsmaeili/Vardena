@@ -145,9 +145,15 @@ re-issued correctly). The response contract is unchanged.
 | Regression tests | `domain/license-version.spec.ts` (reduction matrix over both limits and an entitlement removal × all three retirement paths; non-reduction controls; mixed changes; term-change cases), `application/license-import.service.spec.ts` (pipeline refusals with unchanged state/audit; term-change applied; signature gate), `test/license-import.e2e-spec.ts` (HTTP), `test/licensing-persistence-live.e2e-spec.ts` (transaction pass on live PostgreSQL) |
 
 **Status of this decision: recorded (Owner, 2026-10-12); implementation recorded
-in the same PR; tests passed locally; CI verification and Product Owner
-acceptance outstanding.** These states are kept separate — this record does not
-assert CI or acceptance.
+in the same PR; tests passed locally; CI verified on the exact PR head
+`68d50517c2d2888f38f10ca1a615f05ce19b7fe0` (run
+[`38239438399`](https://github.com/MR-AliEsmaeili/Vardena/actions/runs/38239438399) —
+`pull_request`, `completed / success`, the `backend`, `frontend` and
+`generated-api-client` checks all pass); Product Owner acceptance
+outstanding.** These states are kept separate — this record asserts CI only for
+that SHA, and nothing here is a claim of acceptance. The documentation-only
+status correction carrying this sentence changes no code, test or migration,
+and is not covered by that run.
 
 ## 7. What this decision does NOT decide
 
