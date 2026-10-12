@@ -6,6 +6,8 @@
 | Scope | The merged first Licensing vertical slice (L-03: signed-file import, installation binding, retained versions, effective-version resolution, supersession hand-over, concurrency, migrations, frontend license gate and renewal card). |
 | `main` inspected | `345047abec5a6af6760b05ad36b570ee5ed3a5f9` (merge commit of PR #137). Parents: `f27065149ffcb3b6d62929e418a8c6c1b4ce8fea` (`main` before, PR #136 merge) and `2ecd8396f0edcc1c34b3724c79cd767b3401c96d` (PR #137 head). |
 | Session branch | `arena/f0ddc379-vardena` (created from `345047a`; did not exist on origin before this audit). |
+| Merge state of this report's fixes | **Merged 2026-10-12 as PR #138, merge commit `d283744b4098346b6ef2e0b91922266f10cdabd1`, merge-commit CI green (run `38210710188`).** Everything below was written while the branch was still unmerged: where §3–§13 say "on this branch", read `d283744`. See §14. |
+| `main` at the latest verification | `d283744b4098346b6ef2e0b91922266f10cdabd1` (PR #138 merge). The `main` inspected above is **no longer the tip of `main`**, and it does **not** contain this report's fixes (`git grep license-binding-conflict 345047a -- backend/src` → no match). |
 | Owner acceptance | **Not given.** Nothing in this record accepts the slice, any OQ answer or any §15 policy. |
 | Product policy | **No product decision is taken here.** OQ-80 and OQ-86 stay OPEN (decision brief: `docs/tasks/licensing-oq-80-oq-86-decision-brief.md`). |
 
@@ -21,6 +23,8 @@ Three states are kept apart throughout: **merged** (on `main`), **technically ve
 - Stale "unmerged" statements were found in `STATE.md` §32 and `docs/tasks/pdr-11-conflict-reconciliation.md`. They are reconciled in §8.
 
 ## 2. Post-merge CI evidence
+
+This table is the evidence for the **PR #137** merge commit `345047a`. The CI evidence for the **PR #138** merge commit `d283744` — the commit that actually carries this report's fixes onto `main` — is in §14.2.
 
 | Item | Run / job | Event and SHA | Result | Use as evidence |
 | --- | --- | --- | --- | --- |
@@ -115,17 +119,19 @@ The post-fix live suite runs on the real database, and the pre-fix probe outcome
 
 Classification: **Blocker** = must be fixed or formally accepted before the slice is treated as accepted; **Important** = a real gap that needs a fix or a recorded decision; **Minor** = low impact or documentation; **No issue** = checked, no finding.
 
+Statuses were re-read against the merged tree at `d283744` on 2026-10-12 (§14): every row marked *Fixed* is present on `main`; every row marked *Open* is still open there.
+
 | ID | Class | Status | Finding | Evidence / action |
 | --- | --- | --- | --- | --- |
-| F-1 | Important | **Fixed on this branch** | A renewal naming an existing `licenseId` with a different customer was applied and re-attributed every retained version. | §3; rule 2a + rule 2b; tests in §4. |
-| F-2 | Important | **Fixed on this branch** | A `licenseId` owned by another installation surfaced as an unmapped database FK error (HTTP 500), not a documented refusal. | §3; rule 2b under the lock; live test; 409. |
+| F-1 | Important | **Fixed — merged in PR #138 (`d283744`)** | A renewal naming an existing `licenseId` with a different customer was applied and re-attributed every retained version. | §3; rule 2a + rule 2b; tests in §4. |
+| F-2 | Important | **Fixed — merged in PR #138 (`d283744`)** | A `licenseId` owned by another installation surfaced as an unmapped database FK error (HTTP 500), not a documented refusal. | §3; rule 2b under the lock; live test; 409. |
 | F-3 | Important | **Open — Owner decision (OQ-80 / OQ-86)** | A **non-superseding** backdated document whose window overlaps the past governed window of a version that a later supersession retired is **accepted**. The as-of read for that period then reports `ambiguous`. ADR-0046 D4 says effective windows are pairwise disjoint after every import. The existing unit test "never counts a superseded version as an overlap" pins the implemented rule. | Verified by a scratch spec on the unfixed code: retired R (2026-01-01, superseded by S at 2026-12-01), backdated N (2026-03-01 → 2026-06-01) imported 2027-01-15 → accepted; `resolveEffectiveVersion` at 2026-04-01 → `ambiguous`. Code reading: the overlap rule considers only versions still eligible at the import instant, so a document that covers the present or the future is refused; the observable effect is on past instants, which no current API exposes. **Not changed** — choosing between the D4 wording and the implemented rule is the OQ-86 decision. The recorded text is in `version-model-and-file-exchange.md` §3.5. |
 | F-4 | Important | **Open — Owner question** | An applied import overwrites the **installation's** `customerId` (`tx.installation.update`), including when the new license names a different customer. PDR-11 §2.1 says a customer owns one or more installations but does not say whether an installation can change customer. | `licenses.repository.ts` (installation update). Not changed. Recorded in the decision brief (Q4). |
-| F-5 | Important | **Fixed (follow-up round, 2026-10-12)** | The committed generated client declared the import endpoint's 200 response as `content?: never`, although the endpoint returns a JSON receipt. First pass (2026-10-11) added the path; the follow-up gives the response a schema (`LicenseImportResultDto`) and regenerates. | §13. The diff is additive: three component schemas and the import 200 content. |
+| F-5 | Important | **Fixed (follow-up round, 2026-10-12) — merged in PR #138 (`d283744`)** | The committed generated client declared the import endpoint's 200 response as `content?: never`, although the endpoint returns a JSON receipt. First pass (2026-10-11) added the path; the follow-up gives the response a schema (`LicenseImportResultDto`) and regenerates. | §13. The diff is additive: three component schemas and the import 200 content. |
 | F-6 | Important | **Partially fixed (2026-10-12)** | The import response now has a schema. `GET /api/v1/license/current` and `POST /api/v1/license/activate` still document a 200 response with **no content schema**; the frontend hand-restores `LicenseState` in `contracts.ts`. | §13. The same DTO pattern applies to those two routes; left open to keep this round to the import contract. |
 | F-7 | Important | **Open — process** | No CI step verifies that `frontend/src/api/generated/vardena-api.d.ts` matches the backend's OpenAPI document. | Recommended: a CI step that boots the API (or uses a committed OpenAPI snapshot) and fails on drift. Not added here (CI change is a separate, reviewable slice). |
 | F-8 | Important | **Open — Owner question** | The issuer CLI always generates a **new** `licenseId` (`buildLicensePayload` → `options.licenseId ?? generateId()`) and has no option to target an existing license. A renewal through the CLI therefore never shares a `licenseId` with the license it renews. The rule in F-1/F-2 can be reached only by a document the trusted authority signs deliberately (or by a hand-built document). | `backend/src/issue-development-license.ts` (options: `--customer`, no `--license-id`). Whether renewals keep the license identity is an Owner decision (decision brief Q3). Documentation corrected in `licensing-architecture.md` to reference this finding. |
-| F-9 | Minor | **Fixed (documentation)** | `docs/licensing-architecture.md` documented CLI flags the parser does not accept: `--file-out` (the parser reads `--out`), `--operation` (`--operation-id`), `--legacy-code` (`--format v1`). Following the documented command would not have written the file. | Corrected in the same document; the binding refusal is also described there. |
+| F-9 | Minor | **Fixed (documentation) — merged in PR #138 (`d283744`)** | `docs/licensing-architecture.md` documented CLI flags the parser does not accept: `--file-out` (the parser reads `--out`), `--operation` (`--operation-id`), `--legacy-code` (`--format v1`). Following the documented command would not have written the file. | Corrected in the same document; the binding refusal is also described there. |
 | F-10 | Minor | Open (test gap) | No test exercises the 10 s lock-wait timeout (`LOCK_WAIT_TIMEOUT_MS`). Behaviour matches ADR-0046 D11 (server error, nothing written). | Add a deterministic test in a later slice; not a contract defect. |
 | F-11 | Minor | Open (observation) | Bootstrap refuses to **create** the system administrator when an active license is already at its user limit (designed refusal, PDR-11 §8.3, loud failure by design). This surfaced on the shared test database. A fresh database (Compose's first run) passes, and re-running bootstrap is a no-op. | `bootstrap:system-admin` on the shared database rc 1; on a fresh database rc 0, second run rc 0. No change. |
 | F-12 | Blocker for any non-development deployment; pre-existing, out of this slice | Open | The initial administrator's password is the documented constant `1` (`README.md`, bootstrap service), with no forced change (the README says so). | Documented limitation, not introduced by PR #137. Must be resolved before any deployment beyond local development. Owner/security decision on the remediation path; no change made here. |
@@ -290,3 +296,51 @@ Scope of this round: (1) the cross-installation license-identifier race; (2) the
 
 The client was regenerated from the built API at the final code of this round (193 paths; `POST /api/v1/license/import` → 200 `application/json` → `#/components/schemas/LicenseImportResultDto`) with the pinned `openapi-typescript@7.13.0`. The output is byte-identical to the committed `frontend/src/api/generated/vardena-api.d.ts`. This is a manual regeneration check, not a CI gate (F-7).
 
+
+## 14. Post-merge verification of PR #138 (2026-10-12)
+
+Scope: verify the state of `main` after this report's own fixes were merged, and correct only the records that the merge made stale. No product decision, no OQ status change, no product-code change. The full verification report, the Owner decision package and the L-04 readiness assessment are `docs/tasks/licensing-pr-138-post-merge-verification-and-l-04-readiness.md`; this section keeps the reconciliation report internally consistent.
+
+### 14.1 Merge identity (verified with `gh` and `git`, not from the PR description)
+
+- `git ls-remote origin refs/heads/main` and `git rev-parse origin/main` → `d283744b4098346b6ef2e0b91922266f10cdabd1`.
+- PR #138 (`Licensing: refuse license re-binding; post-merge audit of PR #137`): `state=MERGED`, `mergedAt=2026-10-12T06:03:27Z`, `mergeCommit.oid=d283744b4098346b6ef2e0b91922266f10cdabd1`, `headRefOid=4bdd97048002dede854d3925c3a182854ed93988`, base `main`, head branch `arena/f0ddc379-vardena`.
+- Merge-commit parents: `345047a` (PR #137 merge, `main` before) and `4bdd970` (PR #138 head).
+- **Tree equality:** `git rev-parse d283744^{tree} 4bdd970^{tree}` → both `f9dd36f5b5a273dbc0e24ae79c3d9e1a0b0da487`, and `git diff --stat 4bdd970 d283744` is empty. The merge introduced no content beyond the reviewed head, so §13's description of "the final code of this round" describes `main`.
+- Local history is shallow; the SHAs above were re-fetched (`git fetch --depth=1 origin <sha>`) before being used, so `345047a` could be inspected directly for the absence of the fix.
+
+### 14.2 CI evidence for `d283744`, kept apart from head-CI and from local claims
+
+| Item | Run / job | Event and SHA | Result | Use as evidence |
+| --- | --- | --- | --- | --- |
+| **Merge commit** (the only CI result that verifies `main`) | run `38210710188` (`CI`), created `2026-10-12T06:03:29Z`, updated `2026-10-12T06:09:41Z` | `push` to `main` at `d283744` | `completed / success` | **Yes** — verifies `main` |
+| merge commit, backend job | job `114683993213` | `d283744` | `success`, 27 steps | Yes. Steps `success`: Prisma validate, Prisma generate, Lint, Typecheck, Format check, Unit tests, Build, Migrate test database, Bootstrap system administrator, Inventory BusinessDate live suite (Asia/Tehran), Inventory BusinessDate live suite (America/Los_Angeles), Migration rehearsal (populated pre-Task-11 data), Migration rehearsal (Inventory BusinessDate validity windows), Migration rehearsal (Licensing version model and import), E2E tests (incl. live-DB suites). Two steps `skipped` by design (`Publish e2e failure inventory`, `Upload backend logs on failure` — both `if: failure()`). |
+| merge commit, frontend job | job `114683993419` | `d283744` | `success`, 13 steps (Lint, Typecheck, Format check, Tests, Build) | Yes |
+| PR #138 head, final | run `38208790250` | `pull_request` at `4bdd970` (created `2026-10-12T05:38:04Z`) | `success` (backend job `114678096343`, frontend job `114678095992`) | **Not** merge-commit evidence. Identical tree, but recorded separately. |
+| PR #138 head, round 1 | run `38174043699` | `pull_request` at `8a8e637` | `success` (backend job `114572514150`, frontend job `114572513981`) | Only for `8a8e637`. Not evidence for `4bdd970` or `d283744`. |
+| PR #137 merge commit | run `38171112633` | `push` to `main` at `345047a` | `success` | Verifies `345047a` only — which does **not** contain §3/§13's fixes. |
+
+**Gaps in the CI evidence (stated, not hidden):**
+- Per-test counts inside the CI log cannot be quoted from the sandbox: the Actions log blob host is unreachable. Only step- and job-level conclusions are cited. Nothing in §13.3's counts is a CI result.
+- The legacy combined-status endpoint for `d283744` reports `pending` with `total_count: 0`, exactly as it did for `345047a` (§2). This repo's gates are Actions check runs; the check-runs API reports `backend: success` and `frontend: success`. The legacy endpoint is not used as evidence and its `pending` is not a failure.
+- The first check-runs read during this verification returned `backend: in_progress` for `d283744` (a stale cache of the same run while it was finishing). The run itself completed `success`; both readings are recorded so the sequence is not mistaken for a re-run. There is exactly one `push`-to-`main` run for `d283744`.
+- CI still has **no** step that regenerates or diffs the committed OpenAPI client (F-7). The green run above therefore does **not** prove the client is in sync; §13.4's byte-identical regeneration remains a manual check.
+
+### 14.3 Local claims versus CI
+
+§4 and §13.3 are **local** results, produced against PostgreSQL 16.4 binaries from `@embedded-postgres/linux-x64`, `apply-migrations.mjs` in place of `prisma migrate deploy`, and Prisma engine overrides (F-14). They are not CI results and were never presented as such. `d283744`'s green run `38210710188` is the authority for the CI-only steps — Prisma checksum fidelity under `prisma migrate deploy`, the CI service container, and the rehearsal wiring.
+
+**Record inconsistency found (not editable by an agent, therefore recorded here).** PR #138's merged description quotes the round-1 local counts — backend unit 1962/1962, licensing unit 115/115, licensing live+e2e 55/55, full backend e2e 616/616, client diff "additive only (84 lines)" — which match §4, not §13.3. The merged tree's final round is §13.3: backend unit **1965/1965**, licensing unit **118/118**, licensing live+e2e **58/58**, full backend e2e **619/619**, client diff **67 added / 1 removed**. The PR description also lists the client change as "`/license/import` added", which was round 1; round 2 gave the import 200 response a schema (`LicenseImportResultDto`). Read §13.3 for the merged tree. Neither set is CI evidence.
+
+### 14.4 Records corrected by this verification
+
+| Record | Correction |
+| --- | --- |
+| `STATE.md` §32 | The post-merge bullet's present-tense "`main` and the PR #137 merge commit are `345047a`" was factually stale after the PR #138 merge; scoped to its date, with the fix's absence at `345047a` recorded. The follow-up bullet now states its merge commit. "Next gate" names both PR #137 and PR #138 as merged-not-accepted and extends F-6 to `POST /license/activate`. New §33 holds this verification pass. |
+| This report | Header rows for merge state and the current tip of `main`; §2 scoped to PR #137; §6 statuses re-read against `d283744`; F-1, F-2, F-5, F-9 marked merged; this §14 added. |
+| `docs/tasks/pdr-11-conflict-reconciliation.md` | Status row: the fixes it describes reached `main` through PR #138 at `d283744`, not at `345047a`. |
+| `docs/decisions/product/PDR-11-…md` §19.4 | One merge-state sentence added to the post-merge addendum. **§1–§18 policy text untouched; §15 unchanged; PQ-5/OQ-80 and OQ-86 stay OPEN.** |
+| `docs/open-questions.md` | A dated historical-log entry for this verification. **Status of every OQ unchanged (OPEN).** |
+| `docs/tasks/licensing-pr-138-post-merge-verification-and-l-04-readiness.md` | New: the verification report, the Owner decision package (D-1…D-6) and the L-04 readiness assessment. |
+
+Not changed: any OQ status; any PDR-11 §1–§18 policy; the decision brief's options; any migration; any product code; the accepted architecture; `.github/workflows/ci.yml` (F-7 remains a separate, reviewable slice).
