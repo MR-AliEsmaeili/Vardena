@@ -49,16 +49,20 @@ import type {
  *
  * The rules below implement the Owner decisions of 2026-10-12 for the product
  * questions that were open (PDR-11 PQ-5 → OQ-80 overlap = **Option B**, gap =
- * **G2**; OQ-86 = **Option C**): at most one retained version *governs* any
- * instant, in the past as well as the future — the effective windows
- * `[valid_from, min(valid_until, governs_until))` of an installation are
- * pairwise disjoint after every import, retired history included. A later
- * starting version takes over at its own `validFrom` (nothing is stacked and no
- * previous version is deleted), a renewal may not leave a gap, and a reducing
- * hand-over is refused on **every** path that retires a version — an explicit
- * signed `supersedesOperationId` included — until PDR-11 §8.6's
- * check/explain/preserve/explicit-resolution flow exists (L-04). Naming the
- * version to retire is not that resolution.
+ * **G2**; OQ-86 = **Option C**; OQ-87 = **Option B** via PDR-13): at most one
+ * retained version *governs* any instant, in the past as well as the future —
+ * the effective windows `[valid_from, min(valid_until, governs_until))` of an
+ * installation are pairwise disjoint after every import, retired history
+ * included. A later starting version takes over at its own `validFrom`
+ * (nothing is stacked and no previous version is deleted), a renewal may not
+ * leave a gap, and a post-gap lapse is recoverable only through the dedicated,
+ * authorized, audited recovery operation — never through ordinary import.
+ * A reducing hand-over is checked against current usage and the retained
+ * grant on **every** path that retires a version — an explicit signed
+ * `supersedesOperationId` included — and conflicts are refused with their
+ * concrete details unless the caller carries the explicit resolution of the
+ * dedicated, authorized, audited resolution operation (PDR-11 §8.6, L-04).
+ * Naming the version to retire is not that resolution.
  * `evaluateImportConflicts` is the single authority for that guarantee and is
  * evaluated twice — once as a read-side pre-check (fast, informative rejection)
  * and once inside the import transaction, under a per-installation database
@@ -70,6 +74,52 @@ import type {
 
 /** Where a version came from (audited; never a trust decision). */
 export type LicenseVersionSource = 'file' | 'text' | 'legacy-code';
+
+/**
+ * Current usage of the licensed installation, as L-04's conflict check needs
+ * it (PDR-11 §8.6): how many organizations exist and how many users are
+ * active. The numbers are produced by the modules that OWN those records
+ * (organization, users) through their published application contracts — never
+ * by reading their tables — and a `null` count means "unknown", which fails
+ * closed: a capacity reduction whose usage cannot be counted is a conflict.
+ *
+ * Device usage has no entry because no device model exists yet (OQ-83 open);
+ * the shape grows when one does.
+ */
+export interface LicenseUsageSnapshot {
+  organizationCount: number | null;
+  activeUserCount: number | null;
+}
+
+/**
+ * One concrete capacity/entitlement conflict of a proposed reduction
+ * (PDR-11 §8.6: check, explain, preserve, require explicit resolution).
+ *
+ * `open-end-closed` is the term arm on the paths that do not name the version
+ * they retire (PDR-12): it is deliberately NOT resolvable by an operator
+ * resolution — only an explicit, valid, signed supersession may change the
+ * term — and `usage-unavailable` marks a capacity arm whose current usage
+ * could not be counted (fail closed). Both make a supplied resolution
+ * insufficient.
+ */
+export type ReductionConflict =
+  | { kind: 'organization-capacity'; limit: number; currentUsage: number }
+  | { kind: 'user-capacity'; limit: number; currentUsage: number }
+  | {
+      kind: 'entitlement-removed';
+      entitlement: { kind: EntitlementKind; code: string };
+    }
+  | { kind: 'open-end-closed' }
+  | { kind: 'usage-unavailable'; scope: 'organizations' | 'active-users' };
+
+/** True when an explicit operator resolution may authorize this conflict. */
+export function isResolvableReductionConflict(
+  conflict: ReductionConflict,
+): boolean {
+  return (
+    conflict.kind !== 'open-end-closed' && conflict.kind !== 'usage-unavailable'
+  );
+}
 
 export interface RetainedLicenseVersion {
   versionId: string;
@@ -346,6 +396,87 @@ export function retainedCoverageEnd(
   return end;
 }
 
+/** True when the installation retains at least one version of this identity. */
+export function hasRetainedLicense(
+  licenseId: string,
+  versions: readonly RetainedLicenseVersion[],
+): boolean {
+  return versions.some((version) => version.licenseId === licenseId);
+}
+
+/**
+ * The end of the installation's license coverage as a whole: the latest
+ * effective end across ALL retained versions of every identity. `null` means
+ * "coverage never ended" — either nothing is retained (no lapse exists) or a
+ * perpetual version still covers (an open-ended window extends past every
+ * instant). This is what decides whether a candidate starts after a lapse.
+ */
+export function installationCoverageEnd(
+  versions: readonly RetainedLicenseVersion[],
+): Date | null {
+  let end: Date | null = null;
+  for (const version of versions) {
+    const window = effectiveWindow(version);
+    if (window.end === null) return null; // perpetual: coverage never ends
+    if (end === null || window.end.getTime() > end.getTime()) {
+      end = window.end;
+    }
+  }
+  return end;
+}
+
+/**
+ * The license whose retained coverage ended last — the license the
+ * installation lapsed ON (OQ-87 recovery audit context). Deterministic
+ * (latest end, then latest import, then id) and `null` when coverage never
+ * ended, so a recovery event can never name a predecessor that does not
+ * exist.
+ */
+export function lapsedLicenseContext(
+  versions: readonly RetainedLicenseVersion[],
+): { licenseId: string; coverageEnd: Date } | null {
+  let best: RetainedLicenseVersion | null = null;
+  let bestEnd: Date | null = null;
+  for (const version of versions) {
+    const window = effectiveWindow(version);
+    if (window.end === null) return null; // perpetual: nothing has lapsed
+    const better =
+      bestEnd === null ||
+      window.end.getTime() > bestEnd.getTime() ||
+      (window.end.getTime() === bestEnd.getTime() &&
+        (version.importedAt.getTime() > best!.importedAt.getTime() ||
+          (version.importedAt.getTime() === best!.importedAt.getTime() &&
+            version.versionId > best!.versionId)));
+    if (better) {
+      best = version;
+      bestEnd = window.end;
+    }
+  }
+  return best === null || bestEnd === null
+    ? null
+    : { licenseId: best.licenseId, coverageEnd: bestEnd };
+}
+
+/**
+ * OQ-87: is this candidate a post-gap recovery candidate — a NEW license
+ * identity (nothing retained under it) whose window starts strictly after the
+ * installation's retained coverage has ended?
+ *
+ * A candidate that carries a retained identity is a renewal, not a recovery
+ * (G2 governs it and it may not leave a gap at all). `null` coverage (nothing
+ * retained, or a perpetual version) means no lapse exists. A start exactly AT
+ * the coverage end is adjacency, not a gap.
+ */
+export function isPostGapRecoveryCandidate(
+  candidate: Pick<ImportCandidate, 'licenseId' | 'validFrom'>,
+  versions: readonly RetainedLicenseVersion[],
+): boolean {
+  if (hasRetainedLicense(candidate.licenseId, versions)) return false;
+  const coverageEnd = installationCoverageEnd(versions);
+  if (coverageEnd === null) return false;
+  return candidate.validFrom.getTime() > coverageEnd.getTime();
+}
+
 /**
  * The §8.6 half that needs the capacity-conflict flow: does the candidate take
  * capacity or entitlements away from the version it retires?
@@ -361,10 +492,16 @@ export function retainedCoverageEnd(
  * an explicit `supersedesOperationId`, the implicit hand-over of OQ-80 Option
  * B, and the legacy `VLIC1` replacement. Naming the version to retire proves
  * *which* version the document replaces; it is not the resolution §8.6
- * requires, and it may not switch §8.6 off. Until L-04 implements the
- * check/explain/preserve/explicit-resolution flow, a reduction is refused
- * (`reduction-requires-resolution`, 409, nothing written) — when L-04 lands,
- * this predicate becomes the conflict detector of that flow instead.
+ * requires, and it may not switch §8.6 off.
+ *
+ * This predicate answers only "does the candidate shrink the grant of the
+ * version it retires at all". The L-04 conflict check is its usage-aware
+ * refinement, {@link reductionConflicts}: a shrink that leaves current usage
+ * within the new finite limits and removes no entitlement is NOT a conflict
+ * and is applied; one that does conflict is refused
+ * (`reduction-requires-resolution`, 409, nothing written) with the concrete
+ * conflicts, unless the explicit resolution of the dedicated resolution
+ * operation authorizes it.
  *
  * `null` is unlimited, so replacing an unlimited limit with a number is a
  * reduction too. An entitlement the predecessor granted and the candidate does
@@ -445,6 +582,85 @@ function limitReduced(previous: number | null, next: number | null): boolean {
   if (previous === null) return next !== null;
   if (next === null) return false;
   return next < previous;
+}
+
+/**
+ * The concrete §8.6 conflicts a proposed reduction produces against CURRENT
+ * usage and the retained grant (L-04).
+ *
+ * Per dimension (PDR-11 §8.2/§8.3/§8.4, §8.6; PDR-12 §4's per-dimension
+ * rule — one reduction never pays for another):
+ *
+ * - **organization capacity** — the limit decreases AND the new limit is
+ *   finite AND more organizations exist than it allows. Usage within the new
+ *   limit is no conflict (§8.6's flow is conditioned on the resulting state).
+ *   An unknown count fails closed (`usage-unavailable`).
+ * - **user capacity** — the same rule for active users.
+ * - **entitlements** — every `(kind, code)` the predecessor granted and the
+ *   candidate does not. There is no per-module usage model in this domain, so
+ *   a removed grant is always a conflict with the retained grant and always
+ *   requires the explicit resolution; nothing is destroyed by applying it
+ *   (§8.2: use stops, data is preserved, permissions remain but become
+ *   unlicensed).
+ *
+ * The open-end arm (perpetual → time-limited) is evaluated separately by
+ * `closesOpenEnd` on the paths that do not name their predecessor — it never
+ * enters this list because no operator resolution may authorize it (PDR-12).
+ */
+export function reductionConflicts(
+  predecessor: Pick<
+    RetainedLicenseVersion,
+    'organizationLimit' | 'userLimit' | 'entitlements'
+  >,
+  candidate: Pick<
+    RetainedLicenseVersion,
+    'organizationLimit' | 'userLimit' | 'entitlements'
+  >,
+  usage: LicenseUsageSnapshot | null,
+): ReductionConflict[] {
+  const conflicts: ReductionConflict[] = [];
+  if (
+    limitReduced(predecessor.organizationLimit, candidate.organizationLimit) &&
+    candidate.organizationLimit !== null
+  ) {
+    const current = usage?.organizationCount;
+    if (typeof current !== 'number') {
+      conflicts.push({ kind: 'usage-unavailable', scope: 'organizations' });
+    } else if (current > candidate.organizationLimit) {
+      conflicts.push({
+        kind: 'organization-capacity',
+        limit: candidate.organizationLimit,
+        currentUsage: current,
+      });
+    }
+  }
+  if (
+    limitReduced(predecessor.userLimit, candidate.userLimit) &&
+    candidate.userLimit !== null
+  ) {
+    const current = usage?.activeUserCount;
+    if (typeof current !== 'number') {
+      conflicts.push({ kind: 'usage-unavailable', scope: 'active-users' });
+    } else if (current > candidate.userLimit) {
+      conflicts.push({
+        kind: 'user-capacity',
+        limit: candidate.userLimit,
+        currentUsage: current,
+      });
+    }
+  }
+  const granted = new Set(
+    candidate.entitlements.map((entry) => `${entry.kind}:${entry.code}`),
+  );
+  for (const entry of predecessor.entitlements) {
+    if (!granted.has(`${entry.kind}:${entry.code}`)) {
+      conflicts.push({
+        kind: 'entitlement-removed',
+        entitlement: { kind: entry.kind, code: entry.code },
+      });
+    }
+  }
+  return conflicts;
 }
 
 export function findVersionByOperationId(
@@ -546,8 +762,9 @@ export function resolveEffectiveVersion(
  *
  * 409 (retained-state conflict, ADR-0046): `duplicate-operation`,
  * `unknown-supersession`, `overlapping-range`, `license-binding-conflict`,
- * `installation-customer-mismatch`, `transfer-not-applicable`, `renewal-gap`
- * and `reduction-requires-resolution`.
+ * `installation-customer-mismatch`, `transfer-not-applicable`, `renewal-gap`,
+ * `reduction-requires-resolution`, `post-gap-recovery-requires-dedicated-
+ * operation`, `recovery-not-applicable` and `resolution-not-applicable`.
  *
  * 422 (the document's own temporal window or capability set can never be
  * applied as issued, so a re-issued document is the fix): the temporal
@@ -559,10 +776,14 @@ export function resolveEffectiveVersion(
  * 2026-10-12 (Q4 customer transfer, OQ-80 G2, OQ-80 Option B with PDR-11 §8.6);
  * the reduction guard applies to the explicit supersession path as well, so no
  * precedence path can apply a reduction silently.
- * Like `license-binding-conflict` before them, their *names* and their HTTP
- * class are the implementation's reading of the approved texts and are recorded
- * for Product Owner ratification; the refusals themselves are the decided
- * policy.
+ * `post-gap-recovery-requires-dedicated-operation`, `recovery-not-applicable`
+ * and `resolution-not-applicable` carry the Owner decisions of 2026-10-12 as
+ * refined by the same Owner's implementation directive (OQ-87 Option B,
+ * PDR-13; L-04): ordinary import refuses a post-gap new-identity candidate,
+ * and each dedicated operation refuses when it is not applicable. Like
+ * `license-binding-conflict` before them, their *names* and their HTTP class
+ * are recorded for Product Owner ratification; the refusals themselves are the
+ * decided policy.
  */
 export type ImportConflictReason =
   | 'duplicate-operation'
@@ -573,12 +794,24 @@ export type ImportConflictReason =
   | 'installation-customer-mismatch'
   | 'transfer-not-applicable'
   | 'renewal-gap'
-  | 'reduction-requires-resolution';
+  | 'reduction-requires-resolution'
+  | 'post-gap-recovery-requires-dedicated-operation'
+  | 'recovery-not-applicable'
+  | 'resolution-not-applicable';
 
 export interface ImportConflict {
   reason: ImportConflictReason;
   /** How many retained versions the candidate collides with (diagnostics). */
   overlapping: number;
+  /**
+   * For `reduction-requires-resolution`: the concrete §8.6 conflicts that were
+   * found, with the predecessor they were measured against — the "explain"
+   * half of check/explain/preserve/resolve, surfaced in the 409 details.
+   */
+  reduction?: {
+    predecessorVersionId: string;
+    conflicts: ReductionConflict[];
+  };
 }
 
 /**
@@ -632,6 +865,43 @@ export interface CustomerTransferIntent {
   reason: string;
 }
 
+/**
+ * The dedicated post-gap recovery operation (Owner decision 2026-10-12,
+ * OQ-87 Option B, PDR-13).
+ *
+ * Its presence — produced only by the dedicated, permission-gated, audited
+ * recovery route — is what allows a NEW license identity to cover a lapse.
+ * On every path without it, such a candidate is refused
+ * (`post-gap-recovery-requires-dedicated-operation`): ordinary license import
+ * is not a permitted post-gap recovery path. Like the transfer intent it is
+ * never inferred from the document, and it authorizes nothing else: every
+ * signature, binding, identity, overlap, reduction and audit rule still runs.
+ */
+export interface GapRecoveryIntent {
+  /** Mandatory operator reason; carried onto the recovery audit event. */
+  reason: string;
+}
+
+/**
+ * The explicit resolution of a reduction conflict (PDR-11 §8.6, L-04).
+ *
+ * Its presence — produced only by the dedicated, permission-gated, audited
+ * resolution route — is what allows an import to apply a version whose
+ * capacity/entitlement reduction conflicts with current usage or retained
+ * grants. A signed document (including one that names the version it
+ * supersedes) is never this resolution: a document cannot observe how many
+ * users or organizations exist, so it cannot resolve the conflict, and an
+ * operator cannot resolve anything by re-submitting the same document. The
+ * resolution authorizes the resolvable conflicts evaluated at application
+ * time under the installation lock — never an open-end closure (PDR-12 keeps
+ * that with the explicit signed supersession) and never a conflict whose
+ * usage could not be counted.
+ */
+export interface ReductionResolutionIntent {
+  /** Mandatory operator reason; carried onto the resolution audit event. */
+  reason: string;
+}
+
 export interface EvaluateImportConflictsParams {
   candidate: ImportCandidate;
   operationId: string;
@@ -644,6 +914,20 @@ export interface EvaluateImportConflictsParams {
   installationCustomerId?: string | null;
   /** Set only by the explicit transfer operation; null on every other path. */
   customerTransfer?: CustomerTransferIntent | null;
+  /**
+   * Current organization/user usage for the §8.6 conflict check (L-04). Read
+   * inside the import transaction under the installation and allocation
+   * locks, so a concurrent creation cannot slip past the check. Null counts
+   * fail closed (a `usage-unavailable` conflict).
+   */
+  usage?: LicenseUsageSnapshot | null;
+  /** Set only by the dedicated post-gap recovery operation; null otherwise. */
+  gapRecovery?: GapRecoveryIntent | null;
+  /**
+   * Set only by the dedicated reduction-resolution operation; null on every
+   * other path (an ordinary import can never carry it).
+   */
+  reductionResolution?: ReductionResolutionIntent | null;
 }
 
 export type ImportConflictEvaluation =
@@ -702,38 +986,56 @@ export type ImportConflictEvaluation =
  *    past instant. A hand-over at or after `at`, and a target that had already
  *    ended (its `validUntil` pins its window, so the stamp shortens nothing),
  *    stay allowed;
- * 6b. **a reduction is never applied by precedence** (PDR-11 §8.6, review fix
- *    on PR #141): when the candidate retires a version whose **capacity or
- *    entitlements** it shrinks — the explicit supersession target, the version
- *    an implicit hand-over takes over, or the version a legacy code replaces —
- *    the import is refused as `reduction-requires-resolution` (409, nothing
- *    written) until L-04 implements §8.6's check/explain/preserve/explicit-
- *    resolution flow. A signed `supersedesOperationId` proves which version
- *    the document replaces; it is not a resolution of the capacity or
- *    entitlement conflict, so it may not switch §8.6 off. Closing an open end
- *    (perpetual → time-limited) is the other arm of the same guard, and is
- *    evaluated only where the document does not name the version it retires:
- *    an implicit hand-over or a legacy replacement. An explicit signed
- *    supersession MAY make that term change — the Product Owner's final
- *    decision of 2026-10-12 (OD-LIC-01, PDR-12) — and only that change: every
- *    capacity/entitlement arm above still runs on that path. Increases and
- *    identical grants are unaffected, and so is a document that retires
- *    nothing (`supersedes` null): with no predecessor retired there is no
- *    grant to take away;
+ * 6b. **a reduction is checked, explained and explicitly resolved — never
+ *    silently applied** (PDR-11 §8.6; the review fix on PR #141 extended the
+ *    guard to every retirement path, and L-04 completes the flow). When the
+ *    candidate retires a version whose **capacity or entitlements** it shrinks
+ *    — the explicit supersession target, the version an implicit hand-over
+ *    takes over, or the version a legacy code replaces — the shrink is
+ *    evaluated per dimension against CURRENT usage and the retained grant
+ *    ({@link reductionConflicts}): usage within the new finite limits and no
+ *    removed entitlement is no conflict and is applied; a capacity arm whose
+ *    new finite limit sits below current usage, an unknown usage count, or a
+ *    removed entitlement is a conflict, refused as
+ *    `reduction-requires-resolution` (409, nothing written) WITH the concrete
+ *    conflicts in `conflict.reduction`. The refusal lifts only for the
+ *    explicit resolution of the dedicated, authorized, audited resolution
+ *    operation (`reductionResolution`), which the importing transaction
+ *    audits; a signed `supersedesOperationId` proves which version the
+ *    document replaces and is never that resolution. An unresolvable
+ *    composition — closing an open end where the document does not name the
+ *    version it retires (implicit hand-over, legacy replacement; PDR-12), or
+ *    a countable-but-unavailable usage — stays refused even with a
+ *    resolution. A resolution request that meets no conflict at all is
+ *    refused as `resolution-not-applicable`. Increases and identical grants
+ *    are unaffected, and so is a document that retires nothing (`supersedes`
+ *    null): with no predecessor retired there is no grant to take away;
  * 7. a **renewal** may not leave a gap (OQ-80 **G2**, 2026-10-12): when the
  *    candidate carries the identity of a retained license, its `validFrom` may
  *    not be later than that license's retained coverage end
  *    (`renewal-gap`). Adjacency — the previous exclusive end equals the new
- *    `validFrom` — is contiguous, not a gap. A candidate that carries a
- *    **new** license identity is not a renewal of a retained license; whether a
- *    new identity may cover a lapse is an Owner question that is still open
- *    (OQ-87) and no rule here grants or refuses it;
+ *    `validFrom` — is contiguous, not a gap. This rule runs unchanged for the
+ *    recovery operation too: recovery authorizes a NEW identity, never a
+ *    gapped renewal;
+ * 7b. **post-gap recovery goes only through the dedicated operation** (OQ-87
+ *    **Option B**, 2026-10-12, PDR-13): a candidate carrying a NEW license
+ *    identity whose window starts strictly after the installation's retained
+ *    coverage end (`isPostGapRecoveryCandidate`) is refused on every path
+ *    without the recovery intent
+ *    (`post-gap-recovery-requires-dedicated-operation`, 409, nothing
+ *    written) — ordinary license import is not a permitted post-gap recovery
+ *    path. The dedicated recovery operation (its own permission, a required
+ *    reason, a typed audit event) may apply exactly such a candidate and
+ *    refuses everything else (`recovery-not-applicable`): there is nothing to
+ *    recover. A start exactly AT the coverage end is adjacency, not a gap,
+ *    and stays an ordinary import;
  * 8. a legacy `VLIC1` text code keeps its documented L-02 lifecycle rules
  *    unchanged — at most one overlapping version that is still governing and
  *    has no recorded supersession, and never a hand-over in the past (which its
  *    default 2020 window would otherwise be). The historical rule 4, the
- *    reduction guard 6b and the gap rule 7 apply to it as well, added after its
- *    own rules so no existing refusal changes its reason.
+ *    reduction guard 6b, the gap rule 7 and the post-gap rule 7b apply to it
+ *    as well, added after its own rules so no existing refusal changes its
+ *    reason.
  */
 export function evaluateImportConflicts(
   params: EvaluateImportConflictsParams,
@@ -742,6 +1044,16 @@ export function evaluateImportConflicts(
     params;
   const installationCustomerId = params.installationCustomerId ?? null;
   const customerTransfer = params.customerTransfer ?? null;
+  const usage = params.usage ?? null;
+  const gapRecovery = params.gapRecovery ?? null;
+  const reductionResolution = params.reductionResolution ?? null;
+  /**
+   * Set when the §8.6 guard actually applied a supplied resolution to real
+   * conflicts. A resolution request that ends the evaluation without ever
+   * meeting a conflict is not an import — it is refused below as
+   * `resolution-not-applicable` (nothing to resolve).
+   */
+  let resolutionApplied = false;
 
   if (findVersionByOperationId(versions, operationId) !== null) {
     return conflictOnly({ reason: 'duplicate-operation', overlapping: 0 });
@@ -813,7 +1125,8 @@ export function evaluateImportConflicts(
     ) {
       return backdatedSupersession();
     }
-    // Then the new rules: retained history (rule 4) and the gap rule (rule 7).
+    // Then the new rules: retained history (rule 4), the §8.6 reduction guard
+    // (rule 6b, now conflict-aware via L-04) and the gap rule (rule 7).
     const historic = others.filter(
       (version) =>
         version.versionId !== implicitTarget?.versionId &&
@@ -825,22 +1138,29 @@ export function evaluateImportConflicts(
         overlapping: historic.length,
       });
     }
-    if (
-      implicitTarget !== null &&
-      reducesRetainedGrant(implicitTarget, candidate)
-    ) {
-      // The same §8.6 guard as the signed paths — capacity, entitlements and
-      // the open end — because a text code does not name the version it
-      // replaces either. Replacing the governing version with a smaller grant
-      // is a reduction this release cannot resolve, whatever transport carried
-      // the document.
-      return conflictOnly({
-        reason: 'reduction-requires-resolution',
-        overlapping: 1,
-      });
+    if (implicitTarget !== null) {
+      const guard = evaluateReductionHandOver(
+        implicitTarget,
+        candidate,
+        // A legacy code never names the version it replaces, so closing an
+        // open end stays a guarded reduction on this path (PDR-12).
+        false,
+        usage,
+        reductionResolution,
+      );
+      if (guard.action === 'refuse') return guard.evaluation;
+      resolutionApplied = resolutionApplied || guard.resolutionUsed;
     }
     if (leavesRenewalGap(candidate, versions)) {
       return conflictOnly({ reason: 'renewal-gap', overlapping: 0 });
+    }
+    const postGap = postGapGuard(candidate, versions, gapRecovery);
+    if (postGap !== null) return conflictOnly(postGap);
+    if (reductionResolution !== null && !resolutionApplied) {
+      return conflictOnly({
+        reason: 'resolution-not-applicable',
+        overlapping: 0,
+      });
     }
     return { conflict: null, supersedes: implicitTarget };
   }
@@ -875,27 +1195,40 @@ export function evaluateImportConflicts(
   ) {
     return backdatedSupersession();
   }
-  if (
-    supersedes !== null &&
-    (target !== null
-      ? // An explicitly named predecessor: capacity and entitlements are
-        // protected on this path too (the review finding on PR #141). The
-        // signed document says WHICH version it retires — it cannot say how
-        // many users or organizations exist, so it is not the resolution
-        // PDR-11 §8.6 requires, and it may not switch the guard off.
-        reducesCapacityOrEntitlements(supersedes, candidate)
-      : // Implicit precedence (OQ-80 Option B): the retirement itself is not
-        // named by the document, so closing an open end is a reduction here as
-        // well.
-        reducesRetainedGrant(supersedes, candidate))
-  ) {
-    return conflictOnly({
-      reason: 'reduction-requires-resolution',
-      overlapping: 1,
-    });
+  if (supersedes !== null) {
+    // Rule 6b (PDR-11 §8.6, now with the L-04 conflict/resolution flow): the
+    // capacity/entitlement arms run on every path that retires a version —
+    // the explicit supersession target and the implicit hand-over of OQ-80
+    // Option B alike. The arms are evaluated per dimension against CURRENT
+    // usage and the retained grant; a conflict is refused with its concrete
+    // details (`reduction`) unless the caller carries the explicit resolution
+    // of the dedicated, authorized, audited resolution operation. An open end
+    // may be closed only where the document names the version it retires
+    // (PDR-12); that arm is never operator-resolvable.
+    const guard = evaluateReductionHandOver(
+      supersedes,
+      candidate,
+      target !== null,
+      usage,
+      reductionResolution,
+    );
+    if (guard.action === 'refuse') return guard.evaluation;
+    resolutionApplied = resolutionApplied || guard.resolutionUsed;
   }
   if (leavesRenewalGap(candidate, versions)) {
     return conflictOnly({ reason: 'renewal-gap', overlapping: 0 });
+  }
+  // Rule 7b (OQ-87 Option B, PDR-13): a NEW license identity starting after
+  // the installation's coverage has ended is post-gap recovery, permitted
+  // only through the dedicated recovery operation. Ordinary import refuses
+  // it; the recovery operation refuses everything that is not one.
+  const postGap = postGapGuard(candidate, versions, gapRecovery);
+  if (postGap !== null) return conflictOnly(postGap);
+  if (reductionResolution !== null && !resolutionApplied) {
+    return conflictOnly({
+      reason: 'resolution-not-applicable',
+      overlapping: 0,
+    });
   }
   return { conflict: null, supersedes };
 }
@@ -919,6 +1252,90 @@ function leavesRenewalGap(
   const coverageEnd = retainedCoverageEnd(candidate.licenseId, versions);
   if (coverageEnd === null) return false;
   return candidate.validFrom.getTime() > coverageEnd.getTime();
+}
+
+/**
+ * The verdict of the §8.6 guard for one hand-over (L-04): `refuse` carries the
+ * exact conflict evaluation (with the concrete reduction conflicts when it is
+ * a reduction refusal), `apply` says the hand-over may proceed — recording
+ * whether a supplied resolution was actually consumed to authorize real
+ * conflicts (a resolution that never meets a conflict is refused by the
+ * caller as `resolution-not-applicable`).
+ *
+ * `namedByDocument` is true only for an explicit signed supersession: that is
+ * the one path where closing an open end is allowed at all (PDR-12), and it
+ * is the one transport whose instruction can never be an operator resolution.
+ */
+function evaluateReductionHandOver(
+  supersedes: RetainedLicenseVersion,
+  candidate: ImportCandidate,
+  namedByDocument: boolean,
+  usage: LicenseUsageSnapshot | null,
+  resolution: ReductionResolutionIntent | null,
+):
+  | { action: 'refuse'; evaluation: ImportConflictEvaluation }
+  | {
+      action: 'apply';
+      resolutionUsed: boolean;
+    } {
+  const conflicts = reductionConflicts(supersedes, candidate, usage);
+  if (!namedByDocument && closesOpenEnd(supersedes, candidate)) {
+    conflicts.push({ kind: 'open-end-closed' });
+  }
+  if (conflicts.length === 0) {
+    return resolution !== null
+      ? {
+          action: 'refuse',
+          evaluation: conflictOnly({
+            reason: 'resolution-not-applicable',
+            overlapping: 0,
+          }),
+        }
+      : { action: 'apply', resolutionUsed: false };
+  }
+  if (resolution === null || !conflicts.every(isResolvableReductionConflict)) {
+    return {
+      action: 'refuse',
+      evaluation: conflictOnly({
+        reason: 'reduction-requires-resolution',
+        overlapping: 1,
+        reduction: {
+          predecessorVersionId: supersedes.versionId,
+          conflicts,
+        },
+      }),
+    };
+  }
+  return { action: 'apply', resolutionUsed: true };
+}
+
+/**
+ * Rule 7b (OQ-87 Option B, PDR-13): the post-gap verdict for a candidate.
+ *
+ * - A post-gap candidate (new identity, strictly after the retained coverage
+ *   end) without the recovery intent is refused: ordinary import is not a
+ *   post-gap recovery path.
+ * - A recovery request for a candidate that is NOT post-gap is refused: there
+ *   is nothing to recover, and the document belongs to the ordinary import.
+ * - A retained identity after the coverage end never reaches this guard: the
+ *   G2 renewal-gap rule refuses it first, unchanged by OQ-87.
+ */
+function postGapGuard(
+  candidate: ImportCandidate,
+  versions: readonly RetainedLicenseVersion[],
+  gapRecovery: GapRecoveryIntent | null,
+): ImportConflict | null {
+  const postGap = isPostGapRecoveryCandidate(candidate, versions);
+  if (postGap && gapRecovery === null) {
+    return {
+      reason: 'post-gap-recovery-requires-dedicated-operation',
+      overlapping: 0,
+    };
+  }
+  if (!postGap && gapRecovery !== null) {
+    return { reason: 'recovery-not-applicable', overlapping: 0 };
+  }
+  return null;
 }
 
 /** The single shape of a conflict evaluation (no supersession is resolved). */

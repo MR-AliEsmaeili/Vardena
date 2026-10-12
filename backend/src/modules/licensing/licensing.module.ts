@@ -2,6 +2,10 @@ import { Module, forwardRef } from '@nestjs/common';
 import { APP_CONFIG, type AppConfig } from '../../kernel/config/app-config.js';
 import { LicensingService } from './application/licensing.service.js';
 import { LICENSE_PROVIDER } from './application/license-provider.js';
+import {
+  CrossModuleLicenseUsage,
+  LICENSE_USAGE_PORT,
+} from './application/license-usage.js';
 import { LocalDevelopmentLicenseProvider } from './application/local-development-license.provider.js';
 import { PersistentLicenseProvider } from './application/persistent-license.provider.js';
 import { InstallationIdentityService } from './application/installation-identity.service.js';
@@ -14,6 +18,8 @@ import { LicenseStateController } from './api/license-state.controller.js';
 import { LicenseActivationController } from './api/license-activation.controller.js';
 import { LicenseImportController } from './api/license-import.controller.js';
 import { LicenseCustomerTransferController } from './api/license-customer-transfer.controller.js';
+import { LicenseGapRecoveryController } from './api/license-gap-recovery.controller.js';
+import { LicenseReductionResolutionController } from './api/license-reduction-resolution.controller.js';
 import { IdentityModule } from '../identity/identity.module.js';
 import { RbacModule } from '../rbac/rbac.module.js';
 
@@ -35,7 +41,11 @@ import { RbacModule } from '../rbac/rbac.module.js';
  * `IdentityModule` is imported with `forwardRef` for `AuthGuard` (Identity
  * imports Licensing for the capability gate — a composition cycle, not a data
  * cycle); `RbacModule` supplies `AuthorizationService`, the authorization
- * guard and the permission registry.
+ * guard and the permission registry. The L-04 usage counts (§8.6) do NOT add
+ * module imports: `CrossModuleLicenseUsage` resolves
+ * `OrganizationsService`/`UsersService` lazily through `ModuleRef` — they are
+ * published application contracts (AR-07), and the allocation-guard edge
+ * Organization/Users → Licensing stays one-directional at the module level.
  */
 @Module({
   imports: [forwardRef(() => IdentityModule), forwardRef(() => RbacModule)],
@@ -44,6 +54,8 @@ import { RbacModule } from '../rbac/rbac.module.js';
     LicenseActivationController,
     LicenseImportController,
     LicenseCustomerTransferController,
+    LicenseGapRecoveryController,
+    LicenseReductionResolutionController,
   ],
   providers: [
     InstallationsRepository,
@@ -64,6 +76,10 @@ import { RbacModule } from '../rbac/rbac.module.js';
         local: LocalDevelopmentLicenseProvider,
       ) =>
         config.licensing.provider === 'local-development' ? local : persistent,
+    },
+    {
+      provide: LICENSE_USAGE_PORT,
+      useClass: CrossModuleLicenseUsage,
     },
     LicensingService,
     LicenseImportService,

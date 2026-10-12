@@ -118,6 +118,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/license/gap-recovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recover this installation after a license coverage lapse with a signed license document.
+         * @description Verifies the signed document, then — under the installation lock — applies the new license identity that covers a lapsed coverage window, together with a typed audit event recording the lapsed license, its coverage end, the operation, the actor, the source, the instant and the supplied reason, in one transaction. Only valid when coverage has actually lapsed; every other licensing rule (signature, binding, overlap, term rules) is unchanged.
+         */
+        post: operations["LicenseGapRecoveryController_recover_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/license/reduction-resolution": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a signed license version whose reduction conflicts, with an explicit resolution.
+         * @description Verifies the signed document, then — under the installation and allocation locks — applies the version together with an audited resolution of the capacity or entitlement reductions that conflict with current usage or the retained grant, recording the conflicts the resolution authorized, the actor, the source, the instant and the supplied reason in one transaction. Only valid when the document actually conflicts; the ordinary import answers 409 reduction-requires-resolution with the concrete conflicts, and this operation exists to resolve exactly those.
+         */
+        post: operations["LicenseReductionResolutionController_resolve_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -3607,6 +3647,126 @@ export interface components {
             previousCustomerId: string | null;
             /** @description True when the transfer changed the binding. */
             bindingChanged: boolean;
+        };
+        RecoverAfterGapDto: {
+            /**
+             * @description The signed license document that covers the lapsed window: the vardena-license file envelope or the bare VLIC2 artifact. A legacy VLIC1 text code cannot carry a recovery and is refused.
+             * @example {"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}
+             */
+            document: string;
+            /**
+             * @description Why coverage is being restored after a lapse. Recorded on the typed recovery audit event; required, because an unexplained recovery is not auditable.
+             * @example Renewal order 2026-1182 arrived after the previous contract had already expired.
+             */
+            reason: string;
+        };
+        GapRecoveryResultDto: {
+            /** @description Whether an installation license is evaluated. */
+            licensed: boolean;
+            /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
+            status: string;
+            /** @description True only while the license is active now. */
+            active: boolean;
+            /** @description Why the license is not active. */
+            inactiveReason: string | null;
+            installationId: string | null;
+            customerId: string | null;
+            licenseId: string | null;
+            /** Format: date-time */
+            validFrom: string | null;
+            /** Format: date-time */
+            validUntil: string | null;
+            organizationLimit: number | null;
+            userLimit: number | null;
+            entitlements: components["schemas"]["LicenseEntitlementDto"][];
+            /** @description The license provider that evaluated the state. */
+            provider: string;
+            /** @description The version that governs now. */
+            effectiveVersionId: string | null;
+            /** @description The earliest retained version that is not effective yet. */
+            scheduledVersion: components["schemas"]["LicenseVersionSummaryDto"] | null;
+            /** @description Bounded retained-version history, newest first. */
+            versions: components["schemas"]["LicenseVersionSummaryDto"][];
+            /** @description False when a repeated legacy code was already the governing version. */
+            changed: boolean;
+            /** @enum {string} */
+            outcome: "APPLIED" | "UNCHANGED";
+            /** @description The license whose retained coverage had ended before the recovery. */
+            lapsedLicenseId: string | null;
+            /** @description When that coverage ended; the recovery started strictly after it (ISO instant). */
+            coverageEnd: string | null;
+        };
+        ResolveReductionDto: {
+            /**
+             * @description The signed license document whose reduction conflicts with current usage or the retained grant: the vardena-license file envelope or the bare VLIC2 artifact.
+             * @example {"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}
+             */
+            document: string;
+            /**
+             * @description Why the capacity or entitlement reduction is being authorized. Recorded on the typed resolution audit event with the conflicts it authorized; required, because an unexplained reduction is not auditable.
+             * @example Customer confirmed the user-count reduction; three unused seats were revoked before the new version applies.
+             */
+            reason: string;
+        };
+        ReductionConflictEntitlementDto: {
+            /** @description Entitlement kind of the removed grant. */
+            kind: string;
+            /** @description Entitlement code of the removed grant. */
+            code: string;
+        };
+        ReductionConflictDto: {
+            /**
+             * @description organization-capacity / user-capacity: the new limit is below current usage. entitlement-removed: the retired version grants an entitlement the new one does not. open-end-closed: a perpetual version would be handed over to a time-limited one (never operator-resolvable). usage-unavailable: current usage could not be counted, so the check fails closed.
+             * @enum {string}
+             */
+            kind: "organization-capacity" | "user-capacity" | "entitlement-removed" | "open-end-closed" | "usage-unavailable";
+            /** @description The new (lower) limit, for a capacity conflict. */
+            limit?: number | null;
+            /** @description Current counted usage the new limit would fall below. */
+            currentUsage?: number;
+            /** @description The removed entitlement, for an entitlement conflict. */
+            entitlement?: components["schemas"]["ReductionConflictEntitlementDto"] | null;
+            /**
+             * @description Which count was unavailable, for a usage-unavailable conflict.
+             * @enum {string|null}
+             */
+            scope?: "organizations" | "active-users" | null;
+        };
+        ReductionResolutionResultDto: {
+            /** @description Whether an installation license is evaluated. */
+            licensed: boolean;
+            /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
+            status: string;
+            /** @description True only while the license is active now. */
+            active: boolean;
+            /** @description Why the license is not active. */
+            inactiveReason: string | null;
+            installationId: string | null;
+            customerId: string | null;
+            licenseId: string | null;
+            /** Format: date-time */
+            validFrom: string | null;
+            /** Format: date-time */
+            validUntil: string | null;
+            organizationLimit: number | null;
+            userLimit: number | null;
+            entitlements: components["schemas"]["LicenseEntitlementDto"][];
+            /** @description The license provider that evaluated the state. */
+            provider: string;
+            /** @description The version that governs now. */
+            effectiveVersionId: string | null;
+            /** @description The earliest retained version that is not effective yet. */
+            scheduledVersion: components["schemas"]["LicenseVersionSummaryDto"] | null;
+            /** @description Bounded retained-version history, newest first. */
+            versions: components["schemas"]["LicenseVersionSummaryDto"][];
+            /** @description False when a repeated legacy code was already the governing version. */
+            changed: boolean;
+            /** @enum {string} */
+            outcome: "APPLIED" | "UNCHANGED";
+            /** @description The version whose grant was reduced with explicit authorization. */
+            resolvedPredecessorVersionId: string;
+            /** @description The conflicts the resolution authorized. */
+            resolvedConflicts: components["schemas"]["ReductionConflictDto"][];
         };
         LoginRequestDto: {
             /**
@@ -8442,6 +8602,124 @@ export interface operations {
                 content?: never;
             };
             /** @description The document is malformed, tampered with, issued for another installation, not active, already ended, a legacy text code (which cannot express a transfer), or names capabilities this build does not know. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    LicenseGapRecoveryController_recover_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoverAfterGapDto"];
+            };
+        };
+        responses: {
+            /** @description The evaluated state after the recovery, with the lapsed-license facts the transaction committed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GapRecoveryResultDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is authentic but conflicts with retained state: coverage has not lapsed (import it instead), the license identifier belongs to another customer or installation, a renewal would leave a gap, the version overlaps retained history, or it reduces entitlements without an authorized resolution. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is malformed, tampered with, issued for another installation, not active, already ended, a legacy text code (which cannot carry a recovery), or names capabilities this build does not know. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    LicenseReductionResolutionController_resolve_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveReductionDto"];
+            };
+        };
+        responses: {
+            /** @description The evaluated state after the resolution, with the conflicts the resolution authorized. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReductionResolutionResultDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is authentic but conflicts with retained state: it does not conflict with usage (import it instead), the license identifier belongs to another customer or installation, the version overlaps retained history, or an open end is being closed (never operator-resolvable; issue an explicit signed supersession). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is malformed, tampered with, issued for another installation, not active, already ended, backdated, or names capabilities this build does not know. */
             422: {
                 headers: {
                     [name: string]: unknown;

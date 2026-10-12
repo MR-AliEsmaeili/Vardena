@@ -464,6 +464,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           supersession: { kind: 'none' },
           customerTransfer: null,
           expectedSupersessionVersionId: null,
+          gapRecovery: null,
+          reductionResolution: null,
           auditEvents: [
             {
               installationId: identity.installationId,
@@ -544,6 +546,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           supersession: { kind: 'none' },
           customerTransfer: null,
           expectedSupersessionVersionId: null,
+          gapRecovery: null,
+          reductionResolution: null,
           auditEvents: [
             {
               installationId: identity.installationId,
@@ -584,8 +588,8 @@ describe.skipIf(DATABASE_URL === undefined)(
       const document = licenseFor(
         {
           installationId: identity.installationId,
-          validFrom: new Date('2031-01-01T00:00:00.000Z'),
-          validUntil: new Date('2032-01-01T00:00:00.000Z'),
+          validFrom: new Date('2028-01-01T00:00:00.000Z'),
+          validUntil: new Date('2029-01-01T00:00:00.000Z'),
         },
         authority.privateKey,
       );
@@ -613,9 +617,9 @@ describe.skipIf(DATABASE_URL === undefined)(
       // Far-future windows on purpose: the race must not depend on the wall
       // clock, and these must not overlap the cases above.
       const rounds = [
-        { from: '2033-01-01T00:00:00.000Z', until: '2033-07-01T00:00:00.000Z' },
-        { from: '2033-07-01T00:00:00.000Z', until: '2034-01-01T00:00:00.000Z' },
-        { from: '2034-01-01T00:00:00.000Z', until: '2034-07-01T00:00:00.000Z' },
+        { from: '2029-01-01T00:00:00.000Z', until: '2029-07-01T00:00:00.000Z' },
+        { from: '2029-07-01T00:00:00.000Z', until: '2030-01-01T00:00:00.000Z' },
+        { from: '2030-01-01T00:00:00.000Z', until: '2030-07-01T00:00:00.000Z' },
       ];
 
       for (const [index, round] of rounds.entries()) {
@@ -730,8 +734,8 @@ describe.skipIf(DATABASE_URL === undefined)(
       const document = licenseFor(
         {
           installationId: identity.installationId,
-          validFrom: new Date('2035-01-01T00:00:00.000Z'),
-          validUntil: new Date('2036-01-01T00:00:00.000Z'),
+          validFrom: new Date('2030-07-01T00:00:00.000Z'),
+          validUntil: new Date('2031-07-01T00:00:00.000Z'),
           organizationLimit: 40,
         },
         authority.privateKey,
@@ -776,8 +780,8 @@ describe.skipIf(DATABASE_URL === undefined)(
       const target = licenseFor(
         {
           installationId: identity.installationId,
-          validFrom: new Date('2036-07-01T00:00:00.000Z'),
-          validUntil: new Date('2037-01-01T00:00:00.000Z'),
+          validFrom: new Date('2031-07-01T00:00:00.000Z'),
+          validUntil: new Date('2032-01-01T00:00:00.000Z'),
           organizationLimit: 50,
         },
         authority.privateKey,
@@ -787,8 +791,8 @@ describe.skipIf(DATABASE_URL === undefined)(
       const left = licenseFor(
         {
           installationId: identity.installationId,
-          validFrom: new Date('2036-10-01T00:00:00.000Z'),
-          validUntil: new Date('2037-01-01T00:00:00.000Z'),
+          validFrom: new Date('2031-10-01T00:00:00.000Z'),
+          validUntil: new Date('2032-01-01T00:00:00.000Z'),
           organizationLimit: 51,
           supersedesOperationId: target.payload.operationId,
         },
@@ -797,8 +801,8 @@ describe.skipIf(DATABASE_URL === undefined)(
       const right = licenseFor(
         {
           installationId: identity.installationId,
-          validFrom: new Date('2036-08-01T00:00:00.000Z'),
-          validUntil: new Date('2037-01-01T00:00:00.000Z'),
+          validFrom: new Date('2031-08-01T00:00:00.000Z'),
+          validUntil: new Date('2032-01-01T00:00:00.000Z'),
           organizationLimit: 52,
           supersedesOperationId: target.payload.operationId,
         },
@@ -901,8 +905,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           licenseId,
           customerId: customerA,
           customerName: 'Customer A',
-          validFrom: new Date('2050-01-01T00:00:00.000Z'),
-          validUntil: new Date('2051-01-01T00:00:00.000Z'),
+          validFrom: new Date('2032-01-01T00:00:00.000Z'),
+          validUntil: new Date('2033-01-01T00:00:00.000Z'),
         },
         authority.privateKey,
       );
@@ -912,8 +916,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           licenseId,
           customerId: customerB,
           customerName: 'Customer B',
-          validFrom: new Date('2051-01-01T00:00:00.000Z'),
-          validUntil: new Date('2052-01-01T00:00:00.000Z'),
+          validFrom: new Date('2033-01-01T00:00:00.000Z'),
+          validUntil: new Date('2034-01-01T00:00:00.000Z'),
         },
         authority.privateKey,
       );
@@ -959,10 +963,17 @@ describe.skipIf(DATABASE_URL === undefined)(
         {
           installationId: identity.installationId,
           licenseId,
-          validFrom: new Date('2090-01-01T00:00:00.000Z'),
-          validUntil: new Date('2091-01-01T00:00:00.000Z'),
+          validFrom: new Date('2033-01-01T00:00:00.000Z'),
+          validUntil: new Date('2034-01-01T00:00:00.000Z'),
           organizationLimit: 5,
           userLimit: 20,
+          // Entitlements make the reduction conflict deterministic in a
+          // shared CI database: `documents` is granted here and taken away by
+          // the successor, so the conflict fires on the retained grant alone
+          // regardless of how many organizations exist at that moment (the
+          // capacity arm fires additionally when usage is above the new
+          // limit).
+          moduleEntitlements: ['accounting', 'documents'],
         },
         authority.privateKey,
       );
@@ -978,10 +989,11 @@ describe.skipIf(DATABASE_URL === undefined)(
         {
           installationId: identity.installationId,
           licenseId,
-          validFrom: new Date('2090-06-01T00:00:00.000Z'),
-          validUntil: new Date('2091-06-01T00:00:00.000Z'),
+          validFrom: new Date('2033-06-01T00:00:00.000Z'),
+          validUntil: new Date('2034-06-01T00:00:00.000Z'),
           organizationLimit: 4,
           userLimit: 20,
+          moduleEntitlements: ['accounting'],
           supersedesOperationId: governing.payload.operationId,
         },
         authority.privateKey,
@@ -1048,10 +1060,11 @@ describe.skipIf(DATABASE_URL === undefined)(
         {
           installationId: identity.installationId,
           licenseId,
-          validFrom: new Date('2090-06-01T00:00:00.000Z'),
-          validUntil: new Date('2091-06-01T00:00:00.000Z'),
+          validFrom: new Date('2033-06-01T00:00:00.000Z'),
+          validUntil: new Date('2034-06-01T00:00:00.000Z'),
           organizationLimit: 9,
           userLimit: 20,
+          moduleEntitlements: ['accounting', 'documents'],
           supersedesOperationId: governing.payload.operationId,
         },
         authority.privateKey,
@@ -1065,7 +1078,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         governing.payload.operationId,
       );
       expect(retired.map((row) => row.governs_until?.toISOString())).toEqual([
-        '2090-06-01T00:00:00.000Z',
+        '2033-06-01T00:00:00.000Z',
       ]);
     }, 60_000);
 
@@ -1108,8 +1121,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           licenseId: foreignLicense,
           customerId: SELF_CUSTOMER,
           customerName: 'Live customer',
-          validFrom: new Date('2052-01-01T00:00:00.000Z'),
-          validUntil: new Date('2053-01-01T00:00:00.000Z'),
+          validFrom: new Date('2034-06-01T00:00:00.000Z'),
+          validUntil: new Date('2035-06-01T00:00:00.000Z'),
         },
         authority.privateKey,
       );
@@ -1176,6 +1189,8 @@ describe.skipIf(DATABASE_URL === undefined)(
         // other command states "this import is not a transfer".
         customerTransfer: null,
         expectedSupersessionVersionId: null,
+        gapRecovery: null,
+        reductionResolution: null,
         // The service always commits the `applied` evidence with the version.
         auditEvents: [
           {
@@ -1280,8 +1295,8 @@ describe.skipIf(DATABASE_URL === undefined)(
 
       const license = generateId();
       const window = {
-        validFrom: new Date('2060-01-01T00:00:00.000Z'),
-        validUntil: new Date('2061-01-01T00:00:00.000Z'),
+        validFrom: new Date('2034-06-01T00:00:00.000Z'),
+        validUntil: new Date('2035-06-01T00:00:00.000Z'),
       };
       const selfDocument = licenseFor(
         {
@@ -1417,46 +1432,44 @@ describe.skipIf(DATABASE_URL === undefined)(
       // signed documents for two installations sharing one fresh identifier.
       // Whatever the interleaving, the outcome must be the same: one committed
       // owner, the other import refused with the binding conflict.
-      const identity = await app.get(InstallationIdentityService).current();
-      const foreignInstallation = generateId();
-      await insertForeignInstallation(foreignInstallation);
       const repository = app.get(LicensesRepository);
-      // One customer per installation (Owner decision 2026-10-12, Q4): the
-      // first import binds the foreign installation, so every later round must
-      // name the same customer or it would be refused for the customer change
-      // instead of for the identifier race under test. The self side names the
-      // binding the installation actually has, whatever earlier tests left.
-      const binding = await query<{ customer_id: string | null }>(
-        `SELECT "customer_id" FROM "licensing"."installations" WHERE "id" = $1`,
-        identity.installationId,
-      );
-      const selfCustomer = binding[0]?.customer_id ?? generateId();
-      const foreignCustomer = generateId();
-
+      // Each round races a FRESH pair of foreign installations driven through
+      // the repository command: one customer per installation (Owner decision
+      // 2026-10-12, Q4), so the only rule that can refuse a loser is the
+      // identifier race under test. Fresh installations have no retained
+      // coverage, so no round can be preempted by the OQ-87 post-gap routing
+      // (a new identity starting after an installation's coverage end is
+      // post-gap recovery), and no round interferes with the self
+      // installation's retained state. A round's loser writes nothing, so
+      // every round is independent.
       for (const round of [0, 1, 2, 3, 4]) {
+        const leftInstallation = generateId();
+        const rightInstallation = generateId();
+        await insertForeignInstallation(leftInstallation);
+        await insertForeignInstallation(rightInstallation);
+        const leftCustomer = generateId();
+        const rightCustomer = generateId();
         const license = generateId();
         const window = {
-          validFrom: new Date(`${2070 + round}-01-01T00:00:00.000Z`),
-          validUntil: new Date(`${2070 + round}-07-01T00:00:00.000Z`),
+          validFrom: new Date(`${2036 + round}-01-01T00:00:00.000Z`),
+          validUntil: new Date(`${2036 + round}-07-01T00:00:00.000Z`),
         };
-        const selfDocument = licenseFor(
+        const leftDocument = licenseFor(
           {
-            installationId: identity.installationId,
+            installationId: leftInstallation,
             licenseId: license,
-            // The installation's own customer: the race under test is about
-            // the license identifier, not about a customer change.
-            customerId: selfCustomer,
-            customerName: `Self round ${round}`,
+            customerId: leftCustomer,
+            customerName: `Left round ${round}`,
             ...window,
           },
           authority.privateKey,
         );
-        const foreignDocument = licenseFor(
+        const rightDocument = licenseFor(
           {
-            installationId: foreignInstallation,
+            installationId: rightInstallation,
             licenseId: license,
-            customerId: foreignCustomer,
-            customerName: `Foreign round ${round}`,
+            customerId: rightCustomer,
+            customerName: `Right round ${round}`,
             ...window,
           },
           authority.privateKey,
@@ -1464,14 +1477,10 @@ describe.skipIf(DATABASE_URL === undefined)(
 
         const settled = await Promise.allSettled([
           repository.importVersion(
-            commandFor(identity.installationId, selfDocument, `Self ${round}`),
+            commandFor(leftInstallation, leftDocument, `Left ${round}`),
           ),
           repository.importVersion(
-            commandFor(
-              foreignInstallation,
-              foreignDocument,
-              `Foreign ${round}`,
-            ),
+            commandFor(rightInstallation, rightDocument, `Right ${round}`),
           ),
         ]);
         const applied = settled.filter(

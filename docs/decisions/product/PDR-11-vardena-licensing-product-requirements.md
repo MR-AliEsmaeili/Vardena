@@ -489,6 +489,16 @@ These are design questions, not product decisions. Each needs technical design b
 15. GUI flows for conflict resolution, quota reduction, and replacement.
 16. Verification strategy. Test or training environments are excluded (§17).
 
+> **Dated note (2026-10-12), recording only — items 3 and 15 above are
+> partially answered by [PDR-13](./PDR-13-post-gap-recovery.md) (decision
+> **OD-LIC-02**, OQ-87 Option B) and its same-change L-04 implementation: the
+> §8.6 atomic application algorithm now exists (usage-aware conflict check
+> inside the import transaction under the allocation advisory locks, structured
+> explain payload, dedicated audited `reduction-resolution` operation), and the
+> documented API contract (OpenAPI) is the resolution surface — no GUI flow is
+> implemented or claimed (item 15 stays deferred). This note changes no other
+> item and no §1–§15 policy text.
+
 ## 17. Scope exclusions and implementation guardrails
 
 ### 17.1 Exclusions (Must)

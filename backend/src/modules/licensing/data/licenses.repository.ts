@@ -10,14 +10,21 @@ import type {
 } from '../domain/license.js';
 import {
   evaluateImportConflicts,
+  lapsedLicenseContext,
+  reductionConflicts,
   supersessionCeaseInstant,
   type CustomerTransferIntent,
+  type GapRecoveryIntent,
   type ImportConflict,
   type ImportConflictReason,
   type ImportSupersessionIntent,
+  type LicenseUsageSnapshot,
   type LicenseVersionSource,
+  type ReductionConflict,
+  type ReductionResolutionIntent,
   type RetainedLicenseVersion,
 } from '../domain/license-version.js';
+import { licenseAllocationLockKey } from '../application/license-usage.js';
 
 /**
  * Data access for `licensing.licenses`, `licensing.license_versions`,
@@ -99,6 +106,29 @@ export interface ImportLicenseVersionCommand {
    */
   customerTransfer: CustomerTransferIntent | null;
   /**
+   * The dedicated post-gap recovery intent (Owner decision 2026-10-12,
+   * OQ-87 Option B, PDR-13). Null on every other path — and with it null, a
+   * new-identity candidate that would start after the retained coverage end
+   * is refused (`post-gap-recovery-requires-dedicated-operation`), so an
+   * ordinary import can never recover a lapse.
+   */
+  gapRecovery: GapRecoveryIntent | null;
+  /**
+   * The explicit reduction-resolution intent (PDR-11 §8.6, L-04). Null on
+   * every other path — and with it null, a reduction that conflicts with
+   * current usage or the retained grant is refused with its concrete
+   * conflicts, so an ordinary import can never resolve one silently.
+   */
+  reductionResolution: ReductionResolutionIntent | null;
+  /**
+   * Reads current organization/user usage INSIDE the import transaction,
+   * after the licensed-allocation advisory locks are taken, so the §8.6
+   * conflict check cannot be raced by a concurrent creation. The counts come
+   * from the modules that own the records (application contracts only); a
+   * null count fails closed (`usage-unavailable`).
+   */
+  readUsage?: (() => Promise<LicenseUsageSnapshot>) | null;
+  /**
    * The version the application layer resolved as the supersession target; the
    * pre-built `license.version.superseded` audit event names it. The
    * transaction must retire EXACTLY this version or refuse the import, so the
@@ -126,13 +156,19 @@ export interface LicenseAuditEventCommand {
   reason: string | null;
   detail: string | null;
   /**
-   * The customer the installation was bound to before an explicit transfer.
+   * The customer the installation was bound to BEFORE an explicit transfer.
    * Set only on `license.installation.customer-transferred` events (Owner
    * decision 2026-10-12, Q4); null everywhere else.
    */
   previousCustomerId?: string | null;
-  /** The customer the installation is bound to after that transfer. */
+  /** The customer it is bound to AFTER that transfer. */
   newCustomerId?: string | null;
+  /**
+   * The license whose retained coverage had ended before a dedicated
+   * post-gap recovery (Owner decision 2026-10-12, OQ-87). Set only on
+   * `license.import.recovered` events; null everywhere else.
+   */
+  previousLicenseId?: string | null;
   occurredAt: Date;
 }
 
@@ -177,6 +213,12 @@ function conflictErrorDefaultMessage(reason: ImportConflictReason): string {
       return 'This renewal would leave a gap in the license coverage.';
     case 'reduction-requires-resolution':
       return 'This version reduces the entitlement or capacity it would take over, which requires an explicit resolution.';
+    case 'post-gap-recovery-requires-dedicated-operation':
+      return 'This license document would cover a lapse with a new license identity, which is allowed only through the dedicated recovery operation.';
+    case 'recovery-not-applicable':
+      return 'The license coverage of this installation has not lapsed, so there is nothing to recover.';
+    case 'resolution-not-applicable':
+      return 'This document does not conflict with current usage or the retained grant, so there is no reduction to resolve.';
     case 'backdated-supersession':
       return 'This license version would retire a version from an instant that is already in the past.';
     case 'overlapping-range':
@@ -193,7 +235,9 @@ export interface LicenseAuditEventRow extends LicenseAuditEventCommand {
  * the installation's commercial customer before it ran. Both come from the
  * same transaction, so a receipt built from them can never disagree with the
  * audit trail (a concurrent transfer cannot make the reported "from" value
- * stale).
+ * stale). A dedicated operation's receipt additionally carries the facts its
+ * audit event recorded — the lapsed license for a recovery, the resolved
+ * conflicts for a reduction resolution — read from the same transaction.
  */
 export interface ImportVersionResult {
   version: RetainedLicenseVersion;
@@ -201,6 +245,20 @@ export interface ImportVersionResult {
   previousCustomerId: string | null;
   /** True when this import changed the installation's customer binding. */
   bindingChanged: boolean;
+  /** Set only when this transaction WAS the dedicated gap recovery. */
+  recovery: {
+    /** The license whose retained coverage had ended (the lapse). */
+    lapsedLicenseId: string | null;
+    /** When that coverage ended; recovery starts strictly after it. */
+    coverageEnd: Date | null;
+  } | null;
+  /** Set only when this transaction WAS a reduction resolution (L-04). */
+  resolution: {
+    /** The version whose grant was reduced with explicit authorization. */
+    predecessorVersionId: string;
+    /** The conflicts the resolution authorized, as audited. */
+    conflicts: ReductionConflict[];
+  } | null;
 }
 
 interface VersionRow {
@@ -365,6 +423,7 @@ interface AuditDelegate {
       detail: string | null;
       previousCustomerId: string | null;
       newCustomerId: string | null;
+      previousLicenseId: string | null;
       occurredAt: Date;
       createdAt: Date;
       updatedAt: Date;
@@ -390,6 +449,7 @@ interface AuditDelegate {
       detail: string | null;
       previousCustomerId: string | null;
       newCustomerId: string | null;
+      previousLicenseId: string | null;
       occurredAt: Date;
     }>
   >;
@@ -495,20 +555,35 @@ export class LicensesRepository {
         command.installationId,
       );
 
+      // 1b. Serialize the §8.6 usage read (L-04) against the licensed
+      //     allocation paths. Organization creation and active-user
+      //     activation count + write under these same transaction-scoped
+      //     advisory locks; holding both here means a concurrent creation is
+      //     either fully committed before this transaction's counts (and is
+      //     counted) or still waiting (and is not). The counts themselves are
+      //     read through the owning modules' application contracts, never
+      //     through their tables.
+      let usage: LicenseUsageSnapshot | null = null;
+      if (command.readUsage !== undefined && command.readUsage !== null) {
+        await lockLicenseUsageAllocation(tx, command.installationId);
+        usage = await command.readUsage();
+      }
+
       // 2. Authoritative invariant check. The read-side pre-check in the
       //    service may have run before another import committed; THIS one runs
       //    under the lock, so it decides.
       const retained = await readVersions(tx, command.installationId);
+      const candidate = {
+        validFrom: command.validFrom,
+        validUntil: command.validUntil,
+        licenseId: command.licenseId,
+        customerId: command.customerId,
+        organizationLimit: command.organizationLimit,
+        userLimit: command.userLimit,
+        entitlements: command.entitlements,
+      };
       const evaluation = evaluateImportConflicts({
-        candidate: {
-          validFrom: command.validFrom,
-          validUntil: command.validUntil,
-          licenseId: command.licenseId,
-          customerId: command.customerId,
-          organizationLimit: command.organizationLimit,
-          userLimit: command.userLimit,
-          entitlements: command.entitlements,
-        },
+        candidate,
         operationId: command.operationId,
         documentHash: command.documentHash,
         supersession: command.supersession,
@@ -516,6 +591,9 @@ export class LicensesRepository {
         at: command.now,
         installationCustomerId: installation.customerId,
         customerTransfer: command.customerTransfer,
+        usage,
+        gapRecovery: command.gapRecovery,
+        reductionResolution: command.reductionResolution,
       });
       if (evaluation.conflict !== null) {
         throw new ImportConflictError(evaluation.conflict);
@@ -646,7 +724,43 @@ export class LicensesRepository {
               ...command.auditEvents,
               transferAuditEvent(command, previousCustomerId),
             ]
-          : command.auditEvents;
+          : [...command.auditEvents];
+
+      // A dedicated operation's APPLIED event is built HERE, inside the
+      // transaction, from the facts only the lock guarantees — exactly like
+      // the transfer event above. The service deliberately does not build it:
+      // the retained list the pre-check read may already have moved by the
+      // time the lock was granted, and the audit row must describe the
+      // retirement/lapse as the transaction found it.
+      let recoveryReceipt: ImportVersionResult['recovery'] = null;
+      let resolutionReceipt: ImportVersionResult['resolution'] = null;
+      if (command.gapRecovery !== null) {
+        const lapsed = lapsedLicenseContext(retained);
+        recoveryReceipt = {
+          lapsedLicenseId: lapsed?.licenseId ?? null,
+          coverageEnd: lapsed?.coverageEnd ?? null,
+        };
+        auditEvents.push(recoveryAuditEvent(command, lapsed));
+      } else if (command.reductionResolution !== null) {
+        const predecessor = evaluation.supersedes;
+        // Reaching this point means the evaluation applied the resolution to
+        // real conflicts (the domain rule refuses an unused resolution), so
+        // the predecessor exists and the recomputed conflicts are exactly the
+        // ones the resolution authorized.
+        if (predecessor === null) {
+          throw new Error(
+            'A reduction resolution was applied without a retired predecessor; refusing rather than auditing an empty resolution.',
+          );
+        }
+        const conflicts = reductionConflicts(predecessor, candidate, usage);
+        resolutionReceipt = {
+          predecessorVersionId: predecessor.versionId,
+          conflicts,
+        };
+        auditEvents.push(
+          resolutionAuditEvent(command, predecessor.versionId, conflicts),
+        );
+      }
 
       const version = await tx.licenseVersion.create({
         data: {
@@ -733,6 +847,7 @@ export class LicensesRepository {
             detail: event.detail,
             previousCustomerId: event.previousCustomerId ?? null,
             newCustomerId: event.newCustomerId ?? null,
+            previousLicenseId: event.previousLicenseId ?? null,
             occurredAt: event.occurredAt,
             createdAt: event.occurredAt,
             updatedAt: event.occurredAt,
@@ -740,12 +855,20 @@ export class LicensesRepository {
         });
       }
 
-      return { version, previousCustomerId, bindingChanged };
+      return {
+        version,
+        previousCustomerId,
+        bindingChanged,
+        recovery: recoveryReceipt,
+        resolution: resolutionReceipt,
+      };
     }, READ_COMMITTED);
     return {
       version: toRetainedVersion(committed.version),
       previousCustomerId: committed.previousCustomerId,
       bindingChanged: committed.bindingChanged,
+      recovery: committed.recovery,
+      resolution: committed.resolution,
     };
   }
 
@@ -753,6 +876,12 @@ export class LicensesRepository {
    * Append one audit event. Rejections are recorded through a separate insert
    * (they never share the state-change transaction), and the caller treats a
    * logging failure as secondary to the rejection itself.
+   *
+   * The bounded columns (`reason` VarChar(60), `detail` VarChar(500)) are
+   * clamped here, not trusted to every call site: an audit event must never be
+   * LOST because its human detail ran long — the machine-readable facts
+   * (event type, outcome, ids, reason token) are the evidence, the detail is
+   * supplementary.
    */
   async recordAuditEvent(command: LicenseAuditEventCommand): Promise<void> {
     const client = await this.client();
@@ -768,10 +897,11 @@ export class LicensesRepository {
         actorId: command.actorId,
         source: command.source,
         documentHash: command.documentHash,
-        reason: command.reason,
-        detail: command.detail,
+        reason: clampText(command.reason, 60),
+        detail: clampText(command.detail, 500),
         previousCustomerId: command.previousCustomerId ?? null,
         newCustomerId: command.newCustomerId ?? null,
+        previousLicenseId: command.previousLicenseId ?? null,
         occurredAt: command.occurredAt,
         createdAt: command.occurredAt,
         updatedAt: command.occurredAt,
@@ -805,6 +935,7 @@ export class LicensesRepository {
       detail: row.detail,
       previousCustomerId: row.previousCustomerId,
       newCustomerId: row.newCustomerId,
+      previousLicenseId: row.previousLicenseId,
       occurredAt: row.occurredAt,
     }));
   }
@@ -919,6 +1050,97 @@ export function transferAuditEvent(
   };
 }
 
+/**
+ * The typed audit event of the dedicated post-gap recovery (Owner decision
+ * 2026-10-12, OQ-87 Option B, PDR-13). It is the operation's APPLIED event:
+ * the retained version, the recovery reason, and — in machine-readable
+ * columns and bounded detail — the lapse it recovers from: which license's
+ * coverage had ended and when. `previousLicenseId` is set ONLY here; the
+ * installation and its customer are unchanged by a recovery (a document for
+ * another customer is refused before this point).
+ *
+ * Built inside the importing transaction from the locked retained state, so
+ * the named lapse is the one the transaction actually saw.
+ */
+export function recoveryAuditEvent(
+  command: ImportLicenseVersionCommand,
+  lapsed: { licenseId: string; coverageEnd: Date } | null,
+): LicenseAuditEventCommand {
+  const reason = command.gapRecovery?.reason.trim() ?? '';
+  return {
+    installationId: command.installationId,
+    eventType: 'license.import.recovered',
+    outcome: 'APPLIED',
+    operationId: command.operationId,
+    licenseId: command.licenseId,
+    versionId: command.versionId,
+    actorId: command.actorId,
+    source: command.source,
+    documentHash: command.documentHash,
+    reason: null,
+    detail:
+      `post-gap recovery after license ${lapsed?.licenseId ?? 'unknown'}` +
+      ` (coverage ended ${lapsed?.coverageEnd.toISOString() ?? 'unknown'})` +
+      `${reason === '' ? '' : `: ${reason}`}`.slice(0, 500),
+    previousLicenseId: lapsed?.licenseId ?? null,
+    occurredAt: command.now,
+  };
+}
+
+/**
+ * The typed audit event of an explicit reduction resolution (PDR-11 §8.6,
+ * L-04). It is the operation's APPLIED event: the retained version, the
+ * operator's reason, and the concrete conflicts the resolution authorized
+ * (against the predecessor it names), recomputed inside the transaction under
+ * the installation and allocation locks — so the audit row can never describe
+ * conflicts the committed state did not have.
+ */
+export function resolutionAuditEvent(
+  command: ImportLicenseVersionCommand,
+  predecessorVersionId: string,
+  conflicts: readonly ReductionConflict[],
+): LicenseAuditEventCommand {
+  const reason = command.reductionResolution?.reason.trim() ?? '';
+  const summary = conflicts
+    .map((conflict) => conflict.kind)
+    .sort()
+    .join('+');
+  return {
+    installationId: command.installationId,
+    eventType: 'license.import.reduction-resolved',
+    outcome: 'APPLIED',
+    operationId: command.operationId,
+    licenseId: command.licenseId,
+    versionId: command.versionId,
+    actorId: command.actorId,
+    source: command.source,
+    documentHash: command.documentHash,
+    reason: null,
+    detail:
+      `resolved reduction of version ${predecessorVersionId}` +
+      ` [${summary}]${reason === '' ? '' : `: ${reason}`}`.slice(0, 500),
+    occurredAt: command.now,
+  };
+}
+
+/**
+ * Take the licensed-allocation advisory locks for one installation — the SAME
+ * transaction-scoped locks organization creation and active-user
+ * activation/creation hold while they count and write. An importing
+ * transaction takes them before reading §8.6 usage (L-04), so a concurrent
+ * creation is either committed and counted, or waiting and not; it can never
+ * slip between the conflict check and the commit. Raw SQL with the shared key
+ * builder is the documented exemption (AR-11); nothing here is interpolated
+ * beyond the parameter.
+ */
+export async function lockLicenseUsageAllocation(
+  tx: LicensesTxClient,
+  installationId: string,
+): Promise<void> {
+  await tx.$queryRaw<unknown>`SELECT pg_advisory_xact_lock(hashtextextended(${licenseAllocationLockKey(installationId, 'active-users')}, 0))::text AS "locked"`;
+  await tx.$queryRaw<unknown>`SELECT pg_advisory_xact_lock(hashtextextended(${licenseAllocationLockKey(installationId, 'organizations')}, 0))::text AS "locked"`;
+}
+
 function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
   return {
     versionId: row.id,
@@ -946,4 +1168,10 @@ function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
     importedAt: row.importedAt,
     source: row.source as LicenseVersionSource,
   };
+}
+
+/** Clamp a bounded audit column: an event is never lost to a long detail. */
+function clampText(value: string | null, limit: number): string | null {
+  if (value === null || value.length <= limit) return value;
+  return value.slice(0, limit);
 }

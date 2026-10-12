@@ -34,11 +34,15 @@ import type {
 } from '../../src/modules/licensing/data/licenses.repository.js';
 import {
   ImportConflictError,
+  recoveryAuditEvent,
+  resolutionAuditEvent,
   transferAuditEvent,
 } from '../../src/modules/licensing/data/licenses.repository.js';
 import type { InstallationIdentity } from '../../src/modules/licensing/domain/installation.js';
 import {
   evaluateImportConflicts,
+  lapsedLicenseContext,
+  reductionConflicts,
   supersessionCeaseInstant,
   type RetainedLicenseVersion,
 } from '../../src/modules/licensing/domain/license-version.js';
@@ -159,6 +163,11 @@ export function createLicensingStores(
         self !== null && self.installationId === command.installationId
           ? self.customerId
           : null;
+      // §8.6 usage read (L-04): the caller supplies the read as a closure; the
+      // in-memory store has no allocation locks, but the read still happens
+      // after the caller's own evaluation would have — parity with the real
+      // transaction, which reads under the advisory locks.
+      const usage = command.readUsage ? await command.readUsage() : null;
       const evaluation = evaluateImportConflicts({
         candidate: {
           validFrom: command.validFrom,
@@ -176,6 +185,9 @@ export function createLicensingStores(
         at: command.now,
         installationCustomerId,
         customerTransfer: command.customerTransfer,
+        usage,
+        gapRecovery: command.gapRecovery,
+        reductionResolution: command.reductionResolution,
       });
       if (evaluation.conflict !== null) {
         throw new ImportConflictError(evaluation.conflict);
@@ -203,15 +215,69 @@ export function createLicensingStores(
       if (bindingChanged && self !== null) {
         self = { ...self, customerId: command.customerId };
       }
-      // The typed transfer event is written by the transaction, exactly like
-      // the real repository does — from the values the lock protects.
-      const auditEvents =
-        bindingChanged && previousCustomerId !== null
+      // The typed transfer and dedicated-operation events are written by the
+      // transaction, exactly like the real repository does — from the values
+      // the locks protect.
+      const recovery =
+        command.gapRecovery != null
+          ? {
+              lapsedLicenseId:
+                lapsedLicenseContext(retained)?.licenseId ?? null,
+              coverageEnd: lapsedLicenseContext(retained)?.coverageEnd ?? null,
+            }
+          : null;
+      const resolution =
+        command.reductionResolution != null
+          ? (() => {
+              const predecessor = evaluation.supersedes;
+              if (predecessor === null) {
+                throw new Error(
+                  'A reduction resolution must supersede a retained version.',
+                );
+              }
+              return {
+                predecessorVersionId: predecessor.versionId,
+                conflicts: reductionConflicts(
+                  predecessor,
+                  {
+                    organizationLimit: command.organizationLimit,
+                    userLimit: command.userLimit,
+                    entitlements: command.entitlements,
+                  },
+                  usage ?? null,
+                ),
+              };
+            })()
+          : null;
+      const auditEvents = [
+        ...(bindingChanged && previousCustomerId !== null
+          ? [transferAuditEvent(command, previousCustomerId)]
+          : []),
+        ...command.auditEvents,
+        ...(recovery !== null
           ? [
-              ...command.auditEvents,
-              transferAuditEvent(command, previousCustomerId),
+              recoveryAuditEvent(
+                command,
+                recovery.coverageEnd !== null &&
+                  recovery.lapsedLicenseId !== null
+                  ? {
+                      licenseId: recovery.lapsedLicenseId,
+                      coverageEnd: recovery.coverageEnd,
+                    }
+                  : null,
+              ),
             ]
-          : command.auditEvents;
+          : []),
+        ...(resolution !== null
+          ? [
+              resolutionAuditEvent(
+                command,
+                resolution.predecessorVersionId,
+                resolution.conflicts,
+              ),
+            ]
+          : []),
+      ];
       const created: RetainedLicenseVersion = {
         versionId: command.versionId,
         licenseId: command.licenseId,
@@ -283,6 +349,8 @@ export function createLicensingStores(
         version: cloneVersion(created),
         previousCustomerId,
         bindingChanged,
+        recovery,
+        resolution,
       };
     },
 

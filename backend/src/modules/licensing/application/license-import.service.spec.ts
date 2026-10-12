@@ -20,6 +20,7 @@ import {
 import { LICENSING_PERMISSIONS } from '../domain/licensing-permissions.js';
 import { InstallationIdentityService } from './installation-identity.service.js';
 import { ImportConflictError } from '../data/licenses.repository.js';
+import type { LicenseUsagePort } from './license-usage.js';
 import { LicenseImportService } from './license-import.service.js';
 import { LicensingService } from './licensing.service.js';
 import { PersistentLicenseProvider } from './persistent-license.provider.js';
@@ -114,6 +115,18 @@ function loggerStub(): JsonLogger {
   } as unknown as JsonLogger;
 }
 
+/** §8.6 usage stub: counted organizations/users, controllable per test. */
+function usageStub(
+  counts: { organizations?: number; activeUsers?: number } = {},
+): LicenseUsagePort {
+  return {
+    snapshot: async () => ({
+      organizationCount: counts.organizations ?? 0,
+      activeUserCount: counts.activeUsers ?? 0,
+    }),
+  };
+}
+
 function authorizationStub(allowed = true): AuthorizationService {
   return {
     requireAllPermissions: async (): Promise<void> => {
@@ -136,7 +149,13 @@ interface Harness {
 }
 
 function buildHarness(
-  options: { withIdentity?: boolean; allowed?: boolean; keys?: string[] } = {},
+  options: {
+    withIdentity?: boolean;
+    allowed?: boolean;
+    keys?: string[];
+    /** §8.6 usage counts the pre-check and the transaction see (L-04). */
+    usage?: { organizations?: number; activeUsers?: number };
+  } = {},
 ): Harness {
   const stores = createLicensingStores(
     options.withIdentity === false
@@ -166,14 +185,18 @@ function buildHarness(
     identity,
     stores.licenses,
     licensing,
+    usageStub(options.usage),
     loggerStub(),
   );
   return { stores, service, licensing, provider };
 }
 
-async function rejectionOf(
-  run: Promise<unknown>,
-): Promise<{ status: number; message: string; code: string }> {
+async function rejectionOf(run: Promise<unknown>): Promise<{
+  status: number;
+  message: string;
+  code: string;
+  details: Record<string, unknown>;
+}> {
   try {
     await run;
     throw new Error('expected the import to be rejected');
@@ -183,6 +206,7 @@ async function rejectionOf(
         status: error.getStatus(),
         message: error.message,
         code: error.code,
+        details: error.details as Record<string, unknown>,
       };
     }
     throw error;
@@ -965,6 +989,7 @@ describe('future-dated supersession', () => {
   });
 
   it('refuses an implicit hand-over that would reduce the retained grant (PDR-11 §8.6)', async () => {
+    harness = buildHarness({ usage: { organizations: 5, activeUsers: 10 } });
     const predecessor = signedDocument(
       {
         validFrom: new Date('2026-01-01T00:00:00.000Z'),
@@ -1071,6 +1096,9 @@ describe('future-dated supersession', () => {
   ] as const)(
     'refuses an explicit supersession that reduces %s (PDR-11 §8.6)',
     async (_what, shrink) => {
+      // Usage above both limits so every shrunk dimension really conflicts
+      // with current usage (the capacity arm of the L-04 check).
+      harness = buildHarness({ usage: { organizations: 9, activeUsers: 40 } });
       const predecessor = signedDocument(
         {
           validFrom: new Date('2026-01-01T00:00:00.000Z'),
@@ -1144,6 +1172,7 @@ describe('future-dated supersession', () => {
   );
 
   it('refuses a legacy replacement that reduces the retained grant (PDR-11 §8.6)', async () => {
+    harness = buildHarness({ usage: { organizations: 5, activeUsers: 10 } });
     // The legacy transport is the third path that retires a version: its
     // documented L-02 lifecycle (replace the version governing now) is
     // preserved, and the §8.6 guard applies to it exactly as it does to the
@@ -1228,7 +1257,10 @@ describe('future-dated supersession', () => {
     // The Product Owner's final decision of 2026-10-12 (PDR-12): an explicit,
     // valid, signed supersession may replace a perpetual grant with a
     // time-limited one — and only that. The capacity and the entitlements must
-    // not shrink, which this document honours.
+    // not shrink, which this document honours. Usage sits at the successor's
+    // own limits, so a later document that shrinks below them conflicts with
+    // current usage (the capacity arm of the L-04 check).
+    harness = buildHarness({ usage: { organizations: 9, activeUsers: 40 } });
     const perpetual = signedDocument(
       {
         validFrom: new Date('2026-01-01T00:00:00.000Z'),
@@ -1283,8 +1315,9 @@ describe('future-dated supersession', () => {
     ).resolves.toMatchObject({ active: false, inactiveReason: 'expired' });
 
     // The refusal side OF THE SAME CHANGE: a time-limited successor that also
-    // takes capacity away is refused, so the term exception above is not a
-    // general authorization to reduce the grant.
+    // takes capacity away is refused while current usage exceeds the new
+    // limit, so the term exception above is not a general authorization to
+    // reduce the grant.
     const reducing = signedDocument(
       {
         installationId: INSTALLATION,
@@ -2172,6 +2205,7 @@ describe('explicit installation customer transfer (Q4)', () => {
       ),
       harness.stores.licenses,
       harness.licensing,
+      usageStub(),
       loggerStub(),
     );
 
@@ -2182,5 +2216,606 @@ describe('explicit installation customer transfer (Q4)', () => {
     expect(rejection.status).toBe(403);
     expect(harness.stores.self()?.customerId).toBe(CUSTOMER);
     expect(harness.stores.versions).toHaveLength(1);
+  });
+});
+
+describe('dedicated post-gap recovery (OQ-87 Option B, PDR-13)', () => {
+  let harness: Harness;
+  const T0 = new Date('2026-06-01T00:00:00.000Z');
+  /** The lapsed license's window ends here. */
+  const LAPSE_END = new Date('2027-01-01T00:00:00.000Z');
+  /** The recovery instant: after the lapse, with nothing governing. */
+  const AFTER_LAPSE = new Date('2027-06-01T00:00:00.000Z');
+  /** A NEW license identity: the recovery document carries its own. */
+  const RECOVERY_LICENSE = '01K7RECOVERYLICENSE00000000';
+  const RECOVERY_REASON =
+    'Renewal order 2026-1182 arrived after the previous contract had expired.';
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    harness = buildHarness();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * A time-limited license whose window has ended by the recovery instant:
+   * imported while active, then the clock moves past its end so the
+   * installation has lapsed coverage.
+   */
+  async function importLapsed(): Promise<void> {
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    await harness.service.importDocument(
+      issuedFile({
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: LAPSE_END,
+        organizationLimit: 3,
+        userLimit: 10,
+      }),
+    );
+    vi.setSystemTime(AFTER_LAPSE);
+  }
+
+  /** A new-identity document that starts strictly after the lapse. */
+  function recoveryDocument(
+    overrides: Partial<Parameters<typeof issueLicenseFile>[0]> = {},
+  ): string {
+    return signedDocument({
+      licenseId: RECOVERY_LICENSE,
+      validFrom: AFTER_LAPSE,
+      validUntil: new Date('2029-01-01T00:00:00.000Z'),
+      organizationLimit: 3,
+      userLimit: 10,
+      ...overrides,
+    }).file;
+  }
+
+  it('refuses the ordinary import of a post-gap document, and nothing is written', async () => {
+    await importLapsed();
+
+    const rejection = await rejectionOf(
+      harness.service.importDocument(recoveryDocument()),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(/dedicated recovery operation/);
+    // The lapsed state is untouched: no version, no applied event.
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(
+      harness.stores.auditEvents.some((event) =>
+        event.eventType.startsWith('license.import.recovered'),
+      ),
+    ).toBe(false);
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      eventType: 'license.import.rejected',
+      outcome: 'REJECTED',
+      reason: 'post-gap-recovery-requires-dedicated-operation',
+    });
+  });
+
+  it('recovers through the dedicated operation and records the typed event', async () => {
+    await importLapsed();
+
+    const result = await harness.service.recoverAfterGap(
+      recoveryDocument(),
+      RECOVERY_REASON,
+    );
+
+    expect(result).toMatchObject({
+      outcome: 'APPLIED',
+      changed: true,
+      lapsedLicenseId: LICENSE,
+      coverageEnd: LAPSE_END.toISOString(),
+    });
+    expect(harness.stores.versions).toHaveLength(2);
+    // The recovery is its own typed event, naming the lapsed license as a
+    // machine-readable fact AND in the bounded detail, with the reason.
+    const recovered = harness.stores.auditEvents.find(
+      (event) => event.eventType === 'license.import.recovered',
+    );
+    expect(recovered).toMatchObject({
+      installationId: INSTALLATION,
+      outcome: 'APPLIED',
+      previousLicenseId: LICENSE,
+      licenseId: RECOVERY_LICENSE,
+      versionId: harness.stores.versions[1]?.versionId,
+      source: 'file',
+      occurredAt: AFTER_LAPSE,
+    });
+    expect(recovered?.detail).toMatch(/post-gap recovery after license/);
+    expect(recovered?.detail).toMatch(/Renewal order 2026-1182/);
+    // A recovery never touches the customer binding: it is still the one the
+    // lapsed license established (the recovery document names the same
+    // customer, and a different one is refused below).
+    expect(harness.stores.self()?.customerId).toBe(CUSTOMER);
+  });
+
+  it('requires a validated reason (400), and writes nothing', async () => {
+    await importLapsed();
+
+    for (const reason of ['', '  ', 'ab']) {
+      const rejection = await rejectionOf(
+        harness.service.recoverAfterGap(recoveryDocument(), reason),
+      );
+      expect(rejection.status, `reason: "${reason}"`).toBe(400);
+    }
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.recovered',
+      ),
+    ).toBe(false);
+  });
+
+  it('requires the dedicated permission server-side (AR-21)', async () => {
+    await importLapsed();
+    const forbidden = new LicenseImportService(
+      configStub([AUTHORITY.publicKey]),
+      {
+        requireAllPermissions: async (codes: string[]): Promise<void> => {
+          if (
+            codes.includes(LICENSING_PERMISSIONS.INSTALLATION_RECOVER_AFTER_GAP)
+          ) {
+            throw AppException.forbidden();
+          }
+        },
+      } as unknown as AuthorizationService,
+      new InstallationIdentityService(
+        harness.stores.installations,
+        loggerStub(),
+      ),
+      harness.stores.licenses,
+      harness.licensing,
+      usageStub(),
+      loggerStub(),
+    );
+
+    const rejection = await rejectionOf(
+      forbidden.recoverAfterGap(recoveryDocument(), RECOVERY_REASON),
+    );
+
+    expect(rejection.status).toBe(403);
+    expect(harness.stores.versions).toHaveLength(1);
+  });
+
+  it('refuses a recovery whose coverage has not lapsed (nothing to recover)', async () => {
+    // A document for the RETAINED license id is a renewal (G2), never a
+    // recovery: while that license has not lapsed there is nothing to
+    // recover, and the recovery intent must not be spent on a renewal.
+    await harness.service.importDocument(
+      issuedFile({
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: LAPSE_END,
+        organizationLimit: 3,
+        userLimit: 10,
+      }),
+    );
+
+    const rejection = await rejectionOf(
+      harness.service.recoverAfterGap(
+        recoveryDocument({
+          licenseId: LICENSE,
+          validFrom: LAPSE_END,
+        }),
+        RECOVERY_REASON,
+      ),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(/nothing to recover|has not lapsed/);
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.recovered',
+      ),
+    ).toBe(false);
+  });
+
+  it('refuses a legacy text code as a recovery (422)', async () => {
+    await importLapsed();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    const legacy = signedCode({
+      installationId: INSTALLATION,
+      licenseId: RECOVERY_LICENSE,
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      organizationLimit: 3,
+    }).code;
+    vi.setSystemTime(AFTER_LAPSE);
+
+    const rejection = await rejectionOf(
+      harness.service.recoverAfterGap(legacy, RECOVERY_REASON),
+    );
+
+    expect(rejection.status).toBe(422);
+    expect(rejection.message).toMatch(/requires a signed license document/);
+    expect(harness.stores.versions).toHaveLength(1);
+  });
+
+  it('never re-binds the customer: a wrong-customer recovery document is refused', async () => {
+    await importLapsed();
+    const OTHER_CUSTOMER = '01K7CUSTOMERB000000000000000';
+
+    const rejection = await rejectionOf(
+      harness.service.recoverAfterGap(
+        recoveryDocument({ customerId: OTHER_CUSTOMER }),
+        RECOVERY_REASON,
+      ),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(/different customer/);
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.recovered',
+      ),
+    ).toBe(false);
+  });
+
+  it('retrying the same recovery document is a stable duplicate (409)', async () => {
+    await importLapsed();
+    const document = recoveryDocument();
+    await harness.service.recoverAfterGap(document, RECOVERY_REASON);
+
+    const rejection = await rejectionOf(
+      harness.service.recoverAfterGap(document, RECOVERY_REASON),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(
+      harness.stores.auditEvents.filter(
+        (event) => event.eventType === 'license.import.recovered',
+      ),
+    ).toHaveLength(1);
+  });
+});
+
+describe('explicit reduction resolution (PDR-11 §8.6, L-04)', () => {
+  let harness: Harness;
+  const T0 = new Date('2026-06-01T00:00:00.000Z');
+  const HANDOVER = new Date('2027-01-01T00:00:00.000Z');
+  const RESOLUTION_REASON =
+    'Customer confirmed the reduction; unused seats were revoked first.';
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(T0);
+    // Current usage above the successor's shrunk limits: the reduction
+    // conflicts with current usage, which is what the resolution authorizes.
+    harness = buildHarness({ usage: { organizations: 5, activeUsers: 12 } });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function importPredecessor(): Promise<string> {
+    const predecessor = signedDocument({
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validUntil: new Date('2028-01-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      userLimit: 20,
+      moduleEntitlements: ['accounting', 'documents'],
+    });
+    await harness.service.importDocument(predecessor.file);
+    return predecessor.payload.operationId;
+  }
+
+  /** A signed successor that shrinks the organization limit, naming its target. */
+  function reducingDocument(
+    supersedesOperationId: string,
+    overrides: Partial<Parameters<typeof issueLicenseFile>[0]> = {},
+  ): string {
+    return signedDocument({
+      validFrom: HANDOVER,
+      validUntil: new Date('2029-01-01T00:00:00.000Z'),
+      organizationLimit: 3,
+      userLimit: 20,
+      moduleEntitlements: ['accounting', 'documents'],
+      supersedesOperationId,
+      ...overrides,
+    }).file;
+  }
+
+  it('refuses a usage-conflicting reduction and explains the conflicts', async () => {
+    const predecessorOperationId = await importPredecessor();
+
+    const rejection = await rejectionOf(
+      harness.service.importDocument(reducingDocument(predecessorOperationId)),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        conflicts: [
+          { kind: 'organization-capacity', limit: 3, currentUsage: 5 },
+        ],
+      },
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.versions[0]?.supersededAt).toBeNull();
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      outcome: 'REJECTED',
+      reason: 'reduction-requires-resolution',
+    });
+  });
+
+  it('applies the reduction through the dedicated resolution and records the typed event', async () => {
+    const predecessorOperationId = await importPredecessor();
+    const document = reducingDocument(predecessorOperationId);
+
+    const result = await harness.service.resolveReduction(
+      document,
+      RESOLUTION_REASON,
+    );
+
+    expect(result).toMatchObject({
+      outcome: 'APPLIED',
+      changed: true,
+      resolvedConflicts: [
+        { kind: 'organization-capacity', limit: 3, currentUsage: 5 },
+      ],
+    });
+    expect(result.resolvedPredecessorVersionId).toBe(
+      harness.stores.versions[0]?.versionId,
+    );
+    expect(harness.stores.versions).toHaveLength(2);
+    // The predecessor stops GOVERNING at the successor's start; the superseded
+    // stamp records the import instant (same as every supersession).
+    expect(harness.stores.versions[0]?.supersededAt).toEqual(T0);
+    expect(harness.stores.versions[0]?.governsUntil).toEqual(HANDOVER);
+    // The resolution is its own typed event: the conflicts it authorized and
+    // the operator's reason, written in the same transaction as the version.
+    const resolved = harness.stores.auditEvents.find(
+      (event) => event.eventType === 'license.import.reduction-resolved',
+    );
+    expect(resolved).toMatchObject({
+      installationId: INSTALLATION,
+      outcome: 'APPLIED',
+      licenseId: LICENSE,
+      versionId: harness.stores.versions[1]?.versionId,
+      source: 'file',
+      occurredAt: T0,
+    });
+    expect(resolved?.detail).toMatch(
+      /resolved reduction of version .+ \[organization-capacity\]/,
+    );
+    expect(resolved?.detail).toMatch(/Customer confirmed the reduction/);
+  });
+
+  it('requires a validated reason (400), and writes nothing', async () => {
+    const predecessorOperationId = await importPredecessor();
+
+    for (const reason of ['', '  ', 'ab']) {
+      const rejection = await rejectionOf(
+        harness.service.resolveReduction(
+          reducingDocument(predecessorOperationId),
+          reason,
+        ),
+      );
+      expect(rejection.status, `reason: "${reason}"`).toBe(400);
+    }
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.reduction-resolved',
+      ),
+    ).toBe(false);
+  });
+
+  it('requires the dedicated permission server-side (AR-21)', async () => {
+    const predecessorOperationId = await importPredecessor();
+    const forbidden = new LicenseImportService(
+      configStub([AUTHORITY.publicKey]),
+      {
+        requireAllPermissions: async (codes: string[]): Promise<void> => {
+          if (codes.includes(LICENSING_PERMISSIONS.LICENSE_RESOLVE_REDUCTION)) {
+            throw AppException.forbidden();
+          }
+        },
+      } as unknown as AuthorizationService,
+      new InstallationIdentityService(
+        harness.stores.installations,
+        loggerStub(),
+      ),
+      harness.stores.licenses,
+      harness.licensing,
+      usageStub({ organizations: 5, activeUsers: 12 }),
+      loggerStub(),
+    );
+
+    const rejection = await rejectionOf(
+      forbidden.resolveReduction(
+        reducingDocument(predecessorOperationId),
+        RESOLUTION_REASON,
+      ),
+    );
+
+    expect(rejection.status).toBe(403);
+    expect(harness.stores.versions).toHaveLength(1);
+  });
+
+  it('refuses a resolution whose document does not conflict', async () => {
+    const predecessorOperationId = await importPredecessor();
+
+    const rejection = await rejectionOf(
+      harness.service.resolveReduction(
+        reducingDocument(predecessorOperationId, { organizationLimit: 5 }),
+        RESOLUTION_REASON,
+      ),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(
+      /no capacity or entitlement reduction to resolve/,
+    );
+    expect(harness.stores.versions).toHaveLength(1);
+  });
+
+  it('refuses a legacy text code as a resolution (422)', async () => {
+    const predecessorOperationId = await importPredecessor();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    const legacy = signedCode({
+      installationId: INSTALLATION,
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      organizationLimit: 3,
+      userLimit: 20,
+      moduleEntitlements: ['accounting', 'documents'],
+    }).code;
+    vi.setSystemTime(T0);
+    void predecessorOperationId;
+
+    const rejection = await rejectionOf(
+      harness.service.resolveReduction(legacy, RESOLUTION_REASON),
+    );
+
+    expect(rejection.status).toBe(422);
+    expect(rejection.message).toMatch(/requires a signed license document/);
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.import.reduction-resolved',
+      ),
+    ).toBe(false);
+  });
+
+  it('refuses a resolution of a document that already governs', async () => {
+    const predecessorOperationId = await importPredecessor();
+    const document = reducingDocument(predecessorOperationId);
+    await harness.service.resolveReduction(document, RESOLUTION_REASON);
+    const appliedEvents = harness.stores.auditEvents.filter(
+      (event) => event.eventType === 'license.import.reduction-resolved',
+    );
+    expect(appliedEvents).toHaveLength(1);
+
+    // Retrying the same document is never a second resolution.
+    const rejection = await rejectionOf(
+      harness.service.resolveReduction(document, RESOLUTION_REASON),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(
+      harness.stores.auditEvents.filter(
+        (event) => event.eventType === 'license.import.reduction-resolved',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('never resolves a closed open end (PDR-12)', async () => {
+    // A perpetual grant handed over by an UNSIGNED successor (no named
+    // predecessor): the open-end arm is not operator-resolvable — only an
+    // explicit signed supersession may close an open end, so even the
+    // dedicated resolution operation refuses.
+    const perpetual = signedDocument({
+      validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      validUntil: null,
+      organizationLimit: 5,
+      userLimit: 20,
+      moduleEntitlements: ['accounting', 'documents'],
+    });
+    await harness.service.importDocument(perpetual.file);
+
+    const closing = signedDocument({
+      validFrom: HANDOVER,
+      validUntil: new Date('2029-01-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      userLimit: 20,
+      moduleEntitlements: ['accounting', 'documents'],
+    }).file;
+
+    const rejection = await rejectionOf(
+      harness.service.resolveReduction(closing, RESOLUTION_REASON),
+    );
+
+    expect(rejection.status).toBe(409);
+    expect(rejection.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+      reduction: {
+        conflicts: [{ kind: 'open-end-closed' }],
+      },
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.versions[0]?.supersededAt).toBeNull();
+  });
+
+  it('a within-usage reduction applies through the ordinary import (no resolution needed)', async () => {
+    // Usage (2 organizations) is within the new limit: the shrink is not a
+    // conflict with current usage, so the ordinary import applies it — §8.6
+    // requires a check against the resulting state, not a freeze on shrinks.
+    harness = buildHarness({ usage: { organizations: 2, activeUsers: 5 } });
+    const predecessorOperationId = await importPredecessor();
+
+    const result = await harness.service.importDocument(
+      reducingDocument(predecessorOperationId),
+    );
+
+    expect(result).toMatchObject({ outcome: 'APPLIED', changed: true });
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(
+      harness.stores.auditEvents.some((event) =>
+        event.eventType.startsWith('license.import.reduction'),
+      ),
+    ).toBe(false);
+  });
+
+  it('the in-transaction usage read decides, not the read-side pre-check', async () => {
+    // Usage grows between the informative pre-check (2 organizations: no
+    // conflict) and the import transaction (9: conflict). The decision must
+    // follow the count the transaction read after its allocation locks —
+    // the read-side pass may never wave a document through.
+    let organizations = 2;
+    const usagePort: LicenseUsagePort = {
+      snapshot: async () => ({
+        organizationCount: organizations,
+        activeUserCount: 5,
+      }),
+    };
+    const service = new LicenseImportService(
+      configStub([AUTHORITY.publicKey]),
+      authorizationStub(),
+      new InstallationIdentityService(
+        harness.stores.installations,
+        loggerStub(),
+      ),
+      harness.stores.licenses,
+      harness.licensing,
+      usagePort,
+      loggerStub(),
+    );
+    const predecessorOperationId = await importPredecessor();
+    organizations = 9;
+
+    const rejection = await rejectionOf(
+      service.importDocument(reducingDocument(predecessorOperationId)),
+    );
+    expect(rejection.status).toBe(409);
+    expect(rejection.details).toMatchObject({
+      reduction: {
+        conflicts: [
+          { kind: 'organization-capacity', limit: 3, currentUsage: 9 },
+        ],
+      },
+    });
+    expect(harness.stores.versions).toHaveLength(1);
+
+    // With an explicit resolution the same document applies — the resolution
+    // authorized exactly the conflicts the transaction recomputed.
+    const result = await service.resolveReduction(
+      reducingDocument(predecessorOperationId),
+      RESOLUTION_REASON,
+    );
+    expect(result).toMatchObject({
+      outcome: 'APPLIED',
+      resolvedConflicts: [
+        { kind: 'organization-capacity', limit: 3, currentUsage: 9 },
+      ],
+    });
+    expect(harness.stores.versions).toHaveLength(2);
   });
 });

@@ -44,10 +44,35 @@ export function licenseImportErrorMessage(
       ? { correlationId: apiError.correlationId }
       : {};
 
+  // The STABLE machine reason inside the envelope's details (never the human
+  // message) narrows the two operation-flow refusals the dedicated operations
+  // exist for (PDR-11 §8.6 / OQ-87 Option B): the operator must learn WHAT
+  // conflicts and WHICH dedicated operation applies, not just «تعارض دارد».
+  const reason =
+    typeof apiError.details === 'object' &&
+    apiError.details !== null &&
+    typeof (apiError.details as Record<string, unknown>)['reason'] === 'string'
+      ? ((apiError.details as Record<string, unknown>)['reason'] as string)
+      : undefined;
+
   switch (apiError.code) {
     case 'Conflict':
       // Authentic document, conflicting with retained state. The current
       // license keeps working; nothing was written.
+      if (reason === 'reduction-requires-resolution') {
+        return {
+          message: t.license.importReductionConflict,
+          rejectedDocument: false,
+          ...correlation,
+        };
+      }
+      if (reason === 'post-gap-recovery-requires-dedicated-operation') {
+        return {
+          message: t.license.importPostGapConflict,
+          rejectedDocument: false,
+          ...correlation,
+        };
+      }
       return {
         message: t.license.importConflict,
         rejectedDocument: false,
@@ -55,7 +80,16 @@ export function licenseImportErrorMessage(
       };
     case 'BusinessRuleViolation':
       // The document was verified and refused (binding, validity, payload,
-      // lifecycle). The installation keeps whatever license it had.
+      // lifecycle). The installation keeps whatever license it had. The
+      // recovery-via-legacy-code refusal gets its own copy: the fix is a
+      // SIGNED document, not a re-typed code.
+      if (reason === 'recovery-requires-signed-document') {
+        return {
+          message: t.license.importRecoveryRequiresSigned,
+          rejectedDocument: true,
+          ...correlation,
+        };
+      }
       return {
         message: t.license.importRejected,
         rejectedDocument: true,

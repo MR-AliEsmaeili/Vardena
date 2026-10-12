@@ -115,6 +115,41 @@ describe('License document import (e2e)', () => {
     return session;
   }
 
+  /**
+   * Seed §8.6 usage through the in-memory master-data stores (L-04): the
+   * capacity checks count REAL organizations and active users, so a
+   * reduction test states its usage by creating exactly that many. Fixture
+   * writes only — the conflict flow itself runs over the real HTTP pipeline.
+   */
+  async function seedUsage(
+    organizations: number,
+    activeUsers: number,
+  ): Promise<void> {
+    for (let i = 0; i < organizations; i += 1) {
+      await master.organizations.create({
+        id: `01K7E2EORG${String(i).padStart(16, '0')}`,
+        code: `org-${i}`,
+        name: `Organization ${i}`,
+        isActive: true,
+        timeZone: 'Asia/Tehran',
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        createdBy: null,
+      });
+    }
+    for (let i = 0; i < activeUsers; i += 1) {
+      await stores.users.create({
+        id: `01K7E2EUSER${String(i).padStart(15, '0')}`,
+        username: `usage-user-${i}`,
+        passwordHash: 'argon2id:unused',
+        isActive: true,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+        createdBy: null,
+      });
+    }
+  }
+
   beforeEach(async () => {
     licensing = createLicensingStores();
     stores = createInMemoryStores();
@@ -504,6 +539,9 @@ describe('License document import (e2e)', () => {
 
   it('refuses an explicit supersession that reduces capacity or entitlements (PDR-11 §8.6)', async () => {
     const installationId = (await state()).installationId as string;
+    // Current usage above every shrunk limit: 5 organizations and 20 active
+    // users, so each shrink below really conflicts with current usage.
+    await seedUsage(5, 20);
     const governing = licenseFile(
       {
         installationId,
@@ -587,6 +625,9 @@ describe('License document import (e2e)', () => {
 
   it('applies an explicit signed supersession that ends a perpetual grant (OD-LIC-01)', async () => {
     const installationId = (await state()).installationId as string;
+    // Usage at the successor's own limits: the capacity reduction below
+    // conflicts with current usage, the term-only change does not.
+    await seedUsage(5, 20);
     // A perpetual version is never handed over by precedence (see the OQ-80
     // Option B case) — only a document that NAMES it may change its term, and
     // that is the Owner's decision of 2026-10-12 (PDR-12).
