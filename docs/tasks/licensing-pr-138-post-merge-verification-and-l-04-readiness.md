@@ -317,7 +317,7 @@ Only checks relevant to a documentation-only diff were run; no heavy suite was e
 
 **Deliberately not run, and not claimed:** `npm test`, `npm run test:e2e`, the migration rehearsals, `typecheck`, `lint`, `format:check`, `npm run build`, `npm run api:types`. Neither `backend/node_modules` nor `frontend/node_modules` exists in this sandbox; no Postgres or Docker is available; and a documentation-only diff cannot affect them. Root-level Markdown is **not** covered by either Prettier gate (both run `prettier --check .` from `backend/` and `frontend/` respectively, and there is no root `package.json` or Prettier config), so no format check applies to these files.
 
-**No CI pass is claimed for this pass's own commits.** Run `38210710188` verifies `d283744`, the state *before* these documentation edits. The edits in this pass have **no CI result yet**; a green run on the commit that carries them is still required before any pass claim (AG-20, AGENTS.md).
+**CI result for these edits.** Run `38210710188` verifies `d283744`, the state *before* these documentation edits, and is **not** evidence for them. The commit that carries them is `ca33a8266d83c47b53c77d51392a8a3ac83455f7` on branch `arena/050ebc8c-vardena`, opened as PR #139 (base `main`, not merged). Its own CI is **green**: run `38213183679` (`pull_request` at `ca33a82`), `status=completed`, `conclusion=success` — backend job `114691779064` (27 steps, zero steps with a non-success, non-skipped conclusion) and frontend job `114691779170` (13 steps, likewise). That is the exact-commit result AG-20 requires before any pass claim; it is cited for `ca33a82` only and is not reused for any other SHA. The follow-up commit that recorded this CI result is documentation-only in turn, so its own run is cited in PR #139 rather than here.
 
 ---
 
@@ -333,13 +333,14 @@ Only checks relevant to a documentation-only diff were run; no heavy suite was e
 
 ## 9. Final status
 
-`READY FOR CI VERIFICATION`
+`READY FOR REVIEW`
 
-The post-merge state of `main` is verified and green at `d283744` (run `38210710188`), and the reconciliation records are now consistent with it. This pass changed documentation only, so it needs a CI run on the commit carrying these edits before any pass claim — hence `READY FOR CI VERIFICATION` rather than `READY FOR REVIEW`.
+The post-merge state of `main` is verified and green at `d283744` (run `38210710188`), the reconciliation records are now consistent with it, and the commit carrying these documentation edits has its own green CI on the exact SHA (`ca33a82`, run `38213183679` — §7). Nothing further is needed from engineering before review; what remains is the Product Owner's.
 
-For completeness, the two other statuses are **not** the answer, and why:
+This pass was `READY FOR CI VERIFICATION` when first written, because the edits had no CI result yet. That condition is now satisfied, so the status moved. It is recorded here rather than silently changed, because the difference between "no CI result yet" and "CI green on the exact commit" is precisely the distinction this pass exists to keep honest.
 
-- **Not `BLOCKED`.** Nothing in *this* task is blocked. The verification was completed, the records were reconciled, and every finding is reported with file paths and commit/run evidence. L-04 being not-ready is a **finding of this task, not a blocker of it** — and its blockers are Owner decisions (D-1, D-2, D-4, plus §8.6/§8.4 semantics), which is the correct and expected state under AG-09 and AR-29, not a technical failure. Heavy E2E being unsuitable locally is explicitly not a blocker: CI runs it and it is green on `d283744`.
-- **Not `READY FOR REVIEW`**, only because these documentation edits have no CI result yet. Once a run on the carrying commit is green, this becomes `READY FOR REVIEW` with no further work.
+Why the third status is **not** the answer:
 
-**Awaiting the Product Owner:** D-1…D-6 (§5), and Owner acceptance of PR #137 and PR #138. **L-04 must not be started** until §6.2's dependencies 1–5 are recorded by the Owner.
+- **Not `BLOCKED`.** Nothing in *this* task is blocked. The verification was completed, the records were reconciled, and every finding is reported with file paths and commit/run evidence. L-04 being not-ready is a **finding of this task, not a blocker of it** — and its blockers are Owner decisions (D-1, D-2, D-4, plus the §8.6 application semantics and the §8.4 deactivation rule), which is the correct and expected state under AG-09 and AR-29, not a technical failure. Heavy E2E being unsuitable locally is explicitly not a blocker: CI runs it, and it is green both on `d283744` and on `ca33a82`.
+
+**Awaiting the Product Owner:** D-1…D-6 (§5), and Owner acceptance of PR #137 and PR #138. **L-04 must not be started** until §6.2's dependencies 1–5 are recorded by the Owner. PR #139 is open for review and was **not** merged by this pass.
