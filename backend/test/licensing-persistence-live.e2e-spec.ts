@@ -242,6 +242,18 @@ describe.skipIf(DATABASE_URL === undefined)(
     }
 
     /**
+     * Delete the live licensing fixture and boot a fresh app so its immutable
+     * in-process installation-identity cache cannot outlive the deleted row.
+     */
+    async function resetApplicationForFreshInstallation(): Promise<void> {
+      await cleanupAuditActors();
+      await cleanup(prisma);
+      await app.close();
+      app = await boot();
+      prisma = app.get(PrismaService);
+    }
+
+    /**
      * The applied events of ONE installation, oldest first.
      *
      * Scoping the check to the installation is what makes it an invariant worth
@@ -1702,7 +1714,7 @@ describe.skipIf(DATABASE_URL === undefined)(
     }, 120_000);
 
     it('persists a signed post-gap recovery with a 500-character reason in PostgreSQL', async () => {
-      await cleanup(prisma);
+      await resetApplicationForFreshInstallation();
       vi.useFakeTimers({ toFake: ['Date'] });
       const identity = await app.get(InstallationIdentityService).current();
       const T0 = new Date('2026-01-01T00:00:00.000Z');
@@ -1896,7 +1908,7 @@ describe.skipIf(DATABASE_URL === undefined)(
     }, 120_000);
 
     it('persists an authorized L-04 resolution with a 500-character reason in PostgreSQL', async () => {
-      await cleanup(prisma);
+      await resetApplicationForFreshInstallation();
       const identity = await app.get(InstallationIdentityService).current();
       const ordinaryOperator = await createAuditOperator('ordinary', [
         LICENSING_PERMISSIONS.LICENSE_ACTIVATE,
