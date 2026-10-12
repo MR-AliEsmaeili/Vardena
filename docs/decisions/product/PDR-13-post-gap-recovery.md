@@ -102,7 +102,7 @@ a permitted post-gap recovery path.**
 - **Authorization:** route guard + application-service re-check of BOTH
   permission codes (AR-21). No frontend or flag can substitute.
 - **Audit:** typed `license.import.recovered` event, `previous_license_id`
-  column, additive migration `20261012090000_license_audit_previous_license_id`.
+  column, additive migration `20261017000000_license_audit_previous_license_id`.
 - **Explain contract:** the ordinary import's 409 carries the stable reason
   `post-gap-recovery-requires-dedicated-operation` and nothing is written.
 
@@ -166,7 +166,7 @@ decision. This change implements that flow:
   `OrganizationsService`/`UsersService` contracts, AR-07).
 - Data: `licenses.repository.ts` (in-transaction usage read under
   `pg_advisory_xact_lock`, dedicated typed events, `previousLicenseId`),
-  additive migration `20261012090000_license_audit_previous_license_id`.
+  additive migration `20261017000000_license_audit_previous_license_id`.
 - API: `POST /api/v1/license/gap-recovery` and
   `POST /api/v1/license/reduction-resolution` (OpenAPI-documented DTOs),
   permissions `Licensing.Installation.RecoverAfterGap` and
