@@ -98,6 +98,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/license/customer-transfer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transfer this installation to the customer of a signed license.
+         * @description Verifies the signed document, then — under the installation lock — rebinds the installation to the document’s customer and retains the version in one transaction, together with a typed audit event recording the previous customer, the new customer, the operation, the actor, the source, the instant and the supplied reason. A transfer that would change nothing is refused (409) instead of silently re-applying.
+         */
+        post: operations["LicenseCustomerTransferController_transfer_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -3539,6 +3559,54 @@ export interface components {
              * @example {"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}
              */
             document: string;
+        };
+        TransferLicenseCustomerDto: {
+            /**
+             * @description The signed license document of the customer this installation is being transferred to: the vardena-license file envelope or the bare VLIC2 artifact. A legacy VLIC1 text code cannot express a transfer and is refused.
+             * @example {"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}
+             */
+            document: string;
+            /**
+             * @description Why the installation changes customer. Recorded on the typed transfer audit event; required, because an unexplained commercial rebinding is not auditable.
+             * @example Contract 2026-114 moved this server from Acme to Acme Industrial.
+             */
+            reason: string;
+        };
+        LicenseCustomerTransferResultDto: {
+            /** @description Whether an installation license is evaluated. */
+            licensed: boolean;
+            /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
+            status: string;
+            /** @description True only while the license is active now. */
+            active: boolean;
+            /** @description Why the license is not active. */
+            inactiveReason: string | null;
+            installationId: string | null;
+            customerId: string | null;
+            licenseId: string | null;
+            /** Format: date-time */
+            validFrom: string | null;
+            /** Format: date-time */
+            validUntil: string | null;
+            organizationLimit: number | null;
+            userLimit: number | null;
+            entitlements: components["schemas"]["LicenseEntitlementDto"][];
+            /** @description The license provider that evaluated the state. */
+            provider: string;
+            /** @description The version that governs now. */
+            effectiveVersionId: string | null;
+            /** @description The earliest retained version that is not effective yet. */
+            scheduledVersion: components["schemas"]["LicenseVersionSummaryDto"] | null;
+            /** @description Bounded retained-version history, newest first. */
+            versions: components["schemas"]["LicenseVersionSummaryDto"][];
+            /** @description False when a repeated legacy code was already the governing version. */
+            changed: boolean;
+            /** @enum {string} */
+            outcome: "APPLIED" | "UNCHANGED";
+            /** @description The commercial customer this installation was bound to before the transfer. */
+            previousCustomerId: string | null;
+            /** @description True when the transfer changed the binding. */
+            bindingChanged: boolean;
         };
         LoginRequestDto: {
             /**
@@ -8315,6 +8383,65 @@ export interface operations {
                 content?: never;
             };
             /** @description The document is malformed, tampered with, issued for another installation, not active, already ended, or names capabilities this build does not know. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    LicenseCustomerTransferController_transfer_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TransferLicenseCustomerDto"];
+            };
+        };
+        responses: {
+            /** @description The evaluated state after the transfer, with the retained-version history and the binding facts the transaction committed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicenseCustomerTransferResultDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is authentic but conflicts with retained state: the installation is already bound to that customer, the license identifier belongs to another customer or installation, a renewal would leave a gap, the version overlaps retained history, or it reduces entitlements the release cannot resolve yet. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is malformed, tampered with, issued for another installation, not active, already ended, a legacy text code (which cannot express a transfer), or names capabilities this build does not know. */
             422: {
                 headers: {
                     [name: string]: unknown;

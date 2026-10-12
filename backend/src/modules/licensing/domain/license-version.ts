@@ -47,15 +47,22 @@ import type {
  *
  * ## What the import path guarantees
  *
- * The rules below are deliberately fail-closed around the product question that
- * is still open (PDR-11 PQ-5 → OQ-80): at most one retained version *governs*
- * any instant at or after the import that created it. `evaluateImportConflicts`
- * is the single authority for that guarantee and is evaluated twice — once as
- * a read-side pre-check (fast, informative rejection) and once inside the
- * import transaction, under a per-installation database lock (authoritative;
- * see `LicensesRepository.importVersion`). `resolveEffectiveVersion` rule 7
- * remains a defensive, deterministic failure mode for corrupted or hand-edited
- * data — it is **not** a precedence policy and grants nothing.
+ * The rules below implement the Owner decisions of 2026-10-12 for the product
+ * questions that were open (PDR-11 PQ-5 → OQ-80 overlap = **Option B**, gap =
+ * **G2**; OQ-86 = **Option C**): at most one retained version *governs* any
+ * instant, in the past as well as the future — the effective windows
+ * `[valid_from, min(valid_until, governs_until))` of an installation are
+ * pairwise disjoint after every import, retired history included. A later
+ * starting version takes over at its own `validFrom` (nothing is stacked and no
+ * previous version is deleted), a renewal may not leave a gap, and a reducing
+ * implicit hand-over is refused until PDR-11 §8.6's conflict flow exists (L-04).
+ * `evaluateImportConflicts` is the single authority for that guarantee and is
+ * evaluated twice — once as a read-side pre-check (fast, informative rejection)
+ * and once inside the import transaction, under a per-installation database
+ * lock (authoritative; see `LicensesRepository.importVersion`).
+ * `resolveEffectiveVersion` rule 7 remains a defensive, deterministic failure
+ * mode for corrupted or hand-edited data — it is **not** a precedence policy
+ * and grants nothing.
  */
 
 /** Where a version came from (audited; never a trust decision). */
@@ -269,22 +276,24 @@ export function windowsOverlap(
 }
 
 /**
- * Retained versions that still govern at `at` (`isEligibleAt`) and whose
- * EFFECTIVE window overlaps the candidate's declared window. A version retired
- * by an earlier import contributes only the window in which it really governed,
- * so its retained tail can never block a legitimate renewal.
+ * Retained versions whose **effective** window overlaps the candidate's
+ * declared window — **the full retained history, retired versions included**
+ * (OQ-86 Option C, decided 2026-10-12; ADR-0046 Decision 4's pairwise-disjoint
+ * invariant). A retired version contributes only the window in which it really
+ * governed (`[validFrom, min(validUntil, governsUntil))`), so its retained tail
+ * can never block a legitimate renewal — but a candidate that lands inside a
+ * window a version has already governed is an overlap and is refused.
  *
- * The import path rejects a non-empty result unless the document explicitly
- * retires exactly one of them — or, for a legacy text code, unless exactly one
- * of them governs the version being replaced (see `evaluateImportConflicts`).
+ * Before the decision this function filtered on `isEligibleAt`, so a backdated
+ * non-superseding document could cover an interval a retired version had
+ * governed (the documented "Gap C"). It does not any more: the historical
+ * windows are part of the invariant.
  */
 export function overlappingVersions(
   candidate: Pick<RetainedLicenseVersion, 'validFrom' | 'validUntil'>,
   versions: readonly RetainedLicenseVersion[],
-  at: Date,
 ): RetainedLicenseVersion[] {
   return versions.filter((version) => {
-    if (!isEligibleAt(version, at)) return false;
     const window = effectiveWindow(version);
     return windowsIntersect(
       candidate.validFrom,
@@ -293,6 +302,105 @@ export function overlappingVersions(
       window.end,
     );
   });
+}
+
+/**
+ * The subset of `overlappingVersions` that still governs at `at` — the
+ * versions a candidate can implicitly take over from (OQ-80 Option B: the
+ * later-starting version governs from its own `validFrom`) or explicitly
+ * supersede. A retired version is never in this set: its governance already
+ * ended.
+ */
+export function eligibleOverlappingVersions(
+  candidate: Pick<RetainedLicenseVersion, 'validFrom' | 'validUntil'>,
+  versions: readonly RetainedLicenseVersion[],
+  at: Date,
+): RetainedLicenseVersion[] {
+  return overlappingVersions(candidate, versions).filter((version) =>
+    isEligibleAt(version, at),
+  );
+}
+
+/**
+ * The end of what a license identity has ever covered, as retained: the latest
+ * effective end of its versions (`null` end = perpetual = never ends). Used by
+ * the OQ-80 G2 rule — a renewal may not leave a gap, so its own `validFrom`
+ * must not be later than this instant.
+ */
+export function retainedCoverageEnd(
+  licenseId: string,
+  versions: readonly RetainedLicenseVersion[],
+): Date | null {
+  let end: Date | null = null;
+  for (const version of versions) {
+    if (version.licenseId !== licenseId) continue;
+    const window = effectiveWindow(version);
+    if (window.end === null) return null; // perpetual: open-ended coverage
+    if (end === null || window.end.getTime() > end.getTime()) {
+      end = window.end;
+    }
+  }
+  return end;
+}
+
+/**
+ * PDR-11 §8.6 guard for an implicit hand-over (OQ-80 Option B): does applying
+ * the candidate take something away from the version it implicitly retires?
+ *
+ * §8.6 requires a reducing or changed version to be checked, explained,
+ * preserved and explicitly resolved **before** it is applied, and PDR-11 §8.2
+ * requires the same for a removed module entitlement. That flow is the L-04
+ * slice and is not implemented yet, so the version-precedence rule this module
+ * implements may not be the mechanism that silently applies a reduction: this
+ * predicate is what makes the implicit hand-over fail closed while the
+ * content of the retained grant shrinks.
+ *
+ * A grant is `retained` — not reduced — when all three hold:
+ * - it does not close an open end (a perpetual predecessor is never handed
+ *   over to a time-limited successor implicitly);
+ * - neither capacity limit shrinks (`null` = unlimited, so a number is a
+ *   reduction of `null`);
+ * - every entitlement of the predecessor is present on the candidate.
+ *
+ * Only the *implicit* hand-over is guarded. An explicit, signed supersession
+ * (`supersedesOperationId`) is the Owner's own instruction for exactly that
+ * version and keeps its documented behaviour; L-04 owes §8.6's conflict flow
+ * to that path too, and this predicate is what will be replaced by it.
+ */
+export function reducesRetainedGrant(
+  predecessor: Pick<
+    RetainedLicenseVersion,
+    'validUntil' | 'organizationLimit' | 'userLimit' | 'entitlements'
+  >,
+  candidate: Pick<
+    RetainedLicenseVersion,
+    'validUntil' | 'organizationLimit' | 'userLimit' | 'entitlements'
+  >,
+): boolean {
+  if (predecessor.validUntil === null && candidate.validUntil !== null) {
+    return true;
+  }
+  if (
+    limitReduced(predecessor.organizationLimit, candidate.organizationLimit)
+  ) {
+    return true;
+  }
+  if (limitReduced(predecessor.userLimit, candidate.userLimit)) {
+    return true;
+  }
+  const granted = new Set(
+    candidate.entitlements.map((entry) => `${entry.kind}:${entry.code}`),
+  );
+  return predecessor.entitlements.some(
+    (entry) => !granted.has(`${entry.kind}:${entry.code}`),
+  );
+}
+
+/** `null` is unlimited: a number where the predecessor had none is a reduction. */
+function limitReduced(previous: number | null, next: number | null): boolean {
+  if (previous === null) return next !== null;
+  if (next === null) return false;
+  return next < previous;
 }
 
 export function findVersionByOperationId(
@@ -392,20 +500,34 @@ export function resolveEffectiveVersion(
  * Why an import cannot be applied against the retained state. The document is
  * authentic; the state is the problem.
  *
- * `duplicate-operation`, `unknown-supersession`, `overlapping-range` and
- * `license-binding-conflict` are the reasons the API answers 409 with (a
- * retained-state conflict, ADR-0046). `backdated-supersession` is the temporal
- * refusal — it is answered 422 like the other document-level verdicts
- * (`expired-document`, `not-yet-valid`) because the document as issued can
- * never be applied; the fix is a re-issued document, not a changed installation
- * state. No reason here ever writes anything.
+ * 409 (retained-state conflict, ADR-0046): `duplicate-operation`,
+ * `unknown-supersession`, `overlapping-range`, `license-binding-conflict`,
+ * `installation-customer-mismatch`, `transfer-not-applicable`, `renewal-gap`
+ * and `reduction-requires-resolution`.
+ *
+ * 422 (the document's own temporal window or capability set can never be
+ * applied as issued, so a re-issued document is the fix): the temporal
+ * `backdated-supersession`, plus `expired-document`, `not-yet-valid` and the
+ * document-level verdicts of the pipeline. No reason here ever writes anything.
+ *
+ * `installation-customer-mismatch`, `transfer-not-applicable`, `renewal-gap`
+ * and `reduction-requires-resolution` were introduced by the Owner decisions of
+ * 2026-10-12 (Q4 customer transfer, OQ-80 G2, OQ-80 Option B with PDR-11 §8.6).
+ * Like `license-binding-conflict` before them, their *names* and their HTTP
+ * class are the implementation's reading of the approved texts and are recorded
+ * for Product Owner ratification; the refusals themselves are the decided
+ * policy.
  */
 export type ImportConflictReason =
   | 'duplicate-operation'
   | 'unknown-supersession'
   | 'overlapping-range'
   | 'backdated-supersession'
-  | 'license-binding-conflict';
+  | 'license-binding-conflict'
+  | 'installation-customer-mismatch'
+  | 'transfer-not-applicable'
+  | 'renewal-gap'
+  | 'reduction-requires-resolution';
 
 export interface ImportConflict {
   reason: ImportConflictReason;
@@ -434,17 +556,48 @@ export type ImportSupersessionIntent =
   | { kind: 'explicit'; operationId: string }
   | { kind: 'implicit' };
 
+/**
+ * The document's own content, as the conflict authority needs it: the declared
+ * window, its commercial identity, and the grant (limits and entitlements) the
+ * PDR-11 §8.6 guard compares against a version an import would implicitly
+ * retire.
+ */
+export interface ImportCandidate {
+  validFrom: Date;
+  validUntil: Date | null;
+  licenseId: string;
+  customerId: string;
+  organizationLimit: LicenseLimit;
+  userLimit: LicenseLimit;
+  entitlements: readonly LicenseEntitlement[];
+}
+
+/**
+ * The explicit customer-transfer operation (Owner decision 2026-10-12, Q4).
+ *
+ * Its presence — and nothing else — authorizes one import to change the
+ * installation's commercial customer. It is produced by the dedicated,
+ * permission-gated, audited operation, never inferred from a document that
+ * simply names a different `customerId`: a differing customer on the normal
+ * import path is refused as `installation-customer-mismatch`.
+ */
+export interface CustomerTransferIntent {
+  /** Mandatory operator reason; carried onto the transfer audit event. */
+  reason: string;
+}
+
 export interface EvaluateImportConflictsParams {
-  candidate: Pick<
-    RetainedLicenseVersion,
-    'validFrom' | 'validUntil' | 'licenseId' | 'customerId'
-  >;
+  candidate: ImportCandidate;
   operationId: string;
   documentHash: string;
   supersession: ImportSupersessionIntent;
   versions: readonly RetainedLicenseVersion[];
   /** The import instant every time-dependent rule is evaluated at. */
   at: Date;
+  /** The installation's current commercial customer (null = not bound yet). */
+  installationCustomerId?: string | null;
+  /** Set only by the explicit transfer operation; null on every other path. */
+  customerTransfer?: CustomerTransferIntent | null;
 }
 
 export type ImportConflictEvaluation =
@@ -468,42 +621,71 @@ export type ImportConflictEvaluation =
  *    and silently re-attribute every retained version. The cross-installation
  *    half of the binding is enforced by the transaction under the lock
  *    (`LicensesRepository.importVersion`), which can see every installation;
+ *    2b. the **installation's** customer binding is never changed by an import
+ *    (Owner decision 2026-10-12, Q4): a document whose customer differs from
+ *    the installation's current one is refused (`installation-customer-mismatch`)
+ *    unless the caller carries an explicit, authorized transfer intent. A
+ *    transfer request that names the customer the installation already has is
+ *    refused as `transfer-not-applicable` — there is nothing to transfer — so a
+ *    repeated or concurrent transfer can never silently re-apply;
  * 3. an explicit supersession target (the retained version carrying the
  *    declared operation id) must exist in this installation, must not have a
  *    supersession recorded yet, and must still govern at `at` — a version is
  *    retired once, so two competing successors cannot be booked;
- * 4. a signed document that overlaps any version still governing at `at` other
- *    than its explicit target is refused (unauthorized ambiguity);
- * 5. a legacy code may overlap at most ONE still-governing version, and only
- *    one without a recorded supersession; that version is the one it replaces;
- * 6. a supersession may not hand over in the past: if retiring the target at
- *    the candidate's own `validFrom` would remove governance the target has
- *    already exercised before `at` (`supersessionRewritesPastGovernance`), the
- *    import is refused as `backdated-supersession` instead of rewriting which
- *    version governed a past instant. A hand-over at or after `at`, and a
- *    target that had already ended (its `validUntil` pins its window, so the
- *    stamp shortens nothing), stay allowed. Whether a retroactive supersession
- *    should ever be accepted is undecided (OQ-86); this rule is the interim
- *    fail-closed behaviour and is evaluated on both passes, like every rule
- *    here.
+ * 4. **no overlap with retained history** (OQ-86 Option C, 2026-10-12): the
+ *    candidate's window may not intersect the *effective* window of any
+ *    retained version unless that version is the one it retires. Retired
+ *    versions count: a backdated non-superseding document that lands inside an
+ *    interval a version already governed is refused (`overlapping-range`), so
+ *    effective windows stay pairwise disjoint including retired history and no
+ *    as-of read can become `ambiguous`. Gap-filling backwards stays allowed
+ *    where it overlaps nothing and does not leave a gap (rule 7);
+ * 5. a signed document that starts later than exactly one still-governing
+ *    version it overlaps takes that version over at its own `validFrom`
+ *    (OQ-80 **Option B**, 2026-10-12): the later start governs, the predecessor
+ *    stops governing exactly there, nothing is stacked and the hand-over is
+ *    stamped and audited like an explicit supersession. A document that starts
+ *    at or before such a version cannot take precedence and is refused; a
+ *    candidate that would leave more than one hand-over is refused rather than
+ *    guessed. A **reducing** candidate is refused under the implicit rule
+ *    (`reduction-requires-resolution`) until L-04 implements PDR-11 §8.6 — the
+ *    precedence rule is never the mechanism that silently applies a reduction;
+ * 6. a supersession (explicit or the implicit one of rule 5) may not hand over
+ *    in the past: if retiring the target at the candidate's own `validFrom`
+ *    would remove governance it has already exercised before `at`
+ *    (`supersessionRewritesPastGovernance`), the import is refused as
+ *    `backdated-supersession` instead of rewriting which version governed a
+ *    past instant. A hand-over at or after `at`, and a target that had already
+ *    ended (its `validUntil` pins its window, so the stamp shortens nothing),
+ *    stay allowed;
+ * 7. a **renewal** may not leave a gap (OQ-80 **G2**, 2026-10-12): when the
+ *    candidate carries the identity of a retained license, its `validFrom` may
+ *    not be later than that license's retained coverage end
+ *    (`renewal-gap`). Adjacency — the previous exclusive end equals the new
+ *    `validFrom` — is contiguous, not a gap. A candidate that carries a
+ *    **new** license identity is not a renewal of a retained license; whether a
+ *    new identity may cover a lapse is an Owner question that is still open
+ *    (OQ-87) and no rule here grants or refuses it;
+ * 8. a legacy `VLIC1` text code keeps its documented L-02 lifecycle rules
+ *    unchanged — at most one overlapping version that is still governing and
+ *    has no recorded supersession, and never a hand-over in the past (which its
+ *    default 2020 window would otherwise be). The historical rule 4 and the
+ *    gap rule 7 apply to it as well, added after its own rules so no existing
+ *    refusal changes its reason.
  */
 export function evaluateImportConflicts(
   params: EvaluateImportConflictsParams,
 ): ImportConflictEvaluation {
   const { candidate, operationId, documentHash, supersession, versions, at } =
     params;
+  const installationCustomerId = params.installationCustomerId ?? null;
+  const customerTransfer = params.customerTransfer ?? null;
 
   if (findVersionByOperationId(versions, operationId) !== null) {
-    return {
-      conflict: { reason: 'duplicate-operation', overlapping: 0 },
-      supersedes: null,
-    };
+    return conflictOnly({ reason: 'duplicate-operation', overlapping: 0 });
   }
   if (versions.some((version) => version.documentHash === documentHash)) {
-    return {
-      conflict: { reason: 'duplicate-operation', overlapping: 0 },
-      supersedes: null,
-    };
+    return conflictOnly({ reason: 'duplicate-operation', overlapping: 0 });
   }
   if (
     versions.some(
@@ -512,10 +694,21 @@ export function evaluateImportConflicts(
         version.customerId !== candidate.customerId,
     )
   ) {
-    return {
-      conflict: { reason: 'license-binding-conflict', overlapping: 0 },
-      supersedes: null,
-    };
+    return conflictOnly({ reason: 'license-binding-conflict', overlapping: 0 });
+  }
+
+  const customerChanges =
+    installationCustomerId !== null &&
+    installationCustomerId !== candidate.customerId;
+  if (customerTransfer === null) {
+    if (customerChanges) {
+      return conflictOnly({
+        reason: 'installation-customer-mismatch',
+        overlapping: 0,
+      });
+    }
+  } else if (!customerChanges) {
+    return conflictOnly({ reason: 'transfer-not-applicable', overlapping: 0 });
   }
 
   let target: RetainedLicenseVersion | null = null;
@@ -526,36 +719,31 @@ export function evaluateImportConflicts(
       hasRecordedSupersession(found) ||
       !isEligibleAt(found, at)
     ) {
-      return {
-        conflict: { reason: 'unknown-supersession', overlapping: 0 },
-        supersedes: null,
-      };
+      return conflictOnly({ reason: 'unknown-supersession', overlapping: 0 });
     }
     target = found;
   }
 
-  const overlapping = overlappingVersions(candidate, versions, at).filter(
+  // Everything the candidate overlaps in the FULL retained history, minus the
+  // version it retires (a retirement is the one sanctioned overlap).
+  const others = overlappingVersions(candidate, versions).filter(
     (version) => version.versionId !== target?.versionId,
   );
 
   if (supersession.kind === 'implicit') {
-    if (overlapping.length > 1) {
-      return {
-        conflict: {
-          reason: 'overlapping-range',
-          overlapping: overlapping.length,
-        },
-        supersedes: null,
-      };
+    // Legacy `VLIC1`: its documented L-02 rules first, unchanged.
+    const eligible = others.filter((version) => isEligibleAt(version, at));
+    if (eligible.length > 1) {
+      return conflictOnly({
+        reason: 'overlapping-range',
+        overlapping: eligible.length,
+      });
     }
-    const implicitTarget = overlapping[0] ?? null;
+    const implicitTarget = eligible[0] ?? null;
     if (implicitTarget !== null && hasRecordedSupersession(implicitTarget)) {
       // A text code cannot express which successor it would join; refuse rather
       // than rewrite a supersession that an earlier document already recorded.
-      return {
-        conflict: { reason: 'overlapping-range', overlapping: 1 },
-        supersedes: null,
-      };
+      return conflictOnly({ reason: 'overlapping-range', overlapping: 1 });
     }
     if (
       implicitTarget !== null &&
@@ -563,33 +751,104 @@ export function evaluateImportConflicts(
     ) {
       return backdatedSupersession();
     }
+    // Then the new rules: retained history (rule 4) and the gap rule (rule 7).
+    const historic = others.filter(
+      (version) =>
+        version.versionId !== implicitTarget?.versionId &&
+        !isEligibleAt(version, at),
+    );
+    if (historic.length > 0) {
+      return conflictOnly({
+        reason: 'overlapping-range',
+        overlapping: historic.length,
+      });
+    }
+    if (leavesRenewalGap(candidate, versions)) {
+      return conflictOnly({ reason: 'renewal-gap', overlapping: 0 });
+    }
     return { conflict: null, supersedes: implicitTarget };
   }
 
-  if (overlapping.length > 0) {
-    return {
-      conflict: {
-        reason: 'overlapping-range',
-        overlapping: overlapping.length,
-      },
-      supersedes: null,
-    };
+  // Rule 4 — retired effective windows are never silently overlapped.
+  const retired = others.filter((version) => !isEligibleAt(version, at));
+  if (retired.length > 0) {
+    return conflictOnly({
+      reason: 'overlapping-range',
+      overlapping: retired.length,
+    });
+  }
+  if (others.length > 1) {
+    return conflictOnly({
+      reason: 'overlapping-range',
+      overlapping: others.length,
+    });
+  }
+
+  const overlap = others[0] ?? null;
+  let supersedes = target;
+  let implicitPrecedence = false;
+  if (target === null && overlap !== null) {
+    // Rule 5 (OQ-80 Option B): the later start governs at the overlap.
+    if (overlap.validFrom.getTime() >= candidate.validFrom.getTime()) {
+      return conflictOnly({ reason: 'overlapping-range', overlapping: 1 });
+    }
+    supersedes = overlap;
+    implicitPrecedence = true;
   }
   if (
-    target !== null &&
-    supersessionRewritesPastGovernance(target, candidate, at)
+    supersedes !== null &&
+    supersessionRewritesPastGovernance(supersedes, candidate, at)
   ) {
     return backdatedSupersession();
   }
-  return { conflict: null, supersedes: target };
+  if (
+    implicitPrecedence &&
+    overlap !== null &&
+    reducesRetainedGrant(overlap, candidate)
+  ) {
+    // PDR-11 §8.6: a reducing version needs the check/explain/resolve flow
+    // before it is applied, and that flow is L-04. The precedence rule may not
+    // be the mechanism that applies it silently.
+    return conflictOnly({
+      reason: 'reduction-requires-resolution',
+      overlapping: 1,
+    });
+  }
+  if (leavesRenewalGap(candidate, versions)) {
+    return conflictOnly({ reason: 'renewal-gap', overlapping: 0 });
+  }
+  return { conflict: null, supersedes };
+}
+
+/**
+ * OQ-80 G2: does this candidate leave a gap in the coverage of the license
+ * identity it carries? Only a **renewal** — a candidate whose `licenseId` is
+ * already retained for this installation — is evaluated; a new identity is not
+ * a renewal of a retained license and no rule here says what it may cover
+ * (OQ-87, open).
+ *
+ * `retainedCoverageEnd` is the latest effective end of the identity's retained
+ * versions, and `null` means either "nothing retained for this identity" (no
+ * gap can be left in coverage that never existed) or "perpetual" (coverage
+ * never ends) — both mean the candidate leaves no gap.
+ */
+function leavesRenewalGap(
+  candidate: ImportCandidate,
+  versions: readonly RetainedLicenseVersion[],
+): boolean {
+  const coverageEnd = retainedCoverageEnd(candidate.licenseId, versions);
+  if (coverageEnd === null) return false;
+  return candidate.validFrom.getTime() > coverageEnd.getTime();
+}
+
+/** The single shape of a conflict evaluation (no supersession is resolved). */
+function conflictOnly(conflict: ImportConflict): ImportConflictEvaluation {
+  return { conflict, supersedes: null };
 }
 
 /** The single shape of the temporal refusal (rule 6). */
 function backdatedSupersession(): ImportConflictEvaluation {
-  return {
-    conflict: { reason: 'backdated-supersession', overlapping: 0 },
-    supersedes: null,
-  };
+  return conflictOnly({ reason: 'backdated-supersession', overlapping: 0 });
 }
 
 /**

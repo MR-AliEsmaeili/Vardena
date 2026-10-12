@@ -13,6 +13,7 @@ import { LicensesRepository } from './data/licenses.repository.js';
 import { LicenseStateController } from './api/license-state.controller.js';
 import { LicenseActivationController } from './api/license-activation.controller.js';
 import { LicenseImportController } from './api/license-import.controller.js';
+import { LicenseCustomerTransferController } from './api/license-customer-transfer.controller.js';
 import { IdentityModule } from '../identity/identity.module.js';
 import { RbacModule } from '../rbac/rbac.module.js';
 
@@ -42,6 +43,7 @@ import { RbacModule } from '../rbac/rbac.module.js';
     LicenseStateController,
     LicenseActivationController,
     LicenseImportController,
+    LicenseCustomerTransferController,
   ],
   providers: [
     InstallationsRepository,

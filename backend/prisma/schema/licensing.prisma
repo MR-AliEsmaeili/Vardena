@@ -183,6 +183,11 @@ model LicenseAuditEvent {
   reason         String?  @db.VarChar(60)
   /// Bounded, non-sensitive human detail.
   detail         String?  @db.VarChar(500)
+  /// The commercial customer the installation was bound to BEFORE an explicit
+  /// transfer; null on every other event (Q4, 2026-10-12).
+  previousCustomerId String? @map("previous_customer_id")
+  /// The customer it is bound to AFTER that transfer; null on every other event.
+  newCustomerId      String? @map("new_customer_id")
   occurredAt     DateTime @map("occurred_at") @db.Timestamptz(6)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)

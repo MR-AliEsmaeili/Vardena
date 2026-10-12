@@ -119,23 +119,34 @@ describe('retained license versions', () => {
     expect(windowsOverlap(first, renewal)).toBe(false);
     expect(windowsOverlap(first, perpetual)).toBe(true);
     expect(
-      overlappingVersions(renewal, [first, perpetual], NOW).map(
-        (v) => v.versionId,
-      ),
+      overlappingVersions(renewal, [first, perpetual]).map((v) => v.versionId),
     ).toEqual([perpetual.versionId]);
   });
 
-  it('never counts a superseded version as an overlap', () => {
+  it('counts a retired version by the window it really governed', () => {
+    // OQ-86 Option C (2026-10-12): a version retired in June governed
+    // [January, June). A candidate that lands later is not an overlap — its
+    // retained tail cannot block a legitimate renewal…
     const retired = superseded(
       '2026-06-01T00:00:00.000Z',
       '01K7LATER0000000000000000',
       window('2026-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'),
     );
-    const candidate = version(
-      window('2027-01-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z'),
-    );
+    expect(
+      overlappingVersions(
+        version(window('2027-01-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z')),
+        [retired],
+      ),
+    ).toEqual([]);
 
-    expect(overlappingVersions(candidate, [retired], NOW)).toEqual([]);
+    // …but a candidate that lands INSIDE that window is one: retired history
+    // counts, which is exactly what the previous rule did not do.
+    expect(
+      overlappingVersions(
+        version(window('2026-03-01T00:00:00.000Z', '2026-04-01T00:00:00.000Z')),
+        [retired],
+      ).map((v) => v.versionId),
+    ).toEqual([retired.versionId]);
   });
 
   it('resolves the single covering version as effective', () => {
@@ -422,7 +433,7 @@ describe('supersession is recorded once and governs from the successor start', (
       window('2026-05-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
     );
 
-    expect(overlappingVersions(candidate, [zeroed], NOW)).toEqual([]);
+    expect(overlappingVersions(candidate, [zeroed])).toEqual([]);
   });
 });
 
@@ -507,9 +518,25 @@ describe('import conflict evaluation', () => {
     expect(result.conflict).toBeNull();
   });
 
-  it('refuses an overlap a signed document does not retire', () => {
+  it('hands over to a later-starting version under the precedence rule (OQ-80 Option B)', () => {
+    const existing = version(
+      window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+    );
+    const result = evaluate(
+      window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
+      { versions: [existing] },
+    );
+
+    // No explicit supersession: the later start governs from its own
+    // `validFrom`, and the evaluation names the version it takes over so the
+    // transaction can stamp and audit the hand-over.
+    expect(result.conflict).toBeNull();
+    expect(result.supersedes?.versionId).toBe(existing.versionId);
+  });
+
+  it('refuses an overlap that starts no later than the version it would take over', () => {
     const existing = version(window('2026-01-01T00:00:00.000Z', null));
-    const result = evaluate(window('2026-06-01T00:00:00.000Z', null), {
+    const result = evaluate(window('2026-01-01T00:00:00.000Z', null), {
       versions: [existing],
     });
 
@@ -518,6 +545,214 @@ describe('import conflict evaluation', () => {
       overlapping: 1,
     });
     expect(result.supersedes).toBeNull();
+  });
+
+  it('refuses an ambiguous overlap of more than one retained version', () => {
+    const first = version(
+      window('2026-01-01T00:00:00.000Z', '2026-09-01T00:00:00.000Z'),
+    );
+    const second = version(
+      window('2026-09-01T00:00:00.000Z', '2027-09-01T00:00:00.000Z'),
+    );
+    const result = evaluate(
+      window('2026-06-01T00:00:00.000Z', '2027-06-01T00:00:00.000Z'),
+      { versions: [first, second] },
+    );
+
+    // Two hand-overs from one document is not a precedence question: it is
+    // refused rather than guessed.
+    expect(result.conflict).toEqual({
+      reason: 'overlapping-range',
+      overlapping: 2,
+    });
+    expect(result.supersedes).toBeNull();
+  });
+
+  it('refuses an implicit hand-over that would reduce the retained grant', () => {
+    const existing = version({
+      ...window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      userLimit: 20,
+    });
+
+    const sameGrant = evaluate(
+      window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
+      { versions: [existing] },
+    );
+    expect(sameGrant.conflict).toBeNull();
+
+    // Each of these hands the predecessor over while taking something away:
+    // the precedence rule may not apply a reduction silently (PDR-11 §8.6), so
+    // it is refused until L-04 implements the resolution flow.
+    const shrinking = [
+      { organizationLimit: 4 },
+      { userLimit: 19 },
+      { entitlements: [] as LicenseEntitlement[] },
+    ] as const;
+    for (const shrink of shrinking) {
+      const result = evaluate(
+        {
+          ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
+          organizationLimit: 5,
+          userLimit: 20,
+          ...shrink,
+        },
+        { versions: [existing] },
+      );
+      expect(result.conflict?.reason).toBe('reduction-requires-resolution');
+      expect(result.supersedes).toBeNull();
+    }
+  });
+
+  it('refuses to close an open end implicitly, but allows it explicitly', () => {
+    const perpetual = version(window('2026-01-01T00:00:00.000Z', null));
+    const closing = window(
+      '2026-07-01T00:00:00.000Z',
+      '2027-07-01T00:00:00.000Z',
+    );
+
+    // Implicit: taking the open end away is a reduction.
+    expect(evaluate(closing, { versions: [perpetual] }).conflict?.reason).toBe(
+      'reduction-requires-resolution',
+    );
+
+    // Explicit: the Operator named the version it retires, so the documented
+    // supersession semantics apply unchanged (L-04 owes §8.6 to this path too).
+    const explicit = evaluate(closing, {
+      versions: [perpetual],
+      supersession: { kind: 'explicit', operationId: perpetual.operationId },
+    });
+    expect(explicit.conflict).toBeNull();
+    expect(explicit.supersedes?.versionId).toBe(perpetual.versionId);
+  });
+
+  it('refuses a renewal that leaves a gap, and allows adjacency (OQ-80 G2)', () => {
+    const first = version(
+      window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+    );
+
+    // Adjacency is contiguity, not a gap.
+    expect(
+      evaluate(window('2027-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'), {
+        versions: [first],
+      }).conflict,
+    ).toBeNull();
+
+    // One millisecond of lapse is already a gap.
+    expect(
+      evaluate(window('2027-01-01T00:00:00.001Z', '2028-01-01T00:00:00.000Z'), {
+        versions: [first],
+      }).conflict,
+    ).toEqual({ reason: 'renewal-gap', overlapping: 0 });
+
+    // A perpetual version never leaves coverage, so no renewal can be late —
+    // as long as the renewal keeps the grant perpetual too (a time-limited
+    // successor would be refused by the §8.6 guard instead, never by the gap
+    // rule).
+    const perpetual = version(window('2026-01-01T00:00:00.000Z', null));
+    expect(
+      evaluate(window('2030-01-01T00:00:00.000Z', null), {
+        versions: [perpetual],
+      }).conflict,
+    ).toBeNull();
+  });
+
+  it('only treats a candidate carrying a retained license id as a renewal', () => {
+    const first = version(
+      window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+    );
+
+    // Same license identifier: the lapse is a gap and is refused.
+    expect(
+      evaluate(window('2028-01-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z'), {
+        versions: [first],
+      }).conflict?.reason,
+    ).toBe('renewal-gap');
+
+    // Another license identifier: this is not a renewal of the retained one.
+    // Whether a new identity may cover a lapse is an Owner question that is
+    // still open (OQ-87) — no rule here refuses it, and none grants it.
+    expect(
+      evaluate(
+        {
+          ...window('2028-01-01T00:00:00.000Z', '2029-01-01T00:00:00.000Z'),
+          licenseId: '01K7ANOTHERLICENSE000000000',
+        },
+        { versions: [first] },
+      ).conflict,
+    ).toBeNull();
+  });
+
+  it('never lets a document change the installation customer without an explicit transfer', () => {
+    const existing = version(
+      window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+    );
+    const other = {
+      ...window('2027-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'),
+      // Another customer always means another license: a license identifier is
+      // bound to one customer (a renewal that renames it is refused as
+      // `license-binding-conflict`, which is a different refusal).
+      licenseId: '01K7ANOTHERLICENSE000000000',
+      customerId: '01K7OTHERCUSTOMER0000000000',
+    };
+
+    // The installation is bound to CUSTOMER; this document names another one
+    // and carries no transfer intent: refused, whatever else it would do.
+    const mismatch = evaluate(other, {
+      versions: [existing],
+      installationCustomerId: CUSTOMER,
+    });
+    expect(mismatch.conflict).toEqual({
+      reason: 'installation-customer-mismatch',
+      overlapping: 0,
+    });
+    expect(mismatch.supersedes).toBeNull();
+
+    // With the authorized transfer intent it is allowed …
+    const transfer = evaluate(other, {
+      versions: [existing],
+      installationCustomerId: CUSTOMER,
+      customerTransfer: { reason: 'Contract moved to another legal entity.' },
+    });
+    expect(transfer.conflict).toBeNull();
+
+    // … and a transfer that would change nothing is refused instead of being
+    // re-applied.
+    expect(
+      evaluate(window('2027-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'), {
+        versions: [existing],
+        installationCustomerId: CUSTOMER,
+        customerTransfer: { reason: 'Repeating the same transfer.' },
+      }).conflict,
+    ).toEqual({ reason: 'transfer-not-applicable', overlapping: 0 });
+  });
+
+  it('refuses a document that lands inside the effective window of a retired version (OQ-86 Option C)', () => {
+    const retired = version({
+      ...window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+      supersededAt: new Date('2026-06-01T00:00:00.000Z'),
+      governsUntil: new Date('2026-06-01T00:00:00.000Z'),
+      supersededByVersionId: '01K7SUCCESSOR0000000000000',
+    });
+
+    // Inside the window it really governed: refused.
+    expect(
+      evaluate(window('2026-03-01T00:00:00.000Z', '2026-04-01T00:00:00.000Z'), {
+        versions: [retired],
+      }).conflict,
+    ).toEqual({ reason: 'overlapping-range', overlapping: 1 });
+
+    // In its retained tail (after the hand-over): no historical governance is
+    // touched, so it is an ordinary import.
+    expect(
+      evaluate(
+        {
+          ...window('2026-10-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'),
+          licenseId: '01K7ANOTHERLICENSE000000000',
+        },
+        { versions: [retired] },
+      ).conflict,
+    ).toBeNull();
   });
 
   it('resolves an explicit signed supersession by operation id', () => {
@@ -751,15 +986,25 @@ describe('a supersession may not remove governance from the past', () => {
     expect(atOnce.conflict).toBeNull();
     expect(atOnce.supersedes).toBe(governing);
 
+    // A correction of a target that had already ended stays importable as long
+    // as it is CONTIGUOUS: it starts where the target ended (OQ-80 G2 forbids
+    // the renewal that would leave a gap, and a month later would).
     const ended = version(
       window('2026-01-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z'),
     );
-    const correction = evaluate(window('2026-04-01T00:00:00.000Z', null), {
+    const correction = evaluate(window('2026-03-01T00:00:00.000Z', null), {
       versions: [ended],
       supersession: { kind: 'explicit', operationId: ended.operationId },
     });
     expect(correction.conflict).toBeNull();
     expect(correction.supersedes).toBe(ended);
+
+    // The same correction a month later is the gap G2 refuses.
+    const gapped = evaluate(window('2026-04-01T00:00:00.000Z', null), {
+      versions: [ended],
+      supersession: { kind: 'explicit', operationId: ended.operationId },
+    });
+    expect(gapped.conflict).toEqual({ reason: 'renewal-gap', overlapping: 0 });
   });
 
   it('refuses a legacy code whose implicit replacement would rewrite the past', () => {
@@ -849,9 +1094,9 @@ describe('retained versions never govern the same instant', () => {
     ]) {
       const resolution = resolveEffectiveVersion(versions, new Date(instant));
       expect(resolution.kind).toBe('effective');
-      expect(
-        overlappingVersions(resolution.version!, versions, new Date(instant)),
-      ).toEqual([resolution.version]);
+      expect(overlappingVersions(resolution.version!, versions)).toEqual([
+        resolution.version,
+      ]);
     }
   });
 });

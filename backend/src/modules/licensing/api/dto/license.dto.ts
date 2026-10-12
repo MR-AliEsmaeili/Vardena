@@ -29,6 +29,45 @@ export class ActivateLicenseDto {
 }
 
 /**
+ * Explicit installation customer transfer (Owner decision 2026-10-12, Q4).
+ *
+ * The body carries the signed document and the operator's reason — never a
+ * customer id, a limit or any other licensing fact: those are read from the
+ * verified payload. The *intent* to transfer is what the caller supplies, and
+ * it is the only thing that authorizes the operation (together with the
+ * dedicated permission); a document naming a different customer on the normal
+ * import path is still refused.
+ */
+export class TransferLicenseCustomerDto {
+  @ApiProperty({
+    description:
+      'The signed license document of the customer this installation is being transferred to: the vardena-license file envelope or the bare VLIC2 artifact. A legacy VLIC1 text code cannot express a transfer and is refused.',
+    example:
+      '{"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}',
+    maxLength: 65536,
+  })
+  @IsString()
+  @MinLength(1, { message: 'A license document is required.' })
+  @MaxLength(65536)
+  document!: string;
+
+  @ApiProperty({
+    description:
+      'Why the installation changes customer. Recorded on the typed transfer audit event; required, because an unexplained commercial rebinding is not auditable.',
+    minLength: 3,
+    maxLength: 500,
+    example:
+      'Contract 2026-114 moved this server from Acme to Acme Industrial.',
+  })
+  @IsString()
+  @MinLength(3, {
+    message: 'A transfer reason of at least 3 characters is required.',
+  })
+  @MaxLength(500)
+  reason!: string;
+}
+
+/**
  * Signed-document import (L-03). Like activation, the body carries exactly
  * ONE field: the document a client received. There is no way to post a status,
  * a limit, a validity window, a version or an entitlement — all of those are
@@ -224,4 +263,24 @@ export class LicenseImportResultDto extends LicenseStateDto {
 
   @ApiProperty({ enum: ['APPLIED', 'UNCHANGED'] })
   outcome!: 'APPLIED' | 'UNCHANGED';
+}
+
+/**
+ * The receipt of `POST /api/v1/license/customer-transfer`: the import receipt
+ * plus the two facts the transaction committed — the customer the installation
+ * was bound to before, and whether the binding changed. Both come from the
+ * same transaction as the typed audit event, so a receipt can never disagree
+ * with the trail.
+ */
+export class LicenseCustomerTransferResultDto extends LicenseImportResultDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'The commercial customer this installation was bound to before the transfer.',
+  })
+  previousCustomerId!: string | null;
+
+  @ApiProperty({ description: 'True when the transfer changed the binding.' })
+  bindingChanged!: boolean;
 }

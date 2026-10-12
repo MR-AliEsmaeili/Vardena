@@ -11,6 +11,7 @@ import type {
 import {
   evaluateImportConflicts,
   supersessionCeaseInstant,
+  type CustomerTransferIntent,
   type ImportConflict,
   type ImportConflictReason,
   type ImportSupersessionIntent,
@@ -83,11 +84,20 @@ export interface ImportLicenseVersionCommand {
   entitlements: readonly LicenseEntitlement[];
   /**
    * How the artifact declares its relation to the version it replaces: nothing
-   * (a signed document that may not overlap), an explicit signed supersession,
-   * or the implicit replacement a legacy `VLIC1` text code performs (domain
-   * `ImportSupersessionIntent`).
+   * (a signed document), an explicit signed supersession, or the implicit
+   * replacement a legacy `VLIC1` text code performs (domain
+   * `ImportSupersessionIntent`). A signed document with `none` that starts
+   * later than the version it overlaps takes it over under OQ-80 Option B; the
+   * hand-over is stamped and audited exactly like an explicit one.
    */
   supersession: ImportSupersessionIntent;
+  /**
+   * The explicit, authorized customer-transfer intent (Owner decision
+   * 2026-10-12, Q4). Null on every other path — and with it null, an import
+   * whose customer differs from the installation's current binding is refused
+   * (`installation-customer-mismatch`), so an import can never transfer.
+   */
+  customerTransfer: CustomerTransferIntent | null;
   /**
    * The version the application layer resolved as the supersession target; the
    * pre-built `license.version.superseded` audit event names it. The
@@ -115,6 +125,14 @@ export interface LicenseAuditEventCommand {
   documentHash: string | null;
   reason: string | null;
   detail: string | null;
+  /**
+   * The customer the installation was bound to before an explicit transfer.
+   * Set only on `license.installation.customer-transferred` events (Owner
+   * decision 2026-10-12, Q4); null everywhere else.
+   */
+  previousCustomerId?: string | null;
+  /** The customer the installation is bound to after that transfer. */
+  newCustomerId?: string | null;
   occurredAt: Date;
 }
 
@@ -128,13 +146,7 @@ export interface LicenseAuditEventCommand {
  */
 export class ImportConflictError extends Error {
   constructor(readonly conflict: ImportConflict) {
-    super(
-      conflict.reason === 'duplicate-operation'
-        ? 'This license version has already been imported.'
-        : conflict.reason === 'unknown-supersession'
-          ? 'The version named by this document is no longer eligible for supersession.'
-          : 'This license version overlaps a retained version.',
-    );
+    super(conflictErrorDefaultMessage(conflict.reason));
     this.name = 'ImportConflictError';
   }
 
@@ -143,8 +155,52 @@ export class ImportConflictError extends Error {
   }
 }
 
+/**
+ * The default message of a conflict the repository discovered. The API's own
+ * wording per reason lives in the application layer; this one is only what an
+ * `ImportConflictError` carries when it escapes (it does not in practice — the
+ * service maps every reason to its documented message).
+ */
+function conflictErrorDefaultMessage(reason: ImportConflictReason): string {
+  switch (reason) {
+    case 'duplicate-operation':
+      return 'This license version has already been imported.';
+    case 'unknown-supersession':
+      return 'The version named by this document is no longer eligible for supersession.';
+    case 'license-binding-conflict':
+      return 'This license identifier is already bound to a different customer or installation.';
+    case 'installation-customer-mismatch':
+      return 'This license document belongs to a different customer than the installation is bound to.';
+    case 'transfer-not-applicable':
+      return 'The installation is already bound to the customer this transfer names.';
+    case 'renewal-gap':
+      return 'This renewal would leave a gap in the license coverage.';
+    case 'reduction-requires-resolution':
+      return 'This version reduces the entitlement or capacity it would take over, which requires an explicit resolution.';
+    case 'backdated-supersession':
+      return 'This license version would retire a version from an instant that is already in the past.';
+    case 'overlapping-range':
+      return 'This license version overlaps a retained version.';
+  }
+}
+
 export interface LicenseAuditEventRow extends LicenseAuditEventCommand {
   id: string;
+}
+
+/**
+ * What ONE import transaction committed: the retained version it created, and
+ * the installation's commercial customer before it ran. Both come from the
+ * same transaction, so a receipt built from them can never disagree with the
+ * audit trail (a concurrent transfer cannot make the reported "from" value
+ * stale).
+ */
+export interface ImportVersionResult {
+  version: RetainedLicenseVersion;
+  /** The installation's customer before this import (null = was unbound). */
+  previousCustomerId: string | null;
+  /** True when this import changed the installation's customer binding. */
+  bindingChanged: boolean;
 }
 
 interface VersionRow {
@@ -307,6 +363,8 @@ interface AuditDelegate {
       documentHash: string | null;
       reason: string | null;
       detail: string | null;
+      previousCustomerId: string | null;
+      newCustomerId: string | null;
       occurredAt: Date;
       createdAt: Date;
       updatedAt: Date;
@@ -330,6 +388,8 @@ interface AuditDelegate {
       documentHash: string | null;
       reason: string | null;
       detail: string | null;
+      previousCustomerId: string | null;
+      newCustomerId: string | null;
       occurredAt: Date;
     }>
   >;
@@ -422,13 +482,18 @@ export class LicensesRepository {
    */
   async importVersion(
     command: ImportLicenseVersionCommand,
-  ): Promise<RetainedLicenseVersion> {
+  ): Promise<ImportVersionResult> {
     const client = await this.client();
-    const row = await client.$transaction(async (tx) => {
+    const committed = await client.$transaction(async (tx) => {
       // 1. Serialize every import of THIS installation. The lock is held until
       //    commit, so the checks below cannot race a concurrent importer: the
-      //    loser waits here and then reads the winner's committed rows.
-      await lockInstallationRow(tx, command.installationId);
+      //    loser waits here and then reads the winner's committed rows. The
+      //    locked row also carries the installation's commercial customer, which
+      //    the customer-binding rules below evaluate against.
+      const installation = await lockInstallationRow(
+        tx,
+        command.installationId,
+      );
 
       // 2. Authoritative invariant check. The read-side pre-check in the
       //    service may have run before another import committed; THIS one runs
@@ -440,12 +505,17 @@ export class LicensesRepository {
           validUntil: command.validUntil,
           licenseId: command.licenseId,
           customerId: command.customerId,
+          organizationLimit: command.organizationLimit,
+          userLimit: command.userLimit,
+          entitlements: command.entitlements,
         },
         operationId: command.operationId,
         documentHash: command.documentHash,
         supersession: command.supersession,
         versions: retained,
         at: command.now,
+        installationCustomerId: installation.customerId,
+        customerTransfer: command.customerTransfer,
       });
       if (evaluation.conflict !== null) {
         throw new ImportConflictError(evaluation.conflict);
@@ -551,12 +621,32 @@ export class LicensesRepository {
           });
         }
       }
-      // The installation keeps its commercial-customer binding (L-02), so an
-      // operator can still see which customer this deployment belongs to.
-      await tx.installation.update({
-        where: { id: command.installationId },
-        data: { customerId: command.customerId, updatedAt: command.now },
-      });
+      // The installation's commercial-customer binding (L-02). Reaching this
+      // point means the evaluation above allowed it: either the binding is
+      // unchanged (a first binding or the same customer), or the caller carried
+      // the explicit transfer intent (Owner decision 2026-10-12, Q4). The write
+      // is skipped when nothing changes, so an ordinary import touches the
+      // binding not at all.
+      const previousCustomerId = installation.customerId;
+      const bindingChanged = previousCustomerId !== command.customerId;
+      if (bindingChanged) {
+        await tx.installation.update({
+          where: { id: command.installationId },
+          data: { customerId: command.customerId, updatedAt: command.now },
+        });
+      }
+      // An explicit transfer is audited as its own typed event, written from
+      // the values the lock guarantees: the customer that was, the customer
+      // that is, the operation, the actor, the source, the instant and the
+      // operator's reason. It is built HERE rather than by the caller because
+      // only the transaction knows the real "previous" value under concurrency.
+      const auditEvents =
+        bindingChanged && previousCustomerId !== null
+          ? [
+              ...command.auditEvents,
+              transferAuditEvent(command, previousCustomerId),
+            ]
+          : command.auditEvents;
 
       const version = await tx.licenseVersion.create({
         data: {
@@ -626,7 +716,7 @@ export class LicensesRepository {
         }
       }
 
-      for (const event of command.auditEvents) {
+      for (const event of auditEvents) {
         await tx.licenseAuditEvent.create({
           data: {
             id: generateId(),
@@ -641,6 +731,8 @@ export class LicensesRepository {
             documentHash: event.documentHash,
             reason: event.reason,
             detail: event.detail,
+            previousCustomerId: event.previousCustomerId ?? null,
+            newCustomerId: event.newCustomerId ?? null,
             occurredAt: event.occurredAt,
             createdAt: event.occurredAt,
             updatedAt: event.occurredAt,
@@ -648,9 +740,13 @@ export class LicensesRepository {
         });
       }
 
-      return version;
+      return { version, previousCustomerId, bindingChanged };
     }, READ_COMMITTED);
-    return toRetainedVersion(row);
+    return {
+      version: toRetainedVersion(committed.version),
+      previousCustomerId: committed.previousCustomerId,
+      bindingChanged: committed.bindingChanged,
+    };
   }
 
   /**
@@ -674,6 +770,8 @@ export class LicensesRepository {
         documentHash: command.documentHash,
         reason: command.reason,
         detail: command.detail,
+        previousCustomerId: command.previousCustomerId ?? null,
+        newCustomerId: command.newCustomerId ?? null,
         occurredAt: command.occurredAt,
         createdAt: command.occurredAt,
         updatedAt: command.occurredAt,
@@ -705,6 +803,8 @@ export class LicensesRepository {
       documentHash: row.documentHash,
       reason: row.reason,
       detail: row.detail,
+      previousCustomerId: row.previousCustomerId,
+      newCustomerId: row.newCustomerId,
       occurredAt: row.occurredAt,
     }));
   }
@@ -733,7 +833,9 @@ async function readVersions(
 
 /**
  * Take the per-installation import lock: `SELECT … FOR UPDATE` on the
- * installation row, held until the transaction ends.
+ * installation row, held until the transaction ends. The locked row's
+ * commercial customer is returned, because the customer-binding rules are
+ * evaluated against the value that cannot move while this transaction runs.
  *
  * This is the entire concurrency strategy for version windows (design §3.4):
  * every import of one installation serializes here, so the conflict evaluation
@@ -744,7 +846,9 @@ async function readVersions(
  *
  * Lock order is a single step (installation → rows this transaction writes),
  * so no deadlock cycle exists; the installation row is the only row this
- * transaction locks before touching its own tables.
+ * transaction locks before touching its own tables. An explicit customer
+ * transfer takes the same lock, so two concurrent transfers of one installation
+ * serialize and the loser re-evaluates against the winner's committed binding.
  *
  * Raw SQL is the documented exemption (AR-11): Prisma cannot express
  * `FOR UPDATE`. The statement is parameterized — the installation id is never
@@ -758,17 +862,61 @@ async function readVersions(
 export async function lockInstallationRow(
   tx: LicensesTxClient,
   installationId: string,
-): Promise<void> {
-  const rows = await tx.$queryRaw<{ id: string }>`
-    SELECT "id"
+): Promise<{ id: string; customerId: string | null }> {
+  // The alias is NOT decoration: raw SQL returns the column names as written,
+  // so without `AS "customerId"` the row would carry `customer_id` and the
+  // caller would read `undefined` for the binding — silently turning the
+  // authoritative customer check into a no-op and writing a transfer audit
+  // event for an ordinary first import. The live PostgreSQL suite caught
+  // exactly that; every column this function returns is aliased explicitly.
+  // `$queryRaw<T>` is declared to resolve `T[]` (the driver adapter's shape),
+  // so `T` is ONE row.
+  const rows = await tx.$queryRaw<{ id: string; customerId: string | null }>`
+    SELECT "id" AS "id", "customer_id" AS "customerId"
       FROM "licensing"."installations"
      WHERE "id" = ${installationId}
      FOR UPDATE`;
-  if (rows[0] === undefined) {
+  const row = rows[0];
+  if (row === undefined) {
     throw new Error(
       `Installation "${installationId}" no longer exists; the license import was refused.`,
     );
   }
+  return { id: row.id, customerId: row.customerId };
+}
+
+/**
+ * The typed audit event of one explicit customer transfer (Owner decision
+ * 2026-10-12, Q4): old customer, new customer, installation, operation, actor,
+ * source, document hash, outcome, instant — and the operator's reason, bounded
+ * to the column and stored in `detail` (the machine-readable classifier is the
+ * event type itself). `reason` stays null: it carries rejection reasons.
+ */
+export function transferAuditEvent(
+  command: ImportLicenseVersionCommand,
+  previousCustomerId: string,
+): LicenseAuditEventCommand {
+  const reason = command.customerTransfer?.reason.trim() ?? '';
+  return {
+    installationId: command.installationId,
+    eventType: 'license.installation.customer-transferred',
+    outcome: 'APPLIED',
+    operationId: command.operationId,
+    licenseId: command.licenseId,
+    versionId: command.versionId,
+    actorId: command.actorId,
+    source: command.source,
+    documentHash: command.documentHash,
+    reason: null,
+    detail:
+      `transfer to ${command.customerId}${reason === '' ? '' : `: ${reason}`}`.slice(
+        0,
+        500,
+      ),
+    previousCustomerId,
+    newCustomerId: command.customerId,
+    occurredAt: command.now,
+  };
 }
 
 function toRetainedVersion(row: VersionRow): RetainedLicenseVersion {
