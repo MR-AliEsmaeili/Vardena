@@ -1,6 +1,15 @@
 import { createHash } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import request from 'supertest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { APP_CONFIG, loadAppConfig } from '../src/kernel/config/app-config.js';
 import { AppException } from '../src/kernel/errors/app-exception.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
@@ -15,6 +24,10 @@ import { generateId } from '../src/kernel/ids/ulid.js';
 import { LicenseActivationService } from '../src/modules/licensing/application/license-activation.service.js';
 import { LicenseImportService } from '../src/modules/licensing/application/license-import.service.js';
 import { LicensingService } from '../src/modules/licensing/application/licensing.service.js';
+import { LICENSING_PERMISSIONS } from '../src/modules/licensing/domain/licensing-permissions.js';
+import { RolesService } from '../src/modules/rbac/application/roles.service.js';
+import { UserRolesService } from '../src/modules/rbac/application/user-roles.service.js';
+import { UsersService } from '../src/modules/users/application/users.service.js';
 import {
   generateAuthorityKeyPair,
   issueLicenseCode,
@@ -59,6 +72,9 @@ describe.skipIf(DATABASE_URL === undefined)(
      * on purpose to exercise the refusal or the explicit transfer.
      */
     const SELF_CUSTOMER = '01K7LIVECUSTOMER000000000000';
+    const AUDIT_OPERATOR_PASSWORD = 'Audit-boundary-live-password';
+    const auditActorUserIds: string[] = [];
+    const auditActorRoleIds: string[] = [];
     let app: INestApplication;
     let prisma: PrismaService;
 
@@ -128,6 +144,101 @@ describe.skipIf(DATABASE_URL === undefined)(
     async function count(sql: string, ...values: unknown[]): Promise<number> {
       const rows = await query<{ count: bigint }>(sql, ...values);
       return Number(rows[0]?.count ?? 0);
+    }
+
+    interface AuditOperatorFixture {
+      id: string;
+      username: string;
+    }
+
+    /** Create a real, initially inactive actor and grant only the requested permissions. */
+    async function createAuditOperator(
+      label: string,
+      permissionCodes: readonly string[],
+    ): Promise<AuditOperatorFixture> {
+      const suffix = generateId();
+      const username = `audit-${label}-${suffix.toLowerCase()}`;
+      const user = await app.get(UsersService).createUser({
+        username,
+        password: AUDIT_OPERATOR_PASSWORD,
+        isActive: false,
+      });
+      auditActorUserIds.push(user.id);
+      const role = await app.get(RolesService).createRole({
+        name: `Live audit ${label} ${suffix}`,
+        permissionCodes: [...permissionCodes],
+      });
+      auditActorRoleIds.push(role.id);
+      await app.get(UserRolesService).assignRoleToUser(role.id, user.id);
+      return { id: user.id, username };
+    }
+
+    async function activateAuditOperators(
+      operators: readonly AuditOperatorFixture[],
+    ): Promise<void> {
+      const users = app.get(UsersService);
+      for (const operator of operators) await users.enableUser(operator.id);
+    }
+
+    async function loginAuditOperator(
+      username: string,
+    ): Promise<ReturnType<typeof request.agent>> {
+      const agent = request.agent(app.getHttpServer());
+      await agent
+        .post('/api/v1/auth/login')
+        .send({ username, password: AUDIT_OPERATOR_PASSWORD })
+        .expect(200);
+      return agent;
+    }
+
+    async function cleanupAuditActors(): Promise<void> {
+      const userIds = [...auditActorUserIds];
+      const roleIds = [...auditActorRoleIds];
+      auditActorUserIds.length = 0;
+      auditActorRoleIds.length = 0;
+      if (
+        prisma === undefined ||
+        (userIds.length === 0 && roleIds.length === 0)
+      ) {
+        return;
+      }
+      const client = await prisma.getClient<{
+        $executeRawUnsafe(
+          query: string,
+          ...values: unknown[]
+        ): Promise<unknown>;
+      }>();
+      const placeholders = (ids: readonly string[]) =>
+        ids.map((_, index) => `$${index + 1}`).join(', ');
+      if (userIds.length > 0) {
+        const userArgs = placeholders(userIds);
+        await client.$executeRawUnsafe(
+          `DELETE FROM "identity"."sessions" WHERE "user_id" IN (${userArgs})`,
+          ...userIds,
+        );
+        await client.$executeRawUnsafe(
+          `DELETE FROM "rbac"."user_roles" WHERE "user_id" IN (${userArgs})`,
+          ...userIds,
+        );
+      }
+      if (roleIds.length > 0) {
+        const roleArgs = placeholders(roleIds);
+        await client.$executeRawUnsafe(
+          `DELETE FROM "rbac"."role_permissions" WHERE "role_id" IN (${roleArgs})`,
+          ...roleIds,
+        );
+        await client.$executeRawUnsafe(
+          `DELETE FROM "rbac"."roles" WHERE "id" IN (${roleArgs})`,
+          ...roleIds,
+        );
+      }
+      if (userIds.length > 0) {
+        const userArgs = placeholders(userIds);
+        await client.$executeRawUnsafe(
+          `DELETE FROM "users"."users" WHERE "id" IN (${userArgs})`,
+          ...userIds,
+        );
+      }
     }
 
     /**
@@ -220,11 +331,20 @@ describe.skipIf(DATABASE_URL === undefined)(
     afterAll(async () => {
       if (app === undefined) return;
       try {
+        await cleanupAuditActors();
         await cleanup(prisma);
       } finally {
         await app.close();
       }
     }, 60_000);
+
+    afterEach(async () => {
+      try {
+        await cleanupAuditActors();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
 
     it('persists the identity and the retained version across a restart', async () => {
       // 1. Fresh installation: identity is created once, nothing is licensed.
@@ -1579,6 +1699,451 @@ describe.skipIf(DATABASE_URL === undefined)(
             )`,
         ),
       ).toBe(0);
+    }, 120_000);
+
+    it('persists a signed post-gap recovery with a 500-character reason in PostgreSQL', async () => {
+      await cleanup(prisma);
+      vi.useFakeTimers({ toFake: ['Date'] });
+      const identity = await app.get(InstallationIdentityService).current();
+      const T0 = new Date('2026-01-01T00:00:00.000Z');
+      const LAPSE_END = new Date('2026-03-01T00:00:00.000Z');
+      const AFTER_LAPSE = new Date('2026-06-01T00:00:00.000Z');
+      const operator = await createAuditOperator('recovery', [
+        LICENSING_PERMISSIONS.LICENSE_ACTIVATE,
+        LICENSING_PERMISSIONS.INSTALLATION_RECOVER_AFTER_GAP,
+      ]);
+      const ordinaryOperator = await createAuditOperator('recovery-ordinary', [
+        LICENSING_PERMISSIONS.LICENSE_ACTIVATE,
+      ]);
+      const lapsed = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId: generateId(),
+          validFrom: new Date('2025-01-01T00:00:00.000Z'),
+          validUntil: LAPSE_END,
+          organizationLimit: 1000,
+          userLimit: 1000,
+          moduleEntitlements: ['organization', 'users', 'rbac'],
+        },
+        authority.privateKey,
+      );
+
+      vi.setSystemTime(T0);
+      await app.get(LicenseImportService).importDocument(lapsed.file);
+      await activateAuditOperators([operator, ordinaryOperator]);
+      vi.setSystemTime(AFTER_LAPSE);
+      const ordinaryAgent = await loginAuditOperator(ordinaryOperator.username);
+      const agent = await loginAuditOperator(operator.username);
+      const recovery = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId: generateId(),
+          validFrom: AFTER_LAPSE,
+          validUntil: new Date('2028-01-01T00:00:00.000Z'),
+          organizationLimit: 1000,
+          userLimit: 1000,
+          moduleEntitlements: ['organization', 'users', 'rbac'],
+        },
+        authority.privateKey,
+      );
+      const reason = 'R'.repeat(500);
+      expect(reason).toHaveLength(500);
+
+      const denied = await ordinaryAgent
+        .post('/api/v1/license/gap-recovery')
+        .send({ document: recovery.file, reason })
+        .expect(403);
+      expect(denied.body.code).toBe('PermissionDenied');
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          recovery.payload.operationId,
+        ),
+      ).toBe(0);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+            WHERE "event_type" = 'license.import.recovered'
+              AND "operation_id" = $1`,
+          recovery.payload.operationId,
+        ),
+      ).toBe(0);
+      expect(
+        await query<{ superseded_at: Date | null }>(
+          `SELECT "superseded_at" FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          lapsed.payload.operationId,
+        ),
+      ).toEqual([{ superseded_at: null }]);
+
+      const response = await agent
+        .post('/api/v1/license/gap-recovery')
+        .send({ document: recovery.file, reason });
+      const versionsAfter = await query<{
+        id: string;
+        operation_id: string;
+        license_id: string;
+        superseded_at: Date | null;
+      }>(
+        `SELECT "id", "operation_id", "license_id", "superseded_at"
+           FROM "licensing"."license_versions"
+          WHERE "installation_id" = $1
+          ORDER BY "imported_at", "id"`,
+        identity.installationId,
+      );
+      const recoveryEventsAfter = await query<{
+        id: string;
+        detail: string | null;
+        previous_license_id: string | null;
+      }>(
+        `SELECT "id", "detail", "previous_license_id"
+           FROM "licensing"."license_audit_events"
+          WHERE "event_type" = 'license.import.recovered'
+            AND "operation_id" = $1`,
+        recovery.payload.operationId,
+      );
+
+      // The pre-fix 500 response must leave only the lapsed version and no
+      // recovery audit event; the transaction must not partially commit.
+      if (response.status !== 200) {
+        expect(versionsAfter).toHaveLength(1);
+        expect(versionsAfter[0]?.license_id).toBe(lapsed.payload.licenseId);
+        expect(versionsAfter[0]?.superseded_at).toBeNull();
+        expect(recoveryEventsAfter).toHaveLength(0);
+      }
+      expect(
+        response.status,
+        `HTTP ${response.status}: ${JSON.stringify(response.body)}`,
+      ).toBe(200);
+      expect(response.body).toMatchObject({
+        changed: true,
+        outcome: 'APPLIED',
+        lapsedLicenseId: lapsed.payload.licenseId,
+        coverageEnd: LAPSE_END.toISOString(),
+      });
+      expect(versionsAfter).toHaveLength(2);
+      expect(versionsAfter[1]).toMatchObject({
+        operation_id: recovery.payload.operationId,
+        license_id: recovery.payload.licenseId,
+        superseded_at: null,
+      });
+
+      const recoveryEvent = await query<{
+        detail: string | null;
+        previous_license_id: string | null;
+        license_id: string | null;
+        version_id: string | null;
+        actor_id: string | null;
+        source: string;
+        operation_id: string | null;
+        occurred_at: Date;
+      }>(
+        `SELECT "detail", "previous_license_id", "license_id", "version_id",
+                "actor_id", "source", "operation_id", "occurred_at"
+           FROM "licensing"."license_audit_events"
+          WHERE "event_type" = 'license.import.recovered'
+            AND "operation_id" = $1`,
+        recovery.payload.operationId,
+      ).then((rows) => rows[0]);
+      expect(recoveryEvent).toBeDefined();
+      expect(recoveryEvent?.detail).toBeDefined();
+      expect(recoveryEvent?.detail?.length).toBeGreaterThan(500);
+      expect(recoveryEvent?.detail).toContain(LAPSE_END.toISOString());
+      expect(recoveryEvent?.detail?.endsWith(reason)).toBe(true);
+      expect(recoveryEvent).toMatchObject({
+        previous_license_id: lapsed.payload.licenseId,
+        license_id: recovery.payload.licenseId,
+        version_id: versionsAfter[1]?.id,
+        actor_id: operator.id,
+        source: 'file',
+        operation_id: recovery.payload.operationId,
+      });
+      expect(recoveryEvent?.occurred_at.toISOString()).toBe(
+        AFTER_LAPSE.toISOString(),
+      );
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+            WHERE "event_type" = 'license.import.recovered'
+              AND "operation_id" = $1`,
+          recovery.payload.operationId,
+        ),
+      ).toBe(1);
+
+      const replay = await agent
+        .post('/api/v1/license/gap-recovery')
+        .send({ document: recovery.file, reason });
+      expect(replay.status).toBe(409);
+      expect(replay.body.details).toMatchObject({
+        reason: 'duplicate-operation',
+      });
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          recovery.payload.operationId,
+        ),
+      ).toBe(1);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+            WHERE "event_type" = 'license.import.recovered'
+              AND "operation_id" = $1`,
+          recovery.payload.operationId,
+        ),
+      ).toBe(1);
+    }, 120_000);
+
+    it('persists an authorized L-04 resolution with a 500-character reason in PostgreSQL', async () => {
+      await cleanup(prisma);
+      const identity = await app.get(InstallationIdentityService).current();
+      const ordinaryOperator = await createAuditOperator('ordinary', [
+        LICENSING_PERMISSIONS.LICENSE_ACTIVATE,
+      ]);
+      const resolver = await createAuditOperator('resolution', [
+        LICENSING_PERMISSIONS.LICENSE_ACTIVATE,
+        LICENSING_PERMISSIONS.LICENSE_RESOLVE_REDUCTION,
+      ]);
+      const governing = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId: generateId(),
+          validFrom: new Date('2026-01-01T00:00:00.000Z'),
+          validUntil: new Date('2034-01-01T00:00:00.000Z'),
+          organizationLimit: null,
+          userLimit: 10_000,
+          moduleEntitlements: ['organization', 'users', 'rbac'],
+        },
+        authority.privateKey,
+      );
+      await app.get(LicenseImportService).importDocument(governing.file);
+      await activateAuditOperators([ordinaryOperator, resolver]);
+
+      const users = app.get(UsersService);
+      for (let index = 0; index < 10; index += 1) {
+        const usageUser = await users.createUser({
+          username: `audit-usage-${generateId().toLowerCase()}`,
+          password: AUDIT_OPERATOR_PASSWORD,
+        });
+        auditActorUserIds.push(usageUser.id);
+      }
+      const actualUsage = await users.countLicensedActiveUsers();
+      const reducedLimit = 11;
+      expect(actualUsage).toBeGreaterThan(reducedLimit);
+
+      const reducing = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId: governing.payload.licenseId,
+          validFrom: new Date('2033-01-01T00:00:00.000Z'),
+          validUntil: new Date('2034-06-01T00:00:00.000Z'),
+          organizationLimit: null,
+          userLimit: reducedLimit,
+          moduleEntitlements: ['organization', 'users', 'rbac'],
+          supersedesOperationId: governing.payload.operationId,
+        },
+        authority.privateKey,
+      );
+      const ordinaryAgent = await loginAuditOperator(ordinaryOperator.username);
+      const resolutionAgent = await loginAuditOperator(resolver.username);
+      const refused = await ordinaryAgent
+        .post('/api/v1/license/import')
+        .send({ document: reducing.file });
+      expect(refused.status).toBe(409);
+      expect(refused.body.details.reason).toBe('reduction-requires-resolution');
+      const refusalConflict = (
+        refused.body.details.reduction.conflicts as Array<{
+          kind: string;
+          limit: number;
+          currentUsage: number;
+        }>
+      ).find(({ kind }) => kind === 'user-capacity');
+      expect(refusalConflict).toMatchObject({
+        kind: 'user-capacity',
+        limit: reducedLimit,
+      });
+      expect(refusalConflict?.currentUsage).toBeGreaterThan(reducedLimit);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          reducing.payload.operationId,
+        ),
+      ).toBe(0);
+      expect(
+        await query<{ superseded_at: Date | null }>(
+          `SELECT "superseded_at" FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          governing.payload.operationId,
+        ),
+      ).toEqual([{ superseded_at: null }]);
+
+      const reason = 'S'.repeat(500);
+      expect(reason).toHaveLength(500);
+      const denied = await ordinaryAgent
+        .post('/api/v1/license/reduction-resolution')
+        .send({ document: reducing.file, reason })
+        .expect(403);
+      expect(denied.body.code).toBe('PermissionDenied');
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          reducing.payload.operationId,
+        ),
+      ).toBe(0);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+            WHERE "event_type" = 'license.import.reduction-resolved'
+              AND "operation_id" = $1`,
+          reducing.payload.operationId,
+        ),
+      ).toBe(0);
+      expect(
+        await query<{ superseded_at: Date | null }>(
+          `SELECT "superseded_at" FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          governing.payload.operationId,
+        ),
+      ).toEqual([{ superseded_at: null }]);
+
+      const response = await resolutionAgent
+        .post('/api/v1/license/reduction-resolution')
+        .send({ document: reducing.file, reason });
+      const resolvedVersionCount = await count(
+        `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+          WHERE "operation_id" = $1`,
+        reducing.payload.operationId,
+      );
+      const resolvedAuditCount = await count(
+        `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+          WHERE "event_type" = 'license.import.reduction-resolved'
+            AND "operation_id" = $1`,
+        reducing.payload.operationId,
+      );
+      const predecessorAfter = await query<{
+        superseded_at: Date | null;
+        governs_until: Date | null;
+        superseded_by_version_id: string | null;
+      }>(
+        `SELECT "superseded_at", "governs_until", "superseded_by_version_id"
+           FROM "licensing"."license_versions"
+          WHERE "operation_id" = $1`,
+        governing.payload.operationId,
+      );
+      if (response.status !== 200) {
+        expect(resolvedVersionCount).toBe(0);
+        expect(resolvedAuditCount).toBe(0);
+        expect(predecessorAfter).toEqual([
+          {
+            superseded_at: null,
+            governs_until: null,
+            superseded_by_version_id: null,
+          },
+        ]);
+      }
+      expect(
+        response.status,
+        `HTTP ${response.status}: ${JSON.stringify(response.body)}`,
+      ).toBe(200);
+      expect(response.body).toMatchObject({
+        changed: true,
+        outcome: 'APPLIED',
+        resolvedPredecessorVersionId: expect.any(String),
+      });
+      const resolvedConflict = (
+        response.body.resolvedConflicts as Array<{
+          kind: string;
+          limit: number;
+          currentUsage: number;
+        }>
+      ).find(({ kind }) => kind === 'user-capacity');
+      expect(resolvedConflict).toMatchObject({
+        kind: 'user-capacity',
+        limit: reducedLimit,
+      });
+      expect(resolvedConflict?.currentUsage).toBeGreaterThan(reducedLimit);
+      expect(resolvedVersionCount).toBe(1);
+      expect(resolvedAuditCount).toBe(1);
+
+      const resolvedVersion = await query<{
+        id: string;
+        operation_id: string;
+        supersedes_version_id: string | null;
+      }>(
+        `SELECT "id", "operation_id", "supersedes_version_id"
+           FROM "licensing"."license_versions"
+          WHERE "operation_id" = $1`,
+        reducing.payload.operationId,
+      ).then((rows) => rows[0]);
+      expect(resolvedVersion).toMatchObject({
+        operation_id: reducing.payload.operationId,
+        supersedes_version_id: response.body.resolvedPredecessorVersionId,
+      });
+      expect(predecessorAfter).toEqual([
+        {
+          superseded_at: expect.any(Date),
+          governs_until: new Date('2033-01-01T00:00:00.000Z'),
+          superseded_by_version_id: resolvedVersion?.id,
+        },
+      ]);
+
+      const resolvedAudit = await query<{
+        detail: string | null;
+        license_id: string | null;
+        version_id: string | null;
+        actor_id: string | null;
+        source: string;
+        operation_id: string | null;
+        occurred_at: Date;
+      }>(
+        `SELECT "detail", "license_id", "version_id", "actor_id", "source",
+                "operation_id", "occurred_at"
+           FROM "licensing"."license_audit_events"
+          WHERE "event_type" = 'license.import.reduction-resolved'
+            AND "operation_id" = $1`,
+        reducing.payload.operationId,
+      ).then((rows) => rows[0]);
+      expect(resolvedAudit?.detail).toBeDefined();
+      expect(resolvedAudit?.detail?.length).toBeGreaterThan(500);
+      expect(resolvedAudit?.detail).toContain(
+        response.body.resolvedPredecessorVersionId,
+      );
+      expect(resolvedAudit?.detail).toContain('[user-capacity]');
+      expect(resolvedAudit?.detail?.endsWith(reason)).toBe(true);
+      expect(resolvedAudit).toMatchObject({
+        license_id: governing.payload.licenseId,
+        version_id: resolvedVersion?.id,
+        actor_id: resolver.id,
+        source: 'file',
+        operation_id: reducing.payload.operationId,
+      });
+      expect(resolvedAudit?.occurred_at).toBeInstanceOf(Date);
+
+      const replay = await resolutionAgent
+        .post('/api/v1/license/reduction-resolution')
+        .send({ document: reducing.file, reason });
+      expect(replay.status).toBe(409);
+      expect(replay.body.details).toMatchObject({
+        reason: 'duplicate-operation',
+      });
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          reducing.payload.operationId,
+        ),
+      ).toBe(1);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_audit_events"
+            WHERE "event_type" = 'license.import.reduction-resolved'
+              AND "operation_id" = $1`,
+          reducing.payload.operationId,
+        ),
+      ).toBe(1);
     }, 120_000);
   },
 );
