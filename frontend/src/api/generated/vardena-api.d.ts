@@ -78,6 +78,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/license/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import a signed license document (file or artifact).
+         * @description Verifies the document signature, its binding to THIS installation, its payload and its position in the retained version history, then persists it in one transaction. A future-dated document is retained and becomes effective at its own validFrom. A repeated operation is refused with 409 and changes nothing.
+         */
+        post: operations["LicenseImportController_import_v1"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -3420,6 +3440,77 @@ export interface components {
              * @example VLIC1.eyJ2IjoxLC4uLn0.c2lnbmF0dXJl
              */
             code: string;
+        };
+        ImportLicenseDocumentDto: {
+            /**
+             * @description A signed license document: either the vardena-license file envelope or the bare VLIC2 artifact (legacy VLIC1 codes are accepted as well).
+             * @example {"format":"vardena-license","fileVersion":1,"document":"VLIC2.eyJ2Ijoy...c2lnbmF0dXJl"}
+             */
+            document: string;
+        };
+        LicenseEntitlementDto: {
+            /** @description Entitlement kind (module or feature). */
+            kind: string;
+            /** @description Entitlement code. */
+            code: string;
+        };
+        LicenseVersionSummaryDto: {
+            /** @description Retained version identity (ULID). */
+            versionId: string;
+            /** @description The commercial license this version belongs to. */
+            licenseId: string;
+            /** @enum {string} */
+            status: "ACTIVE" | "EXPIRED" | "SUSPENDED";
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validUntil: string | null;
+            /** @description True for the one version that governs now. */
+            effective: boolean;
+            /** Format: date-time */
+            supersededAt: string | null;
+            /**
+             * Format: date-time
+             * @description When this version stops governing, if it was retired.
+             */
+            governsUntil: string | null;
+            supersededByVersionId: string | null;
+            /** Format: date-time */
+            importedAt: string;
+            /** @enum {string} */
+            source: "file" | "text" | "legacy-code";
+        };
+        LicenseImportResultDto: {
+            /** @description Whether an installation license is evaluated. */
+            licensed: boolean;
+            /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
+            status: string;
+            /** @description True only while the license is active now. */
+            active: boolean;
+            /** @description Why the license is not active. */
+            inactiveReason: string | null;
+            installationId: string | null;
+            customerId: string | null;
+            licenseId: string | null;
+            /** Format: date-time */
+            validFrom: string | null;
+            /** Format: date-time */
+            validUntil: string | null;
+            organizationLimit: number | null;
+            userLimit: number | null;
+            entitlements: components["schemas"]["LicenseEntitlementDto"][];
+            /** @description The license provider that evaluated the state. */
+            provider: string;
+            /** @description The version that governs now. */
+            effectiveVersionId: string | null;
+            /** @description The earliest retained version that is not effective yet. */
+            scheduledVersion: components["schemas"]["LicenseVersionSummaryDto"] | null;
+            /** @description Bounded retained-version history, newest first. */
+            versions: components["schemas"]["LicenseVersionSummaryDto"][];
+            /** @description False when a repeated legacy code was already the governing version. */
+            changed: boolean;
+            /** @enum {string} */
+            outcome: "APPLIED" | "UNCHANGED";
         };
         LoginRequestDto: {
             /**
@@ -8133,6 +8224,65 @@ export interface operations {
                 content?: never;
             };
             /** @description The license code is malformed, tampered with, issued for another installation, expired, or suspended. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    LicenseImportController_import_v1: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImportLicenseDocumentDto"];
+            };
+        };
+        responses: {
+            /** @description The evaluated state after the import, with the retained-version history. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LicenseImportResultDto"];
+                };
+            };
+            /** @description Validation failed. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Authenticated but missing the required permission. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is authentic but conflicts with retained state: a repeated operation, an overlapping range without an explicit supersession, an unknown supersession target, or a license identifier already bound to another customer or installation. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The document is malformed, tampered with, issued for another installation, not active, already ended, or names capabilities this build does not know. */
             422: {
                 headers: {
                     [name: string]: unknown;

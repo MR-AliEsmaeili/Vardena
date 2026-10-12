@@ -2,7 +2,7 @@
 
 | Field | Value |
 | --- | --- |
-| Status | Reconciliation complete for the first licensing implementation slice (L-03); open items preserved and registered. **Corrected 2026-10-11** after the Product-Owner review of PR #137 (§0): CF-1/CF-2 and the concurrency evidence were re-stated against the fixed implementation. |
+| Status | Reconciliation complete for the first licensing implementation slice (L-03); open items preserved and registered. **Corrected 2026-10-11** after the Product-Owner review of PR #137 (§0): CF-1/CF-2 and the concurrency evidence were re-stated against the fixed implementation. **Post-merge verification 2026-10-11 (§6):** PR #137 is merged at `345047a`; findings F-1…F-17 are in `docs/tasks/licensing-post-merge-reconciliation.md`; the new reason `license-binding-conflict` is pending ratification. No CF row was re-stated by that verification. |
 | Date | 2026-10-11 |
 | Baseline inspected | `main` at `f27065149ffcb3b6d62929e418a8c6c1b4ce8fea` (merge of PR #136), plus the session branch `arena/5fd62737-vardena` |
 | Authority order | accepted ADRs and Owner decisions → PDR-11 (product source) → current implementation, migrations, tests → canonical registries → historical reports |
@@ -337,3 +337,26 @@ frontend `56 files / 397 passed`,
 `npm run format:check` clean and oxlint 0 errors / 1 pre-existing warning. The
 `prisma validate`/`prisma generate` and live-DB rows above are therefore CI-only
 and are claimed only for head `df41f73`.
+
+## 6. Post-merge verification (2026-10-11)
+
+Scope: `main` at `345047abec5a6af6760b05ad36b570ee5ed3a5f9` (the PR #137 merge; PR head `2ecd8396f0edcc1c34b3724c79cd767b3401c96d`). Full record: [docs/tasks/licensing-post-merge-reconciliation.md](licensing-post-merge-reconciliation.md).
+
+| Finding | Class | Status |
+| --- | --- | --- |
+| F-1 — renewal re-binds an existing `licenseId` to another customer (applied) | Important | Fixed on the fix branch: `license-binding-conflict` (409, nothing written); pending PO ratification |
+| F-2 — `licenseId` owned by another installation surfaces as an unmapped database error (500) | Important | Fixed on the fix branch: same reason, decided under the installation lock |
+| F-3 — non-superseding backdated overlap accepted; as-of `ambiguous`; ADR-0046 D4 wording differs | Important | Open — OQ-86 / OQ-80 Owner decision; decision brief `docs/tasks/licensing-oq-80-oq-86-decision-brief.md` |
+| F-4 — installation `customerId` overwritten by any applied import | Important | Open — Owner question (decision brief Q4) |
+| F-5 — generated client lacked `/license/import` | Important | Fixed: regenerated; the import 200 response now has a schema (`LicenseImportResultDto`) — 2026-10-12 |
+| F-6 — `GET /license/current` (and `POST /license/activate`) has no OpenAPI response schema | Important | Partially fixed: import done; the other two open |
+| F-18 — two installations claim one unused license identifier; surfaced as an unmapped FK error | Important | Fixed (2026-10-12): primary-key arbitration in a plain `INSERT`; loser refused as `license-binding-conflict` in the transaction; live cases |
+| F-7 — no CI drift check for the generated client | Important | Open — process follow-up |
+| F-8 — issuer cannot target an existing `licenseId` | Important | Open — Owner question (decision brief Q3) |
+| F-9 — CLI flags in `licensing-architecture.md` wrong | Minor | Fixed (documentation) |
+| F-10…F-11, F-13…F-14 | Minor | Open (test gap, observation, operational, environment) |
+| F-12 — documented constant initial administrator password | Blocker for any non-development deployment; pre-existing | Open — Owner/security; outside this slice |
+| F-15…F-17 | No issue | — |
+
+No CF row was re-stated by this verification, and no OQ status changed.
+

@@ -689,6 +689,7 @@ did. The authoritative per-item matrix is
   documented behaviour. The rule is a domain rule, not a database constraint —
   no migration is needed to lift or narrow it. §15 is unchanged: no item was
   converted into a decision, and **PQ-5/OQ-80 stays Open**.
+- **Post-merge verification addendum (2026-10-11).** PR #137 is **merged** to `main` at `345047a` (CI on the merge commit: success). It is **not Owner-accepted**. Verification found two defects against §2.1 — a license re-bound to another customer was applied, and a foreign `licenseId` surfaced as an unmapped error. Both are refused by one retained-state refusal, `license-binding-conflict` (409, nothing written). **Proposed for Product Owner ratification:** the reason name and its HTTP class are an implementation interpretation of ADR-0046's conflict class, not text in §1–§18. Gap C (a non-superseding backdated overlap) is recorded under OQ-86 and is **not** changed. The OQ-80/OQ-86 decision brief is `docs/tasks/licensing-oq-80-oq-86-decision-brief.md`. §15 is unchanged; PQ-5/OQ-80 and OQ-86 stay OPEN.
 - **Unchanged product policy:** no Grace/Read-Only enforcement, no revocation, no
   installation identity key, no replacement workflow, no device licensing, no
   Owner-side system, no test/training entitlements, no CRM/billing.

@@ -198,6 +198,42 @@ describe('License document import (e2e)', () => {
     expect((await state()).active).toBe(true);
   });
 
+  it('documents the import response body in the OpenAPI contract, matching the real response', async () => {
+    // Contract check (ADR-0014: DTOs are the OpenAPI contract): the 200 body of
+    // the import route must be a described schema whose property names are
+    // exactly the names a real response carries, so generated clients are not
+    // left with `content?: never`.
+    const installationId = (await state()).installationId as string;
+    const { file } = issueLicenseFile(
+      { installationId, customerName: 'Contract customer' },
+      authority.privateKey,
+    );
+    const response = await importDocument(file).expect(200);
+
+    const docs = await request(app.getHttpServer())
+      .get('/api/docs-json')
+      .expect(200);
+    const operation = docs.body.paths['/api/v1/license/import'].post;
+    expect(
+      operation.responses['200'].content['application/json'].schema,
+    ).toEqual({ $ref: '#/components/schemas/LicenseImportResultDto' });
+    expect(operation.responses['409']).toBeDefined();
+    expect(operation.responses['422']).toBeDefined();
+
+    const result = docs.body.components.schemas.LicenseImportResultDto;
+    expect(Object.keys(result.properties).sort()).toEqual(
+      Object.keys(response.body).sort(),
+    );
+    const summary = docs.body.components.schemas.LicenseVersionSummaryDto;
+    expect(Object.keys(summary.properties).sort()).toEqual(
+      Object.keys(response.body.versions[0]).sort(),
+    );
+    expect(result.properties.outcome.enum).toEqual(['APPLIED', 'UNCHANGED']);
+    expect(result.properties.versions.items).toEqual({
+      $ref: '#/components/schemas/LicenseVersionSummaryDto',
+    });
+  });
+
   it('accepts the same artifact as text and retains it identically', async () => {
     const installationId = (await state()).installationId as string;
     const { document } = issueLicenseDocument(

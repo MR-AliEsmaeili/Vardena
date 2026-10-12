@@ -22,11 +22,11 @@ import { RequirePermission } from '../../rbac/application/require-permission.dec
 import { LicenseImportService } from '../application/license-import.service.js';
 import { LicensingService } from '../application/licensing.service.js';
 import { LICENSING_PERMISSIONS } from '../domain/licensing-permissions.js';
-import { ImportLicenseDocumentDto } from './dto/license.dto.js';
 import {
-  toLicenseStateView,
-  type LicenseStateView,
-} from './license-state.view.js';
+  ImportLicenseDocumentDto,
+  LicenseImportResultDto,
+} from './dto/license.dto.js';
+import { toLicenseStateView } from './license-state.view.js';
 
 /**
  * Signed license document import (L-03, ADR-0046).
@@ -61,13 +61,14 @@ export class LicenseImportController {
       'Verifies the document signature, its binding to THIS installation, its payload and its position in the retained version history, then persists it in one transaction. A future-dated document is retained and becomes effective at its own validFrom. A repeated operation is refused with 409 and changes nothing.',
   })
   @ApiOkResponse({
+    type: LicenseImportResultDto,
     description:
       'The evaluated state after the import, with the retained-version history.',
   })
   @ApiBadRequestResponse({ description: 'Validation failed.' })
   @ApiConflictResponse({
     description:
-      'The document is authentic but conflicts with retained state: a repeated operation, an overlapping range without an explicit supersession, or an unknown supersession target.',
+      'The document is authentic but conflicts with retained state: a repeated operation, an overlapping range without an explicit supersession, an unknown supersession target, or a license identifier already bound to another customer or installation.',
   })
   @ApiUnprocessableEntityResponse({
     description:
@@ -75,7 +76,7 @@ export class LicenseImportController {
   })
   async import(
     @Body() body: ImportLicenseDocumentDto,
-  ): Promise<LicenseStateView & { changed: boolean; outcome: string }> {
+  ): Promise<LicenseImportResultDto> {
     const result = await this.licenseImport.importDocument(body.document);
     // The response is a FRESH canonical read, never the mutation's own
     // opinion: a successful import is not itself a license state.

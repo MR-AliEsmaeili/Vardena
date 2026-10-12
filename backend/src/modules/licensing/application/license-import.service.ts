@@ -8,7 +8,10 @@ import { getPrincipal } from '../../../kernel/correlation/request-context.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
-import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
+import {
+  isUniqueViolation,
+  uniqueViolationTouches,
+} from '../../../kernel/prisma/prisma-errors.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import {
   ImportConflictError,
@@ -86,7 +89,8 @@ export type LicenseImportRejectionReason =
   | 'backdated-supersession'
   | 'duplicate-operation'
   | 'overlapping-range'
-  | 'unknown-supersession';
+  | 'unknown-supersession'
+  | 'license-binding-conflict';
 
 /**
  * 409 reasons: the document is authentic but conflicts with retained state.
@@ -98,6 +102,7 @@ const CONFLICT_REASONS: ReadonlySet<LicenseImportRejectionReason> = new Set([
   'duplicate-operation',
   'overlapping-range',
   'unknown-supersession',
+  'license-binding-conflict',
 ]);
 
 /**
@@ -607,7 +612,15 @@ export class LicenseImportService {
           error.conflict.overlapping,
         );
       }
-      if (isUniqueViolation(error)) {
+      // Only the version's own identity constraints (operation id, artifact hash)
+      // are a replay. Any other unique violation is not a duplicate and must not
+      // be reported as one: a license identifier claimed concurrently is refused
+      // inside the transaction (`license-binding-conflict`), and anything else is
+      // an unexpected database error that surfaces as one.
+      if (
+        isUniqueViolation(error) &&
+        uniqueViolationTouches(error, ['operation', 'document'])
+      ) {
         return this.rejectAppliedConflict(
           'duplicate-operation',
           {
@@ -917,10 +930,20 @@ function documentConflictMessage(conflict: ImportConflict): string {
       return 'The license version this document retires is not a retained, eligible version of this installation.';
     case 'overlapping-range':
       return 'This license version overlaps a retained version. Issue a document that explicitly retires it, or a non-overlapping renewal.';
+    case 'license-binding-conflict':
+      return LICENSE_BINDING_CONFLICT_MESSAGE;
     case 'backdated-supersession':
       return 'This license version would retire the version it names from an instant that is already in the past, which would rewrite which version governed then. Issue the document with a start that has not yet passed, or after the version it retires has ended.';
   }
 }
+
+/**
+ * A license identifier is bound to a different customer or installation. Shared
+ * by the signed and the legacy wording: the binding is the same fact for both.
+ * Nothing is written; the commercial identity is never re-bound by an import.
+ */
+const LICENSE_BINDING_CONFLICT_MESSAGE =
+  'This license identifier is already bound to a different customer or installation, so the document cannot add a version to it. Nothing was changed.';
 
 /** The legacy-code wording of the same conflicts (L-02 vocabulary). */
 function legacyConflictMessage(conflict: ImportConflict): string {
@@ -931,6 +954,8 @@ function legacyConflictMessage(conflict: ImportConflict): string {
       return 'This license code cannot replace the version it overlaps.';
     case 'overlapping-range':
       return 'This license code overlaps more than one retained version, or a version that is already retired, and cannot be applied.';
+    case 'license-binding-conflict':
+      return LICENSE_BINDING_CONFLICT_MESSAGE;
     case 'backdated-supersession':
       return 'This license code would replace the current version from an instant that is already in the past, which would rewrite which version governed then. Start the code at or after the end of the version it follows, or retire that version with a signed document whose start has not yet passed.';
   }
@@ -952,6 +977,9 @@ function conflictLostRaceMessage(
   }
   if (conflict.reason === 'unknown-supersession') {
     return 'The license version this document retires was superseded by a concurrent import.';
+  }
+  if (conflict.reason === 'license-binding-conflict') {
+    return LICENSE_BINDING_CONFLICT_MESSAGE;
   }
   if (conflict.reason === 'backdated-supersession') {
     // Not a race: the temporal rule is evaluated against the locked state, so

@@ -456,6 +456,57 @@ describe('import conflict evaluation', () => {
     expect(result.supersedes).toBeNull();
   });
 
+  it('refuses a renewal that re-binds the license to another customer', () => {
+    // PDR-11 §2.1: a license is bound to one customer. A renewal naming the same
+    // license identifier for a different customer would silently re-attribute
+    // every retained version, so it is refused even when it would not overlap.
+    const existing = version(
+      window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+    );
+    const result = evaluate(
+      {
+        ...window('2027-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'),
+        customerId: '01K7OTHERCUSTOMER0000000000',
+      },
+      { versions: [existing] },
+    );
+
+    expect(result.conflict).toEqual({
+      reason: 'license-binding-conflict',
+      overlapping: 0,
+    });
+    expect(result.supersedes).toBeNull();
+  });
+
+  it('does not let an explicit supersession re-bind the customer', () => {
+    const existing = version(window('2026-01-01T00:00:00.000Z', null));
+    const result = evaluate(
+      {
+        ...window('2027-01-01T00:00:00.000Z', null),
+        customerId: '01K7OTHERCUSTOMER0000000000',
+      },
+      {
+        versions: [existing],
+        supersession: { kind: 'explicit', operationId: existing.operationId },
+      },
+    );
+
+    expect(result.conflict?.reason).toBe('license-binding-conflict');
+    expect(result.supersedes).toBeNull();
+  });
+
+  it('keeps a same-customer renewal of the same license importable', () => {
+    const existing = version(
+      window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+    );
+    const result = evaluate(
+      window('2027-01-01T00:00:00.000Z', '2028-01-01T00:00:00.000Z'),
+      { versions: [existing] },
+    );
+
+    expect(result.conflict).toBeNull();
+  });
+
   it('refuses an overlap a signed document does not retire', () => {
     const existing = version(window('2026-01-01T00:00:00.000Z', null));
     const result = evaluate(window('2026-06-01T00:00:00.000Z', null), {

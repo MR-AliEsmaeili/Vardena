@@ -261,9 +261,15 @@ code: the read would be stale by the time the write commits.
   resolved (it is named by the pre-built `license.version.superseded` audit row).
   If the committed state moved, the import is refused instead of writing an audit
   row that describes a retirement that did not happen.
+- **Cross-installation claim of one license identifier**: two installations may both
+  see a `licenseId` as unused, because the installation row lock serializes only one
+  installation. The identifier is therefore claimed by a plain `INSERT` whose
+  primary key arbitrates the race (not an upsert, which would silently adopt the
+  other installation's row); the loser is refused as `license-binding-conflict`
+  inside the transaction. The pre-check is not the guard (§3.5).
 - **Failure semantics for the loser of a race**: the documented `409` for the
   conflict reason (`duplicate-operation`, `unknown-supersession`,
-  `overlapping-range`) and **nothing written** — no version, no entitlement, no
+  `overlapping-range`, `license-binding-conflict`) and **nothing written** — no version, no entitlement, no
   supersession stamp, no `applied` audit event. A rejection audit row is written
   outside the transaction, like every other rejection.
 - The lock is a **database** lock and therefore multi-process by construction
@@ -296,6 +302,55 @@ code: the read would be stale by the time the write commits.
   supersession stamp, no overlap) as well as the read path.
 
 
+### 3.5 License binding: one customer, one installation (2026-10-11 correction)
+
+A **license** (the commercial identity, `licensing.licenses`) is bound to exactly
+one customer and to exactly one installation (PDR-11 §2.1; ADR-0046 Decision 2).
+Versions of one license therefore share its customer, and an import may not change
+it:
+
+- a document whose `licenseId` is already retained for this installation under a
+  **different customer** is refused as `license-binding-conflict` (409) by the
+  shared evaluation (`evaluateImportConflicts`, rule 2a). An explicit supersession
+  does not bypass this rule;
+- a document whose `licenseId` belongs to **another installation** is refused as
+  `license-binding-conflict` (409) inside the transaction, under the installation
+  lock and before any upsert. Before this correction the foreign identifier reached
+  the composite `(license_id, installation_id)` foreign key and surfaced as an
+  unmapped database error (HTTP 500). The probe that reproduced it is recorded in
+  `docs/tasks/licensing-post-merge-reconciliation.md` §3.
+
+Nothing is written in either case. A same-customer renewal of the same license
+remains an ordinary import. Both refusals are covered by the domain suite
+(`license-version.spec.ts`) and by the live PostgreSQL suite
+(`licensing-persistence-live.e2e-spec.ts`).
+
+**Two installations claiming one unused identifier at the same moment.** The rules
+above see only this installation's rows, and the installation lock serializes only
+this installation. Two installations can therefore both read the identifier as
+unused. The license row is claimed by an `INSERT` whose primary key is the
+arbiter: the second claim waits for the first commit and then fails with a unique
+violation, which the repository reports as `license-binding-conflict` inside the
+transaction (rolled back, audited as a rejection). An upsert is not used for this
+claim, because `INSERT … ON CONFLICT DO UPDATE` would silently adopt the other
+installation's row and the failure would surface only as a composite foreign-key
+error. Covered by the live PostgreSQL cases in `licensing-persistence-live.e2e-spec.ts`
+("refuses a license identifier another installation committed while this import was
+in flight" and "lets exactly one of two installations keep a license identifier…").
+
+**Known behaviour under OQ-86 (not changed by this correction).** A
+non-superseding document whose window lies entirely in the past may overlap the
+*effective window* of a version that a later import retired (for example, a
+backdated correction that falls inside the period in which a retired version
+governed). The shared evaluation counts only versions that still govern at the
+import instant, so such a document is currently accepted and an as-of read for
+that period reports two covering versions (`ambiguous`). ADR-0046 Decision 4
+states that effective windows are pairwise disjoint after every import; that
+wording and the implemented rule disagree for this case, and the existing unit
+test "never counts a superseded version as an overlap" pins the implemented rule.
+Which one the Owner wants is the OQ-86 decision, so it is recorded there and not
+changed here.
+
 ## 4. Import pipeline (strict order, nothing written until every stage passes)
 
 | # | Stage | Rejection code |
@@ -308,8 +363,8 @@ code: the read would be stale by the time the write commits.
 | 6 | Installation binding: `installationId` is this installation's identity | `installation-mismatch` |
 | 7 | Document semantics: interval, limits, entitlements, status `ACTIVE`, document not already expired at `now` | `validity`, `limits`, `entitlements`, `not-active`, `expired-document` |
 | 8 | Replay: `operationId` (and artifact hash) already applied on this installation | `duplicate-operation` (409, no state change) |
-| 9 | Version conflicts: overlap without explicit supersession, unknown/already-retired supersession target, supersession that would hand over before the import instant | `overlapping-range`, `unknown-supersession` (409, no state change); `backdated-supersession` (422, no state change; OQ-86) |
-| 10 | Persist: ONE transaction that **first locks the installation row and re-runs stages 8–9 under the lock** (§3.4), then customer upsert, license upsert, version + entitlements insert, supersession stamps, audit event | `duplicate-operation`, `overlapping-range`, `unknown-supersession` (409, no state change); `backdated-supersession` (422, no state change) |
+| 9 | Version conflicts: overlap without explicit supersession, unknown/already-retired supersession target, supersession that would hand over before the import instant, a license identifier already bound to another customer (§3.5) | `overlapping-range`, `unknown-supersession`, `license-binding-conflict` (409, no state change); `backdated-supersession` (422, no state change; OQ-86) |
+| 10 | Persist: ONE transaction that **first locks the installation row and re-runs stages 8–9 under the lock** (§3.4), refuses a license identifier that belongs to another installation or customer (§3.5), then customer upsert, license upsert, version + entitlements insert, supersession stamps, audit event | `duplicate-operation`, `overlapping-range`, `unknown-supersession`, `license-binding-conflict` (409, no state change); `backdated-supersession` (422, no state change) |
 
 Stages 8 and 9 share one implementation between the read-side pass and the
 in-transaction pass, so the two cannot drift apart: the pre-check is an early,
@@ -453,8 +508,15 @@ Backend (REST/OpenAPI, ADR-0014, AR-10/AR-21):
 | POST | `/api/v1/license/import` | `Licensing.License.Activate` | import a signed document (file envelope or text artifact) |
 | POST | `/api/v1/license/activate` | `Licensing.License.Activate` | L-02 compatibility alias for the same pipeline (text code) |
 
-Response DTO classes are declared for OpenAPI; the request body carries exactly
-one field (`document`), so a client can never describe the license it wants.
+Response DTO classes are declared for OpenAPI. The import response
+(`LicenseImportResultDto`: the evaluated state, `changed`, `outcome`, the bounded
+version history) is documented as a schema and checked against a real response by
+`license-import.e2e-spec.ts` ("documents the import response body …"); the generated
+client carries it, and `frontend/src/api/contracts.ts` fails to typecheck if the
+hand-written receipt drifts from it. `GET /license/current` and the activation
+alias still have no response schema (follow-up F-6 of the post-merge report). The
+request body carries exactly one field (`document`), so a client can never describe
+the license it wants.
 
 Frontend (`features/licensing/`): the license stage keeps its single source
 (`GET /license/current`) and its rule that a successful POST is not an active

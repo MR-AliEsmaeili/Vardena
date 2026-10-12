@@ -154,7 +154,9 @@ insert. A second application of the same operation is **rejected** (409,
 `(installation_id, operation_id)` is the database backstop, and the row lock is
 what makes the check authoritative for concurrent, *distinct* documents whose
 windows conflict — the loser of such a race gets the documented 409 and writes
-nothing. A repeated legacy `VLIC1` code keeps its documented idempotent no-op
+nothing. A document whose `licenseId` is bound to another customer, or belongs to
+another installation, is refused with 409 (`license-binding-conflict`, nothing
+written; see `docs/licensing/version-model-and-file-exchange.md` §3.5). A repeated legacy `VLIC1` code keeps its documented idempotent no-op
 (`changed: false`) — the documented per-operation-type behaviour that PDR-11
 PQ-8 asks about (OQ-81). Concurrency details and evidence: design §3.4,
 ADR-0046 Decision 11, `test/licensing-persistence-live.e2e-spec.ts`.
@@ -250,13 +252,16 @@ application table:
 npm run license:keygen                                   # prints a key pair
 LICENSE_SIGNING_PRIVATE_KEY=<base64> npm run license:issue -- \
   --installation <installation-id> --users 25 --modules organization,users \
-  --valid-from 2027-01-01 --valid-until 2028-01-01 --file-out renewal.vlic
+  --valid-from 2027-01-01 --valid-until 2028-01-01 --out renewal.vlic
 ```
 
-`--file-out` writes the signed **file** (the primary transport). Without it the
-CLI prints the signed text document; `--legacy-code` still prints a `VLIC1`
-code for L-02 compatibility tests. `--operation`, `--supersedes` and
-`--key-id` cover operation identity, explicit supersession and key rotation. A
+`--out <path>` writes the signed **file** (the primary transport). Without it the
+CLI prints the signed file to stdout; `--artifact` prints the bare `VLIC2` artifact
+instead, and `--format v1` still prints a `VLIC1` code for L-02 compatibility tests.
+`--operation-id`, `--supersedes` and `--key-id` cover operation identity, explicit
+supersession and key rotation. The issuer always generates a new `licenseId`; it has
+no option to issue another version of an existing license (see the post-merge
+reconciliation report, finding F-8). A
 superseding document retires its target from its own `validFrom`, so it must
 start at or after the instant it is imported: pass a current or future
 `--valid-from` (the default start would be refused as `backdated-supersession`;

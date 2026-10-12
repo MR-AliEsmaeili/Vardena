@@ -81,10 +81,12 @@ export type EffectivePermissions = Schemas['EffectivePermissionsDto'];
 // inline return type, not a decorated response DTO class (`@ApiOkResponse`
 // carries no `type`), so the generated OpenAPI document has no schema for it
 // — the same annotation-gap category already described above for
-// `NullableString`/`AccountStatement*`. `LicenseState` is restored VERBATIM
-// from that controller's return type rather than derived from the generated
-// document; `LicenseImportResult` is restored the same way from
-// `LicenseImportController.import()` (`POST /api/v1/license/import`).
+// `NullableString`/`AccountStatement*`. `LicenseState` is therefore restored
+// VERBATIM from that controller's return type. The import receipt
+// (`POST /api/v1/license/import`) now has a generated response schema
+// (`LicenseImportResultDto`); the hand-written `LicenseImportResult` keeps its
+// narrower literal unions for the UI and is checked for compatibility against
+// that schema below, so a backend change fails `npm run typecheck`.
 //
 // The frontend imports licenses through that route only. It accepts BOTH the
 // signed file envelope / VLIC2 artifact and a legacy VLIC1 code, so the UI has
@@ -196,6 +198,16 @@ export interface LicenseImportResult extends LicenseState {
   changed: boolean;
   outcome: 'APPLIED' | 'UNCHANGED';
 }
+
+/**
+ * Compile-time contract check against the generated response schema: the
+ * receipt the UI declares must remain assignable to `LicenseImportResultDto`
+ * (every documented field present, with a compatible type). A rename, a removed
+ * field or a regenerated client without the schema fails here.
+ */
+type LicenseImportReceiptMatchesOpenApi =
+  LicenseImportResult extends Schemas['LicenseImportResultDto'] ? true : never;
+export const LICENSE_IMPORT_RECEIPT_MATCHES_OPENAPI: LicenseImportReceiptMatchesOpenApi = true;
 
 // ---------------------------------------------------------------------------
 // Organization
