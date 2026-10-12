@@ -3448,6 +3448,70 @@ export interface components {
              */
             document: string;
         };
+        LicenseEntitlementDto: {
+            /** @description Entitlement kind (module or feature). */
+            kind: string;
+            /** @description Entitlement code. */
+            code: string;
+        };
+        LicenseVersionSummaryDto: {
+            /** @description Retained version identity (ULID). */
+            versionId: string;
+            /** @description The commercial license this version belongs to. */
+            licenseId: string;
+            /** @enum {string} */
+            status: "ACTIVE" | "EXPIRED" | "SUSPENDED";
+            /** Format: date-time */
+            validFrom: string;
+            /** Format: date-time */
+            validUntil: string | null;
+            /** @description True for the one version that governs now. */
+            effective: boolean;
+            /** Format: date-time */
+            supersededAt: string | null;
+            /**
+             * Format: date-time
+             * @description When this version stops governing, if it was retired.
+             */
+            governsUntil: string | null;
+            supersededByVersionId: string | null;
+            /** Format: date-time */
+            importedAt: string;
+            /** @enum {string} */
+            source: "file" | "text" | "legacy-code";
+        };
+        LicenseImportResultDto: {
+            /** @description Whether an installation license is evaluated. */
+            licensed: boolean;
+            /** @description Evaluated status (ACTIVE, EXPIRED or SUSPENDED). */
+            status: string;
+            /** @description True only while the license is active now. */
+            active: boolean;
+            /** @description Why the license is not active. */
+            inactiveReason: string | null;
+            installationId: string | null;
+            customerId: string | null;
+            licenseId: string | null;
+            /** Format: date-time */
+            validFrom: string | null;
+            /** Format: date-time */
+            validUntil: string | null;
+            organizationLimit: number | null;
+            userLimit: number | null;
+            entitlements: components["schemas"]["LicenseEntitlementDto"][];
+            /** @description The license provider that evaluated the state. */
+            provider: string;
+            /** @description The version that governs now. */
+            effectiveVersionId: string | null;
+            /** @description The earliest retained version that is not effective yet. */
+            scheduledVersion: components["schemas"]["LicenseVersionSummaryDto"] | null;
+            /** @description Bounded retained-version history, newest first. */
+            versions: components["schemas"]["LicenseVersionSummaryDto"][];
+            /** @description False when a repeated legacy code was already the governing version. */
+            changed: boolean;
+            /** @enum {string} */
+            outcome: "APPLIED" | "UNCHANGED";
+        };
         LoginRequestDto: {
             /**
              * @description Login username (see security.md §2).
@@ -8186,7 +8250,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["LicenseImportResultDto"];
+                };
             };
             /** @description Validation failed. */
             400: {

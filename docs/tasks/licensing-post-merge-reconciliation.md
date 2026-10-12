@@ -121,8 +121,8 @@ Classification: **Blocker** = must be fixed or formally accepted before the slic
 | F-2 | Important | **Fixed on this branch** | A `licenseId` owned by another installation surfaced as an unmapped database FK error (HTTP 500), not a documented refusal. | §3; rule 2b under the lock; live test; 409. |
 | F-3 | Important | **Open — Owner decision (OQ-80 / OQ-86)** | A **non-superseding** backdated document whose window overlaps the past governed window of a version that a later supersession retired is **accepted**. The as-of read for that period then reports `ambiguous`. ADR-0046 D4 says effective windows are pairwise disjoint after every import. The existing unit test "never counts a superseded version as an overlap" pins the implemented rule. | Verified by a scratch spec on the unfixed code: retired R (2026-01-01, superseded by S at 2026-12-01), backdated N (2026-03-01 → 2026-06-01) imported 2027-01-15 → accepted; `resolveEffectiveVersion` at 2026-04-01 → `ambiguous`. Code reading: the overlap rule considers only versions still eligible at the import instant, so a document that covers the present or the future is refused; the observable effect is on past instants, which no current API exposes. **Not changed** — choosing between the D4 wording and the implemented rule is the OQ-86 decision. The recorded text is in `version-model-and-file-exchange.md` §3.5. |
 | F-4 | Important | **Open — Owner question** | An applied import overwrites the **installation's** `customerId` (`tx.installation.update`), including when the new license names a different customer. PDR-11 §2.1 says a customer owns one or more installations but does not say whether an installation can change customer. | `licenses.repository.ts` (installation update). Not changed. Recorded in the decision brief (Q4). |
-| F-5 | Important | **Fixed on this branch** | The committed generated client lacked `/api/v1/license/import`, `ImportLicenseDocumentDto` and its responses (84 added lines). Nothing in CI detects drift (F-7). | Regenerated with the pinned `openapi-typescript@7.13.0` from the live document. The diff is **additive only** (0 removed lines; no other module changed). The hand-written `frontend/src/api/contracts.ts` already describes the import route. |
-| F-6 | Important | **Open — follow-up** | `GET /api/v1/license/current` documents a 200 response with **no content schema**; the frontend hand-restores `LicenseState` in `contracts.ts` to compensate. | The generated 200 response has `content?: never`. Fix belongs to a small controller annotation change (a DTO class for `@ApiOkResponse`), which would also replace the hand-written type. Not done here to keep this audit free of API-surface changes. |
+| F-5 | Important | **Fixed (follow-up round, 2026-10-12)** | The committed generated client declared the import endpoint's 200 response as `content?: never`, although the endpoint returns a JSON receipt. First pass (2026-10-11) added the path; the follow-up gives the response a schema (`LicenseImportResultDto`) and regenerates. | §13. The diff is additive: three component schemas and the import 200 content. |
+| F-6 | Important | **Partially fixed (2026-10-12)** | The import response now has a schema. `GET /api/v1/license/current` and `POST /api/v1/license/activate` still document a 200 response with **no content schema**; the frontend hand-restores `LicenseState` in `contracts.ts`. | §13. The same DTO pattern applies to those two routes; left open to keep this round to the import contract. |
 | F-7 | Important | **Open — process** | No CI step verifies that `frontend/src/api/generated/vardena-api.d.ts` matches the backend's OpenAPI document. | Recommended: a CI step that boots the API (or uses a committed OpenAPI snapshot) and fails on drift. Not added here (CI change is a separate, reviewable slice). |
 | F-8 | Important | **Open — Owner question** | The issuer CLI always generates a **new** `licenseId` (`buildLicensePayload` → `options.licenseId ?? generateId()`) and has no option to target an existing license. A renewal through the CLI therefore never shares a `licenseId` with the license it renews. The rule in F-1/F-2 can be reached only by a document the trusted authority signs deliberately (or by a hand-built document). | `backend/src/issue-development-license.ts` (options: `--customer`, no `--license-id`). Whether renewals keep the license identity is an Owner decision (decision brief Q3). Documentation corrected in `licensing-architecture.md` to reference this finding. |
 | F-9 | Minor | **Fixed (documentation)** | `docs/licensing-architecture.md` documented CLI flags the parser does not accept: `--file-out` (the parser reads `--out`), `--operation` (`--operation-id`), `--legacy-code` (`--format v1`). Following the documented command would not have written the file. | Corrected in the same document; the binding refusal is also described there. |
@@ -226,3 +226,67 @@ Not changed: any OQ status; any §15 policy; any migration; the accepted archite
 - Gap C was confirmed by a scratch spec on the unfixed code; that scratch spec was deleted and is not kept as an automated test, since its expected outcome depends on the OQ-86 decision.
 - The merge-commit CI log content (per-test counts) could not be retrieved from the sandbox.
 - No live Owner or customer data was inspected; migration rehearsals use synthetic fixtures.
+
+## 13. Follow-up round on PR #138 (2026-10-12)
+
+Scope of this round: (1) the cross-installation license-identifier race; (2) the import endpoint's OpenAPI response contract. Head before this round `8a8e6370c0b5460b6447b43884eb5745efd6442b`.
+
+### 13.1 F-18 — the cross-installation claim of one license identifier (Important, fixed)
+
+**Defect.** The installation row lock serializes imports of one installation. Two different installations can both read a `licenseId` as unused (the binding pre-check in §3 sees only committed rows) and then both claim it. The record of the defect is the pre-fix run of the new live cases, not a model of it:
+
+- Deterministic case (self import paused at its customer write while a foreign installation commits the identifier): the self import surfaced as an **unhandled `PrismaClientKnownRequestError` `P2003`** on `license_versions_license_id_installation_id_fkey`. It was **not** `duplicate-operation`.
+- Repeated case (five rounds of simultaneous imports): round 0 surfaced the same raw `P2003`.
+- Cause: the license row was written with `upsert`. When the row already exists, Prisma issues `INSERT … ON CONFLICT DO UPDATE`, which silently adopts the other installation's row. The version insert then fails on the composite foreign key `(license_id, installation_id)`. The generic `P2002` → `duplicate-operation` mapping in `persist` was therefore not the path taken; it was still too broad, and is narrowed as well.
+
+**Fix.**
+- `licenses.repository.ts`: a new license identifier is claimed by a plain `INSERT` (`tx.license.create`). The primary key arbitrates: the loser waits for the winner's commit, fails with a unique violation, and that violation is converted inside the transaction to `ImportConflictError({reason:'license-binding-conflict'})`. The transaction rolls back and the rejection is audited outside it, as for every other refusal. An identifier already bound to this installation and customer is touched only through a guarded `updateMany` (the binding is re-asserted in SQL). The installation-lock serialization and the retained-version checks are unchanged.
+- `license-import.service.ts`: `persist` maps a unique violation to `duplicate-operation` only when it touches the version's own identity constraints (operation id or artifact hash, via `uniqueViolationTouches`). Any other unique violation is rethrown as an unexpected error.
+
+**Evidence (live PostgreSQL 16.4, local).**
+- Red, unfixed code: `licensing-persistence-live.e2e-spec.ts` — the two new cases failed (2 failed, 12 passed; the failures are the `P2003` above).
+- Green, fixed code: the same file 14/14. Four consecutive runs green (initial plus three repeats).
+- Deterministic case asserts: 409 with `reason: 'license-binding-conflict'`; the license row still bound to the winning installation and customer; exactly one version for the identifier (the winner's); no version for the loser; the loser's customer write and installation update rolled back (display name and installation customer unchanged); a `license.import.rejected` audit row with that reason.
+- Repeated case asserts, per round: exactly one fulfilled and one rejected import; the rejection is an `ImportConflictError` with that reason; one license row, bound to the winner; one version. It does not claim that every round hit the unique-violation branch; the deterministic case is the proof of that branch.
+- Service unit tests (`license-import.service.spec.ts`, "lost races inside the import transaction"): a claimed identifier → 409 `license-binding-conflict` with the audit reason; a unique violation on the version operation → 409 `duplicate-operation`; an unrelated unique violation → rethrown, not reported as a duplicate, nothing written.
+
+**What is not proven here.** The race has been reproduced in one PostgreSQL instance with two installation rows. In a real deployment each installation has its own database, so this collision is reachable only where one database holds several installation rows (the schema allows it; the normal deployment does not). The fix is at the database boundary, so it holds in either case. Not run: a multi-instance (separate processes) race; the cases use one application instance and separate pooled connections.
+
+### 13.2 F-5 / F-6 — the import response contract (OpenAPI)
+
+**Runtime check.** `POST /api/v1/license/import` returns a JSON receipt: the evaluated license state (`LicenseStateView`), the bounded version history, `changed` and `outcome` (`'APPLIED' | 'UNCHANGED'`). It is not empty. The committed client had `content?: never` for its 200 response because the decorator declared a description and no type.
+
+**Fix.**
+- `api/dto/license.dto.ts`: `LicenseImportResultDto`, `LicenseVersionSummaryDto`, `LicenseEntitlementDto`. Each class `implements` the domain or view type it mirrors, so a field change there fails the build. Nullable string fields carry an explicit `type: String` — without it, TypeScript reflects `string | null` as `Object` and OpenAPI renders an unusable `Record<string, never>`; this was found and fixed during regeneration.
+- `license-import.controller.ts`: `@ApiOkResponse({ type: LicenseImportResultDto })`; the method returns the DTO type.
+- `test/license-import.e2e-spec.ts`: "documents the import response body in the OpenAPI contract, matching the real response" — fetches `/api/docs-json`, asserts the 200 response is `$ref: LicenseImportResultDto`, the 409 and 422 responses exist, the schema's property names equal the names of a real response (and of its first version summary), and the outcome enum. Red check: with the `type` removed from the decorator, this case fails (`× documents the import response body …`); restored, it passes.
+- `frontend/src/api/generated/vardena-api.d.ts`: regenerated with the pinned `openapi-typescript@7.13.0` from the live document (`/tmp/openapi3.json`, the built API at this round's code). Diff: 67 added lines, 1 removed (`content?: never` on the import 200 response). Nothing else changed.
+- `frontend/src/api/contracts.ts`: the hand-written `LicenseImportResult` keeps its narrower literal unions for the UI (a wider generated type would weaken them). A compile-time check, `LICENSE_IMPORT_RECEIPT_MATCHES_OPENAPI`, requires the hand-written receipt to remain assignable to `Schemas['LicenseImportResultDto']`. Negative check: changing `changed` to `string` fails `tsc` with `Type 'true' is not assignable to type 'never'`; restored.
+
+**Drift check.** No CI step detects drift between the backend's live document and the committed client (F-7, still open). What exists now: the e2e contract case (server side), and the typecheck assertion (client side). A regeneration check from the final code is recorded in §13.4.
+
+### 13.3 Test and check results of this round
+
+| Check | Result |
+| --- | --- |
+| Backend typecheck | rc 0 |
+| Backend lint | 1 warning (pre-existing, unrelated accounting spec); 0 errors. The new test code was briefly at 107 warnings (unnecessary escapes in template literals); fixed. |
+| Backend format | rc 0 |
+| Backend unit | 147 files, 1965 / 1965 |
+| Licensing unit | 8 files, 118 / 118 |
+| Licensing live + e2e (6 files) | 58 / 58 (persistence-live 14, up from 12; license-import e2e 14, up from 13) |
+| Persistence-live repeats | 4 runs, 14 / 14 each |
+| Full backend e2e (51 files) | **619 / 619** (was 616) |
+| BusinessDate live, Asia/Tehran and America/Los_Angeles | 24 / 24 each |
+| Migration rehearsals (four) | rc 0 each |
+| Bootstrap on a fresh database (twice) | rc 0 both |
+| Backend build | rc 0 |
+| Frontend lint, typecheck, format, build | rc 0 each |
+| Frontend tests | 56 files, 397 / 397 |
+
+**Environment note.** The sandbox was reset between sessions: `/tmp`, the PostgreSQL cluster and `node_modules` were rebuilt. PostgreSQL 16.4 binaries were reinstalled from npm (`@embedded-postgres/linux-x64@16.4.0-beta.13`), the migration helper was recreated (same logic), and the Prisma client was regenerated with the engine overrides. These are the same substitutions as §4; CI remains the authority for the CI-only steps.
+
+### 13.4 Regeneration check from the final code
+
+The client was regenerated from the built API at the final code of this round (193 paths; `POST /api/v1/license/import` → 200 `application/json` → `#/components/schemas/LicenseImportResultDto`) with the pinned `openapi-typescript@7.13.0`. The output is byte-identical to the committed `frontend/src/api/generated/vardena-api.d.ts`. This is a manual regeneration check, not a CI gate (F-7).
+

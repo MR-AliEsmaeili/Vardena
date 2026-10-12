@@ -1,5 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, MaxLength, MinLength } from 'class-validator';
+import type { LicenseStatus } from '../../domain/license.js';
+import type {
+  LicenseVersionSource,
+  LicenseVersionSummary,
+} from '../../domain/license-version.js';
+import type { LicenseStateView } from '../license-state.view.js';
 
 /**
  * Licensing API contracts (ADR-0014: DTOs are the OpenAPI contract).
@@ -45,4 +51,171 @@ export class ImportLicenseDocumentDto {
   @MinLength(1, { message: 'A license document is required.' })
   @MaxLength(65536)
   document!: string;
+}
+
+/**
+ * Response contracts (OpenAPI). The shapes mirror `LicenseStateView` and the
+ * domain summaries exactly; each class `implements` its source type, so a field
+ * added or renamed there fails the build here, and the licensing e2e suite
+ * compares the documented property names with a real response.
+ */
+export class LicenseEntitlementDto {
+  @ApiProperty({ description: 'Entitlement kind (module or feature).' })
+  kind!: string;
+
+  @ApiProperty({ description: 'Entitlement code.' })
+  code!: string;
+}
+
+export class LicenseVersionSummaryDto implements LicenseVersionSummary {
+  @ApiProperty({ description: 'Retained version identity (ULID).' })
+  versionId!: string;
+
+  @ApiProperty({
+    description: 'The commercial license this version belongs to.',
+  })
+  licenseId!: string;
+
+  @ApiProperty({ enum: ['ACTIVE', 'EXPIRED', 'SUSPENDED'] })
+  status!: LicenseStatus;
+
+  @ApiProperty({ format: 'date-time' })
+  validFrom!: string;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+  })
+  validUntil!: string | null;
+
+  @ApiProperty({ description: 'True for the one version that governs now.' })
+  effective!: boolean;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+  })
+  supersededAt!: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'When this version stops governing, if it was retired.',
+  })
+  governsUntil!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+  })
+  supersededByVersionId!: string | null;
+
+  @ApiProperty({ format: 'date-time' })
+  importedAt!: string;
+
+  @ApiProperty({ enum: ['file', 'text', 'legacy-code'] })
+  source!: LicenseVersionSource;
+}
+
+/**
+ * The evaluated, non-secret license state, plus the import outcome. Returned by
+ * `POST /api/v1/license/import` after a fresh read (never the mutation's own
+ * opinion). No key, signature, hash or document is part of it.
+ */
+export class LicenseImportResultDto implements LicenseStateView {
+  @ApiProperty({ description: 'Whether an installation license is evaluated.' })
+  licensed!: boolean;
+
+  @ApiProperty({
+    description: 'Evaluated status (ACTIVE, EXPIRED or SUSPENDED).',
+  })
+  status!: string;
+
+  @ApiProperty({ description: 'True only while the license is active now.' })
+  active!: boolean;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'Why the license is not active.',
+  })
+  inactiveReason!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+  })
+  installationId!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+  })
+  customerId!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+  })
+  licenseId!: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+  })
+  validFrom!: string | null;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+  })
+  validUntil!: string | null;
+
+  @ApiProperty({ type: Number, nullable: true })
+  organizationLimit!: number | null;
+
+  @ApiProperty({ type: Number, nullable: true })
+  userLimit!: number | null;
+
+  @ApiProperty({ type: [LicenseEntitlementDto] })
+  entitlements!: LicenseEntitlementDto[];
+
+  @ApiProperty({
+    description: 'The license provider that evaluated the state.',
+  })
+  provider!: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The version that governs now.',
+  })
+  effectiveVersionId!: string | null;
+
+  @ApiProperty({
+    type: () => LicenseVersionSummaryDto,
+    nullable: true,
+    description: 'The earliest retained version that is not effective yet.',
+  })
+  scheduledVersion!: LicenseVersionSummaryDto | null;
+
+  @ApiProperty({
+    type: [LicenseVersionSummaryDto],
+    description: 'Bounded retained-version history, newest first.',
+  })
+  versions!: LicenseVersionSummaryDto[];
+
+  @ApiProperty({
+    description:
+      'False when a repeated legacy code was already the governing version.',
+  })
+  changed!: boolean;
+
+  @ApiProperty({ enum: ['APPLIED', 'UNCHANGED'] })
+  outcome!: 'APPLIED' | 'UNCHANGED';
 }

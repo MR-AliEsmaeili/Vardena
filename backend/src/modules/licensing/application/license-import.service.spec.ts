@@ -18,6 +18,7 @@ import {
   resolveEffectiveVersion,
 } from '../domain/license-version.js';
 import { InstallationIdentityService } from './installation-identity.service.js';
+import { ImportConflictError } from '../data/licenses.repository.js';
 import { LicenseImportService } from './license-import.service.js';
 import { LicensingService } from './licensing.service.js';
 import { PersistentLicenseProvider } from './persistent-license.provider.js';
@@ -284,6 +285,70 @@ describe('license import pipeline', () => {
       outcome: 'REJECTED',
       reason: 'license-binding-conflict',
       eventType: 'license.import.rejected',
+    });
+  });
+
+  describe('lost races inside the import transaction', () => {
+    /** A Prisma-shaped unique violation: only `code` and `meta.target` matter. */
+    function uniqueViolation(target: string): Error {
+      return Object.assign(new Error('Unique constraint failed'), {
+        code: 'P2002',
+        meta: { target },
+      });
+    }
+
+    it('reports a claimed license identifier as license-binding-conflict (409), not as a replay', async () => {
+      vi.spyOn(harness.stores.licenses, 'importVersion').mockRejectedValueOnce(
+        new ImportConflictError({
+          reason: 'license-binding-conflict',
+          overlapping: 0,
+        }),
+      );
+
+      const rejection = await rejectionOf(
+        harness.service.importDocument(issuedFile()),
+      );
+
+      expect(rejection.status).toBe(409);
+      expect(rejection.message).toMatch(
+        /already bound to a different customer/,
+      );
+      expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+        outcome: 'REJECTED',
+        reason: 'license-binding-conflict',
+      });
+    });
+
+    it('reports a unique violation on the version identity as duplicate-operation (409)', async () => {
+      vi.spyOn(harness.stores.licenses, 'importVersion').mockRejectedValueOnce(
+        uniqueViolation('uq_license_versions_installation_operation'),
+      );
+
+      const rejection = await rejectionOf(
+        harness.service.importDocument(issuedFile()),
+      );
+
+      expect(rejection.status).toBe(409);
+      expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+        reason: 'duplicate-operation',
+      });
+    });
+
+    it('never reports an unrelated unique violation as a duplicate: it surfaces as an unexpected error', async () => {
+      const unrelated = uniqueViolation('licensing_customers_pkey');
+      vi.spyOn(harness.stores.licenses, 'importVersion').mockRejectedValueOnce(
+        unrelated,
+      );
+
+      await expect(harness.service.importDocument(issuedFile())).rejects.toBe(
+        unrelated,
+      );
+      expect(harness.stores.versions).toHaveLength(0);
+      expect(
+        harness.stores.auditEvents.some(
+          (event) => event.reason === 'duplicate-operation',
+        ),
+      ).toBe(false);
     });
   });
 

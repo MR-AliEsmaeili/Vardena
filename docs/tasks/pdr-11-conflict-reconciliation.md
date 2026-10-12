@@ -348,8 +348,9 @@ Scope: `main` at `345047abec5a6af6760b05ad36b570ee5ed3a5f9` (the PR #137 merge; 
 | F-2 — `licenseId` owned by another installation surfaces as an unmapped database error (500) | Important | Fixed on the fix branch: same reason, decided under the installation lock |
 | F-3 — non-superseding backdated overlap accepted; as-of `ambiguous`; ADR-0046 D4 wording differs | Important | Open — OQ-86 / OQ-80 Owner decision; decision brief `docs/tasks/licensing-oq-80-oq-86-decision-brief.md` |
 | F-4 — installation `customerId` overwritten by any applied import | Important | Open — Owner question (decision brief Q4) |
-| F-5 — generated client lacked `/license/import` | Important | Fixed: regenerated (additive) |
-| F-6 — `GET /license/current` has no OpenAPI response schema | Important | Open — follow-up annotation change |
+| F-5 — generated client lacked `/license/import` | Important | Fixed: regenerated; the import 200 response now has a schema (`LicenseImportResultDto`) — 2026-10-12 |
+| F-6 — `GET /license/current` (and `POST /license/activate`) has no OpenAPI response schema | Important | Partially fixed: import done; the other two open |
+| F-18 — two installations claim one unused license identifier; surfaced as an unmapped FK error | Important | Fixed (2026-10-12): primary-key arbitration in a plain `INSERT`; loser refused as `license-binding-conflict` in the transaction; live cases |
 | F-7 — no CI drift check for the generated client | Important | Open — process follow-up |
 | F-8 — issuer cannot target an existing `licenseId` | Important | Open — Owner question (decision brief Q3) |
 | F-9 — CLI flags in `licensing-architecture.md` wrong | Minor | Fixed (documentation) |

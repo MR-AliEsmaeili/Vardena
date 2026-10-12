@@ -8,7 +8,10 @@ import { getPrincipal } from '../../../kernel/correlation/request-context.js';
 import { AppException } from '../../../kernel/errors/app-exception.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
 import { JsonLogger } from '../../../kernel/logging/json-logger.service.js';
-import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
+import {
+  isUniqueViolation,
+  uniqueViolationTouches,
+} from '../../../kernel/prisma/prisma-errors.js';
 import { AuthorizationService } from '../../rbac/application/authorization.service.js';
 import {
   ImportConflictError,
@@ -609,7 +612,15 @@ export class LicenseImportService {
           error.conflict.overlapping,
         );
       }
-      if (isUniqueViolation(error)) {
+      // Only the version's own identity constraints (operation id, artifact hash)
+      // are a replay. Any other unique violation is not a duplicate and must not
+      // be reported as one: a license identifier claimed concurrently is refused
+      // inside the transaction (`license-binding-conflict`), and anything else is
+      // an unexpected database error that surfaces as one.
+      if (
+        isUniqueViolation(error) &&
+        uniqueViolationTouches(error, ['operation', 'document'])
+      ) {
         return this.rejectAppliedConflict(
           'duplicate-operation',
           {

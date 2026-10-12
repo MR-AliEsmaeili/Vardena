@@ -160,6 +160,11 @@ protection and migration before any code changes (G-10, AR-29).
   error. See `docs/licensing/version-model-and-file-exchange.md` §3.5. The
   backdated-overlap case described in the OQ-86 evidence is **not** changed by
   this addendum and remains an Owner decision.
+- *Addendum (2026-10-12, PR #138):* the identifier is claimed by a plain `INSERT`,
+  not an upsert, so the primary key arbitrates a concurrent claim by a different
+  installation (the installation lock serializes only one installation). The
+  loser is refused as `license-binding-conflict` inside the transaction. The
+  pre-check alone was not a sufficient guard.
 - `POST /api/v1/license/activate` keeps working for existing automation; the new
   `POST /api/v1/license/import` is the documented path for signed files and text.
 - Evaluation becomes date-driven; expiry, suspension and the

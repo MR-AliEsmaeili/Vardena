@@ -5,7 +5,13 @@ import { APP_CONFIG, loadAppConfig } from '../src/kernel/config/app-config.js';
 import { AppException } from '../src/kernel/errors/app-exception.js';
 import { PrismaService } from '../src/kernel/prisma/prisma.service.js';
 import { InstallationIdentityService } from '../src/modules/licensing/application/installation-identity.service.js';
-import { LicensesRepository } from '../src/modules/licensing/data/licenses.repository.js';
+import {
+  ImportConflictError,
+  LicensesRepository,
+  type ImportLicenseVersionCommand,
+} from '../src/modules/licensing/data/licenses.repository.js';
+import { licenseDocumentHash } from '../src/modules/licensing/domain/license-document.js';
+import { generateId } from '../src/kernel/ids/ulid.js';
 import { LicenseActivationService } from '../src/modules/licensing/application/license-activation.service.js';
 import { LicenseImportService } from '../src/modules/licensing/application/license-import.service.js';
 import { LicensingService } from '../src/modules/licensing/application/licensing.service.js';
@@ -975,6 +981,353 @@ describe.skipIf(DATABASE_URL === undefined)(
         ),
       ).toBe(0);
     }, 60_000);
+
+    /**
+     * The repository command for a document verified elsewhere. The race
+     * cases drive the repository directly for the second installation, because
+     * the import service only accepts documents of the installation it runs
+     * for. The command carries the signed payload's identity and the hash of
+     * the signed artifact, exactly as the service would build it.
+     */
+    function commandFor(
+      installationId: string,
+      issued: IssuedFile,
+      customerName: string,
+    ): ImportLicenseVersionCommand {
+      const { payload } = issued;
+      const now = new Date();
+      const versionId = generateId();
+      const documentHash = licenseDocumentHash(issued.document);
+      return {
+        installationId,
+        actorId: null,
+        now,
+        licenseId: payload.licenseId,
+        customerId: payload.customerId,
+        customerName,
+        versionId,
+        operationId: payload.operationId,
+        status: payload.status,
+        provider: 'persistent',
+        documentVersion: payload.version,
+        documentHash,
+        keyId: null,
+        source: 'file',
+        validFrom: payload.validFrom,
+        validUntil: payload.validUntil,
+        organizationLimit: payload.organizationLimit,
+        userLimit: payload.userLimit,
+        entitlements: [],
+        supersession: { kind: 'none' },
+        expectedSupersessionVersionId: null,
+        // The service always commits the `applied` evidence with the version.
+        auditEvents: [
+          {
+            installationId,
+            eventType: 'license.import.applied',
+            outcome: 'APPLIED',
+            operationId: payload.operationId,
+            licenseId: payload.licenseId,
+            versionId,
+            actorId: null,
+            source: 'file',
+            documentHash,
+            reason: null,
+            detail: null,
+            occurredAt: now,
+          },
+        ],
+      };
+    }
+
+    async function insertForeignInstallation(
+      installationId: string,
+    ): Promise<void> {
+      const client = await prisma.getClient<{
+        $executeRawUnsafe(
+          query: string,
+          ...values: unknown[]
+        ): Promise<unknown>;
+      }>();
+      await client.$executeRawUnsafe(
+        `INSERT INTO "licensing"."installations" ("id", "name", "is_self", "created_at", "updated_at")
+         VALUES ($1, 'Foreign installation', false, now(), now())`,
+        installationId,
+      );
+    }
+
+    /** Wait until a backend is blocked on a lock inside the given table. */
+    async function waitForLockWaitOn(table: string): Promise<void> {
+      for (let attempt = 0; attempt < 400; attempt += 1) {
+        const rows = await query<{ waiting: number }>(
+          `SELECT COUNT(*)::int AS waiting FROM pg_stat_activity
+            WHERE datname = current_database()
+              AND wait_event_type = 'Lock'
+              AND query ILIKE $1`,
+          `%${table}%`,
+        );
+        if ((rows[0]?.waiting ?? 0) > 0) return;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      throw new Error(`no import reached a lock wait on ${table}`);
+    }
+
+    it('refuses a license identifier another installation committed while this import was in flight, as license-binding-conflict', async () => {
+      // Two DISTINCT installations, one license identifier. The installation
+      // row lock serializes imports of one installation only, so nothing but
+      // the license identifier itself can stop both from claiming it.
+      //
+      // Deterministic interleaving: the self import is paused at its customer
+      // write (a row lock held by this test). It has already read the
+      // identifier as unused. The foreign installation then commits the
+      // identifier. Released, the self import's insert must lose the race.
+      const identity = await app.get(InstallationIdentityService).current();
+      const selfInstallation = identity.installationId;
+      const foreignInstallation = generateId();
+      await insertForeignInstallation(foreignInstallation);
+      const selfCustomer = generateId();
+      const foreignCustomer = generateId();
+      const client0 = await prisma.getClient<{
+        $executeRawUnsafe(
+          query: string,
+          ...values: unknown[]
+        ): Promise<unknown>;
+        $transaction<T>(
+          fn: (tx: {
+            $queryRawUnsafe<TRow>(
+              sql: string,
+              ...args: unknown[]
+            ): Promise<TRow[]>;
+          }) => Promise<T>,
+          options: { timeout: number; maxWait: number },
+        ): Promise<T>;
+      }>();
+      await client0.$executeRawUnsafe(
+        `INSERT INTO "licensing"."customers" ("id", "display_name", "created_at", "updated_at")
+         VALUES ($1, 'Self customer', now(), now())`,
+        selfCustomer,
+      );
+      const installationBefore = await query<{ customer_id: string | null }>(
+        `SELECT "customer_id" FROM "licensing"."installations" WHERE "id" = $1`,
+        selfInstallation,
+      );
+
+      const license = generateId();
+      const window = {
+        validFrom: new Date('2060-01-01T00:00:00.000Z'),
+        validUntil: new Date('2061-01-01T00:00:00.000Z'),
+      };
+      const selfDocument = issueLicenseFile(
+        {
+          installationId: selfInstallation,
+          licenseId: license,
+          customerId: selfCustomer,
+          customerName: 'Self customer',
+          ...window,
+        },
+        authority.privateKey,
+      );
+      const foreignDocument = issueLicenseFile(
+        {
+          installationId: foreignInstallation,
+          licenseId: license,
+          customerId: foreignCustomer,
+          customerName: 'Foreign customer',
+          ...window,
+        },
+        authority.privateKey,
+      );
+
+      let holdAcquired!: () => void;
+      const acquired = new Promise<void>((resolve) => {
+        holdAcquired = resolve;
+      });
+      let releaseHold!: () => void;
+      const released = new Promise<void>((resolve) => {
+        releaseHold = resolve;
+      });
+      const holding = client0.$transaction(
+        async (tx) => {
+          await tx.$queryRawUnsafe(
+            `SELECT "id" FROM "licensing"."customers" WHERE "id" = $1 FOR UPDATE`,
+            selfCustomer,
+          );
+          holdAcquired();
+          await released;
+        },
+        { timeout: 60_000, maxWait: 10_000 },
+      );
+      await acquired;
+
+      let selfOutcome: Promise<unknown>;
+      let winnerLicense: string | null = null;
+      try {
+        selfOutcome = importOutcome(selfDocument).catch((error: unknown) => ({
+          unhandled: error,
+        }));
+        await waitForLockWaitOn('"licensing"."customers"');
+        const winner = await app
+          .get(LicensesRepository)
+          .importVersion(
+            commandFor(
+              foreignInstallation,
+              foreignDocument,
+              'Foreign customer',
+            ),
+          );
+        winnerLicense = winner.licenseId;
+      } finally {
+        releaseHold();
+        await holding;
+      }
+      expect(winnerLicense).toBe(license);
+
+      const outcome = await selfOutcome;
+      // The loser gets the documented 409 for a binding conflict: not a
+      // duplicate, not an unhandled database error.
+      expect(outcome).toMatchObject({
+        applied: false,
+        status: 409,
+        reason: 'license-binding-conflict',
+      });
+
+      // The committed owner is the foreign installation, untouched.
+      expect(
+        await query<{ installation_id: string; customer_id: string }>(
+          `SELECT "installation_id", "customer_id" FROM "licensing"."licenses" WHERE "id" = $1`,
+          license,
+        ),
+      ).toEqual([
+        { installation_id: foreignInstallation, customer_id: foreignCustomer },
+      ]);
+      // Exactly the winner's version; nothing from the loser.
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "license_id" = $1`,
+          license,
+        ),
+      ).toBe(1);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          selfDocument.payload.operationId,
+        ),
+      ).toBe(0);
+      // The loser's customer write and installation update rolled back.
+      expect(
+        await query<{ display_name: string }>(
+          `SELECT "display_name" FROM "licensing"."customers" WHERE "id" = $1`,
+          selfCustomer,
+        ),
+      ).toEqual([{ display_name: 'Self customer' }]);
+      expect(
+        await query<{ customer_id: string | null }>(
+          `SELECT "customer_id" FROM "licensing"."installations" WHERE "id" = $1`,
+          selfInstallation,
+        ),
+      ).toEqual(installationBefore);
+      // The refusal is audited as a rejection with its real reason.
+      expect(
+        await query<{ reason: string }>(
+          `SELECT "reason" FROM "licensing"."license_audit_events"
+            WHERE "event_type" = 'license.import.rejected'
+              AND "operation_id" = $1`,
+          selfDocument.payload.operationId,
+        ),
+      ).toEqual([{ reason: 'license-binding-conflict' }]);
+    }, 120_000);
+
+    it('lets exactly one of two installations keep a license identifier that both imports claim at once', async () => {
+      // No forced interleaving: five rounds of simultaneous imports of two
+      // signed documents for two installations sharing one fresh identifier.
+      // Whatever the interleaving, the outcome must be the same: one committed
+      // owner, the other import refused with the binding conflict.
+      const identity = await app.get(InstallationIdentityService).current();
+      const foreignInstallation = generateId();
+      await insertForeignInstallation(foreignInstallation);
+      const repository = app.get(LicensesRepository);
+
+      for (const round of [0, 1, 2, 3, 4]) {
+        const license = generateId();
+        const window = {
+          validFrom: new Date(`${2070 + round}-01-01T00:00:00.000Z`),
+          validUntil: new Date(`${2070 + round}-07-01T00:00:00.000Z`),
+        };
+        const selfDocument = issueLicenseFile(
+          {
+            installationId: identity.installationId,
+            licenseId: license,
+            customerId: generateId(),
+            customerName: `Self round ${round}`,
+            ...window,
+          },
+          authority.privateKey,
+        );
+        const foreignDocument = issueLicenseFile(
+          {
+            installationId: foreignInstallation,
+            licenseId: license,
+            customerId: generateId(),
+            customerName: `Foreign round ${round}`,
+            ...window,
+          },
+          authority.privateKey,
+        );
+
+        const settled = await Promise.allSettled([
+          repository.importVersion(
+            commandFor(identity.installationId, selfDocument, `Self ${round}`),
+          ),
+          repository.importVersion(
+            commandFor(
+              foreignInstallation,
+              foreignDocument,
+              `Foreign ${round}`,
+            ),
+          ),
+        ]);
+        const applied = settled.filter(
+          (
+            result,
+          ): result is PromiseFulfilledResult<
+            Awaited<ReturnType<LicensesRepository['importVersion']>>
+          > => result.status === 'fulfilled',
+        );
+        const lost = settled.filter(
+          (result): result is PromiseRejectedResult =>
+            result.status === 'rejected',
+        );
+        expect(applied, `round ${round}`).toHaveLength(1);
+        expect(lost, `round ${round}`).toHaveLength(1);
+        const loser = lost[0]!.reason;
+        expect(loser, `round ${round}`).toBeInstanceOf(ImportConflictError);
+        expect((loser as ImportConflictError).reason).toBe(
+          'license-binding-conflict',
+        );
+
+        const winner = applied[0]!.value;
+        expect(
+          await query<{ installation_id: string; customer_id: string }>(
+            `SELECT "installation_id", "customer_id" FROM "licensing"."licenses" WHERE "id" = $1`,
+            license,
+          ),
+        ).toEqual([
+          {
+            installation_id: winner.installationId,
+            customer_id: winner.customerId,
+          },
+        ]);
+        expect(
+          await count(
+            `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+              WHERE "license_id" = $1`,
+            license,
+          ),
+        ).toBe(1);
+      }
+    }, 120_000);
 
     it('keeps every retained effective window disjoint', async () => {
       // The static invariant, checked in SQL rather than through the

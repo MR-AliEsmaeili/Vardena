@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../kernel/prisma/prisma.service.js';
 import { generateId } from '../../../kernel/ids/ulid.js';
+import { isUniqueViolation } from '../../../kernel/prisma/prisma-errors.js';
 import type {
   EntitlementKind,
   LicenseEntitlement,
@@ -258,6 +259,19 @@ interface LicenseDelegate {
     where: { id: string };
     select: { installationId: true; customerId: true };
   }): Promise<{ installationId: string; customerId: string } | null>;
+  create(args: {
+    data: {
+      id: string;
+      installationId: string;
+      customerId: string;
+      createdAt: Date;
+      updatedAt: Date;
+    };
+  }): Promise<unknown>;
+  updateMany(args: {
+    where: { id: string; installationId: string; customerId: string };
+    data: { updatedAt: Date };
+  }): Promise<{ count: number }>;
   upsert(args: {
     where: { id: string };
     create: {
@@ -490,17 +504,53 @@ export class LicensesRepository {
           updatedAt: command.now,
         },
       });
-      await tx.license.upsert({
-        where: { id: command.licenseId },
-        create: {
-          id: command.licenseId,
-          installationId: command.installationId,
-          customerId: command.customerId,
-          createdAt: command.now,
-          updatedAt: command.now,
-        },
-        update: { customerId: command.customerId, updatedAt: command.now },
-      });
+      // The license identifier is claimed by a plain INSERT, never an upsert. An
+      // upsert is `INSERT … ON CONFLICT DO UPDATE` when the row already exists:
+      // on a concurrent claim by ANOTHER installation (which the installation
+      // lock does not serialize) it would silently adopt that row and re-bind its
+      // customer, and the version insert would then fail on the composite
+      // foreign key as an unmapped error. The primary key arbitrates the race
+      // instead: a losing insert waits for the winner's commit and fails with a
+      // unique violation, which is the documented binding conflict. Nothing
+      // written here survives, because the throw rolls the transaction back.
+      if (boundLicense === null) {
+        try {
+          await tx.license.create({
+            data: {
+              id: command.licenseId,
+              installationId: command.installationId,
+              customerId: command.customerId,
+              createdAt: command.now,
+              updatedAt: command.now,
+            },
+          });
+        } catch (error) {
+          if (isUniqueViolation(error)) {
+            throw new ImportConflictError({
+              reason: 'license-binding-conflict',
+              overlapping: 0,
+            });
+          }
+          throw error;
+        }
+      } else {
+        // Already bound to THIS installation and customer (checked above under
+        // the lock). The guarded touch keeps the binding asserted in SQL too.
+        const touched = await tx.license.updateMany({
+          where: {
+            id: command.licenseId,
+            installationId: command.installationId,
+            customerId: command.customerId,
+          },
+          data: { updatedAt: command.now },
+        });
+        if (touched.count !== 1) {
+          throw new ImportConflictError({
+            reason: 'license-binding-conflict',
+            overlapping: 0,
+          });
+        }
+      }
       // The installation keeps its commercial-customer binding (L-02), so an
       // operator can still see which customer this deployment belongs to.
       await tx.installation.update({
