@@ -1195,6 +1195,220 @@ describe('future-dated supersession', () => {
       organizationLimit: 3,
       userLimit: 10,
     });
+
+    // The term arm is not bypassable through the text transport either: the
+    // code carries no explicit term instruction the way a signed document does,
+    // so ending the perpetual grant is refused even with every capacity and
+    // entitlement kept.
+    const timeLimited = signedCode(
+      {
+        installationId: INSTALLATION,
+        validFrom: T0,
+        validUntil: new Date('2029-01-01T00:00:00.000Z'),
+        organizationLimit: 3,
+        userLimit: 10,
+        moduleEntitlements: ['accounting', 'documents'],
+      },
+      AUTHORITY.privateKey,
+    ).code;
+    const termRejection = await rejectionOf(
+      harness.service.importDocument(timeLimited),
+    );
+    expect(termRejection.status).toBe(409);
+    expect(termRejection.message).toMatch(/reduce the modules or capacity/);
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.versions[0]).toMatchObject({
+      validUntil: null,
+      supersededAt: null,
+      governsUntil: null,
+    });
+  });
+
+  it('applies an explicit signed supersession that converts a perpetual grant into a time-limited one (OD-LIC-01)', async () => {
+    // The Product Owner's final decision of 2026-10-12 (PDR-12): an explicit,
+    // valid, signed supersession may replace a perpetual grant with a
+    // time-limited one — and only that. The capacity and the entitlements must
+    // not shrink, which this document honours.
+    const perpetual = signedDocument(
+      {
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: null,
+        organizationLimit: 3,
+        userLimit: 10,
+        moduleEntitlements: ['accounting', 'documents'],
+      },
+      AUTHORITY.privateKey,
+    );
+    await harness.service.importDocument(perpetual.file);
+
+    const timeLimited = signedDocument(
+      {
+        installationId: INSTALLATION,
+        validFrom: HANDOVER,
+        validUntil: new Date('2028-01-01T00:00:00.000Z'),
+        organizationLimit: 9,
+        userLimit: 40,
+        moduleEntitlements: ['accounting', 'documents'],
+        supersedesOperationId: perpetual.payload.operationId,
+      },
+      AUTHORITY.privateKey,
+    );
+    const applied = await harness.service.importDocument(timeLimited.file);
+
+    // Applied: the predecessor governs up to the hand-over, the successor from
+    // it — the open end really became a dated end.
+    expect(applied).toMatchObject({ changed: true, outcome: 'APPLIED' });
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(harness.stores.versions[0]).toMatchObject({
+      operationId: perpetual.payload.operationId,
+      validUntil: null,
+      supersededAt: T0,
+      governsUntil: HANDOVER,
+      supersededByVersionId: harness.stores.versions[1]?.versionId,
+    });
+    await expect(harness.licensing.current(T0)).resolves.toMatchObject({
+      active: true,
+      organizationLimit: 3,
+      userLimit: 10,
+    });
+    await expect(harness.licensing.current(HANDOVER)).resolves.toMatchObject({
+      active: true,
+      organizationLimit: 9,
+      userLimit: 40,
+    });
+    // Past the successor's end the license is over — the term change was real,
+    // not a silent no-op.
+    await expect(
+      harness.licensing.current(new Date('2028-06-01T00:00:00.000Z')),
+    ).resolves.toMatchObject({ active: false, inactiveReason: 'expired' });
+
+    // The refusal side OF THE SAME CHANGE: a time-limited successor that also
+    // takes capacity away is refused, so the term exception above is not a
+    // general authorization to reduce the grant.
+    const reducing = signedDocument(
+      {
+        installationId: INSTALLATION,
+        validFrom: HANDOVER,
+        validUntil: new Date('2028-01-01T00:00:00.000Z'),
+        organizationLimit: 2,
+        userLimit: 40,
+        moduleEntitlements: ['accounting', 'documents'],
+        supersedesOperationId: timeLimited.payload.operationId,
+      },
+      AUTHORITY.privateKey,
+    );
+    const rejection = await rejectionOf(
+      harness.service.importDocument(reducing.file),
+    );
+    expect(rejection.status).toBe(409);
+    expect(rejection.message).toMatch(/reduces the modules or capacity/);
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      eventType: 'license.import.rejected',
+      outcome: 'REJECTED',
+      reason: 'reduction-requires-resolution',
+    });
+    await expect(harness.licensing.current(HANDOVER)).resolves.toMatchObject({
+      active: true,
+      organizationLimit: 9,
+      userLimit: 40,
+    });
+  });
+
+  it('never reaches the term exception without a valid signature (OD-LIC-01)', async () => {
+    const perpetual = signedDocument(
+      {
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: null,
+        organizationLimit: 3,
+      },
+      AUTHORITY.privateKey,
+    );
+    await harness.service.importDocument(perpetual.file);
+    const supersedesOperationId = perpetual.payload.operationId;
+
+    // Nobody else can author the change: the same payload signed by a stranger
+    // key fails the signature gate (422) before any conflict or supersession
+    // logic runs, so nothing is retired.
+    const forged = signedDocument(
+      {
+        installationId: INSTALLATION,
+        validFrom: HANDOVER,
+        validUntil: new Date('2028-01-01T00:00:00.000Z'),
+        organizationLimit: 3,
+        supersedesOperationId,
+      },
+      STRANGER.privateKey,
+    );
+    const forgedRejection = await rejectionOf(
+      harness.service.importDocument(forged.file),
+    );
+    expect(forgedRejection.status).toBe(422);
+    expect(forgedRejection.message).toMatch(/signature is not valid/);
+
+    // A document whose signed bytes were altered after signing is refused the
+    // same way (the signature covers the payload verbatim).
+    const genuine = signedDocument(
+      {
+        installationId: INSTALLATION,
+        validFrom: HANDOVER,
+        validUntil: new Date('2028-01-01T00:00:00.000Z'),
+        organizationLimit: 3,
+        supersedesOperationId,
+      },
+      AUTHORITY.privateKey,
+    );
+    const marker = Buffer.from('"organizationLimit":3', 'utf8').toString(
+      'base64url',
+    );
+    expect(genuine.document).toContain(marker);
+    const tampered = genuine.document.replace(
+      marker,
+      Buffer.from('"organizationLimit":9', 'utf8').toString('base64url'),
+    );
+    const tamperedRejection = await rejectionOf(
+      harness.service.importDocument(
+        JSON.stringify({
+          format: 'vardena-license',
+          fileVersion: 1,
+          document: tampered,
+        }),
+      ),
+    );
+    expect(tamperedRejection.status).toBe(422);
+    expect(tamperedRejection.message).toMatch(/signature is not valid/);
+
+    // A document with no signature at all never becomes a document.
+    const withoutSignature = genuine.document.split('.').slice(0, 2).join('.');
+    const missingRejection = await rejectionOf(
+      harness.service.importDocument(
+        JSON.stringify({
+          format: 'vardena-license',
+          fileVersion: 1,
+          document: withoutSignature,
+        }),
+      ),
+    );
+    expect(missingRejection.status).toBe(422);
+
+    // Nothing was written by any of the three attempts: the perpetual version
+    // still governs and no supersession is recorded.
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.versions[0]).toMatchObject({
+      validUntil: null,
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+    expect(
+      harness.stores.auditEvents.some(
+        (event) => event.eventType === 'license.version.superseded',
+      ),
+    ).toBe(false);
+    await expect(harness.licensing.current(T0)).resolves.toMatchObject({
+      active: true,
+      organizationLimit: 3,
+    });
   });
 
   it('still applies an explicit supersession that keeps the retained grant', async () => {

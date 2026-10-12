@@ -184,9 +184,17 @@ protection and migration before any code changes (G-10, AR-29).
   retires a version — an explicit signed supersession included, naming the
   version to retire being a statement about *which* version is replaced and not
   a resolution — and it refuses with `reduction-requires-resolution` until L-04
-  exists (the open-end arm is evaluated where the document does not name the
-  version it retires; seen in `docs/licensing/version-model-and-file-exchange.md`
-  §3.3 and the decision brief §8.7). The legacy `VLIC1` restriction,
+  exists. Decision 5's hand-over is therefore *not* a permission to shorten a
+  term: closing an open end is a reduction where the document does not name the
+  version it retires. **Decision 3's explicit supersession is the one path that
+  may change the term**: by the Product Owner's final decision of 2026-10-12
+  (**OD-LIC-01**, [PDR-12](../../decisions/product/PDR-12-license-term-supersession.md))
+  a perpetual grant (`validUntil = null`) may be replaced by a time-limited one
+  through an explicit, valid, signed supersession — and *only* that: the
+  retired version's `organizationLimit`, `userLimit` and granted entitlements
+  may not be reduced on any path, because a signed document cannot observe how
+  many users or organizations exist and so cannot resolve a PDR-11 §8.6
+  conflict. The legacy `VLIC1` restriction,
   strict import tolerance and as-of recomputation are unchanged. Decisions are
   recorded verbatim, with consequences and the blocked follow-on (OQ-87), in
   `docs/tasks/licensing-oq-80-oq-86-decision-brief.md` §7/§8.

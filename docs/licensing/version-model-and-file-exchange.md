@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Status | ACTIVE design record for the first implementation slice (L-03) |
-| Authority | [ADR-0046](../../adr/0046-signed-license-documents-and-version-lifecycle.md) (decision) · [PDR-11](../../decisions/product/PDR-11-vardena-licensing-product-requirements.md) (product source) |
+| Authority | [ADR-0046](../adr/0046-signed-license-documents-and-version-lifecycle.md) (decision) · [PDR-11](../decisions/product/PDR-11-vardena-licensing-product-requirements.md) (product source) |
 | Date | 2026-10-11 |
 | Scope | Server license import: signed document format, retained versions, effective-version resolution, replay protection, audit, migration, API and frontend boundary |
 | Out of scope (unchanged, gated) | Owner-side licensing system, CRM/billing, client-device licensing, server replacement, full revocation/reactivation, Grace/Read-Only enforcement, installation identity key, clock-rollback enforcement, test/training entitlements |
@@ -211,18 +211,22 @@ import ──► retained (not yet effective | effective | expired)
   or organizations exist, so it may not switch §8.6 off. Increases and
   identical grants are unaffected, and a document that retires nothing has no
   predecessor whose grant could be taken away.
-- The **term** is the one dimension where the paths differ, deliberately and
-  for the moment: closing an open end (a perpetual version handed over to a
-  time-limited one) is refused as a reduction where the document does not name
-  the version it retires — the implicit hand-over and the legacy replacement —
-  while an explicit supersession that names it keeps its documented behaviour.
-  A signed document that states, for a named version, until when the license now
-  runs *is* the explicit, auditable instruction §12.9 asks for, and no capacity
-  or entitlement conflict is involved; the capacity/entitlement arms above are
-  guarded on that path exactly like the others. This distinction is an interim
-  reading, recorded with the decisions in
-  `docs/tasks/licensing-oq-80-oq-86-decision-brief.md` §8.7, and it is what L-04
-  will replace with §8.6's resolution flow.
+- The **term** dimension is decided by the Product Owner (2026-10-12,
+  [PDR-12](../decisions/product/PDR-12-license-term-supersession.md),
+  decision **OD-LIC-01**): an explicit, valid, signed supersession **may**
+  convert a perpetual grant into a time-limited one, and that is the only change
+  it authorizes — `organizationLimit`, `userLimit` and the granted entitlements
+  may not be reduced, on that path or any other (the arms above). Closing an
+  open end is therefore refused as a reduction only where the document does
+  **not** name the version it retires: the implicit hand-over of OQ-80 Option B
+  and the legacy `VLIC1` replacement. A signed document that states, for a
+  *named* version, until when the license now runs is the explicit, auditable
+  instruction §12.9 asks for and resolves no capacity or entitlement conflict,
+  so it is allowed; a signed document cannot observe how many users or
+  organizations exist, which is why naming a version never unlocks a capacity or
+  entitlement reduction. L-04 still owes §8.6's
+  check/explain/preserve/explicit-resolution flow to every path; until it
+  exists, those reductions are refused rather than resolved.
 - A supersession is declared for exactly one version, and the hand-over is the
   candidate's own `validFrom`: overlap is allowed only in so far as it is
   replaced, so the predecessor's effective window ends exactly where the
@@ -617,7 +621,7 @@ migration must refuse with a clear message) plus the live PostgreSQL suite.
 | --- | --- | --- |
 | Document format | unit (`license-document.spec.ts`) | round-trip; canonical form; tampered payload; foreign signer; unknown/absent key hint; rotation (old key still verifies while trusted, new key accepted); malformed envelope; unknown envelope key; unsupported versions |
 | Version resolution | unit (`license-version.spec.ts`) | single covering version; not yet effective; expired; gap; retired versions; the recorded-at / governs-until distinction (before, at and after a hand-over); empty effective windows; ambiguous defensive resolution; effective-version selection across retained history; the disjoint-window invariant over a mixed retained set |
-| Import conflicts | unit (`license-version.spec.ts`) | one decision per import: no-overlap accepted; overlap refused; explicit supersession resolved by operation id; unknown / already-retired / already-stopped-governing target refused; legacy implicit replacement; legacy code refused when it would have to choose or rewrite a supersession; replayed operation and replayed artifact refused; a capacity/entitlement reduction refused on **every** path (implicit precedence, explicit supersession, legacy replacement), with the non-reducing controls accepted |
+| Import conflicts | unit (`license-version.spec.ts`) | one decision per import: no-overlap accepted; overlap refused; explicit supersession resolved by operation id; unknown / already-retired / already-stopped-governing target refused; legacy implicit replacement; legacy code refused when it would have to choose or rewrite a supersession; replayed operation and replayed artifact refused; a capacity/entitlement reduction refused on **every** path (implicit precedence, explicit supersession, legacy replacement), with the non-reducing controls accepted; an explicit signed supersession may end a perpetual grant (PD **OD-LIC-01**) while the implicit and legacy paths refuse it, and a mixed change that grows capacity but removes an entitlement is refused |
 | Import pipeline, supersession timeline | service spec (`license-import.service.spec.ts`, pinned clock via `vi.setSystemTime`, no sleeps) + hermetic e2e | the governing license stays effective while a future-dated successor waits; the exact hand-over instant (half-open); the successor governs after it; the retired predecessor never returns after the successor ends; a failed successor import leaves the current license and its audit trail untouched; a second successor for the same predecessor is refused; an overlapping future-dated document with no supersession is refused |
 | Import pipeline, everything else | service spec + e2e (in-memory repositories) | valid import (file, text, legacy code); wrong installation; malformed payload; expired document; not-active status; duplicate operation; overlap; explicit supersession; explicit supersession that reduces capacity/entitlements refused with nothing written; unknown supersession; legacy replacement/idempotency; legacy replacement that reduces the grant refused; authorization denial (401/403) |
 | Persistence, transactions and concurrency | live PostgreSQL e2e | real transaction commit; a duplicate operation refused inside the transaction ⇒ nothing written; a **late** failure (duplicated entitlement) ⇒ customer, license, installation, version, entitlement and audit all roll back; two concurrent imports with the same window (three rounds) ⇒ exactly one version, one `applied` event, one 409; two concurrent imports of the same document ⇒ applied exactly once (per operation and per artifact); two concurrent successors of one version ⇒ exactly one supersession stamp, the loser refused, the hand-over exact; the disjoint-window invariant and the supersession pair re-asserted in SQL; every `applied` audit event has its version row and vice versa; legacy fixture migration; effective-version read after restart |
@@ -635,5 +639,5 @@ migration must refuse with a clear message) plus the live PostgreSQL suite.
 | Client-device licensing | PDR-11 §7; separate slice, quota effects open (PQ-6 → OQ-83) |
 | Owner-side issuance system and role matrix | PDR-11 §4, U-5 → OQ-75; CRM/billing and OQ-61 out of scope |
 | Clock-rollback enforcement | PDR-11 §12.6 thresholds open (U-6 → OQ-76) |
-| §8.6 capacity-conflict detection and resolution UI | needs the owning modules' public count contracts; separate slice (L-04). Until it exists, a version that reduces the retired version's capacity or entitlements is refused on every path — the interim fail-closed behaviour, not the flow |
+| §8.6 capacity-conflict detection and resolution UI | needs the owning modules' public count contracts; separate slice (L-04). Until it exists, a version that reduces the retired version's capacity or entitlements is refused on every path — the interim fail-closed behaviour, not the flow. The **term** dimension of this section is decided: [PDR-12](../decisions/product/PDR-12-license-term-supersession.md) allows an explicit signed supersession to convert a perpetual grant into a time-limited one under the non-reduction invariants |
 | Audit read API and retention | retention open (U-7 → OQ-77) |

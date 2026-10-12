@@ -631,6 +631,46 @@ describe('import conflict evaluation', () => {
     },
   );
 
+  it('refuses a mixed change that grows capacity but removes an entitlement (OD-LIC-01)', () => {
+    const predecessor = version({
+      ...window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      userLimit: 20,
+      entitlements: [
+        { kind: 'MODULE', code: 'accounting' } as LicenseEntitlement,
+        { kind: 'MODULE', code: 'documents' } as LicenseEntitlement,
+      ],
+    });
+
+    // Every dimension is evaluated on its own: a bigger organization limit and
+    // a bigger user limit do not pay for a module the predecessor had, so the
+    // whole document is refused and nothing is retired — even though the
+    // document explicitly names the version it supersedes.
+    const result = evaluate(
+      {
+        ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
+        organizationLimit: 9,
+        userLimit: 40,
+        entitlements: [
+          { kind: 'MODULE', code: 'accounting' } as LicenseEntitlement,
+        ],
+      },
+      {
+        versions: [predecessor],
+        supersession: {
+          kind: 'explicit',
+          operationId: predecessor.operationId,
+        },
+      },
+    );
+
+    expect(result.conflict).toEqual({
+      reason: 'reduction-requires-resolution',
+      overlapping: 1,
+    });
+    expect(result.supersedes).toBeNull();
+  });
+
   it('refuses a partial reduction even when another limit grows', () => {
     const predecessor = version({
       ...window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
@@ -702,7 +742,7 @@ describe('import conflict evaluation', () => {
     }
   });
 
-  it('refuses to close an open end where the document does not name the version it retires', () => {
+  it('lets an explicit signed supersession change the term, and treats an open end as a reduction where nobody is named (OD-LIC-01)', () => {
     const perpetual = version({
       ...window('2026-01-01T00:00:00.000Z', null),
       organizationLimit: 5,
@@ -735,17 +775,45 @@ describe('import conflict evaluation', () => {
       expect(result.supersedes, path).toBeNull();
     }
 
-    // A signed supersession that names the version it retires is the explicit,
-    // auditable instruction §12.9 requires for a change of term, and no
-    // capacity or entitlement is touched — so it keeps its documented
-    // behaviour. (The capacity/entitlement arms are guarded on this path too;
-    // see the reduction matrix above.)
-    const signed = evaluate(closing, {
-      versions: [perpetual],
-      supersession: { kind: 'explicit', operationId: perpetual.operationId },
+    // A signed supersession that names the version it retires may make exactly
+    // this change — the Product Owner's final decision of 2026-10-12
+    // (OD-LIC-01, PDR-12): the document states, for a NAMED version, until when
+    // the license now runs, which is the explicit, auditable instruction §12.9
+    // asks for, and it touches no capacity or entitlement. It is accepted with
+    // the same grant and with a larger one.
+    for (const [grant, limits] of [
+      ['unchanged limits', { organizationLimit: 5, userLimit: 20 }],
+      ['increased limits', { organizationLimit: 9, userLimit: 40 }],
+    ] as const) {
+      const signed = evaluate(
+        { ...closing, ...limits },
+        {
+          versions: [perpetual],
+          supersession: {
+            kind: 'explicit',
+            operationId: perpetual.operationId,
+          },
+        },
+      );
+
+      expect(signed.conflict, grant).toBeNull();
+      expect(signed.supersedes?.versionId, grant).toBe(perpetual.versionId);
+    }
+
+    // The exception is the term only: on the SAME path a capacity reduction is
+    // still refused, so naming the version does not buy a smaller grant.
+    const reduced = evaluate(
+      { ...closing, organizationLimit: 4, userLimit: 20 },
+      {
+        versions: [perpetual],
+        supersession: { kind: 'explicit', operationId: perpetual.operationId },
+      },
+    );
+    expect(reduced.conflict).toEqual({
+      reason: 'reduction-requires-resolution',
+      overlapping: 1,
     });
-    expect(signed.conflict).toBeNull();
-    expect(signed.supersedes?.versionId).toBe(perpetual.versionId);
+    expect(reduced.supersedes).toBeNull();
 
     // Keeping the open end is not a reduction on any path.
     for (const [path, overrides] of precedencePaths(perpetual)) {
@@ -952,6 +1020,47 @@ describe('import conflict evaluation', () => {
 
     expect(result.conflict).toBeNull();
     expect(result.supersedes?.versionId).toBe(existing.versionId);
+  });
+
+  it('gives the legacy VLIC1 transport no way around the guard: it may not end a perpetual grant either', () => {
+    const perpetual = version({
+      ...window('2026-01-01T00:00:00.000Z', null),
+      organizationLimit: 5,
+      userLimit: 20,
+    });
+
+    // A text code names no version and states no explicit term instruction the
+    // way a signed document does, so the open end stays protected here exactly
+    // as it is for the implicit hand-over (OD-LIC-01: the exception is the
+    // explicit signed path only). Its capacity is unchanged, so the refusal can
+    // only be the term.
+    const result = evaluate(
+      {
+        ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
+        organizationLimit: 5,
+        userLimit: 20,
+      },
+      { versions: [perpetual], supersession: { kind: 'implicit' } },
+    );
+
+    expect(result.conflict).toEqual({
+      reason: 'reduction-requires-resolution',
+      overlapping: 1,
+    });
+    expect(result.supersedes).toBeNull();
+
+    // Keeping the open end is accepted, so the refusal above is the term and
+    // not the transport.
+    const kept = evaluate(
+      {
+        ...window('2026-07-01T00:00:00.000Z', null),
+        organizationLimit: 5,
+        userLimit: 20,
+      },
+      { versions: [perpetual], supersession: { kind: 'implicit' } },
+    );
+    expect(kept.conflict).toBeNull();
+    expect(kept.supersedes?.versionId).toBe(perpetual.versionId);
   });
 
   it('refuses a legacy code that would have to choose between versions', () => {

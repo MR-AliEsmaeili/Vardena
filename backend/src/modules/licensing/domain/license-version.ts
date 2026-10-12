@@ -402,12 +402,14 @@ export function reducesCapacityOrEntitlements(
  *
  * Evaluated only where the retiring instruction does **not** name the version:
  * the implicit hand-over of OQ-80 Option B and the legacy `VLIC1` replacement.
- * A signed supersession that names the version it retires *is* the explicit,
- * auditable instruction §12.9 asks for — the operator states, in a signed and
- * audited document, until when the license now runs — and no amount of signing
- * can resolve a capacity conflict, which is why the two arms differ. The
- * distinction is recorded in `docs/licensing/version-model-and-file-exchange.md`
- * (§3.3) and in the decision brief §8.7 as an interim interpretation.
+ * This is the Product Owner's final decision of 2026-10-12 (OD-LIC-01,
+ * `docs/decisions/product/PDR-12-license-term-supersession.md`): a signed
+ * supersession that names the version it retires may change the term — the
+ * operator states, in a signed and audited document, until when the license now
+ * runs, which is the explicit instruction §12.9 asks for — while naming a
+ * version can never resolve a capacity conflict, because a document cannot
+ * observe how many users or organizations exist. That is why the two arms
+ * differ; see `docs/licensing/version-model-and-file-exchange.md` §3.3.
  */
 export function closesOpenEnd(
   predecessor: Pick<RetainedLicenseVersion, 'validUntil'>,
@@ -711,10 +713,13 @@ export type ImportConflictEvaluation =
  *    entitlement conflict, so it may not switch §8.6 off. Closing an open end
  *    (perpetual → time-limited) is the other arm of the same guard, and is
  *    evaluated only where the document does not name the version it retires:
- *    an implicit hand-over or a legacy replacement. Increases and identical
- *    grants are unaffected, and so is a document that retires nothing
- *    (`supersedes` null): with no predecessor retired there is no grant to
- *    take away;
+ *    an implicit hand-over or a legacy replacement. An explicit signed
+ *    supersession MAY make that term change — the Product Owner's final
+ *    decision of 2026-10-12 (OD-LIC-01, PDR-12) — and only that change: every
+ *    capacity/entitlement arm above still runs on that path. Increases and
+ *    identical grants are unaffected, and so is a document that retires
+ *    nothing (`supersedes` null): with no predecessor retired there is no
+ *    grant to take away;
  * 7. a **renewal** may not leave a gap (OQ-80 **G2**, 2026-10-12): when the
  *    candidate carries the identity of a retained license, its `validFrom` may
  *    not be later than that license's retained coverage end

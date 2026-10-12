@@ -585,6 +585,80 @@ describe('License document import (e2e)', () => {
     });
   });
 
+  it('applies an explicit signed supersession that ends a perpetual grant (OD-LIC-01)', async () => {
+    const installationId = (await state()).installationId as string;
+    // A perpetual version is never handed over by precedence (see the OQ-80
+    // Option B case) — only a document that NAMES it may change its term, and
+    // that is the Owner's decision of 2026-10-12 (PDR-12).
+    const perpetual = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: null,
+        organizationLimit: 5,
+        userLimit: 20,
+      },
+      authority.privateKey,
+    );
+    await importDocument(perpetual.file).expect(200);
+
+    // The same term change with a capacity reduction stays refused — attempted
+    // first, while the perpetual version is still eligible to be named.
+    const reducing = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2033-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-01-01T00:00:00.000Z'),
+        organizationLimit: 4,
+        userLimit: 20,
+        supersedesOperationId: perpetual.payload.operationId,
+      },
+      authority.privateKey,
+    );
+    const refused = await importDocument(reducing.file).expect(409);
+    expect(refused.body.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+    });
+    expect(licensing.versions).toHaveLength(1);
+    expect(licensing.versions[0]).toMatchObject({ supersededAt: null });
+
+    const timeLimited = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2033-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-01-01T00:00:00.000Z'),
+        organizationLimit: 5,
+        userLimit: 20,
+        supersedesOperationId: perpetual.payload.operationId,
+      },
+      authority.privateKey,
+    );
+    const applied = await importDocument(timeLimited.file).expect(200);
+
+    expect(applied.body).toMatchObject({ outcome: 'APPLIED', active: true });
+    expect(licensing.versions).toHaveLength(2);
+    // The perpetual version governs up to the hand-over and no further: its
+    // recorded window ends at the named successor's start.
+    expect(licensing.versions[0]).toMatchObject({
+      validUntil: null,
+      governsUntil: new Date('2033-01-01T00:00:00.000Z'),
+      supersededAt: expect.any(Date),
+    });
+    expect(applied.body.scheduledVersion).toMatchObject({
+      validFrom: '2033-01-01T00:00:00.000Z',
+      validUntil: '2034-01-01T00:00:00.000Z',
+      effective: false,
+    });
+
+    // A blocked reduction wrote nothing: the refused document left no version
+    // behind, so the two retained rows are the perpetual and its successor.
+    expect(
+      licensing.versions.some(
+        (version) => version.operationId === reducing.payload.operationId,
+      ),
+    ).toBe(false);
+  });
+
   it('rejects a document issued for another installation or signed by a stranger', async () => {
     const installationId = (await state()).installationId as string;
 
