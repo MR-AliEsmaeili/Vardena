@@ -179,8 +179,14 @@ protection and migration before any code changes (G-10, AR-29).
   own `validFrom` when it overlaps exactly one still-governing version (OQ-80
   **Option B**), stamped and audited like an explicit retirement; the PDR-11
   §8.6 check/explain/preserve/explicit-resolution flow is still required for a
-  reducing change and is not bypassed by the precedence rule
-  (`reduction-requires-resolution` until L-04). The legacy `VLIC1` restriction,
+  reducing change and is not bypassed by the precedence rule: since the review
+  fix on PR #141 the capacity/entitlement guard runs on **every** path that
+  retires a version — an explicit signed supersession included, naming the
+  version to retire being a statement about *which* version is replaced and not
+  a resolution — and it refuses with `reduction-requires-resolution` until L-04
+  exists (the open-end arm is evaluated where the document does not name the
+  version it retires; seen in `docs/licensing/version-model-and-file-exchange.md`
+  §3.3 and the decision brief §8.7). The legacy `VLIC1` restriction,
   strict import tolerance and as-of recomputation are unchanged. Decisions are
   recorded verbatim, with consequences and the blocked follow-on (OQ-87), in
   `docs/tasks/licensing-oq-80-oq-86-decision-brief.md` §7/§8.

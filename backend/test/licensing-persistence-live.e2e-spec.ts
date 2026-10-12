@@ -952,6 +952,123 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).toBeGreaterThanOrEqual(1);
     }, 60_000);
 
+    it('refuses an explicit supersession that reduces capacity, in the transaction too (PDR-11 §8.6)', async () => {
+      const identity = await app.get(InstallationIdentityService).current();
+      const licenseId = '01K7REDUCELICENSE00000000001';
+      const governing = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId,
+          validFrom: new Date('2090-01-01T00:00:00.000Z'),
+          validUntil: new Date('2091-01-01T00:00:00.000Z'),
+          organizationLimit: 5,
+          userLimit: 20,
+        },
+        authority.privateKey,
+      );
+      await expect(
+        app.get(LicenseImportService).importDocument(governing.file),
+      ).resolves.toMatchObject({ changed: true, outcome: 'APPLIED' });
+
+      // The document names the version it retires and takes a limit away. The
+      // signed name proves WHICH version is replaced; it cannot resolve a
+      // capacity conflict, so the import is refused — by the SAME evaluation
+      // the transaction re-runs under the installation lock.
+      const reducing = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId,
+          validFrom: new Date('2090-06-01T00:00:00.000Z'),
+          validUntil: new Date('2091-06-01T00:00:00.000Z'),
+          organizationLimit: 4,
+          userLimit: 20,
+          supersedesOperationId: governing.payload.operationId,
+        },
+        authority.privateKey,
+      );
+
+      const refused = await importOutcome(reducing);
+      expect(refused).toMatchObject({
+        applied: false,
+        status: 409,
+        reason: 'reduction-requires-resolution',
+      });
+
+      // Nothing was written and nothing was retired: one retained version for
+      // this license, no stamp on it, no version for the refused operation, and
+      // its limits are exactly what the applied document carried (no clamping).
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "license_id" = $1`,
+          licenseId,
+        ),
+      ).toBe(1);
+      expect(
+        await query<{
+          organization_limit: number;
+          user_limit: number;
+          superseded_at: string | null;
+          governs_until: string | null;
+          superseded_by_version_id: string | null;
+        }>(
+          `SELECT "organization_limit", "user_limit", "superseded_at",
+                  "governs_until", "superseded_by_version_id"
+             FROM "licensing"."license_versions" WHERE "license_id" = $1`,
+          licenseId,
+        ),
+      ).toEqual([
+        {
+          organization_limit: 5,
+          user_limit: 20,
+          superseded_at: null,
+          governs_until: null,
+          superseded_by_version_id: null,
+        },
+      ]);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          reducing.payload.operationId,
+        ),
+      ).toBe(0);
+      expect(
+        await query<{ reason: string }>(
+          `SELECT "reason" FROM "licensing"."license_audit_events"
+            WHERE "event_type" = 'license.import.rejected'
+              AND "operation_id" = $1`,
+          reducing.payload.operationId,
+        ),
+      ).toEqual([{ reason: 'reduction-requires-resolution' }]);
+
+      // The guard is a reduction check, not a ban on explicit supersession: a
+      // successor that keeps or grows the grant is still applied.
+      const keeping = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId,
+          validFrom: new Date('2090-06-01T00:00:00.000Z'),
+          validUntil: new Date('2091-06-01T00:00:00.000Z'),
+          organizationLimit: 9,
+          userLimit: 20,
+          supersedesOperationId: governing.payload.operationId,
+        },
+        authority.privateKey,
+      );
+      await expect(
+        app.get(LicenseImportService).importDocument(keeping.file),
+      ).resolves.toMatchObject({ changed: true, outcome: 'APPLIED' });
+      const retired = await query<{ governs_until: Date | null }>(
+        `SELECT "governs_until" FROM "licensing"."license_versions"
+          WHERE "operation_id" = $1`,
+        governing.payload.operationId,
+      );
+      expect(retired.map((row) => row.governs_until?.toISOString())).toEqual([
+        '2090-06-01T00:00:00.000Z',
+      ]);
+    }, 60_000);
+
     it('refuses a license identifier that another installation owns, as a conflict and not a database error', async () => {
       const identity = await app.get(InstallationIdentityService).current();
       const client = await prisma.getClient<{

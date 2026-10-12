@@ -1161,7 +1161,7 @@ function documentConflictMessage(conflict: ImportConflict): string {
     case 'renewal-gap':
       return 'This renewal would start after the license it renews has ended, leaving a gap in coverage. Issue the renewal to start at or before the end of the version it follows.';
     case 'reduction-requires-resolution':
-      return 'This version reduces the modules or capacity of the version it would take over, and applying a reduction requires an explicit resolution that this release does not implement yet. Nothing was changed; issue the version with the same or greater entitlements and limits, or retire the current version with an explicit supersession.';
+      return 'This version reduces the modules or capacity of the version it retires or takes over, and applying a reduction requires an explicit resolution that this release does not implement yet. Naming the version to retire does not resolve it. Nothing was changed; issue the version with the same or greater entitlements and limits.';
   }
 }
 
@@ -1240,7 +1240,7 @@ function conflictLostRaceMessage(
     return 'This renewal would start after the license it renews has ended, leaving a gap in coverage. Issue the renewal to start at or before the end of the version it follows.';
   }
   if (conflict.reason === 'reduction-requires-resolution') {
-    return 'This version reduces the modules or capacity of the version it would take over, and applying a reduction requires an explicit resolution that this release does not implement yet. Nothing was changed; issue the version with the same or greater entitlements and limits, or retire the current version with an explicit supersession.';
+    return 'This version reduces the modules or capacity of the version it retires or takes over, and applying a reduction requires an explicit resolution that this release does not implement yet. Naming the version to retire does not resolve it. Nothing was changed; issue the version with the same or greater entitlements and limits.';
   }
   if (conflict.reason === 'backdated-supersession') {
     // Not a race: the temporal rule is evaluated against the locked state, so

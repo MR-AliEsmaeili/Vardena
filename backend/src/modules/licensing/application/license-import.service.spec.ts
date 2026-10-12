@@ -1064,6 +1064,185 @@ describe('future-dated supersession', () => {
     });
   });
 
+  it.each([
+    ['organizationLimit', { organizationLimit: 2 }],
+    ['userLimit', { userLimit: 9 }],
+    ['a module entitlement', { moduleEntitlements: ['accounting'] }],
+  ] as const)(
+    'refuses an explicit supersession that reduces %s (PDR-11 §8.6)',
+    async (_what, shrink) => {
+      const predecessor = signedDocument(
+        {
+          validFrom: new Date('2026-01-01T00:00:00.000Z'),
+          validUntil: new Date('2028-01-01T00:00:00.000Z'),
+          organizationLimit: 3,
+          userLimit: 10,
+          moduleEntitlements: ['accounting', 'documents'],
+        },
+        AUTHORITY.privateKey,
+      );
+      await harness.service.importDocument(predecessor.file);
+      const stateBefore = await harness.licensing.current(T0);
+      const historyBefore = await harness.provider.versionHistory(T0);
+      const auditBefore = harness.stores.auditEvents.length;
+
+      const reducing = signedDocument(
+        {
+          validFrom: HANDOVER,
+          validUntil: new Date('2029-01-01T00:00:00.000Z'),
+          organizationLimit: 3,
+          userLimit: 10,
+          moduleEntitlements: ['accounting', 'documents'],
+          // The document names the version it retires. That is a statement
+          // about WHICH version it replaces, not a resolution of the capacity
+          // conflict it creates, so it may not switch §8.6 off.
+          supersedesOperationId: predecessor.payload.operationId,
+          ...shrink,
+        },
+        AUTHORITY.privateKey,
+      );
+      const rejection = await rejectionOf(
+        harness.service.importDocument(reducing.file),
+      );
+
+      expect(rejection.status).toBe(409);
+      expect(rejection.code).toBe('Conflict');
+      expect(rejection.message).toMatch(/reduces the modules or capacity/);
+
+      // Nothing was written and nothing was retired: the retained version, the
+      // effective grant and the retained history are exactly what they were,
+      // and the refused operation id is not retained.
+      expect(harness.stores.versions).toHaveLength(1);
+      expect(harness.stores.versions[0]).toMatchObject({
+        operationId: predecessor.payload.operationId,
+        organizationLimit: 3,
+        userLimit: 10,
+        supersededAt: null,
+        governsUntil: null,
+        supersededByVersionId: null,
+      });
+      expect(
+        harness.stores.versions.some(
+          (version) => version.operationId === reducing.payload.operationId,
+        ),
+      ).toBe(false);
+      await expect(harness.licensing.current(T0)).resolves.toEqual(stateBefore);
+      await expect(harness.provider.versionHistory(T0)).resolves.toEqual(
+        historyBefore,
+      );
+
+      // The refusal is audited, and it is the only thing the attempt wrote.
+      const auditAfter = harness.stores.auditEvents.slice(auditBefore);
+      expect(auditAfter).toHaveLength(1);
+      expect(auditAfter[0]).toMatchObject({
+        eventType: 'license.import.rejected',
+        outcome: 'REJECTED',
+        reason: 'reduction-requires-resolution',
+        operationId: reducing.payload.operationId,
+      });
+    },
+  );
+
+  it('refuses a legacy replacement that reduces the retained grant (PDR-11 §8.6)', async () => {
+    // The legacy transport is the third path that retires a version: its
+    // documented L-02 lifecycle (replace the version governing now) is
+    // preserved, and the §8.6 guard applies to it exactly as it does to the
+    // signed paths. A code carries no explicit start of its own, so the
+    // replacement that reaches the guard is the hand-over at the import
+    // instant.
+    const predecessor = signedCode(
+      {
+        installationId: INSTALLATION,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        organizationLimit: 3,
+        userLimit: 10,
+        moduleEntitlements: ['accounting', 'documents'],
+      },
+      AUTHORITY.privateKey,
+    ).code;
+    await harness.service.importDocument(predecessor);
+
+    const replacing = signedCode(
+      {
+        installationId: INSTALLATION,
+        validFrom: T0,
+        organizationLimit: 2,
+        userLimit: 10,
+        moduleEntitlements: ['accounting', 'documents'],
+      },
+      AUTHORITY.privateKey,
+    ).code;
+    const rejection = await rejectionOf(
+      harness.service.importDocument(replacing),
+    );
+
+    expect(rejection.status).toBe(409);
+    // The legacy wording of the same refusal ("would reduce").
+    expect(rejection.message).toMatch(/reduce the modules or capacity/);
+    expect(harness.stores.versions).toHaveLength(1);
+    expect(harness.stores.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+    expect(harness.stores.auditEvents.at(-1)).toMatchObject({
+      eventType: 'license.import.rejected',
+      outcome: 'REJECTED',
+      reason: 'reduction-requires-resolution',
+    });
+    await expect(harness.licensing.current(T0)).resolves.toMatchObject({
+      active: true,
+      organizationLimit: 3,
+      userLimit: 10,
+    });
+  });
+
+  it('still applies an explicit supersession that keeps the retained grant', async () => {
+    // The guard is a reduction check, not a ban on explicit supersession: a
+    // successor that keeps or grows what it takes over is applied exactly as
+    // before, with the documented hand-over and audit trail.
+    const predecessor = await importPredecessor();
+    const successor = signedDocument(
+      {
+        installationId: INSTALLATION,
+        validFrom: HANDOVER,
+        validUntil: new Date('2029-01-01T00:00:00.000Z'),
+        organizationLimit: 9,
+        supersedesOperationId: predecessor.operationId,
+      },
+      AUTHORITY.privateKey,
+    );
+
+    const result = await harness.service.importDocument(successor.file);
+
+    expect(result).toMatchObject({ changed: true, outcome: 'APPLIED' });
+    expect(harness.stores.versions).toHaveLength(2);
+    expect(harness.stores.versions[0]).toMatchObject({
+      versionId: predecessor.versionId,
+      supersededAt: T0,
+      governsUntil: HANDOVER,
+      supersededByVersionId: harness.stores.versions[1]?.versionId,
+    });
+    await expect(harness.licensing.current(T0)).resolves.toMatchObject({
+      active: true,
+      organizationLimit: 3,
+    });
+    await expect(harness.licensing.current(HANDOVER)).resolves.toMatchObject({
+      active: true,
+      organizationLimit: 9,
+    });
+    // The explicit hand-over keeps the documented classifier: the supersession
+    // was signed, not implicit precedence.
+    const supersededEvent = harness.stores.auditEvents.find(
+      (event) => event.eventType === 'license.version.superseded',
+    );
+    expect(supersededEvent).toMatchObject({
+      reason: null,
+      operationId: predecessor.operationId,
+      versionId: predecessor.versionId,
+    });
+  });
+
   it('refuses a second successor for a version a supersession already retired', async () => {
     const predecessor = await importPredecessor();
     const first = signedDocument(

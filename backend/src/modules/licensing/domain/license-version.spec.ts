@@ -568,62 +568,199 @@ describe('import conflict evaluation', () => {
     expect(result.supersedes).toBeNull();
   });
 
-  it('refuses an implicit hand-over that would reduce the retained grant', () => {
-    const existing = version({
+  /**
+   * The three ways one import can retire a retained version: the implicit
+   * hand-over of OQ-80 Option B (a signed document that starts later), an
+   * explicit signed `supersedesOperationId`, and the legacy `VLIC1`
+   * replacement. The PDR-11 §8.6 capacity/entitlement guard must be the same
+   * for all three — naming the version to retire proves WHICH version the
+   * document replaces, and proves nothing about the capacity or entitlement
+   * conflict the reduction creates.
+   */
+  function precedencePaths(
+    predecessor: RetainedLicenseVersion,
+  ): Array<[string, Partial<Parameters<typeof evaluateImportConflicts>[0]>]> {
+    return [
+      ['implicit precedence', { supersession: { kind: 'none' } }],
+      [
+        'explicit supersession',
+        {
+          supersession: {
+            kind: 'explicit',
+            operationId: predecessor.operationId,
+          },
+        },
+      ],
+      ['legacy VLIC1 replacement', { supersession: { kind: 'implicit' } }],
+    ];
+  }
+
+  it.each([
+    ['organizationLimit', { organizationLimit: 4 }],
+    ['userLimit', { userLimit: 19 }],
+    ['an entitlement', { entitlements: [] as LicenseEntitlement[] }],
+  ] as const)(
+    'refuses a reduction in %s on every path that retires a version (PDR-11 §8.6)',
+    (_what, shrink) => {
+      const predecessor = version({
+        ...window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+        organizationLimit: 5,
+        userLimit: 20,
+      });
+      const candidate = {
+        ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
+        organizationLimit: 5,
+        userLimit: 20,
+        ...shrink,
+      };
+
+      for (const [path, overrides] of precedencePaths(predecessor)) {
+        const result = evaluate(candidate, {
+          versions: [predecessor],
+          ...overrides,
+        });
+
+        expect(result.conflict, path).toEqual({
+          reason: 'reduction-requires-resolution',
+          overlapping: 1,
+        });
+        // Nothing is retired: a refused import may not have taken the
+        // predecessor over on any path.
+        expect(result.supersedes, path).toBeNull();
+      }
+    },
+  );
+
+  it('refuses a partial reduction even when another limit grows', () => {
+    const predecessor = version({
       ...window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
       organizationLimit: 5,
       userLimit: 20,
     });
 
-    const sameGrant = evaluate(
-      window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
-      { versions: [existing] },
+    // A larger organization limit does not pay for a smaller user limit: the
+    // reduction is evaluated per dimension, not on a net total.
+    const result = evaluate(
+      {
+        ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
+        organizationLimit: 6,
+        userLimit: 19,
+      },
+      {
+        versions: [predecessor],
+        supersession: {
+          kind: 'explicit',
+          operationId: predecessor.operationId,
+        },
+      },
     );
-    expect(sameGrant.conflict).toBeNull();
 
-    // Each of these hands the predecessor over while taking something away:
-    // the precedence rule may not apply a reduction silently (PDR-11 §8.6), so
-    // it is refused until L-04 implements the resolution flow.
-    const shrinking = [
-      { organizationLimit: 4 },
-      { userLimit: 19 },
-      { entitlements: [] as LicenseEntitlement[] },
-    ] as const;
-    for (const shrink of shrinking) {
-      const result = evaluate(
+    expect(result.conflict).toEqual({
+      reason: 'reduction-requires-resolution',
+      overlapping: 1,
+    });
+    expect(result.supersedes).toBeNull();
+  });
+
+  it('still applies a hand-over that keeps or grows the retained grant, on every path', () => {
+    const predecessor = version({
+      ...window('2026-01-01T00:00:00.000Z', '2027-01-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      userLimit: 20,
+    });
+    const keeping: Array<[string, Partial<RetainedLicenseVersion>]> = [
+      ['identical limits', { organizationLimit: 5, userLimit: 20 }],
+      ['a larger organization limit', { organizationLimit: 9, userLimit: 20 }],
+      [
+        'an additional entitlement',
         {
-          ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
           organizationLimit: 5,
           userLimit: 20,
-          ...shrink,
+          entitlements: [
+            { kind: 'MODULE', code: 'accounting' } as LicenseEntitlement,
+            { kind: 'MODULE', code: 'documents' } as LicenseEntitlement,
+          ],
         },
-        { versions: [existing] },
-      );
-      expect(result.conflict?.reason).toBe('reduction-requires-resolution');
-      expect(result.supersedes).toBeNull();
+      ],
+    ];
+
+    for (const [grant, limits] of keeping) {
+      for (const [path, overrides] of precedencePaths(predecessor)) {
+        const result = evaluate(
+          {
+            ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
+            ...limits,
+          },
+          { versions: [predecessor], ...overrides },
+        );
+
+        expect(result.conflict, `${path}: ${grant}`).toBeNull();
+        expect(result.supersedes?.versionId, `${path}: ${grant}`).toBe(
+          predecessor.versionId,
+        );
+      }
     }
   });
 
-  it('refuses to close an open end implicitly, but allows it explicitly', () => {
-    const perpetual = version(window('2026-01-01T00:00:00.000Z', null));
-    const closing = window(
-      '2026-07-01T00:00:00.000Z',
-      '2027-07-01T00:00:00.000Z',
-    );
+  it('refuses to close an open end where the document does not name the version it retires', () => {
+    const perpetual = version({
+      ...window('2026-01-01T00:00:00.000Z', null),
+      organizationLimit: 5,
+      userLimit: 20,
+    });
+    const closing = {
+      ...window('2026-07-01T00:00:00.000Z', '2027-07-01T00:00:00.000Z'),
+      organizationLimit: 5,
+      userLimit: 20,
+    };
 
-    // Implicit: taking the open end away is a reduction.
-    expect(evaluate(closing, { versions: [perpetual] }).conflict?.reason).toBe(
-      'reduction-requires-resolution',
-    );
+    // The retirement itself is not named by the document here, so ending an
+    // open end is a reduction of the retained grant and fails closed.
+    for (const [path, overrides] of [
+      ['implicit precedence', { supersession: { kind: 'none' as const } }],
+      [
+        'legacy VLIC1 replacement',
+        { supersession: { kind: 'implicit' as const } },
+      ],
+    ] as const) {
+      const result = evaluate(closing, {
+        versions: [perpetual],
+        ...overrides,
+      });
 
-    // Explicit: the Operator named the version it retires, so the documented
-    // supersession semantics apply unchanged (L-04 owes §8.6 to this path too).
-    const explicit = evaluate(closing, {
+      expect(result.conflict, path).toEqual({
+        reason: 'reduction-requires-resolution',
+        overlapping: 1,
+      });
+      expect(result.supersedes, path).toBeNull();
+    }
+
+    // A signed supersession that names the version it retires is the explicit,
+    // auditable instruction §12.9 requires for a change of term, and no
+    // capacity or entitlement is touched — so it keeps its documented
+    // behaviour. (The capacity/entitlement arms are guarded on this path too;
+    // see the reduction matrix above.)
+    const signed = evaluate(closing, {
       versions: [perpetual],
       supersession: { kind: 'explicit', operationId: perpetual.operationId },
     });
-    expect(explicit.conflict).toBeNull();
-    expect(explicit.supersedes?.versionId).toBe(perpetual.versionId);
+    expect(signed.conflict).toBeNull();
+    expect(signed.supersedes?.versionId).toBe(perpetual.versionId);
+
+    // Keeping the open end is not a reduction on any path.
+    for (const [path, overrides] of precedencePaths(perpetual)) {
+      const result = evaluate(
+        {
+          ...window('2026-07-01T00:00:00.000Z', null),
+          organizationLimit: 5,
+          userLimit: 20,
+        },
+        { versions: [perpetual], ...overrides },
+      );
+
+      expect(result.conflict, path).toBeNull();
+      expect(result.supersedes?.versionId, path).toBe(perpetual.versionId);
+    }
   });
 
   it('refuses a renewal that leaves a gap, and allows adjacency (OQ-80 G2)', () => {

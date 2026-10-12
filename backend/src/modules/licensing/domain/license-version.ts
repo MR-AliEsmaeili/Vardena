@@ -55,7 +55,10 @@ import type {
  * pairwise disjoint after every import, retired history included. A later
  * starting version takes over at its own `validFrom` (nothing is stacked and no
  * previous version is deleted), a renewal may not leave a gap, and a reducing
- * implicit hand-over is refused until PDR-11 §8.6's conflict flow exists (L-04).
+ * hand-over is refused on **every** path that retires a version — an explicit
+ * signed `supersedesOperationId` included — until PDR-11 §8.6's
+ * check/explain/preserve/explicit-resolution flow exists (L-04). Naming the
+ * version to retire is not that resolution.
  * `evaluateImportConflicts` is the single authority for that guarantee and is
  * evaluated twice — once as a read-side pre-check (fast, informative rejection)
  * and once inside the import transaction, under a per-installation database
@@ -344,42 +347,39 @@ export function retainedCoverageEnd(
 }
 
 /**
- * PDR-11 §8.6 guard for an implicit hand-over (OQ-80 Option B): does applying
- * the candidate take something away from the version it implicitly retires?
+ * The §8.6 half that needs the capacity-conflict flow: does the candidate take
+ * capacity or entitlements away from the version it retires?
  *
- * §8.6 requires a reducing or changed version to be checked, explained,
- * preserved and explicitly resolved **before** it is applied, and PDR-11 §8.2
- * requires the same for a removed module entitlement. That flow is the L-04
- * slice and is not implemented yet, so the version-precedence rule this module
- * implements may not be the mechanism that silently applies a reduction: this
- * predicate is what makes the implicit hand-over fail closed while the
- * content of the retained grant shrinks.
+ * PDR-11 §8.6 requires a version that **reduces entitlements or capacity** to
+ * be checked against the resulting state, explained, preserved and explicitly
+ * resolved **before** it is applied; §8.2 (module entitlement removed) and
+ * §8.4 (user capacity reduced) are the concrete Musts, and both are conflicts
+ * with *current usage* — a document cannot know how many users or
+ * organizations exist, so it cannot resolve them by being signed.
  *
- * A grant is `retained` — not reduced — when all three hold:
- * - it does not close an open end (a perpetual predecessor is never handed
- *   over to a time-limited successor implicitly);
- * - neither capacity limit shrinks (`null` = unlimited, so a number is a
- *   reduction of `null`);
- * - every entitlement of the predecessor is present on the candidate.
+ * That is why this predicate applies to **every** path that retires a version:
+ * an explicit `supersedesOperationId`, the implicit hand-over of OQ-80 Option
+ * B, and the legacy `VLIC1` replacement. Naming the version to retire proves
+ * *which* version the document replaces; it is not the resolution §8.6
+ * requires, and it may not switch §8.6 off. Until L-04 implements the
+ * check/explain/preserve/explicit-resolution flow, a reduction is refused
+ * (`reduction-requires-resolution`, 409, nothing written) — when L-04 lands,
+ * this predicate becomes the conflict detector of that flow instead.
  *
- * Only the *implicit* hand-over is guarded. An explicit, signed supersession
- * (`supersedesOperationId`) is the Owner's own instruction for exactly that
- * version and keeps its documented behaviour; L-04 owes §8.6's conflict flow
- * to that path too, and this predicate is what will be replaced by it.
+ * `null` is unlimited, so replacing an unlimited limit with a number is a
+ * reduction too. An entitlement the predecessor granted and the candidate does
+ * not is a reduction; a different or additional set is not.
  */
-export function reducesRetainedGrant(
+export function reducesCapacityOrEntitlements(
   predecessor: Pick<
     RetainedLicenseVersion,
-    'validUntil' | 'organizationLimit' | 'userLimit' | 'entitlements'
+    'organizationLimit' | 'userLimit' | 'entitlements'
   >,
   candidate: Pick<
     RetainedLicenseVersion,
-    'validUntil' | 'organizationLimit' | 'userLimit' | 'entitlements'
+    'organizationLimit' | 'userLimit' | 'entitlements'
   >,
 ): boolean {
-  if (predecessor.validUntil === null && candidate.validUntil !== null) {
-    return true;
-  }
   if (
     limitReduced(predecessor.organizationLimit, candidate.organizationLimit)
   ) {
@@ -393,6 +393,48 @@ export function reducesRetainedGrant(
   );
   return predecessor.entitlements.some(
     (entry) => !granted.has(`${entry.kind}:${entry.code}`),
+  );
+}
+
+/**
+ * The second half: does the candidate end coverage the predecessor left open
+ * (a perpetual version handed over to a time-limited one)?
+ *
+ * Evaluated only where the retiring instruction does **not** name the version:
+ * the implicit hand-over of OQ-80 Option B and the legacy `VLIC1` replacement.
+ * A signed supersession that names the version it retires *is* the explicit,
+ * auditable instruction §12.9 asks for — the operator states, in a signed and
+ * audited document, until when the license now runs — and no amount of signing
+ * can resolve a capacity conflict, which is why the two arms differ. The
+ * distinction is recorded in `docs/licensing/version-model-and-file-exchange.md`
+ * (§3.3) and in the decision brief §8.7 as an interim interpretation.
+ */
+export function closesOpenEnd(
+  predecessor: Pick<RetainedLicenseVersion, 'validUntil'>,
+  candidate: Pick<RetainedLicenseVersion, 'validUntil'>,
+): boolean {
+  return predecessor.validUntil === null && candidate.validUntil !== null;
+}
+
+/**
+ * The full PDR-11 §8.6 guard used where the retirement is not named by a signed
+ * document: capacity/entitlements shrinking (see
+ * {@link reducesCapacityOrEntitlements}) **or** an open end being closed (see
+ * {@link closesOpenEnd}).
+ */
+export function reducesRetainedGrant(
+  predecessor: Pick<
+    RetainedLicenseVersion,
+    'validUntil' | 'organizationLimit' | 'userLimit' | 'entitlements'
+  >,
+  candidate: Pick<
+    RetainedLicenseVersion,
+    'validUntil' | 'organizationLimit' | 'userLimit' | 'entitlements'
+  >,
+): boolean {
+  return (
+    closesOpenEnd(predecessor, candidate) ||
+    reducesCapacityOrEntitlements(predecessor, candidate)
   );
 }
 
@@ -512,7 +554,9 @@ export function resolveEffectiveVersion(
  *
  * `installation-customer-mismatch`, `transfer-not-applicable`, `renewal-gap`
  * and `reduction-requires-resolution` were introduced by the Owner decisions of
- * 2026-10-12 (Q4 customer transfer, OQ-80 G2, OQ-80 Option B with PDR-11 §8.6).
+ * 2026-10-12 (Q4 customer transfer, OQ-80 G2, OQ-80 Option B with PDR-11 §8.6);
+ * the reduction guard applies to the explicit supersession path as well, so no
+ * precedence path can apply a reduction silently.
  * Like `license-binding-conflict` before them, their *names* and their HTTP
  * class are the implementation's reading of the approved texts and are recorded
  * for Product Owner ratification; the refusals themselves are the decided
@@ -647,9 +691,7 @@ export type ImportConflictEvaluation =
  *    stamped and audited like an explicit supersession. A document that starts
  *    at or before such a version cannot take precedence and is refused; a
  *    candidate that would leave more than one hand-over is refused rather than
- *    guessed. A **reducing** candidate is refused under the implicit rule
- *    (`reduction-requires-resolution`) until L-04 implements PDR-11 §8.6 — the
- *    precedence rule is never the mechanism that silently applies a reduction;
+ *    guessed;
  * 6. a supersession (explicit or the implicit one of rule 5) may not hand over
  *    in the past: if retiring the target at the candidate's own `validFrom`
  *    would remove governance it has already exercised before `at`
@@ -658,6 +700,21 @@ export type ImportConflictEvaluation =
  *    past instant. A hand-over at or after `at`, and a target that had already
  *    ended (its `validUntil` pins its window, so the stamp shortens nothing),
  *    stay allowed;
+ * 6b. **a reduction is never applied by precedence** (PDR-11 §8.6, review fix
+ *    on PR #141): when the candidate retires a version whose **capacity or
+ *    entitlements** it shrinks — the explicit supersession target, the version
+ *    an implicit hand-over takes over, or the version a legacy code replaces —
+ *    the import is refused as `reduction-requires-resolution` (409, nothing
+ *    written) until L-04 implements §8.6's check/explain/preserve/explicit-
+ *    resolution flow. A signed `supersedesOperationId` proves which version
+ *    the document replaces; it is not a resolution of the capacity or
+ *    entitlement conflict, so it may not switch §8.6 off. Closing an open end
+ *    (perpetual → time-limited) is the other arm of the same guard, and is
+ *    evaluated only where the document does not name the version it retires:
+ *    an implicit hand-over or a legacy replacement. Increases and identical
+ *    grants are unaffected, and so is a document that retires nothing
+ *    (`supersedes` null): with no predecessor retired there is no grant to
+ *    take away;
  * 7. a **renewal** may not leave a gap (OQ-80 **G2**, 2026-10-12): when the
  *    candidate carries the identity of a retained license, its `validFrom` may
  *    not be later than that license's retained coverage end
@@ -669,9 +726,9 @@ export type ImportConflictEvaluation =
  * 8. a legacy `VLIC1` text code keeps its documented L-02 lifecycle rules
  *    unchanged — at most one overlapping version that is still governing and
  *    has no recorded supersession, and never a hand-over in the past (which its
- *    default 2020 window would otherwise be). The historical rule 4 and the
- *    gap rule 7 apply to it as well, added after its own rules so no existing
- *    refusal changes its reason.
+ *    default 2020 window would otherwise be). The historical rule 4, the
+ *    reduction guard 6b and the gap rule 7 apply to it as well, added after its
+ *    own rules so no existing refusal changes its reason.
  */
 export function evaluateImportConflicts(
   params: EvaluateImportConflictsParams,
@@ -763,6 +820,20 @@ export function evaluateImportConflicts(
         overlapping: historic.length,
       });
     }
+    if (
+      implicitTarget !== null &&
+      reducesRetainedGrant(implicitTarget, candidate)
+    ) {
+      // The same §8.6 guard as the signed paths — capacity, entitlements and
+      // the open end — because a text code does not name the version it
+      // replaces either. Replacing the governing version with a smaller grant
+      // is a reduction this release cannot resolve, whatever transport carried
+      // the document.
+      return conflictOnly({
+        reason: 'reduction-requires-resolution',
+        overlapping: 1,
+      });
+    }
     if (leavesRenewalGap(candidate, versions)) {
       return conflictOnly({ reason: 'renewal-gap', overlapping: 0 });
     }
@@ -786,14 +857,12 @@ export function evaluateImportConflicts(
 
   const overlap = others[0] ?? null;
   let supersedes = target;
-  let implicitPrecedence = false;
   if (target === null && overlap !== null) {
     // Rule 5 (OQ-80 Option B): the later start governs at the overlap.
     if (overlap.validFrom.getTime() >= candidate.validFrom.getTime()) {
       return conflictOnly({ reason: 'overlapping-range', overlapping: 1 });
     }
     supersedes = overlap;
-    implicitPrecedence = true;
   }
   if (
     supersedes !== null &&
@@ -802,13 +871,19 @@ export function evaluateImportConflicts(
     return backdatedSupersession();
   }
   if (
-    implicitPrecedence &&
-    overlap !== null &&
-    reducesRetainedGrant(overlap, candidate)
+    supersedes !== null &&
+    (target !== null
+      ? // An explicitly named predecessor: capacity and entitlements are
+        // protected on this path too (the review finding on PR #141). The
+        // signed document says WHICH version it retires — it cannot say how
+        // many users or organizations exist, so it is not the resolution
+        // PDR-11 §8.6 requires, and it may not switch the guard off.
+        reducesCapacityOrEntitlements(supersedes, candidate)
+      : // Implicit precedence (OQ-80 Option B): the retirement itself is not
+        // named by the document, so closing an open end is a reduction here as
+        // well.
+        reducesRetainedGrant(supersedes, candidate))
   ) {
-    // PDR-11 §8.6: a reducing version needs the check/explain/resolve flow
-    // before it is applied, and that flow is L-04. The precedence rule may not
-    // be the mechanism that applies it silently.
     return conflictOnly({
       reason: 'reduction-requires-resolution',
       overlapping: 1,

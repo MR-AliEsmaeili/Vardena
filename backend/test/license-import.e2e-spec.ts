@@ -502,6 +502,89 @@ describe('License document import (e2e)', () => {
     expect(await state()).toEqual(before);
   });
 
+  it('refuses an explicit supersession that reduces capacity or entitlements (PDR-11 §8.6)', async () => {
+    const installationId = (await state()).installationId as string;
+    const governing = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-01-01T00:00:00.000Z'),
+        organizationLimit: 5,
+        userLimit: 20,
+        moduleEntitlements: ['accounting', 'documents'],
+      },
+      authority.privateKey,
+    );
+    await importDocument(governing.file).expect(200);
+    const before = await state();
+
+    // Every one of these names the version it retires — and every one of them
+    // takes capacity or a module away. Naming the version is a statement about
+    // WHICH version is replaced; it is not the resolution §8.6 requires, so the
+    // import is refused and nothing is written.
+    const reducing = [
+      { organizationLimit: 4, userLimit: 20 },
+      { organizationLimit: 5, userLimit: 19 },
+      {
+        organizationLimit: 5,
+        userLimit: 20,
+        moduleEntitlements: ['accounting'],
+      },
+    ];
+    for (const shrink of reducing) {
+      const successor = licenseFile(
+        {
+          installationId,
+          validFrom: new Date('2033-01-01T00:00:00.000Z'),
+          validUntil: new Date('2034-06-01T00:00:00.000Z'),
+          supersedesOperationId: governing.payload.operationId,
+          ...shrink,
+        },
+        authority.privateKey,
+      );
+
+      const refused = await importDocument(successor.file).expect(409);
+      expect(refused.body.details).toMatchObject({
+        reason: 'reduction-requires-resolution',
+      });
+      expect(String(refused.body.message)).toMatch(
+        /reduces the modules or capacity/,
+      );
+    }
+
+    // No version was retained for the refused documents, the governing version
+    // was never retired, and the effective state is exactly what it was.
+    expect(licensing.versions).toHaveLength(1);
+    expect(licensing.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+    expect(await state()).toEqual(before);
+
+    // A successor that keeps the capacity and the modules is still applied: the
+    // guard is a reduction check, not a ban on explicit supersession.
+    const keeping = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2033-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-06-01T00:00:00.000Z'),
+        organizationLimit: 5,
+        userLimit: 20,
+        moduleEntitlements: ['accounting', 'documents'],
+        supersedesOperationId: governing.payload.operationId,
+      },
+      authority.privateKey,
+    );
+    const applied = await importDocument(keeping.file).expect(200);
+
+    expect(applied.body).toMatchObject({ outcome: 'APPLIED' });
+    expect(licensing.versions).toHaveLength(2);
+    expect(licensing.versions[0]).toMatchObject({
+      governsUntil: new Date('2033-01-01T00:00:00.000Z'),
+    });
+  });
+
   it('rejects a document issued for another installation or signed by a stranger', async () => {
     const installationId = (await state()).installationId as string;
 
