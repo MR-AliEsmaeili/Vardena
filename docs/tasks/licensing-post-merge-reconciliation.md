@@ -188,9 +188,10 @@ Record the results, the installation id (not a secret), the migration log lines 
 ## 9. Items for Product Owner ratification
 
 1. **The new 409 reason `license-binding-conflict`** (F-1, F-2). The approved PDR-11/ADR-0046 texts settle that the conflict is refused with nothing written and that the license is bound to one customer and installation; they do not name the reason or its HTTP class. This was placed in the existing 409 family (ADR-0046 retained-state conflicts). Ratify the name and the class, or direct a different reason.
-2. **OQ-80 and OQ-86** — see the decision brief. Not decided.
-3. **F-4 and F-8** — installation customer change and renewal identity (decision brief Q3 and Q4).
-4. **F-12** — the initial administrator credential is a documented constant. Not a licensing item, but it blocks any non-development deployment.
+   **RATIFIED (2026-10-12):** the Product Owner ratified the reason as `license-binding-conflict`, in the 409 family, with the "nothing is written" guarantee. Recorded in `docs/tasks/licensing-oq-80-oq-86-decision-brief.md` §7/§8.5.
+2. **OQ-80 and OQ-86** — **DECIDED (2026-10-12):** overlap = Option B, gap = G2, OQ-86 = Option C, legacy `VLIC1` restriction preserved, tolerance strict, as-of reads recomputation. Recorded verbatim in the decision brief §7/§8. Implementation is recorded in the same change; CI verification and Product Owner acceptance remain outstanding.
+3. **F-4 and F-8** — installation customer change and renewal identity (decision brief Q3 and Q4). **Q4 DECIDED (2026-10-12):** an installation's commercial customer may change only through an explicit, authorized, audited operation (never inferred from a document); implemented in this change. **Q3 DECIDED (2026-10-12):** a renewal keeps the same `licenseId`; the issuer tooling change (F-8's `--license-id`) is **not** part of this change and remains an open follow-up.
+4. **F-12** — the initial administrator credential is a documented constant. Not a licensing item, but it blocks any non-development deployment. **Still open.**
 
 ## 10. Files changed on this branch
 
@@ -344,3 +345,17 @@ Scope: verify the state of `main` after this report's own fixes were merged, and
 | `docs/tasks/licensing-pr-138-post-merge-verification-and-l-04-readiness.md` | New: the verification report, the Owner decision package (D-1…D-6) and the L-04 readiness assessment. |
 
 Not changed: any OQ status; any PDR-11 §1–§18 policy; the decision brief's options; any migration; any product code; the accepted architecture; `.github/workflows/ci.yml` (F-7 remains a separate, reviewable slice).
+
+## 15. Owner decisions of 2026-10-12 and their implementation (records + code, not yet accepted)
+
+| Item | Decision (recorded verbatim in `docs/tasks/licensing-oq-80-oq-86-decision-brief.md` §7) | Status of this change |
+| --- | --- | --- |
+| OQ-80 overlap | **Option B** — the later starting version governs in the overlap; a candidate that starts at or before the version it overlaps is refused | Implementation recorded; unit + live-PostgreSQL tests pass locally; CI and Owner acceptance outstanding |
+| OQ-80 gap | **G2** — a renewal may not leave a gap; adjacency (`previous.validUntil == next.validFrom`) is contiguous | Implementation recorded; boundary tests in `license-version.spec.ts` and the service/e2e suites |
+| OQ-86 | **Option C** — the candidate is checked against the full retained effective history, retired windows included (closes Gap C) | Implementation recorded; the unit case that pinned the old rule was replaced by the Option C cases |
+| OQ-86 legacy `VLIC1` | restriction preserved, no bypass | Unchanged code path; its L-02 lifecycle rules keep priority in the evaluation |
+| OQ-86 tolerance / as-of reads | strict; recomputation | Unchanged |
+| Q3 renewal identity | same `licenseId` | Decision recorded; issuer CLI `--license-id` (F-8) remains an open follow-up |
+| Q4 customer change | explicit, authorized, audited operation only | Implementation recorded (`licenses.repository.transferCustomer` + typed `license.installation.customer-transferred` event + the dedicated `POST /api/v1/license/customer-transfer` route); tests at unit and live-PostgreSQL level |
+| `license-binding-conflict` | ratified (name, 409, nothing written) | Unchanged behaviour; ratification recorded in §9 |
+| **OQ-87 (new)** | **Not decided** — may a NEW license identity cover a lapse for the same customer + installation? | **BLOCKED**: no rule grants or refuses it (pre-decision behaviour preserved); no workflow may claim post-gap recovery. Registered in `docs/open-questions.md` |

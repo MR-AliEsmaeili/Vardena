@@ -165,6 +165,25 @@ protection and migration before any code changes (G-10, AR-29).
   installation (the installation lock serializes only one installation). The
   loser is refused as `license-binding-conflict` inside the transaction. The
   pre-check alone was not a sufficient guard.
+- *Addendum (2026-10-12, Owner decisions on OQ-80/OQ-86)*: Decision 4's
+  pairwise-disjoint wording is now the implemented rule, not a divergence. The
+  overlap check evaluates the **effective window**
+  `[valid_from, min(valid_until, governs_until))` of **every** retained version,
+  retired versions included (OQ-86 **Option C**), so a document that lands inside
+  a window a version has already governed is refused (`overlapping-range`, 409,
+  nothing written). Decision 5's gap permission is narrowed by OQ-80 **G2**: a
+  candidate carrying the identity of a retained license may not start later than
+  that license's retained coverage end (`renewal-gap`, 409, nothing written);
+  adjacency is contiguous, not a gap. Decision 3's explicit supersession keeps
+  its meaning, and the later-starting version now takes over implicitly at its
+  own `validFrom` when it overlaps exactly one still-governing version (OQ-80
+  **Option B**), stamped and audited like an explicit retirement; the PDR-11
+  §8.6 check/explain/preserve/explicit-resolution flow is still required for a
+  reducing change and is not bypassed by the precedence rule
+  (`reduction-requires-resolution` until L-04). The legacy `VLIC1` restriction,
+  strict import tolerance and as-of recomputation are unchanged. Decisions are
+  recorded verbatim, with consequences and the blocked follow-on (OQ-87), in
+  `docs/tasks/licensing-oq-80-oq-86-decision-brief.md` §7/§8.
 - `POST /api/v1/license/activate` keeps working for existing automation; the new
   `POST /api/v1/license/import` is the documented path for signed files and text.
 - Evaluation becomes date-driven; expiry, suspension and the
