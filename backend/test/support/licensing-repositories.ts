@@ -27,11 +27,15 @@
 import type { InstallationsRepository } from '../../src/modules/licensing/data/installations.repository.js';
 import type {
   ImportLicenseVersionCommand,
+  ImportVersionResult,
   LicenseAuditEventCommand,
   LicenseAuditEventRow,
   LicensesRepository,
 } from '../../src/modules/licensing/data/licenses.repository.js';
-import { ImportConflictError } from '../../src/modules/licensing/data/licenses.repository.js';
+import {
+  ImportConflictError,
+  transferAuditEvent,
+} from '../../src/modules/licensing/data/licenses.repository.js';
 import type { InstallationIdentity } from '../../src/modules/licensing/domain/installation.js';
 import {
   evaluateImportConflicts,
@@ -127,14 +131,14 @@ export function createLicensingStores(
 
     async importVersion(
       command: ImportLicenseVersionCommand,
-    ): Promise<RetainedLicenseVersion> {
+    ): Promise<ImportVersionResult> {
       // The authoritative invariant pass, exactly like the real transaction
       // (which runs it under the installation row lock).
       const retained = versions.filter(
         (version) => version.installationId === command.installationId,
       );
-      // Cross-installation binding (the transaction's rule 2b): a license
-      // identifier retained for another installation is refused.
+      // Cross-installation binding: a license identifier retained for another
+      // installation is refused.
       if (
         versions.some(
           (version) =>
@@ -147,18 +151,31 @@ export function createLicensingStores(
           overlapping: 0,
         });
       }
+      // The evaluation sees the installation's committed customer (the value
+      // the real transaction reads under the row lock) and the caller's
+      // transfer intent. `customerTransfer` is required on the command exactly
+      // so that every call site states which of the two it is.
+      const installationCustomerId =
+        self !== null && self.installationId === command.installationId
+          ? self.customerId
+          : null;
       const evaluation = evaluateImportConflicts({
         candidate: {
           validFrom: command.validFrom,
           validUntil: command.validUntil,
           licenseId: command.licenseId,
           customerId: command.customerId,
+          organizationLimit: command.organizationLimit,
+          userLimit: command.userLimit,
+          entitlements: command.entitlements,
         },
         operationId: command.operationId,
         documentHash: command.documentHash,
         supersession: command.supersession,
         versions: retained,
         at: command.now,
+        installationCustomerId,
+        customerTransfer: command.customerTransfer,
       });
       if (evaluation.conflict !== null) {
         throw new ImportConflictError(evaluation.conflict);
@@ -178,9 +195,23 @@ export function createLicensingStores(
       }
 
       customers.set(command.customerId, command.customerName);
-      if (self !== null && self.installationId === command.installationId) {
+      const previousCustomerId = installationCustomerId;
+      const bindingChanged =
+        self !== null &&
+        self.installationId === command.installationId &&
+        previousCustomerId !== command.customerId;
+      if (bindingChanged && self !== null) {
         self = { ...self, customerId: command.customerId };
       }
+      // The typed transfer event is written by the transaction, exactly like
+      // the real repository does — from the values the lock protects.
+      const auditEvents =
+        bindingChanged && previousCustomerId !== null
+          ? [
+              ...command.auditEvents,
+              transferAuditEvent(command, previousCustomerId),
+            ]
+          : command.auditEvents;
       const created: RetainedLicenseVersion = {
         versionId: command.versionId,
         licenseId: command.licenseId,
@@ -245,10 +276,14 @@ export function createLicensingStores(
         target.supersededByVersionId = command.versionId;
       }
 
-      for (const event of command.auditEvents) {
+      for (const event of auditEvents) {
         recordEvent(event);
       }
-      return cloneVersion(created);
+      return {
+        version: cloneVersion(created),
+        previousCustomerId,
+        bindingChanged,
+      };
     },
 
     async recordAuditEvent(event: LicenseAuditEventCommand): Promise<void> {

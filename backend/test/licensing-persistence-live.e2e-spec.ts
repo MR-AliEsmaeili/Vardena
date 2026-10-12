@@ -52,8 +52,32 @@ describe.skipIf(DATABASE_URL === undefined)(
   'Licensing persistence (live PostgreSQL)',
   () => {
     const authority = generateAuthorityKeyPair();
+    /**
+     * One installation belongs to one commercial customer (Owner decision
+     * 2026-10-12, Q4). Every document this suite issues for the SELF
+     * installation therefore names the same customer unless a test overrides it
+     * on purpose to exercise the refusal or the explicit transfer.
+     */
+    const SELF_CUSTOMER = '01K7LIVECUSTOMER000000000000';
     let app: INestApplication;
     let prisma: PrismaService;
+
+    /**
+     * `issueLicenseFile` with the suite's commercial customer. Explicit
+     * `customerId` in `options` still wins, which is how the tests that
+     * exercise the customer rules build their documents.
+     */
+    function licenseFor(
+      options: Parameters<typeof issueLicenseFile>[0],
+      key: Parameters<typeof issueLicenseFile>[1] = authority.privateKey,
+      file: { keyId?: string } = {},
+    ): IssuedFile {
+      return issueLicenseFile(
+        { customerId: SELF_CUSTOMER, ...options },
+        key,
+        file,
+      );
+    }
 
     async function boot(): Promise<INestApplication> {
       const base = loadAppConfig();
@@ -217,6 +241,9 @@ describe.skipIf(DATABASE_URL === undefined)(
       const { code } = issueLicenseCode(
         {
           installationId: identity.installationId,
+          // The suite's customer: this first import is what binds the
+          // installation, and every later document in this file names it.
+          customerId: SELF_CUSTOMER,
           customerName: 'Live customer',
           organizationLimit: 2,
           moduleEntitlements: ['organization', 'users'],
@@ -263,6 +290,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       const backdated = issueLicenseCode(
         {
           installationId: identity.installationId,
+          customerId: SELF_CUSTOMER,
           customerName: 'Live customer',
           organizationLimit: 5,
           moduleEntitlements: ['organization', 'users'],
@@ -360,7 +388,7 @@ describe.skipIf(DATABASE_URL === undefined)(
 
     it('retains a signed future-dated version and resolves it by date', async () => {
       const identity = await app.get(InstallationIdentityService).current();
-      const renewal = issueLicenseFile(
+      const renewal = licenseFor(
         {
           installationId: identity.installationId,
           validFrom: new Date('2027-01-01T00:00:00.000Z'),
@@ -434,6 +462,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           userLimit: null,
           entitlements: [],
           supersession: { kind: 'none' },
+          customerTransfer: null,
           expectedSupersessionVersionId: null,
           auditEvents: [
             {
@@ -513,6 +542,7 @@ describe.skipIf(DATABASE_URL === undefined)(
             { kind: 'MODULE', code: 'accounting' },
           ],
           supersession: { kind: 'none' },
+          customerTransfer: null,
           expectedSupersessionVersionId: null,
           auditEvents: [
             {
@@ -551,7 +581,7 @@ describe.skipIf(DATABASE_URL === undefined)(
 
     it('refuses a duplicate operation at the database level', async () => {
       const identity = await app.get(InstallationIdentityService).current();
-      const document = issueLicenseFile(
+      const document = licenseFor(
         {
           installationId: identity.installationId,
           validFrom: new Date('2031-01-01T00:00:00.000Z'),
@@ -596,7 +626,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         // Two DISTINCT documents (different operations, different artifacts)
         // that claim the same window: the database constraints alone cannot
         // tell them apart, only the locked evaluation can.
-        const left = issueLicenseFile(
+        const left = licenseFor(
           {
             installationId: identity.installationId,
             ...window,
@@ -604,7 +634,7 @@ describe.skipIf(DATABASE_URL === undefined)(
           },
           authority.privateKey,
         );
-        const right = issueLicenseFile(
+        const right = licenseFor(
           {
             installationId: identity.installationId,
             ...window,
@@ -697,7 +727,7 @@ describe.skipIf(DATABASE_URL === undefined)(
 
     it('applies a replayed document exactly once under concurrency', async () => {
       const identity = await app.get(InstallationIdentityService).current();
-      const document = issueLicenseFile(
+      const document = licenseFor(
         {
           installationId: identity.installationId,
           validFrom: new Date('2035-01-01T00:00:00.000Z'),
@@ -743,7 +773,7 @@ describe.skipIf(DATABASE_URL === undefined)(
     it('lets exactly one of two concurrent successors retire a version', async () => {
       const identity = await app.get(InstallationIdentityService).current();
       // A scheduled version nobody has retired yet: the shared target.
-      const target = issueLicenseFile(
+      const target = licenseFor(
         {
           installationId: identity.installationId,
           validFrom: new Date('2036-07-01T00:00:00.000Z'),
@@ -754,7 +784,7 @@ describe.skipIf(DATABASE_URL === undefined)(
       );
       await app.get(LicenseImportService).importDocument(target.file);
 
-      const left = issueLicenseFile(
+      const left = licenseFor(
         {
           installationId: identity.installationId,
           validFrom: new Date('2036-10-01T00:00:00.000Z'),
@@ -764,7 +794,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         },
         authority.privateKey,
       );
-      const right = issueLicenseFile(
+      const right = licenseFor(
         {
           installationId: identity.installationId,
           validFrom: new Date('2036-08-01T00:00:00.000Z'),
@@ -860,9 +890,12 @@ describe.skipIf(DATABASE_URL === undefined)(
     it('refuses a renewal that re-binds a license to another customer, and keeps the customer', async () => {
       const identity = await app.get(InstallationIdentityService).current();
       const licenseId = '01K7REBINDLICENSE00000000001';
-      const customerA = '01K7REBINDCUSTOMERA000000001';
+      // The installation is already bound to the suite's customer, so the
+      // first document must name it; only the refused renewal tries to move
+      // the license to another customer.
+      const customerA = SELF_CUSTOMER;
       const customerB = '01K7REBINDCUSTOMERB000000002';
-      const first = issueLicenseFile(
+      const first = licenseFor(
         {
           installationId: identity.installationId,
           licenseId,
@@ -873,7 +906,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         },
         authority.privateKey,
       );
-      const second = issueLicenseFile(
+      const second = licenseFor(
         {
           installationId: identity.installationId,
           licenseId,
@@ -919,6 +952,123 @@ describe.skipIf(DATABASE_URL === undefined)(
       ).toBeGreaterThanOrEqual(1);
     }, 60_000);
 
+    it('refuses an explicit supersession that reduces capacity, in the transaction too (PDR-11 §8.6)', async () => {
+      const identity = await app.get(InstallationIdentityService).current();
+      const licenseId = '01K7REDUCELICENSE00000000001';
+      const governing = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId,
+          validFrom: new Date('2090-01-01T00:00:00.000Z'),
+          validUntil: new Date('2091-01-01T00:00:00.000Z'),
+          organizationLimit: 5,
+          userLimit: 20,
+        },
+        authority.privateKey,
+      );
+      await expect(
+        app.get(LicenseImportService).importDocument(governing.file),
+      ).resolves.toMatchObject({ changed: true, outcome: 'APPLIED' });
+
+      // The document names the version it retires and takes a limit away. The
+      // signed name proves WHICH version is replaced; it cannot resolve a
+      // capacity conflict, so the import is refused — by the SAME evaluation
+      // the transaction re-runs under the installation lock.
+      const reducing = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId,
+          validFrom: new Date('2090-06-01T00:00:00.000Z'),
+          validUntil: new Date('2091-06-01T00:00:00.000Z'),
+          organizationLimit: 4,
+          userLimit: 20,
+          supersedesOperationId: governing.payload.operationId,
+        },
+        authority.privateKey,
+      );
+
+      const refused = await importOutcome(reducing);
+      expect(refused).toMatchObject({
+        applied: false,
+        status: 409,
+        reason: 'reduction-requires-resolution',
+      });
+
+      // Nothing was written and nothing was retired: one retained version for
+      // this license, no stamp on it, no version for the refused operation, and
+      // its limits are exactly what the applied document carried (no clamping).
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "license_id" = $1`,
+          licenseId,
+        ),
+      ).toBe(1);
+      expect(
+        await query<{
+          organization_limit: number;
+          user_limit: number;
+          superseded_at: string | null;
+          governs_until: string | null;
+          superseded_by_version_id: string | null;
+        }>(
+          `SELECT "organization_limit", "user_limit", "superseded_at",
+                  "governs_until", "superseded_by_version_id"
+             FROM "licensing"."license_versions" WHERE "license_id" = $1`,
+          licenseId,
+        ),
+      ).toEqual([
+        {
+          organization_limit: 5,
+          user_limit: 20,
+          superseded_at: null,
+          governs_until: null,
+          superseded_by_version_id: null,
+        },
+      ]);
+      expect(
+        await count(
+          `SELECT COUNT(*)::bigint AS count FROM "licensing"."license_versions"
+            WHERE "operation_id" = $1`,
+          reducing.payload.operationId,
+        ),
+      ).toBe(0);
+      expect(
+        await query<{ reason: string }>(
+          `SELECT "reason" FROM "licensing"."license_audit_events"
+            WHERE "event_type" = 'license.import.rejected'
+              AND "operation_id" = $1`,
+          reducing.payload.operationId,
+        ),
+      ).toEqual([{ reason: 'reduction-requires-resolution' }]);
+
+      // The guard is a reduction check, not a ban on explicit supersession: a
+      // successor that keeps or grows the grant is still applied.
+      const keeping = licenseFor(
+        {
+          installationId: identity.installationId,
+          licenseId,
+          validFrom: new Date('2090-06-01T00:00:00.000Z'),
+          validUntil: new Date('2091-06-01T00:00:00.000Z'),
+          organizationLimit: 9,
+          userLimit: 20,
+          supersedesOperationId: governing.payload.operationId,
+        },
+        authority.privateKey,
+      );
+      await expect(
+        app.get(LicenseImportService).importDocument(keeping.file),
+      ).resolves.toMatchObject({ changed: true, outcome: 'APPLIED' });
+      const retired = await query<{ governs_until: Date | null }>(
+        `SELECT "governs_until" FROM "licensing"."license_versions"
+          WHERE "operation_id" = $1`,
+        governing.payload.operationId,
+      );
+      expect(retired.map((row) => row.governs_until?.toISOString())).toEqual([
+        '2090-06-01T00:00:00.000Z',
+      ]);
+    }, 60_000);
+
     it('refuses a license identifier that another installation owns, as a conflict and not a database error', async () => {
       const identity = await app.get(InstallationIdentityService).current();
       const client = await prisma.getClient<{
@@ -948,13 +1098,16 @@ describe.skipIf(DATABASE_URL === undefined)(
         foreignCustomer,
       );
 
-      // Same customer, so only the installation binding can refuse it.
-      const document = issueLicenseFile(
+      // The document names THIS installation's own customer (an import never
+      // re-binds it — Owner decision 2026-10-12, Q4), so the only rule left to
+      // refuse it is the license identifier already belonging to another
+      // installation. Nothing else about it conflicts.
+      const document = licenseFor(
         {
           installationId: identity.installationId,
           licenseId: foreignLicense,
-          customerId: foreignCustomer,
-          customerName: 'Foreign customer',
+          customerId: SELF_CUSTOMER,
+          customerName: 'Live customer',
           validFrom: new Date('2052-01-01T00:00:00.000Z'),
           validUntil: new Date('2053-01-01T00:00:00.000Z'),
         },
@@ -1019,6 +1172,9 @@ describe.skipIf(DATABASE_URL === undefined)(
         userLimit: payload.userLimit,
         entitlements: [],
         supersession: { kind: 'none' },
+        // Tests that exercise the explicit transfer set this explicitly; every
+        // other command states "this import is not a transfer".
+        customerTransfer: null,
         expectedSupersessionVersionId: null,
         // The service always commits the `applied` evidence with the version.
         auditEvents: [
@@ -1107,6 +1263,16 @@ describe.skipIf(DATABASE_URL === undefined)(
          VALUES ($1, 'Self customer', now(), now())`,
         selfCustomer,
       );
+      // Test fixture: bind this installation to the customer the document will
+      // name. A document may only name the binding it already has (a customer
+      // change is the separate, explicit transfer operation), so the race under
+      // test must be run on an installation whose binding matches its document.
+      await client0.$executeRawUnsafe(
+        `UPDATE "licensing"."installations" SET "customer_id" = $1, "updated_at" = now()
+          WHERE "id" = $2`,
+        selfCustomer,
+        selfInstallation,
+      );
       const installationBefore = await query<{ customer_id: string | null }>(
         `SELECT "customer_id" FROM "licensing"."installations" WHERE "id" = $1`,
         selfInstallation,
@@ -1117,17 +1283,20 @@ describe.skipIf(DATABASE_URL === undefined)(
         validFrom: new Date('2060-01-01T00:00:00.000Z'),
         validUntil: new Date('2061-01-01T00:00:00.000Z'),
       };
-      const selfDocument = issueLicenseFile(
+      const selfDocument = licenseFor(
         {
           installationId: selfInstallation,
           licenseId: license,
           customerId: selfCustomer,
-          customerName: 'Self customer',
+          // Deliberately different from the display name the fixture wrote, so
+          // the post-race assertion proves the loser's customer write rolled
+          // back and was not merely overwritten with the same value.
+          customerName: 'Self customer (import)',
           ...window,
         },
         authority.privateKey,
       );
-      const foreignDocument = issueLicenseFile(
+      const foreignDocument = licenseFor(
         {
           installationId: foreignInstallation,
           licenseId: license,
@@ -1146,11 +1315,15 @@ describe.skipIf(DATABASE_URL === undefined)(
       const released = new Promise<void>((resolve) => {
         releaseHold = resolve;
       });
+      // The pause is the import's own first statement: `SELECT … FOR UPDATE`
+      // on this installation's row. The self import therefore cannot have read
+      // anything authoritative yet, and re-reads the winner's committed rows
+      // when the lock is released.
       const holding = client0.$transaction(
         async (tx) => {
           await tx.$queryRawUnsafe(
-            `SELECT "id" FROM "licensing"."customers" WHERE "id" = $1 FOR UPDATE`,
-            selfCustomer,
+            `SELECT "id" FROM "licensing"."installations" WHERE "id" = $1 FOR UPDATE`,
+            selfInstallation,
           );
           holdAcquired();
           await released;
@@ -1165,7 +1338,7 @@ describe.skipIf(DATABASE_URL === undefined)(
         selfOutcome = importOutcome(selfDocument).catch((error: unknown) => ({
           unhandled: error,
         }));
-        await waitForLockWaitOn('"licensing"."customers"');
+        await waitForLockWaitOn('"licensing"."installations"');
         const winner = await app
           .get(LicensesRepository)
           .importVersion(
@@ -1175,7 +1348,7 @@ describe.skipIf(DATABASE_URL === undefined)(
               'Foreign customer',
             ),
           );
-        winnerLicense = winner.licenseId;
+        winnerLicense = winner.version.licenseId;
       } finally {
         releaseHold();
         await holding;
@@ -1248,6 +1421,17 @@ describe.skipIf(DATABASE_URL === undefined)(
       const foreignInstallation = generateId();
       await insertForeignInstallation(foreignInstallation);
       const repository = app.get(LicensesRepository);
+      // One customer per installation (Owner decision 2026-10-12, Q4): the
+      // first import binds the foreign installation, so every later round must
+      // name the same customer or it would be refused for the customer change
+      // instead of for the identifier race under test. The self side names the
+      // binding the installation actually has, whatever earlier tests left.
+      const binding = await query<{ customer_id: string | null }>(
+        `SELECT "customer_id" FROM "licensing"."installations" WHERE "id" = $1`,
+        identity.installationId,
+      );
+      const selfCustomer = binding[0]?.customer_id ?? generateId();
+      const foreignCustomer = generateId();
 
       for (const round of [0, 1, 2, 3, 4]) {
         const license = generateId();
@@ -1255,21 +1439,23 @@ describe.skipIf(DATABASE_URL === undefined)(
           validFrom: new Date(`${2070 + round}-01-01T00:00:00.000Z`),
           validUntil: new Date(`${2070 + round}-07-01T00:00:00.000Z`),
         };
-        const selfDocument = issueLicenseFile(
+        const selfDocument = licenseFor(
           {
             installationId: identity.installationId,
             licenseId: license,
-            customerId: generateId(),
+            // The installation's own customer: the race under test is about
+            // the license identifier, not about a customer change.
+            customerId: selfCustomer,
             customerName: `Self round ${round}`,
             ...window,
           },
           authority.privateKey,
         );
-        const foreignDocument = issueLicenseFile(
+        const foreignDocument = licenseFor(
           {
             installationId: foreignInstallation,
             licenseId: license,
-            customerId: generateId(),
+            customerId: foreignCustomer,
             customerName: `Foreign round ${round}`,
             ...window,
           },
@@ -1315,8 +1501,8 @@ describe.skipIf(DATABASE_URL === undefined)(
           ),
         ).toEqual([
           {
-            installation_id: winner.installationId,
-            customer_id: winner.customerId,
+            installation_id: winner.version.installationId,
+            customer_id: winner.version.customerId,
           },
         ]);
         expect(

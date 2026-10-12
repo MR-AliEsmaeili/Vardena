@@ -49,6 +49,14 @@ describe('License document import (e2e)', () => {
   let agent: ReturnType<typeof request.agent>;
 
   const PASSWORD = 'license-operator-password';
+  /**
+   * One installation belongs to one commercial customer, and a renewal keeps
+   * the license identity (Owner decisions 2026-10-12: Q4, Q3). Every document
+   * this suite issues is therefore for the SAME customer and the SAME license
+   * unless a test explicitly overrides them to exercise the refusal paths.
+   */
+  const CUSTOMER = '01K7E2ECUSTOMER000000000000';
+  const LICENSE = '01K7E2ELICENSE000000000000000';
 
   async function boot(): Promise<INestApplication> {
     const built = await createTestApp({
@@ -132,6 +140,21 @@ describe('License document import (e2e)', () => {
   const importDocument = (document: string, session = agent): request.Test =>
     session.post('/api/v1/license/import').send({ document });
 
+  /**
+   * `issueLicenseFile` with the suite's stable commercial identity. Explicit
+   * `customerId`/`licenseId` in `options` still win, which is how the negative
+   * cases (another customer, another license) are constructed.
+   */
+  function licenseFile(
+    options: Parameters<typeof issueLicenseFile>[0],
+    key: Parameters<typeof issueLicenseFile>[1] = authority.privateKey,
+  ): ReturnType<typeof issueLicenseFile> {
+    return issueLicenseFile(
+      { customerId: CUSTOMER, licenseId: LICENSE, ...options },
+      key,
+    );
+  }
+
   async function state(): Promise<Record<string, unknown>> {
     const response = await agent.get('/api/v1/license/current').expect(200);
     return response.body as Record<string, unknown>;
@@ -154,7 +177,7 @@ describe('License document import (e2e)', () => {
 
   it('imports a signed file and reports the effective version', async () => {
     const installationId = (await state()).installationId as string;
-    const { file, payload } = issueLicenseFile(
+    const { file, payload } = licenseFile(
       {
         installationId,
         customerName: 'Acme Holding',
@@ -204,7 +227,7 @@ describe('License document import (e2e)', () => {
     // exactly the names a real response carries, so generated clients are not
     // left with `content?: never`.
     const installationId = (await state()).installationId as string;
-    const { file } = issueLicenseFile(
+    const { file } = licenseFile(
       { installationId, customerName: 'Contract customer' },
       authority.privateKey,
     );
@@ -270,7 +293,7 @@ describe('License document import (e2e)', () => {
   it('retains a future-dated renewal without deactivating the current license', async () => {
     const installationId = (await state()).installationId as string;
     await importDocument(
-      issueLicenseFile(
+      licenseFile(
         {
           installationId,
           validFrom: new Date('2026-01-01T00:00:00.000Z'),
@@ -280,7 +303,7 @@ describe('License document import (e2e)', () => {
       ).file,
     ).expect(200);
 
-    const renewal = issueLicenseFile(
+    const renewal = licenseFile(
       {
         installationId,
         validFrom: new Date('2027-01-01T00:00:00.000Z'),
@@ -304,7 +327,7 @@ describe('License document import (e2e)', () => {
 
   it('refuses a duplicate operation with a conflict and changes nothing', async () => {
     const installationId = (await state()).installationId as string;
-    const { file } = issueLicenseFile({ installationId }, authority.privateKey);
+    const { file } = licenseFile({ installationId }, authority.privateKey);
     await importDocument(file).expect(200);
 
     const response = await importDocument(file).expect(409);
@@ -317,22 +340,51 @@ describe('License document import (e2e)', () => {
     expect((await state()).active).toBe(true);
   });
 
-  it('refuses an overlapping version unless it retires the retained one', async () => {
+  it('refuses an overlap whose start cannot take precedence (OQ-80 Option B)', async () => {
     const installationId = (await state()).installationId as string;
-    // A window that covers today (a past start retires nothing) and reaches
-    // far enough that the overlapping candidate is future-dated on any runner
-    // clock: the hand-over has to stay at or after the import instant.
-    const first = issueLicenseFile(
+    const first = licenseFile(
       {
         installationId,
-        validFrom: new Date('2020-01-01T00:00:00.000Z'),
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
         validUntil: new Date('2034-01-01T00:00:00.000Z'),
       },
       authority.privateKey,
     );
     await importDocument(first.file).expect(200);
 
-    const overlap = issueLicenseFile(
+    // Same start, same window: no later start can decide which version governs
+    // the overlap, so the ambiguity is refused rather than guessed — and
+    // nothing is written.
+    const sameStart = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-06-01T00:00:00.000Z'),
+      },
+      authority.privateKey,
+    );
+    const rejected = await importDocument(sameStart.file).expect(409);
+    expect(String(rejected.body.message)).toMatch(
+      /overlaps a retained version/,
+    );
+    expect(licensing.versions).toHaveLength(1);
+  });
+
+  it('hands over to a later-starting version without an explicit supersession (OQ-80 Option B)', async () => {
+    const installationId = (await state()).installationId as string;
+    const first = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-01-01T00:00:00.000Z'),
+      },
+      authority.privateKey,
+    );
+    await importDocument(first.file).expect(200);
+
+    // The later start governs in the overlap: the document declares no
+    // supersession and is applied as the hand-over, stamped and audited.
+    const successor = licenseFile(
       {
         installationId,
         validFrom: new Date('2033-06-01T00:00:00.000Z'),
@@ -340,15 +392,44 @@ describe('License document import (e2e)', () => {
       },
       authority.privateKey,
     );
-    const rejected = await importDocument(overlap.file).expect(409);
-    expect(String(rejected.body.message)).toMatch(
-      /overlaps a retained version/,
-    );
+    const applied = await importDocument(successor.file).expect(200);
 
-    // The same window WITH the supersession intent is the documented escape
-    // hatch — and the hand-over is the successor's own start, so the retained
-    // version keeps governing until it comes.
-    const superseding = issueLicenseFile(
+    expect(applied.body).toMatchObject({ outcome: 'APPLIED', active: true });
+    expect(licensing.versions).toHaveLength(2);
+    expect(licensing.versions[0]).toMatchObject({
+      versionId: (
+        await app.get(LicensesRepository).findVersion(installationId, {
+          operationId: first.payload.operationId,
+        })
+      )?.versionId,
+      supersededAt: expect.any(Date),
+      // The hand-over instant is the successor's own start, and the government
+      // of the predecessor ends exactly there (it still governs until then).
+      governsUntil: new Date('2033-06-01T00:00:00.000Z'),
+    });
+    expect(applied.body.scheduledVersion).toMatchObject({
+      licenseId: successor.payload.licenseId,
+      validFrom: '2033-06-01T00:00:00.000Z',
+      effective: false,
+    });
+  });
+
+  it('retires a version explicitly when the document names it', async () => {
+    const installationId = (await state()).installationId as string;
+    const first = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-01-01T00:00:00.000Z'),
+      },
+      authority.privateKey,
+    );
+    await importDocument(first.file).expect(200);
+
+    // An explicit, signed supersession stays the Operator's own instruction:
+    // the hand-over is the successor's own start, so the retained version keeps
+    // governing until it comes.
+    const superseding = licenseFile(
       {
         installationId,
         validFrom: new Date('2033-06-01T00:00:00.000Z'),
@@ -365,21 +446,23 @@ describe('License document import (e2e)', () => {
       supersededAt: expect.any(Date),
       governsUntil: new Date('2033-06-01T00:00:00.000Z'),
     });
-    expect(applied.body.effectiveVersionId).toBe(
-      licensing.versions[0]?.versionId,
-    );
     expect(applied.body.scheduledVersion).toMatchObject({
       licenseId: superseding.payload.licenseId,
       validFrom: '2033-06-01T00:00:00.000Z',
       effective: false,
     });
+    // The explicit hand-over carries no implicit-precedence classifier.
+    const supersededEvent = licensing.auditEvents.find(
+      (event) => event.eventType === 'license.version.superseded',
+    );
+    expect(supersededEvent?.reason).toBeNull();
   });
 
   it('refuses a supersession that would take over before the import instant', async () => {
     const installationId = (await state()).installationId as string;
     // A start in the past is fine for a document that retires nothing (the
     // ordinary "the subscription began in January" case) …
-    const governing = issueLicenseFile(
+    const governing = licenseFile(
       {
         installationId,
         validFrom: new Date('2020-01-01T00:00:00.000Z'),
@@ -393,7 +476,7 @@ describe('License document import (e2e)', () => {
     // … but a supersession may not retire it from an instant that is already
     // past: that would rewrite which version governed then (fail-closed until
     // the Owner settles the question; OQ-86).
-    const backdated = issueLicenseFile(
+    const backdated = licenseFile(
       {
         installationId,
         validFrom: new Date('2021-01-01T00:00:00.000Z'),
@@ -419,10 +502,167 @@ describe('License document import (e2e)', () => {
     expect(await state()).toEqual(before);
   });
 
+  it('refuses an explicit supersession that reduces capacity or entitlements (PDR-11 §8.6)', async () => {
+    const installationId = (await state()).installationId as string;
+    const governing = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-01-01T00:00:00.000Z'),
+        organizationLimit: 5,
+        userLimit: 20,
+        moduleEntitlements: ['accounting', 'documents'],
+      },
+      authority.privateKey,
+    );
+    await importDocument(governing.file).expect(200);
+    const before = await state();
+
+    // Every one of these names the version it retires — and every one of them
+    // takes capacity or a module away. Naming the version is a statement about
+    // WHICH version is replaced; it is not the resolution §8.6 requires, so the
+    // import is refused and nothing is written.
+    const reducing = [
+      { organizationLimit: 4, userLimit: 20 },
+      { organizationLimit: 5, userLimit: 19 },
+      {
+        organizationLimit: 5,
+        userLimit: 20,
+        moduleEntitlements: ['accounting'],
+      },
+    ];
+    for (const shrink of reducing) {
+      const successor = licenseFile(
+        {
+          installationId,
+          validFrom: new Date('2033-01-01T00:00:00.000Z'),
+          validUntil: new Date('2034-06-01T00:00:00.000Z'),
+          supersedesOperationId: governing.payload.operationId,
+          ...shrink,
+        },
+        authority.privateKey,
+      );
+
+      const refused = await importDocument(successor.file).expect(409);
+      expect(refused.body.details).toMatchObject({
+        reason: 'reduction-requires-resolution',
+      });
+      expect(String(refused.body.message)).toMatch(
+        /reduces the modules or capacity/,
+      );
+    }
+
+    // No version was retained for the refused documents, the governing version
+    // was never retired, and the effective state is exactly what it was.
+    expect(licensing.versions).toHaveLength(1);
+    expect(licensing.versions[0]).toMatchObject({
+      supersededAt: null,
+      governsUntil: null,
+      supersededByVersionId: null,
+    });
+    expect(await state()).toEqual(before);
+
+    // A successor that keeps the capacity and the modules is still applied: the
+    // guard is a reduction check, not a ban on explicit supersession.
+    const keeping = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2033-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-06-01T00:00:00.000Z'),
+        organizationLimit: 5,
+        userLimit: 20,
+        moduleEntitlements: ['accounting', 'documents'],
+        supersedesOperationId: governing.payload.operationId,
+      },
+      authority.privateKey,
+    );
+    const applied = await importDocument(keeping.file).expect(200);
+
+    expect(applied.body).toMatchObject({ outcome: 'APPLIED' });
+    expect(licensing.versions).toHaveLength(2);
+    expect(licensing.versions[0]).toMatchObject({
+      governsUntil: new Date('2033-01-01T00:00:00.000Z'),
+    });
+  });
+
+  it('applies an explicit signed supersession that ends a perpetual grant (OD-LIC-01)', async () => {
+    const installationId = (await state()).installationId as string;
+    // A perpetual version is never handed over by precedence (see the OQ-80
+    // Option B case) — only a document that NAMES it may change its term, and
+    // that is the Owner's decision of 2026-10-12 (PDR-12).
+    const perpetual = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+        validUntil: null,
+        organizationLimit: 5,
+        userLimit: 20,
+      },
+      authority.privateKey,
+    );
+    await importDocument(perpetual.file).expect(200);
+
+    // The same term change with a capacity reduction stays refused — attempted
+    // first, while the perpetual version is still eligible to be named.
+    const reducing = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2033-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-01-01T00:00:00.000Z'),
+        organizationLimit: 4,
+        userLimit: 20,
+        supersedesOperationId: perpetual.payload.operationId,
+      },
+      authority.privateKey,
+    );
+    const refused = await importDocument(reducing.file).expect(409);
+    expect(refused.body.details).toMatchObject({
+      reason: 'reduction-requires-resolution',
+    });
+    expect(licensing.versions).toHaveLength(1);
+    expect(licensing.versions[0]).toMatchObject({ supersededAt: null });
+
+    const timeLimited = licenseFile(
+      {
+        installationId,
+        validFrom: new Date('2033-01-01T00:00:00.000Z'),
+        validUntil: new Date('2034-01-01T00:00:00.000Z'),
+        organizationLimit: 5,
+        userLimit: 20,
+        supersedesOperationId: perpetual.payload.operationId,
+      },
+      authority.privateKey,
+    );
+    const applied = await importDocument(timeLimited.file).expect(200);
+
+    expect(applied.body).toMatchObject({ outcome: 'APPLIED', active: true });
+    expect(licensing.versions).toHaveLength(2);
+    // The perpetual version governs up to the hand-over and no further: its
+    // recorded window ends at the named successor's start.
+    expect(licensing.versions[0]).toMatchObject({
+      validUntil: null,
+      governsUntil: new Date('2033-01-01T00:00:00.000Z'),
+      supersededAt: expect.any(Date),
+    });
+    expect(applied.body.scheduledVersion).toMatchObject({
+      validFrom: '2033-01-01T00:00:00.000Z',
+      validUntil: '2034-01-01T00:00:00.000Z',
+      effective: false,
+    });
+
+    // A blocked reduction wrote nothing: the refused document left no version
+    // behind, so the two retained rows are the perpetual and its successor.
+    expect(
+      licensing.versions.some(
+        (version) => version.operationId === reducing.payload.operationId,
+      ),
+    ).toBe(false);
+  });
+
   it('rejects a document issued for another installation or signed by a stranger', async () => {
     const installationId = (await state()).installationId as string;
 
-    const foreign = issueLicenseFile(
+    const foreign = licenseFile(
       { installationId: '01K7OTHERINSTALLATION0000' },
       authority.privateKey,
     );
@@ -431,7 +671,7 @@ describe('License document import (e2e)', () => {
       /different Vardena installation/,
     );
 
-    const forged = issueLicenseFile({ installationId }, stranger.privateKey);
+    const forged = licenseFile({ installationId }, stranger.privateKey);
     const forgedResponse = await importDocument(forged.file).expect(422);
     expect(String(forgedResponse.body.message)).toMatch(
       /signature is not valid/,
@@ -453,7 +693,7 @@ describe('License document import (e2e)', () => {
 
   it('requires authentication and the activation permission', async () => {
     const installationId = (await state()).installationId as string;
-    const { file } = issueLicenseFile({ installationId }, authority.privateKey);
+    const { file } = licenseFile({ installationId }, authority.privateKey);
 
     const anonymous = await request(app.getHttpServer())
       .post('/api/v1/license/import')
@@ -464,7 +704,7 @@ describe('License document import (e2e)', () => {
     // An ordinary user without the permission is refused; a valid license
     // first, because a second active user needs one.
     await importDocument(
-      issueLicenseFile({ installationId }, authority.privateKey).file,
+      licenseFile({ installationId }, authority.privateKey).file,
     ).expect(200);
     // A second ordinary user needs an active license (the unlicensed
     // bootstrap allowance is one active user), so it is created after the
@@ -480,8 +720,15 @@ describe('License document import (e2e)', () => {
 
   it('keeps the L-02 activation alias working through the same pipeline', async () => {
     const installationId = (await state()).installationId as string;
+    // The legacy alias keeps its documented L-02 lifecycle; the identity is
+    // the suite's stable customer/license, as for the signed documents.
     const { code } = issueLicenseCode(
-      { installationId, organizationLimit: 4 },
+      {
+        customerId: CUSTOMER,
+        licenseId: LICENSE,
+        installationId,
+        organizationLimit: 4,
+      },
       authority.privateKey,
     );
 
@@ -511,7 +758,7 @@ describe('License document import (e2e)', () => {
 
   it('keeps the governing license effective while a future-dated successor waits (CF-1)', async () => {
     const installationId = (await state()).installationId as string;
-    const predecessor = issueLicenseFile(
+    const predecessor = licenseFile(
       {
         installationId,
         validFrom: new Date('2026-01-01T00:00:00.000Z'),
@@ -523,7 +770,7 @@ describe('License document import (e2e)', () => {
 
     // Far-future on purpose: the hand-over is asserted with a pinned clock in
     // the service spec; here it only has to be in the future for any runner.
-    const successor = issueLicenseFile(
+    const successor = licenseFile(
       {
         installationId,
         validFrom: new Date('2033-01-01T00:00:00.000Z'),
@@ -548,7 +795,7 @@ describe('License document import (e2e)', () => {
 
     const predecessorVersion = (
       response.body.versions as Array<Record<string, unknown>>
-    ).find((version) => version['licenseId'] === predecessor.payload.licenseId);
+    ).find((version) => version['validFrom'] === '2026-01-01T00:00:00.000Z');
     expect(predecessorVersion).toMatchObject({
       effective: true,
       supersededAt: expect.any(String),
@@ -575,7 +822,7 @@ describe('License document import (e2e)', () => {
 
   it('persists across a restart and never re-enters the document', async () => {
     const installationId = (await state()).installationId as string;
-    const { file } = issueLicenseFile(
+    const { file } = licenseFile(
       { installationId, organizationLimit: 6 },
       authority.privateKey,
     );

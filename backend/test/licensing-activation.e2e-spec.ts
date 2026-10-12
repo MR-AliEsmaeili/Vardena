@@ -299,11 +299,29 @@ describe('Installation identity and license activation (e2e)', () => {
 
   it('refuses a backdated replacement of a valid license and keeps the history', async () => {
     const id = await installationId();
-    await activate(issue({ installationId: id, organizationLimit: 1 })).expect(
-      200,
-    );
+    // One installation, one commercial customer (Owner decision 2026-10-12,
+    // Q4): both codes name the same customer, so the refusal under test is the
+    // temporal one and not the customer-binding rule.
+    const customer = '01K7ACTIVATIONCUSTOMER0000';
+    await activate(
+      issue({
+        installationId: id,
+        customerId: customer,
+        organizationLimit: 1,
+        validUntil: new Date('2027-01-01T00:00:00.000Z'),
+      }),
+    ).expect(200);
+    // The replacement starts LATER than the version it would take over (the
+    // legacy transport's only hand-over shape) but before the import instant:
+    // retiring the governing version there would rewrite which version
+    // governed 2026-01-01 → now, so it is refused and nothing is written.
     const refused = await activate(
-      issue({ installationId: id, organizationLimit: 7 }),
+      issue({
+        installationId: id,
+        customerId: customer,
+        organizationLimit: 7,
+        validFrom: new Date('2026-01-01T00:00:00.000Z'),
+      }),
     ).expect(422);
 
     // A second code cannot take over from the version that governs now without

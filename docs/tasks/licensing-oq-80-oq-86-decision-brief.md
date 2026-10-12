@@ -86,14 +86,64 @@ Dates are illustrative. "Verified" means executed in this session or in a named 
 
 | Item | Decision | Date | Decider |
 | --- | --- | --- | --- |
-| OQ-80 overlap policy | [ ] A  [ ] B  [ ] C  [ ] D  [ ] other: ______ | | |
-| OQ-80 gap policy | [ ] G1  [ ] G2  [ ] G3 (after OQ-45)  [ ] other: ______ | | |
-| OQ-86 retroactive supersession | [ ] A  [ ] B  [ ] C  [ ] other: ______ | | |
-| OQ-86 legacy `VLIC1` replacement | [ ] status quo  [ ] signed-only  [ ] other: ______ | | |
-| OQ-86 tolerance at the import instant | [ ] strict  [ ] tolerance: ____ (after OQ-76) | | |
-| OQ-86 as-of reads | [ ] recomputation  [ ] contract (requires B or C) | | |
-| Q3 renewal identity | [ ] same `licenseId`  [ ] new license per renewal | | |
-| Q4 installation customer change | [ ] not allowed  [ ] allowed, audited  [ ] other: ______ | | |
-| Ratify reason `license-binding-conflict` (report §9) | [ ] yes  [ ] rename: ______ | | |
+| OQ-80 overlap policy | **[x] B** (the later starting version governs in the overlap) | 2026-10-12 | Product Owner |
+| OQ-80 gap policy | **[x] G2** (a renewal that would leave a gap is refused) | 2026-10-12 | Product Owner |
+| OQ-86 retroactive supersession | **[x] C** (finite, deliberate tolerance: the candidate is checked against the full retained effective history, retired windows included) | 2026-10-12 | Product Owner |
+| OQ-86 legacy `VLIC1` replacement | **[x] status quo** (the L-02 restriction is preserved; no bypass) | 2026-10-12 | Product Owner |
+| OQ-86 tolerance at the import instant | **[x] strict** (no tolerance window) | 2026-10-12 | Product Owner |
+| OQ-86 as-of reads | **[x] recomputation** from the retained records (no historical-query contract) | 2026-10-12 | Product Owner |
+| Q3 renewal identity | **[x] same `licenseId`** (a renewal is the same license) | 2026-10-12 | Product Owner |
+| Q4 installation customer change | **[x] allowed, audited** — only as an explicit, authorized operation, never inferred from a document | 2026-10-12 | Product Owner |
+| Ratify reason `license-binding-conflict` (report §9) | **[x] yes** — name, HTTP 409, no state written | 2026-10-12 | Product Owner |
 
 **Consequences of any decision:** each option changes `evaluateImportConflicts` and/or `resolveEffectiveVersion`, and each needs the tests named in §2 to be updated or added. Option B also needs a migration and rehearsal. No option can be implemented before the Owner records it in this table and in `docs/open-questions.md`; the implementation agent will not close either question on its own.
+
+## 8. Recorded decisions — exact choices, consequences and one blocked dependency
+
+**Recorded 2026-10-12 by the Product Owner (this section is the record; the decision-maker is the Product Owner, the recorder is the implementation agent).** Nothing below closes an open question on its own: the statuses stay separate — *decision recorded* · *implementation recorded* · *tests passed locally* · *CI verified on the exact commit* · *Owner acceptance*.
+
+### 8.1 OQ-80 — Option B (overlap) and G2 (gap)
+
+- A signed document that overlaps exactly one retained version **still governing at the import instant** and starts **later** than it takes that version over at its own `validFrom`. The predecessor stops governing exactly there (`governs_until = successor.valid_from`); nothing is stacked, nothing is deleted, no capacity is added, and the hand-over is stamped and audited (`license.version.superseded`, `reason: 'implicit-precedence'`).
+- A candidate that starts **at or before** the version it overlaps cannot take precedence and is refused (`overlapping-range`, 409, nothing written). A candidate that would overlap **more than one** still-governing version is refused rather than guessed.
+- **G2:** a candidate carrying the identity of a retained license (same `licenseId`) may not start later than that license's retained coverage end (`renewal-gap`, 409, nothing written). Adjacency — `previous.validUntil == next.validFrom` — is contiguous, not a gap, and `validUntil: null` (perpetual) never gaps.
+- Commandments preserved: no entitlement, module or capacity is stacked; the installation + customer binding checks are unchanged; no new `licenseId` is minted to dodge a refusal; the legacy `VLIC1` path keeps its documented L-02 lifecycle rules and gains no bypass.
+
+### 8.2 OQ-86 — Option C (retired history counts)
+
+- Overlap is evaluated against the **effective window** `[validFrom, min(validUntil, governsUntil))` of **every** retained version, retired versions included. A document that lands inside a window a version has already governed is refused (`overlapping-range`, 409, nothing written) — this closes the previous Gap C where a retired version was excluded from the overlap check.
+- A gap-filling document that overlaps nothing, and a correction of a version that had already ended when it is contiguous with its predecessor, stay allowed.
+- The temporal rule is unchanged: a supersession (explicit or the implicit hand-over of §8.1) whose hand-over would remove governance the predecessor already exercised before the import instant is refused (`backdated-supersession`, 422, nothing written, operation id unused). Only a *deliberate* Owner change can lift it.
+- As-of reads stay a **recomputation** from the retained records; no historical-query API, no stronger public contract claim. Strict tolerance stays: no window around the import instant.
+- No legacy `VLIC1` bypass was introduced; import-time tolerance was not widened.
+
+### 8.3 Q3 — renewal identity is the same `licenseId`
+
+The identity of a license is stable across its renewals, so the license-identifier binding (one license → one installation → one customer) governs every renewal. The issuer tooling must therefore be able to target an existing `licenseId`; today `issue-development-license.ts` parses no `--license-id` and `buildLicensePayload` falls back to a fresh ULID (finding F-8). **The decision is recorded; the tooling change is not part of this slice and remains an open follow-up.**
+
+### 8.4 Q4 — customer transfer is an explicit, audited operation
+
+- An ordinary import may never change the installation's commercial customer: a document naming a different customer is refused (`installation-customer-mismatch`, 409, nothing written).
+- A customer change happens **only** through the dedicated, permission-gated, explicitly authorized transfer operation (`Licensing.Installation.TransferCustomer`), which carries the intent, audits the old and new customer, the installation, the operation, the actor/source and the instant as the typed `license.installation.customer-transferred` event, and is atomic with the binding write.
+- A transfer request that names the customer the installation already has is refused (`transfer-not-applicable`, 409, nothing written), so a repeat or a concurrent duplicate cannot silently re-apply. The cross-installation conflict protection is unchanged.
+- **Contract note for the Owner:** the signed document payload carries no field that could express transfer intent, and none was added; the intent is produced by the dedicated operation, not inferred from the document. A future field would be a signed-payload contract change with its own migration/test consequences and is **not** part of this slice.
+
+### 8.5 `license-binding-conflict` — ratified
+
+The refusal name, its HTTP class (409) and the "nothing is written" guarantee are ratified as recorded (report §9): the identifier belongs to exactly one installation and one customer, claimed by a plain `INSERT` under the installation row lock, so a loser gets the documented conflict instead of a database error or a silent re-application.
+
+### 8.6 BLOCKED — post-gap recovery is not decided
+
+The Owner's G2 decision answers *a renewal may not leave a gap*. Q3 answers *a renewal keeps its `licenseId`*. Neither answers the follow-on: **may a NEW license identity be issued for the same customer + installation after a lapse, to cover the gap?** The pre-decision brief assumed a new license could be issued, but that assumption was never decided, and the two decisions above make it visible (a lapsed license cannot be renewed under G2, so the only paths out of a lapse would be a new identity or an explicit Owner exception).
+
+- The question is registered as **OQ-87** in `docs/open-questions.md`.
+- The implementation deliberately **neither grants nor refuses** it: a candidate carrying a new `licenseId` is not a renewal, so the gap rule does not evaluate it, and no other rule refuses it. That is the pre-decision behaviour preserved, not a new policy.
+- **Blocked:** any workflow, documentation or capacity slice that *depends* on post-gap recovery (including describing a lapse as recoverable) must not be implemented or claimed until the Owner answers OQ-87. The L-04 capacity slice is gated on the whole decision set, so it stays behind the gate for this reason too.
+
+### 8.7 PDR-11 §8.6 — precedence is not permission
+
+Option B decides **which version governs** at an overlap. It is not a permission to apply a reduction: PDR-11 §8.6 still requires a reducing or changed version to be checked against current usage, explained to the operator, preserved, and **explicitly resolved** before it is applied. That flow is the L-04 slice and does not exist yet, so the import fails closed while the retained grant shrinks (`reduction-requires-resolution`, 409, nothing written: a smaller organization/user limit, or a removed entitlement).
+
+**Review fix on PR #141 (2026-10-12): an explicit signed supersession is not a bypass.** The guard above was first applied only to the implicit hand-over, so a document carrying `supersedesOperationId` could reduce `organizationLimit`, reduce `userLimit` or remove an entitlement without passing through it. That is closed: the capacity/entitlement guard now runs on **every** path that retires a version — the explicit signed supersession, the implicit hand-over of OQ-80 Option B, and the legacy `VLIC1` replacement. Naming the version to retire proves **which** version the document replaces; a signed document cannot know how many users or organizations exist, so it is not the resolution §8.6 requires and it may not switch the guard off. Increases and identical grants are untouched, and a document that retires nothing (a first license, a gap-filling renewal, a new license identity) is unaffected.
+
+**The term dimension — decided by the Owner (2026-10-12), no longer an interim reading.** Closing an **open end** (a perpetual version handed over to a time-limited one) is refused as a reduction only where the document does **not** name the version it retires (the implicit hand-over of Option B and the legacy `VLIC1` replacement); an explicit signed supersession that names it may make that term change, subject to strict non-reduction of `organizationLimit`, `userLimit` and the granted entitlements. The Product Owner's final decision — *an explicit, valid, signed supersession may convert a perpetual grant into a time-limited one, and that is the only change it authorizes; capacity and entitlement reductions must still be rejected on every path* — is recorded as **[PDR-12](../decisions/product/PDR-12-license-term-supersession.md)** (decision id **OD-LIC-01**) and implemented in PR #141. The capacity/entitlement arms run on the explicit path exactly like the others. L-04 still owes §8.6's check/explain/preserve/explicit-resolution flow to every path; until it exists, a capacity or entitlement reduction is refused rather than resolved.

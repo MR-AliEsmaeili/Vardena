@@ -17,9 +17,13 @@ import {
  * use so a process can boot before the database is reachable, and is then
  * memoised for the lifetime of the process.
  *
- * The in-process cache is safe because the row is immutable once created: a
- * restart re-reads the same row, which is exactly the property a license
- * bound to this installation depends on.
+ * The in-process cache is safe for the INSTALLATION ID, which is immutable
+ * once created: a restart re-reads the same row, which is exactly the property
+ * a license bound to this installation depends on. It is NOT used for the
+ * commercial-customer binding: that column is written by the first import and
+ * moved by an explicit transfer (Owner decision 2026-10-12, Q4), so the import
+ * path reads it fresh — a cached copy could make one process refuse a
+ * legitimate import or act on a binding that already moved.
  */
 @Injectable()
 export class InstallationIdentityService {
@@ -48,12 +52,28 @@ export class InstallationIdentityService {
    * existence (ADR-0046 Decision 6, design §7).
    */
   async existingIdOrNull(): Promise<string | null> {
+    return (await this.existingOrNull())?.installationId ?? null;
+  }
+
+  /**
+   * The identity that ALREADY exists — including its commercial customer
+   * binding, which the import path's customer rules evaluate against (Owner
+   * decision 2026-10-12, Q4) — or null. Never creates one.
+   *
+   * The row is read on EVERY call, deliberately: the id is immutable but the
+   * customer binding is not, and the caller is the import path, whose
+   * authoritative decision runs inside the import transaction under the
+   * installation row lock. This read exists so the read-side pre-check cannot
+   * disagree with that decision. A failure to read returns null, exactly like
+   * `existingIdOrNull`, so the caller fails closed on the identity it cannot
+   * see.
+   */
+  async existingOrNull(): Promise<InstallationIdentity | null> {
     try {
-      if (this.cached !== null) return this.cached.installationId;
       const existing = await this.installations.findSelf();
       if (existing === null) return null;
       this.cached = existing;
-      return existing.installationId;
+      return existing;
     } catch {
       return null;
     }

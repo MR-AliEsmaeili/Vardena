@@ -58,12 +58,22 @@ Nothing is marked Decided unless Ali Esmaeili has explicitly approved it.
 | [PDR-09](./PDR-09-inventory-accounting-posting-boundary.md) | Inventory → Accounting posting boundary and Owner decisions (PO-01…PO-12; C-61) | PDR | Decided (2026-10-07) | Records approved boundaries; OQ-24/25/39/42/69/70/71/72 remain Open; no implementation authorized |
 | [PDR-11](./PDR-11-vardena-licensing-product-requirements.md) | Vardena licensing product requirements — canonical source of truth (server and client-device licensing, Owner-side administration, replacement, expiry, revocation, offline signed-file exchange) | PDR | Decided — approved product-requirements reference (2026-10-11); documentation only, not an implementation specification | Licensing design + first import slice (2026-10-11) OQ-45 and OQ-53 stay Open; open items in PDR-11 §15; conflicts with ADR-0030/ADR-0036 in PDR-11 §19 |
 | [PDR-10](./PDR-10-c62-inventory-accounting-posting-modes.md) | C-62 Inventory → Accounting posting modes (Owner-approved C62-OD-01…06; PDR-09 boundaries; no implementation authorized) | PDR | Decided (2026-10-08) — Owner-approved decision package recorded in the file; OQ-39/OQ-42/OQ-72 remain Open | Records approved C-62 decisions; index row added 2026-10-11 (PDR-11 §19, CF-15) |
+| [PDR-12](./PDR-12-license-term-supersession.md) | License term change through explicit signed supersession (**OD-LIC-01**) — a perpetual grant may be replaced by a time-limited one by an explicit valid signed supersession, subject to non-reduction of `organizationLimit`, `userLimit` and entitlements | PDR | **Decided — Final Owner Decision (2026-10-12)** | Binds the licensing import path; **OQ-87 stays Open**; L-04 (§8.6 capacity-conflict detection + resolution flow) remains outstanding and is **not** completed by it |
 
 > **Numbering note (2026-10-02).** `OQ-62`, `OQ-63` and `OQ-64` are accounting /
 > migration questions that live only in the central registry
 > ([`docs/open-questions.md`](../../open-questions.md)); they have no record in
 > this directory. `OQ-65` is the next free id in the central registry and is a
 > product question, so its full record lives here.
+>
+> **PDR-12 recorded (2026-10-12).** [`PDR-12`](./PDR-12-license-term-supersession.md)
+> transcribes the Product Owner's final decision (decision id **OD-LIC-01**) on
+> the license-term question left ambiguous by the OQ-80/OQ-86 decision round: an
+> explicit, valid, signed supersession may convert a perpetual grant into a
+> time-limited one, and only that — `organizationLimit`, `userLimit` and the
+> granted entitlements may not be reduced, on any path. It closes no OQ
+> (OQ-80/OQ-86 keep their recorded status; **OQ-87 stays Open**) and does not
+> implement L-04.
 >
 > **Registry-only licensing rows (2026-10-11).** `OQ-74`…`OQ-85` are licensing
 > product/security questions registered in the central registry
