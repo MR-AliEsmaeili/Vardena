@@ -440,15 +440,27 @@ amended. The audit that establishes the facts is
   replay protection, or audit requirements. **`--license-id` must not be
   implemented** merely to force reuse of the old identifier — the tooling
   follow-up is withdrawn, not owed. Supersession note recorded in the decision
-  brief §8.3.1; the audit's §4 records what the model enforces for a changed
-  identifier (binding, binding-to-installation, history, precedence, replay and
-  audit hold; the one gap is the §8.6 reduction control on a successor that
-  retires nothing).
+  brief §8.3.1. **Requirement-level status (revision 2, 2026-10-13): F-8 is NOT
+  fully satisfied.** What holds for a changed identifier is customer binding by
+  `customerId`, installation binding, retained history, version precedence, replay
+  protection and audit (audit report §4.2/§4.3). Two criteria are outstanding
+  implementation items against the same decision: (a) the **same customer code** is
+  not representable, signed or validated anywhere in the tree (corrective task
+  **L-06**); (b) the **capacity/entitlement reduction control** (§8.6) does not
+  execute on a renewal that retires nothing, for either identity (corrective task
+  **L-05**, audit report §4.4.1 — a requirement defect, and PR #142 stays `HOLD`
+  until it is fixed and verified).
 - **F-8 finding (this document, §9) — status.** The finding that the issuer CLI
   cannot target an existing `licenseId` is no longer a defect: new identity per
   renewal is now an accepted policy, and the issuer's `options.licenseId ??
   generateId()` behaviour matches it. Nothing in the merged slice silently
   claims the OLD policy; the records are updated here instead.
+- **Revision note (2026-10-13, after Product Owner review of PR #144).** The two
+  F-8 follow-ups above replace the earlier single-bullet wording, which had
+  described G-8.1 as if narrowing §8.6 were an acceptable alternative to
+  implementing it. Narrowing is **not** accepted: PDR-11 §8.6 is unconditional and
+  the F-8 decision requires the control for a changed `licenseId`. The dated history
+  of §17 is preserved; only the requirement-level status is stated here.
 - **F-12 (initial System Administrator) — DECIDED, NOT IMPLEMENTED.** The
   Product Owner's decisions of 2026-10-13: (1) the initial password remains
   exactly `1`; (2) the account must hold the real System Administrator role with

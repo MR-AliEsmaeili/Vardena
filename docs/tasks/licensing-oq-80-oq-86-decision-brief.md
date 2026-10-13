@@ -135,12 +135,17 @@ follow-up recorded in §8.3 is **withdrawn, not owed**.
 
 This note supersedes only the identity-continuity requirement. The audit that
 establishes what a new identity may do (ordinary contiguous renewal: allowed,
-same customer required, everything else unchanged) and the one exact gap it
-found — the §8.6 reduction control does not execute for a successor that retires
-nothing — are recorded in
+same customer required by `customerId`, everything else unchanged) is recorded in
 [`docs/tasks/licensing-po-acceptance-audit-2026-10-13.md`](licensing-po-acceptance-audit-2026-10-13.md)
-§4. The old text above is preserved as the record of what was decided on
-2026-10-12; it is not rewritten.
+§4. **F-8 is not fully satisfied** (revision 2, 2026-10-13): two implementation
+gaps remain against the same decision and are recorded there — (a) the **same
+customer code** cannot be represented, signed or validated in the current tree
+(corrective task **L-06**, report §4.6); (b) the **§8.6 capacity/entitlement
+reduction control** does not execute for a successor that retires nothing, for
+either a retained or a new identifier (corrective task **L-05**, report §4.4.1 —
+a requirement defect; PR #142 stays `HOLD` until it is fixed and verified, and
+narrowing §8.6 is not an accepted alternative). The old text above is preserved as
+the record of what was decided on 2026-10-12; it is not rewritten.
 
 ### 8.4 Q4 — customer transfer is an explicit, audited operation
 

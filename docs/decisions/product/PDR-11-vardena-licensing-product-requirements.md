@@ -717,17 +717,23 @@ bypass customer binding, installation binding, retained history, version
 precedence, capacity/entitlement reduction controls, replay protection, or audit
 requirements. `--license-id` must **not** be implemented merely to force reuse of
 the old identifier, so the tooling follow-up the addendum above left open is
-withdrawn. §8.6 is unchanged: a reducing or changed version still requires the
-check/explain/preserve/explicit-resolution flow, and the audit of the merged tree
-records the one place that flow does not yet reach — a successor that retires
-nothing (a contiguous renewal), for both a retained and a new identifier — in
-[`docs/tasks/licensing-po-acceptance-audit-2026-10-13.md`](../../tasks/licensing-po-acceptance-audit-2026-10-13.md)
-§4, pending the Owner's ruling on the control's scope. The superseding record
-for Q3 itself is the decision brief §8.3.1; the earlier text stays as the record
-of what was decided on 2026-10-12. Separately, the **F-12** requirement the
-records carried as an open remediation path is now decided — the initial
-password remains exactly `1`, and a forced first-login password change enforced
-in the backend and the frontend is **outstanding implementation**, with its
-acceptance tests in the same audit §5.
+withdrawn. **§8.6 is unchanged and its trigger is unconditional** ("before
+applying a LicenseVersion that reduces entitlements or capacity"): a reducing or
+changed version still requires the check/explain/preserve/explicit-resolution
+flow. The audit of the merged tree establishes that **F-8 is not fully
+satisfied** and records the two exact gaps with their corrective tasks in
+[`docs/tasks/licensing-po-acceptance-audit-2026-10-13.md`](../../tasks/licensing-po-acceptance-audit-2026-10-13.md):
+(a) a successor that **retires nothing** (a contiguous renewal), for both a
+retained and a new identifier, is not evaluated by that flow — **L-05**, a
+requirement defect that keeps PR #142 at `HOLD` until it is implemented and
+verified; narrowing §8.6 is not an accepted alternative; and (b) the **same
+customer code** the decision requires is not representable, signed or validated
+anywhere in the current model, document or API — **L-06**, whose representation
+is an Owner decision item. The superseding record for Q3 itself is the decision
+brief §8.3.1; the earlier text stays as the record of what was decided on
+2026-10-12. Separately, the **F-12** requirement the records carried as an open
+remediation path is now decided — the initial password remains exactly `1`, and a
+forced first-login password change enforced in the backend and the frontend is
+**outstanding implementation**, with its acceptance tests in the same audit §5.
 
 *End of PDR-11. This record is an approved product-requirements reference. It is not an implementation specification and does not authorize any implementation work.*

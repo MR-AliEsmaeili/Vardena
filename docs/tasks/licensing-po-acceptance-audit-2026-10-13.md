@@ -14,6 +14,31 @@ green CI are treated as facts to verify, never as acceptance.
   the F-12 initial-System-Administrator decisions of 2026-10-13 (verbatim
   restatement in §4 and §5).
 
+**Revision 2 — corrections after the Product Owner's review of PR #144
+(2026-10-13).** Two corrections were applied to revision 1, and both are
+requirement-level, not editorial:
+
+1. **Finding 1 (L-04 reduction-control gap) — corrected.** Revision 1 presented
+   "the Owner narrows §8.6's scope" as an alternative of equal standing to
+   implementing the control. That was wrong: PDR-11 §8.6 is unconditional and the
+   F-8 decision requires the control to hold for a changed `licenseId`. §4.4 now
+   records the requirement as **NOT SATISFIED**, removes the narrowing framing, and
+   specifies the concrete corrective task **L-05** with its mandated regression
+   coverage. **PR #142 stays `HOLD`** until L-05 is merged and verified.
+2. **Finding 2 (customer code) — expanded and raised.** §4.6 now traces customer
+   identity and code through the Prisma model, the only customer-creation path, the
+   issuer CLI, the signed payload, validation, import/upsert and installation
+   binding; the "same customer code" criterion is reported as **NOT SATISFIED**
+   (no representation, signature or validation exists) with the minimal corrective
+   task **L-06** and its acceptance tests. §4.7 states the requirement-level status
+   of every F-8 decision.
+
+**F-8 is NOT fully satisfied** and this audit does not present it as such. The
+acceptance recommendations for the merged PRs (#137-#141 and #143) are unaffected
+and are **separate from the acceptance status of this audit record itself**, which
+is not accepted. No product code, schema, migration, permission, API contract or
+generated client is changed by either revision.
+
 ## 1. Method and what was actually run
 
 | Step | Result |
@@ -28,6 +53,9 @@ green CI are treated as facts to verify, never as acceptance.
 | `npx prettier --check .` | clean |
 | Live PostgreSQL / migration rehearsals / full e2e | **GitHub CI on the exact merge SHAs only** (no PostgreSQL, no Docker in this environment); pre-fix failure reproduced in CI is quoted in §6 |
 | Temporary conflict-authority probe (`zz-audit-probe.spec.ts`, deleted after use) | §4.3 evidence A–F |
+| Revision 2: re-trace of every customer-identity/code layer (model, writer, CLI, payload, validation, import, binding, tests) | §4.6 — no customer-code representation exists |
+| Revision 2: re-read of PDR-11 §8.6, `reductionConflicts`/rule 6b, the resolution plumbing and the renewal tests (`license-import.service.spec.ts:487`, `:1878`, `:2798`) | §4.4 — the control must be implemented, not narrowed |
+| Revision 2: repository-consistency checks on the changed docs (internal links resolve; every referenced run/SHA exists; no unrun test claimed) | passed (see §8) |
 
 ## 2. PR inventory and exact-SHA CI evidence
 
@@ -170,7 +198,7 @@ Reviewed in §6; recommended for formal Product Owner acceptance.
 | Version precedence | Yes: effective windows of all retained versions must stay disjoint; an overlapping new identity is either refused or becomes a dated hand-over | `license-version.ts:1122–1200`; probe F |
 | Replay protection | Yes: per-installation unique `operationId` and `document_hash`; duplicate → 409, nothing written | `licenses.repository.ts` unique indexes; service spec duplicate cases |
 | Audit | Yes: `license.import.applied` written in the state-change transaction with actor, source, hash, license and version ids; rejections audited separately | `licenses.repository.ts:833–855`, `:875–897` |
-| Capacity/entitlement reduction controls | **No — see G-8.1 (§4.4)** | Probe A/B; rule 6b gate at `license-version.ts:1198` |
+| Capacity/entitlement reduction controls | **No — requirement not satisfied; corrective change L-05 required (§4.4)** | Probe A/B; rule 6b gate at `license-version.ts:1198` runs only when a version is retired |
 
 **Answer to the F-8 §5 question — may a new identity be used for an ordinary
 contiguous renewal?** Yes. A candidate carrying a new `licenseId` whose window
@@ -230,44 +258,135 @@ overlapping hand-over (F). The only unguarded path is the one that retires
 nothing (A/B) — and it is unguarded for **both** identities, so the change of
 identifier is not what creates it.
 
-### 4.4 Finding G-8.1 — the reduction control does not cover a non-retiring successor
+### 4.4 Finding G-8.1 — the §8.6 reduction control does not cover a successor that retires nothing (required corrective change L-05)
 
-- **Statement.** A renewal that starts exactly at (or after its own predecessor's
-  end and) the retained coverage end and lowers the grant is imported with no
+- **Statement (evidence, unchanged from revision 1).** A renewal that starts exactly
+  at the retained coverage end and lowers the grant is imported with no
   `reduction-requires-resolution`, no explanation payload and no resolution step,
-  because rule 6b (`license-version.ts:1198–1214`) only runs when a predecessor
-  is retired, and a contiguous successor retires nothing.
-- **Consequence for F-8 #3.** Decision #3 forbids a changed `licenseId` from
-  bypassing capacity/entitlement reduction controls. Under the new policy a
-  renewal may carry a new identifier; the reduction control that decision names
-  does not execute for that renewal at all (probe A), nor for the same-identifier
-  variant (probe B). The requirement therefore cannot be verified as satisfied
-  for the ordinary renewal path as the code stands.
-- **Is it undocumented?** No. It is a deliberate, documented scope boundary of
-  the L-04 slice: `license-version.ts:1011–1012` ("a document that retires
-  nothing … with no predecessor retired there is no grant to take away"),
-  `docs/licensing/version-model-and-file-exchange.md:219`, and the decision
-  brief §8.7 (`docs/tasks/licensing-oq-80-oq-86-decision-brief.md`; the
-  paragraph beginning "Review fix on PR #141"). No test
+  because rule 6b (`license-version.ts:1198-1214`) only runs when a predecessor is
+  retired, and a contiguous successor retires nothing. Probes A and B (§4.3) show
+  the identical outcome for a retained and for a changed `licenseId`; probe F shows
+  the overlapping case is guarded.
+- **Requirement status: NOT SATISFIED — the approved control must be implemented.**
+  PDR-11 §8.6 is unconditional in its trigger: "Before applying a LicenseVersion
+  that reduces entitlements or capacity, the system must: 1. check the resulting
+  state for conflicts; 2. explain the conflicts …; 3. preserve data; 4. require
+  explicit resolution …". Nothing in §8.6 conditions it on the candidate retiring a
+  version, and the 2026-10-13 F-8 decision adds that a changed `licenseId` must not
+  bypass capacity/entitlement reduction controls. **Narrowing §8.6 is therefore not
+  presented by this audit as an equivalent alternative: the corrective change is
+  required, and the audit recommends implementation.** The only genuinely open
+  input is documentation of the *comparison baseline* used for a renewal (see
+  L-05 below); the obligation to check, explain and require an explicit resolution
+  is already decided.
+- **How the gap arose (historical context, not a justification).** The boundary is
+  recorded as an intentional scope limit of the merged L-04 slice:
+  `license-version.ts:1011-1012` ("a document that retires nothing … with no
+  predecessor retired there is no grant to take away"),
+  `docs/licensing/version-model-and-file-exchange.md:219`, and the decision brief
+  §8.7. Those statements describe what the merged implementation does; they are
+  narrower than §8.6's approved text and they do not settle the requirement. No test
   pins the accepted behaviour — it was demonstrated by the probe only.
-- **Prior records anticipated the question.** `docs/tasks/licensing-pr-138-post-merge-verification-and-l-04-readiness.md:229–235`
+- **Prior records anticipated the question.** `docs/tasks/licensing-pr-138-post-merge-verification-and-l-04-readiness.md:229-235`
   records that Q3 "decides whether capacity is continuous across renewals or
-  restarts — and therefore what 'reducing' even means". Removing Q3 makes
-  capacity *discontinuous* across identities unless the implementation compares
-  the new grant to the previously governing one.
-- **Corrective implementation (identified, deliberately not implemented here).**
-  Either the Owner narrows §8.6's scope by decision, or the reduction evaluation
-  must gain a **baseline for a successor that retires nothing**: the latest
-  retained version of this installation whose effective window ends at or before
-  the candidate's `validFrom` and whose license belongs to the same customer as
-  the installation's binding (identity-independent, keyed on
-  installation+customer+adjacency), evaluated with the existing
-  `reductionConflicts` and resolvable only through the existing
-  `reduction-resolution` operation. Because that choice changes policy scope, it
-  is reported — not implemented — pending the Owner ruling.
-- **Not a defect of F-8 itself.** The identity relaxation needs no code change;
-  the gap exists because §8.6 is implemented on retirement paths only. It is
-  recorded here because decision #3 lists that control explicitly.
+  restarts — and therefore what 'reducing' even means". Removing Q3 makes capacity
+  discontinuous across identities unless the implementation compares the new grant
+  to the previously governing one.
+
+#### 4.4.1 Required corrective implementation task — L-05 (not implemented in PR #144)
+
+Product code is out of scope for this documentation-only PR; the task below is the
+exact follow-up and acceptance gate.
+
+- **Trigger (the renewal path that retires no predecessor).** In the single
+  conflict authority `evaluateImportConflicts`, after the existing rules have
+  accepted a candidate with `supersedes === null`, evaluate a **continuation
+  baseline** when at least one retained version's *effective* window ends exactly
+  at `candidate.validFrom` (adjacency). Baseline selection must be deterministic
+  and identity-independent: prefer a version whose `licenseId === candidate.licenseId`,
+  otherwise the version of the customer the installation is bound to; break ties by
+  latest `importedAt`, then `versionId` (the existing `compareByStartThenImport`
+  ordering). Multi-baseline cases must be decided by that rule, never by guesswork.
+- **Evaluation.** Reuse the shipped `reductionConflicts(baseline, candidate, usage)`
+  and `isResolvableReductionConflict`; refuse with `reduction-requires-resolution`
+  (409, nothing written) and the structured explain payload
+  (`reduction.predecessorVersionId = baseline.versionId` plus per-conflict
+  kind/limit/usage/entitlement) unless the caller carries the existing
+  `ReductionResolutionIntent`. `usage-unavailable` stays a fail-closed,
+  non-operator-resolvable conflict. The `open-end-closed` arm cannot arise from the
+  adjacency rule itself (a perpetual version has no effective end, so it is never
+  the baseline; a candidate that overlaps a perpetual version is the already-guarded
+  Option-B hand-over, where closing the open end is refused as `open-end-closed` —
+  probe F). The change must prove that with a test instead of assuming it.
+- **Plumbing the change.** Today the resolution receipt requires a retired
+  predecessor: `licenses.repository.ts:750-754` throws "A reduction resolution was
+  applied without a retired predecessor". The evaluation must expose the
+  **resolution subject** (the baseline) distinctly from `supersedes`, the
+  repository must recompute `reductionConflicts(baseline, …)` under the
+  installation/allocation locks, the typed `license.import.reduction-resolved`
+  event must name the baseline, and the baseline must **not** be stamped
+  (`superseded_at`, `governs_until`, `superseded_by_version_id` stay null) because
+  it is not retired. The receipt must carry the same recomputed conflicts.
+- **Same change, legacy transport.** The legacy `VLIC1` adjacency renewal is
+  equally unguarded today (accepted with no reduction check —
+  `license-import.service.spec.ts:1878` "accepts a legacy renewal that starts where
+  the version it follows ends"). The check must run there too, added **after** its
+  documented L-02 rules so no existing refusal reason changes (the same ordering
+  discipline as rules 4/6b/7/7b).
+- **Documented out of scope (must be stated, not silently changed):** a first
+  license (no retained coverage); non-adjacent/historical documents such as a
+  backwards gap fill, where no retained window ends at the candidate's start; and
+  the dedicated post-gap recovery, which keeps its own flow.
+- **Design record.** The baseline rule and its rationale must be written into
+  `docs/licensing/version-model-and-file-exchange.md` §3.3 (and the rule-6b comment)
+  as part of the change. One residual Owner input may remain if the baseline choice
+  changes policy materially (for example, whether a renewal that follows an
+  explicit customer transfer is compared with the pre-transfer grant of the same
+  installation). That question is flagged for the Owner; it is not a reason to defer
+  the control.
+- **Migration/contracts.** No schema change is expected. If a machine-readable
+  baseline identifier is added to the audit event, it must be an additive, nullable
+  migration (populated-database safe), never an edit to an applied migration.
+- **Frontend.** No new UI (the resolution operation has no UI; documented non-goal
+  in PDR-13 §7). The existing `reduction-requires-resolution` Persian copy must keep
+  applying to the new path — including the "no version retired" case — and must not
+  be removed or weakened.
+- **Mandated regression coverage (all required before the change is accepted):**
+  1. reducing contiguous renewal, **same** `licenseId` → 409
+     `reduction-requires-resolution` with the concrete conflicts; nothing written
+     (no version, no APPLIED event, no stamp, operation id not retained);
+  2. the identical renewal with a **new** `licenseId` → the same refusal (this is
+     the F-8 non-bypass evidence);
+  3. **below-current-usage** cases: organization limit below the organization count,
+     user limit below the active-user count, and entitlement removal, each refused
+     with its `limit`/`currentUsage` or entitlement kind/code in the payload;
+  4. **within-current-usage** reductions apply through the ordinary import with no
+     resolution and no resolution event (the renewal-path counterpart of the
+     existing hand-over case, `license-import.service.spec.ts:2798`);
+  5. **non-reducing** renewals (identical or larger limits, same entitlements,
+     perpetual → perpetual) still apply — no new refusals, and the adjacent-renewal
+     case at `license-import.service.spec.ts:487` keeps passing;
+  6. **authorization**: ordinary import 409; `POST /api/v1/license/reduction-resolution`
+     without `Licensing.License.ResolveReduction` → 403 with nothing written; with
+     both permissions and a valid reason → applied in one transaction; missing or
+     invalid reason → 400; a resolution that meets no conflict → 409
+     `resolution-not-applicable`;
+  7. **transaction/audit integrity (live PostgreSQL)**: refusal writes nothing;
+     success writes version + `license.import.reduction-resolved` atomically with the
+     conflicts recomputed under the locks; a late failure rolls everything back; the
+     baseline is not stamped; replaying the operation → stable 409;
+  8. **version precedence unchanged**: overlapping candidates keep Option B / their
+     existing refusal reasons; explicit supersession, implicit hand-over, legacy
+     replacement, `renewal-gap`, `backdated-supersession` and post-gap recovery
+     behave exactly as before;
+  9. **usage unavailable** on the renewal path fails closed (`usage-unavailable`,
+     refused, not resolvable);
+  10. **migration rehearsal** unchanged (or extended only if an additive field is
+      chosen).
+- **Acceptance gate for L-05.** The change is a separate corrective PR with its own
+  tests and exact-SHA CI; **PR #142 stays `HOLD` until L-05 is merged and verified**,
+  and the F-8 reduction-control criterion stays "not satisfied" until then. PR #144
+  (this audit) neither implements nor verifies it.
 
 ### 4.5 Record supersession for F-8 / Q3
 
@@ -282,6 +401,87 @@ claim is made that the old implementation already satisfied the new policy.
 **Not implemented, per decision #4:** no `--license-id` flag, no identifier
 reuse requirement, no change to `buildLicensePayload` (`options.licenseId ??
 generateId()` stays).
+
+### 4.6 Customer code (F-8) — not representable in the current tree; corrective change L-06
+
+The 2026-10-13 F-8 decision requires a newly issued license to remain bound to the
+**same intended customer and the same customer code**. The two halves are not
+equivalent in this repository, and this audit does not assume they are:
+
+| Layer | What exists today (verified at `2494e5de`) | Customer code? |
+| --- | --- | --- |
+| Prisma model | `licensing.customers` = `id` (PK) + `display_name` (VarChar 200) + audit columns; no code, no external reference | absent |
+| Customer creation / bootstrap | the only writer is the import upsert `tx.licenseCustomer.upsert` (`licenses.repository.ts:642-655`), which sets `displayName` from the signed document; no customer admin API or endpoint, no bootstrap seed, and no `INSERT` into `licensing.customers` in any migration; the local development provider hardcodes one id (`local-development-license.provider.ts:38`, `customerId: '01JLOCALCUSTOMER0000000000'`); the Owner-side register that would own codes is deferred (PDR-11 §4: CF-19, OQ-61) | absent |
+| Issuer CLI | `backend/src/issue-development-license.ts` accepts `--customer <id>` and `--customer-name <label>` only; `tools/development-license-authority.ts:75-77` defaults `customerId` to a fresh ULID and `customerName` to `'Development customer'` | absent |
+| Signed payload | `customerId` (ID_PATTERN, opaque id ≤ 64 chars) and `customerName` (non-empty, ≤ 200) — `license-document.ts:133-137`, `:484-485`; `license-code.ts` for the legacy transport | absent |
+| Validation | `readId` (opaque id shape) and `readName` (display string) only; `customerName` is never compared with the stored `display_name` | absent |
+| Import / installation binding | rules 2a/2b compare `customerId` only (`license-version.ts:1062-1067`, `:1072-1085`); a new `licenseId` creates a new `licensing.licenses` row bound to the claimed `customerId`, accepted when it equals the installation's binding | id only |
+| Transfer (Q4) | `POST /api/v1/license/customer-transfer` moves `installation.customerId` only, audited with `previous_customer_id`/`new_customer_id` | id only |
+| Tests | customer-binding cases exist for the id (`license-version.spec.ts:1082`, `license-import.service.spec.ts:2195`, `licensing-persistence-live.e2e-spec.ts:1026-1090`) | no code case |
+
+- **Conclusion.** The "same intended customer" half **is** demonstrably enforced,
+  through the opaque `customerId`: the installation binding refuses a document naming
+  another customer without the authorized transfer operation (probe C), and a
+  retained identifier cannot be re-bound to another customer (probe D). The "same
+  customer code" half is **not representable, not signed, not validated and not
+  tested** anywhere in the merged tree. No repository contract establishes that
+  `customerId` *is* the business customer code: PDR-11 §2.1/§14 speak of a customer
+  as the commercial party without a code attribute, the schema has no such column,
+  and the Owner-side register that would own codes is deferred (CF-19, OQ-61).
+  **F-8 criterion 2 is therefore NOT SATISFIED**, and this audit does not claim
+  equivalence to close it.
+- **Observed behaviour worth recording (evidence, not a policy claim).** Because the
+  import upserts `display_name` from the signed document, a document that keeps
+  `customerId` but changes `customerName` silently renames the customer, and no
+  audit event records the rename. That is a second reason a stable, signed business
+  code — rather than the display name — is the only enforceable representation of
+  "the same customer".
+- **Required corrective implementation task — L-06 (not implemented in PR #144).**
+  The code's source and shape are an **Owner decision item**; this audit deliberately
+  invents no format and alters no identifier:
+  1. record the Owner decision on what the customer code *is* (where it is
+     allocated, and its stability guarantees) as a dated product record before
+     implementation;
+  2. make it a first-class, **unique** attribute of `licensing.customers` through an
+     additive migration, populated-database safe, with the backfill decision for
+     existing rows recorded (never inferred);
+  3. carry it in the **signed** document payload (a `customerCode`-class field), so
+     the authority binds it; this is a canonical-form/`documentVersion` contract
+     change with its own version-handling and payload tests;
+  4. validate it at import against the customer the installation is bound to, with a
+     stable refusal classifier — either a new reason or an explicitly documented
+     extension of `installation-customer-mismatch`; the choice must be recorded, not
+     invented in code, and mapped to a 409 with nothing written;
+  5. make the transfer operation move id **and** code together and audit both
+     (additive columns on the typed transfer event);
+  6. extend the issuer CLI (`--customer-code`) and refuse inconsistent id/code pairs;
+     **never** default the code to the id or re-derive it from the name.
+- **Acceptance tests for L-06:** mismatched customer **id** (existing rule, must keep
+  passing); mismatched **code** with the same id → refused, nothing written;
+  mismatched code carried by a **new** `licenseId` → refused; absent/invalid code →
+  refused (or explicitly tolerated only if the Owner decides so and records it);
+  valid renewal with a **new** `licenseId` and matching id + code → applied;
+  installation binding unchanged by that renewal; transfer moves both fields and
+  audits both; code uniqueness enforced in the database; populated-database backfill
+  rehearsed; the generated client/OpenAPI updated only if a response schema changes.
+- **Not in this PR.** No schema, payload, permission, API contract or identifier is
+  changed by PR #144.
+
+### 4.7 F-8 requirement-level status
+
+| F-8 decision | Status | Evidence / follow-up |
+| --- | --- | --- |
+| 1. Preserving the previous `licenseId` is not required | **No action** (superseded requirement) | §4.5; no `--license-id` implemented or planned |
+| 2a. New license bound to the same intended customer | **Satisfied** (by `customerId`) | rules 2a/2b + Q4 transfer; probes C/D; §4.2, §4.6 |
+| 2b. … and the same **customer code** | **NOT SATISFIED** | §4.6 — no representation, signature or validation exists; follow-up **L-06** |
+| 3. A changed `licenseId` must not bypass binding, history, precedence, replay, audit | **Satisfied** | probes C/D/E, §4.2/§4.3 |
+| 3b. … nor capacity/entitlement reduction controls | **NOT SATISFIED** on the renewal path | §4.4; follow-up **L-05** (PR #142 `HOLD` until then) |
+| 4. Do not implement `--license-id` to force reuse | **Satisfied** | CLI has no such flag; none added |
+| 5. Audit and report the exact gap where the code cannot enforce a decision | **Done** | this section; probe evidence in §4.3 |
+
+**F-8 overall: NOT SATISFIED — two outstanding implementation items (L-05, L-06).**
+The identity relaxation itself needs no code change and is correctly implemented;
+the two gaps above are against the same decision and are not waived by this audit.
 
 ## 5. F-12 — initial System Administrator
 
@@ -386,13 +586,26 @@ change (each must be able to fail before the change and pass after):
 | #138 | ADR-0046 Decision 2 binding; §12.7 audit | merge `d283744b4`, run `38210710188` success; rule 2a + cross-installation guard + live cases | None; the requested ratification was given on 2026-10-12 | **ACCEPT** |
 | #139 | Documentation-only post-merge verification | merge `9ac2cc58d`, run `38217456331` success; content re-read against the tree | Statements are dated snapshots; superseded facts are superseded by later records, not silently rewritten | **ACCEPT** |
 | #140 | F-6/F-7 OpenAPI + generated-client drift | merge `cdf21e4d6`, run `38220526809` success incl. `generated-api-client`; script + contract spec reviewed | None | **ACCEPT** |
-| #141 | OQ-80 Option B, G2, OQ-86 Option C, Q4, PDR-12, ratification (Q3 superseded) | merge `f4c2e84f7`, run `38244025219` success; guards, routes, audits, DTOs and tests reviewed | Q3 record superseded by the 2026-10-13 decision → recorded (§4.5); no code change required | **ACCEPT** |
-| #142 | OQ-87 Option B (PDR-13) and L-04 / PDR-11 §8.6 | merge `f0b047ae4`, run `38290247234` success; flows, locks, audit events, migrations verified | **G-8.1 (material):** the §8.6 reduction control does not execute for a successor that retires nothing, so a renewal that lowers capacity or removes an entitlement — including with a changed `licenseId` — is applied with no check/explain/resolution (probe A/B, §4.4) | **HOLD** |
-| #143 | Audit-detail preservation; additive migration; CI isolation | merge `2494e5de3`, run `38354611367` success; pre-fix CI failure `38305329909` verified; post-fix `38351688052` success; rehearse.mjs + live 500-char cases | None | **ACCEPT** (recommended for formal acceptance) |
+| #141 | OQ-80 Option B, G2, OQ-86 Option C, Q4, PDR-12, ratification (Q3 superseded) | merge `f4c2e84f7`, run `38244025219` success; guards, routes, audits, DTOs and tests reviewed | Q3 record superseded by the 2026-10-13 decision → recorded (§4.5); the identity relaxation needs no code change. The F-8 controls that remain unsatisfied (L-05, L-06) are not introduced by this PR and are not waived by accepting it | **ACCEPT** |
+| #142 | OQ-87 Option B (PDR-13) and L-04 / PDR-11 §8.6 | merge `f0b047ae4`, run `38290247234` success; flows, locks, audit events, migrations verified | **G-8.1 (material, requirement not satisfied):** the §8.6 reduction control does not execute for a successor that retires nothing, so a renewal that lowers capacity or removes an entitlement — including with a changed `licenseId` — is applied with no check/explain/resolution (probe A/B, §4.4). Corrective change **L-05** required with its own tests and CI | **HOLD** |
+| #143 | Audit-detail preservation; additive migration; CI isolation | merge `2494e5de3`, run `38354611367` success; pre-fix CI failure `38305329909` verified; post-fix `38351688052` success; rehearse.mjs + live 500-char cases | None | **ACCEPT** (recommended for formal acceptance — a recommendation on #143 only, independent of this audit record's own status and of F-8/F-12) |
 
-No PR is `BLOCKED`: every decision this audit needed exists. The one open policy
-question (G-8.1's scope) is a *ruling on an existing requirement*, recorded for
-the Owner rather than left implicit.
+No PR is `BLOCKED`: every decision this audit needed exists. G-8.1 is a **defect
+against an approved requirement**, not an open policy question: §8.6 must be
+implemented on the renewal path (L-05), and the customer-code criterion (L-06)
+must be made representable and validated before F-8 can be called satisfied.
+
+### 7.1 Requirement-level status (independent of the per-PR outcomes)
+
+| Requirement | Status | Evidence / follow-up |
+| --- | --- | --- |
+| F-8 — license identity (the relaxation itself) | **Satisfied** | §4.2/§4.3; no `--license-id`, no reuse requirement |
+| F-8 — same customer (id), no bypass of binding/history/precedence/replay/audit | **Satisfied** | probes C/D/E; rules 2a/2b; Q4 transfer |
+| F-8 — same **customer code** | **NOT SATISFIED** | §4.6; follow-up **L-06** |
+| F-8 — no bypass of capacity/entitlement reduction controls | **NOT SATISFIED** on the renewal path | §4.4; follow-up **L-05**; #142 `HOLD` |
+| PR #143 acceptance recommendation | **ACCEPT recommended** (separate) | §6; does not complete F-8 or F-12 |
+| F-12 — forced first-login password change | **NOT IMPLEMENTED — outstanding deployment blocker** | §5; acceptance tests in §5.2 |
+| This audit record (PR #144) | **NOT ACCEPTED** — submitted for review | its conclusions and follow-ups are what the review must confirm |
 
 ## 8. Acceptance records changed by this audit (documentation only)
 
@@ -404,25 +617,49 @@ the Owner rather than left implicit.
   Q3 row and F-8 follow-up superseded; F-12 row re-stated as a decided but
   unimplemented requirement with its acceptance tests.
 - `docs/decisions/product/PDR-11-vardena-licensing-product-requirements.md` —
-  dated paragraph appended to the existing addendum: Q3 superseded; F-12
-  decision recorded as outstanding implementation. §1–§18 untouched.
-- This report (`docs/tasks/licensing-po-acceptance-audit-2026-10-13.md`).
+  dated paragraph appended to the existing addendum: Q3 superseded; the two F-8
+  gaps (L-05, L-06) recorded as unsatisfied requirements; F-12 recorded as
+  outstanding implementation. §1–§18 untouched.
+- This report (`docs/tasks/licensing-po-acceptance-audit-2026-10-13.md`) — initial
+  record plus **revision 2**, which corrects the G-8.1 recommendation, adds the
+  customer-code trace (§4.6), the F-8 requirement-level status (§4.7) and the
+  corrective tasks L-05/L-06.
+
+**Revision 2 additionally updates** the same four records so that every duplicated
+summary statement matches the corrected conclusions: `STATE.md` §37, the decision
+brief §8.3.1, the reconciliation §17 and the PDR-11 addendum now all state that F-8
+is **not** fully satisfied, that L-05 and L-06 are required corrective work, that
+PR #142 stays `HOLD`, and that F-12 remains an outstanding deployment blocker. The
+historical decisions of 2026-10-12 and 2026-10-13 remain as dated history; nothing
+was rewritten as though it had never existed.
 
 Nothing else was modified. No product code, test, migration, permission, API
-contract, generated client or existing historical record was rewritten.
+contract, generated client or existing historical record was rewritten, and no
+test, rehearsal or live-PostgreSQL run is claimed that was not actually executed.
 
-## 9. Remaining blockers and the next authorized task
+## 9. Remaining blockers and the next authorized tasks
 
-- **Blocker to close the F-8 acceptance:** Owner ruling on G-8.1 — either §8.6 is
-  extended to successors that retire nothing (then a dedicated corrective change
-  with its own tests and CI, per §4.4, and PR #142's acceptance re-evaluated),
-  or §8.6's scope is narrowed by decision and recorded in PDR-11.
-- **F-12 remains outstanding** and blocks any deployment beyond local
-  development; the corrective change needs the eight acceptance tests in §5.2.
+- **L-05 — §8.6 reduction control on the renewal path (required corrective
+  change; blocks PR #142's acceptance and the F-8 reduction-control criterion).**
+  Specification and mandated regression coverage in §4.4.1. It is a separate
+  product-code PR with its own tests and exact-SHA CI; PR #142 stays `HOLD` until
+  it is merged and verified. **PR #144 does not implement it.**
+- **L-06 — customer-code binding (required corrective change; blocks F-8 criterion
+  2).** The code's source/shape is an Owner decision item; the implementation
+  follow-up and its acceptance tests are in §4.6. **PR #144 does not implement it**
+  and invents no format.
+- **F-12 remains outstanding and is a deployment blocker.** The eight acceptance
+  tests are in §5.2; it is not completed by any PR in this audit.
+- **PR #143's formal acceptance recommendation stands on its own** (§6) and does
+  not depend on, or imply, acceptance of this audit record or completion of F-8.
+- **PR #144 itself is not accepted.** It is documentation only; its corrected
+  conclusions and follow-ups are what the Product Owner should now confirm.
 - **Unrelated open questions stay open and unchanged:** OQ-77, OQ-78, OQ-79,
   OQ-81, OQ-82, OQ-83, OQ-84, OQ-45, OQ-53, and the rest of the register.
-- **Next authorized task:** Product Owner review of this report and PR #143's
-  formal acceptance, then the G-8.1 ruling, then (in either order) the F-12
-  corrective change and — if the ruling requires it — the §8.6 corrective change.
+- **Next authorized task:** Product Owner review of this revision, then the three
+  corrective implementation PRs in the order L-05 → F-12 → L-06 (L-05 unblocks
+  #142; F-12 unblocks deployment; L-06 completes F-8), each with its own tests and
+  CI. Documentation-only PR #144 must not be merged as acceptance of F-8 or F-12,
+  and no corrective work may be smuggled into it.
 
 **Final status: READY FOR REVIEW.**
